@@ -52,3 +52,14 @@
   - MOD: apps/web/src/lib/auth/auth.ts — expanded comment on identity-scope proxy design
   - MOD: apps/web/src/lib/auth/__tests__/ciba-release-lifecycle.integration.test.ts — scope guard test
   - MOD: apps/demo-rp/src/hooks/use-ciba-flow.test.ts — ping-while-poll-in-flight regression test
+
+### Phase 4a: RFC 8707 resource column + PAR persistence — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 4, items 1-2)
+- Decisions:
+  - Added `resource text("resource")` nullable column to `haipPushedRequests`
+  - After hook persists `resource` from PAR body onto the record (plugin creates record, hook updates it)
+  - PAR record is deleted during authorization by the HAIP resolver — resource must be read before that
+- Files:
+  - MOD: apps/web/src/lib/db/schema/haip.ts — added `resource` column
+  - MOD: apps/web/src/lib/auth/auth.ts — after hook for PAR resource persistence + `desc` import
+  - MOD: apps/web/src/lib/auth/__tests__/rfc8707-resource.integration.test.ts — persistence test

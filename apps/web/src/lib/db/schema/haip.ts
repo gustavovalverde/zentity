@@ -13,6 +13,7 @@ export const haipPushedRequests = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     requestParams: text("request_params").notNull(),
+    resource: text("resource"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()

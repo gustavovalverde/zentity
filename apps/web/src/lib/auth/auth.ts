@@ -30,7 +30,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -801,6 +801,28 @@ export const auth = betterAuth({
                 )
                 .run();
             }
+          }
+        }
+      }
+
+      // RFC 8707: persist resource indicator on the PAR record so it
+      // can be referenced by step-up hooks and token-endpoint binding.
+      if (ctx.path === "/oauth2/par" && ctx.body?.resource) {
+        const clientId = ctx.body.client_id as string | undefined;
+        if (clientId) {
+          const record = await db
+            .select({ id: haipPushedRequests.id })
+            .from(haipPushedRequests)
+            .where(eq(haipPushedRequests.clientId, clientId))
+            .orderBy(desc(haipPushedRequests.createdAt))
+            .limit(1)
+            .get();
+          if (record) {
+            await db
+              .update(haipPushedRequests)
+              .set({ resource: ctx.body.resource as string })
+              .where(eq(haipPushedRequests.id, record.id))
+              .run();
           }
         }
       }

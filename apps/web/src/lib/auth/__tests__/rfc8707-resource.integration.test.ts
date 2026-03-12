@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 
+import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
+import { haipPushedRequests } from "@/lib/db/schema/haip";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
@@ -108,6 +110,29 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
 
       // PAR may return 200/201 on success (depends on HAIP plugin behavior)
       expect(status).toBeLessThan(400);
+    });
+
+    it("persists resource on the PAR record", async () => {
+      const { status } = await postPar({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        redirect_uri: "http://localhost/callback",
+        scope: "openid",
+        resource: VALID_RESOURCE,
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+      expect(status).toBeLessThan(400);
+
+      const record = await db
+        .select({ resource: haipPushedRequests.resource })
+        .from(haipPushedRequests)
+        .where(eq(haipPushedRequests.clientId, TEST_CLIENT_ID))
+        .limit(1)
+        .get();
+
+      expect(record).toBeDefined();
+      expect(record?.resource).toBe(VALID_RESOURCE);
     });
   });
 
