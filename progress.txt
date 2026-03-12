@@ -77,3 +77,17 @@
   - MOD: apps/demo-rp/src/app/wine/page.tsx — added AssuranceBadges after header
   - MOD: apps/demo-rp/src/app/aid/page.tsx — added AssuranceBadges in dashboard header
   - MOD: apps/demo-rp/src/components/aether/agent-chat.tsx — replaced inline badges with shared component
+
+### Phase 3b: interaction_required error surfacing — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 3, item 2)
+- Decisions:
+  - popup-complete page forwards OAuth error params via postMessage
+  - openOAuthPopup returns `{ completed, error?, errorDescription? }` instead of plain boolean
+  - useOAuthFlow exposes `oauthError` + `dismissError` for all scenarios
+  - Human-readable message map in useOAuthFlow for `interaction_required`
+  - Exchange page shows dismissible error banner above main grid
+- Files:
+  - MOD: apps/demo-rp/src/app/oauth/popup-complete/page.tsx — forward error params
+  - MOD: apps/demo-rp/src/lib/oauth-popup.ts — OAuthPopupResult type, error propagation
+  - MOD: apps/demo-rp/src/hooks/use-oauth-flow.ts — error state, ERROR_MESSAGES map, runOAuthFlow
+  - MOD: apps/demo-rp/src/app/exchange/page.tsx — error banner with dismiss

@@ -23,6 +23,8 @@ export default function ExchangePage() {
     isAuthenticated,
     claims,
     isSteppedUp,
+    oauthError,
+    dismissError,
     handleSignIn,
     handleStepUp,
     handleSignOut,
@@ -69,6 +71,26 @@ export default function ExchangePage() {
         onSectionChange={setActiveSection}
         onSignOut={handleSignOut}
       />
+
+      {oauthError && (
+        <div className="mx-auto max-w-[1600px] px-4 pt-4 md:px-6 md:pt-6">
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-destructive text-sm">
+                Verification Required
+              </p>
+              <p className="mt-1 text-muted-foreground text-xs">{oauthError}</p>
+            </div>
+            <button
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={dismissError}
+              type="button"
+            >
+              <span className="text-lg leading-none">&times;</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 p-4 md:p-6 lg:grid-cols-12">
         <div className="space-y-6 lg:col-span-3">

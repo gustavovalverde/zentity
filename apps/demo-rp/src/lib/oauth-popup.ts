@@ -11,16 +11,22 @@ function isMobile(): boolean {
   return MOBILE_UA_RE.test(navigator.userAgent);
 }
 
+export interface OAuthPopupResult {
+  completed: boolean;
+  error?: string;
+  errorDescription?: string;
+}
+
 /**
  * Open the OAuth flow in a centered popup window.
- * Returns true if the flow completed, false if blocked or closed early.
+ * Returns completion status and any OAuth error from the provider.
  */
 export function openOAuthPopup(
   providerId: string,
   scopes?: string[]
-): Promise<boolean> {
+): Promise<OAuthPopupResult> {
   if (isMobile()) {
-    return Promise.resolve(false);
+    return Promise.resolve({ completed: false });
   }
 
   return new Promise((resolve) => {
@@ -48,7 +54,7 @@ export function openOAuthPopup(
     );
 
     if (!popup || popup.closed) {
-      resolve(false);
+      resolve({ completed: false });
       return;
     }
 
@@ -64,14 +70,23 @@ export function openOAuthPopup(
 
       resolved = true;
       cleanup();
-      resolve(true);
+
+      if (event.data.error) {
+        resolve({
+          completed: false,
+          error: event.data.error as string,
+          errorDescription: event.data.errorDescription as string | undefined,
+        });
+      } else {
+        resolve({ completed: true });
+      }
     };
 
     const pollTimer = setInterval(() => {
       if (popup.closed && !resolved) {
         resolved = true;
         cleanup();
-        resolve(false);
+        resolve({ completed: false });
       }
     }, POLL_INTERVAL_MS);
 
