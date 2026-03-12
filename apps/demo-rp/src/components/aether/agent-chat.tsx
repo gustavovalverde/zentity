@@ -194,6 +194,13 @@ export function AgentChat({
         {(cibaState === "requesting" || cibaState === "polling") && (
           <CibaWaiting state={cibaState} />
         )}
+        {cibaState === "approved" && tokens && exchangedTokens && (
+          <div className="fade-in max-w-[85%] animate-in rounded-xl rounded-bl-sm bg-white/10 px-4 py-3 duration-300">
+            <p className="text-sm text-white/80 leading-relaxed">
+              Narrowing permissions for the merchant API...
+            </p>
+          </div>
+        )}
         {cibaState === "approved" && tokens && (
           <CibaResult
             exchangedTokens={exchangedTokens}
@@ -444,9 +451,7 @@ function CibaResult({
           <span className="font-semibold text-white">
             Authorization received!
           </span>{" "}
-          {exchangedTokens
-            ? "Narrowed permissions for the merchant API. Completing your purchase now."
-            : "Completing your purchase now."}
+          Completing your purchase now.
         </p>
       </div>
 

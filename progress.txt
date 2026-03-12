@@ -91,3 +91,12 @@
   - MOD: apps/demo-rp/src/lib/oauth-popup.ts — OAuthPopupResult type, error propagation
   - MOD: apps/demo-rp/src/hooks/use-oauth-flow.ts — error state, ERROR_MESSAGES map, runOAuthFlow
   - MOD: apps/demo-rp/src/app/exchange/page.tsx — error banner with dismiss
+
+### Phase 3c: Aether token-exchange narration step — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 3, item 3)
+- Decisions:
+  - Separate narration bubble ("Narrowing permissions for the merchant API...") renders
+    when exchangedTokens arrives, before CibaResult card
+  - CibaResult text simplified to "Completing your purchase now." (no longer conditional)
+- Files:
+  - MOD: apps/demo-rp/src/components/aether/agent-chat.tsx — narration bubble + simplified CibaResult
