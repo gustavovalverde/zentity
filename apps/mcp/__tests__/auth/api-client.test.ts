@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DpopKeyPair } from "../../src/auth/dpop.js";
+
+const mockAuthContext = {
+  accessToken: "test-access-token",
+  clientId: "test-client",
+  loginHint: "user-sub",
+};
+
+vi.mock("../../src/auth/dpop.js", () => ({
+  createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
+  extractDpopNonce: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock("../../src/auth/context.js", () => ({
+  getAuthContext: () => mockAuthContext,
+}));
+
+import { zentityFetch } from "../../src/auth/api-client.js";
+import { extractDpopNonce } from "../../src/auth/dpop.js";
+
+const mockDpopKey: DpopKeyPair = {
+  privateJwk: { kty: "EC", crv: "P-256" },
+  publicJwk: { kty: "EC", crv: "P-256" },
+};
+
+describe("zentityFetch", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("sends GET request with DPoP authorization", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    const response = await zentityFetch(
+      "http://localhost:3000/api/test",
+      mockDpopKey
+    );
+
+    expect(response.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/test",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "DPoP test-access-token",
+        }),
+      })
+    );
+  });
+
+  it("retries with new DPoP nonce on 401", async () => {
+    vi.mocked(extractDpopNonce)
+      .mockReturnValueOnce("new-nonce")
+      .mockReturnValueOnce("new-nonce");
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("", { status: 401 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), { status: 200 })
+      );
+
+    const response = await zentityFetch(
+      "http://localhost:3000/api/test",
+      mockDpopKey
+    );
+
+    expect(response.ok).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends POST with JSON body", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ created: true }), { status: 201 })
+    );
+
+    await zentityFetch("http://localhost:3000/api/test", mockDpopKey, {
+      method: "POST",
+      body: JSON.stringify({ data: "value" }),
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:3000/api/test",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({ data: "value" }),
+      })
+    );
+  });
+});
