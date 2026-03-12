@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DpopKeyPair } from "../../src/auth/dpop.js";
-import { exchangeAuthCode } from "../../src/auth/token-exchange.js";
+import {
+  exchangeAuthCode,
+  exchangeToken,
+} from "../../src/auth/token-exchange.js";
 
 vi.mock("../../src/config.js", () => ({
   config: {
@@ -111,6 +114,123 @@ describe("Token Exchange", () => {
     );
 
     expect(result.accessToken).toBe("at_retry");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("exchangeToken (RFC 8693)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const EXCHANGE_PARAMS = {
+    tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
+    subjectToken: "ciba-access-token",
+    audience: "https://merchant.example.com",
+    clientId: "client-1",
+    dpopKey: mockDpopKey,
+  };
+
+  it("exchanges an access token for a scoped token", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "merchant-token",
+          token_type: "DPoP",
+          expires_in: 1800,
+          scope: "openid purchase",
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await exchangeToken(EXCHANGE_PARAMS);
+
+    expect(result.accessToken).toBe("merchant-token");
+    expect(result.tokenType).toBe("DPoP");
+    expect(result.expiresIn).toBe(1800);
+    expect(result.scope).toBe("openid purchase");
+
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe(EXCHANGE_PARAMS.tokenEndpoint);
+    const body = new URLSearchParams((init as RequestInit).body as string);
+    expect(body.get("grant_type")).toBe(
+      "urn:ietf:params:oauth:grant-type:token-exchange"
+    );
+    expect(body.get("subject_token")).toBe("ciba-access-token");
+    expect(body.get("subject_token_type")).toBe(
+      "urn:ietf:params:oauth:token-type:access_token"
+    );
+    expect(body.get("audience")).toBe("https://merchant.example.com");
+  });
+
+  it("includes scope when provided", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "scoped-token",
+          token_type: "DPoP",
+        }),
+        { status: 200 }
+      )
+    );
+
+    await exchangeToken({ ...EXCHANGE_PARAMS, scope: "purchase" });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const body = new URLSearchParams((init as RequestInit).body as string);
+    expect(body.get("scope")).toBe("purchase");
+  });
+
+  it("defaults expiresIn to 3600 when not provided", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "token",
+          token_type: "DPoP",
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await exchangeToken(EXCHANGE_PARAMS);
+    expect(result.expiresIn).toBe(3600);
+  });
+
+  it("throws on failed exchange", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("invalid_grant", { status: 400 })
+    );
+
+    await expect(exchangeToken(EXCHANGE_PARAMS)).rejects.toThrow(
+      "Token exchange failed: 400"
+    );
+  });
+
+  it("retries with DPoP nonce on 400", async () => {
+    const { extractDpopNonce } = await import("../../src/auth/dpop.js");
+    vi.mocked(extractDpopNonce)
+      .mockReturnValueOnce("nonce-ex")
+      .mockReturnValueOnce("nonce-ex");
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "use_dpop_nonce" }), {
+          status: 400,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "retried-token",
+            token_type: "DPoP",
+          }),
+          { status: 200 }
+        )
+      );
+
+    const result = await exchangeToken(EXCHANGE_PARAMS);
+    expect(result.accessToken).toBe("retried-token");
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
