@@ -100,3 +100,19 @@
   - CibaResult text simplified to "Completing your purchase now." (no longer conditional)
 - Files:
   - MOD: apps/demo-rp/src/components/aether/agent-chat.tsx — narration bubble + simplified CibaResult
+
+### Phase 4b: Token endpoint resource validation — COMPLETE
+- PRD: docs/plans/tasks/gap-closure-implemented-plans.md (Phase 4, remaining items)
+- Decisions:
+  - client_credentials: resource REQUIRED (no prior authorization step)
+  - authorization_code: resource validated if present, NOT required
+    (FPA challenge flow doesn't use PAR; standard flows require resource at PAR already)
+  - CIBA: not affected (handles resource via cibaRequests.resource)
+  - PAR-to-token binding (resource match) deferred — requires oauth-provider patch to propagate
+    resource through verification value. PAR record deleted at authorize time.
+  - `aud` binding already works natively via oauth-provider's `checkResource(ctx.body.resource)`
+- Files:
+  - MOD: apps/web/src/lib/auth/auth.ts — before hook for token endpoint resource validation
+  - MOD: apps/web/src/lib/auth/__tests__/rfc8707-resource.integration.test.ts — 3 new tests
+- Blockers:
+  - PAR-to-token resource matching requires oauth-provider patch (verification value doesn't store resource)

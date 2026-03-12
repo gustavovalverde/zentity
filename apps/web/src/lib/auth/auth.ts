@@ -760,6 +760,33 @@ export const auth = betterAuth({
       ) {
         await enforceCibaTokenAcr(ctx, db);
       }
+
+      // RFC 8707: validate resource indicator at token endpoint.
+      // - client_credentials: resource is required (no prior authorization step)
+      // - authorization_code: validate format if present but don't require it
+      //   (FPA challenge flow doesn't use PAR; standard flows already require
+      //   resource at PAR time)
+      // - CIBA: handled separately via cibaRequests.resource
+      if (ctx.path === "/oauth2/token") {
+        const grantType = ctx.body?.grant_type as string | undefined;
+        if (grantType === "client_credentials") {
+          const result = validateResourceUri(ctx.body?.resource);
+          if (!result.valid) {
+            throw new APIError("BAD_REQUEST", {
+              error: "invalid_request",
+              error_description: result.error,
+            });
+          }
+        } else if (grantType === "authorization_code" && ctx.body?.resource) {
+          const result = validateResourceUri(ctx.body.resource);
+          if (!result.valid) {
+            throw new APIError("BAD_REQUEST", {
+              error: "invalid_request",
+              error_description: result.error,
+            });
+          }
+        }
+      }
     }),
     after: createAuthMiddleware(async (ctx) => {
       const sessionCtx = ctx.context as {

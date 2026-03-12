@@ -136,6 +136,57 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
     });
   });
 
+  describe("Token endpoint resource enforcement", () => {
+    it("rejects client_credentials grant without resource", async () => {
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "client_credentials",
+        client_id: TEST_CLIENT_ID,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
+      expect(json.error_description).toContain("required");
+    });
+
+    it("rejects authorization_code grant with invalid resource format", async () => {
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        code: "fake-code",
+        client_id: TEST_CLIENT_ID,
+        redirect_uri: "http://localhost/callback",
+        resource: "/relative-path",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
+      expect(json.error_description).toContain("absolute URI");
+    });
+
+    it("does not reject CIBA grant without resource in body", async () => {
+      const authReqId = crypto.randomUUID();
+      const userId = await createTestUser();
+      await db
+        .insert(cibaRequests)
+        .values({
+          authReqId,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          scope: "openid",
+          status: "approved",
+          expiresAt: new Date(Date.now() + 300_000),
+        })
+        .run();
+
+      const { status } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+
+      expect(status).toBe(200);
+    });
+  });
+
   describe("CIBA token with resource → aud binding", () => {
     let userId: string;
 
