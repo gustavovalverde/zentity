@@ -21,6 +21,27 @@
   - NEW: apps/mcp/__tests__/server.test.ts — server factory tests (2)
   - NEW: apps/mcp/__tests__/tools/echo.test.ts — echo tool tests (3)
 
+### Phase 2: OAuth Discovery & Client Registration — COMPLETE
+- PRD: docs/plans/mcp-agent-server.md (Phase 2)
+- Decisions:
+  - Credentials stored at `~/.zentity/credentials.json` (0600 perms, dir 0700)
+  - jose v6 needs `{ extractable: true }` for DPoP keypair generation
+  - `WebStandardStreamableHTTPServerTransport` for Hono (consistent with Phase 1)
+  - DCR registers as public client with CIBA + auth_code + refresh_token grant types
+  - PRM endpoint at `/.well-known/oauth-protected-resource` (HTTP transport only)
+  - DPoP private+public JWK both persisted for proof creation without re-import
+- Files:
+  - NEW: apps/mcp/src/auth/credentials.ts — StoredCredentials type, read/write/update
+  - NEW: apps/mcp/src/auth/discovery.ts — OIDC discovery fetch + cache
+  - NEW: apps/mcp/src/auth/dcr.ts — DCR registration with client_id persistence
+  - NEW: apps/mcp/src/auth/dpop.ts — ES256 DPoP keypair gen + proof creation
+  - NEW: apps/mcp/src/auth/resource-metadata.ts — RFC 9728 PRM response
+  - MOD: apps/mcp/src/transports/http.ts — PRM endpoint wired in
+  - NEW: apps/mcp/__tests__/auth/discovery.test.ts (4 tests)
+  - NEW: apps/mcp/__tests__/auth/dcr.test.ts (4 tests)
+  - NEW: apps/mcp/__tests__/auth/dpop.test.ts (6 tests)
+  - NEW: apps/mcp/__tests__/auth/resource-metadata.test.ts (1 test)
+
 ## A2A Agent Card Discovery
 
 ### Phase 1: Agent Card Route — COMPLETE

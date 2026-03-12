@@ -3,6 +3,7 @@ import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { getResourceMetadata } from "../auth/resource-metadata.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
@@ -33,6 +34,10 @@ export function startHttp(): void {
   );
 
   app.get("/health", (c) => c.json({ status: "ok" }));
+
+  app.get("/.well-known/oauth-protected-resource", (c) =>
+    c.json(getResourceMetadata())
+  );
 
   const transports = new Map<
     string,
