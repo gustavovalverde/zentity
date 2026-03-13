@@ -134,10 +134,8 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         .insert(oauthClients)
         .values({
           clientId: testClientId,
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          metadata: JSON.stringify({
-            id_token_signed_response_alg: "EdDSA",
-          }),
+          redirectUris: '["http://localhost/callback"]',
+          metadata: '{"id_token_signed_response_alg":"EdDSA"}',
         })
         .run();
 
@@ -166,10 +164,8 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         .insert(oauthClients)
         .values({
           clientId: testClientId,
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          metadata: JSON.stringify({
-            id_token_signed_response_alg: "ML-DSA-65",
-          }),
+          redirectUris: '["http://localhost/callback"]',
+          metadata: '{"id_token_signed_response_alg":"ML-DSA-65"}',
         })
         .run();
 
@@ -239,10 +235,8 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         .insert(oauthClients)
         .values({
           clientId: testClientId,
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          metadata: JSON.stringify({
-            id_token_signed_response_alg: "EdDSA",
-          }),
+          redirectUris: '["http://localhost/callback"]',
+          metadata: '{"id_token_signed_response_alg":"EdDSA"}',
         })
         .run();
 

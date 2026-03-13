@@ -9,14 +9,19 @@ import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/types";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
+import { decodeJwt } from "jose";
 
 import { getAssuranceState } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { auth, type Session } from "@/lib/auth/auth";
+import { db } from "@/lib/db/connection";
+import { users } from "@/lib/db/schema/auth";
+import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
 import { extractInputMeta } from "@/lib/logging/redact";
@@ -43,9 +48,102 @@ interface TrpcContext {
   traceId?: string;
 }
 
+const AUTH_HEADER_RE = /^(?:DPoP|Bearer)\s+(.+)$/i;
+
+/**
+ * Resolve a user from an OAuth access token (DPoP or Bearer).
+ * Handles both JWT tokens (decode + sub lookup) and opaque tokens (hash lookup).
+ */
+async function resolveOAuthSession(headers: Headers): Promise<Session | null> {
+  const authHeader = headers.get("authorization");
+  if (!authHeader) {
+    return null;
+  }
+
+  const match = authHeader.match(AUTH_HEADER_RE);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const token = match[1];
+
+  // JWT tokens start with "eyJ" (base64url-encoded "{")
+  if (token.startsWith("eyJ")) {
+    return await resolveJwtSession(token);
+  }
+
+  return await resolveOpaqueSession(token);
+}
+
+async function resolveJwtSession(token: string): Promise<Session | null> {
+  const payload = decodeJwt(token);
+  if (!(payload.sub && payload.exp)) {
+    return null;
+  }
+  if (payload.exp * 1000 < Date.now()) {
+    return null;
+  }
+  return await buildSessionFromUserId(payload.sub);
+}
+
+async function resolveOpaqueSession(token: string): Promise<Session | null> {
+  const tokenHash = createHash("sha256").update(token).digest("base64url");
+
+  const accessToken = await db
+    .select({
+      userId: oauthAccessTokens.userId,
+      expiresAt: oauthAccessTokens.expiresAt,
+    })
+    .from(oauthAccessTokens)
+    .where(eq(oauthAccessTokens.token, tokenHash))
+    .limit(1)
+    .get();
+
+  if (!accessToken?.userId || accessToken.expiresAt < new Date()) {
+    return null;
+  }
+
+  return buildSessionFromUserId(accessToken.userId);
+}
+
+async function buildSessionFromUserId(userId: string): Promise<Session | null> {
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .get();
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      emailVerified: user.emailVerified,
+      image: user.image,
+      createdAt: new Date(user.createdAt),
+      updatedAt: new Date(user.updatedAt),
+    },
+    session: {
+      id: `oauth:${user.id}`,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 3_600_000),
+      token: "",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ipAddress: null,
+      userAgent: null,
+    },
+  } as unknown as Session;
+}
+
 /**
  * Creates the tRPC context from an incoming request.
- * Extracts the user session from cookies via better-auth.
+ * Resolves session from cookies (browser) or OAuth access token (MCP/API).
  */
 export async function createTrpcContext(args: {
   req: Request;
@@ -60,6 +158,17 @@ export async function createTrpcContext(args: {
       requestId: requestContext.requestId,
       path: "auth.getSession",
     });
+  }
+
+  if (!session) {
+    try {
+      session = await resolveOAuthSession(args.req.headers);
+    } catch (error) {
+      logError(error, {
+        requestId: requestContext.requestId,
+        path: "auth.resolveOAuth",
+      });
+    }
   }
 
   return {

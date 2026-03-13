@@ -45,18 +45,16 @@ function PageLayout({ title, description, children }: PageLayoutProps) {
       </a>
       <Nav />
       <main id="main-content" className="flex-1">
-        <section className="landing-band-flat px-4 pt-24 pb-8 md:px-6 md:pt-28">
+        <section className="landing-band-flat px-4 pt-24 pb-14 md:px-6 md:pt-28 md:pb-16">
           <div className="landing-container">
-            <header className="max-w-3xl">
+            <header className="mb-10 max-w-3xl">
               <h1 className="font-display font-semibold text-4xl leading-tight">
                 {title}
               </h1>
               <p className="landing-copy mt-3">{description}</p>
             </header>
+            {children}
           </div>
-        </section>
-        <section className="landing-section landing-band-flat">
-          <div className="landing-container">{children}</div>
         </section>
       </main>
       <Footer />

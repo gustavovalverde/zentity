@@ -44,12 +44,13 @@ export default async function OAuthConsentPage({
       };
     }
 
-    const meta = row?.metadata as
-      | { optionalScopes?: string[] }
-      | null
-      | undefined;
-    if (Array.isArray(meta?.optionalScopes)) {
-      optionalScopes = meta.optionalScopes;
+    if (row?.metadata) {
+      const meta = JSON.parse(row.metadata) as {
+        optionalScopes?: string[];
+      } | null;
+      if (Array.isArray(meta?.optionalScopes)) {
+        optionalScopes = meta.optionalScopes;
+      }
     }
   }
 

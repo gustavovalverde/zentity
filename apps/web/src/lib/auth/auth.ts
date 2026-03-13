@@ -488,13 +488,16 @@ function validateDcrRegistration(
       try {
         const parsed = new URL(uri);
         const isLocalhost = parsed.hostname === "localhost";
+        // RFC 8252 §7.3: loopback IPs (127.0.0.1, [::1]) are allowed with HTTP for native apps
+        const isLoopback =
+          parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
         if (!isDev && isLocalhost) {
           throw new APIError("BAD_REQUEST", {
             error_description:
               "redirect_uris must use HTTPS in production (localhost not allowed)",
           });
         }
-        if (!isLocalhost && parsed.protocol !== "https:") {
+        if (!(isLocalhost || isLoopback) && parsed.protocol !== "https:") {
           throw new APIError("BAD_REQUEST", {
             error_description: `redirect_uri must use HTTPS: ${uri}`,
           });
@@ -854,52 +857,6 @@ export const auth = betterAuth({
         }
       }
 
-      // Pairwise token cleanup: delete access token DB records for pairwise
-      // clients with proof-only flows. JWT tokens are self-contained so the
-      // RP can still validate them until expiry.
-      if (ctx.path === "/oauth2/token") {
-        const clientId =
-          typeof ctx.body?.client_id === "string"
-            ? ctx.body.client_id
-            : undefined;
-        if (clientId) {
-          const client = await db
-            .select({ subjectType: oauthClients.subjectType })
-            .from(oauthClients)
-            .where(eq(oauthClients.clientId, clientId))
-            .limit(1)
-            .get();
-
-          if (client?.subjectType === "pairwise") {
-            // Check if the token was issued with any identity scopes
-            const latestToken = await db
-              .select({
-                id: oauthAccessTokens.id,
-                scopes: oauthAccessTokens.scopes,
-              })
-              .from(oauthAccessTokens)
-              .where(eq(oauthAccessTokens.clientId, clientId))
-              .limit(1)
-              .get();
-
-            if (latestToken) {
-              const tokenScopes = Array.isArray(latestToken.scopes)
-                ? (latestToken.scopes as string[])
-                : [];
-              const hasIdentityScopes = tokenScopes.some((s) =>
-                isIdentityScope(s)
-              );
-              if (!hasIdentityScopes) {
-                await db
-                  .delete(oauthAccessTokens)
-                  .where(eq(oauthAccessTokens.id, latestToken.id))
-                  .run();
-              }
-            }
-          }
-        }
-      }
-
       // Guardian cleanup when 2FA is disabled
       if (ctx.path === "/two-factor/disable") {
         const userId = sessionCtx.session?.user?.id;
@@ -1073,20 +1030,31 @@ export const auth = betterAuth({
         let assuranceClaims: Record<string, unknown> = {};
         if (scopeList.includes("openid") && user?.id) {
           const assurance = await getAssuranceForOAuth(user.id);
-          const signingAlg =
-            (metadata?.id_token_signed_response_alg as string) || "RS256";
           assuranceClaims = {
             acr: computeAcr(assurance.tier),
             acr_eidas: computeAcrEidas(assurance.tier),
             amr: loginMethodToAmr(assurance.loginMethod),
             auth_time: assurance.authTime,
-            at_hash: accessToken
-              ? computeAtHash(accessToken, signingAlg)
-              : undefined,
           };
         }
 
-        return { ...identityClaims, ...proofClaims, ...assuranceClaims };
+        // at_hash (OIDC Core §3.1.3.6) — hash alg matches id_token signing alg
+        let atHashClaim: Record<string, unknown> = {};
+        if (accessToken) {
+          const signingAlg =
+            (metadata?.id_token_signed_response_alg as string) || "RS256";
+          const atHash = computeAtHash(accessToken, signingAlg);
+          if (atHash) {
+            atHashClaim = { at_hash: atHash };
+          }
+        }
+
+        return {
+          ...identityClaims,
+          ...proofClaims,
+          ...assuranceClaims,
+          ...atHashClaim,
+        };
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
@@ -1170,16 +1138,27 @@ export const auth = betterAuth({
       deliveryModes: ["poll", "ping"],
       requestLifetime: 300,
       pollingInterval: 5,
+      async resolveUser(loginHint, ctx) {
+        const byId = await ctx.context.internalAdapter.findUserById(loginHint);
+        if (byId) {
+          return byId;
+        }
+        const byEmail =
+          await ctx.context.internalAdapter.findUserByEmail(loginHint);
+        return byEmail?.user ?? null;
+      },
       async resolveClientNotificationEndpoint(clientId) {
         const client = await db
           .select({ metadata: oauthClients.metadata })
           .from(oauthClients)
           .where(eq(oauthClients.clientId, clientId))
           .get();
-        const meta = client?.metadata as Record<string, unknown> | null;
+        if (!client?.metadata) {
+          return undefined;
+        }
+        const meta = JSON.parse(client.metadata) as Record<string, unknown>;
         return (
-          (meta?.backchannel_client_notification_endpoint as string) ??
-          undefined
+          (meta.backchannel_client_notification_endpoint as string) ?? undefined
         );
       },
       sendNotification: async (data) => {

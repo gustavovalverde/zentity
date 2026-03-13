@@ -1,4 +1,5 @@
 // Import documentation files as raw strings
+import agenticAuthorization from "../../../../docs/agentic-authorization.md?raw";
 import architecture from "../../../../docs/architecture.md?raw";
 import attestationPrivacy from "../../../../docs/attestation-privacy-architecture.md?raw";
 import blockchainSetup from "../../../../docs/blockchain-setup.md?raw";
@@ -19,6 +20,12 @@ interface DocMeta {
 }
 
 const docs: Record<string, DocMeta> = {
+  "agentic-authorization": {
+    title: "Agentic Authorization",
+    description:
+      "How AI agents prove they act on behalf of a human using composed OAuth/OIDC specs and privacy-preserving PII delivery",
+    content: agenticAuthorization,
+  },
   architecture: {
     title: "System Architecture",
     description:
@@ -119,6 +126,7 @@ export const docsNav = [
   {
     title: "Integration",
     items: [
+      { title: "Agentic Authorization", slug: "agentic-authorization" },
       { title: "OAuth Integrations", slug: "oauth-integrations" },
       { title: "SSI Architecture", slug: "ssi-architecture" },
     ],

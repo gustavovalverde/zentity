@@ -48,9 +48,9 @@ export async function ensureWalletClientExists(): Promise<string> {
       public: true, // No client_secret required
       disabled: false,
       skipConsent: true, // Wallet flow doesn't need consent page
-      scopes: WALLET_CLIENT_SCOPES,
-      grantTypes: WALLET_CLIENT_GRANT_TYPES,
-      redirectUris: [], // Not needed for pre-authorized code flow
+      scopes: JSON.stringify(WALLET_CLIENT_SCOPES),
+      grantTypes: JSON.stringify(WALLET_CLIENT_GRANT_TYPES),
+      redirectUris: JSON.stringify([]),
       createdAt: new Date(),
     })
     .run();

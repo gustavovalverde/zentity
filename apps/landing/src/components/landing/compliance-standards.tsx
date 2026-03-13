@@ -1,5 +1,4 @@
 import {
-  IconCertificate,
   IconCheck,
   IconFileCode,
   IconScale,
@@ -56,17 +55,40 @@ const frameworks = [
   },
 ];
 
-const standards = [
-  "OAuth 2.1 authorization code flow",
-  "OpenID Connect (OIDC)",
-  "RFC 7591 Dynamic Client Registration",
-  "SD-JWT Verifiable Credentials",
-  "OIDC4VCI / OIDC4VP / OIDC4IDA profile",
-  "RFC 9126 Pushed Authorization Requests (PAR)",
-  "RFC 9449 DPoP (Demonstration of Proof-of-Possession)",
-  "JARM (JWT Secured Authorization Response Mode)",
-  "HAIP (High Assurance Interoperability Profile)",
-  "Post-quantum migration alignment (FIPS 203/204)",
+const standardGroups: Array<{ label: string; items: string[] }> = [
+  {
+    label: "Identity & interoperability",
+    items: [
+      "OAuth 2.1 authorization code flow",
+      "OpenID Connect (OIDC)",
+      "RFC 7591 Dynamic Client Registration",
+      "SD-JWT Verifiable Credentials",
+      "OIDC4VCI / OIDC4VP / OIDC4IDA profile",
+      "HAIP (High Assurance Interoperability Profile)",
+    ],
+  },
+  {
+    label: "Transport security",
+    items: [
+      "RFC 9126 Pushed Authorization Requests (PAR)",
+      "RFC 9449 DPoP (Demonstration of Proof-of-Possession)",
+      "JARM (JWT Secured Authorization Response Mode)",
+    ],
+  },
+  {
+    label: "Agentic authorization",
+    items: [
+      "OpenID Connect CIBA Core (backchannel auth)",
+      "RFC 9396 Rich Authorization Requests (RAR)",
+      "RFC 8693 Token Exchange (delegation chains)",
+      "draft-ietf-oauth-first-party-apps (headless bootstrap)",
+      "draft-oauth-ai-agents-on-behalf-of-user (act claim)",
+    ],
+  },
+  {
+    label: "Cryptography",
+    items: ["Post-quantum migration alignment (FIPS 203/204)"],
+  },
 ];
 
 const deepDiveLinks = [
@@ -89,6 +111,11 @@ const deepDiveLinks = [
     title: "Cryptographic pillars",
     body: "Passkeys, commitments, ZK proofs, FHE, and post-quantum migration.",
     href: "/docs/cryptographic-pillars",
+  },
+  {
+    title: "Agentic authorization",
+    body: "How AI agents prove delegation, receive identity, and stay bound to human consent.",
+    href: "/docs/agentic-authorization",
   },
 ];
 
@@ -155,33 +182,36 @@ export function ComplianceStandards() {
                   className={cn("size-4", iconSemanticColors.portability)}
                 />
                 <CardTitle className="landing-card-title">
-                  Interoperability standards
+                  Standards implemented
                 </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="pt-4">
-              <div className="mb-4 flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
-                <IconCertificate
-                  className={cn("size-4", iconSemanticColors.oauth)}
-                />
-                <p className="landing-caption text-foreground">
-                  Wallet and assurance interoperability with OIDC4VCI, OIDC4VP,
-                  and OIDC4IDA
-                </p>
-              </div>
-              <ul className="space-y-2">
-                {standards.map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm">
-                    <IconCheck
-                      className={cn(
-                        "mt-0.5 size-4 shrink-0",
-                        colorStyles.emerald.iconText,
-                      )}
-                    />
-                    <span>{item}</span>
-                  </li>
+              <div className="space-y-4">
+                {standardGroups.map((group) => (
+                  <div key={group.label}>
+                    <p className="landing-caption mb-2 font-medium text-foreground">
+                      {group.label}
+                    </p>
+                    <ul className="space-y-1.5">
+                      {group.items.map((item) => (
+                        <li
+                          key={item}
+                          className="flex items-start gap-2 text-sm"
+                        >
+                          <IconCheck
+                            className={cn(
+                              "mt-0.5 size-4 shrink-0",
+                              colorStyles.emerald.iconText,
+                            )}
+                          />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
               <p className="landing-caption mt-4">
                 No custom protocol is required. Teams can integrate through
                 OAuth/OIDC scopes and user-approved claim sharing.

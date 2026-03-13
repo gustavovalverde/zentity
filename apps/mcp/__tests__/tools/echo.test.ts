@@ -3,7 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
 import { createServer } from "../../src/server/index.js";
 
-describe("zentity_echo tool", () => {
+describe("echo tool", () => {
   async function createConnectedClient() {
     const { server } = createServer();
     const [clientTransport, serverTransport] =
@@ -16,10 +16,10 @@ describe("zentity_echo tool", () => {
     return client;
   }
 
-  it("lists zentity_echo in tools/list", async () => {
+  it("lists echo in tools/list", async () => {
     const client = await createConnectedClient();
     const { tools } = await client.listTools();
-    const echo = tools.find((t) => t.name === "zentity_echo");
+    const echo = tools.find((t) => t.name === "echo");
     expect(echo).toBeDefined();
     expect(echo?.description).toContain("Echo");
   });
@@ -27,7 +27,7 @@ describe("zentity_echo tool", () => {
   it("echoes back the provided message", async () => {
     const client = await createConnectedClient();
     const result = await client.callTool({
-      name: "zentity_echo",
+      name: "echo",
       arguments: { message: "hello world" },
     });
     expect(result.content).toEqual([{ type: "text", text: "hello world" }]);
@@ -36,7 +36,7 @@ describe("zentity_echo tool", () => {
   it("handles empty string", async () => {
     const client = await createConnectedClient();
     const result = await client.callTool({
-      name: "zentity_echo",
+      name: "echo",
       arguments: { message: "" },
     });
     expect(result.content).toEqual([{ type: "text", text: "" }]);

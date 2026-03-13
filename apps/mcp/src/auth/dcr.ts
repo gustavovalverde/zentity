@@ -27,14 +27,16 @@ export async function ensureClientRegistration(
   const body = {
     client_name: "@zentity/mcp-server",
     redirect_uris: [redirectUri],
-    scope: "openid email",
+    scope: "openid email proof:identity identity.name identity.address",
     token_endpoint_auth_method: "none",
+    skip_consent: true,
     grant_types: [
       "authorization_code",
       "refresh_token",
       "urn:openid:params:grant-type:ciba",
     ],
     response_types: ["code"],
+    subject_type: "public",
   };
 
   const response = await fetch(discovery.registration_endpoint, {

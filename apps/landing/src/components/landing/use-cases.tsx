@@ -4,8 +4,8 @@ import {
   IconGlass,
   IconLock,
   IconPlugConnected,
+  IconRobot,
   IconShieldCheck,
-  IconWallet,
 } from "@tabler/icons-react";
 import { Link } from "react-router-dom";
 
@@ -55,20 +55,20 @@ const useCases: Array<{
       "Sanctions screening, ongoing monitoring, and Travel Rule reporting need encrypted attributes that can be re-evaluated without re-collecting. FHE computation addresses this without storing plaintext.",
   },
   {
-    icon: IconPlugConnected,
-    color: "purple",
-    title: "Zero-Knowledge SSO",
-    cluster: "Portable Verification",
+    icon: IconRobot,
+    color: "orange",
+    title: "Agent Delegation",
+    cluster: "Bound Delegation",
     description:
-      "Standard OAuth redirect. Pairwise pseudonyms per relying party. The identity provider cannot track which services the user visits. The service cannot identify the user across providers.",
+      "An AI agent needs the human's name to ship a package. CIBA sends a push notification; the human approves and unlocks their vault. The agent receives a one-time release handle, never the raw identity.",
   },
   {
-    icon: IconWallet,
-    color: "amber",
-    title: "Credential Portability",
-    cluster: "Portable Verification",
+    icon: IconPlugConnected,
+    color: "purple",
+    title: "Portable Verification",
+    cluster: "Portable Trust",
     description:
-      "SD-JWT credentials issued via OIDC4VCI. The user decides which claims to present at each service. The credential travels with the user, not with the issuer.",
+      "Standard OAuth redirect with pairwise pseudonyms, or SD-JWT credentials the user carries between services. Either way, each relying party sees only the claims the user approves, and cross-service correlation is impossible.",
   },
 ];
 

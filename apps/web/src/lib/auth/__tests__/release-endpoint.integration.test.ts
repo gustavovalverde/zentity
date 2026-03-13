@@ -52,8 +52,8 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
     .values({
       clientId,
       name: "Release Test Agent",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: ["urn:openid:params:grant-type:ciba"],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify(["urn:openid:params:grant-type:ciba"]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })

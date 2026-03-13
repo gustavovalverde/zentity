@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DpopKeyPair } from "../../src/auth/dpop.js";
 
 const mockAuthContext = {
   accessToken: "test-access-token",
   clientId: "test-client",
+  dpopKey: {
+    privateJwk: { kty: "EC", crv: "P-256" },
+    publicJwk: { kty: "EC", crv: "P-256" },
+  },
   loginHint: "user-sub",
 };
 
@@ -19,11 +22,6 @@ vi.mock("../../src/auth/context.js", () => ({
 import { zentityFetch } from "../../src/auth/api-client.js";
 import { extractDpopNonce } from "../../src/auth/dpop.js";
 
-const mockDpopKey: DpopKeyPair = {
-  privateJwk: { kty: "EC", crv: "P-256" },
-  publicJwk: { kty: "EC", crv: "P-256" },
-};
-
 describe("zentityFetch", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -34,10 +32,7 @@ describe("zentityFetch", () => {
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     );
 
-    const response = await zentityFetch(
-      "http://localhost:3000/api/test",
-      mockDpopKey
-    );
+    const response = await zentityFetch("http://localhost:3000/api/test");
 
     expect(response.ok).toBe(true);
     expect(fetch).toHaveBeenCalledWith(
@@ -52,7 +47,7 @@ describe("zentityFetch", () => {
   });
 
   it("retries with new DPoP nonce on 401", async () => {
-    vi.mocked(extractDpopNonce)
+    (extractDpopNonce as ReturnType<typeof vi.fn>)
       .mockReturnValueOnce("new-nonce")
       .mockReturnValueOnce("new-nonce");
 
@@ -62,10 +57,7 @@ describe("zentityFetch", () => {
         new Response(JSON.stringify({ ok: true }), { status: 200 })
       );
 
-    const response = await zentityFetch(
-      "http://localhost:3000/api/test",
-      mockDpopKey
-    );
+    const response = await zentityFetch("http://localhost:3000/api/test");
 
     expect(response.ok).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(2);
@@ -76,7 +68,7 @@ describe("zentityFetch", () => {
       new Response(JSON.stringify({ created: true }), { status: 201 })
     );
 
-    await zentityFetch("http://localhost:3000/api/test", mockDpopKey, {
+    await zentityFetch("http://localhost:3000/api/test", {
       method: "POST",
       body: JSON.stringify({ data: "value" }),
     });

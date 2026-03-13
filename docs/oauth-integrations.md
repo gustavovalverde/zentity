@@ -47,6 +47,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
 | `GET /api/auth/oauth2/userinfo` | OIDC Core | Scope-filtered verified claims |
+| `POST /api/oauth2/release` | Zentity extension | One-time PII redemption via CIBA release handle (see [Agentic Authorization](agentic-authorization.md#binding-chains)) |
 | `GET /api/auth/oauth2/end-session` | OIDC Session | Session logout |
 
 ### Client management
@@ -63,6 +64,8 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch pending request details (for approval page) |
+| `POST /api/ciba/identity/intent` | Acquire intent token for PII staging (binds user + CIBA request + scopes) |
+| `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (seals with release handle) |
 | `POST /api/auth/ciba/authorize` | Approve a pending CIBA request |
 | `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
 

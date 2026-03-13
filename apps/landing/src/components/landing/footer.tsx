@@ -36,6 +36,7 @@ function FooterLinkItem({ link }: { link: FooterLink }) {
 const footerLinks = {
   product: [
     { label: "Home", href: "/" },
+    { label: "Agents", href: "/agents" },
     { label: "White Paper", href: "/whitepaper" },
     { label: "Docs", href: "/docs/architecture" },
   ] satisfies FooterLink[],

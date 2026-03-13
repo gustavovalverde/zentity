@@ -43,7 +43,7 @@ describe("HAIP — ES256 signing support", () => {
         clientId: "haip-test-es256",
         name: "HAIP ES256 Test Client",
         clientSecret: "test-secret",
-        redirectUris: ["http://localhost/callback"],
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
         metadata: JSON.stringify({
           id_token_signed_response_alg: "ES256",
         }),

@@ -41,15 +41,30 @@ We use a **Merkle tree** structure where:
 
 ### Building the Tree
 
-```text
-                    Root Hash (public)
-                   /              \
-            Hash(A+B)          Hash(C+D)
-           /        \         /        \
-      Hash(DEU)  Hash(FRA) Hash(ITA) Hash(ESP)
-         |          |         |         |
-        276        250       380       724
-     (Germany)  (France)  (Italy)   (Spain)
+```mermaid
+flowchart TD
+  Root["Root Hash (public)"]
+  AB["Hash(A+B)"]
+  CD["Hash(C+D)"]
+  DEU["Hash(DEU)"]
+  FRA["Hash(FRA)"]
+  ITA["Hash(ITA)"]
+  ESP["Hash(ESP)"]
+  C276["276\n(Germany)"]
+  C250["250\n(France)"]
+  C380["380\n(Italy)"]
+  C724["724\n(Spain)"]
+
+  Root --- AB
+  Root --- CD
+  AB --- DEU
+  AB --- FRA
+  CD --- ITA
+  CD --- ESP
+  DEU --- C276
+  FRA --- C250
+  ITA --- C380
+  ESP --- C724
 ```
 
 1. Each country code is converted to its ISO numeric code (DEU → 276)
@@ -124,13 +139,11 @@ Poseidon hash was specifically designed for ZK circuits:
 
 ## Tree Depth
 
-```text
-Levels | Max Countries | Use Case
--------|---------------|----------
-4      | 16            | Small groups (FIVE_EYES)
-8      | 256           | All country groups
-12     | 4,096         | Overkill
-```
+| Levels | Max Countries | Use Case |
+|--------|---------------|----------|
+| 4      | 16            | Small groups (FIVE_EYES) |
+| 8      | 256           | All country groups |
+| 12     | 4,096         | Overkill |
 
 8 levels supports up to 256 countries per group, which is more than enough for any country group (EU has 27, SCHENGEN has 26, etc.).
 

@@ -21,8 +21,8 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "Step-Up Test Client",
-      redirectUris: [REDIRECT_URI],
-      grantTypes: ["authorization_code"],
+      redirectUris: JSON.stringify([REDIRECT_URI]),
+      grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })

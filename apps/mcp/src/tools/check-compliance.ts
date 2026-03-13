@@ -1,8 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { zentityFetch } from "../auth/api-client.js";
-import { loadCredentials } from "../auth/credentials.js";
-import { loadDpopKey } from "../auth/dpop.js";
+import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
 interface AttestationStatus {
@@ -13,8 +12,8 @@ interface AttestationStatus {
 
 export function registerCheckComplianceTool(server: McpServer): void {
   server.tool(
-    "zentity_check_compliance",
-    "Query the authenticated user's on-chain attestation status",
+    "check_compliance",
+    "Check the user's on-chain attestation and blockchain compliance status. Use when the user asks about attestation, compliance, or which networks they are registered on.",
     {
       network: z
         .string()
@@ -22,21 +21,26 @@ export function registerCheckComplianceTool(server: McpServer): void {
         .describe("Filter by blockchain network (e.g. 'sepolia')"),
     },
     async ({ network }) => {
-      const creds = loadCredentials(config.zentityUrl);
-      const dpopKey = creds ? loadDpopKey(creds) : undefined;
-      if (!dpopKey) {
+      try {
+        await requireAuth();
+      } catch (error) {
         return {
           isError: true,
-          content: [{ type: "text" as const, text: "Not authenticated" }],
+          content: [
+            {
+              type: "text" as const,
+              text: error instanceof Error ? error.message : "Not authenticated",
+            },
+          ],
         };
       }
 
-      let url = `${config.zentityUrl}/api/trpc/attestation.getStatus`;
+      let url = `${config.zentityUrl}/api/trpc/attestation.networks`;
       if (network) {
-        url += `?input=${encodeURIComponent(JSON.stringify({ network }))}`;
+        url = `${config.zentityUrl}/api/trpc/attestation.status?input=${encodeURIComponent(JSON.stringify({ networkId: network }))}`;
       }
 
-      const response = await zentityFetch(url, dpopKey);
+      const response = await zentityFetch(url);
 
       if (!response.ok) {
         const text = await response.text();

@@ -103,8 +103,8 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
       await db.insert(oauthClients).values({
         clientId: CIMD_CLIENT_ID,
         name: "MCP E2E Client",
-        redirectUris: [REDIRECT_URI],
-        grantTypes: ["authorization_code", CIBA_GRANT_TYPE],
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
         tokenEndpointAuthMethod: "none",
         public: true,
         subjectType: "pairwise",

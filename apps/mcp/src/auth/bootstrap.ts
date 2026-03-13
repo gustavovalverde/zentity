@@ -4,6 +4,7 @@ import { setDefaultAuth } from "./context.js";
 import { loadCredentials } from "./credentials.js";
 import { ensureClientRegistration } from "./dcr.js";
 import { discover } from "./discovery.js";
+import type { DpopKeyPair } from "./dpop.js";
 import { getOrCreateDpopKey } from "./dpop.js";
 import { generatePkce } from "./pkce.js";
 import { TokenManager } from "./token-manager.js";
@@ -38,6 +39,7 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
       setDefaultAuth({
         accessToken,
         clientId,
+        dpopKey,
         loginHint: creds.loginHint ?? "",
       });
       console.error("[auth] Using stored credentials");
@@ -51,8 +53,8 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
   const pkce = await generatePkce();
   const result = await authenticateViaBrowser({
     authorizeEndpoint: discovery.authorization_endpoint,
-    tokenEndpoint: discovery.token_endpoint,
     parEndpoint: discovery.pushed_authorization_request_endpoint,
+    tokenEndpoint: discovery.token_endpoint,
     clientId,
     dpopKey,
     pkce,
@@ -62,6 +64,7 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
   setDefaultAuth({
     accessToken: result.accessToken,
     clientId,
+    dpopKey,
     loginHint: result.loginHint ?? "",
   });
 
@@ -74,13 +77,15 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
  */
 export async function refreshAuthContext(
   tokenManager: TokenManager,
-  clientId: string
+  clientId: string,
+  dpopKey: DpopKeyPair
 ): Promise<void> {
   const accessToken = await tokenManager.getAccessToken();
   const creds = loadCredentials(config.zentityUrl);
   setDefaultAuth({
     accessToken,
     clientId,
+    dpopKey,
     loginHint: creds?.loginHint ?? "",
   });
 }

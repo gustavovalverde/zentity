@@ -94,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
       referenceId: admin.organizationId,
       userId: null,
       updatedAt: new Date(),
-      ...(scopes ? { scopes } : {}),
+      ...(scopes ? { scopes: JSON.stringify(scopes) } : {}),
     })
     .where(eq(oauthClients.clientId, clientId))
     .run();

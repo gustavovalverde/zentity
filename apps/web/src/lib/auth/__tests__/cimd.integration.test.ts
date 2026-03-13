@@ -186,8 +186,8 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       await db.insert(oauthClients).values({
         clientId: CIMD_CLIENT_ID,
         name: "Cached MCP Client",
-        redirectUris: [REDIRECT_URI],
-        grantTypes: ["authorization_code"],
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
         tokenEndpointAuthMethod: "none",
         public: true,
         subjectType: "pairwise",
@@ -228,8 +228,8 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       await db.insert(oauthClients).values({
         clientId: CIMD_CLIENT_ID,
         name: "Old Name",
-        redirectUris: [REDIRECT_URI],
-        grantTypes: ["authorization_code"],
+        redirectUris: JSON.stringify([REDIRECT_URI]),
+        grantTypes: JSON.stringify(["authorization_code"]),
         tokenEndpointAuthMethod: "none",
         public: true,
         subjectType: "pairwise",
@@ -266,8 +266,8 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       await db.insert(oauthClients).values({
         clientId: "regular-client",
         name: "Regular Client",
-        redirectUris: ["http://localhost/callback"],
-        grantTypes: ["authorization_code"],
+        redirectUris: JSON.stringify(["http://localhost/callback"]),
+        grantTypes: JSON.stringify(["authorization_code"]),
         tokenEndpointAuthMethod: "none",
         public: true,
       });

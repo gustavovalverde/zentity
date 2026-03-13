@@ -136,10 +136,7 @@ async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
     .get();
 
   if (client?.metadata) {
-    const meta =
-      typeof client.metadata === "string"
-        ? (JSON.parse(client.metadata) as Record<string, unknown>)
-        : (client.metadata as Record<string, unknown>);
+    const meta = JSON.parse(client.metadata) as Record<string, unknown>;
     const requested = meta.id_token_signed_response_alg;
     if (
       requested === "ES256" ||

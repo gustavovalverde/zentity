@@ -54,7 +54,7 @@ export interface ConsentRow {
   clientUri: string | null;
   consentId: string;
   createdAt: Date | null;
-  scopes: unknown;
+  scopes: string | null;
   updatedAt: Date | null;
 }
 
@@ -69,14 +69,19 @@ function formatDate(date: Date | null): string {
   });
 }
 
-function parseScopes(scopes: unknown): string[] {
-  if (Array.isArray(scopes)) {
-    return scopes.filter((s) => typeof s === "string");
+function parseScopes(scopes: string | null): string[] {
+  if (!scopes) {
+    return [];
   }
-  if (typeof scopes === "string") {
-    return scopes.split(" ").filter(Boolean);
+  try {
+    const parsed: unknown = JSON.parse(scopes);
+    if (Array.isArray(parsed)) {
+      return parsed.filter((s) => typeof s === "string");
+    }
+  } catch {
+    // Invalid JSON — fall through to space-delimited parse
   }
-  return [];
+  return scopes.split(" ").filter(Boolean);
 }
 
 function AppLetter({ name }: { name: string }) {

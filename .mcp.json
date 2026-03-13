@@ -1,0 +1,12 @@
+{
+	"mcpServers": {
+		"zentity": {
+			"type": "stdio",
+			"command": "bun",
+			"args": ["run", "./apps/mcp/src/index.ts"],
+			"env": {
+				"ZENTITY_URL": "http://localhost:3000"
+			}
+		}
+	}
+}

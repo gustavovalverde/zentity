@@ -29,8 +29,8 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
     .values({
       clientId,
       name: "Lifecycle Test Agent",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })

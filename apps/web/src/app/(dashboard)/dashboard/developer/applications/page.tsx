@@ -28,16 +28,31 @@ interface OwnedClient {
   createdAt: number;
   disabled: boolean;
   name: string | null;
-  redirectUris: unknown;
-  scopes: unknown;
+  redirectUris: string;
+  scopes: string | null;
 }
 
 interface UnownedClient {
   clientId: string;
   createdAt: number;
   name: string | null;
-  redirectUris: unknown;
-  scopes: unknown;
+  redirectUris: string;
+  scopes: string | null;
+}
+
+function safeJsonArray(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Not valid JSON — treat as single-element array
+  }
+  return [value];
 }
 
 function slugify(value: string): string {
@@ -87,8 +102,8 @@ function ClientCard({
 }: {
   clientId: string;
   name: string | null;
-  scopes: unknown;
-  redirectUris: unknown;
+  scopes: string | null;
+  redirectUris: string;
   disabled?: boolean;
   action?: React.ReactNode;
 }) {
@@ -111,17 +126,13 @@ function ClientCard({
       {scopes != null && (
         <div className="text-muted-foreground text-xs">
           Scopes:{" "}
-          <span className="font-mono">
-            {Array.isArray(scopes) ? scopes.join(", ") : JSON.stringify(scopes)}
-          </span>
+          <span className="font-mono">{safeJsonArray(scopes).join(", ")}</span>
         </div>
       )}
       <div className="text-muted-foreground text-xs">
         Redirect URIs:{" "}
         <span className="font-mono">
-          {Array.isArray(redirectUris)
-            ? redirectUris.join(", ")
-            : JSON.stringify(redirectUris)}
+          {safeJsonArray(redirectUris).join(", ")}
         </span>
       </div>
     </div>

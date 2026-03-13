@@ -27,14 +27,15 @@ SSI operates through three roles forming a "trust triangle":
 | **Holder** | User / Wallet | Controls keys via passkey; stores credentials; chooses what to reveal |
 | **Verifier** | Relying Party | Requests presentations; validates signatures; verifies holder binding |
 
-```text
-              ISSUER
-             (Zentity)
-            /         \
-           /   issues  \
-          ↓    trust    ↓
-       HOLDER ←───────→ VERIFIER
-       (User)  presents   (RP)
+```mermaid
+flowchart TD
+  Issuer["ISSUER (Zentity)"]
+  Holder["HOLDER (User)"]
+  Verifier["VERIFIER (RP)"]
+
+  Issuer -- "issues" --> Holder
+  Issuer -- "trust" --> Verifier
+  Holder -- "presents" --> Verifier
 ```
 
 ### Issuer (Zentity)

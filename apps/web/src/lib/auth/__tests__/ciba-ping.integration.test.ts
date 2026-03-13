@@ -29,8 +29,8 @@ async function createTestClient(
     .values({
       clientId: TEST_CLIENT_ID,
       name: "Ping Test Agent",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
       ...overrides,
@@ -100,10 +100,10 @@ describe("CIBA ping mode", () => {
       await db
         .update(oauthClients)
         .set({
-          metadata: {
+          metadata: JSON.stringify({
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
-          },
+          }),
         })
         .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
         .run();
@@ -155,10 +155,10 @@ describe("CIBA ping mode", () => {
       await db
         .update(oauthClients)
         .set({
-          metadata: {
+          metadata: JSON.stringify({
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
-          },
+          }),
         })
         .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
         .run();
@@ -271,10 +271,10 @@ describe("CIBA ping mode", () => {
       await db
         .update(oauthClients)
         .set({
-          metadata: {
+          metadata: JSON.stringify({
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
-          },
+          }),
         })
         .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
         .run();

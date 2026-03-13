@@ -48,8 +48,8 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
     .values({
       clientId,
       name: "Exchange Test Agent",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [TOKEN_EXCHANGE_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })

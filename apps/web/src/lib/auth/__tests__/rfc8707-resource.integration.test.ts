@@ -23,8 +23,8 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "RFC 8707 Test",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: ["authorization_code", CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })

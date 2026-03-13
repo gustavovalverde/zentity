@@ -125,11 +125,12 @@ async function main(): Promise<void> {
     pass("Tool count", `${tools.length} tools registered`);
 
     const expected = [
-      "zentity_check_compliance",
-      "zentity_echo",
-      "zentity_purchase",
-      "zentity_request_approval",
-      "zentity_verify_identity",
+      "check_compliance",
+      "echo",
+      "my_proofs",
+      "purchase",
+      "request_approval",
+      "whoami",
     ];
     for (const name of expected) {
       if (toolNames.includes(name)) {
@@ -143,9 +144,9 @@ async function main(): Promise<void> {
   // ── 3. Echo tool ─────────────────────────────
   console.log("\n─── Echo ───");
 
-  await step("Call zentity_echo", async () => {
+  await step("Call echo", async () => {
     const result = await client.callTool({
-      name: "zentity_echo",
+      name: "echo",
       arguments: { message: "smoke test" },
     });
     const text = (result.content as Array<{ text: string }>)[0]?.text;
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
   await step("Echo with unicode", async () => {
     const msg = "こんにちは 🌐";
     const result = await client.callTool({
-      name: "zentity_echo",
+      name: "echo",
       arguments: { message: msg },
     });
     const text = (result.content as Array<{ text: string }>)[0]?.text;
@@ -177,30 +178,68 @@ async function main(): Promise<void> {
       "  ℹ️  These tests verify tool calls that require authentication.\n"
     );
 
-    await step("Call zentity_verify_identity (requires auth)", async () => {
+    await step("Call whoami (requires auth)", async () => {
       const result = await client.callTool({
-        name: "zentity_verify_identity",
+        name: "whoami",
         arguments: {},
       });
+      if (result.isError) {
+        const text = (result.content as Array<{ text: string }>)[0]?.text;
+        throw new Error(`Tool returned error: ${text}`);
+      }
       const text = (result.content as Array<{ text: string }>)[0]?.text;
       if (!text) {
         throw new Error("Empty response");
       }
-      // May return an error if not authenticated — that's expected
-      // The test just verifies the tool is callable
-      console.log(`    Response: ${text.slice(0, 120)}...`);
+      const data = JSON.parse(text);
+      if (typeof data.tier !== "number") {
+        throw new Error(`Expected tier in response, got: ${text.slice(0, 100)}`);
+      }
+      console.log(
+        `    email=${data.email}, tier=${data.tier} (${data.tierName})`
+      );
     });
 
-    await step("Call zentity_check_compliance (requires auth)", async () => {
+    await step("Call my_proofs (requires auth)", async () => {
       const result = await client.callTool({
-        name: "zentity_check_compliance",
+        name: "my_proofs",
         arguments: {},
       });
+      if (result.isError) {
+        const text = (result.content as Array<{ text: string }>)[0]?.text;
+        throw new Error(`Tool returned error: ${text}`);
+      }
       const text = (result.content as Array<{ text: string }>)[0]?.text;
       if (!text) {
         throw new Error("Empty response");
       }
-      console.log(`    Response: ${text.slice(0, 120)}...`);
+      const data = JSON.parse(text);
+      if (typeof data.totalProofs !== "number") {
+        throw new Error(`Expected totalProofs, got: ${text.slice(0, 100)}`);
+      }
+      console.log(
+        `    proofs=${data.totalProofs}, isOver18=${data.isOver18}`
+      );
+    });
+
+    await step("Call check_compliance (requires auth)", async () => {
+      const result = await client.callTool({
+        name: "check_compliance",
+        arguments: {},
+      });
+      if (result.isError) {
+        const text = (result.content as Array<{ text: string }>)[0]?.text;
+        throw new Error(`Tool returned error: ${text}`);
+      }
+      const text = (result.content as Array<{ text: string }>)[0]?.text;
+      if (!text) {
+        throw new Error("Empty response");
+      }
+      const data = JSON.parse(text);
+      if (!data.networks || !Array.isArray(data.networks)) {
+        throw new Error(`Expected networks array, got: ${text.slice(0, 100)}`);
+      }
+      console.log(`    ${data.networks.length} network(s) found`);
     });
   }
 
@@ -212,10 +251,10 @@ async function main(): Promise<void> {
     );
 
     await step(
-      "Call zentity_request_approval (requires manual approval)",
+      "Call request_approval (requires manual approval)",
       async () => {
         const result = await client.callTool({
-          name: "zentity_request_approval",
+          name: "request_approval",
           arguments: {
             action: "E2E smoke test approval",
             details: `Automated test at ${new Date().toISOString()}`,

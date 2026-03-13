@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const mockAuthContext = {
+  accessToken: "test-token",
+  clientId: "test-client",
+  dpopKey: {
+    privateJwk: { kty: "EC", crv: "P-256" },
+    publicJwk: { kty: "EC", crv: "P-256" },
+  },
+  loginHint: "user-sub",
+};
+
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
@@ -8,30 +18,14 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/auth/credentials.js", () => ({
-  loadCredentials: () => ({
-    zentityUrl: "http://localhost:3000",
-    clientId: "test-client",
-    dpopJwk: { kty: "EC", crv: "P-256" },
-    dpopPublicJwk: { kty: "EC", crv: "P-256" },
-  }),
-}));
-
 vi.mock("../../src/auth/dpop.js", () => ({
   createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
-  loadDpopKey: () => ({
-    privateJwk: { kty: "EC", crv: "P-256" },
-    publicJwk: { kty: "EC", crv: "P-256" },
-  }),
 }));
 
 vi.mock("../../src/auth/context.js", () => ({
-  getAuthContext: () => ({
-    accessToken: "test-token",
-    clientId: "test-client",
-    loginHint: "user-sub",
-  }),
+  getAuthContext: () => mockAuthContext,
+  requireAuth: () => Promise.resolve(mockAuthContext),
 }));
 
 vi.mock("../../src/auth/ciba.js", () => ({
@@ -44,7 +38,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../../src/server/index.js";
 
-describe("zentity_check_compliance", () => {
+describe("check_compliance", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -75,7 +69,7 @@ describe("zentity_check_compliance", () => {
 
     const client = await createConnectedClient();
     const result = await client.callTool({
-      name: "zentity_check_compliance",
+      name: "check_compliance",
       arguments: {},
     });
 
@@ -98,7 +92,7 @@ describe("zentity_check_compliance", () => {
 
     const client = await createConnectedClient();
     await client.callTool({
-      name: "zentity_check_compliance",
+      name: "check_compliance",
       arguments: { network: "sepolia" },
     });
 
@@ -115,7 +109,7 @@ describe("zentity_check_compliance", () => {
 
     const client = await createConnectedClient();
     const result = await client.callTool({
-      name: "zentity_check_compliance",
+      name: "check_compliance",
       arguments: {},
     });
 

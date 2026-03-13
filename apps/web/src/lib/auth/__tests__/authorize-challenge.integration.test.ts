@@ -37,8 +37,8 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "FPA Test Client",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: ["authorization_code"],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
       public: true,
       firstParty: true,
@@ -52,8 +52,8 @@ async function createThirdPartyClient() {
     .values({
       clientId: THIRD_PARTY_CLIENT_ID,
       name: "Third-Party Client",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: ["authorization_code"],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
       public: true,
       firstParty: false,
@@ -681,8 +681,8 @@ describe("Authorization Challenge Endpoint", () => {
         .values({
           clientId: FPA_CIBA_CLIENT_ID,
           name: "FPA CIBA Step-Up Client",
-          redirectUris: ["http://localhost/callback"],
-          grantTypes: [CIBA_GRANT_TYPE, "authorization_code"],
+          redirectUris: JSON.stringify(["http://localhost/callback"]),
+          grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "authorization_code"]),
           tokenEndpointAuthMethod: "none",
           public: true,
           firstParty: true,

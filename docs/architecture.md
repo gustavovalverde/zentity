@@ -267,7 +267,7 @@ When DPoP is used, the token endpoint validates the DPoP proof and returns a ser
 
 ### Agent Authorization (CIBA)
 
-Agents and applications can request user authorization without a browser redirect via CIBA (Client-Initiated Backchannel Authentication). The agent sends a backchannel request with `login_hint` (user's email), `scope`, `binding_message`, and optional `authorization_details` (RFC 9396 RAR). The user receives an email notification and approves from the Zentity dashboard. The agent polls the token endpoint until approval.
+Agents and applications can request user authorization without a browser redirect via CIBA (Client-Initiated Backchannel Authentication). The agent sends a backchannel request with `login_hint` (user ID or email), `scope`, `binding_message`, and optional `authorization_details` (RFC 9396 RAR). The user receives a push notification (with email fallback) and approves from the Zentity dashboard. If identity scopes are requested, the user unlocks their vault client-side and the PII is sealed with a one-time release handle. The agent polls the token endpoint until approval, then redeems the release handle for identity claims.
 
 ```mermaid
 sequenceDiagram
@@ -275,19 +275,21 @@ sequenceDiagram
   actor User
   participant Agent as Agent
   participant AS as Zentity AS
-  participant Notify as Notification
 
   Agent->>AS: POST /oauth2/bc-authorize
-  AS->>Notify: Email with approval link
+  AS->>User: Push notification + email
   AS-->>Agent: { auth_req_id }
   Agent->>AS: POST /oauth2/token (poll)
   AS-->>Agent: authorization_pending
-  User->>AS: Approve on dashboard
+  User->>AS: Vault unlock + approve on dashboard
+  Note over AS: Seal PII with release handle
   Agent->>AS: POST /oauth2/token (poll)
-  AS-->>Agent: { access_token, id_token }
+  AS-->>Agent: { access_token (with release_handle, act claim) }
+  Agent->>AS: POST /oauth2/release (DPoP-bound)
+  AS-->>Agent: { id_token with PII claims }
 ```
 
-Only poll mode is implemented. See [OAuth Integrations](oauth-integrations.md#ciba-backchannel-authorization) for endpoints and configuration.
+Both poll and ping modes are supported. The access token includes an `act` claim per draft-oauth-ai-agents-on-behalf-of-user, identifying both the human (`sub`) and the agent (`act.sub`). See [Agentic Authorization](agentic-authorization.md) for the complete protocol composition, binding chain analysis, and security properties. See [OAuth Integrations](oauth-integrations.md#ciba-backchannel-authorization) for endpoints and configuration.
 
 ---
 

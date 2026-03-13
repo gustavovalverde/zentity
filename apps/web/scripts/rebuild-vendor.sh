@@ -20,13 +20,15 @@ BA_REPO="${1:-$(cd "$SCRIPT_DIR" && cd ../../../.. && pwd)/better-auth}"
 
 PACKAGES=(
   packages/better-auth
+  packages/ciba
   packages/core
-  packages/passkey
+  packages/haip
   packages/oauth-provider
-  packages/telemetry
+  packages/oidc4ida
   packages/oidc4vci
   packages/oidc4vp
-  packages/oidc4ida
+  packages/passkey
+  packages/telemetry
 )
 
 if [ ! -d "$BA_REPO/packages/better-auth" ]; then

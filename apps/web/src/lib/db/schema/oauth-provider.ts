@@ -19,7 +19,7 @@ export const oauthClients = sqliteTable(
     disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
     skipConsent: integer("skip_consent", { mode: "boolean" }),
     enableEndSession: integer("enable_end_session", { mode: "boolean" }),
-    scopes: text("scopes", { mode: "json" }),
+    scopes: text("scopes"),
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -30,22 +30,22 @@ export const oauthClients = sqliteTable(
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),
-    contacts: text("contacts", { mode: "json" }),
+    contacts: text("contacts"),
     tos: text("tos"),
     policy: text("policy"),
     softwareId: text("software_id"),
     softwareVersion: text("software_version"),
     softwareStatement: text("software_statement"),
-    redirectUris: text("redirect_uris", { mode: "json" }).notNull(),
-    postLogoutRedirectUris: text("post_logout_redirect_uris", { mode: "json" }),
+    redirectUris: text("redirect_uris").notNull(),
+    postLogoutRedirectUris: text("post_logout_redirect_uris"),
     tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
-    grantTypes: text("grant_types", { mode: "json" }),
-    responseTypes: text("response_types", { mode: "json" }),
+    grantTypes: text("grant_types"),
+    responseTypes: text("response_types"),
     public: integer("public", { mode: "boolean" }),
     type: text("type"),
     subjectType: text("subject_type"),
     referenceId: text("reference_id"),
-    metadata: text("metadata", { mode: "json" }),
+    metadata: text("metadata"),
     metadataUrl: text("metadata_url"),
     metadataFetchedAt: integer("metadata_fetched_at", { mode: "timestamp_ms" }),
     trustLevel: integer("trust_level").notNull().default(0),
@@ -77,7 +77,7 @@ export const oauthRefreshTokens = sqliteTable(
       sql`(unixepoch() * 1000)`
     ),
     revoked: integer("revoked", { mode: "timestamp_ms" }),
-    scopes: text("scopes", { mode: "json" }).notNull(),
+    scopes: text("scopes").notNull(),
   },
   (table) => [
     index("oauth_refresh_token_token_idx").on(table.token),
@@ -106,7 +106,7 @@ export const oauthAccessTokens = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
     ),
-    scopes: text("scopes", { mode: "json" }).notNull(),
+    scopes: text("scopes").notNull(),
   },
   (table) => [
     uniqueIndex("oauth_access_token_token_unique").on(table.token),
@@ -124,7 +124,7 @@ export const oauthConsents = sqliteTable(
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
-    scopes: text("scopes", { mode: "json" }).notNull(),
+    scopes: text("scopes").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
     ),

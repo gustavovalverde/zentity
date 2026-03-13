@@ -22,8 +22,8 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "Step-Up CIBA Test",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })
@@ -36,8 +36,8 @@ async function createFirstPartyClient() {
     .values({
       clientId: FPA_CLIENT_ID,
       name: "Step-Up CIBA FPA Test",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
       firstParty: true,

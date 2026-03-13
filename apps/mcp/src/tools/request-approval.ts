@@ -5,22 +5,13 @@ import {
   CibaTimeoutError,
   requestCibaApproval,
 } from "../auth/ciba.js";
-import { getAuthContext } from "../auth/context.js";
-import { loadCredentials } from "../auth/credentials.js";
-import { loadDpopKey } from "../auth/dpop.js";
+import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
-
-function buildBindingMessage(action: string, details?: string): string {
-  if (details) {
-    return `${action}: ${details}`;
-  }
-  return action;
-}
 
 export function registerRequestApprovalTool(server: McpServer): void {
   server.tool(
-    "zentity_request_approval",
-    "Request user approval for an action via push notification (CIBA)",
+    "request_approval",
+    "Request the user's explicit approval for a sensitive action via push notification. The user must approve or deny on their device before the agent can proceed. Use when the agent needs user consent for something that requires authorization.",
     {
       action: z.string().describe("Short description of the action to approve"),
       details: z
@@ -29,24 +20,22 @@ export function registerRequestApprovalTool(server: McpServer): void {
         .describe("Additional context shown in the notification"),
     },
     async ({ action, details }) => {
-      const auth = getAuthContext();
-      const creds = loadCredentials(config.zentityUrl);
-      if (!creds) {
+      let auth;
+      try {
+        auth = await requireAuth();
+      } catch (error) {
         return {
           isError: true,
-          content: [{ type: "text" as const, text: "Not authenticated" }],
+          content: [
+            {
+              type: "text" as const,
+              text: error instanceof Error ? error.message : "Not authenticated",
+            },
+          ],
         };
       }
 
-      const dpopKey = loadDpopKey(creds);
-      if (!dpopKey) {
-        return {
-          isError: true,
-          content: [{ type: "text" as const, text: "No DPoP key available" }],
-        };
-      }
-
-      const bindingMessage = buildBindingMessage(action, details);
+      const bindingMessage = details ? `${action}: ${details}` : action;
       console.error(`[ciba] Requesting approval: "${bindingMessage}"`);
 
       try {
@@ -54,7 +43,7 @@ export function registerRequestApprovalTool(server: McpServer): void {
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
           tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
           clientId: auth.clientId,
-          dpopKey,
+          dpopKey: auth.dpopKey,
           loginHint: auth.loginHint,
           scope: "openid",
           bindingMessage,

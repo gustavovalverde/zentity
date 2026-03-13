@@ -1,19 +1,17 @@
 import { getAuthContext } from "./context.js";
-import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 
 let dpopNonce: string | undefined;
 
 export async function zentityFetch(
   url: string,
-  dpopKey: DpopKeyPair,
   options?: { method?: string; body?: string }
 ): Promise<Response> {
   const method = options?.method ?? "GET";
   const auth = getAuthContext();
 
   let proof = await createDpopProof(
-    dpopKey,
+    auth.dpopKey,
     method,
     url,
     auth.accessToken,
@@ -43,7 +41,7 @@ export async function zentityFetch(
   ) {
     dpopNonce = newNonce;
     proof = await createDpopProof(
-      dpopKey,
+      auth.dpopKey,
       method,
       url,
       auth.accessToken,

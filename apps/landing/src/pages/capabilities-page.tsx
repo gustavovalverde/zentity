@@ -118,8 +118,9 @@ const scenarios: ScenarioItem[] = [
     title: "Agent Delegation",
     description: (
       <>
-        AI agents act with scoped credentials. High-stakes actions require a{" "}
-        <strong>passkey gesture proving human approval</strong>.
+        AI agents request approval via CIBA push notifications. The human
+        reviews the specific action on their device and{" "}
+        <strong>unlocks their vault to release identity one time</strong>.
       </>
     ),
     signal: "88% of orgs report AI agent security incidents",

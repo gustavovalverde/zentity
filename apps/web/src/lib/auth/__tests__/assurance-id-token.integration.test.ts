@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -20,8 +21,8 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "Assurance Test Agent",
-      redirectUris: ["http://localhost/callback"],
-      grantTypes: [CIBA_GRANT_TYPE],
+      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })
@@ -160,21 +161,8 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.auth_time as number).toBeGreaterThan(now - 3600);
   });
 
-  it("at_hash binds ID token to companion access token", async () => {
+  it("includes correct at_hash (OIDC Core §3.1.3.6)", async () => {
     await seedTier1User(userId);
-
-    await db
-      .insert((await import("@/lib/db/schema/auth")).sessions)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        token: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastLoginMethod: "passkey",
-      })
-      .run();
 
     const authReqId = await insertCibaRequest({ userId });
     const { status, json } = await postTokenWithDpop({
@@ -190,15 +178,9 @@ describe("assurance claims in ID tokens", () => {
     expect(accessToken).toBeDefined();
 
     const claims = decodeJwt(idToken);
-    expect(claims.at_hash).toBeDefined();
-
-    // Verify: recompute at_hash from access token (default RS256 → SHA-256)
-    const hash = crypto
-      .createHash("sha256")
-      .update(accessToken, "ascii")
-      .digest();
-    const expectedAtHash = hash.subarray(0, 16).toString("base64url");
-    expect(claims.at_hash).toBe(expectedAtHash);
+    // Default signing alg is RS256 (no client metadata override)
+    const expected = computeAtHash(accessToken, "RS256");
+    expect(claims.at_hash).toBe(expected);
   });
 
   it("omits assurance claims when openid scope is absent", async () => {

@@ -87,8 +87,9 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const existingMetadata =
-    (client.metadata as Record<string, unknown> | null) ?? {};
+  const existingMetadata: Record<string, unknown> = client.metadata
+    ? (JSON.parse(client.metadata) as Record<string, unknown>)
+    : {};
   const nextMetadata =
     allowMetadataUpdates === undefined
       ? existingMetadata
@@ -104,10 +105,10 @@ export async function POST(request: Request): Promise<Response> {
   };
 
   if (scopes) {
-    updates.scopes = scopes;
+    updates.scopes = JSON.stringify(scopes);
   }
   if (allowMetadataUpdates !== undefined) {
-    updates.metadata = nextMetadata;
+    updates.metadata = JSON.stringify(nextMetadata);
   }
 
   await db

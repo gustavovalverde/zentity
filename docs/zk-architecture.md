@@ -6,25 +6,18 @@ This document describes Zentity’s zero‑knowledge proof system using **Noir**
 
 Zentity generates proofs **client‑side** so private inputs stay in the browser. Proofs are verified **server‑side** and stored with metadata for auditability. Private inputs are derived from passkey‑sealed profile data (e.g., birth year, nationality) and server‑signed claim payloads (e.g., face match score). The server never sees plaintext values.
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                           User's Browser                            │
-│  ┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐ │
-│  │ Sensitive   │───▶│   Web Worker    │───▶│    ZK Proof          │ │
-│  │ Data        │    │ (Noir.js+bb.js) │    │  (public inputs +    │ │
-│  │ (birthYear) │    │                 │    │   proof bytes)       │ │
-│  └─────────────┘    └─────────────────┘    └──────────┬───────────┘ │
-│                                                       │             │
-└───────────────────────────────────────────────────────│─────────────┘
-                                                        │
-                                                        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                              Server                                 │
-│  ┌──────────────────────────┐    ┌───────────────────────────────┐  │
-│  │     bb.js Verifier       │───▶│   Store: proof + metadata     │  │
-│  │ (UltraHonk verifier)     │    │   (never raw PII)             │  │
-│  └──────────────────────────┘    └───────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+  subgraph Browser["User's Browser"]
+    Data["Sensitive Data\n(birthYear)"] --> Worker["Web Worker\n(Noir.js + bb.js)"]
+    Worker --> Proof["ZK Proof\n(public inputs + proof bytes)"]
+  end
+
+  subgraph Server["Server"]
+    Verifier["bb.js Verifier\n(UltraHonk)"] --> Store["Store: proof + metadata\n(never raw PII)"]
+  end
+
+  Proof --> Verifier
 ```
 
 ## Circuits
@@ -190,23 +183,18 @@ See `src/lib/privacy/zk/noir-prover.worker.ts` for implementation and `src/lib/b
 
 ZKPassport provides an alternative trust model where proofs are generated on the user's mobile device by the ZKPassport app, not in the browser Web Worker.
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                        Mobile Device                                 │
-│  ┌─────────────┐    ┌─────────────────┐    ┌──────────────────────┐ │
-│  │ NFC Chip    │───▶│  ZKPassport App │───▶│    ZK Proofs         │ │
-│  │ (passport)  │    │  (own circuits) │    │  (proof + nullifier) │ │
-│  └─────────────┘    └─────────────────┘    └──────────┬───────────┘ │
-└───────────────────────────────────────────────────────│─────────────┘
-                                                        │
-                                                        ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                              Server                                  │
-│  ┌──────────────────────────┐    ┌───────────────────────────────┐  │
-│  │   zkpassport.verify()    │───▶│   Store: identity_verifications│  │
-│  │ (NOT UltraHonkVerifier)  │    │   method: "nfc_chip"           │  │
-│  └──────────────────────────┘    └───────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+  subgraph Mobile["Mobile Device"]
+    NFC["NFC Chip\n(passport)"] --> ZKApp["ZKPassport App\n(own circuits)"]
+    ZKApp --> Proofs["ZK Proofs\n(proof + nullifier)"]
+  end
+
+  subgraph Server["Server"]
+    Verify["zkpassport.verify()\n(NOT UltraHonkVerifier)"] --> Store["Store: identity_verifications\nmethod: nfc_chip"]
+  end
+
+  Proofs --> Verify
 ```
 
 Key differences from browser-based Noir proving:
@@ -224,28 +212,27 @@ The unified `identity_verifications` table stores results from both paths via th
 
 ### Proving flow (Web Worker)
 
-```text
-Main Thread                    Web Worker
-  |                                |
-  |--- postMessage(inputs) ------->|
-  |                                | 1. Load Noir.js
-  |                                | 2. Load circuit JSON
-  |                                | 3. Execute witness
-  |                                | 4. Generate proof (bb.js)
-  |<-- postMessage(proof) ---------|
-  |                                |
+```mermaid
+sequenceDiagram
+  participant Main as Main Thread
+  participant Worker as Web Worker
+
+  Main->>Worker: postMessage(inputs)
+  Worker->>Worker: 1. Load Noir.js
+  Worker->>Worker: 2. Load circuit JSON
+  Worker->>Worker: 3. Execute witness
+  Worker->>Worker: 4. Generate proof (bb.js)
+  Worker->>Main: postMessage(proof)
 ```
 
 ### Verification flow
 
-```text
-Next.js API Route
-  |
-  | 1. Load circuit artifact (cached)
-  | 2. Get/create UltraHonkVerifierBackend (singleton)
-  | 3. Call verifier.verifyProof(proof, publicInputs)
-  | 4. Return boolean result
-  |
+```mermaid
+flowchart TD
+  Route["Next.js API Route"] --> Step1["1. Load circuit artifact (cached)"]
+  Step1 --> Step2["2. Get/create UltraHonkVerifierBackend (singleton)"]
+  Step2 --> Step3["3. Call verifier.verifyProof(proof, publicInputs)"]
+  Step3 --> Step4["4. Return boolean result"]
 ```
 
 Verification uses Barretenberg's `UltraHonkVerifierBackend` directly in the API route with singleton instances for efficiency.

@@ -19,6 +19,27 @@ const MermaidBlock = lazy(() => import("./mermaid-block"));
 
 const LANGUAGE_RE = /language-(\w+)/;
 
+function slugify(children: React.ReactNode): string {
+  const text = React.Children.toArray(children)
+    .map((child) => {
+      if (typeof child === "string") return child;
+      if (
+        React.isValidElement<{ children?: React.ReactNode }>(child) &&
+        child.props.children
+      )
+        return slugify(child.props.children);
+      return "";
+    })
+    .join("");
+
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 // Transform markdown links to work with our docs routing
 function transformHref(href: string | undefined): {
   href: string;
@@ -83,22 +104,34 @@ interface MarkdownRendererProps {
 // Custom components following shadcn typography patterns
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="mb-6 scroll-m-20 text-balance font-extrabold text-4xl tracking-tight">
+    <h1
+      id={slugify(children)}
+      className="mb-6 scroll-m-20 text-balance font-extrabold text-4xl tracking-tight"
+    >
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mt-10 mb-4 scroll-m-20 border-b pb-2 font-semibold text-3xl tracking-tight transition-colors first:mt-0">
+    <h2
+      id={slugify(children)}
+      className="mt-10 mb-4 scroll-m-20 border-b pb-2 font-semibold text-3xl tracking-tight transition-colors first:mt-0"
+    >
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mt-8 mb-4 scroll-m-20 font-semibold text-2xl tracking-tight">
+    <h3
+      id={slugify(children)}
+      className="mt-8 mb-4 scroll-m-20 font-semibold text-2xl tracking-tight"
+    >
       {children}
     </h3>
   ),
   h4: ({ children }) => (
-    <h4 className="mt-6 mb-2 scroll-m-20 font-semibold text-xl tracking-tight">
+    <h4
+      id={slugify(children)}
+      className="mt-6 mb-2 scroll-m-20 font-semibold text-xl tracking-tight"
+    >
       {children}
     </h4>
   ),

@@ -92,7 +92,7 @@ export async function resolveCimdClient(clientId: string): Promise<{
       .update(oauthClients)
       .set({
         name: meta.client_name,
-        redirectUris: meta.redirect_uris,
+        redirectUris: JSON.stringify(meta.redirect_uris),
         metadataFetchedAt: now,
         updatedAt: now,
       })
@@ -101,9 +101,9 @@ export async function resolveCimdClient(clientId: string): Promise<{
     await db.insert(oauthClients).values({
       clientId,
       name: meta.client_name,
-      redirectUris: meta.redirect_uris,
-      grantTypes: ["authorization_code"],
-      responseTypes: ["code"],
+      redirectUris: JSON.stringify(meta.redirect_uris),
+      grantTypes: JSON.stringify(["authorization_code"]),
+      responseTypes: JSON.stringify(["code"]),
       tokenEndpointAuthMethod: "none",
       public: true,
       subjectType: "pairwise",

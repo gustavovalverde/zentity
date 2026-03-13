@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
-import {
-  loadCredentials,
-  type StoredCredentials,
-  updateCredentials,
-} from "./credentials.js";
+import { loadCredentials, updateCredentials } from "./credentials.js";
 
 const BASE64URL_PLUS = /\+/g;
 const BASE64URL_SLASH = /\//g;
@@ -81,11 +77,4 @@ export async function createDpopProof(
 
 export function extractDpopNonce(response: Response): string | undefined {
   return response.headers.get("dpop-nonce") ?? undefined;
-}
-
-export function loadDpopKey(creds: StoredCredentials): DpopKeyPair | undefined {
-  if (creds.dpopJwk && creds.dpopPublicJwk) {
-    return { privateJwk: creds.dpopJwk, publicJwk: creds.dpopPublicJwk };
-  }
-  return undefined;
 }

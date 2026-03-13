@@ -18,6 +18,7 @@ import {
 import { ThemeProvider } from "@/lib/theme";
 import { useDocumentHead } from "@/lib/use-document-head";
 import { useHashAnchorScroll } from "@/lib/use-hash-anchor-scroll";
+import { AgentsPage } from "@/pages/agents-page";
 import { CapabilitiesPage } from "@/pages/capabilities-page";
 import { DocsPage } from "@/pages/docs-page";
 import { PrivacyPage, TermsPage } from "@/pages/legal-pages";
@@ -92,6 +93,7 @@ function App() {
           path="/go-live"
           element={<Navigate to="/docs/oauth-integrations" replace />}
         />
+        <Route path="/agents" element={<AgentsPage />} />
         <Route path="/capabilities" element={<CapabilitiesPage />} />
         <Route path="/whitepaper" element={<WhitepaperPage />} />
         <Route path="/zk-auth" element={<ZkAuthPage />} />

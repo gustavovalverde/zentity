@@ -14,6 +14,7 @@ interface CibaTokenResponse {
   access_token: string;
   authorization_details?: unknown[];
   expires_in?: number;
+  id_token?: string;
   token_type: string;
 }
 
@@ -37,6 +38,7 @@ export interface CibaRequest {
 export interface CibaResult {
   accessToken: string;
   authorizationDetails?: unknown[];
+  idToken?: string;
 }
 
 export class CibaDeniedError extends Error {
@@ -186,6 +188,7 @@ async function pollForToken(
       return {
         accessToken: data.access_token,
         authorizationDetails: data.authorization_details,
+        idToken: data.id_token,
       };
     }
 

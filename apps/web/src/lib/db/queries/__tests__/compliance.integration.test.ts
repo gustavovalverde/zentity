@@ -25,7 +25,7 @@ async function createTestOAuthClient(clientId: string): Promise<void> {
       id: crypto.randomUUID(),
       clientId,
       clientSecret: "test-secret",
-      redirectUris: ["https://example.com/callback"],
+      redirectUris: JSON.stringify(["https://example.com/callback"]),
     })
     .run();
 }
