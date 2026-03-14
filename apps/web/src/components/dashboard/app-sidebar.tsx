@@ -92,7 +92,7 @@ const developerNavItems: NavItem[] = [
   },
   {
     title: "Debug Tools",
-    url: "/dashboard/dev",
+    url: "/dashboard/developer/inspector",
     icon: Code,
   },
 ];
