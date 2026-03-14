@@ -7,8 +7,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { LivenessFlow } from "@/components/liveness/liveness-flow";
-import { LivenessProvider } from "@/components/liveness/liveness-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +26,9 @@ import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { getBindingContext } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
+
+import { LivenessFlow } from "./liveness-flow";
+import { LivenessProvider } from "./liveness-provider";
 
 const getStoreState = () => useVerificationStore.getState();
 

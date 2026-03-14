@@ -29,8 +29,8 @@ vi.mock("@/env", async (importOriginal) => {
   };
 });
 
-import { POST as uploadSecretBlob } from "@/app/api/fhe/enrollment/blob/route";
 import { POST as completeEnrollment } from "@/app/api/fhe/enrollment/complete/route";
+import { POST as uploadSecretBlob } from "@/app/api/secrets/blob/route";
 import {
   createFheEnrollmentContext,
   getFheEnrollmentContext,
@@ -69,7 +69,7 @@ describe("passkey FHE enrollment integration", () => {
     const blobPayload = new Uint8Array([1, 2, 3]);
 
     const blobResponse = await uploadSecretBlob(
-      new Request("http://localhost/api/fhe/enrollment/blob", {
+      new Request("http://localhost/api/secrets/blob", {
         method: "POST",
         headers: {
           authorization: `Bearer ${registrationToken}`,

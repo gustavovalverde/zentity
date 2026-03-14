@@ -1,11 +1,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { DefiDemoClient } from "@/components/defi-demo/defi-demo-client";
 import { isWeb3Enabled } from "@/env";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
+
+import { DefiDemoClient } from "./_components/defi-demo-client";
 
 export default async function DefiDemoPage() {
   // Redirect if Web3 is disabled

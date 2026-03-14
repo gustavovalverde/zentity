@@ -87,3 +87,21 @@
 ### Skipped: authorize-challenge session/protocol helpers
 - Deferred — requires careful analysis of the 4 handler functions and their session validation pattern
 - Can be tackled as a follow-up
+
+## Phase 4: Code relocation
+
+### Task: Liveness components → co-located _components/
+- Moved 10 liveness UI files from `components/liveness/` to `verify/liveness/_components/`
+- Deleted `components/liveness/` directory
+- Updated imports in `liveness-verify-client.tsx` to relative paths
+
+### Task: DeFi demo components → co-located _components/
+- Moved 5 defi-demo UI files from `components/defi-demo/` to `defi-demo/_components/`
+- Deleted `components/defi-demo/` directory
+- Updated import in `defi-demo/page.tsx` to relative path
+
+### Task: Blob route → api/secrets/blob/
+- Moved blob route from `api/fhe/enrollment/blob/` to `api/secrets/blob/`
+- Updated 2 client-side fetch URLs in `storage.ts`
+- Updated integration test import and URL
+- Deleted `api/fhe/enrollment/blob/` directory

@@ -48,7 +48,7 @@ export async function uploadSecretBlob(params: {
       : params.payload;
   const body = new Uint8Array(payloadBytes.byteLength);
   body.set(payloadBytes);
-  const response = await fetchBinary("/api/fhe/enrollment/blob", {
+  const response = await fetchBinary("/api/secrets/blob", {
     method: "POST",
     headers,
     body: body.buffer,
@@ -84,13 +84,10 @@ export async function downloadSecretBlob(
   secretId: string,
   options?: { expectedHash?: string | null }
 ): Promise<Uint8Array> {
-  const response = await fetchBinary(
-    `/api/fhe/enrollment/blob?secretId=${secretId}`,
-    {
-      method: "GET",
-      credentials: "same-origin",
-    }
-  );
+  const response = await fetchBinary(`/api/secrets/blob?secretId=${secretId}`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
 
   if (response.status === 404) {
     throw new Error(
