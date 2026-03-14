@@ -191,6 +191,17 @@
   - MOVE: 4 route files + 1 test file
   - MOD: 6 files with URL/import updates
 
+### Module 1.7: Human-models move — COMPLETE
+- PRD: Module 1 (human-models move)
+- Moved `src/app/human-models/[...path]/route.ts` → `src/app/api/human-models/[...path]/route.ts`
+- Investigation confirmed: zero HTTP URL references to `/human-models/` in codebase
+  - Human.js uses `file://` URLs for server-side TensorFlow model loading (fully decoupled from HTTP route)
+  - Dockerfile symlink is filesystem-only (`/app/human-models` → node_modules)
+  - No next.config.ts rewrites/redirects for this path
+- URL changes from `/human-models/` to `/api/human-models/` — no client code affected
+- Files:
+  - MOVE: app/human-models/[...path]/route.ts → app/api/human-models/[...path]/route.ts
+
 ### Module 7: Convention documentation — COMPLETE
 - PRD: Module 7 (convention documentation)
 - Added "Route Architecture" section to CLAUDE.md between Architecture and Build sections
