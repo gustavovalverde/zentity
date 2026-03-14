@@ -407,3 +407,20 @@
 ### Module 2.1: API route rename api/crypto/ → api/zk/ — ALREADY COMPLETE
 - Verified: routes were moved in prior iteration (Module 5 tRPC rename)
 - Only stale reference: README API route table — fixed in Module 3.4 commit
+
+### Module 4: Identity vault handler (shared) — COMPLETE
+- PRD: Module 4 (identity vault handler)
+- Created shared handler for identity intent/stage flow used by both OAuth2 and CIBA routes
+- Pipeline-style design: routes provide protocol-specific context resolution and persistence, shared handlers own session auth, scope validation, intent verification, identity normalization
+- `handleIdentityIntent`: resolveSessionAndBody → resolveContext → validateScopeSubset → extractIdentityScopes → createIdentityIntentToken
+- `handleIdentityStage`: resolveSessionAndBody → resolveContext → validateScopeSubset → extractIdentityScopes → verifyIntentToken → user/authReqId/scopeHash binding → normalizeIdentityFields → filterIdentityByScopes → persist callback
+- Internal helpers: `jsonError()`, `validateScopeSubset()`, `resolveSessionAndBody()`
+- Route files reduced to thin wrappers (~40 lines each vs ~80+ before)
+- CIBA stage uses closure variable for `cibaContext` (authReqId + authorizationDetails) between resolveContext and persist callbacks
+- Outer POST functions are non-async (return Promise directly) — Biome useAwait compliance
+- Files:
+  - NEW: lib/auth/oidc/identity-handler.ts — shared handler with IdentityIntentInput, IdentityStageInput, ValidatedIdentityStage types
+  - MOD: app/api/oauth2/identity/intent/route.ts — thin wrapper with verifySignedOAuthQuery resolver
+  - MOD: app/api/oauth2/identity/stage/route.ts — thin wrapper with storeEphemeralClaims persist
+  - MOD: app/api/ciba/identity/intent/route.ts — thin wrapper with cibaRequests DB lookup resolver
+  - MOD: app/api/ciba/identity/stage/route.ts — thin wrapper with sealApprovalPii + DB insert persist
