@@ -66,14 +66,17 @@ describe("fhe enrollment completion route", () => {
   it("rejects unauthenticated requests", async () => {
     authMocks.requireSession.mockResolvedValue({
       ok: false,
-      response: new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-      }),
+      response: new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401 }
+      ),
     });
 
     const response = await POST(makeRequest({}));
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
+    await expect(response.json()).resolves.toEqual({
+      error: "Authentication required",
+    });
   });
 
   it("validates payload schema", async () => {

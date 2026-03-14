@@ -24,3 +24,13 @@
 - Updated all consumers: compliance-key route, test file
 - Added DPoP test case
 - Files: `auth/oauth-token-validation.ts`, `api/oauth2/release/route.ts`, `api/oauth2/clients/.../compliance-key/route.ts`, tests
+
+### Task: Auth check unification
+- Updated `requireSession` error message from `"Unauthorized"` → `"Authentication required"`
+- Switched `fhe/keys/register/route.ts` from `auth.api.getSession` to `requireSession`
+- Switched `identity-handler.ts` `resolveSessionAndBody` from `auth.api.getSession` to `requireSession`
+- Switched `oauth2/identity/unstage/route.ts` from `auth.api.getSession` to `requireSession`
+- Updated `verify-age/route.ts` to forward `requireSession`'s response instead of custom error
+- Updated 4 test files for new error message
+- No REST route calls `auth.api.getSession` directly anymore
+- Files: `api-auth.ts`, `fhe/keys/register/route.ts`, `identity-handler.ts`, `oauth2/identity/unstage/route.ts`, `fhe/verify-age/route.ts`, 4 tests

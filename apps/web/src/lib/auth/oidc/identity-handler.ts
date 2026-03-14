@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { auth } from "@/lib/auth/auth";
+import { requireSession } from "@/lib/auth/api-auth";
 import { normalizeIdentityFields } from "@/lib/auth/oidc/identity-fields-schema";
 import {
   createIdentityIntentToken,
@@ -62,9 +62,9 @@ function validateScopeSubset(
 async function resolveSessionAndBody(
   request: Request
 ): Promise<{ userId: string; body: unknown } | Response> {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) {
-    return jsonError("Authentication required", 401);
+  const authResult = await requireSession(request.headers);
+  if (!authResult.ok) {
+    return authResult.response;
   }
 
   let body: unknown;
@@ -74,7 +74,7 @@ async function resolveSessionAndBody(
     return jsonError("Invalid JSON", 400);
   }
 
-  return { userId: session.user.id, body };
+  return { userId: authResult.session.user.id, body };
 }
 
 // ── Intent handler ─────────────────────────────────────────

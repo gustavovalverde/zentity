@@ -35,7 +35,10 @@ describe("fhe verify-age route", () => {
     vi.clearAllMocks();
     authMocks.requireSession.mockResolvedValue({
       ok: false,
-      response: new Response("Unauthorized", { status: 401 }),
+      response: new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401 }
+      ),
     });
     dbMocks.getLatestEncryptedAttributeByUserAndType.mockResolvedValue(null);
   });

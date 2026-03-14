@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-import { auth } from "@/lib/auth/auth";
+import { requireSession } from "@/lib/auth/api-auth";
 import { isRegistrationTokenValid } from "@/lib/auth/fhe-enrollment-tokens";
 import {
   getEncryptedSecretByUserAndType,
@@ -53,11 +53,11 @@ export async function POST(req: Request) {
       return jsonError("Invalid or expired registration token.", 400);
     }
   } else {
-    const session = await auth.api.getSession({ headers: req.headers });
-    if (!session?.user?.id) {
-      return jsonError("Authentication required.", 401);
+    const authResult = await requireSession(req.headers);
+    if (!authResult.ok) {
+      return authResult.response;
     }
-    const sessionUserId = session.user.id;
+    const sessionUserId = authResult.session.user.id;
     userId = sessionUserId;
 
     const existingSecret = await getEncryptedSecretByUserAndType(

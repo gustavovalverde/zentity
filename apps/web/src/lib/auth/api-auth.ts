@@ -14,17 +14,13 @@ export async function requireSession(
     headers: hdrs,
   });
 
-  if (!session) {
+  if (!session?.user?.id) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
-  if (!session.user?.id) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      response: NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      ),
     };
   }
 

@@ -18,7 +18,7 @@ interface VerifyAgePayload {
 export async function POST(req: Request) {
   const authResult = await requireSession(req.headers);
   if (!authResult.ok) {
-    return jsonError("Authentication required.", 401);
+    return authResult.response;
   }
   const userId = authResult.session.user.id;
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { auth } from "@/lib/auth/auth";
+import { requireSession } from "@/lib/auth/api-auth";
 import { clearEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { verifySignedOAuthQuery } from "@/lib/auth/oidc/oauth-query";
 
@@ -10,12 +10,9 @@ const UnstageSchema = z.object({
 });
 
 export async function POST(request: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) {
-    return NextResponse.json(
-      { error: "Authentication required" },
-      { status: 401 }
-    );
+  const authResult = await requireSession(request.headers);
+  if (!authResult.ok) {
+    return authResult.response;
   }
 
   let body: unknown;
@@ -42,6 +39,6 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Missing client_id" }, { status: 400 });
   }
 
-  clearEphemeralClaims(session.user.id, clientId);
+  clearEphemeralClaims(authResult.session.user.id, clientId);
   return NextResponse.json({ cleared: true });
 }

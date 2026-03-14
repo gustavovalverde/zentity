@@ -28,7 +28,10 @@ function mockUnauthorized() {
     require("next/server") as typeof import("next/server");
   authMocks.requireSession.mockResolvedValue({
     ok: false,
-    response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    response: NextResponse.json(
+      { error: "Authentication required" },
+      { status: 401 }
+    ),
   });
 }
 
