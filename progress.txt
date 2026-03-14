@@ -57,3 +57,10 @@
 - Hooks now read as dispatch tables (~40 lines) instead of monolithic blocks (~230 lines)
 - All functions stay in `auth.ts` — no new files
 - Files: `auth/auth.ts`
+
+## Phase 3: In-place complexity reduction + naming
+
+### Task: Move verification-utils to ZK domain
+- Moved `verification-utils.ts` from `trpc/routers/zk/` to `lib/privacy/zk/`
+- Updated import in `proof.ts` to use `@/lib/privacy/zk/verification-utils`
+- Files: `privacy/zk/verification-utils.ts`, `trpc/routers/zk/proof.ts`

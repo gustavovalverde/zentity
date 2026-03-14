@@ -48,11 +48,6 @@ import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
-
-import { protectedProcedure } from "../../server";
-import { invalidateVerificationCache } from "../identity/helpers/verification-cache";
-import { resolveAudience } from "./audience";
-import { circuitTypeSchema } from "./challenge";
 import {
   assertPolicyVersion,
   computeProofHash,
@@ -61,7 +56,12 @@ import {
   getVerifiedClaim,
   type OcrClaimData,
   parseFieldToBigInt,
-} from "./verification-utils";
+} from "@/lib/privacy/zk/verification-utils";
+
+import { protectedProcedure } from "../../server";
+import { invalidateVerificationCache } from "../identity/helpers/verification-cache";
+import { resolveAudience } from "./audience";
+import { circuitTypeSchema } from "./challenge";
 
 const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);
