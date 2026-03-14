@@ -70,3 +70,10 @@
 - Updated tRPC namespace from `token` to `compliantToken` in app router
 - Updated all client references (6 component files, server.ts debug/critical paths)
 - Files: `compliant-token.ts`, `app.ts`, `server.ts`, 6 component files
+
+### Task: Derive rp-admin scope list from canonical source
+- Created `lib/auth/oidc/oauth-scopes.ts` with `OAUTH_SCOPES` and `OAUTH_SCOPE_SET`
+- auth.ts `oauthProvider({ scopes })` now uses `[...OAUTH_SCOPES]`
+- rp-admin approve route imports `OAUTH_SCOPE_SET` instead of maintaining hardcoded list
+- Fixed: hardcoded list was missing `email` scope
+- Files: `auth/oidc/oauth-scopes.ts`, `auth/auth.ts`, `api/rp-admin/clients/approve/route.ts`

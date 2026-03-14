@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { OAUTH_SCOPE_SET } from "@/lib/auth/oidc/oauth-scopes";
 import { requireRpAdmin } from "@/lib/auth/rp-admin";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -13,28 +14,6 @@ const ApproveSchema = z.object({
   scopes: z.array(z.string()).min(1).optional(),
   force: z.boolean().optional(),
 });
-
-// Keep in sync with oauthProvider({ scopes: [...] }) in `apps/web/src/lib/auth/auth.ts`.
-const ALLOWED_OAUTH_SCOPES = new Set([
-  "openid",
-  "offline_access",
-  "proof:identity",
-  "proof:verification",
-  "proof:age",
-  "proof:document",
-  "proof:liveness",
-  "proof:nationality",
-  "proof:compliance",
-  "proof:chip",
-  "compliance:key:read",
-  "compliance:key:write",
-  "identity_verification",
-  "identity.name",
-  "identity.dob",
-  "identity.address",
-  "identity.document",
-  "identity.nationality",
-]);
 
 export async function POST(request: Request): Promise<Response> {
   const admin = await requireRpAdmin(request.headers);
@@ -79,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   if (scopes) {
-    const invalid = scopes.filter((s) => !ALLOWED_OAUTH_SCOPES.has(s));
+    const invalid = scopes.filter((s) => !OAUTH_SCOPE_SET.has(s));
     if (invalid.length > 0) {
       return NextResponse.json(
         { error: "Invalid scopes", invalid },

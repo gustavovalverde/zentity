@@ -59,6 +59,7 @@ import {
 } from "@/lib/auth/oidc/identity-scopes";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { OAUTH_SCOPES } from "@/lib/auth/oidc/oauth-scopes";
 import {
   extractProofScopes,
   filterProofClaimsByScopes,
@@ -949,26 +950,7 @@ export const auth = betterAuth({
         [WALLET_ATTESTATION_TYPE]: walletAttestationStrategy as never,
       },
       pairwiseSecret: env.PAIRWISE_SECRET,
-      scopes: [
-        // Standard OIDC scopes
-        "openid",
-        "email",
-        "offline_access",
-        // Proof scopes — verification status flags (no PII, derived booleans only)
-        "proof:identity", // Umbrella: all verification claims
-        ...PROOF_SCOPES, // Granular: proof:verification, proof:age, proof:document, etc.
-        // RP compliance key management (client_credentials)
-        "compliance:key:read",
-        "compliance:key:write",
-        // Identity data scopes — actual PII (RFC-0025)
-        "identity.name", // given_name, family_name, name
-        "identity.dob", // birthdate
-        "identity.address", // address (OIDC standard format)
-        "identity.document", // document_number, document_type, issuing_country
-        "identity.nationality", // nationality, nationalities
-        // HAIP §4.1: credential configuration scope for OID4VCI
-        "identity_verification",
-      ],
+      scopes: [...OAUTH_SCOPES],
       grantTypes: [
         "authorization_code",
         "client_credentials",
