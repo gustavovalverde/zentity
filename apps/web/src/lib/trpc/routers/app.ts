@@ -14,7 +14,7 @@
  * - liveness: Multi-gesture liveness detection sessions
  * - signUp: Account creation wizard state management
  * - secrets: Passkey-wrapped secret storage
- * - token: CompliantERC20 token operations (DeFi demo)
+ * - compliantToken: CompliantERC20 token operations (DeFi demo)
  */
 import "server-only";
 
@@ -22,6 +22,7 @@ import { router } from "../server";
 import { accountRouter } from "./account";
 import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
+import { compliantTokenRouter } from "./compliant-token";
 import { credentialsRouter } from "./credentials";
 import { identityRouter } from "./identity/router";
 import { livenessRouter } from "./liveness";
@@ -29,7 +30,6 @@ import { passportChipRouter } from "./passport-chip";
 import { recoveryRouter } from "./recovery/router";
 import { secretsRouter } from "./secrets";
 import { signUpRouter } from "./sign-up";
-import { tokenRouter } from "./token";
 import { zkRouter } from "./zk/router";
 
 export const appRouter = router({
@@ -44,7 +44,7 @@ export const appRouter = router({
   recovery: recoveryRouter,
   secrets: secretsRouter,
   signUp: signUpRouter,
-  token: tokenRouter,
+  compliantToken: compliantTokenRouter,
 });
 
 /** Type export for client-side type inference. */

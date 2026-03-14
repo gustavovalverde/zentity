@@ -84,7 +84,7 @@ export function TransferForm({
 
   // Check if recipient is attested
   const { data: recipientStatus, refetch: checkRecipient } =
-    trpcReact.token.isAttested.useQuery(
+    trpcReact.compliantToken.isAttested.useQuery(
       { networkId, address: recipient },
       { enabled: false } // Manual trigger
     );
@@ -163,7 +163,7 @@ export function TransferForm({
   useEffect(() => {
     // Refresh history
     if (isConfirmed && address) {
-      utils.token.history
+      utils.compliantToken.history
         .invalidate({
           networkId,
           walletAddress: address,

@@ -64,3 +64,9 @@
 - Moved `verification-utils.ts` from `trpc/routers/zk/` to `lib/privacy/zk/`
 - Updated import in `proof.ts` to use `@/lib/privacy/zk/verification-utils`
 - Files: `privacy/zk/verification-utils.ts`, `trpc/routers/zk/proof.ts`
+
+### Task: Rename DeFi token router
+- Renamed `token.ts` → `compliant-token.ts`, `tokenRouter` → `compliantTokenRouter`
+- Updated tRPC namespace from `token` to `compliantToken` in app router
+- Updated all client references (6 component files, server.ts debug/critical paths)
+- Files: `compliant-token.ts`, `app.ts`, `server.ts`, 6 component files

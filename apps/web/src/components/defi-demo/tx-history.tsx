@@ -189,7 +189,7 @@ export function TxHistory({
   walletAddress,
   onMintClick,
 }: Readonly<TxHistoryProps>) {
-  const { data, isLoading, error } = trpcReact.token.history.useQuery({
+  const { data, isLoading, error } = trpcReact.compliantToken.history.useQuery({
     networkId,
     walletAddress,
     limit: 10,

@@ -55,7 +55,7 @@ export function DefiDemoClient({
 
   // Fetch available networks with CompliantERC20
   const { data: networks, isLoading: networksLoading } =
-    trpcReact.token.networks.useQuery();
+    trpcReact.compliantToken.networks.useQuery();
   const utils = trpcReact.useUtils();
 
   // Auto-select first network if none selected
@@ -76,7 +76,7 @@ export function DefiDemoClient({
 
   // Check on-chain attestation status (validates DB record against actual contract)
   const { data: attestationStatus, isLoading: attestationLoading } =
-    trpcReact.token.isAttested.useQuery(
+    trpcReact.compliantToken.isAttested.useQuery(
       {
         networkId: activeNetworkId ?? "",
         address: address ?? "",
@@ -91,17 +91,21 @@ export function DefiDemoClient({
   const needsReAttestation =
     attestedNetworkId && attestationStatus && !attestationStatus.isAttested;
 
-  const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
-    {
-      networkId: activeNetworkId ?? "",
-      walletAddress: address ?? "",
-    },
-    {
-      enabled: Boolean(
-        requiresAccessGrant && activeNetworkId && address && !needsReAttestation
-      ),
-    }
-  );
+  const { data: complianceAccess } =
+    trpcReact.compliantToken.complianceAccess.useQuery(
+      {
+        networkId: activeNetworkId ?? "",
+        walletAddress: address ?? "",
+      },
+      {
+        enabled: Boolean(
+          requiresAccessGrant &&
+            activeNetworkId &&
+            address &&
+            !needsReAttestation
+        ),
+      }
+    );
 
   const hasComplianceAccess = Boolean(complianceAccess?.granted);
   const complianceTxHash = complianceAccess?.granted
@@ -113,7 +117,7 @@ export function DefiDemoClient({
 
   const handleAccessGranted = () => {
     if (activeNetworkId && address) {
-      utils.token.complianceAccess.setData(
+      utils.compliantToken.complianceAccess.setData(
         {
           networkId: activeNetworkId,
           walletAddress: address,
@@ -125,7 +129,7 @@ export function DefiDemoClient({
           explorerUrl: null,
         }
       );
-      utils.token.complianceAccess.invalidate({
+      utils.compliantToken.complianceAccess.invalidate({
         networkId: activeNetworkId,
         walletAddress: address,
       });

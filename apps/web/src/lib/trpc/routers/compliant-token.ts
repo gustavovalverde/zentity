@@ -75,7 +75,7 @@ function checkMintRateLimit(userId: string, networkId: string): boolean {
   return true;
 }
 
-export const tokenRouter = router({
+export const compliantTokenRouter = router({
   /**
    * Get token contract info for a network.
    */

@@ -268,7 +268,7 @@ const DEBUG_ONLY_PATHS = new Set([
   "attestation.networks",
   "attestation.status",
   "signUp.getSession",
-  "token.networks",
+  "compliantToken.networks",
 ]);
 
 /**
@@ -283,7 +283,7 @@ const CRITICAL_PATHS = new Set([
   "attestation.submit",
   "crypto.storeProof",
   "crypto.verifyProof",
-  "token.mint",
+  "compliantToken.mint",
   "account.deleteAccount",
   "liveness.verify",
 ]);

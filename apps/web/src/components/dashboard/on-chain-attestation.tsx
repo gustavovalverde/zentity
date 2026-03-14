@@ -172,7 +172,7 @@ export function OnChainAttestation({
 
   // Verify on-chain attestation status (catches stale DB records after contract redeployment)
   const { data: onChainStatus, isLoading: isCheckingOnChain } =
-    trpcReact.token.isAttested.useQuery(
+    trpcReact.compliantToken.isAttested.useQuery(
       {
         networkId: selectedNetworkData?.id ?? "",
         address: address ?? "",
@@ -197,17 +197,18 @@ export function OnChainAttestation({
     [showComplianceAccess, needsReAttestation, isCheckingOnChain]
   );
 
-  const { data: complianceAccess } = trpcReact.token.complianceAccess.useQuery(
-    {
-      networkId: selectedNetworkData?.id ?? "",
-      walletAddress: address ?? "",
-    },
-    {
-      enabled: Boolean(
-        showComplianceCard && selectedNetworkData?.id && address
-      ),
-    }
-  );
+  const { data: complianceAccess } =
+    trpcReact.compliantToken.complianceAccess.useQuery(
+      {
+        networkId: selectedNetworkData?.id ?? "",
+        walletAddress: address ?? "",
+      },
+      {
+        enabled: Boolean(
+          showComplianceCard && selectedNetworkData?.id && address
+        ),
+      }
+    );
 
   const complianceGranted = Boolean(complianceAccess?.granted);
   const complianceTxHash = complianceAccess?.granted
@@ -349,7 +350,7 @@ export function OnChainAttestation({
               error={submitMutation.error?.message ?? clientError ?? undefined}
               invalidateComplianceAccess={() => {
                 if (selectedNetworkData?.id && address) {
-                  utils.token.complianceAccess.invalidate({
+                  utils.compliantToken.complianceAccess.invalidate({
                     networkId: selectedNetworkData.id,
                     walletAddress: address,
                   });

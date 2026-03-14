@@ -45,16 +45,16 @@ export function MintForm({
   const utils = trpcReact.useUtils();
 
   // Query token info for remaining supply
-  const { data: tokenInfo } = trpcReact.token.info.useQuery(
+  const { data: tokenInfo } = trpcReact.compliantToken.info.useQuery(
     { networkId },
     { staleTime: 30_000 } // Refresh every 30s
   );
 
-  const mintMutation = trpcReact.token.mint.useMutation({
+  const mintMutation = trpcReact.compliantToken.mint.useMutation({
     onSuccess: () => {
       // Refresh token info and history
-      utils.token.info.invalidate({ networkId });
-      utils.token.history.invalidate({ networkId, walletAddress });
+      utils.compliantToken.info.invalidate({ networkId });
+      utils.compliantToken.history.invalidate({ networkId, walletAddress });
     },
   });
 

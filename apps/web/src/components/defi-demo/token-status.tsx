@@ -28,12 +28,13 @@ export function TokenStatus({
   walletAddress,
 }: Readonly<TokenStatusProps>) {
   const { data: tokenInfo, isLoading: tokenLoading } =
-    trpcReact.token.info.useQuery({ networkId });
+    trpcReact.compliantToken.info.useQuery({ networkId });
 
-  const { data: attestationStatus } = trpcReact.token.isAttested.useQuery({
-    networkId,
-    address: walletAddress,
-  });
+  const { data: attestationStatus } =
+    trpcReact.compliantToken.isAttested.useQuery({
+      networkId,
+      address: walletAddress,
+    });
 
   if (tokenLoading) {
     return (
