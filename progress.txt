@@ -34,3 +34,11 @@
 - Updated 4 test files for new error message
 - No REST route calls `auth.api.getSession` directly anymore
 - Files: `api-auth.ts`, `fhe/keys/register/route.ts`, `identity-handler.ts`, `oauth2/identity/unstage/route.ts`, `fhe/verify-age/route.ts`, 4 tests
+
+## Phase 2: Query layer + auth.ts hooks
+
+### Task: CIBA request validation helper
+- Extracted `validatePendingCibaRequest` into `db/queries/ciba.ts`
+- Replaces 30-line duplicated validation block in both CIBA identity intent and stage routes
+- Returns row on success or NextResponse error on failure
+- Files: `db/queries/ciba.ts`, `api/ciba/identity/intent/route.ts`, `api/ciba/identity/stage/route.ts`

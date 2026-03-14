@@ -7,8 +7,8 @@ import { stageReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
 import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
 import { db } from "@/lib/db/connection";
+import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
 import { approvals } from "@/lib/db/schema/approvals";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 
 const StageSchema = z.object({
   auth_req_id: z.string().min(1),
@@ -44,47 +44,19 @@ export function POST(request: Request): Promise<Response> {
 
       const { auth_req_id, scopes, identity, intent_token } = parsed.data;
 
-      const cibaRequest = await db
-        .select({
-          clientId: cibaRequests.clientId,
-          userId: cibaRequests.userId,
-          scope: cibaRequests.scope,
-          status: cibaRequests.status,
-          authorizationDetails: cibaRequests.authorizationDetails,
-        })
-        .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, auth_req_id))
-        .get();
-
-      if (!cibaRequest) {
-        return NextResponse.json(
-          { error: "Unknown auth_req_id" },
-          { status: 404 }
-        );
-      }
-
-      if (cibaRequest.userId !== userId) {
-        return NextResponse.json(
-          { error: "CIBA request does not belong to current user" },
-          { status: 403 }
-        );
-      }
-
-      if (cibaRequest.status !== "pending") {
-        return NextResponse.json(
-          { error: "CIBA request is no longer pending" },
-          { status: 400 }
-        );
+      const result = await validatePendingCibaRequest(auth_req_id, userId);
+      if (result instanceof Response) {
+        return result;
       }
 
       cibaContext = {
         authReqId: auth_req_id,
-        authorizationDetails: cibaRequest.authorizationDetails,
+        authorizationDetails: result.authorizationDetails,
       };
 
       return {
-        clientId: cibaRequest.clientId,
-        authorizedScopes: cibaRequest.scope.split(" "),
+        clientId: result.clientId,
+        authorizedScopes: result.scope.split(" "),
         scopes,
         identity,
         intentToken: intent_token,
