@@ -230,7 +230,7 @@ export function BetterAuthUIProvider({
         SIGN_OUT: "sign-out",
         CALLBACK: "callback",
         EMAIL_VERIFICATION: "email-verification",
-        RECOVER_ACCOUNT: "recover-account",
+        RECOVER_ACCOUNT: "recovery",
       }}
     >
       {children}

@@ -101,7 +101,7 @@ export default function RecoverPasskeyPage() {
     try {
       const result = await authClient.signIn.magicLink({
         email: trimmed,
-        callbackURL: "/recover-passkey",
+        callbackURL: "/recovery/passkey",
       });
 
       if (result.error) {
