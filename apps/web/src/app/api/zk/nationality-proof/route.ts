@@ -1,8 +1,8 @@
 /**
  * Nationality Membership Proof API
  *
- * POST /api/crypto/nationality-proof - Get Merkle proof inputs for client-side proving
- * GET /api/crypto/nationality-proof - List country groups or check membership
+ * POST /api/zk/nationality-proof - Get Merkle proof inputs for client-side proving
+ * GET /api/zk/nationality-proof - List country groups or check membership
  */
 
 import { type NextRequest, NextResponse } from "next/server";

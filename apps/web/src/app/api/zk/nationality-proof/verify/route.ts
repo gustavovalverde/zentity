@@ -1,7 +1,7 @@
 /**
  * Nationality Membership Proof Verification API
  *
- * POST /api/crypto/nationality-proof/verify - Verify a nationality membership ZK proof
+ * POST /api/zk/nationality-proof/verify - Verify a nationality membership ZK proof
  */
 
 import { type NextRequest, NextResponse } from "next/server";
