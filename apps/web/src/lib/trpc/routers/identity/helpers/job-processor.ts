@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { FheStatus } from "@/lib/db/schema/identity";
+
 import { and, eq, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { v4 as uuidv4 } from "uuid";
@@ -30,9 +32,6 @@ import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { signAttestationClaim } from "@/lib/privacy/zk/claims";
 
 import { invalidateVerificationCache } from "./verification-cache";
-
-/** Status of FHE encryption operations */
-export type FheStatus = "pending" | "complete" | "error";
 
 export interface VerifyIdentityResponse {
   error?: string;

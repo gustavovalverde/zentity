@@ -263,8 +263,8 @@ const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
  * Paths that should log at debug level only (high frequency, low value).
  */
 const DEBUG_ONLY_PATHS = new Set([
-  "crypto.health",
-  "crypto.challengeStatus",
+  "zk.health",
+  "zk.challengeStatus",
   "attestation.networks",
   "attestation.status",
   "signUp.getSession",

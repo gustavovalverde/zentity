@@ -15,8 +15,8 @@ import { logError } from "@/lib/logging/error-logger";
 
 import { protectedProcedure, router } from "../server";
 
-const ISSUER_ID = "zentity";
-const POLICY_VERSION = "1.0";
+const BUNDLE_ISSUER_ID = "zentity";
+const BUNDLE_POLICY_VERSION = "1.0";
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -75,8 +75,8 @@ export const signUpRouter = router({
           upsertIdentityBundle({
             userId: ctx.userId,
             status: "pending",
-            issuerId: ISSUER_ID,
-            policyVersion: POLICY_VERSION,
+            issuerId: BUNDLE_ISSUER_ID,
+            policyVersion: BUNDLE_POLICY_VERSION,
             walletAddress: wallet?.address ?? null,
           }),
         ]);
