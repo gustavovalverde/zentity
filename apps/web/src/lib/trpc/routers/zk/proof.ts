@@ -152,6 +152,51 @@ function parseU32PublicInput(value: string, fieldName: string): number {
   return Number(parsed);
 }
 
+async function assertOcrClaimHash(
+  userId: string,
+  verificationId: string | null,
+  hashKey: keyof NonNullable<OcrClaimData["claimHashes"]>,
+  claimHashBigInt: bigint,
+  label: string
+): Promise<void> {
+  const ocrClaim = await getVerifiedClaim(userId, "ocr_result", verificationId);
+  assertPolicyVersion(ocrClaim, "ocr_result");
+  const claimData = ocrClaim.data as OcrClaimData;
+  const expectedHash = claimData.claimHashes?.[hashKey];
+  if (!expectedHash) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `Missing ${label} claim hash in OCR claim`,
+    });
+  }
+  if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `${label} claim hash mismatch`,
+    });
+  }
+}
+
+function assertResultBit(
+  publicInputs: string[],
+  resultIndex: number,
+  failureReason: string,
+  failure: (
+    reason: string,
+    ms?: number
+  ) => {
+    result: ProofVerificationResult;
+    nonceHex: string;
+  },
+  verificationTimeMs: number
+): { result: ProofVerificationResult; nonceHex: string } | null {
+  const bit = Number(BigInt(publicInputs[resultIndex]));
+  if (bit !== 1) {
+    return failure(failureReason, verificationTimeMs);
+  }
+  return null;
+}
+
 async function verifyProofInternal(args: {
   userId: string;
   circuitType: z.infer<typeof circuitTypeSchema>;
@@ -322,26 +367,13 @@ async function verifyProofInternal(args: {
       });
     }
 
-    const ocrClaim = await getVerifiedClaim(
+    await assertOcrClaimHash(
       args.userId,
-      "ocr_result",
-      args.verificationId
+      args.verificationId,
+      "age",
+      claimHashBigInt,
+      "age"
     );
-    assertPolicyVersion(ocrClaim, "ocr_result");
-    const claimData = ocrClaim.data as OcrClaimData;
-    const expectedHash = claimData.claimHashes?.age;
-    if (!expectedHash) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Missing age claim hash in OCR claim",
-      });
-    }
-    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Age claim hash mismatch",
-      });
-    }
   }
 
   if (circuitType === "doc_validity") {
@@ -354,49 +386,23 @@ async function verifyProofInternal(args: {
       });
     }
 
-    const ocrClaim = await getVerifiedClaim(
+    await assertOcrClaimHash(
       args.userId,
-      "ocr_result",
-      args.verificationId
+      args.verificationId,
+      "docValidity",
+      claimHashBigInt,
+      "document validity"
     );
-    assertPolicyVersion(ocrClaim, "ocr_result");
-    const claimData = ocrClaim.data as OcrClaimData;
-    const expectedHash = claimData.claimHashes?.docValidity;
-    if (!expectedHash) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Missing document validity claim hash in OCR claim",
-      });
-    }
-    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Document validity claim hash mismatch",
-      });
-    }
   }
 
   if (circuitType === "nationality_membership") {
-    const ocrClaim = await getVerifiedClaim(
+    await assertOcrClaimHash(
       args.userId,
-      "ocr_result",
-      args.verificationId
+      args.verificationId,
+      "nationality",
+      claimHashBigInt,
+      "nationality"
     );
-    assertPolicyVersion(ocrClaim, "ocr_result");
-    const claimData = ocrClaim.data as OcrClaimData;
-    const expectedHash = claimData.claimHashes?.nationality;
-    if (!expectedHash) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Missing nationality claim hash in OCR claim",
-      });
-    }
-    if (parseFieldToBigInt(expectedHash) !== claimHashBigInt) {
-      throw new TRPCError({
-        code: "BAD_REQUEST",
-        message: "Nationality claim hash mismatch",
-      });
-    }
   }
 
   if (circuitType === "face_match") {
@@ -474,54 +480,27 @@ async function verifyProofInternal(args: {
     return { result: verificationResult, nonceHex };
   }
 
-  if (circuitType === "age_verification") {
-    const isOldEnough = Number(
-      BigInt(args.publicInputs[circuitSpec.resultIndex])
+  const resultFailureReasons: Partial<
+    Record<z.infer<typeof circuitTypeSchema>, string>
+  > = {
+    age_verification: "Age requirement not met",
+    doc_validity: "Document expired",
+    nationality_membership: "Nationality not in group",
+    face_match: "Face match threshold not met",
+    identity_binding: "Identity binding failed",
+  };
+
+  const reason = resultFailureReasons[circuitType];
+  if (reason) {
+    const resultFailure = assertResultBit(
+      args.publicInputs,
+      circuitSpec.resultIndex,
+      reason,
+      failure,
+      verificationResult.verificationTimeMs
     );
-    if (isOldEnough !== 1) {
-      return failure(
-        "Age requirement not met",
-        verificationResult.verificationTimeMs
-      );
-    }
-  }
-
-  if (circuitType === "doc_validity") {
-    const isDocValid = Number(
-      BigInt(args.publicInputs[circuitSpec.resultIndex])
-    );
-    if (isDocValid !== 1) {
-      return failure("Document expired", verificationResult.verificationTimeMs);
-    }
-  }
-
-  if (circuitType === "nationality_membership") {
-    const isMember = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
-    if (isMember !== 1) {
-      return failure(
-        "Nationality not in group",
-        verificationResult.verificationTimeMs
-      );
-    }
-  }
-
-  if (circuitType === "face_match") {
-    const isMatch = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
-    if (isMatch !== 1) {
-      return failure(
-        "Face match threshold not met",
-        verificationResult.verificationTimeMs
-      );
-    }
-  }
-
-  if (circuitType === "identity_binding") {
-    const isBound = Number(BigInt(args.publicInputs[circuitSpec.resultIndex]));
-    if (isBound !== 1) {
-      return failure(
-        "Identity binding failed",
-        verificationResult.verificationTimeMs
-      );
+    if (resultFailure) {
+      return resultFailure;
     }
   }
 
