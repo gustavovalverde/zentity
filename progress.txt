@@ -42,3 +42,10 @@
 - Replaces 30-line duplicated validation block in both CIBA identity intent and stage routes
 - Returns row on success or NextResponse error on failure
 - Files: `db/queries/ciba.ts`, `api/ciba/identity/intent/route.ts`, `api/ciba/identity/stage/route.ts`
+
+### Task: Identity bundle upsert absorption
+- Removed check-then-branch pattern from `fhe/status/route.ts` and `fhe/enrollment/complete/route.ts`
+- Both now call `upsertIdentityBundle` directly (it already uses `onConflictDoUpdate`)
+- Removed unused `getIdentityBundleByUserId` and `updateIdentityBundleFheStatus` imports from those routes
+- `updateIdentityBundleFheStatus` still used by `encryption.ts` (FHE job processor) — not deleted
+- Files: `api/fhe/status/route.ts`, `api/fhe/enrollment/complete/route.ts`, enrollment complete test

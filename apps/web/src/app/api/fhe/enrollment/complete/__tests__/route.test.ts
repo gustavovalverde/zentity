@@ -26,8 +26,6 @@ const cryptoMocks = vi.hoisted(() => ({
 vi.mock("@/lib/db/queries/crypto", () => cryptoMocks);
 
 const identityMocks = vi.hoisted(() => ({
-  getIdentityBundleByUserId: vi.fn(),
-  updateIdentityBundleFheStatus: vi.fn(),
   upsertIdentityBundle: vi.fn(),
 }));
 
@@ -178,12 +176,6 @@ describe("fhe enrollment completion route", () => {
       createdAt: new Date().toISOString(),
     });
     cryptoMocks.getEncryptedSecretByUserAndType.mockResolvedValue(null);
-    identityMocks.getIdentityBundleByUserId.mockResolvedValue({
-      userId: "user-1",
-      fheKeyId: null,
-      fheStatus: null,
-      fheError: null,
-    });
 
     const response = await POST(
       makeRequest({
@@ -224,7 +216,7 @@ describe("fhe enrollment completion route", () => {
       })
     );
 
-    expect(identityMocks.updateIdentityBundleFheStatus).toHaveBeenCalledWith({
+    expect(identityMocks.upsertIdentityBundle).toHaveBeenCalledWith({
       userId: "user-1",
       fheKeyId: "key",
       fheStatus: "complete",

@@ -13,11 +13,7 @@ import {
   upsertEncryptedSecret,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
-import {
-  getIdentityBundleByUserId,
-  updateIdentityBundleFheStatus,
-  upsertIdentityBundle,
-} from "@/lib/db/queries/identity";
+import { upsertIdentityBundle } from "@/lib/db/queries/identity";
 import { prfSaltSchema, wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 
@@ -131,25 +127,12 @@ export async function POST(request: Request) {
     baseCommitment: enrollment.baseCommitment,
   });
 
-  // Persist enrollment status server-side to avoid client-side races where other
-  // flows (document OCR / background jobs) run before the identity bundle is updated.
-  const existingBundle = await getIdentityBundleByUserId(sessionUserId);
-  if (existingBundle) {
-    await updateIdentityBundleFheStatus({
-      userId: sessionUserId,
-      fheKeyId: enrollment.keyId,
-      fheStatus: "complete",
-      fheError: null,
-    });
-  } else {
-    await upsertIdentityBundle({
-      userId: sessionUserId,
-      status: "pending",
-      fheKeyId: enrollment.keyId,
-      fheStatus: "complete",
-      fheError: null,
-    });
-  }
+  await upsertIdentityBundle({
+    userId: sessionUserId,
+    fheKeyId: enrollment.keyId,
+    fheStatus: "complete",
+    fheError: null,
+  });
 
   await consumeFheEnrollmentContext(registration.contextToken);
 
