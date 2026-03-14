@@ -173,8 +173,8 @@ export default function RecoverSocialPage() {
       .map((approval) => ({
         ...approval,
         url: origin
-          ? `${origin}/recover-guardian?token=${approval.token}`
-          : `/recover-guardian?token=${approval.token}`,
+          ? `${origin}/recovery/guardian/approve?token=${approval.token}`
+          : `/recovery/guardian/approve?token=${approval.token}`,
       }));
   }, [approvalEntries]);
   const approvalLinkByGuardianId = useMemo(

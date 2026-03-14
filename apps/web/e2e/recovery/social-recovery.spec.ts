@@ -10,7 +10,8 @@ const APPROVAL_TEXT_RE = /Approval recorded|Recovery approved/;
 const RECOVERY_ID_RE = /^rec_[a-z0-9]+$/;
 const BACKUP_CODE_RE = /[A-Za-z0-9]{5}-[A-Za-z0-9]{5}/g;
 const INVALID_CODE_RE = /Invalid authenticator or backup code/i;
-const RECOVERY_LINK_RE = /https?:\/\/[^\s"]+\/recover-guardian\?token=[^\s"]+/g;
+const RECOVERY_LINK_RE =
+  /https?:\/\/[^\s"]+\/recovery\/guardian\/approve\?token=[^\s"]+/g;
 const SHOW_MANUAL_LINKS_RE = /Show manual links/i;
 const ENABLE_TWO_FACTOR_RE = /Enable Two-Factor/i;
 const TWO_FACTOR_DIALOG_RE = /Two-Factor/i;
@@ -332,7 +333,7 @@ async function fillOtpCode(page: Page, code: string) {
 }
 
 async function openRecoveryFlow(page: Page, identifier: string) {
-  await page.goto("/recover-social", {
+  await page.goto("/recovery/guardian", {
     waitUntil: "domcontentloaded",
   });
   await page.waitForLoadState("networkidle");
@@ -372,7 +373,7 @@ test.describe
     });
 
     test("rejects missing or invalid identifiers", async ({ page }) => {
-      await page.goto("/recover-social", {
+      await page.goto("/recovery/guardian", {
         waitUntil: "domcontentloaded",
       });
       await page.waitForLoadState("networkidle");

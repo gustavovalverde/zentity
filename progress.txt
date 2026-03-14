@@ -116,6 +116,25 @@
   - MOD: lib/auth/plugins/opaque/server.ts — default redirect URL
   - MOD: lib/auth/auth.ts — disabledPaths
 
+### Module 1.5: Guardian recovery vertical slice — COMPLETE
+- PRD: Module 1 (recovery vertical slice, guardian subtree)
+- Moved `recover-social/` → `recovery/guardian/` (corrects misnomer — it's FROST guardian recovery, not social login)
+- Moved `recover-guardian/` → `recovery/guardian/approve/`
+- Updated 5 cross-references:
+  - `sign-in/page.tsx` — "Lost your passkey?" link
+  - `recovery-mailer.ts` — buildApprovalLink URL
+  - `recover-social/page.tsx` (now guardian/page.tsx) — internal approval URLs
+  - E2E `social-recovery.spec.ts` — RECOVERY_LINK_RE regex (escaped `/` in regex literal) + goto URLs
+  - `README.md` — recovery routes table
+- Files:
+  - MOVE: (auth)/recover-social/page.tsx → (auth)/recovery/guardian/page.tsx
+  - MOVE: (auth)/recover-guardian/page.tsx → (auth)/recovery/guardian/approve/page.tsx
+  - MOVE: (auth)/recover-guardian/recover-guardian-client.tsx → (auth)/recovery/guardian/approve/
+  - MOD: (auth)/sign-in/page.tsx — link href
+  - MOD: lib/email/recovery-mailer.ts — approval URL
+  - MOD: e2e/recovery/social-recovery.spec.ts — regex + goto URLs
+  - MOD: README.md — route table
+
 ### Module 2.2: CIBA push move — COMPLETE
 - PRD: Module 2 (API route consolidation), CIBA push co-location
 - Moved `api/push/{subscribe,unsubscribe}/` → `api/ciba/push/{subscribe,unsubscribe}/`

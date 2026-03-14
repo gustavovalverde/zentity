@@ -218,8 +218,8 @@ src/
 
 | Route | Purpose |
 | --- | --- |
-| `/recover-social` | Start social recovery with email or Recovery ID |
-| `/recover-guardian` | Guardian approval link handler |
+| `/recovery/guardian` | Start guardian recovery with email or Recovery ID |
+| `/recovery/guardian/approve` | Guardian approval link handler |
 | `/verify-2fa` | Two-factor verification UI |
 
 ## ZK Proof Development

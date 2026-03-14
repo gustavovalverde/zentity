@@ -21,7 +21,7 @@ function getAppUrl(): string {
 }
 
 function buildApprovalLink(token: string): string {
-  return `${getAppUrl()}/recover-guardian?token=${token}`;
+  return `${getAppUrl()}/recovery/guardian/approve?token=${token}`;
 }
 
 export async function sendRecoveryGuardianEmails(params: {
