@@ -6,7 +6,7 @@ import type { FlowStage } from "./status-display";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { BindingAuthDialog } from "@/components/auth/binding-auth-dialog";
+import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { env } from "@/env";
 import { useSession } from "@/lib/auth/auth-client";
 import { buildEnrollmentCredential } from "@/lib/privacy/credentials/build-enrollment-credential";

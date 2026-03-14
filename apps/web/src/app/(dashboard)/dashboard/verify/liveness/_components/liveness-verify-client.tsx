@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { BindingAuthDialog } from "@/components/auth/binding-auth-dialog";
 import { LivenessFlow } from "@/components/liveness/liveness-flow";
 import { LivenessProvider } from "@/components/liveness/liveness-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
