@@ -84,9 +84,12 @@
 - Each OCR circuit branch reduced from ~15 lines to ~6 lines
 - Files: `trpc/routers/zk/proof.ts`
 
-### Skipped: authorize-challenge session/protocol helpers
-- Deferred — requires careful analysis of the 4 handler functions and their session validation pattern
-- Can be tackled as a follow-up
+### Task: authorize-challenge session/protocol helpers
+- Extracted `validateChallengeSession` for session load + expiry + pending state check (used by all 4 handlers)
+- Extracted `checkDpopContinuity` for DPoP JKT mismatch guard (3 identical lines × 4 handlers)
+- Extracted `issueEip712Challenge` for nonce creation + verification insert + session update + typed data response (~35 lines × 2 handlers)
+- Collapsed OPAQUE dummy fallback in `handleOpaqueStart` where both if/else branches produced identical results
+- Files: `api/oauth2/authorize-challenge/route.ts`
 
 ## Phase 4: Code relocation
 

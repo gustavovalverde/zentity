@@ -136,6 +136,78 @@ function isExpired(s: AuthChallengeSession): boolean {
   return s.expiresAt.getTime() < Date.now();
 }
 
+async function validateChallengeSession(
+  authSession: string
+): Promise<AuthChallengeSession | Response> {
+  const session = await loadSession(authSession);
+  if (!session || isExpired(session)) {
+    return errorJson(400, "invalid_session", "Session expired or not found");
+  }
+  if (session.state !== "pending") {
+    return errorJson(400, "invalid_session", "Invalid session state");
+  }
+  return session;
+}
+
+async function checkDpopContinuity(
+  request: Request,
+  session: AuthChallengeSession
+): Promise<Response | null> {
+  const dpopJkt = await extractDpopJkt(request);
+  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
+    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  }
+  return null;
+}
+
+async function issueEip712Challenge(
+  sessionId: string,
+  authSession: string,
+  wallet: { address: string; chainId: number }
+): Promise<Response> {
+  const nonce = crypto.randomUUID();
+  const nid = nonceIdentifier(wallet.address, wallet.chainId);
+
+  await db.insert(verifications).values({
+    id: randomBytes(16).toString("hex"),
+    identifier: nid,
+    value: nonce,
+    expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+
+  await db
+    .update(authChallengeSessions)
+    .set({
+      opaqueServerState: JSON.stringify({
+        walletAddress: wallet.address,
+        chainId: wallet.chainId,
+        nonce,
+        nonceIdentifier: nid,
+      }),
+    })
+    .where(eq(authChallengeSessions.id, sessionId));
+
+  const typedData = buildDefaultTypedData(
+    wallet.address,
+    wallet.chainId,
+    nonce,
+    EIP712_APP_NAME
+  );
+
+  return NextResponse.json(
+    {
+      auth_session: authSession,
+      challenge_type: "eip712",
+      error: "insufficient_authorization",
+      nonce,
+      typed_data: typedData,
+    },
+    { status: 401 }
+  );
+}
+
 // ── Route handler ───────────────────────────────────────
 
 export async function POST(request: Request): Promise<Response> {
@@ -349,49 +421,17 @@ async function handleInitialRequest(
       return errorJson(401, "access_denied", "Authentication failed");
     }
 
+    // Need session ID for the update — query by authSession
+    const createdSession = await loadSession(authSession);
+    if (!createdSession) {
+      return errorJson(500, "server_error", "Session creation failed");
+    }
+
     const chainId = params.chain_id ?? walletInfo.chainId;
-    const nonce = crypto.randomUUID();
-    const nid = nonceIdentifier(walletInfo.address, chainId);
-
-    await db.insert(verifications).values({
-      id: randomBytes(16).toString("hex"),
-      identifier: nid,
-      value: nonce,
-      expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    // Store wallet context on the session for round 2
-    await db
-      .update(authChallengeSessions)
-      .set({
-        opaqueServerState: JSON.stringify({
-          walletAddress: walletInfo.address,
-          chainId,
-          nonce,
-          nonceIdentifier: nid,
-        }),
-      })
-      .where(eq(authChallengeSessions.authSession, authSession));
-
-    const typedData = buildDefaultTypedData(
-      walletInfo.address,
+    return issueEip712Challenge(createdSession.id, authSession, {
+      address: walletInfo.address,
       chainId,
-      nonce,
-      EIP712_APP_NAME
-    );
-
-    return NextResponse.json(
-      {
-        auth_session: authSession,
-        challenge_type: "eip712",
-        error: "insufficient_authorization",
-        nonce,
-        typed_data: typedData,
-      },
-      { status: 401 }
-    );
+    });
   }
 
   await ready;
@@ -420,18 +460,18 @@ async function handleOpaqueStart(
   }
   const { auth_session, opaque_login_request } = parsed.data;
 
-  const session = await loadSession(auth_session);
-  if (!session || isExpired(session)) {
-    return errorJson(400, "invalid_session", "Session expired or not found");
+  const sessionOrError = await validateChallengeSession(auth_session);
+  if (sessionOrError instanceof Response) {
+    return sessionOrError;
   }
-  if (session.state !== "pending" || session.challengeType !== "opaque") {
+  const session = sessionOrError;
+  if (session.challengeType !== "opaque") {
     return errorJson(400, "invalid_session", "Invalid session state");
   }
 
-  // DPoP key continuity
-  const dpopJkt = await extractDpopJkt(request);
-  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
-    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  const dpopError = await checkDpopContinuity(request, session);
+  if (dpopError) {
+    return dpopError;
   }
 
   await ready;
@@ -446,30 +486,26 @@ async function handleOpaqueStart(
     return errorJson(400, "invalid_request", "Invalid OPAQUE login request");
   }
 
-  // Resolve registration record
+  // Resolve registration record (dummy for unknown users — timing-safe)
   let registrationRecord: string;
   let loginUserIdentifier: string;
 
-  if (session.userId) {
-    const opaqueAccount = await db
-      .select({ registrationRecord: accounts.registrationRecord })
-      .from(accounts)
-      .where(
-        and(
-          eq(accounts.userId, session.userId),
-          eq(accounts.providerId, "opaque")
+  const opaqueAccount = session.userId
+    ? await db
+        .select({ registrationRecord: accounts.registrationRecord })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.userId, session.userId),
+            eq(accounts.providerId, "opaque")
+          )
         )
-      )
-      .get();
+        .get()
+    : null;
 
-    if (opaqueAccount?.registrationRecord) {
-      registrationRecord = opaqueAccount.registrationRecord;
-      loginUserIdentifier = session.userId;
-    } else {
-      const dummy = await createDummyRegistrationRecord();
-      registrationRecord = dummy.registrationRecord;
-      loginUserIdentifier = dummy.userIdentifier;
-    }
+  if (opaqueAccount?.registrationRecord && session.userId) {
+    registrationRecord = opaqueAccount.registrationRecord;
+    loginUserIdentifier = session.userId;
   } else {
     const dummy = await createDummyRegistrationRecord();
     registrationRecord = dummy.registrationRecord;
@@ -509,18 +545,18 @@ async function handleOpaqueFinish(
   }
   const { auth_session, opaque_finish_request } = parsed.data;
 
-  const session = await loadSession(auth_session);
-  if (!session || isExpired(session)) {
-    return errorJson(400, "invalid_session", "Session expired or not found");
+  const sessionOrError = await validateChallengeSession(auth_session);
+  if (sessionOrError instanceof Response) {
+    return sessionOrError;
   }
-  if (session.state !== "pending" || !session.opaqueServerState) {
+  const session = sessionOrError;
+  if (!session.opaqueServerState) {
     return errorJson(400, "invalid_session", "OPAQUE round 2 not completed");
   }
 
-  // DPoP key continuity
-  const dpopJkt = await extractDpopJkt(request);
-  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
-    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  const dpopError = await checkDpopContinuity(request, session);
+  if (dpopError) {
+    return dpopError;
   }
 
   await ready;
@@ -571,21 +607,21 @@ async function handleEip712Finish(
   }
   const { auth_session, eip712_signature } = parsed.data;
 
-  const session = await loadSession(auth_session);
-  if (!session || isExpired(session)) {
-    return errorJson(400, "invalid_session", "Session expired or not found");
+  const sessionOrError = await validateChallengeSession(auth_session);
+  if (sessionOrError instanceof Response) {
+    return sessionOrError;
   }
-  if (session.state !== "pending" || session.challengeType !== "eip712") {
+  const session = sessionOrError;
+  if (session.challengeType !== "eip712") {
     return errorJson(400, "invalid_session", "Invalid session state");
   }
   if (!(session.opaqueServerState && session.userId)) {
     return errorJson(400, "invalid_session", "EIP-712 round 1 not completed");
   }
 
-  // DPoP key continuity
-  const dpopJkt = await extractDpopJkt(request);
-  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
-    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  const dpopError = await checkDpopContinuity(request, session);
+  if (dpopError) {
+    return dpopError;
   }
 
   // Parse wallet context from session
@@ -675,22 +711,22 @@ async function handleStepUpReEntry(
     return errorJson(400, "invalid_request", "Missing auth_session");
   }
 
-  const session = await loadSession(authSession);
-  if (!session || isExpired(session)) {
-    return errorJson(400, "invalid_session", "Session expired or not found");
+  const sessionOrError = await validateChallengeSession(authSession);
+  if (sessionOrError instanceof Response) {
+    return sessionOrError;
   }
+  const session = sessionOrError;
   // Only step-up sessions (created without challengeType) can enter here
-  if (session.state !== "pending" || session.challengeType) {
+  if (session.challengeType) {
     return errorJson(400, "invalid_session", "Invalid session state");
   }
   if (!session.userId) {
     return errorJson(400, "invalid_session", "No user associated with session");
   }
 
-  // DPoP key continuity
-  const dpopJkt = await extractDpopJkt(request);
-  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
-    return errorJson(400, "invalid_session", "DPoP key mismatch");
+  const dpopError = await checkDpopContinuity(request, session);
+  if (dpopError) {
+    return dpopError;
   }
 
   // Verify user still exists
@@ -746,47 +782,7 @@ async function handleStepUpReEntry(
       return errorJson(401, "access_denied", "Authentication failed");
     }
 
-    const nonce = crypto.randomUUID();
-    const nid = nonceIdentifier(wallet.address, wallet.chainId);
-
-    await db.insert(verifications).values({
-      id: randomBytes(16).toString("hex"),
-      identifier: nid,
-      value: nonce,
-      expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    await db
-      .update(authChallengeSessions)
-      .set({
-        opaqueServerState: JSON.stringify({
-          walletAddress: wallet.address,
-          chainId: wallet.chainId,
-          nonce,
-          nonceIdentifier: nid,
-        }),
-      })
-      .where(eq(authChallengeSessions.id, session.id));
-
-    const typedData = buildDefaultTypedData(
-      wallet.address,
-      wallet.chainId,
-      nonce,
-      EIP712_APP_NAME
-    );
-
-    return NextResponse.json(
-      {
-        auth_session: authSession,
-        challenge_type: "eip712",
-        error: "insufficient_authorization",
-        nonce,
-        typed_data: typedData,
-      },
-      { status: 401 }
-    );
+    return issueEip712Challenge(session.id, authSession, wallet);
   }
 
   // OPAQUE
