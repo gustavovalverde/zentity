@@ -9,8 +9,7 @@ import { useChainId, useSignTypedData } from "wagmi";
 
 import { authClient } from "@/lib/auth/auth-client";
 
-const AUTH_PAGES_PATTERN =
-  /^\/(sign-in|sign-up|forgot-password|reset-password)/;
+const AUTH_PAGES_PATTERN = /^\/(sign-in|sign-up|recovery\/password)/;
 
 export function Eip712Bridge() {
   const { address, isConnected } = useAppKitAccount();

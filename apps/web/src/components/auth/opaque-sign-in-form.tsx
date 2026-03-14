@@ -182,7 +182,7 @@ export function OpaqueSignInForm() {
         <div className="flex justify-end">
           <Link
             className="text-muted-foreground text-xs hover:text-primary hover:underline"
-            href="/forgot-password"
+            href="/recovery/password"
           >
             Forgot password?
           </Link>

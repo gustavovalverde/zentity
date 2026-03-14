@@ -94,6 +94,28 @@
   - MOD: app/approve/[authReqId]/layout.tsx — simplified to 1 component render
   - MOD: app/oauth/consent/layout.tsx — same
 
+### Module 1.4: Password recovery vertical slice — COMPLETE
+- PRD: Module 1 (recovery vertical slice, password subtree)
+- Moved `forgot-password/` → `recovery/password/`, `forgot-password/sent/` → `recovery/password/sent/`, `reset-password/` → `recovery/password/reset/`
+- Updated 7 cross-references:
+  - `forgot-password-form.tsx` — redirectTo + router.push URLs
+  - `opaque-sign-in-form.tsx` — "Forgot password?" link
+  - `auth-ui-provider.tsx` — viewPaths (FORGOT_PASSWORD + RESET_PASSWORD)
+  - `opaque/server.ts` — buildResetUrl default fallback
+  - `auth.ts` — disabledPaths
+  - `eip712-bridge.tsx` — AUTH_PAGES_PATTERN regex
+  - Internal links in `sent/page.tsx` and `reset/page.tsx`
+- Files:
+  - MOVE: (auth)/forgot-password/page.tsx → (auth)/recovery/password/page.tsx
+  - MOVE: (auth)/forgot-password/sent/page.tsx → (auth)/recovery/password/sent/page.tsx
+  - MOVE: (auth)/reset-password/page.tsx → (auth)/recovery/password/reset/page.tsx
+  - MOD: components/auth/forgot-password-form.tsx — URLs
+  - MOD: components/auth/opaque-sign-in-form.tsx — link href
+  - MOD: components/providers/auth-ui-provider.tsx — viewPaths
+  - MOD: components/providers/eip712-bridge.tsx — regex pattern
+  - MOD: lib/auth/plugins/opaque/server.ts — default redirect URL
+  - MOD: lib/auth/auth.ts — disabledPaths
+
 ### Module 2.2: CIBA push move — COMPLETE
 - PRD: Module 2 (API route consolidation), CIBA push co-location
 - Moved `api/push/{subscribe,unsubscribe}/` → `api/ciba/push/{subscribe,unsubscribe}/`

@@ -89,7 +89,10 @@ function buildResetUrl(params: {
   token: string;
   redirectTo?: string | undefined;
 }) {
-  const url = new URL(params.redirectTo || "/reset-password", params.baseURL);
+  const url = new URL(
+    params.redirectTo || "/recovery/password/reset",
+    params.baseURL
+  );
   url.searchParams.set("token", params.token);
   return url.toString();
 }

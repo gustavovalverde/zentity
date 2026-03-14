@@ -39,7 +39,7 @@ export function ForgotPasswordForm() {
       try {
         const result = await authClient.opaque.requestPasswordReset({
           identifier: value.identifier,
-          redirectTo: "/reset-password",
+          redirectTo: "/recovery/password/reset",
         });
 
         if (result.error) {
@@ -51,7 +51,7 @@ export function ForgotPasswordForm() {
           description: "If an account exists, we sent a reset link.",
         });
         router.push(
-          `/forgot-password/sent?identifier=${encodeURIComponent(value.identifier)}`
+          `/recovery/password/sent?identifier=${encodeURIComponent(value.identifier)}`
         );
       } catch {
         setError("An unexpected error occurred. Please try again.");

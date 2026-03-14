@@ -47,7 +47,7 @@ export default async function ForgotPasswordSentPage({
 
         <div className="flex flex-col gap-2">
           <Button asChild className="w-full" variant="outline">
-            <Link href="/forgot-password">Try a different identifier</Link>
+            <Link href="/recovery/password">Try a different identifier</Link>
           </Button>
           <Button asChild className="w-full" variant="ghost">
             <Link href="/sign-in">Back to Sign In</Link>

@@ -594,7 +594,7 @@ export const auth = betterAuth({
         "/sign-in/email",
         "/sign-up/email",
         "/request-password-reset",
-        "/reset-password",
+        "/recovery/password/reset",
         "/change-password",
         "/set-password",
         "/verify-password",

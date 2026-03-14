@@ -42,7 +42,7 @@ export default async function ResetPasswordPage({
           </Alert>
           <div className="flex flex-col gap-2">
             <Button asChild className="w-full">
-              <Link href="/forgot-password">Request New Link</Link>
+              <Link href="/recovery/password">Request New Link</Link>
             </Button>
             <Button asChild className="w-full" variant="outline">
               <Link href="/sign-in">Back to Sign In</Link>
