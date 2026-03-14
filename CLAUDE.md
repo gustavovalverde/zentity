@@ -297,7 +297,7 @@ Users choose a verification method via `VerificationMethodCards` (OCR or NFC chi
 
 **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
 
-All API calls from the client use tRPC (`trpc.crypto.*`, `trpc.liveness.*`, `trpc.attestation.*`, etc.).
+All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.attestation.*`, etc.).
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
 
@@ -321,7 +321,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 
 | Router | Purpose |
 |--------|---------|
-| `crypto` | FHE encryption, ZK proof verification, challenge nonces |
+| `zk` | ZK proof verification, challenge nonces |
 | `identity` | Identity verification (document OCR, liveness, face match, proofs) |
 | `liveness` | Multi-gesture liveness detection sessions |
 | `signUp` | Account creation completion (email linking, wallet association, identity bundle creation) |
@@ -330,10 +330,9 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `account` | User account management |
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `credentials` | WebAuthn credential management |
-| `token` | Session/token operations |
+| `compliantToken` | CompliantERC20 DeFi token operations |
 | `recovery` | FROST guardian-based key recovery flow |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
-| `app` | Application-level operations |
 
 **Client usage:**
 
@@ -341,7 +340,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 import { trpc } from "@/lib/trpc/client";
 
 // Query
-const health = await trpc.crypto.health.query();
+const health = await trpc.zk.health.query();
 
 // Mutation
 const result = await trpc.liveness.verify.mutate({ sessionId, ... });
