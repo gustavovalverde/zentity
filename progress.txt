@@ -1,3 +1,114 @@
+## Domain Restructuring (docs/plans/domain-restructuring.md)
+
+### Module 1.1: Magic-link nesting — COMPLETE
+- PRD: Module 1 (page route restructuring), magic-link nesting
+- Moved `(auth)/magic-link-sent/` → `(auth)/magic-link/sent/`
+- Matches existing `forgot-password/sent/` parent/child pattern
+- Zero references to old path found — no link/import updates needed
+- Files:
+  - MOVE: apps/web/src/app/(auth)/magic-link-sent/page.tsx → (auth)/magic-link/sent/page.tsx
+- Pre-existing test failures: authorize-challenge + token-exchange integration tests (unrelated)
+
+### Module 3.1: push-banner.tsx into _components — COMPLETE
+- PRD: Module 3 (component extraction), push-banner convention fix
+- Moved `dashboard/ciba/push-banner.tsx` → `dashboard/ciba/_components/push-banner.tsx`
+- Updated import in `ciba/page.tsx`
+- Only one consumer — clean move
+- Note: human-models move DEFERRED — URL change from `/human-models/` to `/api/human-models/` could break Human.js client-side model loading silently. Needs investigation of how Human.js resolves model paths on the client.
+
+### Module 1.2 + 6.1: Merge (2fa) into (auth) — COMPLETE
+- PRD: Module 1 (merge (2fa) into (auth)) + Module 6 (layout dedup)
+- Moved `backup-codes/` and `verify-2fa/` from `(2fa)/` to `(auth)/`
+- Deleted `(2fa)/layout.tsx` — identical to `(auth)/layout.tsx` minus redirect
+- Removed the completed-user redirect from `(auth)/layout.tsx` entirely:
+  - `sign-up/page.tsx` already has its own server-side redirect
+  - `sign-in/page.tsx` uses AuthUIProvider's client-side `redirectTo="/dashboard"`
+  - Recovery/reset pages should stay accessible to logged-in users
+- Layout is now a pure visual shell + provider wrapper (KISS)
+- URL paths unchanged — route groups don't affect URLs
+- Files:
+  - DEL: apps/web/src/app/(2fa)/layout.tsx
+  - MOVE: (2fa)/backup-codes/ → (auth)/backup-codes/
+  - MOVE: (2fa)/verify-2fa/ → (auth)/verify-2fa/
+  - MOD: (auth)/layout.tsx — removed redirect + unused imports
+
+### Module 1.3: Developer consolidation — COMPLETE
+- PRD: Module 1 (developer consolidation)
+- Moved `dashboard/dev/` → `dashboard/developer/inspector/`
+- Both dev tools now under `developer/` parent: `inspector/` and `applications/`
+- Updated `app-sidebar.tsx` nav URL + `dynamic-breadcrumb.tsx` label/parent mapping
+- Only 2 files referenced old path — clean move
+- Files:
+  - MOVE: dashboard/dev/page.tsx → dashboard/developer/inspector/page.tsx
+  - MOD: components/dashboard/app-sidebar.tsx — URL update
+  - MOD: components/dashboard/dynamic-breadcrumb.tsx — label + parent mapping
+
+### Module 3.2: CibaApproveClient extraction — COMPLETE
+- PRD: Module 3 (component extraction)
+- Moved `dashboard/ciba/approve/ciba-approve-client.tsx` → `components/ciba/ciba-approve-client.tsx`
+- Eliminated the only cross-route-group import (`approve/[authReqId]` → `(dashboard)`)
+- All component imports use `@/` aliases — no relative import fixes needed
+- Fixed Biome import order in ciba/approve/page.tsx (`@/components/*` before `@/lib/*`)
+- Files:
+  - MOVE: app/(dashboard)/dashboard/ciba/approve/ciba-approve-client.tsx → components/ciba/
+  - MOD: app/(dashboard)/dashboard/ciba/approve/page.tsx — import path + order
+  - MOD: app/approve/[authReqId]/page.tsx — import path
+
+### Module 3.3: BindingAuthDialog move — COMPLETE
+- PRD: Module 3 (component extraction)
+- Moved `components/auth/binding-auth-dialog.tsx` → `components/verification/binding-auth-dialog.tsx`
+- Only consumers: `verify/liveness` and `verify/passport-chip` — verification domain
+- `components/auth/` retains 6 legitimate auth components (password forms, social buttons, etc.)
+- Files:
+  - MOVE: components/auth/binding-auth-dialog.tsx → components/verification/
+  - MOD: verify/liveness/_components/liveness-verify-client.tsx — import path
+  - MOD: verify/passport-chip/_components/zkpassport-flow.tsx — import path
+
+### Module 5: tRPC crypto → zk rename — COMPLETE
+- PRD: Module 5 (tRPC router renames)
+- Renamed `routers/crypto/` → `routers/zk/`, `cryptoRouter` → `zkRouter`
+- Updated 12 files: router registration, client usage, type aliases, tests, API route import
+- Key: `RouterOutputs["crypto"]` bracket notation needed separate fix (sed missed it)
+- `CryptoOutputs` type alias → `ZkOutputs` in zk/client.ts
+- Biome auto-fixed import ordering in app.ts (zk sorted alphabetically after token)
+- Files:
+  - RENAME: lib/trpc/routers/crypto/ → zk/ (8 files)
+  - MOD: lib/trpc/routers/app.ts — import + registration
+  - MOD: lib/trpc/routers/credentials.ts — comment
+  - MOD: lib/trpc/routers/__tests__/bbs.test.ts — import path
+  - MOD: lib/trpc/routers/__tests__/proof-security.test.ts — import + variable name
+  - MOD: lib/trpc/client.ts — doc comments
+  - MOD: lib/privacy/zk/client.ts — trpc.zk.* + ZkOutputs type
+  - MOD: lib/privacy/zk/binding-context.ts — trpc.zk.*
+  - MOD: lib/privacy/fhe/__tests__/browser.test.ts — trpc.zk.*
+  - MOD: app/api/crypto/nationality-proof/verify/route.ts — import path
+  - MOD: app/(dashboard)/dashboard/developer/inspector/page.tsx — RouterOutputs["zk"]
+
+### Module 6.2: Shared standalone layout — COMPLETE
+- PRD: Module 6 (layout deduplication)
+- Created `components/layouts/standalone-layout.tsx` — shared header + providers shell
+- `approve/[authReqId]/layout.tsx` and `oauth/consent/layout.tsx` were identical
+- Both now thin wrappers: read cookies → render `<StandaloneLayout>`
+- Files:
+  - NEW: components/layouts/standalone-layout.tsx
+  - MOD: app/approve/[authReqId]/layout.tsx — simplified to 1 component render
+  - MOD: app/oauth/consent/layout.tsx — same
+
+### Module 2.2: CIBA push move — COMPLETE
+- PRD: Module 2 (API route consolidation), CIBA push co-location
+- Moved `api/push/{subscribe,unsubscribe}/` → `api/ciba/push/{subscribe,unsubscribe}/`
+- Moved test file alongside — relative imports preserved (`../subscribe/route`)
+- Updated fetch URLs in `lib/push/client.ts`: `/api/push/*` → `/api/ciba/push/*`
+- Updated test describe labels and Request URLs
+- No references in `next.config.ts`, `push-sw.js`, or service worker — clean move
+- `lib/push/` (client + server modules) and `lib/db/schema/push.ts` stay in place (library code, not routes)
+- Files:
+  - MOVE: app/api/push/subscribe/route.ts → app/api/ciba/push/subscribe/route.ts
+  - MOVE: app/api/push/unsubscribe/route.ts → app/api/ciba/push/unsubscribe/route.ts
+  - MOVE: app/api/push/__tests__/push-routes.integration.test.ts → app/api/ciba/push/__tests__/
+  - MOD: lib/push/client.ts — fetch URLs updated
+  - MOD: api/ciba/push/__tests__/push-routes.integration.test.ts — describe labels + Request URLs
+
 ## MCP Agent Server
 
 ### Phase 1: Project Bootstrap & Echo Tool — COMPLETE

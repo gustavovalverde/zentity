@@ -33,7 +33,7 @@ function mockUnauthorized() {
 }
 
 function makeSubscribeRequest(body: unknown): Request {
-  return new Request("http://localhost/api/push/subscribe", {
+  return new Request("http://localhost/api/ciba/push/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -41,7 +41,7 @@ function makeSubscribeRequest(body: unknown): Request {
 }
 
 function makeUnsubscribeRequest(body: unknown): Request {
-  return new Request("http://localhost/api/push/unsubscribe", {
+  return new Request("http://localhost/api/ciba/push/unsubscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -57,7 +57,7 @@ const validSubscription = {
   },
 };
 
-describe("POST /api/push/subscribe", () => {
+describe("POST /api/ciba/push/subscribe", () => {
   beforeEach(async () => {
     await resetDatabase();
     authMocks.requireSession.mockReset();
@@ -156,7 +156,7 @@ describe("POST /api/push/subscribe", () => {
   });
 });
 
-describe("POST /api/push/unsubscribe", () => {
+describe("POST /api/ciba/push/unsubscribe", () => {
   beforeEach(async () => {
     await resetDatabase();
     authMocks.requireSession.mockReset();

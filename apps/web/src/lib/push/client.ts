@@ -44,7 +44,7 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
     applicationServerKey: keyBytes.buffer as ArrayBuffer,
   });
 
-  const res = await fetch("/api/push/subscribe", {
+  const res = await fetch("/api/ciba/push/subscribe", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -81,7 +81,7 @@ export async function unsubscribeFromPush(): Promise<void> {
   const { endpoint } = subscription;
   await subscription.unsubscribe();
 
-  await fetch("/api/push/unsubscribe", {
+  await fetch("/api/ciba/push/unsubscribe", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
