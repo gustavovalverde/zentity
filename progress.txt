@@ -12,3 +12,8 @@
 - Deleted duplicate definitions from: `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`
 - Unified validation: all consumers now use `.min(1)` + strict Zod schema check (strictest version)
 - Files: `privacy/secrets/types.ts`, `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`
+
+### Task: Shared msgpack response helpers
+- Extracted `msgpackResponse` and `jsonError` into `lib/utils/api-response.ts`
+- Deleted duplicate definitions from: `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`
+- Files: `utils/api-response.ts`, `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`

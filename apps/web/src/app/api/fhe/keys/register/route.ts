@@ -1,4 +1,4 @@
-import { decode, encode } from "@msgpack/msgpack";
+import { decode } from "@msgpack/msgpack";
 
 import { auth } from "@/lib/auth/auth";
 import { isRegistrationTokenValid } from "@/lib/auth/fhe-enrollment-tokens";
@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/queries/crypto";
 import { registerFheKey } from "@/lib/privacy/fhe/service";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
+import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
 
 export const runtime = "nodejs";
 
@@ -19,22 +20,6 @@ interface RegisterFheKeyPayload {
 
 function isNonEmptyBytes(value: unknown): value is Uint8Array {
   return value instanceof Uint8Array && value.byteLength > 0;
-}
-
-function msgpackResponse(data: unknown, status = 200): Response {
-  return new Response(encode(data), {
-    status,
-    headers: {
-      "Content-Type": "application/msgpack",
-    },
-  });
-}
-
-function jsonError(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
 }
 
 export async function POST(req: Request) {

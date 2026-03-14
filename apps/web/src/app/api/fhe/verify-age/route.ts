@@ -1,10 +1,11 @@
-import { decode, encode } from "@msgpack/msgpack";
+import { decode } from "@msgpack/msgpack";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
+import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
 
 export const runtime = "nodejs";
 
@@ -12,22 +13,6 @@ interface VerifyAgePayload {
   currentYear?: number;
   keyId?: string;
   minAge?: number;
-}
-
-function msgpackResponse(data: unknown, status = 200): Response {
-  return new Response(encode(data), {
-    status,
-    headers: {
-      "Content-Type": "application/msgpack",
-    },
-  });
-}
-
-function jsonError(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
 }
 
 export async function POST(req: Request) {
