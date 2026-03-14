@@ -15,7 +15,7 @@ import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-import { PushNotificationBanner } from "./push-banner";
+import { PushNotificationBanner } from "./_components/push-banner";
 
 function statusVariant(
   status: string
