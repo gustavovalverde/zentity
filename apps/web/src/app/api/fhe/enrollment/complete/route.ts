@@ -18,44 +18,10 @@ import {
   updateIdentityBundleFheStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
+import { prfSaltSchema, wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { base64ToBytes } from "@/lib/utils/base64";
 
 export const runtime = "nodejs";
-
-const wrappedDekJsonSchema = z.object({
-  alg: z.string().min(1),
-  iv: z.string().min(1),
-  ciphertext: z.string().min(1),
-});
-
-const wrappedDekSchema = z.string().refine(
-  (val) => {
-    try {
-      return wrappedDekJsonSchema.safeParse(JSON.parse(val)).success;
-    } catch {
-      return false;
-    }
-  },
-  {
-    message:
-      "wrappedDek must be a JSON object with {alg, iv, ciphertext} as non-empty strings",
-  }
-);
-
-const prfSaltSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (val) => {
-      try {
-        return base64ToBytes(val).byteLength === 32;
-      } catch {
-        return false;
-      }
-    },
-    { message: "prfSalt must be base64-encoded 32 bytes" }
-  );
 
 const enrollmentSchema = z.object({
   registrationToken: z.string().min(1),

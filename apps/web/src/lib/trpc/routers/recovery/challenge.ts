@@ -36,6 +36,7 @@ import {
   updateTwoFactorBackupCodes,
 } from "@/lib/db/queries/two-factor";
 import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
+import { wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import {
   RECOVERY_GUARDIAN_TYPE_EMAIL,
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
@@ -424,21 +425,6 @@ export const recoverDekProcedure = publicProcedure
       ),
     };
   });
-
-const wrappedDekSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (val) => {
-      try {
-        const parsed = JSON.parse(val);
-        return parsed.alg && parsed.iv && parsed.ciphertext;
-      } catch {
-        return false;
-      }
-    },
-    { message: "wrappedDek must be a JSON object with {alg, iv, ciphertext}" }
-  );
 
 /**
  * Step 2: Client stores pre-wrapped DEKs after client-side re-wrapping.

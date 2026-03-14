@@ -6,3 +6,9 @@
 - Renamed `ISSUER_ID` → `BUNDLE_ISSUER_ID`, `POLICY_VERSION` → `BUNDLE_POLICY_VERSION` in sign-up router
 - Files: `trpc/server.ts`, `trpc/routers/identity/helpers/job-processor.ts`, `trpc/routers/sign-up.ts`
 - Note: 2 pre-existing test failures in `authorize-challenge.integration.test.ts` and `token-exchange.integration.test.ts` (unrelated)
+
+### Task: Shared Zod schemas for encrypted key material
+- Extracted `wrappedDekSchema` and `prfSaltSchema` into `lib/privacy/secrets/types.ts`
+- Deleted duplicate definitions from: `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`
+- Unified validation: all consumers now use `.min(1)` + strict Zod schema check (strictest version)
+- Files: `privacy/secrets/types.ts`, `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`

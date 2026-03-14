@@ -14,6 +14,8 @@
 
 import { z } from "zod";
 
+import { base64ToBytes } from "@/lib/utils/base64";
+
 /**
  * All valid secret types in the system.
  * Add new types here when introducing new encrypted secret categories.
@@ -39,6 +41,43 @@ export const secretTypeSchema = z.enum([
  * Derived from the schema for type safety.
  */
 export type SecretType = z.infer<typeof secretTypeSchema>;
+
+const wrappedDekJsonSchema = z.object({
+  alg: z.string().min(1),
+  iv: z.string().min(1),
+  ciphertext: z.string().min(1),
+});
+
+export const wrappedDekSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (val) => {
+      try {
+        return wrappedDekJsonSchema.safeParse(JSON.parse(val)).success;
+      } catch {
+        return false;
+      }
+    },
+    {
+      message:
+        "wrappedDek must be a JSON object with {alg, iv, ciphertext} as non-empty strings",
+    }
+  );
+
+export const prfSaltSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (val) => {
+      try {
+        return base64ToBytes(val).byteLength === 32;
+      } catch {
+        return false;
+      }
+    },
+    { message: "prfSalt must be base64-encoded 32 bytes" }
+  );
 
 /**
  * Envelope format for encrypted payloads.

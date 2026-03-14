@@ -23,50 +23,16 @@ import {
   getSecretBlobMaxBytes,
   isValidSecretBlobRef,
 } from "@/lib/privacy/secrets/storage.server";
-import { secretTypeSchema } from "@/lib/privacy/secrets/types";
-import { base64ToBytes } from "@/lib/utils/base64";
+import {
+  prfSaltSchema,
+  secretTypeSchema,
+  wrappedDekSchema,
+} from "@/lib/privacy/secrets/types";
 
 import { protectedProcedure, router } from "../server";
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
-
-const wrappedDekJsonSchema = z.object({
-  alg: z.string().min(1),
-  iv: z.string().min(1),
-  ciphertext: z.string().min(1),
-});
-
-const wrappedDekSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (val) => {
-      try {
-        return wrappedDekJsonSchema.safeParse(JSON.parse(val)).success;
-      } catch {
-        return false;
-      }
-    },
-    {
-      message:
-        "wrappedDek must be a JSON object with {alg, iv, ciphertext} as non-empty strings",
-    }
-  );
-
-const prfSaltSchema = z.string().refine(
-  (val) => {
-    if (!val) {
-      return true;
-    }
-    try {
-      return base64ToBytes(val).byteLength === 32;
-    } catch {
-      return false;
-    }
-  },
-  { message: "prfSalt must be base64-encoded 32 bytes" }
-);
 
 export const secretsRouter = router({
   getPasskeyUser: protectedProcedure.query(({ ctx }) => ({
