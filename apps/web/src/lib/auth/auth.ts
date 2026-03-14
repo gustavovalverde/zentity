@@ -166,6 +166,17 @@ function buildNotificationBody(
   return `${clientLabel} is requesting access`;
 }
 
+function toScopeList(scopes: unknown): string[] {
+  return Array.isArray(scopes) ? [...scopes] : [];
+}
+
+function hasAnyProofScope(scopeList: string[]): boolean {
+  return (
+    scopeList.includes("proof:identity") ||
+    extractProofScopes(scopeList).length > 0
+  );
+}
+
 // Build trusted origins based on environment
 // In production: only the configured app URL + any explicit TRUSTED_ORIGINS
 // In development: also trust all localhost variants (IPv4/IPv6)
@@ -514,6 +525,194 @@ function validateDcrRegistration(
   }
 }
 
+// ── Before-hook handlers ──────────────────────────────────
+
+type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
+function beforeDcrRegister(ctx: HookCtx) {
+  validateDcrRegistration(ctx.body);
+  if (ctx.body && !ctx.body.subject_type) {
+    ctx.body.subject_type = "pairwise";
+  }
+}
+
+async function beforeVpResponse(ctx: HookCtx) {
+  const state =
+    typeof ctx.body?.state === "string" ? ctx.body.state : undefined;
+  if (!state) {
+    return;
+  }
+  const vpSession = await db
+    .select({
+      clientId: haipVpSessions.clientId,
+      clientIdScheme: haipVpSessions.clientIdScheme,
+    })
+    .from(haipVpSessions)
+    .where(eq(haipVpSessions.state, state))
+    .limit(1)
+    .get();
+
+  if (vpSession?.clientIdScheme === "x509_hash" && vpSession.clientId) {
+    const chain = loadX5cChain();
+    if (!(chain && validateX509Hash(vpSession.clientId, chain))) {
+      throw new APIError("FORBIDDEN", {
+        message: "x509_hash client_id does not match certificate chain",
+      });
+    }
+  }
+}
+
+async function beforeTokenPairwiseGuard(ctx: HookCtx) {
+  if (!ctx.body?.resource) {
+    return;
+  }
+  const clientId =
+    typeof ctx.body.client_id === "string" ? ctx.body.client_id : undefined;
+  if (!clientId) {
+    return;
+  }
+  const client = await db
+    .select({ subjectType: oauthClients.subjectType })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+  if (client?.subjectType === "pairwise") {
+    ctx.body.resource = undefined;
+  }
+}
+
+function beforeConsentStripIdentityScopes(ctx: HookCtx) {
+  if (typeof ctx.body?.scope !== "string") {
+    return;
+  }
+  ctx.body.scope = ctx.body.scope
+    .split(" ")
+    .filter((s: string) => !isIdentityScope(s))
+    .join(" ");
+}
+
+function beforeValidateResourceUri(ctx: HookCtx) {
+  const result = validateResourceUri(ctx.body?.resource);
+  if (!result.valid) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: result.error,
+    });
+  }
+}
+
+async function beforeResolveCimd(ctx: HookCtx) {
+  const clientId =
+    ctx.path === "/oauth2/par"
+      ? (ctx.body?.client_id as string | undefined)
+      : (ctx.query?.client_id as string | undefined);
+  if (clientId && isUrlClientId(clientId, isProduction)) {
+    const cimd = await resolveCimdClient(clientId);
+    if (!cimd.resolved) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_client",
+        error_description: cimd.error,
+      });
+    }
+  }
+}
+
+function beforeTokenValidateResource(ctx: HookCtx) {
+  const grantType = ctx.body?.grant_type as string | undefined;
+  if (grantType === "client_credentials") {
+    beforeValidateResourceUri(ctx);
+  } else if (grantType === "authorization_code" && ctx.body?.resource) {
+    beforeValidateResourceUri(ctx);
+  }
+}
+
+// ── After-hook handlers ───────────────────────────────────
+
+async function afterConsentPairwiseCleanup(ctx: HookCtx) {
+  const sessionCtx = ctx.context as {
+    session?: { user?: { id?: string } };
+  };
+  const userId = sessionCtx.session?.user?.id;
+  const oauthQuery =
+    typeof ctx.body?.oauth_query === "string"
+      ? ctx.body.oauth_query
+      : undefined;
+  if (!(userId && oauthQuery)) {
+    return;
+  }
+  const params = new URLSearchParams(oauthQuery);
+  const clientId = params.get("client_id");
+  const originalScopes = (params.get("scope") ?? "").split(" ");
+  const hasIdentityScopes = originalScopes.some((s) => isIdentityScope(s));
+
+  if (clientId && !hasIdentityScopes) {
+    const client = await db
+      .select({ subjectType: oauthClients.subjectType })
+      .from(oauthClients)
+      .where(eq(oauthClients.clientId, clientId))
+      .limit(1)
+      .get();
+
+    if (client?.subjectType === "pairwise") {
+      await db
+        .delete(oauthConsents)
+        .where(
+          and(
+            eq(oauthConsents.userId, userId),
+            eq(oauthConsents.clientId, clientId)
+          )
+        )
+        .run();
+    }
+  }
+}
+
+async function afterParPersistResource(ctx: HookCtx) {
+  if (!ctx.body?.resource) {
+    return;
+  }
+  const clientId = ctx.body.client_id as string | undefined;
+  if (!clientId) {
+    return;
+  }
+  const record = await db
+    .select({ id: haipPushedRequests.id })
+    .from(haipPushedRequests)
+    .where(eq(haipPushedRequests.clientId, clientId))
+    .orderBy(desc(haipPushedRequests.createdAt))
+    .limit(1)
+    .get();
+  if (record) {
+    await db
+      .update(haipPushedRequests)
+      .set({ resource: ctx.body.resource as string })
+      .where(eq(haipPushedRequests.id, record.id))
+      .run();
+  }
+}
+
+async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
+  const sessionCtx = ctx.context as {
+    session?: { user?: { id?: string } };
+  };
+  const userId = sessionCtx.session?.user?.id;
+  if (!userId) {
+    return;
+  }
+  const config = await getRecoveryConfigByUserId(userId);
+  if (!config) {
+    return;
+  }
+  const guardian = await getRecoveryGuardianByType({
+    recoveryConfigId: config.id,
+    guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+  });
+  if (guardian) {
+    await deleteRecoveryGuardian(guardian.id);
+  }
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -647,233 +846,47 @@ export const auth = betterAuth({
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/register") {
-        validateDcrRegistration(ctx.body);
-        if (ctx.body && !ctx.body.subject_type) {
-          ctx.body.subject_type = "pairwise";
+        return beforeDcrRegister(ctx);
+      }
+      if (ctx.path === "/oidc4vp/response") {
+        return beforeVpResponse(ctx);
+      }
+      if (ctx.path === "/oauth2/token") {
+        await beforeTokenPairwiseGuard(ctx);
+        if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
+          await enforceCibaTokenAcr(ctx, db);
         }
+        beforeTokenValidateResource(ctx);
         return;
       }
-
-      // OID4VP response: validate x509_hash client_id against x5c chain
-      if (ctx.path === "/oidc4vp/response") {
-        const state =
-          typeof ctx.body?.state === "string" ? ctx.body.state : undefined;
-        if (state) {
-          const vpSession = await db
-            .select({
-              clientId: haipVpSessions.clientId,
-              clientIdScheme: haipVpSessions.clientIdScheme,
-            })
-            .from(haipVpSessions)
-            .where(eq(haipVpSessions.state, state))
-            .limit(1)
-            .get();
-
-          if (vpSession?.clientIdScheme === "x509_hash" && vpSession.clientId) {
-            const chain = loadX5cChain();
-            if (!(chain && validateX509Hash(vpSession.clientId, chain))) {
-              throw new APIError("FORBIDDEN", {
-                message: "x509_hash client_id does not match certificate chain",
-              });
-            }
-          }
-        }
+      if (ctx.path === "/oauth2/consent") {
+        return beforeConsentStripIdentityScopes(ctx);
       }
-
-      // Pairwise privacy guard: strip `resource` from token requests for
-      // pairwise clients. Without `resource`, the plugin issues an opaque
-      // access token instead of a JWT — preventing user.id leakage in the
-      // AT `sub` claim. JWT ATs need user.id for AS-internal lookups
-      // (userinfo, introspection), so pairwise sub can't be used there.
-      // Opaque ATs are fine: the RP uses them as bearer tokens, and
-      // userinfo/introspection resolve pairwise sub at the presentation layer.
-      if (ctx.path === "/oauth2/token" && ctx.body?.resource) {
-        const clientId =
-          typeof ctx.body.client_id === "string"
-            ? ctx.body.client_id
-            : undefined;
-        if (clientId) {
-          const client = await db
-            .select({ subjectType: oauthClients.subjectType })
-            .from(oauthClients)
-            .where(eq(oauthClients.clientId, clientId))
-            .limit(1)
-            .get();
-          if (client?.subjectType === "pairwise") {
-            ctx.body.resource = undefined;
-          }
-        }
-      }
-
-      // Server-side enforcement: strip identity.* scopes from consent to
-      // ensure they are never persisted, regardless of client behavior.
-      if (
-        ctx.path === "/oauth2/consent" &&
-        typeof ctx.body?.scope === "string"
-      ) {
-        const filtered = ctx.body.scope
-          .split(" ")
-          .filter((s: string) => !isIdentityScope(s))
-          .join(" ");
-        ctx.body.scope = filtered;
-      }
-
-      // RFC 8707: validate resource indicator on PAR requests
       if (ctx.path === "/oauth2/par") {
-        const result = validateResourceUri(ctx.body?.resource);
-        if (!result.valid) {
-          throw new APIError("BAD_REQUEST", {
-            error: "invalid_request",
-            error_description: result.error,
-          });
-        }
+        beforeValidateResourceUri(ctx);
+        await beforeResolveCimd(ctx);
+        return;
       }
-
-      // CIMD: resolve URL-formatted client_id before plugin's getClient()
-      if (ctx.path === "/oauth2/authorize" || ctx.path === "/oauth2/par") {
-        const clientId =
-          ctx.path === "/oauth2/par"
-            ? (ctx.body?.client_id as string | undefined)
-            : (ctx.query?.client_id as string | undefined);
-        if (clientId && isUrlClientId(clientId, isProduction)) {
-          const cimd = await resolveCimdClient(clientId);
-          if (!cimd.resolved) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_client",
-              error_description: cimd.error,
-            });
-          }
-        }
-      }
-
-      // Step-up authentication: enforce acr_values and max_age on authorize
       if (ctx.path === "/oauth2/authorize") {
+        await beforeResolveCimd(ctx);
         await enforceStepUp(ctx, db);
+        return;
       }
-
-      // CIBA step-up: enforce acr_values at approval time
       if (ctx.path === "/ciba/authorize") {
-        await enforceCibaApprovalAcr(ctx, db);
-      }
-
-      // CIBA step-up: safety net at token exchange time
-      if (
-        ctx.path === "/oauth2/token" &&
-        ctx.body?.grant_type === "urn:openid:params:grant-type:ciba"
-      ) {
-        await enforceCibaTokenAcr(ctx, db);
-      }
-
-      // RFC 8707: validate resource indicator at token endpoint.
-      // - client_credentials: resource is required (no prior authorization step)
-      // - authorization_code: validate format if present but don't require it
-      //   (FPA challenge flow doesn't use PAR; standard flows already require
-      //   resource at PAR time)
-      // - CIBA: handled separately via cibaRequests.resource
-      if (ctx.path === "/oauth2/token") {
-        const grantType = ctx.body?.grant_type as string | undefined;
-        if (grantType === "client_credentials") {
-          const result = validateResourceUri(ctx.body?.resource);
-          if (!result.valid) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_request",
-              error_description: result.error,
-            });
-          }
-        } else if (grantType === "authorization_code" && ctx.body?.resource) {
-          const result = validateResourceUri(ctx.body.resource);
-          if (!result.valid) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_request",
-              error_description: result.error,
-            });
-          }
-        }
+        return enforceCibaApprovalAcr(ctx, db);
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
-      const sessionCtx = ctx.context as {
-        session?: { user?: { id?: string } };
-      };
-
-      // Pairwise consent cleanup: delete consent records for pairwise clients
-      // that only received proof scopes (no identity.* PII was shared).
       if (ctx.path === "/oauth2/consent") {
-        const userId = sessionCtx.session?.user?.id;
-        const oauthQuery =
-          typeof ctx.body?.oauth_query === "string"
-            ? ctx.body.oauth_query
-            : undefined;
-        if (userId && oauthQuery) {
-          const params = new URLSearchParams(oauthQuery);
-          const clientId = params.get("client_id");
-          const originalScopes = (params.get("scope") ?? "").split(" ");
-          const hasIdentityScopes = originalScopes.some((s) =>
-            isIdentityScope(s)
-          );
-
-          if (clientId && !hasIdentityScopes) {
-            const client = await db
-              .select({ subjectType: oauthClients.subjectType })
-              .from(oauthClients)
-              .where(eq(oauthClients.clientId, clientId))
-              .limit(1)
-              .get();
-
-            if (client?.subjectType === "pairwise") {
-              await db
-                .delete(oauthConsents)
-                .where(
-                  and(
-                    eq(oauthConsents.userId, userId),
-                    eq(oauthConsents.clientId, clientId)
-                  )
-                )
-                .run();
-            }
-          }
-        }
+        await afterConsentPairwiseCleanup(ctx);
+        return;
       }
-
-      // RFC 8707: persist resource indicator on the PAR record so it
-      // can be referenced by step-up hooks and token-endpoint binding.
-      if (ctx.path === "/oauth2/par" && ctx.body?.resource) {
-        const clientId = ctx.body.client_id as string | undefined;
-        if (clientId) {
-          const record = await db
-            .select({ id: haipPushedRequests.id })
-            .from(haipPushedRequests)
-            .where(eq(haipPushedRequests.clientId, clientId))
-            .orderBy(desc(haipPushedRequests.createdAt))
-            .limit(1)
-            .get();
-          if (record) {
-            await db
-              .update(haipPushedRequests)
-              .set({ resource: ctx.body.resource as string })
-              .where(eq(haipPushedRequests.id, record.id))
-              .run();
-          }
-        }
+      if (ctx.path === "/oauth2/par") {
+        await afterParPersistResource(ctx);
+        return;
       }
-
-      // Guardian cleanup when 2FA is disabled
       if (ctx.path === "/two-factor/disable") {
-        const userId = sessionCtx.session?.user?.id;
-        if (!userId) {
-          return;
-        }
-        const config = await getRecoveryConfigByUserId(userId);
-        if (!config) {
-          return;
-        }
-        const guardian = await getRecoveryGuardianByType({
-          recoveryConfigId: config.id,
-          guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
-        });
-        if (guardian) {
-          await deleteRecoveryGuardian(guardian.id);
-        }
+        await afterTwoFactorDisableGuardianCleanup(ctx);
       }
     }),
   },
@@ -999,7 +1012,7 @@ export const auth = betterAuth({
         // exchange) never have identity scopes, so they exit here.
         // Even if they did, consumeReleaseHandle returns null when nothing
         // is staged — defense-in-depth.
-        const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
+        const scopeList = toScopeList(scopes);
         if (!scopeList.some(isIdentityScope)) {
           return {};
         }
@@ -1007,7 +1020,7 @@ export const auth = betterAuth({
         return handle ? { release_handle: handle } : {};
       },
       customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
-        const scopeList: string[] = Array.isArray(scopes) ? [...scopes] : [];
+        const scopeList = toScopeList(scopes);
 
         // Identity claims require ephemeral staging (vault unlock)
         const ephemeral = consumeEphemeralClaimsByUser(user.id);
@@ -1016,10 +1029,7 @@ export const auth = betterAuth({
           : {};
 
         // Proof claims use the granted scopes directly — no vault unlock needed
-        const hasProofScopes =
-          scopeList.includes("proof:identity") ||
-          extractProofScopes(scopeList).length > 0;
-        const proofClaims = hasProofScopes
+        const proofClaims = hasAnyProofScope(scopeList)
           ? filterProofClaimsByScopes(
               await buildProofClaims(user.id),
               scopeList
@@ -1057,13 +1067,9 @@ export const auth = betterAuth({
         };
       },
       customUserInfoClaims: async ({ user, scopes }) => {
-        const scopeList: string[] = Array.isArray(scopes) ? scopes : [];
+        const scopeList = toScopeList(scopes);
 
-        // Proof verification claims — filtered by granular proof:* sub-scopes
-        const hasProofScopes =
-          scopeList.includes("proof:identity") ||
-          extractProofScopes(scopeList).length > 0;
-        if (!hasProofScopes) {
+        if (!hasAnyProofScope(scopeList)) {
           return {};
         }
 

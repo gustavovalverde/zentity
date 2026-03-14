@@ -49,3 +49,11 @@
 - Removed unused `getIdentityBundleByUserId` and `updateIdentityBundleFheStatus` imports from those routes
 - `updateIdentityBundleFheStatus` still used by `encryption.ts` (FHE job processor) — not deleted
 - Files: `api/fhe/status/route.ts`, `api/fhe/enrollment/complete/route.ts`, enrollment complete test
+
+### Task: Scope normalization + proof scope detection + named hook handlers
+- Added `toScopeList(scopes)` replacing 3x `Array.isArray(scopes) ? [...scopes] : []`
+- Added `hasAnyProofScope(scopeList)` replacing 2x `includes("proof:identity") || extractProofScopes().length > 0`
+- Extracted 10 before-hook handlers and 3 after-hook handlers as named functions
+- Hooks now read as dispatch tables (~40 lines) instead of monolithic blocks (~230 lines)
+- All functions stay in `auth.ts` — no new files
+- Files: `auth/auth.ts`
