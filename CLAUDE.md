@@ -48,6 +48,35 @@ The frontend handles:
 - OAuth 2.1 / OpenID Connect provider for third-party integrations (via better-auth)
 - **FROST threshold signatures** for guardian-based key recovery
 
+## Route Architecture
+
+### Naming convention
+
+Name routes by **domain noun** (what it manages), sub-routes by **action/state** (what the user does). Example: `recovery/password/sent/` not `forgot-password-sent/`.
+
+### Page routes (`apps/web/src/app/`)
+
+- **Route groups** `()` are visual/provider shells — they don't affect URLs
+- **`_components/`** for co-located non-route components — no exceptions
+- **AuthView wrappers** (`callback/`, `email-verification/`, `magic-link/`, `recovery/`) are an accepted Next.js App Router constraint, not a design flaw
+- **Standalone routes** (`approve/`, `oauth/consent/`) live at the app root with their own layout when they need no sidebar chrome
+- **`verify/` subtree** is the reference implementation: domain folders, `_components/`, server→client splits, meaningful server-side gates
+
+### API routes (`apps/web/src/app/api/`)
+
+Name by domain noun, not implementation mechanism:
+
+| Domain | Prefix | Contains |
+|--------|--------|----------|
+| FHE | `api/fhe/` | enrollment, key registration, status, age verification, diagnostics |
+| ZK | `api/zk/` | circuit artifacts, nationality proof verification |
+| CIBA | `api/ciba/` | identity intent/stage, push subscribe/unsubscribe |
+| OAuth2 | `api/oauth2/` | identity intent/stage/unstage |
+
+### tRPC routers (`src/lib/trpc/routers/`)
+
+Router names must match the domain they serve. Only rename `crypto` → `zk` was needed — all others were already correct.
+
 ## Build & Development Commands
 
 ### Web Frontend (apps/web)

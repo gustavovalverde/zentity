@@ -191,6 +191,13 @@
   - MOVE: 4 route files + 1 test file
   - MOD: 6 files with URL/import updates
 
+### Module 7: Convention documentation — COMPLETE
+- PRD: Module 7 (convention documentation)
+- Added "Route Architecture" section to CLAUDE.md between Architecture and Build sections
+- Documents: naming convention (noun domains, action sub-routes), page route patterns (_components/, AuthView wrappers, standalone routes, verify/ as reference), API route domain table, tRPC router naming rule
+- Files:
+  - MOD: CLAUDE.md — new Route Architecture section
+
 ### Module 2.2: CIBA push move — COMPLETE
 - PRD: Module 2 (API route consolidation), CIBA push co-location
 - Moved `api/push/{subscribe,unsubscribe}/` → `api/ciba/push/{subscribe,unsubscribe}/`
