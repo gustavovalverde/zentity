@@ -386,3 +386,24 @@
   - MOD: apps/web/src/lib/auth/__tests__/rfc8707-resource.integration.test.ts — 3 new tests
 - Blockers:
   - PAR-to-token resource matching requires oauth-provider patch (verification value doesn't store resource)
+
+### Module 3.4: Vault unlock state machine extraction — COMPLETE
+- PRD: Module 3 (component extraction), vault unlock orchestration
+- Extracted ~120 lines of duplicated state machine + ~120 lines of duplicated JSX from consent-client.tsx and ciba-approve-client.tsx
+- Created `useVaultUnlock` hook: owns vault state, intent tokens, profile ref, activation/deactivation effects, auto-fetch
+- Created `VaultUnlockPanel` component: renders unlock UI for passkey/OPAQUE/wallet modes
+- Created `fetchIntentFromEndpoint` shared helper: HTTP request + response validation for intent token endpoints
+- Moved `vault-unlock.tsx` → `vault-unlock/vault-unlock.tsx` (directory for cohesive module)
+- Strategy pattern: consumers provide `fetchIntentToken` callback (OAuth2 vs CIBA endpoint) + `active` boolean
+- Hook's `active` flag unifies consent's scope-toggle reset and CIBA's ready-state gating
+- Files:
+  - MOVE: components/vault-unlock.tsx → components/vault-unlock/vault-unlock.tsx
+  - NEW: components/vault-unlock/use-vault-unlock.ts — hook + fetchIntentFromEndpoint helper
+  - NEW: components/vault-unlock/vault-unlock-panel.tsx — shared unlock UI component
+  - MOD: app/oauth/consent/consent-client.tsx — replaced ~120 lines with hook + panel
+  - MOD: components/ciba/ciba-approve-client.tsx — replaced ~120 lines with hook + panel
+  - MOD: apps/web/README.md — updated stale API route table (crypto→zk, FHE consolidation)
+
+### Module 2.1: API route rename api/crypto/ → api/zk/ — ALREADY COMPLETE
+- Verified: routes were moved in prior iteration (Module 5 tRPC rename)
+- Only stale reference: README API route table — fixed in Module 3.4 commit

@@ -2,9 +2,9 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { Lock, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,21 +19,15 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  fetchIntentFromEndpoint,
+  useVaultUnlock,
+} from "@/components/vault-unlock/use-vault-unlock";
+import {
   buildIdentityPayload,
   buildScopeKey,
-  classifyVaultError,
-  OpaqueVaultUnlockForm,
-  VAULT_ERRORS,
-  VaultErrorAlert,
-  type VaultState,
-  WalletVaultUnlockButton,
-} from "@/components/vault-unlock";
+} from "@/components/vault-unlock/vault-unlock";
+import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
 import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
-import {
-  getStoredProfile,
-  type ProfileSecretPayload,
-  resetProfileSecretCache,
-} from "@/lib/privacy/secrets/profile";
 
 interface AuthorizationDetail {
   amount?: { currency?: string; value?: string };
@@ -54,12 +48,6 @@ interface CibaRequestDetails {
   status: string;
 }
 
-interface IdentityIntentState {
-  expiresAt: number;
-  scopeKey: string;
-  token: string;
-}
-
 type PageState =
   | "loading"
   | "ready"
@@ -69,8 +57,6 @@ type PageState =
   | "rejected"
   | "expired"
   | "error";
-
-const INTENT_EXPIRY_GRACE_MS = 2000;
 
 export function CibaApproveClient({
   authMode,
@@ -150,7 +136,7 @@ export function CibaApproveClient({
     return () => clearInterval(timer);
   }, [state, timeLeft]);
 
-  // ── Identity vault unlock state ──────────────────────────
+  // ── Identity vault unlock ──────────────────────────────────
 
   const scopes = useMemo(
     () => details?.scope.split(" ").filter(Boolean) ?? [],
@@ -164,148 +150,31 @@ export function CibaApproveClient({
 
   const scopeKey = useMemo(() => buildScopeKey(scopes), [scopes]);
 
-  const [vaultState, setVaultState] = useState<VaultState>({ status: "idle" });
-  const profileRef = useRef<ProfileSecretPayload | null>(null);
-  const [identityIntent, setIdentityIntent] =
-    useState<IdentityIntentState | null>(null);
-  const [intentLoading, setIntentLoading] = useState(false);
-  const [intentError, setIntentError] = useState<string | null>(null);
+  const vaultActive = hasIdentityScopes && state === "ready";
 
-  const hasValidIdentityIntent = useMemo(() => {
-    if (!identityIntent) {
-      return false;
-    }
-    if (identityIntent.scopeKey !== scopeKey) {
-      return false;
-    }
-    return (
-      identityIntent.expiresAt * 1000 > Date.now() + INTENT_EXPIRY_GRACE_MS
-    );
-  }, [identityIntent, scopeKey]);
-
-  const handleProfileLoaded = useCallback((profile: ProfileSecretPayload) => {
-    profileRef.current = profile;
-    setIntentError(null);
-    setIdentityIntent(null);
-    setVaultState({ status: "loaded" });
-  }, []);
-
-  const handleVaultError = useCallback((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    let name: string = typeof err;
-    if (err instanceof DOMException) {
-      name = `DOMException.${err.name}`;
-    } else if (err instanceof Error) {
-      name = err.constructor.name;
-    }
-    console.error(`[ciba-approve] Vault unlock failed (${name}): ${msg}`);
-    profileRef.current = null;
-    setIdentityIntent(null);
-    setIntentError(null);
-    setVaultState({ status: "error", error: classifyVaultError(err) });
-  }, []);
-
-  const loadProfilePasskey = useCallback(async () => {
-    setVaultState({ status: "loading" });
-    try {
-      const profile = await getStoredProfile();
-      if (profile) {
-        handleProfileLoaded(profile);
-      } else {
-        profileRef.current = null;
-        const { title, remedy } = VAULT_ERRORS.not_enrolled;
-        setVaultState({
-          status: "not_enrolled",
-          error: { category: "not_enrolled", title, remedy },
-        });
-      }
-    } catch (err) {
-      handleVaultError(err);
-    }
-  }, [handleProfileLoaded, handleVaultError]);
-
-  const fetchIdentityIntent = useCallback(async () => {
+  const fetchIntentToken = useCallback(() => {
     if (!authReqId) {
-      return;
+      throw new Error("Missing auth request ID.");
     }
+    return fetchIntentFromEndpoint("/api/ciba/identity/intent", {
+      auth_req_id: authReqId,
+      scopes,
+    });
+  }, [authReqId, scopes]);
 
-    setIntentLoading(true);
-    setIntentError(null);
-    try {
-      const response = await fetch("/api/ciba/identity/intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auth_req_id: authReqId, scopes }),
-      });
-
-      const body = (await response.json().catch(() => null)) as {
-        intent_token?: string;
-        expires_at?: number;
-        error?: string;
-      } | null;
-
-      if (!response.ok) {
-        throw new Error(body?.error || "Unable to prepare identity consent.");
-      }
-
-      if (
-        !body ||
-        typeof body.intent_token !== "string" ||
-        typeof body.expires_at !== "number"
-      ) {
-        throw new Error("Identity consent token response was invalid.");
-      }
-
-      setIdentityIntent({
-        token: body.intent_token,
-        expiresAt: body.expires_at,
-        scopeKey,
-      });
-    } catch (err) {
-      setIdentityIntent(null);
-      setIntentError(
-        err instanceof Error
-          ? err.message
-          : "Unable to prepare identity consent."
-      );
-    } finally {
-      setIntentLoading(false);
-    }
-  }, [authReqId, scopeKey, scopes]);
-
-  // Reset vault state when identity scopes are detected
-  useEffect(() => {
-    if (!hasIdentityScopes || state !== "ready") {
-      return;
-    }
-
-    resetProfileSecretCache();
-    profileRef.current = null;
-    setIdentityIntent(null);
-    setIntentError(null);
-    setIntentLoading(false);
-    setVaultState({ status: "gesture_required" });
-  }, [hasIdentityScopes, state]);
-
-  // Auto-fetch intent token once vault is unlocked
-  useEffect(() => {
-    if (!hasIdentityScopes || vaultState.status !== "loaded") {
-      return;
-    }
-    if (hasValidIdentityIntent || intentLoading) {
-      return;
-    }
-    fetchIdentityIntent().catch(() => undefined);
-  }, [
-    fetchIdentityIntent,
-    hasIdentityScopes,
-    hasValidIdentityIntent,
-    intentLoading,
-    vaultState.status,
-  ]);
+  const vault = useVaultUnlock({
+    logTag: "ciba-approve",
+    scopeKey,
+    active: vaultActive,
+    fetchIntentToken,
+  });
 
   // ── Actions ──────────────────────────────────────────────
 
+  const { profileRef, identityIntent, hasValidIdentityIntent, clearIntent } =
+    vault;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: profileRef is a stable React ref — .current is intentionally read without dependency tracking
   const stageIdentityAndApprove = useCallback(async (): Promise<void> => {
     if (!authReqId) {
       return;
@@ -341,16 +210,16 @@ export function CibaApproveClient({
     } | null;
 
     if (!response.ok) {
-      setIdentityIntent(null);
+      clearIntent();
       throw new Error(body?.error || "Unable to stage identity claims.");
     }
     if (!body?.staged) {
-      setIdentityIntent(null);
+      clearIntent();
       throw new Error("Identity claims were not staged.");
     }
 
-    setIdentityIntent(null);
-  }, [authReqId, identityIntent, hasValidIdentityIntent, scopes]);
+    clearIntent();
+  }, [authReqId, identityIntent, hasValidIdentityIntent, scopes, clearIntent]);
 
   const handleAction = useCallback(
     async (action: "authorize" | "reject") => {
@@ -363,7 +232,7 @@ export function CibaApproveClient({
 
       try {
         if (action === "authorize" && hasIdentityScopes) {
-          if (vaultState.status !== "loaded") {
+          if (vault.vaultState.status !== "loaded") {
             throw new Error("Unlock your identity vault before approving.");
           }
           if (!hasValidIdentityIntent) {
@@ -399,131 +268,11 @@ export function CibaApproveClient({
     [
       authReqId,
       hasIdentityScopes,
-      vaultState.status,
+      vault.vaultState.status,
       hasValidIdentityIntent,
       stageIdentityAndApprove,
     ]
   );
-
-  // ── Vault unlock UI ──────────────────────────────────────
-
-  const renderVaultUnlock = () => {
-    if (!hasIdentityScopes) {
-      return null;
-    }
-
-    if (vaultState.status === "loading") {
-      return (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Spinner aria-hidden="true" size="sm" />
-          Unlocking your identity vault…
-        </div>
-      );
-    }
-
-    if (vaultState.status === "loaded") {
-      if (intentError) {
-        return (
-          <Alert variant="destructive">
-            <AlertDescription className="space-y-2">
-              <p>{intentError}</p>
-              <Button
-                disabled={state === "approving" || intentLoading}
-                onClick={() => fetchIdentityIntent().catch(() => undefined)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Retry secure consent
-              </Button>
-            </AlertDescription>
-          </Alert>
-        );
-      }
-
-      if (intentLoading || !hasValidIdentityIntent) {
-        return (
-          <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Spinner aria-hidden="true" size="sm" />
-            Preparing secure consent…
-          </div>
-        );
-      }
-
-      return null;
-    }
-
-    if (vaultState.status === "not_enrolled" || vaultState.status === "error") {
-      return (
-        <VaultErrorAlert
-          error={vaultState.error}
-          onRetry={
-            authMode === "passkey" || !authMode
-              ? loadProfilePasskey
-              : () => setVaultState({ status: "gesture_required" })
-          }
-        />
-      );
-    }
-
-    if (vaultState.status !== "gesture_required") {
-      return null;
-    }
-
-    if (authMode === "passkey" || !authMode) {
-      return (
-        <Alert>
-          <Lock className="size-4" />
-          <AlertDescription className="space-y-2">
-            <p>Unlock your identity vault to share personal information.</p>
-            <Button
-              onClick={loadProfilePasskey}
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              Unlock vault
-            </Button>
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
-    if (authMode === "opaque") {
-      return (
-        <Alert>
-          <Lock className="size-4" />
-          <AlertDescription className="space-y-2">
-            <p>Enter your password to unlock your identity vault.</p>
-            <OpaqueVaultUnlockForm
-              disabled={state === "approving"}
-              onError={handleVaultError}
-              onSuccess={handleProfileLoaded}
-            />
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
-    if (authMode === "wallet" && wallet) {
-      return (
-        <Alert>
-          <Lock className="size-4" />
-          <AlertDescription className="space-y-2">
-            <p>Sign with your wallet to unlock your identity vault.</p>
-            <WalletVaultUnlockButton
-              disabled={state === "approving"}
-              onError={handleVaultError}
-              onSuccess={handleProfileLoaded}
-              wallet={wallet}
-            />
-          </AlertDescription>
-        </Alert>
-      );
-    }
-
-    return null;
-  };
 
   // ── Render ───────────────────────────────────────────────
 
@@ -714,7 +463,13 @@ export function CibaApproveClient({
             </div>
           )}
 
-          {renderVaultUnlock()}
+          <VaultUnlockPanel
+            active={vaultActive}
+            authMode={authMode}
+            disabled={state === "approving"}
+            vault={vault}
+            wallet={wallet}
+          />
 
           {error ? (
             <Alert variant="destructive">
@@ -741,9 +496,9 @@ export function CibaApproveClient({
             disabled={
               isActing ||
               (hasIdentityScopes &&
-                (vaultState.status !== "loaded" ||
-                  !hasValidIdentityIntent ||
-                  intentLoading))
+                (vault.vaultState.status !== "loaded" ||
+                  !vault.hasValidIdentityIntent ||
+                  vault.intentLoading))
             }
             onClick={() => handleAction("authorize")}
           >

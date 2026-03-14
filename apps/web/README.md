@@ -203,15 +203,16 @@ src/
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/auth/*` | Various | Auth (Better Auth, passkey, OAuth) |
-| `/api/trpc/*` | Various | Internal APIs (crypto, sign-up, verification) |
-| `/api/fhe-enrollment/context` | POST | Create FHE enrollment context + token |
-| `/api/identity/fhe-status` | POST | Persist FHE enrollment status for current user |
-| `/api/crypto/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
-| `/api/crypto/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
-| `/api/crypto/nationality-proof` | GET/POST | Nationality helpers |
-| `/api/crypto/nationality-proof/verify` | POST | Verify nationality ZK proof |
-| `/api/secrets/blob` | POST | Pre-auth encrypted blob upload |
+| `/api/trpc/*` | Various | Internal APIs (zk, sign-up, verification) |
+| `/api/fhe/enrollment/context` | POST | Create FHE enrollment context + token |
 | `/api/fhe/enrollment/complete` | POST | Finalize FHE enrollment |
+| `/api/fhe/enrollment/blob` | POST | Pre-auth encrypted blob upload |
+| `/api/fhe/status` | POST | Persist FHE enrollment status for current user |
+| `/api/fhe/diagnostics` | GET | FHE service diagnostics |
+| `/api/zk/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
+| `/api/zk/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
+| `/api/zk/nationality-proof` | GET/POST | Nationality helpers |
+| `/api/zk/nationality-proof/verify` | POST | Verify nationality ZK proof |
 | `/api/password/pwned` | POST | Password breach pre-check |
 
 ## Recovery Routes
