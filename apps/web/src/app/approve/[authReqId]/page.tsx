@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 
-import { CibaApproveClient } from "@/app/(dashboard)/dashboard/ciba/approve/ciba-approve-client";
+import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
 

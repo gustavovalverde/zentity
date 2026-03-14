@@ -1,9 +1,8 @@
 import { headers } from "next/headers";
 
+import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
-
-import { CibaApproveClient } from "./ciba-approve-client";
 
 export default async function CibaApprovePage({
   searchParams,
