@@ -30,7 +30,7 @@ describe("FHE enrollment context route", () => {
     });
 
     const response = await POST(
-      new Request("http://localhost/api/fhe-enrollment/context", {
+      new Request("http://localhost/api/fhe/enrollment/context", {
         method: "POST",
       })
     );
@@ -51,7 +51,7 @@ describe("FHE enrollment context route", () => {
     });
 
     const response = await POST(
-      new Request("http://localhost/api/fhe-enrollment/context", {
+      new Request("http://localhost/api/fhe/enrollment/context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "  test@example.com " }),

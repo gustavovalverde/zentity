@@ -184,7 +184,7 @@ export function initTelemetry(): void {
                   url.startsWith("/api/password/pwned") ||
                   url.startsWith("/api/metrics/client") ||
                   url.startsWith("/api/build-info") ||
-                  url.startsWith("/api/fhevm/diagnostics") ||
+                  url.startsWith("/api/fhe/diagnostics") ||
                   url.startsWith("/health")
                 );
               },

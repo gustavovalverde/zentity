@@ -160,6 +160,37 @@
   - MOD: recovery/passkey/page.tsx — callbackURL
   - MOD: components/providers/auth-ui-provider.tsx — viewPaths RECOVER_ACCOUNT
 
+### Module 2.3: FHE API consolidation — COMPLETE
+- PRD: Module 2 (API route consolidation), FHE unification
+- Consolidated 4 scattered FHE routes under single `api/fhe/` prefix:
+  - `api/fhe-enrollment/context/` → `api/fhe/enrollment/context/` (+ test)
+  - `api/identity/fhe-status/` → `api/fhe/status/`
+  - `api/fhevm/diagnostics/` → `api/fhe/diagnostics/`
+  - `api/secrets/blob/` → `api/fhe/enrollment/blob/`
+- Updated 6 client-side URL references:
+  - `lib/privacy/secrets/storage.ts` — blob upload/download URLs
+  - `dashboard/verify/_components/fhe-error-banner.tsx` — status URL
+  - `dashboard/verify/_components/fhe-enrollment-dialog.tsx` — status URL
+  - `lib/observability/telemetry.ts` — diagnostics URL pattern guard
+  - `api/fhe/enrollment/context/__tests__/route.test.ts` — Request URLs
+  - `api/__tests__/passkey-fhe-enrollment.integration.test.ts` — blob URL + import path
+- Removed empty `api/identity/`, `api/secrets/`, `api/fhe-enrollment/`, `api/fhevm/` directories
+- FHE API tree now:
+  ```
+  api/fhe/
+    ├── enrollment/
+    │   ├── context/         ← was api/fhe-enrollment/context
+    │   ├── complete/        ← stayed
+    │   └── blob/            ← was api/secrets/blob
+    ├── keys/register/       ← stayed
+    ├── status/              ← was api/identity/fhe-status
+    ├── verify-age/          ← stayed
+    └── diagnostics/         ← was api/fhevm/diagnostics
+  ```
+- Files:
+  - MOVE: 4 route files + 1 test file
+  - MOD: 6 files with URL/import updates
+
 ### Module 2.2: CIBA push move — COMPLETE
 - PRD: Module 2 (API route consolidation), CIBA push co-location
 - Moved `api/push/{subscribe,unsubscribe}/` → `api/ciba/push/{subscribe,unsubscribe}/`

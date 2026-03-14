@@ -206,7 +206,7 @@ export function FheEnrollmentDialog({
   }, [hasPasskeys, hasPassword, prfSupported, wallet]);
 
   const updateIdentityStatus = useCallback(async (keyId: string) => {
-    const response = await fetch("/api/identity/fhe-status", {
+    const response = await fetch("/api/fhe/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ fheKeyId: keyId, fheStatus: "complete" }),
