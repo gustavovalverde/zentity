@@ -28,7 +28,7 @@ import { verifyAccessToken } from "better-auth/oauth2";
 
 import {
   computeKeyFingerprint,
-  extractBearerToken,
+  extractAccessToken,
   validateOAuthAccessToken,
 } from "../oauth-token-validation";
 
@@ -36,24 +36,24 @@ import {
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;
 
 describe("oauth token validation", () => {
-  describe("extractBearerToken", () => {
+  describe("extractAccessToken", () => {
     it("extracts token from valid Authorization header", () => {
       const headers = new Headers({
         Authorization: "Bearer test-token-123",
       });
-      expect(extractBearerToken(headers)).toBe("test-token-123");
+      expect(extractAccessToken(headers)).toBe("test-token-123");
     });
 
     it("returns null when no Authorization header", () => {
       const headers = new Headers();
-      expect(extractBearerToken(headers)).toBeNull();
+      expect(extractAccessToken(headers)).toBeNull();
     });
 
     it("returns null when Authorization is not Bearer", () => {
       const headers = new Headers({
         Authorization: "Basic dXNlcjpwYXNz",
       });
-      expect(extractBearerToken(headers)).toBeNull();
+      expect(extractAccessToken(headers)).toBeNull();
     });
 
     it("handles case-sensitive Bearer prefix", () => {
@@ -61,16 +61,23 @@ describe("oauth token validation", () => {
         Authorization: "bearer test-token",
       });
       // Bearer is case-sensitive per RFC 6750
-      expect(extractBearerToken(headers)).toBeNull();
+      expect(extractAccessToken(headers)).toBeNull();
     });
 
     it("extracts token with special characters", () => {
       const headers = new Headers({
         Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test",
       });
-      expect(extractBearerToken(headers)).toBe(
+      expect(extractAccessToken(headers)).toBe(
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test"
       );
+    });
+
+    it("extracts token from DPoP Authorization header", () => {
+      const headers = new Headers({
+        Authorization: "DPoP dpop-bound-token-xyz",
+      });
+      expect(extractAccessToken(headers)).toBe("dpop-bound-token-xyz");
     });
   });
 

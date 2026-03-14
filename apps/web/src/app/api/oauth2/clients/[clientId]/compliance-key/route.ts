@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import {
   computeKeyFingerprint,
-  extractBearerToken,
+  extractAccessToken,
   validateOAuthAccessToken,
 } from "@/lib/auth/oauth-token-validation";
 import {
@@ -51,7 +51,7 @@ export async function GET(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  const token = extractBearerToken(request.headers);
+  const token = extractAccessToken(request.headers);
   if (!token) {
     return NextResponse.json(
       { error: "Missing Authorization header" },
@@ -98,7 +98,7 @@ export async function POST(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  const token = extractBearerToken(request.headers);
+  const token = extractAccessToken(request.headers);
   if (!token) {
     return NextResponse.json(
       { error: "Missing Authorization header" },
@@ -201,7 +201,7 @@ export async function DELETE(
 ): Promise<Response> {
   const { clientId } = await params;
 
-  const token = extractBearerToken(request.headers);
+  const token = extractAccessToken(request.headers);
   if (!token) {
     return NextResponse.json(
       { error: "Missing Authorization header" },

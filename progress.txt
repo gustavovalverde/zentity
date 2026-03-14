@@ -17,3 +17,10 @@
 - Extracted `msgpackResponse` and `jsonError` into `lib/utils/api-response.ts`
 - Deleted duplicate definitions from: `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`
 - Files: `utils/api-response.ts`, `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`
+
+### Task: Consolidated token extraction
+- Renamed `extractBearerToken` → `extractAccessToken` in `oauth-token-validation.ts`, added DPoP prefix support
+- Deleted local `extractAccessToken` from `api/oauth2/release/route.ts`
+- Updated all consumers: compliance-key route, test file
+- Added DPoP test case
+- Files: `auth/oauth-token-validation.ts`, `api/oauth2/release/route.ts`, `api/oauth2/clients/.../compliance-key/route.ts`, tests

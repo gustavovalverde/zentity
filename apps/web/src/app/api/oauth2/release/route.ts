@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import { extractAccessToken } from "@/lib/auth/oauth-token-validation";
 import {
   hashReleaseHandle,
   unsealApprovalPii,
@@ -46,20 +47,6 @@ async function getLocalJwks(kid: string) {
   }
 
   return createLocalJWKSet(jwksObj);
-}
-
-function extractAccessToken(headers: Headers): string | null {
-  const authHeader = headers.get("Authorization");
-  if (!authHeader) {
-    return null;
-  }
-  if (authHeader.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
-  if (authHeader.startsWith("DPoP ")) {
-    return authHeader.slice(5);
-  }
-  return null;
 }
 
 /**

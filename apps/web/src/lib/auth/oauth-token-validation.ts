@@ -33,14 +33,20 @@ const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 
 /**
- * Extract bearer token from Authorization header.
+ * Extract access token from Authorization header (Bearer or DPoP scheme).
  */
-export function extractBearerToken(headers: Headers): string | null {
+export function extractAccessToken(headers: Headers): string | null {
   const authHeader = headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader) {
     return null;
   }
-  return authHeader.slice(7);
+  if (authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7);
+  }
+  if (authHeader.startsWith("DPoP ")) {
+    return authHeader.slice(5);
+  }
+  return null;
 }
 
 /**
