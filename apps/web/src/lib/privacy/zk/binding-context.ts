@@ -184,7 +184,7 @@ export async function getBindingContext(
       };
     }
 
-    const claims = await trpc.crypto.getSignedClaims.query({ verificationId });
+    const claims = await trpc.zk.getSignedClaims.query({ verificationId });
     const documentHash = claims.ocr?.documentHashField;
     if (!documentHash) {
       return {

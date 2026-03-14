@@ -5,8 +5,8 @@
  *
  * @example Vanilla client (for event handlers, utilities):
  * ```ts
- * const result = await trpc.crypto.health.query();
- * const proof = await trpc.crypto.verifyProof.mutate({ proof, publicInputs });
+ * const result = await trpc.zk.health.query();
+ * const proof = await trpc.zk.verifyProof.mutate({ proof, publicInputs });
  * ```
  *
  * @example React hooks (for components with useQuery/useMutation):

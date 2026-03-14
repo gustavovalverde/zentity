@@ -1,8 +1,8 @@
 /**
- * Crypto Router
+ * ZK Router
  *
- * Handles cryptographic operations: FHE encryption, ZK proof verification,
- * BBS+ credentials, and challenge-response anti-replay protection.
+ * Handles ZK proof verification, BBS+ credentials, and challenge-response
+ * anti-replay protection.
  *
  * Key operations:
  * - verifyProof: Verify Noir ZK proofs with policy enforcement
@@ -33,7 +33,7 @@ import {
   verifyProofProcedure,
 } from "./proof";
 
-export const cryptoRouter = router({
+export const zkRouter = router({
   health: healthProcedure,
   verifyProof: verifyProofProcedure,
   createProofSession: createProofSessionProcedure,

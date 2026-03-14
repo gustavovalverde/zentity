@@ -134,8 +134,8 @@ describe("crypto-client FHE", () => {
     const createChallenge = vi.fn().mockReturnValue(challengePromise);
 
     const trpcClient = await import("@/lib/trpc/client");
-    const originalCreateChallenge = trpcClient.trpc.crypto.createChallenge;
-    trpcClient.trpc.crypto.createChallenge = { mutate: createChallenge };
+    const originalCreateChallenge = trpcClient.trpc.zk.createChallenge;
+    trpcClient.trpc.zk.createChallenge = { mutate: createChallenge };
 
     const first = getProofChallenge("age_verification", proofSessionId);
     const second = getProofChallenge("age_verification", proofSessionId);
@@ -150,7 +150,7 @@ describe("crypto-client FHE", () => {
       proofSessionId,
     });
 
-    trpcClient.trpc.crypto.createChallenge = originalCreateChallenge;
+    trpcClient.trpc.zk.createChallenge = originalCreateChallenge;
   });
 
   it("decrypts FHE verification result", async () => {

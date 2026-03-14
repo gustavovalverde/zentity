@@ -15,7 +15,7 @@ import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
-import { resolveAudience } from "@/lib/trpc/routers/crypto/audience";
+import { resolveAudience } from "@/lib/trpc/routers/zk/audience";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 
 const UUID_REGEX =

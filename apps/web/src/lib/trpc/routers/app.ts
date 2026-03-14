@@ -23,7 +23,6 @@ import { accountRouter } from "./account";
 import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
 import { credentialsRouter } from "./credentials";
-import { cryptoRouter } from "./crypto/router";
 import { identityRouter } from "./identity/router";
 import { livenessRouter } from "./liveness";
 import { passportChipRouter } from "./passport-chip";
@@ -31,13 +30,14 @@ import { recoveryRouter } from "./recovery/router";
 import { secretsRouter } from "./secrets";
 import { signUpRouter } from "./sign-up";
 import { tokenRouter } from "./token";
+import { zkRouter } from "./zk/router";
 
 export const appRouter = router({
   account: accountRouter,
   assurance: assuranceRouter,
   attestation: attestationRouter,
   credentials: credentialsRouter,
-  crypto: cryptoRouter,
+  zk: zkRouter,
   identity: identityRouter,
   liveness: livenessRouter,
   passportChip: passportChipRouter,

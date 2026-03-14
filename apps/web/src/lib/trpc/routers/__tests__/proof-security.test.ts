@@ -123,8 +123,8 @@ async function createCaller(
   session: Session | null,
   options: { url?: string; headers?: HeadersInit } = {}
 ) {
-  const { cryptoRouter } = await import("@/lib/trpc/routers/crypto/router");
-  return cryptoRouter.createCaller({
+  const { zkRouter } = await import("@/lib/trpc/routers/zk/router");
+  return zkRouter.createCaller({
     req: new Request(options.url ?? "http://localhost/api/trpc", {
       headers: options.headers,
     }),

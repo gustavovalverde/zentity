@@ -46,7 +46,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { getAllProofs, getUserProof } from "@/lib/privacy/zk/client";
 import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
-type ProofData = RouterOutputs["crypto"]["getAllProofs"][number];
+type ProofData = RouterOutputs["zk"]["getAllProofs"][number];
 
 const PROOF_TYPE_LABELS: Record<string, string> = {
   age_verification: "Age Verification",

@@ -31,7 +31,7 @@ import {
   generateNationalityProofNoir,
 } from "./noir-prover";
 
-type CryptoOutputs = RouterOutputs["crypto"];
+type ZkOutputs = RouterOutputs["zk"];
 
 // Types for ZK proof operations
 export interface ProofResult {
@@ -369,10 +369,10 @@ export async function generateBaseCommitment(
 
 export async function getSignedClaims(
   verificationId?: string | null
-): Promise<CryptoOutputs["getSignedClaims"]> {
+): Promise<ZkOutputs["getSignedClaims"]> {
   return verificationId
-    ? await trpc.crypto.getSignedClaims.query({ verificationId })
-    : await trpc.crypto.getSignedClaims.query();
+    ? await trpc.zk.getSignedClaims.query({ verificationId })
+    : await trpc.zk.getSignedClaims.query();
 }
 
 /**
@@ -396,7 +396,7 @@ export async function getProofChallenge(
     return await inFlight.promise;
   }
   try {
-    const promise = trpc.crypto.createChallenge.mutate({
+    const promise = trpc.zk.createChallenge.mutate({
       circuitType,
       proofSessionId,
     });
@@ -417,8 +417,8 @@ export async function createProofSession(
 ): Promise<ProofSessionResponse> {
   try {
     return verificationId
-      ? await trpc.crypto.createProofSession.mutate({ verificationId })
-      : await trpc.crypto.createProofSession.mutate();
+      ? await trpc.zk.createProofSession.mutate({ verificationId })
+      : await trpc.zk.createProofSession.mutate();
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to create proof session"
@@ -467,7 +467,7 @@ export async function storeProof(options: StoreProofOptions): Promise<{
     proofSessionId,
   } = options;
   try {
-    return await trpc.crypto.storeProof.mutate({
+    return await trpc.zk.storeProof.mutate({
       circuitType,
       proof,
       publicSignals,
@@ -494,7 +494,7 @@ export async function getUserProof(
   full = false
 ): Promise<AgeProofFull | AgeProofSummary | null> {
   try {
-    return await trpc.crypto.getUserProof.query({ full });
+    return await trpc.zk.getUserProof.query({ full });
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to get proof"
@@ -506,9 +506,9 @@ export async function getUserProof(
  * Get all verified ZK proofs for the authenticated user.
  * Used by the developer view to display all proof types.
  */
-export async function getAllProofs(): Promise<CryptoOutputs["getAllProofs"]> {
+export async function getAllProofs(): Promise<ZkOutputs["getAllProofs"]> {
   try {
-    return await trpc.crypto.getAllProofs.query();
+    return await trpc.zk.getAllProofs.query();
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to get proofs"

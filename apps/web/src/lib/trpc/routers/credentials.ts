@@ -3,7 +3,7 @@
  *
  * Handles verifiable credential issuance for authenticated users via OIDC4VCI.
  * Only SD-JWT credentials are exposed externally; BBS+ is used internally for
- * wallet binding (RFC-0020) via the crypto.bbs router.
+ * wallet binding (RFC-0020) via the zk.bbs router.
  */
 import "server-only";
 
