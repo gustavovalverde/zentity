@@ -8,6 +8,7 @@ import {
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
 import { processDocumentWithOcr } from "@/lib/identity/document/process-document";
+import { dobDaysToBirthYearOffset } from "@/lib/identity/verification/birth-year";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
@@ -78,6 +79,7 @@ export const prepareDocumentProcedure = protectedProcedure
           dedupKey: result.dedupKey ?? null,
           nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
           confidenceScore: result.ocrResult.confidence ?? null,
+          birthYearOffset: dobDaysToBirthYearOffset(result.parsedDates.dobDays),
         });
       } catch (error) {
         logger.debug(

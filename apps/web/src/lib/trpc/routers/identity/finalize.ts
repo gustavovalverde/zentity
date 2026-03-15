@@ -9,6 +9,11 @@ import {
   getIdentityVerificationJobById,
   getLatestIdentityVerificationJobForDraft,
 } from "@/lib/db/queries/identity";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  FACE_MATCH_MIN_CONFIDENCE,
+} from "@/lib/identity/liveness/policy";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 
 import { protectedProcedure } from "../../server";
@@ -48,7 +53,12 @@ export const finalizeProcedure = protectedProcedure
       });
     }
 
-    if (!(draft.livenessPassed && draft.faceMatchPassed)) {
+    const livenessPassed =
+      (draft.antispoofScore ?? 0) >= ANTISPOOF_REAL_THRESHOLD &&
+      (draft.liveScore ?? 0) >= ANTISPOOF_LIVE_THRESHOLD;
+    const faceMatchPassed =
+      (draft.faceMatchConfidence ?? 0) >= FACE_MATCH_MIN_CONFIDENCE;
+    if (!(livenessPassed && faceMatchPassed)) {
       throw new TRPCError({
         code: "BAD_REQUEST",
         message: "Please complete liveness verification first.",

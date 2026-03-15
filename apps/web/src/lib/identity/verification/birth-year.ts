@@ -177,3 +177,21 @@ export function calculateBirthYearOffsetFromYear(
   }
   return offset;
 }
+
+/**
+ * Convert `dobDays` (days since 1900-01-01) to a birth year offset (uint8).
+ * Used during verification to persist birth year offset for attestation.
+ */
+export function dobDaysToBirthYearOffset(
+  dobDays: number | null | undefined
+): number | null {
+  if (dobDays === null || dobDays === undefined) {
+    return null;
+  }
+  const birthDate = new Date(
+    DOB_DAYS_BASE_DATE.getTime() + dobDays * MS_PER_DAY
+  );
+  const birthYear = birthDate.getUTCFullYear();
+  const offset = birthYear - 1900;
+  return offset >= 0 && offset <= 255 ? offset : null;
+}

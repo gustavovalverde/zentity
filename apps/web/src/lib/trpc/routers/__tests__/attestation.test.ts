@@ -172,7 +172,6 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
-        birthYearOffset: 90,
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
@@ -205,7 +204,6 @@ describe("attestation router", () => {
       caller.submit({
         networkId: "fhevm_sepolia",
         walletAddress: "0x0000000000000000000000000000000000000001",
-        birthYearOffset: 90,
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });

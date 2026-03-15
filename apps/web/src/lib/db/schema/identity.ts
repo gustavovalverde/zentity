@@ -143,6 +143,7 @@ export const identityVerifications = sqliteTable(
     addressCountryCode: integer("address_country_code"),
     confidenceScore: real("confidence_score"),
     livenessScore: real("liveness_score"),
+    birthYearOffset: integer("birth_year_offset"),
     // ZKPassport nullifier (NFC only)
     uniqueIdentifier: text("unique_identifier"),
     verifiedAt: text("verified_at"),
@@ -186,9 +187,7 @@ export const identityVerificationDrafts = sqliteTable(
     ocrIssues: text("ocr_issues"),
     antispoofScore: real("antispoof_score"),
     liveScore: real("live_score"),
-    livenessPassed: integer("liveness_passed", { mode: "boolean" }),
     faceMatchConfidence: real("face_match_confidence"),
-    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
 
     // SHA-256 of the baseline frame captured during liveness completion.
     verifiedSelfieHash: text("verified_selfie_hash"),

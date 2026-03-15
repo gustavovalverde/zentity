@@ -499,9 +499,7 @@ export async function upsertIdentityDraft(
       ocrIssues: data.ocrIssues ?? null,
       antispoofScore: data.antispoofScore ?? null,
       liveScore: data.liveScore ?? null,
-      livenessPassed: data.livenessPassed ?? null,
       faceMatchConfidence: data.faceMatchConfidence ?? null,
-      faceMatchPassed: data.faceMatchPassed ?? null,
       createdAt: now,
       updatedAt: now,
     })
@@ -520,9 +518,7 @@ export async function upsertIdentityDraft(
         ocrIssues: data.ocrIssues ?? null,
         antispoofScore: data.antispoofScore ?? null,
         liveScore: data.liveScore ?? null,
-        livenessPassed: data.livenessPassed ?? null,
         faceMatchConfidence: data.faceMatchConfidence ?? null,
-        faceMatchPassed: data.faceMatchPassed ?? null,
         updatedAt: sql`datetime('now')`,
       },
     })

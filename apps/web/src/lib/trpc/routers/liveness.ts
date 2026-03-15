@@ -461,7 +461,6 @@ export const livenessRouter = router({
         await updateIdentityDraft(input.draftId, {
           userId,
           faceMatchConfidence: confidence,
-          faceMatchPassed: matched,
         });
       }
 

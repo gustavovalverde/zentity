@@ -696,7 +696,6 @@ async function handleVerifyingPhase(
         userId: session.userId,
         antispoofScore: realScore,
         liveScore,
-        livenessPassed: true,
         verifiedSelfieHash,
       });
       draftUpdated = true;

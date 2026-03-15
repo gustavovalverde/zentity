@@ -119,7 +119,6 @@ export const attestationRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-        birthYearOffset: z.number().int().min(0).max(255),
         forceUpdate: z.boolean().optional(),
       })
     )
@@ -267,15 +266,18 @@ export const attestationRouter = router({
         }
       }
 
-      const birthYearOffset = input.birthYearOffset;
+      const birthYearOffset = verification.birthYearOffset;
       if (
+        birthYearOffset === null ||
+        birthYearOffset === undefined ||
         !Number.isInteger(birthYearOffset) ||
         birthYearOffset < 0 ||
         birthYearOffset > 255
       ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Invalid birth year offset in identity proof",
+          message:
+            "Birth year offset not available. Please re-verify your identity.",
         });
       }
       const countryCode = countryCodeToNumeric(issuerCountry || "");

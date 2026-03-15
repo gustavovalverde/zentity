@@ -18,7 +18,11 @@ import {
   isChipVerified,
   isNullifierUsedByOtherUser,
 } from "@/lib/db/queries/identity";
-import { dobToDaysSince1900 } from "@/lib/identity/verification/birth-year";
+import {
+  calculateBirthYearOffsetFromYear,
+  dobToDaysSince1900,
+  parseBirthYearFromDob,
+} from "@/lib/identity/verification/birth-year";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { signAttestationClaim } from "@/lib/privacy/zk/claims";
 
@@ -153,6 +157,9 @@ export const passportChipRouter = router({
         dobCommitment,
         nationalityCommitment,
         livenessScore: 1.0,
+        birthYearOffset:
+          calculateBirthYearOffsetFromYear(parseBirthYearFromDob(birthdate)) ??
+          null,
         uniqueIdentifier,
         verifiedAt: now,
       });

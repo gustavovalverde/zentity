@@ -1,6 +1,11 @@
 import z from "zod";
 
 import { getIdentityDraftById } from "@/lib/db/queries/identity";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  FACE_MATCH_MIN_CONFIDENCE,
+} from "@/lib/identity/liveness/policy";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 
 import { protectedProcedure } from "../../server";
@@ -55,9 +60,12 @@ export const livenessStatusProcedure = protectedProcedure
       };
     }
 
-    // Return current status - results were written by socket handler and faceMatch
-    const livenessPassed = draft.livenessPassed ?? false;
-    const faceMatchPassed = draft.faceMatchPassed ?? false;
+    // Derive pass/fail from scores using policy thresholds
+    const livenessPassed =
+      (draft.antispoofScore ?? 0) >= ANTISPOOF_REAL_THRESHOLD &&
+      (draft.liveScore ?? 0) >= ANTISPOOF_LIVE_THRESHOLD;
+    const faceMatchPassed =
+      (draft.faceMatchConfidence ?? 0) >= FACE_MATCH_MIN_CONFIDENCE;
     const faceMatchConfidence = draft.faceMatchConfidence ?? 0;
 
     ctx.span?.setAttribute("dashboard.liveness_passed", livenessPassed);

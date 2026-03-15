@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculateBirthYearOffsetFromYear,
+  dobDaysToBirthYearOffset,
   dobToDaysSince1900,
   minAgeYearsToDays,
   parseBirthYearFromDob,
@@ -85,6 +86,30 @@ describe("birth-year", () => {
     it("returns undefined for out-of-range years", () => {
       expect(calculateBirthYearOffsetFromYear(1899)).toBeUndefined();
       expect(calculateBirthYearOffsetFromYear(2156)).toBeUndefined();
+    });
+  });
+
+  describe("dobDaysToBirthYearOffset", () => {
+    it("converts dobDays to birth year offset", () => {
+      const dob1990 = dobToDaysSince1900("1990-01-01") ?? 0;
+      expect(dobDaysToBirthYearOffset(dob1990)).toBe(90);
+
+      const dob2000 = dobToDaysSince1900("2000-06-15") ?? 0;
+      expect(dobDaysToBirthYearOffset(dob2000)).toBe(100);
+    });
+
+    it("returns null for null/undefined", () => {
+      expect(dobDaysToBirthYearOffset(null)).toBeNull();
+      expect(dobDaysToBirthYearOffset(undefined)).toBeNull();
+    });
+
+    it("round-trips with dobToDaysSince1900 + calculateBirthYearOffsetFromYear", () => {
+      const dob = "1985-03-20";
+      const dobDays = dobToDaysSince1900(dob) ?? 0;
+      const offset = dobDaysToBirthYearOffset(dobDays);
+      const birthYear = parseBirthYearFromDob(dob) ?? 0;
+      const expectedOffset = calculateBirthYearOffsetFromYear(birthYear);
+      expect(offset).toBe(expectedOffset);
     });
   });
 });

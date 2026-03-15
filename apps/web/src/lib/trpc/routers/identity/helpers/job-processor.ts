@@ -25,7 +25,11 @@ import {
   upsertVerification,
 } from "@/lib/db/queries/identity";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  FACE_MATCH_MIN_CONFIDENCE,
+} from "@/lib/identity/liveness/policy";
 import { logError } from "@/lib/logging/error-logger";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
@@ -146,8 +150,11 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         const documentProcessed = Boolean(draft.documentProcessed);
         const isDocumentValid = Boolean(draft.isDocumentValid);
         const isDuplicateDocument = Boolean(draft.isDuplicateDocument);
-        const livenessPassed = Boolean(draft.livenessPassed);
-        const faceMatchPassed = Boolean(draft.faceMatchPassed);
+        const livenessPassed =
+          (draft.antispoofScore ?? 0) >= ANTISPOOF_REAL_THRESHOLD &&
+          (draft.liveScore ?? 0) >= ANTISPOOF_LIVE_THRESHOLD;
+        const faceMatchPassed =
+          (draft.faceMatchConfidence ?? 0) >= FACE_MATCH_MIN_CONFIDENCE;
 
         span.setAttribute("identity.document_processed", documentProcessed);
         span.setAttribute("identity.document_valid", isDocumentValid);

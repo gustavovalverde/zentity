@@ -52,11 +52,6 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  calculateBirthYearOffsetFromYear,
-  parseBirthYearFromDob,
-} from "@/lib/identity/verification/birth-year";
-import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
 import { getUserFriendlyError } from "@/lib/utils/error-messages";
@@ -232,33 +227,10 @@ export function OnChainAttestation({
       }
 
       setClientError(null);
-      let birthYearOffset: number | undefined;
-      try {
-        const profile = await getStoredProfile();
-        const birthYear =
-          profile?.birthYear ??
-          parseBirthYearFromDob(profile?.dateOfBirth ?? undefined);
-        birthYearOffset = calculateBirthYearOffsetFromYear(birthYear);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to unlock your profile. Please try again.";
-        setClientError(message);
-        return;
-      }
-
-      if (birthYearOffset === undefined) {
-        setClientError(
-          "Unlock your profile to continue. We need your birth year locally to attest on-chain."
-        );
-        return;
-      }
 
       await submitMutation.mutateAsync({
         networkId: selectedNetwork,
         walletAddress: address,
-        birthYearOffset,
         forceUpdate,
       });
     },

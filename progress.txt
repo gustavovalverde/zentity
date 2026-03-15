@@ -17,3 +17,33 @@ Status: Complete
 - apps/web/src/lib/auth/oidc/jwt-signer.ts — exported getClientSigningAlg
 - apps/web/src/lib/auth/oidc/token-exchange.ts — at_hash in ID token output
 - apps/web/src/lib/auth/__tests__/token-exchange.integration.test.ts — at_hash tests
+
+## Task 02: Compliance Schema Cleanup & Server-Derived birthYearOffset
+Status: Complete
+
+### Changes
+1. Removed `livenessPassed` and `faceMatchPassed` columns from identityVerificationDrafts
+   - All read sites now derive from scores via policy thresholds (ANTISPOOF_REAL_THRESHOLD, ANTISPOOF_LIVE_THRESHOLD, FACE_MATCH_MIN_CONFIDENCE)
+   - Write sites (upsertIdentityDraft, handler.ts, liveness.ts) no longer set these
+   - Single source of truth: raw scores, not redundant booleans
+2. Server-derived `birthYearOffset` in attestation.submit
+   - Added `birthYearOffset` column to identity_verifications
+   - OCR path: computed from dobDays during prepareDocument via new dobDaysToBirthYearOffset()
+   - NFC path: computed from birthdate during submitResult
+   - attestation.submit reads from verification record; client no longer supplies it
+   - Client component (on-chain-attestation.tsx) no longer does vault unlock for birth year
+3. Tests: 3 new (dobDaysToBirthYearOffset unit tests), all 313 pass
+
+### Files changed
+- apps/web/src/lib/db/schema/identity.ts — removed columns, added birthYearOffset
+- apps/web/src/lib/db/queries/identity.ts — removed from upsertIdentityDraft
+- apps/web/src/lib/identity/liveness/socket/handler.ts — removed livenessPassed write
+- apps/web/src/lib/trpc/routers/liveness.ts — removed faceMatchPassed write
+- apps/web/src/lib/trpc/routers/identity/helpers/job-processor.ts — derive from scores
+- apps/web/src/lib/trpc/routers/identity/liveness-status.ts — derive from scores
+- apps/web/src/lib/trpc/routers/identity/finalize.ts — derive from scores
+- apps/web/src/lib/identity/verification/birth-year.ts — new dobDaysToBirthYearOffset
+- apps/web/src/lib/trpc/routers/identity/prepare-document.ts — store birthYearOffset
+- apps/web/src/lib/trpc/routers/passport-chip.ts — store birthYearOffset
+- apps/web/src/lib/trpc/routers/attestation.ts — read from verification, not client
+- apps/web/src/components/dashboard/on-chain-attestation.tsx — removed vault unlock
