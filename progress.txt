@@ -64,3 +64,19 @@ Status: Complete
 ### Files changed
 - apps/web/src/lib/trpc/routers/passport-chip.ts — added dedup logic
 - apps/web/src/lib/trpc/routers/__tests__/passport-chip.test.ts — dedup tests
+
+## Task 09: PWA Install Banner
+Status: Complete
+
+### Changes
+1. Created PwaInstallBanner component alongside existing push-banner
+   - Chromium: captures `beforeinstallprompt`, triggers native install dialog
+   - iOS: shows "Share → Add to Home Screen" instructions
+   - Already-installed detection via `display-mode: standalone` + `navigator.standalone`
+   - 30-day localStorage dismissal cooldown
+   - Graceful fallback: hidden on Firefox/Safari desktop (no `beforeinstallprompt`)
+2. Rendered on CIBA listing page after PushNotificationBanner
+
+### Files changed
+- apps/web/src/app/(dashboard)/dashboard/ciba/_components/pwa-install-banner.tsx — new
+- apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx — added PwaInstallBanner

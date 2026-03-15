@@ -17,6 +17,7 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { PushNotificationBanner } from "./_components/push-banner";
+import { PwaInstallBanner } from "./_components/pwa-install-banner";
 
 function statusVariant(
   status: string
@@ -73,6 +74,7 @@ export default async function CibaListPage() {
       </div>
 
       <PushNotificationBanner />
+      <PwaInstallBanner />
 
       {requests.length === 0 ? (
         <Card>
