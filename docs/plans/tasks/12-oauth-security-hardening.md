@@ -44,12 +44,12 @@ End-to-end for each sub-fix: implementation → migration (if schema change) →
 - [ ] Expired certificates rejected; self-signed leaf with matching thumbprint but no valid CA chain rejected
 - [ ] ID token subject with no requested scope defaults to `openid` only
 - [ ] Request without DPoP proof rejected at token endpoint
-- [ ] Consent scope HMAC detects tampering (modified scopes fail verification)
+- [x] Consent scope HMAC detects tampering (modified scopes fail verification)
 - [ ] Concurrent CIBA flows don't consume each other's release handles
 - [ ] Cross-org client adoption requires current owner's approval
 - [ ] Software statement validated as JWT when present in DCR
 - [ ] JARM key has expiry and rotation mechanism
 - [ ] Unit test: X509 valid chain / self-signed / expired / wrong CA
 - [ ] Integration test: ID token → access token defaults to openid scope only
-- [ ] Integration test: consent scope tampering detected
+- [x] Integration test: consent scope tampering detected
 - [ ] Integration test: concurrent CIBA flows with correct release handle scoping

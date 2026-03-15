@@ -19,7 +19,7 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { APIError, betterAuth } from "better-auth";
-import { createAuthMiddleware } from "better-auth/api";
+import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import {
   anonymous,
@@ -49,6 +49,7 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
+import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
 import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { consumeReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
 import {
@@ -608,6 +609,63 @@ function beforeTokenValidateResource(ctx: HookCtx) {
   }
 }
 
+async function beforeAuthorizeVerifyConsentHmac(ctx: HookCtx) {
+  const session = await getSessionFromCtx(ctx);
+  const userId = session?.user?.id;
+  const clientId = ctx.query?.client_id as string | undefined;
+  if (!(userId && clientId)) {
+    return;
+  }
+
+  const consent = await db
+    .select({
+      id: oauthConsents.id,
+      scopes: oauthConsents.scopes,
+      scopeHmac: oauthConsents.scopeHmac,
+      referenceId: oauthConsents.referenceId,
+    })
+    .from(oauthConsents)
+    .where(
+      and(
+        eq(oauthConsents.clientId, clientId),
+        eq(oauthConsents.userId, userId)
+      )
+    )
+    .limit(1)
+    .get();
+
+  if (!consent) {
+    return;
+  }
+
+  // Parse scopes — the plugin adapter stores string[] as JSON
+  const scopes: string[] =
+    typeof consent.scopes === "string"
+      ? (() => {
+          try {
+            return JSON.parse(consent.scopes) as string[];
+          } catch {
+            return consent.scopes.split(" ");
+          }
+        })()
+      : [];
+
+  const expected = computeConsentHmac(
+    env.BETTER_AUTH_SECRET,
+    userId,
+    clientId,
+    consent.referenceId,
+    scopes
+  );
+
+  if (consent.scopeHmac !== expected) {
+    await db
+      .delete(oauthConsents)
+      .where(eq(oauthConsents.id, consent.id))
+      .run();
+  }
+}
+
 // ── After-hook handlers ───────────────────────────────────
 
 async function afterConsentPairwiseCleanup(ctx: HookCtx) {
@@ -647,6 +705,70 @@ async function afterConsentPairwiseCleanup(ctx: HookCtx) {
         .run();
     }
   }
+}
+
+async function afterConsentStoreHmac(ctx: HookCtx) {
+  const sessionCtx = ctx.context as {
+    session?: { user?: { id?: string } };
+  };
+  const userId = sessionCtx.session?.user?.id;
+  const oauthQuery =
+    typeof ctx.body?.oauth_query === "string"
+      ? ctx.body.oauth_query
+      : undefined;
+  if (!(userId && oauthQuery)) {
+    return;
+  }
+  const params = new URLSearchParams(oauthQuery);
+  const clientId = params.get("client_id");
+  if (!clientId) {
+    return;
+  }
+
+  const consent = await db
+    .select({
+      id: oauthConsents.id,
+      scopes: oauthConsents.scopes,
+      referenceId: oauthConsents.referenceId,
+    })
+    .from(oauthConsents)
+    .where(
+      and(
+        eq(oauthConsents.clientId, clientId),
+        eq(oauthConsents.userId, userId)
+      )
+    )
+    .limit(1)
+    .get();
+
+  if (!consent) {
+    return;
+  }
+
+  const scopes: string[] =
+    typeof consent.scopes === "string"
+      ? (() => {
+          try {
+            return JSON.parse(consent.scopes) as string[];
+          } catch {
+            return consent.scopes.split(" ");
+          }
+        })()
+      : [];
+
+  const hmac = computeConsentHmac(
+    env.BETTER_AUTH_SECRET,
+    userId,
+    clientId,
+    consent.referenceId,
+    scopes
+  );
+
+  await db
+    .update(oauthConsents)
+    .set({ scopeHmac: hmac })
+    .where(eq(oauthConsents.id, consent.id))
+    .run();
 }
 
 async function afterParPersistResource(ctx: HookCtx) {
@@ -851,6 +973,7 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/authorize") {
         await beforeResolveCimd(ctx);
         await enforceStepUp(ctx, db);
+        await beforeAuthorizeVerifyConsentHmac(ctx);
         return;
       }
       if (ctx.path === "/ciba/authorize") {
@@ -860,6 +983,7 @@ export const auth = betterAuth({
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
+        await afterConsentStoreHmac(ctx);
         return;
       }
       if (ctx.path === "/oauth2/par") {

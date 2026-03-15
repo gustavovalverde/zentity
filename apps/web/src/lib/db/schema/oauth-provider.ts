@@ -125,6 +125,7 @@ export const oauthConsents = sqliteTable(
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     scopes: text("scopes").notNull(),
+    scopeHmac: text("scope_hmac"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
     ),

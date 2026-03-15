@@ -114,3 +114,19 @@
   - 5-minute JWT TTL since signing happens immediately after threshold is reached
   - Claims: scope="frost:sign", session_id=challengeId, participant_id, guardian_id, sub=userId
 - Remaining: signed HPKE key verification N/A — FROST identity keys don't exist until after DKG (chicken-and-egg); HPKE persistence addresses core concern
+
+## Task 12: OAuth Security Hardening — IN PROGRESS
+### Sub-task D: Consent Scope HMAC Integrity — COMPLETE
+- PRD: security-hardening-malicious-server.md Phase 4
+- Files changed:
+  - EDIT: src/lib/db/schema/oauth-provider.ts — added scopeHmac column to oauthConsents
+  - NEW: src/lib/auth/oidc/consent-integrity.ts — computeConsentHmac(HMAC-SHA256 over userId+clientId+referenceId+sortedScopes)
+  - EDIT: src/lib/auth/auth.ts — beforeAuthorizeVerifyConsentHmac hook (deletes consent if HMAC invalid/missing); afterConsentStoreHmac hook (computes+stores HMAC after consent write)
+  - NEW: src/lib/auth/oidc/__tests__/consent-integrity.test.ts — 8 unit tests
+  - NEW: src/lib/auth/__tests__/consent-integrity.integration.test.ts — 6 integration tests
+- Arch decisions:
+  - HMAC uses encodeAad length-prefixed encoding (same pattern as FHE integrity) to prevent concatenation collisions
+  - Scopes sorted before HMAC to make tag order-independent
+  - Before-hook on /oauth2/authorize verifies HMAC before plugin's auto-skip; invalid/missing → delete consent → force re-consent
+  - After-hook on /oauth2/consent stores HMAC after plugin writes consent (runs after pairwise cleanup)
+  - No backward compat: records without valid HMAC are deleted (per CLAUDE.md: no users, breaking changes OK)
