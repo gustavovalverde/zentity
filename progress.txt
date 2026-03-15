@@ -168,3 +168,11 @@
   - Old keys remain in jwks table (grace period for in-flight responses)
   - orderBy(desc(createdAt)) ensures newest key is checked first
   - Cache invalidated on rotation so new key is used immediately
+
+### Sub-task F: Cross-Org Client Adoption Guard — COMPLETE
+- Files changed:
+  - EDIT: src/app/api/rp-admin/clients/approve/route.ts — reject force-adoption of clients owned by a different org (403)
+- Arch decisions:
+  - force flag still works for user-owned or unowned clients
+  - Cross-org transfer blocked entirely (no inter-org approval system exists)
+  - Simplest correct behavior: org's clients can only be transferred by that org

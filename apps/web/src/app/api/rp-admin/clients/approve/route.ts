@@ -57,6 +57,19 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  // Cross-org adoption requires the source org's approval (not implemented).
+  // Block force-adoption of clients owned by a different organization.
+  if (
+    force &&
+    existing.referenceId &&
+    existing.referenceId !== admin.organizationId
+  ) {
+    return NextResponse.json(
+      { error: "Cannot force-adopt a client owned by another organization" },
+      { status: 403 }
+    );
+  }
+
   if (scopes) {
     const invalid = scopes.filter((s) => !OAUTH_SCOPE_SET.has(s));
     if (invalid.length > 0) {
