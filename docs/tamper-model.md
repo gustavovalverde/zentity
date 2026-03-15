@@ -131,6 +131,12 @@ The tag is stored in `encrypted_attributes.ciphertext_hash` and verified with `c
 
 The `encodeAad` function uses length-prefixed encoding to prevent concatenation collisions (e.g., `userId="ab" + type="cd"` produces a different encoding than `userId="abc" + type="d"`).
 
+### ML-KEM Recovery Key TOFU Pinning
+
+**Threat:** Key substitution — an attacker replaces the ML-KEM-768 public key after a user has stored recovery wrappers. The user's wrappers are encrypted under the original key, but new wrappers (or recovery attempts) would use the attacker's key.
+
+**Control:** Trust-On-First-Use (TOFU) pinning via `recovery_key_pins` table. On first wrapper store, `SHA-256(publicKey)` is recorded per user. Every subsequent wrapper operation and recovery challenge verifies the stored fingerprint against the current key. Mismatch throws before any wrap/unwrap proceeds. Pin insert uses `onConflictDoNothing` for concurrent first-store race safety.
+
 ### Consent Scope Integrity
 
 **Threat:** DB-level scope escalation — widening a consent record's scope list to gain access to claims the user never approved.

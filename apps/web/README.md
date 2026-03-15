@@ -16,8 +16,10 @@ This is the main web application for Zentity, providing:
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
   checks
-- **Social recovery** — Guardian approvals (email + authenticator) and Recovery
-  ID-based recovery initiation
+- **Social recovery** — Guardian approvals (email, twoFactor, custodialEmail) and
+  Recovery ID-based recovery initiation. Custodial email guardians (max 1 per
+  user, cannot be sole guardian) use a Zentity-operated signer for zero-friction
+  recovery setup.
 
 ## Technology Stack
 
@@ -66,6 +68,10 @@ INTERNAL_SERVICE_TOKEN=dev-internal-token
 RECOVERY_ML_KEM_SECRET_KEY=...          # production (base64 of 2400 bytes)
 RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
 RECOVERY_KEY_ID=v1
+
+# Custodial recovery guardian (optional)
+CUSTODIAL_SIGNER_URL=http://localhost:5101   # Zentity-operated signer for custodial guardian
+CUSTODIAL_SIGNER_ID=signer-custodial         # Signer ID for the custodial instance
 
 # Email delivery
 RESEND_API_KEY=...                      # production
@@ -361,6 +367,7 @@ to modify three packages:
 | `better-auth` | Add `allowPasswordless` option for 2FA backup codes |
 | `@better-auth/passkey` | Add WebAuthn extensions support and new error codes |
 | `@daveyplate/better-auth-ui` | Custom auth UI configuration |
+| `@better-auth/oauth-provider` | CIBA grant type extensibility (`customGrantTypeHandlers`) |
 
 ### Updating Patches
 

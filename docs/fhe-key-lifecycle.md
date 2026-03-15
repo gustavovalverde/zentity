@@ -45,6 +45,7 @@ Each credential type derives a KEK differently:
 | **Passkey** | WebAuthn PRF extension output (32 bytes) | HKDF-SHA256 |
 | **OPAQUE** | PAKE protocol export key (64 bytes) | HKDF-SHA256 |
 | **Wallet** | EIP-712 typed data signature (65 bytes) | HKDF-SHA256 |
+| **FROST recovery** | Aggregated FROST signature (hex, 64 bytes) | `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` |
 
 The DEK is wrapped (encrypted) with the KEK using AES-256-GCM with authenticated additional data (AAD) binding the secret to a specific user and credential.
 
@@ -62,6 +63,7 @@ The DEK is wrapped (encrypted) with the KEK using AES-256-GCM with authenticated
 | **FHE computation** | YES (decrypt results) | YES (to unwrap DEK) |
 | **OAuth to RP** | NO | NO |
 | **Credential management** | YES (re-wrap DEK) | YES (to unwrap then re-wrap) |
+| **Recovery (FROST guardian threshold)** | YES | NO (FROST signature replaces credential) |
 
 Notes:
 
@@ -314,6 +316,8 @@ The `oauthProviderClient` plugin automatically injects the signed `oauth_query` 
 | `lib/privacy/credentials/` | Credential-specific KEK derivation |
 | `lib/privacy/credentials/resolve.ts` | Unified credential cache resolver for enrollment (checks OPAQUE → wallet → passkey) |
 | `lib/auth/oauth-post-login.ts` | OAuth continuation after custom auth |
+| `lib/recovery/recovery-keys.ts` | FROST-derived unwrap key, ML-KEM TOFU pinning |
+| `lib/auth/oidc/key-vault.ts` | AES-256-GCM envelope encryption for JWKS keys |
 
 ### Credential Caching
 
@@ -360,15 +364,17 @@ DEK wrapping uses Authenticated Additional Data (AAD):
 
 Prevents wrapped DEK from being used with different secrets or users.
 
+Recovery wrappers use additional AAD binding: `encodeAad([RECOVERY_AAD_CONTEXT, secretId, userId])` prevents cross-user and cross-secret wrapper substitution.
+
 ### Multi-Credential Support
 
 Users can have multiple credentials wrapping the same DEK:
 
 - Primary passkey + backup passkey
 - Passkey + OPAQUE password
-- Passkey + recovery guardians
+- Passkey + recovery guardians (including custodial email — max 1, cannot be sole guardian)
 
-Each credential has its own wrapper entry; the DEK itself is shared.
+Each credential has its own wrapper entry; the DEK itself is shared. Recovery wrappers use ML-KEM-768 encapsulated DEK envelopes stored in `recovery_secret_wrappers`. The custodial email guardian type produces recovery wrappers via a Zentity-operated signer instance.
 
 ## Related Documentation
 

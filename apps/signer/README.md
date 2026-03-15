@@ -233,8 +233,10 @@ cargo clippy
 ### Network Security
 
 - **mTLS** (optional): Mutual TLS between coordinator and signers
-- **JWT verification** (optional): Guardian assertions validated via JWKS
+- **JWT verification**: Guardian assertion JWTs validated via `GUARDIAN_ASSERTION_JWKS_URL` (EdDSA, 5-min TTL, scoped to `frost:sign`)
 - **Service token**: Shared secret for web app authentication
+- **FROST signature-derived DEK unwrap**: The FROST signature is not just an authorization signal — it is the cryptographic IKM for `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` which derives the AES key for DEK unwrapping. Without the real signature, DEKs cannot be recovered.
+- **Custodial guardian**: One signer instance can be designated as the custodial guardian. When `CUSTODIAL_SIGNER_URL` and `CUSTODIAL_SIGNER_ID` are configured in the web app, this signer participates in FROST recovery as the custodial slot (max 1 per user, cannot be sole guardian).
 
 ### Ciphersuites
 

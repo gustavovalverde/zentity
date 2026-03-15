@@ -75,7 +75,7 @@ RAILWAY_DOCKERFILE_PATH=Dockerfile.coordinator
 Optional coordinator variables:
 
 ```env
-GUARDIAN_ASSERTION_JWKS_URL=<jwks-url>  # For JWT verification in Phase 3
+GUARDIAN_ASSERTION_JWKS_URL=https://app.zentity.xyz/api/auth/pq-jwks  # JWKS for guardian assertion JWT verification
 ```
 
 ### Web Service Connection
@@ -140,6 +140,18 @@ railway variables --service signer-1 \
   --set "RUST_LOG=signer_service=info,actix_web=info" \
   --set "RAILWAY_DOCKERFILE_PATH=Dockerfile.signer"
 ```
+
+### Custodial Signer (optional)
+
+To enable the custodial email guardian, designate one signer instance as the custodial signer and configure the web service:
+
+```env
+# On the web service
+CUSTODIAL_SIGNER_URL=http://signer-1.railway.internal:5101
+CUSTODIAL_SIGNER_ID=signer-1
+```
+
+The custodial signer is a standard signer instance — no special configuration on the signer itself. The web service routes custodial guardian operations to this specific signer during FROST recovery.
 
 ## Health Checks
 

@@ -278,3 +278,14 @@
   - EDIT: docs/oauth-integrations.md — added Token Exchange (RFC 8693) grant type and subsection with 3 modes, scope attenuation, act nesting; added software_statement JWT validation to DCR; added consent scope HMAC note (already done in T20)
   - EDIT: docs/agentic-authorization.md — documented release handle triple binding (userId, authReqId, clientId); described two enforcement layers (ephemeral + DB); updated token exchange to present tense; added binding_message priority
   - EDIT: docs/rfcs/0033-agentic-auth-integration.md — updated status to "Phase 1 Complete"; updated 5 gap table rows to "Implemented"; added Implementation Notes addendum
+
+## Task 21: FROST Recovery & Custodial Guardian Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — added CUSTODIAL_SIGNER_URL and CUSTODIAL_SIGNER_ID env vars
+  - EDIT: docs/architecture.md — updated Social Recovery with HKDF-derived unwrap key and 3 guardian types
+  - EDIT: docs/recovery-trust-model.md — added FROST signature-derived DEK unwrap, TOFU pinning, custodial trust analysis
+  - EDIT: docs/fhe-key-lifecycle.md — added FROST recovery KEK derivation row, recovery usage row, custodial in multi-credential, AAD binding, key files
+  - EDIT: apps/web/README.md — added custodial env vars, 3 guardian types, oauth-provider patch
+  - EDIT: apps/signer/README.md — added custodial role, DEK unwrap security, guardian JWT verification
+  - EDIT: docs/railway-signer-deployment.md — removed Phase 3, added GUARDIAN_ASSERTION_JWKS_URL, custodial section
+  - EDIT: docs/tamper-model.md — added ML-KEM TOFU Pinning subsection

@@ -230,11 +230,30 @@ This improves "accidental leakage" risk and logging hygiene, but does not fix th
 - Shamir path: introduce share storage/retrieval for guardians.
 - Threshold signature/decryption path: move signing shares to guardian-controlled devices/services and ensure server cannot invoke them unilaterally.
 
+### Step 3b: FROST signature-derived DEK unwrap (implemented)
+
+The current implementation uses the FROST aggregated signature as the IKM for key derivation:
+
+```text
+unwrap_key = HKDF-SHA256(ikm=frost_signature, salt=challengeId, info="zentity:frost-unwrap")
+```
+
+At signing time, DEKs are wrapped under this FROST-derived key and stored on the challenge row (`frostWrappedDeks`). The server returns the FROST-wrapped DEKs + the signature. The client derives the same HKDF key from the signature and unwraps the DEKs locally. DB status manipulation alone is insufficient — the real FROST signature is cryptographically required.
+
 ### Step 4: Operational hardening (both models)
 
 - Strong logging and alerting on any recovery-related operations.
 - Rate limits and cooldown windows.
 - Mandatory step-up auth for the recovering user.
+- **ML-KEM TOFU key pinning**: The `recovery_key_pins` table stores `SHA-256(publicKey)` per user on first wrapper creation. Every subsequent wrapper store and recovery challenge verifies the fingerprint matches. A mismatch throws "Recovery key has changed since enrollment" before any wrap/unwrap proceeds, preventing key substitution attacks where an attacker replaces the ML-KEM public key after the user has stored wrappers.
+
+### Custodial email guardian trust model
+
+The `custodialEmail` guardian type provides zero-friction recovery setup by having the platform hold 1 FROST share via a Zentity-operated signer instance. This deliberately reduces the "not even the server" guarantee in exchange for user convenience.
+
+**Trust trade-off:** With a custodial guardian, the platform holds one FROST share. If the threshold is 2-of-3 and one other share is compromised, the platform could participate in recovery without the user's knowledge. This is why constraints exist: max 1 custodial guardian per user, and it cannot be the sole guardian.
+
+**When to use:** Users who want simple backup recovery without managing external guardians. The custodial share acts as a "last resort" alongside user-controlled guardians.
 
 ## What This Means for UX
 

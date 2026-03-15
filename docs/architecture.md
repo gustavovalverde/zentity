@@ -118,6 +118,10 @@ We **never store** raw document images, selfies, plaintext PII, or biometric tem
 
 Zentity supports guardian-approved recovery for passkey loss. Recovery is initiated with email or a Recovery ID, guardians approve via email links or authenticator codes, and the signer services perform FROST threshold signing once the approval threshold is met. Recovery wrappers are stored in `recovery_secret_wrappers`, and the signer coordinator is contacted from the Next.js server (not the browser).
 
+The FROST aggregated signature is not just an authorization gate — it is cryptographically entangled with key custody. The signature is used as input key material for `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` to derive an AES-256-GCM key that unwraps the recovery DEKs. Without the real FROST signature, the DEKs cannot be recovered even with DB access.
+
+Three guardian types are supported: `email` (approval link), `twoFactor` (authenticator code), and `custodialEmail` (Zentity-operated signer — max 1 per user, cannot be the sole guardian).
+
 ---
 
 ## Graduated Disclosure Depth
