@@ -245,6 +245,18 @@ The registrar uses the relayer SDK to encrypt and submit attestation inputs. Dec
 
 This combination yields privacy (no plaintext storage) and integrity (verifiable proofs + hashes) while keeping user key custody intact.
 
+### MCP Server Authentication
+
+The MCP identity server (`apps/mcp`) authenticates to Zentity's OAuth endpoints using a multi-step chain:
+
+1. **OAuth discovery**: Fetch `/.well-known/oauth-protected-resource` → follow to AS metadata
+2. **DCR**: Register as a public client (`token_endpoint_auth_method: "none"`)
+3. **Authentication**: PKCE+PAR for browser redirect, or OPAQUE 3-round FPA for headless login
+4. **DPoP-bound tokens**: All token requests include DPoP proofs; access tokens carry `cnf.jkt`
+5. **Proactive refresh**: `TokenManager` refreshes tokens before expiry
+
+**Key material**: Per-instance DPoP ES256 keypair persisted to `~/.zentity/<instance>/dpop-key.json`. PKCE code verifiers are ephemeral. OPAQUE export keys exist only in memory during the login ceremony.
+
 ## Deep Dives
 
 - [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification and storage boundaries

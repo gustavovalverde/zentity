@@ -37,6 +37,7 @@ Monorepo with services communicating via REST APIs:
 
 Additional apps (not core services):
 
+- `apps/mcp` — MCP HTTP/stdio server with OAuth auth (FPA OPAQUE 3-round, PKCE, DPoP), CIBA integration, step-up re-auth. Tools: whoami, my_proofs, check_compliance, purchase, request_approval
 - `apps/landing` — Marketing landing page (deploys to Vercel)
 - `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid), OID4VP verifier (VeriPass), and CIBA agent authorization (Aether AI at `/aether`)
 
@@ -168,6 +169,20 @@ cargo test                         # Run tests
 ```
 
 See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
+
+### MCP Server (apps/mcp)
+
+MCP identity server supporting HTTP and stdio transports.
+
+```bash
+pnpm dev              # Run with watch (stdio transport)
+pnpm start:http       # Run HTTP transport (port 3200)
+pnpm build            # Build to dist/
+pnpm test             # Vitest unit tests
+pnpm test:e2e         # Smoke test script
+```
+
+Env vars: `ZENTITY_URL` (Zentity server URL), `MCP_ALLOWED_ORIGINS` (CORS origins for HTTP transport).
 
 ### Docker (all services)
 

@@ -239,6 +239,8 @@ flowchart LR
 - OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)
 - OIDC4VP credential presentation (DCQL queries, JARM encrypted responses, x509_hash client_id, KB-JWT holder binding)
 - VeriPass demo verifier (4 OID4VP scenarios: border control, background check, age-restricted venue, financial KYC)
+- MCP identity server with OAuth-authenticated tools (whoami, my_proofs, check_compliance, purchase, request_approval)
+- Agent authorization via CIBA: AI agent initiates backchannel auth, user approves via push notification, agent receives identity data
 
 ## Scenarios
 
@@ -289,6 +291,7 @@ Details: [docs/architecture.md](docs/architecture.md) |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
 | Signer Coordinator | Rust (Actix), FROST coordinator | 5002 |
 | Signer Services | Rust (Actix), FROST signers | 5101+ |
+| MCP Server | Node.js, Hono, @modelcontextprotocol/sdk | 3200 (HTTP) / stdio |
 
 ## License
 

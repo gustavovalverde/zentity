@@ -31,6 +31,7 @@ Non-goals:
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | CIBA | @better-auth/ciba (backchannel auth, poll mode) | Agent-initiated async authorization via email/push notification and user approval. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
+| MCP identity server | Node.js, Hono, @modelcontextprotocol/sdk | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_proofs, check_compliance, purchase, request_approval). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram
@@ -63,7 +64,12 @@ flowchart LR
     ZKP["ZKPassport App\nNFC + ZK Proofs"]
   end
 
+  subgraph Agent["AI Agent"]
+    MCP["MCP Client\n(OAuth + DPoP)"]
+  end
+
   UI -->|"doc + selfie"| API
+  MCP -->|"FPA/CIBA + DPoP"| API
   Mobile -->|"NFC proofs"| API
   API -->|"zkpassport.verify()"| API
   API -->|"image"| OCR

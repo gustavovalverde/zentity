@@ -320,3 +320,10 @@
   - EDIT: docs/agentic-authorization.md — documented both approval paths, push payload RFC 8291 encryption
   - EDIT: docs/rfcs/0034-ciba-web-push-notifications.md — updated status to Implemented, added Implementation Notes addendum
   - EDIT: apps/demo-rp/README.md — added Aether AI scenario with quick-start and architecture note
+
+## Task 16: MCP Server Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — added apps/mcp to Additional apps, MCP build/dev commands, ZENTITY_URL and MCP_ALLOWED_ORIGINS env vars
+  - EDIT: README.md — added MCP row to services table, MCP identity server and agent authorization to What's implemented
+  - EDIT: docs/architecture.md — added MCP to components table and system diagram
+  - EDIT: docs/cryptographic-pillars.md — added MCP Server Authentication section with 5-step auth chain and key material
