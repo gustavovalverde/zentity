@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 
+import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
@@ -47,7 +49,9 @@ async function insertSession(
       lastLoginMethod: "passkey",
     })
     .run();
-  return token;
+
+  const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
+  return `${token}.${signature}`;
 }
 
 function insertParRequest(

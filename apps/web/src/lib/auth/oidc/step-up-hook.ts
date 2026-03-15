@@ -15,7 +15,7 @@
 
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 
-import { APIError } from "better-auth/api";
+import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -25,7 +25,6 @@ import {
   findSatisfiedAcr,
   isMaxAgeExceeded,
 } from "@/lib/auth/oidc/step-up";
-import { sessions } from "@/lib/db/schema/auth";
 import { haipPushedRequests } from "@/lib/db/schema/haip";
 
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
@@ -37,14 +36,6 @@ interface StepUpParams {
   prompt?: string;
   redirect_uri?: string;
   state?: string;
-}
-
-const SESSION_COOKIE_RE = /(?:__Secure-)?better-auth[.-]session_token=([^;]+)/;
-
-function resolveSessionToken(headers: Headers): string | null {
-  const cookie = headers.get("cookie") ?? "";
-  const match = SESSION_COOKIE_RE.exec(cookie);
-  return match ? decodeURIComponent(match[1]) : null;
 }
 
 function throwRedirect(url: string): never {
@@ -65,7 +56,7 @@ export async function enforceStepUp(ctx: any, db: LibSQLDatabase<any>) {
   if (requestUri?.startsWith(PAR_URI_PREFIX)) {
     await enforceFromPar(ctx, db, requestUri);
   } else {
-    await enforceFromQuery(ctx, db);
+    await enforceFromQuery(ctx);
   }
 }
 
@@ -105,10 +96,15 @@ async function enforceFromPar(
     return;
   }
 
-  const session = await resolveSession(ctx.headers, db);
-  if (!session) {
+  const resolved = await getSessionFromCtx(ctx);
+  if (!resolved) {
     return;
   }
+
+  const session: SessionInfo = {
+    userId: resolved.user.id,
+    createdAt: resolved.session.createdAt,
+  };
 
   const action = await evaluate(params, session);
   if (!action) {
@@ -168,16 +164,21 @@ async function enforceFromPar(
 // ── Direct query param enforcement ──────────────────────
 
 // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
-async function enforceFromQuery(ctx: any, db: LibSQLDatabase<any>) {
+async function enforceFromQuery(ctx: any) {
   const params = extractQueryParams(ctx.query);
   if (!params.acr_values && params.max_age === undefined) {
     return;
   }
 
-  const session = await resolveSession(ctx.headers, db);
-  if (!session) {
+  const resolved = await getSessionFromCtx(ctx);
+  if (!resolved) {
     return;
   }
+
+  const session: SessionInfo = {
+    userId: resolved.user.id,
+    createdAt: resolved.session.createdAt,
+  };
 
   const action = await evaluate(params, session);
   if (!action) {
@@ -224,26 +225,8 @@ async function enforceFromQuery(ctx: any, db: LibSQLDatabase<any>) {
 // ── Shared helpers ──────────────────────────────────────
 
 interface SessionInfo {
-  createdAt: string;
+  createdAt: string | Date;
   userId: string;
-}
-
-function resolveSession(
-  headers: Headers,
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
-  db: LibSQLDatabase<any>
-): Promise<SessionInfo | null> {
-  const token = resolveSessionToken(headers);
-  if (!token) {
-    return Promise.resolve(null);
-  }
-
-  return db
-    .select({ userId: sessions.userId, createdAt: sessions.createdAt })
-    .from(sessions)
-    .where(eq(sessions.token, token))
-    .limit(1)
-    .get() as Promise<SessionInfo | null>;
 }
 
 type StepUpAction =

@@ -1,110 +1,25 @@
-## Phase 1: Foundational cleanup
+## Phase 1: Step-Up Hook Session Fix — COMPLETE
 
-### Task: Trivial fixes (zero risk)
-- Fixed stale `"crypto.health"` / `"crypto.challengeStatus"` → `"zk.health"` / `"zk.challengeStatus"` in `DEBUG_ONLY_PATHS`
-- Imported `FheStatus` type from `db/schema/identity.ts` in `job-processor.ts`, deleted local redeclaration
-- Renamed `ISSUER_ID` → `BUNDLE_ISSUER_ID`, `POLICY_VERSION` → `BUNDLE_POLICY_VERSION` in sign-up router
-- Files: `trpc/server.ts`, `trpc/routers/identity/helpers/job-processor.ts`, `trpc/routers/sign-up.ts`
-- Note: 2 pre-existing test failures in `authorize-challenge.integration.test.ts` and `token-exchange.integration.test.ts` (unrelated)
+### Task
+Fix step-up auth hook so acr_values/max_age enforcement actually runs on /oauth2/authorize.
 
-### Task: Shared Zod schemas for encrypted key material
-- Extracted `wrappedDekSchema` and `prfSaltSchema` into `lib/privacy/secrets/types.ts`
-- Deleted duplicate definitions from: `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`
-- Unified validation: all consumers now use `.min(1)` + strict Zod schema check (strictest version)
-- Files: `privacy/secrets/types.ts`, `trpc/routers/secrets.ts`, `api/fhe/enrollment/complete/route.ts`, `trpc/routers/recovery/challenge.ts`
+### Bug
+`resolveSessionToken()` extracted full signed cookie (token.hmac-sig) but DB stores raw token → query never matched → hook always short-circuited.
 
-### Task: Shared msgpack response helpers
-- Extracted `msgpackResponse` and `jsonError` into `lib/utils/api-response.ts`
-- Deleted duplicate definitions from: `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`
-- Files: `utils/api-response.ts`, `api/fhe/keys/register/route.ts`, `api/fhe/verify-age/route.ts`
+### Fix
+- Replaced manual cookie parsing (`SESSION_COOKIE_RE`, `resolveSessionToken`, `resolveSession`, `sessions` import) with `getSessionFromCtx(ctx)` from `better-auth/api`
+- Maps `{ session.createdAt, user.id }` → `SessionInfo` at call sites
+- Removed unused `db` param from `enforceFromQuery` (only needed in `enforceFromPar` for PAR records)
+- Updated integration tests to sign session cookies via `makeSignature` from `better-auth/crypto`
 
-### Task: Consolidated token extraction
-- Renamed `extractBearerToken` → `extractAccessToken` in `oauth-token-validation.ts`, added DPoP prefix support
-- Deleted local `extractAccessToken` from `api/oauth2/release/route.ts`
-- Updated all consumers: compliance-key route, test file
-- Added DPoP test case
-- Files: `auth/oauth-token-validation.ts`, `api/oauth2/release/route.ts`, `api/oauth2/clients/.../compliance-key/route.ts`, tests
+### Files changed
+- `apps/web/src/lib/auth/oidc/step-up-hook.ts` — removed broken session resolution, use getSessionFromCtx
+- `apps/web/src/lib/auth/__tests__/step-up-auth.integration.test.ts` — sign session cookies with HMAC
 
-### Task: Auth check unification
-- Updated `requireSession` error message from `"Unauthorized"` → `"Authentication required"`
-- Switched `fhe/keys/register/route.ts` from `auth.api.getSession` to `requireSession`
-- Switched `identity-handler.ts` `resolveSessionAndBody` from `auth.api.getSession` to `requireSession`
-- Switched `oauth2/identity/unstage/route.ts` from `auth.api.getSession` to `requireSession`
-- Updated `verify-age/route.ts` to forward `requireSession`'s response instead of custom error
-- Updated 4 test files for new error message
-- No REST route calls `auth.api.getSession` directly anymore
-- Files: `api-auth.ts`, `fhe/keys/register/route.ts`, `identity-handler.ts`, `oauth2/identity/unstage/route.ts`, `fhe/verify-age/route.ts`, 4 tests
-
-## Phase 2: Query layer + auth.ts hooks
-
-### Task: CIBA request validation helper
-- Extracted `validatePendingCibaRequest` into `db/queries/ciba.ts`
-- Replaces 30-line duplicated validation block in both CIBA identity intent and stage routes
-- Returns row on success or NextResponse error on failure
-- Files: `db/queries/ciba.ts`, `api/ciba/identity/intent/route.ts`, `api/ciba/identity/stage/route.ts`
-
-### Task: Identity bundle upsert absorption
-- Removed check-then-branch pattern from `fhe/status/route.ts` and `fhe/enrollment/complete/route.ts`
-- Both now call `upsertIdentityBundle` directly (it already uses `onConflictDoUpdate`)
-- Removed unused `getIdentityBundleByUserId` and `updateIdentityBundleFheStatus` imports from those routes
-- `updateIdentityBundleFheStatus` still used by `encryption.ts` (FHE job processor) — not deleted
-- Files: `api/fhe/status/route.ts`, `api/fhe/enrollment/complete/route.ts`, enrollment complete test
-
-### Task: Scope normalization + proof scope detection + named hook handlers
-- Added `toScopeList(scopes)` replacing 3x `Array.isArray(scopes) ? [...scopes] : []`
-- Added `hasAnyProofScope(scopeList)` replacing 2x `includes("proof:identity") || extractProofScopes().length > 0`
-- Extracted 10 before-hook handlers and 3 after-hook handlers as named functions
-- Hooks now read as dispatch tables (~40 lines) instead of monolithic blocks (~230 lines)
-- All functions stay in `auth.ts` — no new files
-- Files: `auth/auth.ts`
-
-## Phase 3: In-place complexity reduction + naming
-
-### Task: Move verification-utils to ZK domain
-- Moved `verification-utils.ts` from `trpc/routers/zk/` to `lib/privacy/zk/`
-- Updated import in `proof.ts` to use `@/lib/privacy/zk/verification-utils`
-- Files: `privacy/zk/verification-utils.ts`, `trpc/routers/zk/proof.ts`
-
-### Task: Rename DeFi token router
-- Renamed `token.ts` → `compliant-token.ts`, `tokenRouter` → `compliantTokenRouter`
-- Updated tRPC namespace from `token` to `compliantToken` in app router
-- Updated all client references (6 component files, server.ts debug/critical paths)
-- Files: `compliant-token.ts`, `app.ts`, `server.ts`, 6 component files
-
-### Task: Derive rp-admin scope list from canonical source
-- Created `lib/auth/oidc/oauth-scopes.ts` with `OAUTH_SCOPES` and `OAUTH_SCOPE_SET`
-- auth.ts `oauthProvider({ scopes })` now uses `[...OAUTH_SCOPES]`
-- rp-admin approve route imports `OAUTH_SCOPE_SET` instead of maintaining hardcoded list
-- Fixed: hardcoded list was missing `email` scope
-- Files: `auth/oidc/oauth-scopes.ts`, `auth/auth.ts`, `api/rp-admin/clients/approve/route.ts`
-
-### Task: proof.ts claim-hash assertion helper
-- Extracted `assertOcrClaimHash` for 3 duplicated OCR claim hash validation blocks (age, doc_validity, nationality)
-- Extracted `assertResultBit` + lookup table for 5 duplicated result-bit checks
-- Each OCR circuit branch reduced from ~15 lines to ~6 lines
-- Files: `trpc/routers/zk/proof.ts`
-
-### Task: authorize-challenge session/protocol helpers
-- Extracted `validateChallengeSession` for session load + expiry + pending state check (used by all 4 handlers)
-- Extracted `checkDpopContinuity` for DPoP JKT mismatch guard (3 identical lines × 4 handlers)
-- Extracted `issueEip712Challenge` for nonce creation + verification insert + session update + typed data response (~35 lines × 2 handlers)
-- Collapsed OPAQUE dummy fallback in `handleOpaqueStart` where both if/else branches produced identical results
-- Files: `api/oauth2/authorize-challenge/route.ts`
-
-## Phase 4: Code relocation
-
-### Task: Liveness components → co-located _components/
-- Moved 10 liveness UI files from `components/liveness/` to `verify/liveness/_components/`
-- Deleted `components/liveness/` directory
-- Updated imports in `liveness-verify-client.tsx` to relative paths
-
-### Task: DeFi demo components → co-located _components/
-- Moved 5 defi-demo UI files from `components/defi-demo/` to `defi-demo/_components/`
-- Deleted `components/defi-demo/` directory
-- Updated import in `defi-demo/page.tsx` to relative path
-
-### Task: Blob route → api/secrets/blob/
-- Moved blob route from `api/fhe/enrollment/blob/` to `api/secrets/blob/`
-- Updated 2 client-side fetch URLs in `storage.ts`
-- Updated integration test import and URL
-- Deleted `api/fhe/enrollment/blob/` directory
+### Verification
+- 16 step-up integration tests pass
+- 13 CIBA step-up integration tests pass
+- 20 step-up unit tests pass
+- typecheck clean
+- lint clean
+- Pre-existing failures in token-exchange + authorize-challenge tests (unrelated)
