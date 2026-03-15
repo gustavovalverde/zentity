@@ -5,6 +5,7 @@ import {
   real,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth";
@@ -126,7 +127,8 @@ export const identityVerifications = sqliteTable(
       .default("pending"),
     documentType: text("document_type"),
     issuerCountry: text("issuer_country"),
-    documentHash: text("document_hash").unique(),
+    documentHash: text("document_hash"),
+    dedupKey: text("dedup_key").unique(),
     nameCommitment: text("name_commitment"),
     dobCommitment: text("dob_commitment"),
     nationalityCommitment: text("nationality_commitment"),
@@ -147,6 +149,7 @@ export const identityVerifications = sqliteTable(
   (table) => [
     index("idx_identity_verifications_user_id").on(table.userId),
     index("idx_identity_verifications_doc_hash").on(table.documentHash),
+    uniqueIndex("idx_identity_verifications_dedup_key").on(table.dedupKey),
     index("idx_identity_verifications_nullifier").on(table.uniqueIdentifier),
   ]
 );
