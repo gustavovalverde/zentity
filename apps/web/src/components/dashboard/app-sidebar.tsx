@@ -10,6 +10,7 @@ import {
   LogOut,
   Settings,
   Shield,
+  ShieldPlus,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -89,6 +90,11 @@ const developerNavItems: NavItem[] = [
     title: "Agent Requests",
     url: "/dashboard/ciba",
     icon: BotMessageSquare,
+  },
+  {
+    title: "Agent Policies",
+    url: "/dashboard/agent-policies",
+    icon: ShieldPlus,
   },
   {
     title: "Debug Tools",

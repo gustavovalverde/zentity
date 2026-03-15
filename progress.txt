@@ -59,6 +59,22 @@
 - 15 unit tests covering parsing, filtering (null/value/values constraints), essential claim detection, stage/peek/consume lifecycle
 - Files: claims-parameter.ts (new), auth.ts, well-known-utils.ts, claims-parameter.test.ts (new)
 
+## Task 22: Agent Boundaries & Auto-Approval — COMPLETE
+- `agent_boundaries` table: userId+clientId+boundaryType unique, JSON config, enabled flag
+- `approvalMethod` column added to `cibaRequests` for audit trail ("boundary" = auto-approved)
+- Boundary evaluation in `src/lib/ciba/boundary-evaluation.ts`: purchase (amount/cap/cooldown), scope (allowlist), custom (action count)
+- Auto-approval wired into CIBA `sendNotification` callback — checks boundaries before notifying
+- ACR enforcement respected: auto-approval skipped if user tier insufficient
+- Identity scopes (`identity.*`) always bypass auto-approval
+- tRPC `agentBoundaries` router: list, create, update, delete (all scoped to userId)
+- Scope boundary creation rejects configs containing identity scopes
+- Dashboard `/dashboard/agent-policies`: card-per-agent grouped list, create/edit Dialog, delete AlertDialog
+- Sidebar "Agent Policies" entry with ShieldPlus icon under Developer
+- "Always allow this" button on CIBA approval page (hidden for identity-scoped requests)
+- Auto-approved badge (ShieldCheck) in CIBA listing for boundary-approved requests
+- 10 integration tests: evaluation logic (purchase limits/cap/cooldown, scope allow/deny, identity bypass, disabled, AND logic) + 5 CRUD tests
+- Files: agent-boundaries.ts (schema), ciba.ts (approvalMethod), boundary-evaluation.ts, auto-approve.ts, agent-boundaries.ts (router), app.ts, auth.ts, app-sidebar.tsx, agent-policies page+components, ciba page.tsx, ciba-approve-client.tsx, 2 test files
+
 ## Task 19: MCP Protocol Compliance — COMPLETE
 - Added `resource` column to oauthClients schema
 - PAR requests now require `resource` parameter (throws invalid_request if absent)

@@ -2,7 +2,8 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, ShieldPlus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -35,6 +36,30 @@ interface AuthorizationDetail {
   merchant?: string;
   type?: string;
   [key: string]: unknown;
+}
+
+function buildPolicyLink(details: CibaRequestDetails): string {
+  const params = new URLSearchParams();
+  if (details.authorization_details?.some((d) => d.type === "purchase")) {
+    params.set("type", "purchase");
+    const purchase = details.authorization_details.find(
+      (d) => d.type === "purchase"
+    );
+    if (purchase?.amount?.value) {
+      params.set("maxAmount", purchase.amount.value);
+    }
+    if (purchase?.amount?.currency) {
+      params.set("currency", purchase.amount.currency);
+    }
+  } else {
+    params.set("type", "scope");
+    const scopes = details.scope
+      .split(" ")
+      .filter((s) => s !== "openid")
+      .join(",");
+    params.set("scopes", scopes);
+  }
+  return `/dashboard/agent-policies?create=true&${params.toString()}`;
 }
 
 interface CibaRequestDetails {
@@ -482,28 +507,38 @@ export function CibaApproveClient({
           </p>
         </CardContent>
 
-        <CardFooter className="flex gap-3">
-          <Button
-            className="flex-1"
-            disabled={isActing}
-            onClick={() => handleAction("reject")}
-            variant="outline"
-          >
-            {state === "rejecting" ? "Denying..." : "Deny"}
-          </Button>
-          <Button
-            className="flex-1"
-            disabled={
-              isActing ||
-              (hasIdentityScopes &&
-                (vault.vaultState.status !== "loaded" ||
-                  !vault.hasValidIdentityIntent ||
-                  vault.intentLoading))
-            }
-            onClick={() => handleAction("authorize")}
-          >
-            {state === "approving" ? "Approving..." : "Approve"}
-          </Button>
+        <CardFooter className="flex flex-col gap-3">
+          <div className="flex w-full gap-3">
+            <Button
+              className="flex-1"
+              disabled={isActing}
+              onClick={() => handleAction("reject")}
+              variant="outline"
+            >
+              {state === "rejecting" ? "Denying..." : "Deny"}
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={
+                isActing ||
+                (hasIdentityScopes &&
+                  (vault.vaultState.status !== "loaded" ||
+                    !vault.hasValidIdentityIntent ||
+                    vault.intentLoading))
+              }
+              onClick={() => handleAction("authorize")}
+            >
+              {state === "approving" ? "Approving..." : "Approve"}
+            </Button>
+          </div>
+          {!hasIdentityScopes && details && (
+            <Button asChild size="sm" variant="outline">
+              <Link href={buildPolicyLink(details)}>
+                <ShieldPlus className="mr-2 size-4" />
+                Always allow this
+              </Link>
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </div>

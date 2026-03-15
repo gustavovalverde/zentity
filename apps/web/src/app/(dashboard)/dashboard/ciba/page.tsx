@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
@@ -50,6 +51,7 @@ export default async function CibaListPage() {
       bindingMessage: cibaRequests.bindingMessage,
       authorizationDetails: cibaRequests.authorizationDetails,
       status: cibaRequests.status,
+      approvalMethod: cibaRequests.approvalMethod,
       expiresAt: cibaRequests.expiresAt,
       createdAt: cibaRequests.createdAt,
       clientName: oauthClients.name,
@@ -96,9 +98,17 @@ export default async function CibaListPage() {
                       <CardTitle className="text-base">
                         {req.clientName ?? "Unknown Application"}
                       </CardTitle>
-                      <Badge variant={statusVariant(displayStatus)}>
-                        {displayStatus}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {req.approvalMethod === "boundary" && (
+                          <Badge className="gap-1" variant="secondary">
+                            <ShieldCheck className="size-3" />
+                            Auto-approved
+                          </Badge>
+                        )}
+                        <Badge variant={statusVariant(displayStatus)}>
+                          {displayStatus}
+                        </Badge>
+                      </div>
                     </div>
                     <CardDescription>
                       {req.scope

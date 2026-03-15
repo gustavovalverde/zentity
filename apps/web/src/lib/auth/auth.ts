@@ -93,6 +93,7 @@ import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
 import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
+import { tryAutoApprove } from "@/lib/ciba/auto-approve";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
 import {
@@ -1441,6 +1442,11 @@ export const auth = betterAuth({
         );
       },
       sendNotification: async (data) => {
+        const autoApproved = await tryAutoApprove(data);
+        if (autoApproved) {
+          return;
+        }
+
         const origin = getAppOrigin();
         const pushPayload = buildCibaPushPayload(data, origin);
         await Promise.allSettled([
