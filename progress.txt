@@ -23,3 +23,22 @@ Fix step-up auth hook so acr_values/max_age enforcement actually runs on /oauth2
 - typecheck clean
 - lint clean
 - Pre-existing failures in token-exchange + authorize-challenge tests (unrelated)
+
+## Phase 2: Docs Link Fragment Rewriting — COMPLETE
+
+### Task
+Fix landing page markdown renderer so cross-doc links with #fragment suffixes resolve correctly.
+
+### Bug
+`href.endsWith(".md")` missed links like `architecture.md#section` because href ends with `#section`.
+
+### Fix
+- Split href on `#` at top to separate path from fragment before `.md` check
+- Re-append fragment to all resolved URLs (internal routes, GitHub fallback, README)
+- Export `transformHref` for direct unit testing
+- Added vitest to landing app, 9 tests covering full href matrix
+
+### Files changed
+- `apps/landing/src/components/docs/markdown-renderer.tsx` — fragment-aware transformHref, exported
+- `apps/landing/src/components/docs/__tests__/transform-href.test.ts` — new test file
+- `apps/landing/package.json` — added vitest dep + test script

@@ -41,7 +41,7 @@ function slugify(children: React.ReactNode): string {
 }
 
 // Transform markdown links to work with our docs routing
-function transformHref(href: string | undefined): {
+export function transformHref(href: string | undefined): {
   href: string;
   isInternal: boolean;
   isExternal: boolean;
@@ -53,9 +53,19 @@ function transformHref(href: string | undefined): {
     return { href, isInternal: false, isExternal: true };
   }
 
+  // Separate fragment from path (e.g., "architecture.md#section" → "architecture.md" + "#section")
+  const hashIdx = href.indexOf("#");
+  const path = hashIdx !== -1 ? href.slice(0, hashIdx) : href;
+  const fragment = hashIdx !== -1 ? href.slice(hashIdx) : "";
+
+  // Anchor-only links (e.g., "#section")
+  if (!path) {
+    return { href, isInternal: false, isExternal: false };
+  }
+
   // Markdown file links (e.g., "zk-architecture.md" or "../README.md")
-  if (href.endsWith(".md")) {
-    let normalized = href;
+  if (path.endsWith(".md")) {
+    let normalized = path;
 
     // Normalize "./" and "../" prefixes to resolve against docs root
     normalized = normalized.replace(/^\.\/+/, "");
@@ -71,7 +81,7 @@ function transformHref(href: string | undefined): {
     // Special-case root README
     if (normalized.toLowerCase() === "readme.md") {
       return {
-        href: "https://github.com/gustavovalverde/zentity/blob/main/README.md",
+        href: `https://github.com/gustavovalverde/zentity/blob/main/README.md${fragment}`,
         isInternal: false,
         isExternal: true,
       };
@@ -82,18 +92,22 @@ function transformHref(href: string | undefined): {
 
     // Only link if the doc exists in our system
     if (hasDocSlug(slug)) {
-      return { href: `/docs/${slug}`, isInternal: true, isExternal: false };
+      return {
+        href: `/docs/${slug}${fragment}`,
+        isInternal: true,
+        isExternal: false,
+      };
     }
 
     // Doc doesn't exist - link to GitHub docs folder
     return {
-      href: `https://github.com/gustavovalverde/zentity/blob/main/docs/${normalized}`,
+      href: `https://github.com/gustavovalverde/zentity/blob/main/docs/${normalized}${fragment}`,
       isInternal: false,
       isExternal: true,
     };
   }
 
-  // Anchor links or other relative paths
+  // Other relative paths
   return { href, isInternal: false, isExternal: false };
 }
 
