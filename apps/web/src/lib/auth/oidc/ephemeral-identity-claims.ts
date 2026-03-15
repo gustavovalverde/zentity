@@ -169,6 +169,41 @@ export function consumeEphemeralClaimsByUser(userId: string): {
   return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
 }
 
+/**
+ * Non-destructive peek at ephemeral claims for a user.
+ * Used by customIdTokenClaims to read PII without consuming it,
+ * leaving it available for customUserInfoClaims when the `claims`
+ * parameter routes PII to the userinfo endpoint.
+ */
+export function peekEphemeralClaimsByUser(userId: string): {
+  claims: Partial<IdentityFields>;
+  scopes: string[];
+  meta: EphemeralClaimsMeta;
+} | null {
+  evictExpiredClaims();
+  const s = getStore();
+  const prefix = `${userId}:`;
+  let matchKey: string | null = null;
+  let matchCount = 0;
+  for (const key of s.keys()) {
+    if (key.startsWith(prefix)) {
+      matchKey = key;
+      matchCount++;
+      if (matchCount > 1) {
+        return null;
+      }
+    }
+  }
+  if (!matchKey) {
+    return null;
+  }
+  const entry = s.get(matchKey);
+  if (!entry) {
+    return null;
+  }
+  return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
+}
+
 export function clearEphemeralClaims(
   userId: string,
   clientId: string

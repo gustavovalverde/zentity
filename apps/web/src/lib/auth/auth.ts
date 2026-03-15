@@ -62,7 +62,10 @@ import {
   stageClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
-import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import {
+  consumeEphemeralClaimsByUser,
+  peekEphemeralClaimsByUser,
+} from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { consumeReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
 import {
   filterIdentityByScopes,
@@ -1263,8 +1266,8 @@ export const auth = betterAuth({
       customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
         const scopeList = toScopeList(scopes);
 
-        // Identity claims require ephemeral staging (vault unlock)
-        const ephemeral = consumeEphemeralClaimsByUser(user.id);
+        // Peek (not consume) — userinfo hook may need the PII too
+        const ephemeral = peekEphemeralClaimsByUser(user.id);
         const identityClaims = ephemeral
           ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
           : {};
@@ -1334,20 +1337,34 @@ export const auth = betterAuth({
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList = toScopeList(scopes);
 
-        if (!hasAnyProofScope(scopeList)) {
-          consumeClaimsParameter(user.id);
-          return {};
-        }
+        // Consume ephemeral PII (terminal consumer — frees memory)
+        const ephemeral = consumeEphemeralClaimsByUser(user.id);
 
-        const allProofClaims = await buildProofClaims(user.id);
-        const filtered = filterProofClaimsByScopes(allProofClaims, scopeList);
+        // Proof claims from DB
+        const proofClaims = hasAnyProofScope(scopeList)
+          ? filterProofClaimsByScopes(
+              await buildProofClaims(user.id),
+              scopeList
+            )
+          : {};
 
+        // Identity PII — only included when claims parameter targets userinfo
         const claimsParam = consumeClaimsParameter(user.id);
+        const identityClaims =
+          ephemeral && claimsParam?.userinfo
+            ? filterClaimsByRequest(
+                filterIdentityByScopes(ephemeral.claims, ephemeral.scopes),
+                claimsParam.userinfo
+              )
+            : {};
+
+        const allClaims = { ...identityClaims, ...proofClaims };
+
         if (!claimsParam?.userinfo) {
-          return filtered;
+          return allClaims;
         }
 
-        return filterClaimsByRequest(filtered, claimsParam.userinfo);
+        return filterClaimsByRequest(allClaims, claimsParam.userinfo);
       },
     }),
     oidc4ida({

@@ -99,3 +99,26 @@ Status: Complete (parts 1-2 of 4; parts 3-4 = claims routing = separate commit)
 - apps/web/src/app/oauth/consent/_components/client-security-badges.tsx — badge + shield logic
 - apps/web/src/app/oauth/consent/page.tsx — query rpEncryptionKeys
 - apps/web/src/app/oauth/consent/__tests__/security-badges.test.ts — updated tests
+
+## Task 08 (Part 2): PII Routing to Userinfo via Claims Parameter
+Status: Complete
+
+### Changes
+1. `customIdTokenClaims` now PEEKS ephemeral PII (non-destructive)
+   - PII stays available for userinfo delivery
+   - `claims.id_token` filter still applied
+2. `customUserInfoClaims` now CONSUMES ephemeral PII (terminal consumer)
+   - When `claims.userinfo` requests identity fields, PII delivered via userinfo
+   - Backward compat: no `claims` param → PII only in id_token
+3. Added `peekEphemeralClaimsByUser` to ephemeral-identity-claims.ts
+4. Tests: 3 new (peek vs consume, cross-client safety)
+
+### Architectural decision
+- id_token hook peeks, userinfo hook consumes — userinfo is terminal consumer
+- If RP never calls userinfo, 5-min TTL cleans up ephemeral PII
+- Cross-client safety guard preserved in peek (returns null for 2+ entries)
+
+### Files changed
+- apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts — peekEphemeralClaimsByUser
+- apps/web/src/lib/auth/auth.ts — peek in customIdTokenClaims, consume+route in customUserInfoClaims
+- apps/web/src/lib/auth/oidc/__tests__/claims-delivery.test.ts — new test
