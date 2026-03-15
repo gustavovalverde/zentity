@@ -25,3 +25,16 @@
   - No KEK set = no-op (keys stored/read as plaintext, for dev convenience)
   - disablePrivateKeyEncryption: true KEPT — removing it would make better-auth encrypt with BETTER_AUTH_SECRET in its own format, breaking our signers that query the same jwks table
   - JARM ECDH-ES filtered from /oauth2/jwks (decryption keys don't belong in verification JWKS)
+
+## Task 04: CIBA Request Binding & Replay Safety — IN PROGRESS
+### Sub-task 4a: Pass authReqId as referenceId in CIBA grant handler — COMPLETE
+- PRD: ciba-notifications-remediation.md Phase 3 (release handle scoping)
+- Root cause: CIBA plugin called createUserTokens with void 0 for referenceId;
+  customAccessTokenClaims had no way to know which CIBA request was being redeemed
+- Files changed:
+  - EDIT: vendor/@better-auth__ciba@1.5.1-beta.3.patch — pass authReqId as referenceId in both push (line 198) and poll (line 561) createUserTokens calls
+  - EDIT: src/lib/auth/oidc/ephemeral-release-handles.ts — consumeReleaseHandle now accepts optional authReqId for direct lookup; falls back to userId iteration
+  - EDIT: src/lib/auth/auth.ts — customAccessTokenClaims passes referenceId to consumeReleaseHandle
+- Intent binding (Phase 2) confirmed ALREADY COMPLETE — authReqId in intent tokens + stage verification working
+- Remaining: authorization_details persistence, atomic single-use redemption at /api/oauth2/release
+- Note: Phase 2 (intent binding) was found to be already implemented and tested (intent-binding.integration.test.ts)

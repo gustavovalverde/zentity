@@ -62,28 +62,48 @@ export function stageReleaseHandle(
 }
 
 /**
- * Consume a staged release handle for a specific user (single-use).
+ * Consume a staged release handle for a specific CIBA request (single-use).
  *
- * Looks up all authReqIds staged for this user and consumes the first
- * valid (non-expired) one. Called by customAccessTokenClaims during
- * CIBA token minting.
+ * When authReqId is provided (patched CIBA plugin), looks up directly by
+ * request ID — guaranteeing the correct handle for concurrent approvals.
+ * Falls back to userId-based iteration when authReqId is unavailable.
  */
-export function consumeReleaseHandle(userId: string): string | null {
+export function consumeReleaseHandle(
+  userId: string,
+  authReqId?: string
+): string | null {
   const store = getStore();
   const index = getUserIndex();
+
+  if (authReqId) {
+    const entry = store.get(authReqId);
+    if (!entry || entry.userId !== userId) {
+      return null;
+    }
+    store.delete(authReqId);
+    const userSet = index.get(userId);
+    if (userSet) {
+      userSet.delete(authReqId);
+      if (userSet.size === 0) {
+        index.delete(userId);
+      }
+    }
+    return entry.expiresAt > Date.now() ? entry.releaseHandle : null;
+  }
+
   const authReqIds = index.get(userId);
   if (!authReqIds || authReqIds.size === 0) {
     return null;
   }
 
-  for (const authReqId of authReqIds) {
-    const entry = store.get(authReqId);
+  for (const reqId of authReqIds) {
+    const entry = store.get(reqId);
     if (!entry) {
-      authReqIds.delete(authReqId);
+      authReqIds.delete(reqId);
       continue;
     }
-    store.delete(authReqId);
-    authReqIds.delete(authReqId);
+    store.delete(reqId);
+    authReqIds.delete(reqId);
     if (authReqIds.size === 0) {
       index.delete(userId);
     }

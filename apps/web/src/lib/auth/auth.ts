@@ -982,23 +982,15 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customAccessTokenClaims: ({ user, scopes }) => {
+      customAccessTokenClaims: ({ user, scopes, referenceId }) => {
         if (!user?.id) {
           return {};
         }
-        // Identity scopes serve as an explicit proxy for the CIBA grant type.
-        // The callback doesn't receive grant_type, but this guard is
-        // functionally equivalent: only CIBA approval flows stage release
-        // handles (via stageReleaseHandle), and only CIBA grants carry
-        // identity.* scopes. Non-CIBA grants (auth-code, refresh, token-
-        // exchange) never have identity scopes, so they exit here.
-        // Even if they did, consumeReleaseHandle returns null when nothing
-        // is staged — defense-in-depth.
         const scopeList = toScopeList(scopes);
         if (!scopeList.some(isIdentityScope)) {
           return {};
         }
-        const handle = consumeReleaseHandle(user.id);
+        const handle = consumeReleaseHandle(user.id, referenceId ?? undefined);
         return handle ? { release_handle: handle } : {};
       },
       customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
