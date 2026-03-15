@@ -105,7 +105,7 @@ The release handle pattern achieves a property that neither standard OIDC userin
 
 The CIBA access token includes an `act` claim per draft-oauth-ai-agents-on-behalf-of-user: `{ "sub": "<user-id>", "act": { "sub": "<agent-client-id>" } }`. This asserts that the token was issued for the human (`sub`) but is being wielded by the agent (`act.sub`).
 
-If the agent later performs a token exchange (RFC 8693) to narrow the audience to a specific merchant, the delegation chain nests: `{ "act": { "sub": "<agent>", "act": { "sub": "<original-agent>" } } }`. Resource servers can inspect this chain to determine the full delegation path.
+When the agent performs a token exchange (RFC 8693, implemented at `urn:ietf:params:oauth:grant-type:token-exchange` on the standard token endpoint) to narrow the audience to a specific merchant, the delegation chain nests: `{ "act": { "sub": "<agent>", "act": { "sub": "<original-agent>" } } }`. Resource servers can inspect this chain to determine the full delegation path.
 
 ---
 
@@ -245,7 +245,7 @@ Every token the agent receives is DPoP-bound (RFC 9449). A stolen token is usele
 
 ### Real-time human consent
 
-CIBA requires the human to actively approve each sensitive action. The approval is not a blanket grant; it is scoped to specific resources (`scope`), specific actions (`authorization_details`), and a specific moment in time (`expires_in`). Push notifications carry the binding message and structured details, so the human can make an informed decision without visiting the agent's interface.
+CIBA requires the human to actively approve each sensitive action. The approval is not a blanket grant; it is scoped to specific resources (`scope`), specific actions (`authorization_details`), and a specific moment in time (`expires_in`). Push notifications carry the binding message and structured details, so the human can make an informed decision without visiting the agent's interface. The notification body follows a priority chain: `bindingMessage` (if present) > `authorization_details` purchase details (item + amount) > fallback `"{clientLabel} is requesting access"`.
 
 ### Zero persistent PII
 
@@ -253,7 +253,13 @@ The release handle pattern ensures that PII is never stored in plaintext on the 
 
 ### One-time disclosure
 
-The release endpoint enforces atomic single-use via a database status transition (`approved → claiming → redeemed`). Concurrent requests race on the `WHERE status = 'approved'` condition; exactly one succeeds. The agent caches the result in its process memory for the session, avoiding repeated CIBA prompts for the same identity data.
+The release endpoint enforces single-use through two independent enforcement layers:
+
+1. **Ephemeral in-memory handle**: The `consumeReleaseHandle` function deletes the handle from memory on first read. The handle is bound to a `(userId, authReqId, clientId)` triple — all three must match for consumption. This prevents cross-user, cross-request, and cross-client handle theft.
+
+2. **DB approval record status transition**: `approved → claiming → redeemed`. Concurrent requests race on the `WHERE status = 'approved'` condition; exactly one succeeds. Even if the in-memory handle were somehow leaked, the DB transition prevents replay.
+
+The agent caches the result in its process memory for the session, avoiding repeated CIBA prompts for the same identity data.
 
 ### Provable delegation
 

@@ -221,7 +221,28 @@ The `act` claim in the token response identifies the agent acting on behalf of t
 | --- | --- |
 | `authorization_code` | Browser redirect (PAR required) or first-party challenge |
 | `urn:openid:params:grant-type:ciba` | CIBA poll mode |
+| `urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 token exchange (audience narrowing, delegation) |
 | `urn:ietf:params:oauth:grant-type:pre-authorized_code` | OIDC4VCI credential issuance |
+
+### Token Exchange (RFC 8693)
+
+Token Exchange enables audience narrowing and delegation chain construction at the standard token endpoint (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`).
+
+**Exchange modes:**
+
+| Source token | Target | Use case |
+| --- | --- | --- |
+| Access token | Access token | Narrow audience for a specific merchant/resource |
+| Access token | ID token | Obtain identity claims for a downstream service |
+| ID token | Access token | Convert identity assertion to an access credential |
+
+**Scope attenuation:** The requested scope must be a subset of the source token's scope. Requesting scopes beyond what the source token carries is rejected. The ID token branch defaults to `["openid"]` regardless of source token scopes.
+
+**DPoP passthrough:** If the source token is DPoP-bound, the exchanged token inherits the same sender constraint.
+
+**`act` claim nesting:** Each exchange adds a delegation layer. A token exchanged once has `{ sub, act: { sub: agent } }`. Exchanged again, it becomes `{ sub, act: { sub: merchant, act: { sub: agent } } }`. Resource servers inspect the chain to determine the full delegation path.
+
+**`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token.
 
 ---
 
@@ -312,6 +333,8 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 ```
 
 Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint for headless authentication and receive step-up `auth_session` tokens instead of redirect errors.
+
+**`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The signature is not verified (no trusted SSA issuers configured), but structural validation prevents garbage data from being accepted.
 
 ---
 

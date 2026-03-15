@@ -272,3 +272,9 @@
   - EDIT: docs/ssi-architecture.md — added chip verification_level, chip_verified claim, and proof-derived compliance derivation note
   - EDIT: docs/attestation-privacy-architecture.md — added revocation columns (revoked_at, revoked_by, revoked_reason) to identity_bundles and identity_verifications in ER diagram; updated status enums to include "revoked"; updated compliance_level note for NFC chip path
   - EDIT: apps/web/README.md — fixed api/crypto/ → api/zk/ stale route name
+
+## Task 23: OAuth Security & Token Exchange Documentation — COMPLETE
+- Files changed:
+  - EDIT: docs/oauth-integrations.md — added Token Exchange (RFC 8693) grant type and subsection with 3 modes, scope attenuation, act nesting; added software_statement JWT validation to DCR; added consent scope HMAC note (already done in T20)
+  - EDIT: docs/agentic-authorization.md — documented release handle triple binding (userId, authReqId, clientId); described two enforcement layers (ephemeral + DB); updated token exchange to present tense; added binding_message priority
+  - EDIT: docs/rfcs/0033-agentic-auth-integration.md — updated status to "Phase 1 Complete"; updated 5 gap table rows to "Implemented"; added Implementation Notes addendum
