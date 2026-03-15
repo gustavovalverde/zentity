@@ -176,3 +176,6 @@
   - force flag still works for user-owned or unowned clients
   - Cross-org transfer blocked entirely (no inter-org approval system exists)
   - Simplest correct behavior: org's clients can only be transferred by that org
+
+### Software Statement JWT Validation — COMPLETE
+- EDIT: src/lib/auth/auth.ts — validateDcrRegistration checks software_statement is a 3-part JWT with valid JSON payload

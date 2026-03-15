@@ -505,6 +505,27 @@ function validateDcrRegistration(
       }
     }
   }
+
+  // RFC 7591 §2.3: software_statement is a JWT — reject if it's not parseable
+  const softwareStatement =
+    typeof body.software_statement === "string"
+      ? body.software_statement
+      : undefined;
+  if (softwareStatement) {
+    const parts = softwareStatement.split(".");
+    if (parts.length !== 3) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "software_statement must be a valid JWT",
+      });
+    }
+    try {
+      JSON.parse(Buffer.from(parts[1], "base64url").toString());
+    } catch {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "software_statement payload is not valid JSON",
+      });
+    }
+  }
 }
 
 // ── Before-hook handlers ──────────────────────────────────
