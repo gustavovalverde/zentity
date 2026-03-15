@@ -45,3 +45,17 @@
   - HMAC: HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([userId, attributeType]) || ciphertext) — length-prefixed context prevents concatenation collisions
   - encodeAad already existed for AES-GCM AAD; reused for HMAC context binding
   - uniqueIndex prevents duplicate (userId, attributeType) rows — defense-in-depth against insertion attacks
+
+## Task 09: Recovery Key Authentication — IN PROGRESS
+### Sub-task: Recovery DEK AAD Binding — COMPLETE
+- PRD: security-hardening-malicious-server.md Phase 7
+- Files changed:
+  - EDIT: src/lib/privacy/primitives/aad.ts — added RECOVERY_AAD_CONTEXT constant
+  - EDIT: src/lib/privacy/secrets/index.ts — encryptDekForRecovery now takes {secretId, userId} and passes AAD to AES-GCM
+  - EDIT: src/lib/recovery/recovery-keys.ts — decryptRecoveryWrappedDek now takes {secretId, userId} and verifies AAD
+  - EDIT: src/lib/trpc/routers/recovery/challenge.ts — passes secretId+userId to decryptRecoveryWrappedDek
+  - EDIT: src/lib/recovery/__tests__/recovery-keys.test.ts — added 4 AAD binding tests (cross-user, cross-secret, both, correct)
+- Arch decisions:
+  - AAD = encodeAad(["zentity-recovery-dek", secretId, userId]) — length-prefixed, prevents cross-user/cross-secret wrapper substitution
+  - Breaking change: existing wrappers without AAD become invalid (acceptable per CLAUDE.md: no users, no backward compat)
+  - Reuses encodeAad from FHE integrity binding (Task 08) for consistency

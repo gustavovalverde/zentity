@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { env } from "@/env";
+import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
 import {
   ML_KEM_SECRET_KEY_BYTES,
   mlKemDecapsulate,
@@ -103,6 +104,8 @@ export interface RecoveryEnvelope {
 export function decryptRecoveryWrappedDek(params: {
   wrappedDek: string;
   keyId: string;
+  secretId: string;
+  userId: string;
 }): Uint8Array {
   const keys = loadKeys();
   if (params.keyId !== keys.keyId) {
@@ -123,13 +126,15 @@ export function decryptRecoveryWrappedDek(params: {
   const iv = Buffer.from(envelope.iv, "base64");
   const ciphertext = Buffer.from(envelope.ciphertext, "base64");
 
-  // AES-256-GCM: last 16 bytes of ciphertext are the auth tag
   const authTagLength = 16;
   const encrypted = ciphertext.subarray(0, ciphertext.length - authTagLength);
   const authTag = ciphertext.subarray(ciphertext.length - authTagLength);
 
+  const aad = encodeAad([RECOVERY_AAD_CONTEXT, params.secretId, params.userId]);
+
   const decipher = createDecipheriv("aes-256-gcm", sharedSecret, iv);
   decipher.setAuthTag(authTag);
+  decipher.setAAD(aad);
 
   const decrypted = Buffer.concat([
     decipher.update(encrypted),

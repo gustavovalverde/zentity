@@ -30,6 +30,7 @@ import {
   wrapDekWithPrf,
   wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials";
+import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
 import { mlKemEncapsulate } from "@/lib/privacy/primitives/ml-kem";
 import { trpc } from "@/lib/trpc/client";
 import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
@@ -135,7 +136,11 @@ async function getRecoveryPublicKeyBytes(): Promise<{
   return { keyId, publicKey };
 }
 
-async function encryptDekForRecovery(dek: Uint8Array): Promise<{
+async function encryptDekForRecovery(params: {
+  dek: Uint8Array;
+  secretId: string;
+  userId: string;
+}): Promise<{
   wrappedDek: string;
   keyId: string;
 }> {
@@ -151,11 +156,16 @@ async function encryptDekForRecovery(dek: Uint8Array): Promise<{
     ["encrypt"]
   );
 
+  const aad = encodeAad([RECOVERY_AAD_CONTEXT, params.secretId, params.userId]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    {
+      name: "AES-GCM",
+      iv,
+      additionalData: Uint8Array.from(aad).buffer,
+    },
     aesKey,
-    Uint8Array.from(dek).buffer
+    Uint8Array.from(params.dek).buffer
   );
 
   const envelope = {
@@ -261,7 +271,11 @@ export async function storeSecretWithCredential(params: {
   });
 
   try {
-    const recovery = await encryptDekForRecovery(dek);
+    const recovery = await encryptDekForRecovery({
+      dek,
+      secretId,
+      userId: params.credential.context.userId,
+    });
     await trpc.recovery.storeSecretWrapper.mutate({
       secretId,
       wrappedDek: recovery.wrappedDek,
@@ -758,7 +772,11 @@ export async function addRecoveryWrapperForSecretType(params: {
     ),
   });
 
-  const recovery = await encryptDekForRecovery(dek);
+  const recovery = await encryptDekForRecovery({
+    dek,
+    secretId: bundle.secret.id,
+    userId,
+  });
 
   await trpc.recovery.storeSecretWrapper.mutate({
     secretId: bundle.secret.id,

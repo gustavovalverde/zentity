@@ -32,8 +32,8 @@ End-to-end: `recovery_key_pins` table → TOFU pinning at enrollment → FROST s
 - [ ] Guardian approval tokens are JWTs bound to challengeId
 - [ ] Expired/wrong-challenge guardian JWT rejected
 - [ ] `GUARDIAN_ASSERTION_JWKS_URL` required (startup fails without it)
-- [ ] Recovery DEK AAD includes secretId and userId
-- [ ] Recovery DEK with mismatched AAD fails GCM authentication
+- [x] Recovery DEK AAD includes secretId and userId
+- [x] Recovery DEK with mismatched AAD fails GCM authentication
 - [ ] Integration test: full recovery flow with crypto-gated DEK release
 - [ ] Integration test: key substitution detected by pin mismatch
 - [ ] Unit test: HPKE key signature verification

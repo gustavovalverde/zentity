@@ -409,6 +409,8 @@ export const recoverDekProcedure = publicProcedure
         const dek = decryptRecoveryWrappedDek({
           wrappedDek: recoveryWrapper.wrappedDek,
           keyId: recoveryWrapper.keyId,
+          secretId: secret.id,
+          userId: challenge.userId,
         });
 
         return {
