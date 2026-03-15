@@ -141,3 +141,8 @@
 - Arch decisions:
   - clientId validation is defense-in-depth (authReqId already globally unique + bound to single client in cibaRequests)
   - Fallback path (no authReqId) skips entries with mismatched clientId when clientId is provided
+
+### Sub-task B: Token Exchange Scope Default — COMPLETE
+- Files changed:
+  - EDIT: src/lib/auth/oidc/token-exchange.ts — explicit ID token branch defaults to ["openid"] regardless of subject payload
+  - EDIT: src/lib/auth/__tests__/token-exchange.integration.test.ts — added "defaults to openid" test

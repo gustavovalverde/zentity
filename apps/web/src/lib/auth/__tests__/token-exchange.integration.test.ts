@@ -286,6 +286,25 @@ describe("Token Exchange (RFC 8693)", () => {
     });
   });
 
+  describe("id_token scope defaults", () => {
+    it("defaults to openid when no scope requested", async () => {
+      const subjectIdToken = await mintIdToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectIdToken,
+        subject_token_type: ID_TOKEN_TYPE,
+        requested_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      expect(json.scope).toBe("openid");
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.scope).toBe("openid");
+    });
+  });
+
   describe("scope attenuation enforcement", () => {
     it("rejects scope broadening on access token subjects", async () => {
       const subjectToken = await mintAccessToken(userId, {

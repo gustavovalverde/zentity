@@ -232,6 +232,9 @@ function createTokenExchangeHandler(): (
         }
       }
       targetScopes = requested;
+    } else if (subjectTokenType === TOKEN_TYPE_ID_TOKEN) {
+      // ID token subjects carry no scopes — always default to openid
+      targetScopes = ["openid"];
     } else {
       targetScopes = subjectScopes.length > 0 ? [...subjectScopes] : ["openid"];
     }
