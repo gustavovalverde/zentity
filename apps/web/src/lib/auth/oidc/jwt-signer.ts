@@ -43,7 +43,7 @@ const KEY_GEN_OPTIONS: Record<
   },
 };
 
-async function getOrCreateSigningKey(
+export async function getOrCreateSigningKey(
   alg: StandardAlg
 ): Promise<CachedSigningKey> {
   const cached = keyCache.get(alg);

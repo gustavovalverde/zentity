@@ -236,6 +236,7 @@ export async function signRecoveryChallenge(params: {
   message: string;
   participantIds?: number[];
   totalParticipants?: number;
+  guardianAssertions?: Map<number, string>;
 }): Promise<{ signature: string; signaturesCollected: number }> {
   const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
   const totalParticipants = params.totalParticipants ?? params.threshold;
@@ -277,6 +278,9 @@ export async function signRecoveryChallenge(params: {
           session_id: sessionId,
           group_pubkey: params.groupPubkey,
           ciphersuite: params.ciphersuite,
+          ...(params.guardianAssertions?.has(participantId) && {
+            guardian_assertion: params.guardianAssertions.get(participantId),
+          }),
         }),
       }).then((result) => ({
         participantId,
@@ -313,6 +317,9 @@ export async function signRecoveryChallenge(params: {
             ciphersuite: params.ciphersuite,
             message: toBase64(params.message),
             all_commitments: allCommitments,
+            ...(params.guardianAssertions?.has(participantId) && {
+              guardian_assertion: params.guardianAssertions.get(participantId),
+            }),
           }),
         }
       ).then((result) => ({

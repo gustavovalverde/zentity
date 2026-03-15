@@ -43,6 +43,7 @@ import {
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
 } from "@/lib/recovery/constants";
 import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
+import { signGuardianAssertionJwt } from "@/lib/recovery/guardian-jwt";
 import {
   decryptRecoveryWrappedDek,
   deriveFrostUnwrapKey,
@@ -326,6 +327,17 @@ export const approveGuardianProcedure = publicProcedure
         challengeNonce: challenge.challengeNonce,
       });
 
+      const guardianAssertions = new Map<number, string>();
+      for (const entry of sortedApproved) {
+        const jwt = await signGuardianAssertionJwt({
+          challengeId: challenge.id,
+          guardianId: entry.guardian.id,
+          participantIndex: entry.guardian.participantIndex,
+          userId: challenge.userId,
+        });
+        guardianAssertions.set(entry.guardian.participantIndex, jwt);
+      }
+
       const { signature, signaturesCollected } = await signRecoveryChallenge({
         groupPubkey: config.frostGroupPubkey,
         ciphersuite: config.frostCiphersuite as "secp256k1" | "ed25519",
@@ -333,6 +345,7 @@ export const approveGuardianProcedure = publicProcedure
         message,
         participantIds,
         totalParticipants: config.totalGuardians,
+        guardianAssertions,
       });
 
       const frostKey = deriveFrostUnwrapKey({
