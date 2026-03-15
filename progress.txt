@@ -42,3 +42,28 @@ Fix landing page markdown renderer so cross-doc links with #fragment suffixes re
 - `apps/landing/src/components/docs/markdown-renderer.tsx` — fragment-aware transformHref, exported
 - `apps/landing/src/components/docs/__tests__/transform-href.test.ts` — new test file
 - `apps/landing/package.json` — added vitest dep + test script
+
+## Phase 3: MCP Token Auth Middleware — COMPLETE
+
+### Task
+Add OAuth Bearer + DPoP token validation to MCP HTTP transport.
+
+### Implementation
+- `token-auth.ts`: validates JWTs via JWKS (jose createRemoteJWKSet), DPoP proofs per RFC 9449
+  - Bearer: verify JWT signature, issuer, expiry
+  - DPoP: verify proof JWT (htm, htu, iat freshness, ath hash, cnf.jkt thumbprint match)
+  - Sender-constrained: reject Bearer for tokens with cnf.jkt
+  - RFC 6750 error responses with WWW-Authenticate header + resource_metadata URL
+- `http.ts`: Hono middleware on /mcp routes wraps handlers in runWithAuth(authCtx)
+  - CORS tightened from `origin: "*"` to localhost patterns (configurable)
+  - Health + well-known endpoints remain unauthenticated
+- `config.ts`: added `allowedOrigins` setting (env: MCP_ALLOWED_ORIGINS)
+- 11 token-auth unit tests (valid/expired/wrong-issuer Bearer, DPoP proof validation, cnf.jkt)
+- 2 HTTP transport tests (CORS origin matching)
+
+### Files changed
+- `apps/mcp/src/auth/token-auth.ts` — new: token validation + DPoP proof checker
+- `apps/mcp/src/transports/http.ts` — auth middleware, restricted CORS, runWithAuth
+- `apps/mcp/src/config.ts` — added allowedOrigins
+- `apps/mcp/__tests__/auth/token-auth.test.ts` — new: 11 tests
+- `apps/mcp/__tests__/transports/http.test.ts` — new: 2 tests
