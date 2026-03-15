@@ -84,7 +84,8 @@ export async function validateToken(
   authHeader: string | undefined,
   dpopHeader: string | undefined,
   method: string,
-  url: string
+  url: string,
+  requiredScopes: string[] = ["openid"]
 ): Promise<TokenAuthResult | TokenAuthError> {
   if (!authHeader) {
     return authError(401, "invalid_request", "Missing Authorization header");
@@ -116,14 +117,12 @@ export async function validateToken(
 
   const payload = result.payload;
 
-  // Check sender-constrained tokens
-  const cnfJkt =
-    payload.cnf &&
-    typeof payload.cnf === "object" &&
-    "jkt" in payload.cnf &&
-    typeof (payload.cnf as Record<string, unknown>).jkt === "string"
-      ? ((payload.cnf as Record<string, unknown>).jkt as string)
-      : undefined;
+  const scopeError = checkScopes(payload, requiredScopes);
+  if (scopeError) {
+    return scopeError;
+  }
+
+  const cnfJkt = extractCnfJkt(payload);
 
   if (cnfJkt && scheme === "Bearer") {
     return authError(
@@ -153,6 +152,38 @@ export async function validateToken(
   }
 
   return { payload, scheme };
+}
+
+function checkScopes(
+  payload: JWTPayload,
+  required: string[]
+): TokenAuthError | null {
+  if (required.length === 0) {
+    return null;
+  }
+  const tokenScopes =
+    typeof payload.scope === "string" ? payload.scope.split(" ") : [];
+  const missing = required.filter((s) => !tokenScopes.includes(s));
+  if (missing.length === 0) {
+    return null;
+  }
+  return authError(
+    403,
+    "insufficient_scope",
+    `Token missing required scope(s): ${missing.join(", ")}`
+  );
+}
+
+function extractCnfJkt(payload: JWTPayload): string | undefined {
+  if (
+    payload.cnf &&
+    typeof payload.cnf === "object" &&
+    "jkt" in payload.cnf &&
+    typeof (payload.cnf as Record<string, unknown>).jkt === "string"
+  ) {
+    return (payload.cnf as Record<string, unknown>).jkt as string;
+  }
+  return undefined;
 }
 
 async function validateDpopProof(

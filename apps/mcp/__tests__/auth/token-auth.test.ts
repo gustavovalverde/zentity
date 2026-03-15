@@ -167,6 +167,22 @@ describe("validateToken", () => {
     }
   });
 
+  it("rejects a token with insufficient scopes", async () => {
+    mockJwks();
+    const token = await signToken({ scope: "email" }); // missing "openid"
+    const result = await validateToken(
+      `Bearer ${token}`,
+      undefined,
+      METHOD,
+      URL
+    );
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.status).toBe(403);
+      expect(result.body.error).toBe("insufficient_scope");
+    }
+  });
+
   it("rejects an expired token", async () => {
     mockJwks();
     const token = await signToken({}, { expiresIn: "-1s" });
