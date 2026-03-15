@@ -29,7 +29,8 @@ export function registerCheckComplianceTool(server: McpServer): void {
           content: [
             {
               type: "text" as const,
-              text: error instanceof Error ? error.message : "Not authenticated",
+              text:
+                error instanceof Error ? error.message : "Not authenticated",
             },
           ],
         };

@@ -193,7 +193,9 @@ async function main(): Promise<void> {
       }
       const data = JSON.parse(text);
       if (typeof data.tier !== "number") {
-        throw new Error(`Expected tier in response, got: ${text.slice(0, 100)}`);
+        throw new Error(
+          `Expected tier in response, got: ${text.slice(0, 100)}`
+        );
       }
       console.log(
         `    email=${data.email}, tier=${data.tier} (${data.tierName})`
@@ -217,9 +219,7 @@ async function main(): Promise<void> {
       if (typeof data.totalProofs !== "number") {
         throw new Error(`Expected totalProofs, got: ${text.slice(0, 100)}`);
       }
-      console.log(
-        `    proofs=${data.totalProofs}, isOver18=${data.isOver18}`
-      );
+      console.log(`    proofs=${data.totalProofs}, isOver18=${data.isOver18}`);
     });
 
     await step("Call check_compliance (requires auth)", async () => {
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
         throw new Error("Empty response");
       }
       const data = JSON.parse(text);
-      if (!data.networks || !Array.isArray(data.networks)) {
+      if (!(data.networks && Array.isArray(data.networks))) {
         throw new Error(`Expected networks array, got: ${text.slice(0, 100)}`);
       }
       console.log(`    ${data.networks.length} network(s) found`);
@@ -250,23 +250,20 @@ async function main(): Promise<void> {
       "  ℹ️  Check the Zentity dashboard or push notification to approve.\n"
     );
 
-    await step(
-      "Call request_approval (requires manual approval)",
-      async () => {
-        const result = await client.callTool({
-          name: "request_approval",
-          arguments: {
-            action: "E2E smoke test approval",
-            details: `Automated test at ${new Date().toISOString()}`,
-          },
-        });
-        const text = (result.content as Array<{ text: string }>)[0]?.text;
-        if (!text) {
-          throw new Error("Empty response");
-        }
-        console.log(`    Response: ${text.slice(0, 200)}`);
+    await step("Call request_approval (requires manual approval)", async () => {
+      const result = await client.callTool({
+        name: "request_approval",
+        arguments: {
+          action: "E2E smoke test approval",
+          details: `Automated test at ${new Date().toISOString()}`,
+        },
+      });
+      const text = (result.content as Array<{ text: string }>)[0]?.text;
+      if (!text) {
+        throw new Error("Empty response");
       }
-    );
+      console.log(`    Response: ${text.slice(0, 200)}`);
+    });
   }
 
   // ── 5. Cleanup ───────────────────────────────

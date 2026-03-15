@@ -130,7 +130,7 @@ describe("whoami", () => {
     const result = await client.callTool({ name: "whoami", arguments: {} });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text,
+      (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.first_name).toBe("Gustavo");
     expect(parsed.name).toBe("Gustavo A Jr Valverde De Soto");

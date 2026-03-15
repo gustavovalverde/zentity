@@ -4,15 +4,15 @@ import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
 interface AgeProof {
-  proofId: string;
-  isOver18: boolean;
   createdAt: string;
+  isOver18: boolean;
+  proofId: string;
 }
 
 interface ZkProof {
+  createdAt: string;
   proofId: string;
   proofType: string;
-  createdAt: string;
 }
 
 export function registerMyProofsTool(server: McpServer): void {
@@ -29,7 +29,8 @@ export function registerMyProofsTool(server: McpServer): void {
           content: [
             {
               type: "text" as const,
-              text: error instanceof Error ? error.message : "Not authenticated",
+              text:
+                error instanceof Error ? error.message : "Not authenticated",
             },
           ],
         };

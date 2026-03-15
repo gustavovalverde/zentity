@@ -18,7 +18,7 @@ export function createServer(): {
         "• purchase → CIBA-authorized purchases (for 'buy X', 'order Y')",
         "• request_approval → generic CIBA approval requests",
       ].join("\n"),
-    },
+    }
   );
 
   registerTools(server);
