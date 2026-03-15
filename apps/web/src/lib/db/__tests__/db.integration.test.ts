@@ -47,6 +47,194 @@ describe("Database Module", () => {
       expect(status.checks.faceMatchProof).toBe(false);
       expect(status.checks.identityBindingProof).toBe(false);
     });
+
+    it("returns full level when all ZK proofs and signed claims are present", async () => {
+      const userId = await createTestUser();
+      const verificationId = crypto.randomUUID();
+      const proofSessionId = crypto.randomUUID();
+      const now = Date.now();
+
+      await createVerification({
+        id: verificationId,
+        userId,
+        method: "ocr",
+        status: "verified",
+        verifiedAt: new Date().toISOString(),
+      });
+
+      await createZkProofSession({
+        id: proofSessionId,
+        userId,
+        verificationId,
+        msgSender: userId,
+        audience: "http://localhost:3000",
+        policyVersion: POLICY_VERSION,
+        createdAt: now,
+        expiresAt: now + 60_000,
+      });
+
+      for (const proofType of [
+        "age_verification",
+        "doc_validity",
+        "nationality_membership",
+        "face_match",
+        "identity_binding",
+      ]) {
+        await insertZkProofRecord({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          proofSessionId,
+          proofType,
+          proofHash: `hash-${proofType}`,
+          policyVersion: POLICY_VERSION,
+          verified: true,
+        });
+      }
+
+      for (const claimType of ["liveness_score", "face_match_score"]) {
+        await insertSignedClaim({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          claimType,
+          claimPayload: "{}",
+          signature: "sig",
+          issuedAt: new Date().toISOString(),
+        });
+      }
+
+      const status = await getVerificationStatus(userId);
+      expect(status.level).toBe("full");
+      expect(status.verified).toBe(true);
+      expect(status.checks.ageProof).toBe(true);
+      expect(status.checks.liveness).toBe(true);
+      expect(status.checks.faceMatchProof).toBe(true);
+      expect(status.checks.identityBindingProof).toBe(true);
+    });
+
+    it("returns lower level when proof session is incomplete", async () => {
+      const userId = await createTestUser();
+      const verificationId = crypto.randomUUID();
+      const proofSessionId = crypto.randomUUID();
+      const now = Date.now();
+
+      await createVerification({
+        id: verificationId,
+        userId,
+        method: "ocr",
+        status: "verified",
+        verifiedAt: new Date().toISOString(),
+      });
+
+      await createZkProofSession({
+        id: proofSessionId,
+        userId,
+        verificationId,
+        msgSender: userId,
+        audience: "http://localhost:3000",
+        policyVersion: POLICY_VERSION,
+        createdAt: now,
+        expiresAt: now + 60_000,
+      });
+
+      // Only 2 of 5 required proofs — incomplete session
+      for (const proofType of ["age_verification", "doc_validity"]) {
+        await insertZkProofRecord({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          proofSessionId,
+          proofType,
+          proofHash: `hash-${proofType}`,
+          policyVersion: POLICY_VERSION,
+          verified: true,
+        });
+      }
+
+      await insertSignedClaim({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId,
+        claimType: "liveness_score",
+        claimPayload: "{}",
+        signature: "sig",
+        issuedAt: new Date().toISOString(),
+      });
+
+      const status = await getVerificationStatus(userId);
+      // Incomplete proof session: individual proof checks require all 5 in one session
+      expect(status.checks.document).toBe(true);
+      expect(status.checks.liveness).toBe(true);
+      expect(status.checks.ageProof).toBe(false);
+      expect(status.checks.faceMatchProof).toBe(false);
+      expect(status.checks.identityBindingProof).toBe(false);
+    });
+
+    it("derives NFC chip compliance from signed claim, not boolean columns", async () => {
+      const userId = await createTestUser();
+      const verificationId = crypto.randomUUID();
+
+      await createVerification({
+        id: verificationId,
+        userId,
+        method: "nfc_chip",
+        status: "verified",
+        uniqueIdentifier: "nullifier-123",
+        nationalityCommitment: "nat-commit",
+        verifiedAt: new Date().toISOString(),
+      });
+
+      await insertSignedClaim({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId,
+        claimType: "chip_verification",
+        claimPayload: JSON.stringify({
+          type: "chip_verification",
+          userId,
+          version: 1,
+          data: {
+            ageVerified: true,
+            sanctionsCleared: true,
+            faceMatchPassed: true,
+            livenessScore: 1.0,
+          },
+        }),
+        signature: "sig",
+        issuedAt: new Date().toISOString(),
+      });
+
+      const status = await getVerificationStatus(userId);
+      expect(status.level).toBe("chip");
+      expect(status.verified).toBe(true);
+      expect(status.checks.ageProof).toBe(true);
+      expect(status.checks.faceMatchProof).toBe(true);
+      expect(status.checks.liveness).toBe(true);
+      expect(status.checks.nationalityProof).toBe(true);
+      expect(status.checks.identityBindingProof).toBe(true);
+    });
+
+    it("NFC chip without signed claim returns false for derivable checks", async () => {
+      const userId = await createTestUser();
+      const verificationId = crypto.randomUUID();
+
+      await createVerification({
+        id: verificationId,
+        userId,
+        method: "nfc_chip",
+        status: "verified",
+        uniqueIdentifier: "nullifier-456",
+        verifiedAt: new Date().toISOString(),
+      });
+
+      // No chip_verification signed claim
+      const status = await getVerificationStatus(userId);
+      expect(status.level).toBe("chip");
+      expect(status.checks.ageProof).toBe(false);
+      expect(status.checks.faceMatchProof).toBe(false);
+      expect(status.checks.liveness).toBe(false);
+    });
   });
 
   describe("dedupKeyExistsForOtherUser", () => {
