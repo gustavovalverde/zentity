@@ -474,5 +474,79 @@ describe("step-up authentication: combined max_age + acr_values", () => {
   });
 });
 
+describe("step-up authentication: session resolution edge cases", () => {
+  let userId: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    await createTestClient();
+  });
+
+  it("missing session cookie skips step-up (no crash)", async () => {
+    await seedTier1User(userId);
+    const requestId = crypto.randomUUID();
+    await insertParRequest(
+      requestId,
+      baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
+    );
+
+    // Request WITHOUT session cookie — step-up hook should skip gracefully
+    const url = `${AUTHORIZE_URL}?request_uri=${encodeURIComponent(`${PAR_URI_PREFIX}${requestId}`)}&client_id=${TEST_CLIENT_ID}`;
+    const request = new Request(url, { method: "GET", redirect: "manual" });
+
+    const response = await auth.handler(request);
+
+    // The hook skips (getSessionFromCtx returns null), so the authorize
+    // endpoint handles the unauthenticated request itself — no crash,
+    // and NOT an interaction_required error from the step-up hook.
+    const location = getRedirectLocation(response);
+    if (location && isRpRedirect(location)) {
+      expect(location.searchParams.get("error")).not.toBe(
+        "interaction_required"
+      );
+    }
+  });
+
+  it("invalid session cookie signature skips step-up (no crash)", async () => {
+    await seedTier1User(userId);
+    const token = crypto.randomUUID();
+    // Insert a real session so the token exists in DB
+    await db
+      .insert(sessions)
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        token,
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginMethod: "passkey",
+      })
+      .run();
+
+    const requestId = crypto.randomUUID();
+    await insertParRequest(
+      requestId,
+      baseParParams({ acr_values: "urn:zentity:assurance:tier-2" })
+    );
+
+    // Cookie with valid token but WRONG signature — getSessionFromCtx
+    // verifies the HMAC and rejects it, returning null
+    const badSignature = `${token}.bad-signature-value`;
+    const request = buildAuthorizeRequest(requestId, badSignature);
+
+    const response = await auth.handler(request);
+
+    // Hook skips gracefully, authorize endpoint takes over
+    const location = getRedirectLocation(response);
+    if (location && isRpRedirect(location)) {
+      expect(location.searchParams.get("error")).not.toBe(
+        "interaction_required"
+      );
+    }
+  });
+});
+
 // Re-export eq for PAR record assertions
 import { eq } from "drizzle-orm";

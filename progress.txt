@@ -104,3 +104,20 @@ Cover all 10 PRD test cases for MCP HTTP auth middleware at the transport layer.
 
 ### Verification
 - 109 tests pass, typecheck clean, lint clean
+
+## Phase 5: Step-Up Hook Negative Session Tests — COMPLETE
+
+### Task
+Add 2 missing PRD test cases for step-up hook session resolution edge cases.
+
+### Tests added
+1. Missing session cookie → hook skips gracefully (no crash, no interaction_required)
+2. Invalid session cookie signature → hook skips gracefully (getSessionFromCtx rejects bad HMAC, returns null)
+
+### Files changed
+- `apps/web/src/lib/auth/__tests__/step-up-auth.integration.test.ts` — +2 tests in new "session resolution edge cases" describe block
+
+### Verification
+- 18 step-up integration tests pass (was 16)
+- typecheck clean, lint clean
+- Pre-existing token-exchange/authorize-challenge failures unchanged
