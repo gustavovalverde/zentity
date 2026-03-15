@@ -146,7 +146,7 @@ sequenceDiagram
 
 | Claim | Included | Source | Notes |
 |-------|----------|--------|-------|
-| `verification_level` | ✅ | Server-computed | `none` \| `basic` \| `full` |
+| `verification_level` | ✅ | Server-computed | `none` \| `basic` \| `full` \| `chip` |
 | `verified` | ✅ | Server-computed | Overall verification status |
 | `document_verified` | ◐ | OCR signed claim | Document processed and validated |
 | `liveness_verified` | ◐ | Liveness signed claim | Liveness detection passed |
@@ -154,6 +154,7 @@ sequenceDiagram
 | `age_proof_verified` | ◐ | ZK proof | Age proof generated and stored |
 | `doc_validity_proof_verified` | ◐ | ZK proof | Document validity proof stored |
 | `nationality_proof_verified` | ◐ | ZK proof | Nationality membership proof stored |
+| `chip_verified` | ◐ | Chip verification signed claim | NFC chip-verified (ZKPassport) |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
 | `issuer_id` | ✅ | Static | Zentity issuer identifier |
 | `verification_time` | ✅ | Server-computed | ISO 8601 timestamp |
@@ -163,6 +164,8 @@ sequenceDiagram
 | Nationality | — | — | Never included |
 
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
+
+**Compliance derivation:** `verification_level` and `compliance_level` are derived from ZK proof presence and signed claims at computation time — there are no mutable boolean columns like `livenessPassed` or `faceMatchPassed`. For the NFC chip path, `chip_verified` reads from the `chip_verification` signed claim. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
 
 ---
 

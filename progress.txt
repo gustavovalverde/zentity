@@ -264,3 +264,11 @@
   - EDIT: docs/attestation-privacy-architecture.md — added ciphertext_hash, scope_hmac, expiresAt columns to ER diagram; updated JWKS private_key description; added JWKS encryption to Storage Boundaries; added 2 privacy guarantees (#12 consent HMAC, #13 FHE ciphertext)
   - EDIT: docs/cryptographic-pillars.md — added JWKS at-rest encryption, JARM 90-day rotation under JWT Signing; added HMAC vs commitment hash distinction table under Commitments
   - EDIT: docs/oauth-integrations.md — added consent HMAC integrity note; updated x5c to full chain validation; added JARM 90-day rotation to HAIP table
+
+## Task 22: Compliance Derivation & Identity Revocation Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — updated identity tRPC router description to include revocation; added proof-derived compliance note to FHE Encryption step
+  - EDIT: docs/architecture.md — added Identity Revocation section with cascade behavior and both tRPC procedures
+  - EDIT: docs/ssi-architecture.md — added chip verification_level, chip_verified claim, and proof-derived compliance derivation note
+  - EDIT: docs/attestation-privacy-architecture.md — added revocation columns (revoked_at, revoked_by, revoked_reason) to identity_bundles and identity_verifications in ER diagram; updated status enums to include "revoked"; updated compliance_level note for NFC chip path
+  - EDIT: apps/web/README.md — fixed api/crypto/ → api/zk/ stale route name

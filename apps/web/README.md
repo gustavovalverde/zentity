@@ -186,7 +186,7 @@ src/
 │   ├── api/                # API routes
 │   │   ├── auth/           # Authentication endpoints (better-auth)
 │   │   ├── trpc/           # Internal app API (tRPC)
-│   │   ├── crypto/         # ZK artifacts + nationality helpers
+│   │   ├── zk/             # ZK artifacts + nationality helpers
 │   │   ├── identity/       # Identity status endpoints
 │   │   └── password/       # Password pwned checks
 ├── components/

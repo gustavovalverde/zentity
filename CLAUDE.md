@@ -284,7 +284,7 @@ Users choose a verification method via `VerificationMethodCards` (OCR or NFC chi
 2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
 3. **Profile Secret** → Extracted PII is encrypted with the user's credential (passkey/password/wallet) and stored as a `PROFILE` secret. This is the only persistent copy of the user's PII and is only decryptable by the user.
 4. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
-5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
+5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service. Compliance level is derived at encryption time from ZK proof existence and signed claims, not stored as a settable boolean.
 6. User reaches **Tier 2/3** depending on proof completeness
 
 **NFC chip path (ZKPassport):**
@@ -322,7 +322,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | Router | Purpose |
 |--------|---------|
 | `zk` | ZK proof verification, challenge nonces |
-| `identity` | Identity verification (document OCR, liveness, face match, proofs) |
+| `identity` | Identity verification (document OCR, liveness, face match, proofs, revocation) |
 | `liveness` | Multi-gesture liveness detection sessions |
 | `signUp` | Account creation completion (email linking, wallet association, identity bundle creation) |
 | `assurance` | Tier profile, AAL computation, and feature gating |

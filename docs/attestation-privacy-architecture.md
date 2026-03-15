@@ -85,7 +85,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only (EU, US, etc.). |
 | Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
 | Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
-| Compliance level | — | ✅ | Server-derived | — | Policy gating input. |
+| Compliance level | — | ✅ | Server-derived | — | Policy gating input. Derived from ZK proof existence + signed claims at encryption time (no mutable booleans). NFC chip path derives from `chip_verification` signed claim. |
 
 ### DOB Storage (Production)
 
@@ -287,7 +287,7 @@ erDiagram
   IDENTITY_BUNDLES {
     text user_id PK "One per user"
     text wallet_address "Optional wallet association"
-    text status "pending | verified"
+    text status "pending | verified | revoked"
     text fhe_key_id "FHE service key reference"
     text fhe_status "pending | encrypting | complete | error"
     text dob_commitment "SHA256(dob + salt)"
@@ -300,12 +300,15 @@ erDiagram
     integer last_verified_at
     integer next_verification_due
     integer verification_count
+    integer revoked_at "Revocation timestamp"
+    text revoked_by "admin | self"
+    text revoked_reason "Reason for revocation"
   }
   IDENTITY_VERIFICATIONS {
     text id PK
     text user_id FK
     text method "ocr | nfc_chip"
-    text status "pending | verified | failed"
+    text status "pending | verified | failed | revoked"
     text document_type "passport | id_card | etc."
     text issuer_country "ISO alpha-3"
     text document_hash "SHA-256 of document"
@@ -322,6 +325,9 @@ erDiagram
     integer sanctions_cleared "Boolean"
     text unique_identifier "ZKPassport nullifier (NFC only)"
     integer verified_at
+    integer revoked_at "Revocation timestamp"
+    text revoked_by "admin | self"
+    text revoked_reason "Reason for revocation"
   }
   IDENTITY_VERIFICATION_DRAFTS {
     text id PK

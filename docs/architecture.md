@@ -355,6 +355,25 @@ See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
 
 ---
 
+## Identity Revocation
+
+Identity verifications can be revoked via two tRPC procedures:
+
+- **`identity.revokeVerification`** — Admin-initiated revocation (e.g., fraud detection)
+- **`identity.selfRevoke`** — User-initiated GDPR self-service revocation
+
+The `revokeIdentity()` function executes a cascade in a single DB transaction:
+
+1. Mark active `identity_verifications` as `revoked` (sets `revokedAt`, `revokedBy`, `revokedReason`)
+2. Mark `identity_bundle` as `revoked`
+3. Set OID4VCI credentials to `status=1` (revoked)
+
+A fourth step revokes on-chain attestations **outside** the transaction (best-effort — DB revocation is committed even if on-chain revocation fails).
+
+After revocation, the user's assurance tier drops to Tier 1 (no verified verification found). The `dedupKeyExistsForOtherUser` check gates on `status=verified`, so revoked dedup keys are auto-released for re-registration.
+
+---
+
 ## Storage Model
 
 Database schema and table relationships are documented in [Attestation & Privacy Architecture](attestation-privacy-architecture.md) and the Drizzle schema under `apps/web/src/lib/db/schema/`.
