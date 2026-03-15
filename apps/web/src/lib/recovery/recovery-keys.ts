@@ -1,6 +1,12 @@
 import "server-only";
 
-import { createDecipheriv, createHash } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  hkdfSync,
+  randomBytes,
+} from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -146,4 +152,52 @@ export function decryptRecoveryWrappedDek(params: {
     decipher.final(),
   ]);
   return new Uint8Array(decrypted);
+}
+
+const FROST_UNWRAP_INFO = "zentity:frost-unwrap";
+
+/**
+ * Derive a 32-byte AES key from the FROST aggregated signature.
+ * HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")
+ */
+export function deriveFrostUnwrapKey(params: {
+  signatureHex: string;
+  challengeId: string;
+}): Buffer {
+  const ikm = Buffer.from(params.signatureHex, "hex");
+  return Buffer.from(
+    hkdfSync("sha256", ikm, params.challengeId, FROST_UNWRAP_INFO, 32)
+  );
+}
+
+/**
+ * Encrypt a plaintext DEK under the FROST-derived unwrap key.
+ * Returns base64(iv || ciphertext || authTag).
+ */
+export function wrapDekWithFrostKey(dek: Uint8Array, frostKey: Buffer): string {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", frostKey, iv);
+  const encrypted = Buffer.concat([cipher.update(dek), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return bytesToBase64(new Uint8Array(Buffer.concat([iv, encrypted, tag])));
+}
+
+/**
+ * Decrypt a FROST-wrapped DEK using the FROST-derived unwrap key.
+ * Input: base64(iv || ciphertext || authTag).
+ */
+export function unwrapDekWithFrostKey(
+  wrappedBase64: string,
+  frostKey: Buffer
+): Uint8Array {
+  const raw = Buffer.from(wrappedBase64, "base64");
+  const iv = raw.subarray(0, 12);
+  const tag = raw.subarray(raw.length - 16);
+  const encrypted = raw.subarray(12, raw.length - 16);
+
+  const decipher = createDecipheriv("aes-256-gcm", frostKey, iv);
+  decipher.setAuthTag(tag);
+  return new Uint8Array(
+    Buffer.concat([decipher.update(encrypted), decipher.final()])
+  );
 }

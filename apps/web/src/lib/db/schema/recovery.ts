@@ -45,6 +45,7 @@ export const recoveryChallenges = sqliteTable(
     status: text("status").notNull().default("pending"),
     signaturesCollected: integer("signatures_collected").notNull().default(0),
     aggregatedSignature: text("aggregated_signature"),
+    frostWrappedDeks: text("frost_wrapped_deks"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     expiresAt: text("expires_at").notNull(),
     completedAt: text("completed_at"),

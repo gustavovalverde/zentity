@@ -17,6 +17,12 @@ import {
 } from "@/lib/privacy/primitives/ml-kem";
 import { bytesToBase64 } from "@/lib/utils/base64";
 
+import {
+  deriveFrostUnwrapKey,
+  unwrapDekWithFrostKey,
+  wrapDekWithFrostKey,
+} from "../recovery-keys";
+
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
 interface AadContext {
@@ -275,5 +281,65 @@ describe("recovery key fingerprint (TOFU pinning)", () => {
     const { publicKey } = mlKemKeygen();
     const fp = createHash("sha256").update(publicKey).digest("hex");
     expect(fp).toMatch(SHA256_HEX_PATTERN);
+  });
+});
+
+describe("FROST crypto-gated DEK release", () => {
+  const signatureHex = randomBytes(64).toString("hex");
+  const challengeId = randomUUID();
+
+  it("deriveFrostUnwrapKey is deterministic for the same inputs", () => {
+    const k1 = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const k2 = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    expect(k1).toEqual(k2);
+  });
+
+  it("different signatures produce different unwrap keys", () => {
+    const k1 = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const k2 = deriveFrostUnwrapKey({
+      signatureHex: randomBytes(64).toString("hex"),
+      challengeId,
+    });
+    expect(k1).not.toEqual(k2);
+  });
+
+  it("different challengeIds produce different unwrap keys", () => {
+    const k1 = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const k2 = deriveFrostUnwrapKey({
+      signatureHex,
+      challengeId: randomUUID(),
+    });
+    expect(k1).not.toEqual(k2);
+  });
+
+  it("wrap → unwrap round-trip recovers the original DEK", () => {
+    const dek = randomBytes(32);
+    const frostKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const wrapped = wrapDekWithFrostKey(dek, frostKey);
+    const recovered = unwrapDekWithFrostKey(wrapped, frostKey);
+    expect(recovered).toEqual(new Uint8Array(dek));
+  });
+
+  it("wrong FROST key cannot unwrap DEK", () => {
+    const dek = randomBytes(32);
+    const correctKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const wrongKey = deriveFrostUnwrapKey({
+      signatureHex: randomBytes(64).toString("hex"),
+      challengeId,
+    });
+    const wrapped = wrapDekWithFrostKey(dek, correctKey);
+    expect(() => unwrapDekWithFrostKey(wrapped, wrongKey)).toThrow();
+  });
+
+  it("missing FROST signature means no unwrap key can be derived", () => {
+    const dek = randomBytes(32);
+    const frostKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
+    const wrapped = wrapDekWithFrostKey(dek, frostKey);
+    // Without the correct signature, no valid key exists
+    const fakeKey = deriveFrostUnwrapKey({
+      signatureHex: "00".repeat(64),
+      challengeId,
+    });
+    expect(() => unwrapDekWithFrostKey(wrapped, fakeKey)).toThrow();
   });
 });

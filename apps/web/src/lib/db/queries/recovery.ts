@@ -385,10 +385,15 @@ export async function createRecoveryConfig(
 export async function createRecoveryChallenge(
   data: Omit<
     RecoveryChallenge,
-    "createdAt" | "completedAt" | "aggregatedSignature" | "signaturesCollected"
+    | "createdAt"
+    | "completedAt"
+    | "aggregatedSignature"
+    | "signaturesCollected"
+    | "frostWrappedDeks"
   > & {
     signaturesCollected?: number;
     aggregatedSignature?: string | null;
+    frostWrappedDeks?: string | null;
     completedAt?: string | null;
   }
 ): Promise<RecoveryChallenge> {
@@ -398,6 +403,7 @@ export async function createRecoveryChallenge(
       ...data,
       signaturesCollected: data.signaturesCollected ?? 0,
       aggregatedSignature: data.aggregatedSignature ?? null,
+      frostWrappedDeks: data.frostWrappedDeks ?? null,
       completedAt: data.completedAt ?? null,
     })
     .run();
@@ -418,6 +424,7 @@ export async function completeRecoveryChallenge(params: {
   signature: string;
   signaturesCollected: number;
   completedAt: string;
+  frostWrappedDeks?: string;
 }): Promise<RecoveryChallenge> {
   await db
     .update(recoveryChallenges)
@@ -426,6 +433,7 @@ export async function completeRecoveryChallenge(params: {
       aggregatedSignature: params.signature,
       signaturesCollected: params.signaturesCollected,
       completedAt: params.completedAt,
+      frostWrappedDeks: params.frostWrappedDeks ?? null,
     })
     .where(eq(recoveryChallenges.id, params.id))
     .run();

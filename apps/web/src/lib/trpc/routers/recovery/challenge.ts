@@ -45,9 +45,10 @@ import {
 import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
 import {
   decryptRecoveryWrappedDek,
+  deriveFrostUnwrapKey,
   getRecoveryKeyFingerprint,
+  wrapDekWithFrostKey,
 } from "@/lib/recovery/recovery-keys";
-import { bytesToBase64 } from "@/lib/utils/base64";
 
 import { publicProcedure } from "../../server";
 import {
@@ -205,6 +206,7 @@ export const statusProcedure = publicProcedure
       threshold: config.threshold,
       expiresAt: challenge.expiresAt,
       completedAt: challenge.completedAt,
+      aggregatedSignature: challenge.aggregatedSignature,
     };
   });
 
@@ -333,12 +335,40 @@ export const approveGuardianProcedure = publicProcedure
         totalParticipants: config.totalGuardians,
       });
 
+      const frostKey = deriveFrostUnwrapKey({
+        signatureHex: signature,
+        challengeId: challenge.id,
+      });
+
+      const secrets = await listEncryptedSecretsByUserId(challenge.userId);
+      const wrappedEntries: { secretId: string; wrapped: string }[] = [];
+
+      for (const secret of secrets) {
+        const recoveryWrapper = await getRecoverySecretWrapperBySecretId(
+          secret.id
+        );
+        if (!recoveryWrapper) {
+          continue;
+        }
+        const dek = decryptRecoveryWrappedDek({
+          wrappedDek: recoveryWrapper.wrappedDek,
+          keyId: recoveryWrapper.keyId,
+          secretId: secret.id,
+          userId: challenge.userId,
+        });
+        wrappedEntries.push({
+          secretId: secret.id,
+          wrapped: wrapDekWithFrostKey(dek, frostKey),
+        });
+      }
+
       const completedAt = new Date().toISOString();
       await completeRecoveryChallenge({
         id: challenge.id,
         signature,
         signaturesCollected,
         completedAt,
+        frostWrappedDeks: JSON.stringify(wrappedEntries),
       });
 
       return {
@@ -357,9 +387,10 @@ export const approveGuardianProcedure = publicProcedure
   });
 
 /**
- * Step 1: Server releases plaintext DEKs for recovery.
- * Authorized by FROST signature (challenge.status === "completed").
- * DEK is returned to client over TLS for client-side re-wrapping.
+ * Step 1: Server releases FROST-wrapped DEKs for recovery.
+ * DEKs are encrypted under a key derived from the FROST aggregated signature
+ * via HKDF. The client must have the real signature to derive the unwrap key.
+ * This prevents DB status manipulation from releasing plaintext DEKs.
  */
 export const recoverDekProcedure = publicProcedure
   .input(
@@ -391,6 +422,14 @@ export const recoverDekProcedure = publicProcedure
       });
     }
 
+    if (!(challenge.aggregatedSignature && challenge.frostWrappedDeks)) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message:
+          "Recovery challenge is missing FROST signature or wrapped DEKs.",
+      });
+    }
+
     const context = await getFheEnrollmentContext(input.contextToken);
     if (!context || context.userId !== challenge.userId) {
       throw new TRPCError({
@@ -411,36 +450,16 @@ export const recoverDekProcedure = publicProcedure
       }
     }
 
-    const secrets = await listEncryptedSecretsByUserId(challenge.userId);
-
-    const recoveredDeks = await Promise.all(
-      secrets.map(async (secret) => {
-        const recoveryWrapper = await getRecoverySecretWrapperBySecretId(
-          secret.id
-        );
-        if (!recoveryWrapper) {
-          return null;
-        }
-
-        const dek = decryptRecoveryWrappedDek({
-          wrappedDek: recoveryWrapper.wrappedDek,
-          keyId: recoveryWrapper.keyId,
-          secretId: secret.id,
-          userId: challenge.userId,
-        });
-
-        return {
-          secretId: secret.id,
-          dekBase64: bytesToBase64(dek),
-        };
-      })
-    );
+    const frostWrappedDeks: { secretId: string; wrapped: string }[] =
+      JSON.parse(challenge.frostWrappedDeks);
 
     return {
       userId: challenge.userId,
-      deks: recoveredDeks.filter(
-        (d): d is { secretId: string; dekBase64: string } => d !== null
-      ),
+      aggregatedSignature: challenge.aggregatedSignature,
+      deks: frostWrappedDeks.map((entry) => ({
+        secretId: entry.secretId,
+        frostWrappedDek: entry.wrapped,
+      })),
     };
   });
 

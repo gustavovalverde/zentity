@@ -440,25 +440,68 @@ export default function RecoverSocialPage() {
         throw new Error("Missing recovery challenge.");
       }
 
-      // Step 1: Server releases plaintext DEKs (authorized by FROST)
-      const { userId, deks } = await trpc.recovery.recoverDek.mutate({
-        challengeId,
-        contextToken,
-      });
+      // Step 1: Server releases FROST-wrapped DEKs
+      const { userId, aggregatedSignature, deks } =
+        await trpc.recovery.recoverDek.mutate({
+          challengeId,
+          contextToken,
+        });
 
-      // Step 2: Client wraps each DEK under the new passkey's PRF
+      // Step 2: Derive FROST unwrap key from aggregated signature
+      const sigBytes = Uint8Array.from(
+        (aggregatedSignature.match(/.{2}/g) ?? []).map((b) =>
+          Number.parseInt(b, 16)
+        )
+      );
+      const baseKey = await crypto.subtle.importKey(
+        "raw",
+        Uint8Array.from(sigBytes).buffer,
+        "HKDF",
+        false,
+        ["deriveBits"]
+      );
+      const frostKeyBits = await crypto.subtle.deriveBits(
+        {
+          name: "HKDF",
+          salt: new TextEncoder().encode(challengeId),
+          hash: "SHA-256",
+          info: new TextEncoder().encode("zentity:frost-unwrap"),
+        },
+        baseKey,
+        256
+      );
+      const frostKey = await crypto.subtle.importKey(
+        "raw",
+        frostKeyBits,
+        "AES-GCM",
+        false,
+        ["decrypt"]
+      );
+
+      // Step 3: Unwrap each DEK and re-wrap under the new passkey's PRF
       const wrappers = await Promise.all(
-        deks.map(async (dek) => {
+        deks.map(async (entry) => {
+          const raw = base64ToBytes(entry.frostWrappedDek);
+          const iv = raw.slice(0, 12);
+          const ciphertext = raw.slice(12);
+          const plainDek = new Uint8Array(
+            await crypto.subtle.decrypt(
+              { name: "AES-GCM", iv },
+              frostKey,
+              ciphertext
+            )
+          );
+
           const wrappedDek = await wrapDekWithPrf({
-            secretId: dek.secretId,
+            secretId: entry.secretId,
             credentialId,
             userId,
-            dek: base64ToBytes(dek.dekBase64),
+            dek: plainDek,
             prfOutput,
             prfSalt,
           });
           return {
-            secretId: dek.secretId,
+            secretId: entry.secretId,
             credentialId,
             wrappedDek,
             prfSalt: bytesToBase64(prfSalt),

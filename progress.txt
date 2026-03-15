@@ -72,3 +72,17 @@
   - TOFU model: first wrapper store pins SHA-256(publicKey); subsequent stores + DEK recovery verify
   - Pin stored server-side as immutability constraint — prevents operator from swapping keys after enrollment
   - onConflictDoNothing for pin insert — concurrent first-store races resolve safely
+
+### Sub-task: Crypto-Gated DEK Release — COMPLETE
+- Files changed:
+  - EDIT: src/lib/recovery/recovery-keys.ts — added deriveFrostUnwrapKey (HKDF-SHA256), wrapDekWithFrostKey, unwrapDekWithFrostKey
+  - EDIT: src/lib/db/schema/recovery.ts — added frostWrappedDeks column to recoveryChallenges
+  - EDIT: src/lib/db/queries/recovery.ts — completeRecoveryChallenge accepts frostWrappedDeks
+  - EDIT: src/lib/trpc/routers/recovery/challenge.ts — approveGuardian wraps DEKs after FROST signing; recoverDek returns FROST-wrapped DEKs + signature instead of plaintext
+  - EDIT: src/app/(auth)/recovery/guardian/page.tsx — client-side HKDF + AES-GCM unwrap from signature
+  - EDIT: src/lib/recovery/__tests__/recovery-keys.test.ts — 6 FROST unwrap tests
+- Arch decisions:
+  - HKDF(ikm=signature, salt=challengeId, info="zentity:frost-unwrap") → 32-byte AES key
+  - DEKs wrapped under FROST key at signing time, stored on challenge row
+  - Server returns FROST-wrapped DEKs + signature; client derives same key to unwrap
+  - DB status manipulation alone is insufficient — need real FROST signature for unwrap key
