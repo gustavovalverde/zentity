@@ -21,8 +21,8 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   createVerification,
+  dedupKeyExistsForOtherUser,
   deleteIdentityData,
-  documentHashExists,
   getIdentityBundleByUserId,
   getLatestVerification,
   getVerificationsByUserId,
@@ -87,6 +87,7 @@ describe("identity queries", () => {
       userId,
       method: "ocr",
       documentHash: "hash-new",
+      dedupKey: "dedup-latest",
       nameCommitment: "commit-new",
       verifiedAt: "2025-01-01T00:00:00Z",
       confidenceScore: 0.95,
@@ -95,7 +96,14 @@ describe("identity queries", () => {
 
     const latest = await getLatestVerification(userId);
     expect(latest?.id).toBe(newerDoc);
-    await expect(documentHashExists("hash-new")).resolves.toBe(true);
+    // Dedup key: same user re-verifying is allowed, other user is blocked
+    const otherUser = await createTestUser({ email: "other@test.com" });
+    await expect(
+      dedupKeyExistsForOtherUser("dedup-latest", userId)
+    ).resolves.toBe(false);
+    await expect(
+      dedupKeyExistsForOtherUser("dedup-latest", otherUser)
+    ).resolves.toBe(true);
   });
 
   it("deletes all identity data for a user", async () => {

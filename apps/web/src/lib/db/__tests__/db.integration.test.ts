@@ -21,7 +21,7 @@ import {
 } from "@/lib/db/queries/crypto";
 import {
   createVerification,
-  documentHashExists,
+  dedupKeyExistsForOtherUser,
   getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
@@ -49,22 +49,43 @@ describe("Database Module", () => {
     });
   });
 
-  describe("documentHashExists", () => {
-    it("returns true for existing hash", async () => {
+  describe("dedupKeyExistsForOtherUser", () => {
+    it("returns true when dedup key belongs to a different verified user", async () => {
+      const userA = await createTestUser({ email: "a@test.com" });
+      const userB = await createTestUser({ email: "b@test.com" });
+      await createVerification({
+        id: crypto.randomUUID(),
+        userId: userA,
+        method: "ocr",
+        dedupKey: "dedup-key-1",
+        status: "verified",
+      });
+
+      await expect(
+        dedupKeyExistsForOtherUser("dedup-key-1", userB)
+      ).resolves.toBe(true);
+    });
+
+    it("returns false when dedup key belongs to the same user (re-verification)", async () => {
       const userId = await createTestUser();
       await createVerification({
         id: crypto.randomUUID(),
         userId,
         method: "ocr",
-        documentHash: "existing-hash",
-        nameCommitment: "name-commit",
-        verifiedAt: "2025-01-01T00:00:00Z",
-        confidenceScore: 0.9,
+        dedupKey: "dedup-key-2",
         status: "verified",
       });
 
-      await expect(documentHashExists("existing-hash")).resolves.toBe(true);
-      await expect(documentHashExists("missing-hash")).resolves.toBe(false);
+      await expect(
+        dedupKeyExistsForOtherUser("dedup-key-2", userId)
+      ).resolves.toBe(false);
+    });
+
+    it("returns false when dedup key does not exist", async () => {
+      const userId = await createTestUser();
+      await expect(
+        dedupKeyExistsForOtherUser("nonexistent", userId)
+      ).resolves.toBe(false);
     });
   });
 });

@@ -1,5 +1,6 @@
 import z from "zod";
 
+import { env } from "@/env";
 import {
   createVerification,
   getLatestIdentityDraftByUserId,
@@ -44,6 +45,8 @@ export const prepareDocumentProcedure = protectedProcedure
       image: input.image,
       requestId: ctx.requestId,
       flowId: ctx.flowId ?? undefined,
+      userId,
+      dedupSecret: env.DEDUP_HMAC_SECRET,
       existingDraftId: isReverification ? undefined : existingDraft?.id,
       existingVerificationId: isReverification
         ? undefined
@@ -72,6 +75,7 @@ export const prepareDocumentProcedure = protectedProcedure
           documentType: result.ocrResult.documentType ?? null,
           issuerCountry: result.issuerCountry ?? null,
           documentHash: result.ocrResult.commitments.documentHash ?? null,
+          dedupKey: result.dedupKey ?? null,
           nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
           confidenceScore: result.ocrResult.confidence ?? null,
         });

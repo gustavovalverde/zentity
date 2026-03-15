@@ -8,7 +8,8 @@ import {
   computeClaimHash,
   getDocumentHashField,
 } from "@/lib/blockchain/attestation/claim-hash";
-import { documentHashExists } from "@/lib/db/queries/identity";
+import { dedupKeyExistsForOtherUser } from "@/lib/db/queries/identity";
+import { computeDedupKey } from "@/lib/identity/dedup";
 import { logger } from "@/lib/logging/logger";
 import { toNumericCode } from "@/lib/privacy/country";
 
@@ -47,6 +48,7 @@ export interface ComputedClaimHashes {
  */
 export interface DocumentProcessingResult {
   claimHashes: ComputedClaimHashes;
+  dedupKey: string | null;
   documentHash: string | null;
   documentHashField: string | null;
   documentProcessed: boolean;
@@ -64,11 +66,13 @@ export interface DocumentProcessingResult {
  * Input parameters for document processing.
  */
 export interface ProcessDocumentParams {
+  dedupSecret: string;
   existingDraftId?: string | null;
   existingVerificationId?: string | null;
   flowId?: string;
   image: string;
   requestId: string;
+  userId: string;
 }
 
 /**
@@ -293,11 +297,28 @@ export async function processDocumentWithOcr(
     }
   }
 
-  // Check for duplicate document
+  // Compute deterministic dedup key and check for sybil duplicates
   let isDuplicateDocument = false;
-  if (documentHash) {
-    const hashExists = await documentHashExists(documentHash);
-    if (hashExists) {
+  let dedupKey: string | null = null;
+  const docNumber = ocrResult?.extractedData?.documentNumber;
+  const dateOfBirth = ocrResult?.extractedData?.dateOfBirth;
+  const dedupCountry =
+    ocrResult?.documentOrigin ??
+    ocrResult?.extractedData?.nationalityCode ??
+    null;
+
+  if (docNumber && dedupCountry && dateOfBirth) {
+    dedupKey = computeDedupKey(
+      params.dedupSecret,
+      docNumber,
+      dedupCountry,
+      dateOfBirth
+    );
+    const existsForOther = await dedupKeyExistsForOtherUser(
+      dedupKey,
+      params.userId
+    );
+    if (existsForOther) {
       isDuplicateDocument = true;
       issues.push("duplicate_document");
     }
@@ -342,6 +363,7 @@ export async function processDocumentWithOcr(
     draftId,
     verificationId,
     documentProcessed,
+    dedupKey,
     documentHash,
     documentHashField,
     isDuplicateDocument,

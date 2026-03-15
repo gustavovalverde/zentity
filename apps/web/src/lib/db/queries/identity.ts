@@ -50,13 +50,20 @@ export async function getVerificationById(
   return row ?? null;
 }
 
-export async function documentHashExists(
-  documentHash: string
+export async function dedupKeyExistsForOtherUser(
+  dedupKey: string,
+  userId: string
 ): Promise<boolean> {
   const row = await db
     .select({ id: identityVerifications.id })
     .from(identityVerifications)
-    .where(eq(identityVerifications.documentHash, documentHash))
+    .where(
+      and(
+        eq(identityVerifications.dedupKey, dedupKey),
+        ne(identityVerifications.userId, userId),
+        eq(identityVerifications.status, "verified")
+      )
+    )
     .get();
 
   return !!row;
