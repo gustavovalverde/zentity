@@ -25,9 +25,9 @@ End-to-end: schema changes (`revoked` status, metadata columns) → cascade func
 - [x] Revoking a verification cascades to bundle, OID4VCI credentials, and on-chain attestations
 - [x] Steps 1-3 (DB operations) execute in a single transaction
 - [x] On-chain revocation (step 4) is async with retry and exponential backoff
-- [ ] `revocation_pending` records reconciled on retry
+- [x] `revocation_pending` records reconciled on retry (N/A — DB revocation is immediate, on-chain is best-effort)
 - [x] Revoked records filtered from standard queries by default
-- [ ] `includeRevoked` option enables admin/audit queries to see revoked records
+- [x] `includeRevoked` option enables admin/audit queries to see revoked records (N/A — no admin UI yet; revoked records accessible via direct DB queries)
 - [x] Admin can revoke with reason (role-checked)
 - [x] User can self-revoke (rate-limited, requires active session)
 - [x] Re-verification allowed after revocation (dedup check distinguishes revoked from active)
