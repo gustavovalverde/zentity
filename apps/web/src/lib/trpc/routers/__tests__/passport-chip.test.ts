@@ -9,6 +9,7 @@ const mockGetIdentityBundleByUserId = vi.fn();
 const mockCreateVerification = vi.fn();
 const mockGetSelectedVerification = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
+const mockDedupKeyExistsForOtherUser = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 const mockInsertSignedClaim = vi.fn();
 const mockSignAttestationClaim = vi.fn();
@@ -37,6 +38,8 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
       mockGetSelectedVerification(...args),
     isNullifierUsedByOtherUser: (...args: unknown[]) =>
       mockIsNullifierUsedByOtherUser(...args),
+    dedupKeyExistsForOtherUser: (...args: unknown[]) =>
+      mockDedupKeyExistsForOtherUser(...args),
   };
 });
 
@@ -144,6 +147,7 @@ describe("passportChip.submitResult", () => {
     mockGetSelectedVerification.mockResolvedValue(null);
     mockSignAttestationClaim.mockResolvedValue("signed-chip-claim");
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
+    mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
     mockCreateVerification.mockImplementation((data) => data);
     mockScheduleFheEncryption.mockReturnValue(undefined);
   });
@@ -433,6 +437,71 @@ describe("passportChip.submitResult", () => {
   });
 
   // --- Birthdate extraction ---
+
+  // --- Cross-method Sybil dedup ---
+
+  it("rejects when dedupKey matches another user (cross-method sybil)", async () => {
+    mockDedupKeyExistsForOtherUser.mockResolvedValue(true);
+
+    const resultWithDocNumber = {
+      ...mockQueryResult,
+      document_number: { disclose: { result: "AB1234567" } },
+    };
+
+    const caller = await createCaller(authedSession);
+    await expect(
+      caller.submitResult({
+        ...validInput(),
+        result: resultWithDocNumber as Record<string, unknown>,
+      })
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message:
+        "This identity document is already registered to another account",
+    });
+  });
+
+  it("stores dedupKey on verification record when document fields available", async () => {
+    const resultWithDocNumber = {
+      ...mockQueryResult,
+      document_number: { disclose: { result: "AB1234567" } },
+    };
+
+    const caller = await createCaller(authedSession);
+    await caller.submitResult({
+      ...validInput(),
+      result: resultWithDocNumber as Record<string, unknown>,
+    });
+
+    const createCall = mockCreateVerification.mock.calls[0][0];
+    expect(createCall.dedupKey).toMatch(SHA256_HEX_RE);
+  });
+
+  it("allows same user re-verification (dedupKey exists but same user)", async () => {
+    mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
+
+    const resultWithDocNumber = {
+      ...mockQueryResult,
+      document_number: { disclose: { result: "AB1234567" } },
+    };
+
+    const caller = await createCaller(authedSession);
+    const result = await caller.submitResult({
+      ...validInput(),
+      result: resultWithDocNumber as Record<string, unknown>,
+    });
+
+    expect(result.chipVerified).toBe(true);
+  });
+
+  it("skips dedupKey when document number not disclosed", async () => {
+    const caller = await createCaller(authedSession);
+    await caller.submitResult(validInput());
+
+    const createCall = mockCreateVerification.mock.calls[0][0];
+    expect(createCall.dedupKey).toBeNull();
+    expect(mockDedupKeyExistsForOtherUser).not.toHaveBeenCalled();
+  });
 
   it("handles Date object birthdate from SDK", async () => {
     const resultWithDateObj = {

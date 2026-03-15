@@ -47,3 +47,20 @@ Status: Complete
 - apps/web/src/lib/trpc/routers/passport-chip.ts — store birthYearOffset
 - apps/web/src/lib/trpc/routers/attestation.ts — read from verification, not client
 - apps/web/src/components/dashboard/on-chain-attestation.tsx — removed vault unlock
+
+## Task 03: NFC Cross-Method Sybil Dedup
+Status: Complete
+
+### Changes
+1. NFC chip path now computes `dedupKey` using same `computeDedupKey` as OCR
+   - Extracts `document_number`, uses `issuingCountry`→`nationality` fallback for country
+   - Calls `dedupKeyExistsForOtherUser` before creating verification
+   - Stores `dedupKey` on verification record
+2. Cross-method blocking: OCR→NFC or NFC→OCR on different accounts = CONFLICT
+3. Same-user re-verification across methods = allowed (dedupKeyExistsForOtherUser checks userId)
+4. `uniqueIdentifier` nullifier check still runs (defense in depth)
+5. Tests: 4 new unit tests (sybil block, dedupKey storage, same-user allowed, no doc skips dedup)
+
+### Files changed
+- apps/web/src/lib/trpc/routers/passport-chip.ts — added dedup logic
+- apps/web/src/lib/trpc/routers/__tests__/passport-chip.test.ts — dedup tests

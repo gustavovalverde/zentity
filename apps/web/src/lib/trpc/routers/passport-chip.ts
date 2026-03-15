@@ -13,11 +13,13 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
   createVerification,
+  dedupKeyExistsForOtherUser,
   getIdentityBundleByUserId,
   getSelectedVerification,
   isChipVerified,
   isNullifierUsedByOtherUser,
 } from "@/lib/db/queries/identity";
+import { computeDedupKey } from "@/lib/identity/dedup";
 import {
   calculateBirthYearOffsetFromYear,
   dobToDaysSince1900,
@@ -132,6 +134,7 @@ export const passportChipRouter = router({
       const birthdate = extractBirthdate(result);
       const nationality = extractString(result.nationality);
       const fullname = extractString(result.fullname);
+      const documentNumber = extractString(result.document_number);
       const documentType = extractString(result.document_type);
       const issuingCountry = extractString(result.issuing_country);
 
@@ -142,6 +145,29 @@ export const passportChipRouter = router({
       const ageVerified = result.age?.gte?.result === true;
       const sanctionsCleared = result.sanctions?.passed === true;
       const faceMatchPassed = result.facematch?.passed ?? null;
+
+      // Cross-method Sybil dedup — same key computation as OCR path
+      const dedupCountry = issuingCountry ?? nationality ?? null;
+      let dedupKey: string | null = null;
+      if (documentNumber && dedupCountry && birthdate) {
+        dedupKey = computeDedupKey(
+          env.DEDUP_HMAC_SECRET,
+          documentNumber,
+          dedupCountry,
+          birthdate
+        );
+        const existsForOther = await dedupKeyExistsForOtherUser(
+          dedupKey,
+          userId
+        );
+        if (existsForOther) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "This identity document is already registered to another account",
+          });
+        }
+      }
 
       const verificationId = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -160,6 +186,7 @@ export const passportChipRouter = router({
         birthYearOffset:
           calculateBirthYearOffsetFromYear(parseBirthYearFromDob(birthdate)) ??
           null,
+        dedupKey,
         uniqueIdentifier,
         verifiedAt: now,
       });
