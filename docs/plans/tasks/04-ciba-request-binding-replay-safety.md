@@ -38,7 +38,7 @@ End-to-end: intent token schema change → staging verification → request-scop
 - [x] Integration test: replaying an intent token against a second request fails with `400` (intent-binding.integration.test.ts)
 - [x] Integration test: staged approval with `authorization_details` round-trips through `/api/oauth2/release` (ciba-release-lifecycle.integration.test.ts)
 - [x] Integration test: same user with two pending CIBA requests gets the correct handle on each token (ciba-token.integration.test.ts)
-- [ ] Integration test: unrelated token issuance between staging and CIBA token minting does not consume the pending handle
+- [x] Integration test: unrelated token issuance between staging and CIBA token minting does not consume the pending handle
 - [x] Integration test: concurrent release redemption preserves one-time-use semantics (ciba-release-lifecycle.integration.test.ts)
 
 > **Status**: Complete — core security fix (authReqId scoping) committed as 1feaca05. Remaining items were found already implemented.

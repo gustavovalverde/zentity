@@ -1,14 +1,18 @@
 import crypto from "node:crypto";
 
-import { decodeJwt } from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   resetReleaseHandleStore,
   stageReleaseHandle,
 } from "@/lib/auth/oidc/ephemeral-release-handles";
+import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
+import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
+import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
@@ -368,6 +372,83 @@ describe("CIBA token endpoint", () => {
       });
       const identityPayload = decodeJwt(identityJson.access_token as string);
       expect(identityPayload.release_handle).toBe(handle);
+    });
+
+    it("token exchange between staging and CIBA minting does not consume the pending handle", async () => {
+      // Set up a signing key for token exchange
+      resetSigningKeyCache();
+      const issuer = getAuthIssuer();
+      const keyPair = await generateKeyPair("EdDSA", {
+        crv: "Ed25519",
+        extractable: true,
+      });
+      const kid = crypto.randomUUID();
+      const publicJwk = await exportJWK(keyPair.publicKey);
+      const privateJwk = await exportJWK(keyPair.privateKey);
+      await db
+        .insert(jwksTable)
+        .values({
+          id: kid,
+          publicKey: JSON.stringify(publicJwk),
+          privateKey: JSON.stringify(privateJwk),
+          alg: "EdDSA",
+          crv: "Ed25519",
+        })
+        .run();
+
+      // Register a token exchange client (different from the CIBA client)
+      const exchangeClientId = "exchange-interleave-test";
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId: exchangeClientId,
+          name: "Exchange Test",
+          redirectUris: JSON.stringify(["http://localhost/callback"]),
+          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+          tokenEndpointAuthMethod: "none",
+          public: true,
+        })
+        .run();
+
+      // Stage a CIBA handle for an identity-scoped request
+      const authReqId = await insertCibaRequest({
+        userId,
+        status: "approved",
+        resource: TEST_RESOURCE,
+        scope: "openid identity.name",
+      });
+      const handle = crypto.randomBytes(32).toString("base64url");
+      stageReleaseHandle(authReqId, handle, userId, TEST_CLIENT_ID);
+
+      // Fire an interleaving token exchange with identity scopes
+      const subjectToken = await new SignJWT({
+        iss: issuer,
+        sub: userId,
+        aud: issuer,
+        scope: "openid identity.name",
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })
+        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid })
+        .sign(keyPair.privateKey);
+
+      const { status: exchangeStatus } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: exchangeClientId,
+        subject_token: subjectToken,
+        subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        scope: "openid",
+      });
+      expect(exchangeStatus).toBe(200);
+
+      // Now mint the CIBA token — the staged handle must still be intact
+      const { json: cibaJson } = await postTokenWithDpop({
+        grant_type: CIBA_GRANT_TYPE,
+        auth_req_id: authReqId,
+        client_id: TEST_CLIENT_ID,
+      });
+      const cibaPayload = decodeJwt(cibaJson.access_token as string);
+      expect(cibaPayload.release_handle).toBe(handle);
     });
   });
 });

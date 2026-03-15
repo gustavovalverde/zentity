@@ -33,7 +33,7 @@
 - Phase 3 (release handle scoping): fixed via authReqId-based consumeReleaseHandle
 - authorization_details: already persists from CIBA request → approvals row → release id_token
 - Atomic redemption: already uses CAS-based "claiming" status transition, rollback on failure
-- One unchecked AC: "unrelated token issuance" test — low risk, identity scope guard prevents consumption
+- Cross-grant handle isolation test added: token exchange with identity scopes does not consume staged CIBA handle (clientId mismatch guards)
 
 ## Task 08: FHE Integrity Binding — COMPLETE
 - PRD: security-hardening-malicious-server.md Phase 2
