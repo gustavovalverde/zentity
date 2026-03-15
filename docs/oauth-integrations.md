@@ -68,6 +68,8 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (seals with release handle) |
 | `POST /api/auth/ciba/authorize` | Approve a pending CIBA request |
 | `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
+| `POST /api/ciba/push/subscribe` | Register browser push subscription for CIBA notifications |
+| `POST /api/ciba/push/unsubscribe` | Remove push subscription |
 
 ---
 
@@ -209,7 +211,9 @@ sequenceDiagram
 
 CIBA requests support `authorization_details` (RFC 9396) for structured action metadata (e.g., purchase amounts, merchant info). These flow through to the approval UI, email notification, and token response.
 
-The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`.
+The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`. Push notifications route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome). The dashboard-integrated page at `/dashboard/ciba/approve` is a secondary entry point.
+
+**`requiresVaultUnlock`**: When a CIBA request includes identity scopes, the push notification shows only a "Deny" inline action (vault unlock requires a full browser context). All clicks route the user to the approval page where they can unlock their vault and approve.
 
 The `act` claim in the token response identifies the agent acting on behalf of the user, per `draft-oauth-ai-agents-on-behalf-of-user-02`.
 

@@ -21,6 +21,7 @@ No admin pre-approval is required — the user controls data access at the conse
 | **Vino Delivery** | `openid email proof:age` | `identity.name identity.address` | Complete Purchase |
 | **Relief Global** | `openid email proof:verification` | `identity.name identity.nationality` | Claim Aid |
 | **VeriPass** | Digital credential wallet with OID4VP verifier | eIDAS 2.0, NIST 800-63-4 | SD-JWT VC, DCQL, OID4VP, OID4VCI |
+| **Aether AI** | `/aether` | CIBA agent authorization | Purchase approval via backchannel auth |
 
 ## Quick Start
 
@@ -87,6 +88,16 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 2. Register with Zentity (DCR) → sign in
 3. Obtain a credential offer from Zentity Dashboard → Credentials → paste the offer URI
 4. Select a verifier scenario → choose which claims to disclose → present credential
+
+**Aether AI (CIBA agent):**
+
+1. Navigate to <http://localhost:3102/aether>
+2. Sign in with Zentity (DCR auto-registers)
+3. Chat to request a purchase — Aether initiates a CIBA backchannel request
+4. Approve/deny via push notification or approval page
+5. Agent receives `authorization_details` and fulfills the purchase
+
+Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OAuth code flow used by other scenarios.
 
 ## Environment Variables
 

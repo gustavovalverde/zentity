@@ -245,7 +245,9 @@ Every token the agent receives is DPoP-bound (RFC 9449). A stolen token is usele
 
 ### Real-time human consent
 
-CIBA requires the human to actively approve each sensitive action. The approval is not a blanket grant; it is scoped to specific resources (`scope`), specific actions (`authorization_details`), and a specific moment in time (`expires_in`). Push notifications carry the binding message and structured details, so the human can make an informed decision without visiting the agent's interface. The notification body follows a priority chain: `bindingMessage` (if present) > `authorization_details` purchase details (item + amount) > fallback `"{clientLabel} is requesting access"`.
+CIBA requires the human to actively approve each sensitive action. The approval is not a blanket grant; it is scoped to specific resources (`scope`), specific actions (`authorization_details`), and a specific moment in time (`expires_in`). Push notifications carry the binding message and structured details, so the human can make an informed decision without visiting the agent's interface. The notification body follows a priority chain: `bindingMessage` (if present) > `authorization_details` purchase details (item + amount) > fallback `"{clientLabel} is requesting access"`. Push payloads are encrypted per RFC 8291 and contain no PII — only `authReqId` and display text.
+
+Two approval paths exist: the standalone page at `/approve/[authReqId]` (push notification target, no dashboard chrome) and the dashboard-integrated page at `/dashboard/ciba/approve` (secondary, accessible from the sidebar listing).
 
 ### Zero persistent PII
 

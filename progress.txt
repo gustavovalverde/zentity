@@ -312,3 +312,11 @@
   - EDIT: docs/architecture.md — added OIDC Back-Channel Logout section
   - EDIT: docs/oauth-integrations.md — added BCL subsection with DCR registration, sid claim, retry, CIBA revocation, discovery
   - EDIT: docs/tamper-model.md — added CIBA race prevention note
+
+## Task 17: CIBA Push Notifications & Aether Demo Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — expanded CIBA section with push notifications, VAPID env vars, requiresVaultUnlock, release handle triple binding, both approval paths
+  - EDIT: docs/oauth-integrations.md — added push subscribe/unsubscribe endpoints, corrected approval URL, requiresVaultUnlock note
+  - EDIT: docs/agentic-authorization.md — documented both approval paths, push payload RFC 8291 encryption
+  - EDIT: docs/rfcs/0034-ciba-web-push-notifications.md — updated status to Implemented, added Implementation Notes addendum
+  - EDIT: apps/demo-rp/README.md — added Aether AI scenario with quick-start and architecture note
