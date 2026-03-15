@@ -288,7 +288,7 @@ describe("RFC 9728 — protected resource metadata", () => {
     );
     const body = (await GET().json()) as Record<string, unknown>;
 
-    expect(body.bearer_methods_supported).toEqual(["dpop"]);
+    expect(body.bearer_methods_supported).toEqual(["header", "dpop"]);
   });
 
   it("advertises EdDSA as resource signing algorithm", async () => {

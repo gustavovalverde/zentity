@@ -10,7 +10,7 @@ import {
   validateFetchUrl,
 } from "./cimd-validation";
 
-const METADATA_TTL_MS = 60 * 60 * 1000; // 1 hour
+const METADATA_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const FETCH_TIMEOUT_MS = 5000;
 const MAX_RESPONSE_BYTES = 100 * 1024; // 100KB
 
@@ -93,6 +93,7 @@ export async function resolveCimdClient(clientId: string): Promise<{
       .set({
         name: meta.client_name,
         redirectUris: JSON.stringify(meta.redirect_uris),
+        trustLevel: 1,
         metadataFetchedAt: now,
         updatedAt: now,
       })
@@ -107,7 +108,7 @@ export async function resolveCimdClient(clientId: string): Promise<{
       tokenEndpointAuthMethod: "none",
       public: true,
       subjectType: "pairwise",
-      trustLevel: 0,
+      trustLevel: 1,
       metadataUrl: clientId,
       metadataFetchedAt: now,
     });

@@ -96,7 +96,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       expect(client?.name).toBe("MCP Test Client");
       expect(client?.metadataUrl).toBe(CIMD_CLIENT_ID);
       expect(client?.metadataFetchedAt).toBeDefined();
-      expect(client?.trustLevel).toBe(0);
+      expect(client?.trustLevel).toBe(1);
       expect(client?.subjectType).toBe("pairwise");
       expect(client?.public).toBe(true);
     });
@@ -191,7 +191,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         tokenEndpointAuthMethod: "none",
         public: true,
         subjectType: "pairwise",
-        trustLevel: 0,
+        trustLevel: 1,
         metadataUrl: CIMD_CLIENT_ID,
         metadataFetchedAt: new Date(), // fresh
       });
@@ -224,7 +224,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
 
     it("re-fetches metadata after TTL expires", async () => {
       // Insert client with expired TTL
-      const oneHourAgo = new Date(Date.now() - 61 * 60 * 1000);
+      const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
       await db.insert(oauthClients).values({
         clientId: CIMD_CLIENT_ID,
         name: "Old Name",
@@ -233,9 +233,9 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         tokenEndpointAuthMethod: "none",
         public: true,
         subjectType: "pairwise",
-        trustLevel: 0,
+        trustLevel: 1,
         metadataUrl: CIMD_CLIENT_ID,
-        metadataFetchedAt: oneHourAgo,
+        metadataFetchedAt: pastTtl,
       });
 
       mockFetchMetadata(validMetadata({ client_name: "Updated Name" }));

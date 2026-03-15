@@ -90,7 +90,7 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
       });
       expect(client).toBeDefined();
       expect(client?.subjectType).toBe("pairwise");
-      expect(client?.trustLevel).toBe(0);
+      expect(client?.trustLevel).toBe(1);
       expect(client?.metadataUrl).toBe(CIMD_CLIENT_ID);
     });
   });

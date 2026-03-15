@@ -29,7 +29,7 @@ export function GET() {
       ...IDENTITY_SCOPES,
       "identity_verification",
     ],
-    bearer_methods_supported: ["dpop"],
+    bearer_methods_supported: ["header", "dpop"],
     resource_signing_alg_values_supported: ["EdDSA"],
   };
 

@@ -649,6 +649,19 @@ async function beforeTokenExtractClaimsParameter(ctx: HookCtx) {
   }
 }
 
+function refreshStaleCimdMetadata(ctx: HookCtx) {
+  const clientId =
+    typeof ctx.body?.client_id === "string" ? ctx.body.client_id : undefined;
+  if (!(clientId && isUrlClientId(clientId, isProduction))) {
+    return;
+  }
+
+  // Fire-and-forget: refresh CIMD metadata if stale
+  resolveCimdClient(clientId).catch(() => {
+    // CIMD refresh failure is non-fatal — cached metadata is retained
+  });
+}
+
 function beforeConsentStripIdentityScopes(ctx: HookCtx) {
   if (typeof ctx.body?.scope !== "string") {
     return;
@@ -1046,17 +1059,28 @@ export const auth = betterAuth({
         }
         beforeTokenValidateResource(ctx);
         await beforeTokenExtractClaimsParameter(ctx);
+        refreshStaleCimdMetadata(ctx);
         return;
       }
       if (ctx.path === "/oauth2/consent") {
         return beforeConsentStripIdentityScopes(ctx);
       }
       if (ctx.path === "/oauth2/par") {
+        if (!ctx.body?.resource) {
+          throw new APIError("BAD_REQUEST", {
+            error: "invalid_request",
+            error_description:
+              "resource parameter is required for PAR requests",
+          });
+        }
         beforeValidateResourceUri(ctx);
         await beforeResolveCimd(ctx);
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
+        if (!ctx.query?.resource) {
+          ctx.query = { ...ctx.query, resource: appUrl };
+        }
         await beforeResolveCimd(ctx);
         await enforceStepUp(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);

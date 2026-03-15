@@ -58,3 +58,14 @@
 - Added claims_parameter_supported: true to discovery metadata
 - 15 unit tests covering parsing, filtering (null/value/values constraints), essential claim detection, stage/peek/consume lifecycle
 - Files: claims-parameter.ts (new), auth.ts, well-known-utils.ts, claims-parameter.test.ts (new)
+
+## Task 19: MCP Protocol Compliance — COMPLETE
+- Added `resource` column to oauthClients schema
+- PAR requests now require `resource` parameter (throws invalid_request if absent)
+- Non-PAR authorize defaults `resource` to NEXT_PUBLIC_APP_URL
+- CIMD TTL increased from 1h to 24h per task spec
+- CIMD-verified clients get trustLevel: 1 (was 0)
+- Protected resource metadata now advertises `["header", "dpop"]` as bearer methods
+- Fire-and-forget CIMD metadata refresh on token requests for URL-type client IDs
+- Updated tests: well-known bearer_methods, CIMD trustLevel, TTL expiry window
+- Files: oauth-provider schema, auth.ts, cimd.ts, well-known route, oidc-well-known.test.ts, cimd.test.ts, mcp-e2e.test.ts
