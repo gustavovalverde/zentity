@@ -22,7 +22,10 @@ function getTransport(
 }
 
 /** Match origin against allowed patterns (supports wildcard port). */
-function matchOrigin(origin: string, patterns: string[]): string | undefined {
+export function matchOrigin(
+  origin: string,
+  patterns: string[]
+): string | undefined {
   for (const pattern of patterns) {
     if (pattern === origin) {
       return origin;
@@ -39,7 +42,8 @@ function matchOrigin(origin: string, patterns: string[]): string | undefined {
   return undefined;
 }
 
-export function startHttp(): void {
+/** Build the Hono app with all middleware and routes. Separated from `startHttp` for testability. */
+export function createApp(): Hono {
   const app = new Hono();
 
   app.use(
@@ -153,6 +157,11 @@ export function startHttp(): void {
     return c.body(null, 204);
   });
 
+  return app;
+}
+
+export function startHttp(): void {
+  const app = createApp();
   const { port } = config;
 
   serve({ fetch: app.fetch, port }, () => {

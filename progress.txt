@@ -67,3 +67,40 @@ Add OAuth Bearer + DPoP token validation to MCP HTTP transport.
 - `apps/mcp/src/config.ts` — added allowedOrigins
 - `apps/mcp/__tests__/auth/token-auth.test.ts` — new: 11 tests
 - `apps/mcp/__tests__/transports/http.test.ts` — new: 2 tests
+
+## Phase 4: MCP HTTP Transport Test Coverage — COMPLETE
+
+### Task
+Cover all 10 PRD test cases for MCP HTTP auth middleware at the transport layer. Previously only 2 shallow tests existed (CORS pattern + no-op placeholder).
+
+### Root cause
+`startHttp()` built the Hono app internally and called `serve()`, making it impossible to test via `app.request()`.
+
+### Fix
+- Extracted `createApp()` from `startHttp()` — returns configured Hono instance without binding a port
+- Exported `matchOrigin` for direct unit testing (was private, tests duplicated the logic inline)
+- Rewrote `http.test.ts` with 16 tests covering all 10 PRD cases via `app.request()`
+- Fixed pre-existing lint: `let auth` → `let auth: AuthContext` in purchase.ts, request-approval.ts
+- Reduced whoami.ts cognitive complexity (21→≤20) by extracting `fetchWhoamiData()`
+
+### PRD coverage (all 10 cases)
+1. No auth header → 401 + resource_metadata URL ✓
+2. Valid JWT → MCP session created (200 + mcp-session-id) ✓
+3. Expired JWT → 401 + error="invalid_token" ✓
+4. Wrong issuer → 401 ✓
+5. Insufficient scopes → 403 + error="insufficient_scope" ✓
+6. DPoP with valid proof → 200 ✓
+7. DPoP without proof → 401 ✓
+8. /health → 200 without auth ✓
+9. /.well-known/oauth-protected-resource → 200 without auth ✓
+10. CORS → localhost only ✓
+
+### Files changed
+- `apps/mcp/src/transports/http.ts` — extract createApp(), export matchOrigin
+- `apps/mcp/__tests__/transports/http.test.ts` — rewrite: 2 → 16 tests
+- `apps/mcp/src/tools/purchase.ts` — add AuthContext type annotation
+- `apps/mcp/src/tools/request-approval.ts` — add AuthContext type annotation
+- `apps/mcp/src/tools/whoami.ts` — extract fetchWhoamiData(), reduce complexity
+
+### Verification
+- 109 tests pass, typecheck clean, lint clean

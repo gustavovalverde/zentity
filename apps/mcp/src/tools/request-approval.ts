@@ -5,7 +5,7 @@ import {
   CibaTimeoutError,
   requestCibaApproval,
 } from "../auth/ciba.js";
-import { requireAuth } from "../auth/context.js";
+import { type AuthContext, requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
 export function registerRequestApprovalTool(server: McpServer): void {
@@ -20,7 +20,7 @@ export function registerRequestApprovalTool(server: McpServer): void {
         .describe("Additional context shown in the notification"),
     },
     async ({ action, details }) => {
-      let auth;
+      let auth: AuthContext;
       try {
         auth = await requireAuth();
       } catch (error) {
@@ -29,7 +29,8 @@ export function registerRequestApprovalTool(server: McpServer): void {
           content: [
             {
               type: "text" as const,
-              text: error instanceof Error ? error.message : "Not authenticated",
+              text:
+                error instanceof Error ? error.message : "Not authenticated",
             },
           ],
         };
