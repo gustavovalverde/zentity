@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { fheLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -16,6 +18,11 @@ export async function POST(request: Request): Promise<Response> {
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = fheLimiter.check(authResult.session.user.id);
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   let body: unknown;

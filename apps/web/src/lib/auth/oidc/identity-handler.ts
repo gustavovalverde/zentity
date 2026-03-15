@@ -11,6 +11,8 @@ import {
   extractIdentityScopes,
   filterIdentityByScopes,
 } from "@/lib/auth/oidc/identity-scopes";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { oauth2IdentityLimiter } from "@/lib/utils/rate-limiters";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -65,6 +67,13 @@ async function resolveSessionAndBody(
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = oauth2IdentityLimiter.check(
+    authResult.session.user.id
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   let body: unknown;

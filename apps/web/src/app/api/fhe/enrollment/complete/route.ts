@@ -16,6 +16,8 @@ import {
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
 import { prfSaltSchema, wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { fheLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -33,6 +35,11 @@ export async function POST(request: Request) {
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = fheLimiter.check(authResult.session.user.id);
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   const payload = (await request.json().catch(() => null)) as unknown;

@@ -12,6 +12,7 @@ import type { ChallengeType } from "@/lib/identity/liveness/challenges";
 
 import { createHash } from "node:crypto";
 
+import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
@@ -49,6 +50,7 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/identity/liveness/policy";
+import { createRateLimiter } from "@/lib/utils/rate-limit";
 
 import { protectedProcedure, router } from "../server";
 
@@ -77,6 +79,16 @@ const faceMatchSchema = z.object({
   minConfidence: z.number().min(0).max(1).optional(),
   /** Identity draft ID - when provided, results are written directly to DB */
   draftId: z.string().min(1).optional(),
+});
+
+const livenessLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
+
+const rateLimitedProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const { limited } = livenessLimiter.check(ctx.userId);
+  if (limited) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
+  }
+  return next({ ctx });
 });
 
 export const livenessRouter = router({
@@ -109,7 +121,7 @@ export const livenessRouter = router({
    * Verifies liveness challenges for dashboard users.
    * Requires authenticated user.
    */
-  verify: protectedProcedure
+  verify: rateLimitedProcedure
     .input(verifySchema)
     .mutation(async ({ ctx, input }) => {
       const start = Date.now();
@@ -317,7 +329,7 @@ export const livenessRouter = router({
    * When draftId is provided, results are written directly to the database.
    * This is the secure path - server validates and writes, not client.
    */
-  faceMatch: protectedProcedure
+  faceMatch: rateLimitedProcedure
     .input(faceMatchSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();

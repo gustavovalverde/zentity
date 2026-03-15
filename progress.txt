@@ -21,3 +21,22 @@
 - Exported `StandardAlg` type for use in admin router
 - 8 tests: rotation creates new + retires old, null oldKid on fresh, getOrCreateSigningKey returns new after rotation, both keys in JWKS during overlap, cleanup removes expired, cleanup preserves active, admin can rotate, non-admin FORBIDDEN
 - Files: jwt-signer.ts, admin.ts (new), app.ts, key-rotation.test.ts (new)
+
+## Task 17: Rate Limiting Infrastructure — COMPLETE
+- Created `createRateLimiter({ windowMs, max })` shared utility at src/lib/utils/rate-limit.ts
+- Sliding window, Map-based, periodic cleanup via setInterval, unref'd
+- Helper functions: `getClientIp`, `rateLimitResponse` (429 + Retry-After)
+- Pre-configured limiter instances at src/lib/utils/rate-limiters.ts
+- Migrated FPA authorize-challenge from inline `ipRequestLog` to shared utility
+- Applied rate limiting to all unprotected endpoints:
+  - OCR proxy: 5/min per IP
+  - FHE endpoints (5 routes): 10/min per user
+  - CIBA push: 20/min per user
+  - ZK nationality-proof (POST + GET + verify): 5/min per user
+  - OAuth2 identity (intent/stage via identity-handler.ts + unstage): 10/min per user
+  - Secrets blob (POST + GET): 10/min per user
+  - Public (log-client-error, metrics/client, password/pwned): 30/min per IP
+  - tRPC liveness (verify + faceMatch): 10/min per user via rateLimitedProcedure middleware
+- 8 unit tests for rate limiter utility
+- Updated authorize-challenge integration test to use fpaLimiter.reset()
+- Files: rate-limit.ts (new), rate-limiters.ts (new), rate-limit.test.ts (new), 16 route files modified, liveness.ts, authorize-challenge test

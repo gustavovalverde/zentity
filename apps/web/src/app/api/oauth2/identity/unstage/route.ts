@@ -4,6 +4,8 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/api-auth";
 import { clearEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { verifySignedOAuthQuery } from "@/lib/auth/oidc/oauth-query";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { oauth2IdentityLimiter } from "@/lib/utils/rate-limiters";
 
 const UnstageSchema = z.object({
   oauth_query: z.string().min(1),
@@ -13,6 +15,13 @@ export async function POST(request: Request): Promise<Response> {
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = oauth2IdentityLimiter.check(
+    authResult.session.user.id
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   let body: unknown;

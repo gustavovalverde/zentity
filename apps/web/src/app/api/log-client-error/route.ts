@@ -7,6 +7,8 @@ import {
   getRequestLogBindings,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
+import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
+import { publicLimiter } from "@/lib/utils/rate-limiters";
 
 interface ClientErrorPayload {
   digest?: string;
@@ -28,6 +30,13 @@ function sanitizePath(path: string | undefined): string | undefined {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const { limited, retryAfter } = publicLimiter.check(
+    getClientIp(request.headers)
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter) as NextResponse;
+  }
+
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   const log = createRequestLogger(

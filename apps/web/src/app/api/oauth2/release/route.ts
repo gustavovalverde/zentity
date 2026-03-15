@@ -15,6 +15,8 @@ import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
 import { approvals } from "@/lib/db/schema/approvals";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
+import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
+import { oauth2ReleaseLimiter } from "@/lib/utils/rate-limiters";
 
 const authIssuer = getAuthIssuer();
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
@@ -62,6 +64,13 @@ async function getLocalJwks(kid: string) {
  * 6. Marks the approval as redeemed (one-time use)
  */
 export async function POST(request: Request): Promise<Response> {
+  const { limited, retryAfter } = oauth2ReleaseLimiter.check(
+    getClientIp(request.headers)
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter);
+  }
+
   const token = extractAccessToken(request.headers);
   if (!token) {
     return NextResponse.json(

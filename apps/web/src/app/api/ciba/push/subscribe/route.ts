@@ -5,6 +5,8 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/api-auth";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/push";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { cibaLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -20,6 +22,11 @@ export async function POST(request: Request) {
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = cibaLimiter.check(authResult.session.user.id);
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   const body = await request.json().catch(() => null);

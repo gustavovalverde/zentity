@@ -7,6 +7,8 @@ import {
 } from "@/lib/observability/request-context";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 import { HttpError } from "@/lib/utils/http";
+import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
+import { ocrLimiter } from "@/lib/utils/rate-limiters";
 
 interface OCRRequest {
   image: string;
@@ -17,6 +19,13 @@ interface OCRRequest {
  * Proxy to OCR service /ocr endpoint for document processing
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const { limited, retryAfter } = ocrLimiter.check(
+    getClientIp(request.headers)
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter) as NextResponse;
+  }
+
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {

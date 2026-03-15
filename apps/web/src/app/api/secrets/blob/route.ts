@@ -17,6 +17,8 @@ import {
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { secretsBlobLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -57,6 +59,16 @@ export async function POST(request: Request): Promise<NextResponse> {
         { error: "Invalid or expired registration token." },
         { status: 401 }
       );
+    }
+
+    const rateLimitKey = authResult?.ok
+      ? authResult.session.user.id
+      : registrationToken;
+    if (rateLimitKey) {
+      const { limited, retryAfter } = secretsBlobLimiter.check(rateLimitKey);
+      if (limited) {
+        return rateLimitResponse(retryAfter) as NextResponse;
+      }
     }
 
     const secretId = getHeaderValue(request.headers, "x-secret-id");
@@ -120,6 +132,13 @@ export async function GET(request: Request): Promise<Response> {
   const authResult = await requireSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const { limited, retryAfter } = secretsBlobLimiter.check(
+    authResult.session.user.id
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   const { searchParams } = new URL(request.url);

@@ -7,7 +7,7 @@ import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { ipRequestLog } from "@/app/api/oauth2/authorize-challenge/route";
+import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { accounts, walletAddresses } from "@/lib/db/schema/auth";
@@ -208,7 +208,7 @@ describe("Authorization Challenge Endpoint", () => {
   beforeEach(async () => {
     await resetDatabase();
     await createTestClient();
-    ipRequestLog.clear();
+    fpaLimiter.reset();
   });
 
   describe("Round 1: Initial request", () => {

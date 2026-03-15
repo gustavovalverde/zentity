@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+
+import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
+import { publicLimiter } from "@/lib/utils/rate-limiters";
 /**
  * Breached password check endpoint (UX-only).
  *
@@ -29,6 +32,13 @@ interface PwnedCheckResponse {
 }
 
 export async function POST(request: Request) {
+  const { limited, retryAfter } = publicLimiter.check(
+    getClientIp(request.headers)
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter);
+  }
+
   let body: unknown;
   try {
     body = await request.json();

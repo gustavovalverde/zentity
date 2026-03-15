@@ -19,6 +19,8 @@ import {
   recordClientTfheLoadRetry,
   recordClientWalletSignDuration,
 } from "@/lib/observability/metrics";
+import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
+import { publicLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -172,6 +174,13 @@ function isValueWithinLimits(unit: "ms" | "By", value: number): boolean {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const { limited, retryAfter } = publicLimiter.check(
+    getClientIp(request.headers)
+  );
+  if (limited) {
+    return rateLimitResponse(retryAfter) as NextResponse;
+  }
+
   const body = await request.json().catch(() => null);
   const parsed = payloadSchema.safeParse(body);
   if (!parsed.success) {

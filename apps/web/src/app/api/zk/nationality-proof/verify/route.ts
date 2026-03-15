@@ -17,6 +17,8 @@ import {
 } from "@/lib/privacy/zk/proof-types";
 import { resolveAudience } from "@/lib/trpc/routers/zk/audience";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { zkLimiter } from "@/lib/utils/rate-limiters";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +40,11 @@ export async function POST(request: NextRequest) {
     const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
+    }
+
+    const { limited, retryAfter } = zkLimiter.check(authResult.session.user.id);
+    if (limited) {
+      return rateLimitResponse(retryAfter);
     }
 
     const body = await request.json();

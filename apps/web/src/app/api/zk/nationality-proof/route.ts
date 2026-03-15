@@ -21,6 +21,8 @@ import {
 } from "@/lib/privacy/country";
 import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { zkLimiter } from "@/lib/utils/rate-limiters";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership
@@ -38,6 +40,11 @@ export async function POST(request: NextRequest) {
     const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
+    }
+
+    const { limited, retryAfter } = zkLimiter.check(authResult.session.user.id);
+    if (limited) {
+      return rateLimitResponse(retryAfter);
     }
 
     const body = await request.json();
@@ -106,6 +113,13 @@ export async function GET(request: NextRequest) {
     const authResult = await requireSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
+    }
+
+    const { limited: getLimited, retryAfter: getRetryAfter } = zkLimiter.check(
+      authResult.session.user.id
+    );
+    if (getLimited) {
+      return rateLimitResponse(getRetryAfter);
     }
 
     const { searchParams } = new URL(request.url);

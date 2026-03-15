@@ -40,24 +40,19 @@ const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
 const PAR_LIFETIME_MS = 60 * 1000;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX = 10;
 const EIP712_NONCE_TTL_MS = 15 * 60 * 1000;
 const EIP712_APP_NAME = "Zentity";
 const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 
 // ── Rate limiter (sliding window per IP) ────────────────
 
-export const ipRequestLog = new Map<string, number[]>();
+import {
+  createRateLimiter,
+  getClientIp,
+  rateLimitResponse,
+} from "@/lib/utils/rate-limit";
 
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW_MS;
-  const timestamps = ipRequestLog.get(ip)?.filter((t) => t > windowStart) ?? [];
-  timestamps.push(now);
-  ipRequestLog.set(ip, timestamps);
-  return timestamps.length > RATE_LIMIT_MAX;
-}
+export const fpaLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 
 // ── Request schemas ─────────────────────────────────────
 
@@ -212,10 +207,10 @@ async function issueEip712Challenge(
 // ── Route handler ───────────────────────────────────────
 
 export async function POST(request: Request): Promise<Response> {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (isRateLimited(ip)) {
-    return errorJson(429, "too_many_requests", "Rate limit exceeded");
+  const ip = getClientIp(request.headers);
+  const { limited, retryAfter } = fpaLimiter.check(ip);
+  if (limited) {
+    return rateLimitResponse(retryAfter);
   }
 
   // Lazy cleanup of expired sessions

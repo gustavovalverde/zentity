@@ -9,6 +9,8 @@ import {
 import { registerFheKey } from "@/lib/privacy/fhe/service";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
+import { rateLimitResponse } from "@/lib/utils/rate-limit";
+import { fheLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 
@@ -57,6 +59,14 @@ export async function POST(req: Request) {
     if (!authResult.ok) {
       return authResult.response;
     }
+
+    const { limited, retryAfter } = fheLimiter.check(
+      authResult.session.user.id
+    );
+    if (limited) {
+      return rateLimitResponse(retryAfter);
+    }
+
     const sessionUserId = authResult.session.user.id;
     userId = sessionUserId;
 
