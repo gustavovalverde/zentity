@@ -26,17 +26,10 @@ vi.mock("@/lib/db/schema/push", () => ({
   pushSubscriptions: { userId: "userId", endpoint: "endpoint" },
 }));
 
-let testVapidPublicKey: string | undefined = "test-public-key";
-let testVapidPrivateKey: string | undefined = "test-private-key";
-
 vi.mock("@/env", () => ({
   env: {
-    get VAPID_PUBLIC_KEY() {
-      return testVapidPublicKey;
-    },
-    get VAPID_PRIVATE_KEY() {
-      return testVapidPrivateKey;
-    },
+    VAPID_PUBLIC_KEY: "test-public-key",
+    VAPID_PRIVATE_KEY: "test-private-key",
     VAPID_SUBJECT: "mailto:test@zentity.xyz",
   },
 }));
@@ -47,6 +40,10 @@ vi.mock("@/lib/logging/error-logger", () => ({
 }));
 
 import type { PushTransport } from "../web-push";
+
+// Import the mock module to reconfigure env properties in beforeEach,
+// making the test resilient to vmThreads mock factory leaking.
+import { env } from "@/env";
 
 import { sendWebPush } from "../web-push";
 
@@ -64,8 +61,23 @@ describe("sendWebPush", () => {
   beforeEach(() => {
     mockDbSelect.mockReset();
     mockDbDelete.mockReset();
-    testVapidPublicKey = "test-public-key";
-    testVapidPrivateKey = "test-private-key";
+    // Reconfigure env properties directly on the mock object.
+    // This is resilient to vmThreads leaking another file's @/env mock factory.
+    Object.defineProperty(env, "VAPID_PUBLIC_KEY", {
+      value: "test-public-key",
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(env, "VAPID_PRIVATE_KEY", {
+      value: "test-private-key",
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(env, "VAPID_SUBJECT", {
+      value: "mailto:test@zentity.xyz",
+      writable: true,
+      configurable: true,
+    });
   });
 
   it("sends to all user subscriptions", async () => {
@@ -171,8 +183,16 @@ describe("sendWebPush", () => {
   });
 
   it("short-circuits when VAPID keys are not configured", async () => {
-    testVapidPublicKey = undefined;
-    testVapidPrivateKey = undefined;
+    Object.defineProperty(env, "VAPID_PUBLIC_KEY", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(env, "VAPID_PRIVATE_KEY", {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    });
     const transport = createMockTransport();
 
     await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);

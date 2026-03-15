@@ -48,6 +48,9 @@ if (typeof global !== "undefined") {
 // === Global Mocks ===
 
 // Mock Better Auth - prevents real auth calls in tests
+// Uses bare "@/lib/auth" path intentionally: no index.ts exists, so this mock
+// only activates when a test explicitly imports from "@/lib/auth" (rare).
+// Tests that need auth mocking should mock "@/lib/auth/auth" per-file.
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {

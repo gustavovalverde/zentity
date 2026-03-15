@@ -47,7 +47,7 @@ describe("fhe verify-age route", () => {
     const response = await POST(makeRequest());
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "Authentication required.",
+      error: "Authentication required",
     });
   });
 

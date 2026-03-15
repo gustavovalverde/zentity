@@ -8,17 +8,18 @@ import {
 
 const TEST_SECRET = "test-secret-at-least-32-characters-long";
 
-const authMocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
-}));
-
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
-vi.mock("@/lib/auth/auth", () => ({
-  auth: { api: { getSession: authMocks.getSession } },
+// Mock requireSession directly instead of @/lib/auth/auth.
+// This avoids vmThreads mock factory leaking from other test files
+// that also mock @/lib/auth/auth.
+vi.mock("@/lib/auth/api-auth", () => ({
+  requireSession: vi.fn(),
 }));
+
+import { requireSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
@@ -41,11 +42,20 @@ function makeRequest(body: unknown) {
 describe("oauth2 identity intent route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    vi.mocked(requireSession).mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    } as never);
   });
 
   it("rejects unauthenticated requests", async () => {
-    authMocks.getSession.mockResolvedValueOnce(null);
+    vi.mocked(requireSession).mockResolvedValueOnce({
+      ok: false,
+      response: new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { "content-type": "application/json" } }
+      ),
+    } as never);
 
     const response = await POST(makeRequest({}));
     expect(response.status).toBe(401);

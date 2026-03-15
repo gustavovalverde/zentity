@@ -6,10 +6,6 @@ import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-intent";
 
 const TEST_SECRET = "test-secret-at-least-32-characters-long";
 
-const authMocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
-}));
-
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
@@ -75,8 +71,17 @@ vi.mock("@/lib/db/schema/crypto", () => ({
 }));
 
 vi.mock("@/lib/auth/auth", () => ({
-  auth: { api: { getSession: authMocks.getSession } },
+  auth: { api: { getSession: vi.fn() } },
 }));
+
+// Mock api-auth to prevent the real module from caching in vmThreads.
+// Without this, the real api-auth module (loaded transitively through the route)
+// persists in the VM cache and can't be overridden by subsequent test files.
+vi.mock("@/lib/auth/api-auth", () => ({
+  requireSession: vi.fn(),
+}));
+
+import { requireSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
@@ -101,7 +106,10 @@ describe("oauth2 identity stage route", () => {
     vi.clearAllMocks();
     insertedJtis.clear();
     lastQueriedJti = undefined;
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    vi.mocked(requireSession).mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    } as never);
     await resetEphemeralIdentityClaimsStore();
   });
 

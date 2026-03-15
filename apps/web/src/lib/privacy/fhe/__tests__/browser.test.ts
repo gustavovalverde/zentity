@@ -11,7 +11,7 @@ const tfheMocks = vi.hoisted(() => ({
 vi.mock("@/lib/privacy/fhe/browser", () => tfheMocks);
 
 const trpcMocks = vi.hoisted(() => ({
-  crypto: {
+  zk: {
     createChallenge: { mutate: vi.fn() },
   },
 }));

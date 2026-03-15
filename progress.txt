@@ -1,123 +1,31 @@
-## Phase 1: Step-Up Hook Session Fix — COMPLETE
+## 2026-03-15 — Fix all failing unit tests (quality-naming-consistency 5e + test isolation)
 
 ### Task
-Fix step-up auth hook so acr_values/max_age enforcement actually runs on /oauth2/authorize.
+- quality-naming-consistency 5e: auth error message consistency (stale period in test assertions)
+- Fix vmThreads cross-test contamination: 11 pre-existing test failures → 0
 
-### Bug
-`resolveSessionToken()` extracted full signed cookie (token.hmac-sig) but DB stores raw token → query never matched → hook always short-circuited.
-
-### Fix
-- Replaced manual cookie parsing (`SESSION_COOKIE_RE`, `resolveSessionToken`, `resolveSession`, `sessions` import) with `getSessionFromCtx(ctx)` from `better-auth/api`
-- Maps `{ session.createdAt, user.id }` → `SessionInfo` at call sites
-- Removed unused `db` param from `enforceFromQuery` (only needed in `enforceFromPar` for PAR records)
-- Updated integration tests to sign session cookies via `makeSignature` from `better-auth/crypto`
-
-### Files changed
-- `apps/web/src/lib/auth/oidc/step-up-hook.ts` — removed broken session resolution, use getSessionFromCtx
-- `apps/web/src/lib/auth/__tests__/step-up-auth.integration.test.ts` — sign session cookies with HMAC
-
-### Verification
-- 16 step-up integration tests pass
-- 13 CIBA step-up integration tests pass
-- 20 step-up unit tests pass
-- typecheck clean
-- lint clean
-- Pre-existing failures in token-exchange + authorize-challenge tests (unrelated)
-
-## Phase 2: Docs Link Fragment Rewriting — COMPLETE
-
-### Task
-Fix landing page markdown renderer so cross-doc links with #fragment suffixes resolve correctly.
-
-### Bug
-`href.endsWith(".md")` missed links like `architecture.md#section` because href ends with `#section`.
-
-### Fix
-- Split href on `#` at top to separate path from fragment before `.md` check
-- Re-append fragment to all resolved URLs (internal routes, GitHub fallback, README)
-- Export `transformHref` for direct unit testing
-- Added vitest to landing app, 9 tests covering full href matrix
+### Changes
+- **FHE auth message period (5e)**: `route.test.ts` assertions updated to match `requireSession` output ("Authentication required" without period)
+- **Browser mock rename**: `trpcMocks.crypto` → `trpcMocks.zk` in `browser.test.ts` after router rename
+- **vmThreads mock isolation**: Restructured 5 test files to be resilient to vi.mock factory leaking:
+  - `intent/route.test.ts`, `stage/route.test.ts`, `fhe/keys/register/route.test.ts`: Mock `@/lib/auth/api-auth` (direct dep) instead of `@/lib/auth/auth` (transitive); use `vi.mocked(requireSession)` instead of hoisted `authMocks`
+  - `stage/route.test.ts`: Also mock `@/lib/auth/api-auth` to prevent real module caching in VM
+  - `web-push.test.ts`: Use `Object.defineProperty` on imported env to reconfigure VAPID keys per-test, resilient to leaked `@/env` factory from passport-chip
+- **Setup file**: Added comment clarifying inert `@/lib/auth` mock path (no index.ts exists)
 
 ### Files changed
-- `apps/landing/src/components/docs/markdown-renderer.tsx` — fragment-aware transformHref, exported
-- `apps/landing/src/components/docs/__tests__/transform-href.test.ts` — new test file
-- `apps/landing/package.json` — added vitest dep + test script
+- `apps/web/src/app/api/fhe/keys/register/__tests__/route.test.ts`
+- `apps/web/src/app/api/fhe/verify-age/__tests__/route.test.ts`
+- `apps/web/src/app/api/oauth2/identity/intent/__tests__/route.test.ts`
+- `apps/web/src/app/api/oauth2/identity/stage/__tests__/route.test.ts`
+- `apps/web/src/lib/privacy/fhe/__tests__/browser.test.ts`
+- `apps/web/src/lib/push/__tests__/web-push.test.ts`
+- `apps/web/vitest.setup.mts`
 
-## Phase 3: MCP Token Auth Middleware — COMPLETE
+### Key decisions
+- Kept vmThreads pool (memory-efficient) — threads/forks OOM on this codebase
+- Root cause: vmThreads shares vi.mock factory registry across files despite isolate: true
+- Fix pattern: mock at the direct dependency level (@/lib/auth/api-auth not @/lib/auth/auth) and use vi.mocked() on the imported mock module to always configure the actual function the SUT calls
 
-### Task
-Add OAuth Bearer + DPoP token validation to MCP HTTP transport.
-
-### Implementation
-- `token-auth.ts`: validates JWTs via JWKS (jose createRemoteJWKSet), DPoP proofs per RFC 9449
-  - Bearer: verify JWT signature, issuer, expiry
-  - DPoP: verify proof JWT (htm, htu, iat freshness, ath hash, cnf.jkt thumbprint match)
-  - Sender-constrained: reject Bearer for tokens with cnf.jkt
-  - RFC 6750 error responses with WWW-Authenticate header + resource_metadata URL
-- `http.ts`: Hono middleware on /mcp routes wraps handlers in runWithAuth(authCtx)
-  - CORS tightened from `origin: "*"` to localhost patterns (configurable)
-  - Health + well-known endpoints remain unauthenticated
-- `config.ts`: added `allowedOrigins` setting (env: MCP_ALLOWED_ORIGINS)
-- 11 token-auth unit tests (valid/expired/wrong-issuer Bearer, DPoP proof validation, cnf.jkt)
-- 2 HTTP transport tests (CORS origin matching)
-
-### Files changed
-- `apps/mcp/src/auth/token-auth.ts` — new: token validation + DPoP proof checker
-- `apps/mcp/src/transports/http.ts` — auth middleware, restricted CORS, runWithAuth
-- `apps/mcp/src/config.ts` — added allowedOrigins
-- `apps/mcp/__tests__/auth/token-auth.test.ts` — new: 11 tests
-- `apps/mcp/__tests__/transports/http.test.ts` — new: 2 tests
-
-## Phase 4: MCP HTTP Transport Test Coverage — COMPLETE
-
-### Task
-Cover all 10 PRD test cases for MCP HTTP auth middleware at the transport layer. Previously only 2 shallow tests existed (CORS pattern + no-op placeholder).
-
-### Root cause
-`startHttp()` built the Hono app internally and called `serve()`, making it impossible to test via `app.request()`.
-
-### Fix
-- Extracted `createApp()` from `startHttp()` — returns configured Hono instance without binding a port
-- Exported `matchOrigin` for direct unit testing (was private, tests duplicated the logic inline)
-- Rewrote `http.test.ts` with 16 tests covering all 10 PRD cases via `app.request()`
-- Fixed pre-existing lint: `let auth` → `let auth: AuthContext` in purchase.ts, request-approval.ts
-- Reduced whoami.ts cognitive complexity (21→≤20) by extracting `fetchWhoamiData()`
-
-### PRD coverage (all 10 cases)
-1. No auth header → 401 + resource_metadata URL ✓
-2. Valid JWT → MCP session created (200 + mcp-session-id) ✓
-3. Expired JWT → 401 + error="invalid_token" ✓
-4. Wrong issuer → 401 ✓
-5. Insufficient scopes → 403 + error="insufficient_scope" ✓
-6. DPoP with valid proof → 200 ✓
-7. DPoP without proof → 401 ✓
-8. /health → 200 without auth ✓
-9. /.well-known/oauth-protected-resource → 200 without auth ✓
-10. CORS → localhost only ✓
-
-### Files changed
-- `apps/mcp/src/transports/http.ts` — extract createApp(), export matchOrigin
-- `apps/mcp/__tests__/transports/http.test.ts` — rewrite: 2 → 16 tests
-- `apps/mcp/src/tools/purchase.ts` — add AuthContext type annotation
-- `apps/mcp/src/tools/request-approval.ts` — add AuthContext type annotation
-- `apps/mcp/src/tools/whoami.ts` — extract fetchWhoamiData(), reduce complexity
-
-### Verification
-- 109 tests pass, typecheck clean, lint clean
-
-## Phase 5: Step-Up Hook Negative Session Tests — COMPLETE
-
-### Task
-Add 2 missing PRD test cases for step-up hook session resolution edge cases.
-
-### Tests added
-1. Missing session cookie → hook skips gracefully (no crash, no interaction_required)
-2. Invalid session cookie signature → hook skips gracefully (getSessionFromCtx rejects bad HMAC, returns null)
-
-### Files changed
-- `apps/web/src/lib/auth/__tests__/step-up-auth.integration.test.ts` — +2 tests in new "session resolution edge cases" describe block
-
-### Verification
-- 18 step-up integration tests pass (was 16)
-- typecheck clean, lint clean
-- Pre-existing token-exchange/authorize-challenge failures unchanged
+### Blockers
+- None. All quality tasks are now complete.

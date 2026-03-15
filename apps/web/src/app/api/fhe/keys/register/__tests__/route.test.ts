@@ -1,12 +1,11 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const authMocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/auth", () => ({
-  auth: { api: { getSession: authMocks.getSession } },
+// Mock requireSession directly instead of @/lib/auth/auth.
+// This avoids vmThreads mock factory leaking from other test files
+// that also mock @/lib/auth/auth.
+vi.mock("@/lib/auth/api-auth", () => ({
+  requireSession: vi.fn(),
 }));
 
 const enrollmentMocks = vi.hoisted(() => ({
@@ -28,6 +27,8 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/queries/crypto", () => dbMocks);
 
+import { requireSession } from "@/lib/auth/api-auth";
+
 import { POST } from "../route";
 
 const makeRequest = (payload: unknown) =>
@@ -39,7 +40,13 @@ const makeRequest = (payload: unknown) =>
 describe("fhe keys/register route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.getSession.mockResolvedValue(null);
+    vi.mocked(requireSession).mockResolvedValue({
+      ok: false,
+      response: new Response(
+        JSON.stringify({ error: "Authentication required" }),
+        { status: 401, headers: { "content-type": "application/json" } }
+      ),
+    } as never);
     enrollmentMocks.isRegistrationTokenValid.mockResolvedValue(false);
     dbMocks.getEncryptedSecretByUserAndType.mockResolvedValue(null);
   });
@@ -79,13 +86,16 @@ describe("fhe keys/register route", () => {
     const response = await POST(req);
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
-      error: "Authentication required.",
+      error: "Authentication required",
     });
     expect(fheMocks.registerFheKey).not.toHaveBeenCalled();
   });
 
   it("reuses existing key id for authenticated users", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-1" } });
+    vi.mocked(requireSession).mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-1" } },
+    } as never);
     dbMocks.getEncryptedSecretByUserAndType.mockResolvedValue({
       metadata: { keyId: "existing-key" },
     });
@@ -123,7 +133,10 @@ describe("fhe keys/register route", () => {
   });
 
   it("registers key and updates metadata for authenticated users", async () => {
-    authMocks.getSession.mockResolvedValue({ user: { id: "user-2" } });
+    vi.mocked(requireSession).mockResolvedValue({
+      ok: true,
+      session: { user: { id: "user-2" } },
+    } as never);
     fheMocks.registerFheKey.mockResolvedValue({ keyId: "new-key" });
 
     const response = await POST(
