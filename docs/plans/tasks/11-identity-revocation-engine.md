@@ -28,8 +28,8 @@ End-to-end: schema changes (`revoked` status, metadata columns) → cascade func
 - [ ] `revocation_pending` records reconciled on retry
 - [x] Revoked records filtered from standard queries by default
 - [ ] `includeRevoked` option enables admin/audit queries to see revoked records
-- [ ] Admin can revoke with reason (role-checked)
-- [ ] User can self-revoke (rate-limited, requires active session)
+- [x] Admin can revoke with reason (role-checked)
+- [x] User can self-revoke (rate-limited, requires active session)
 - [x] Re-verification allowed after revocation (dedup check distinguishes revoked from active)
 - [x] OID4VCI status-list bit set on credential revocation
 - [x] `revokedAt`, `revokedBy`, `revokedReason` metadata persisted for audit trail

@@ -191,3 +191,8 @@
   - Step 4 (on-chain) best-effort outside transaction — DB revocation committed even if on-chain fails
   - dedupKeyExistsForOtherUser already gates on status=verified → revoked keys auto-released
   - Assurance computation naturally drops to Tier 1 when no verified verification found
+
+### tRPC Procedures — COMPLETE
+- Files changed:
+  - NEW: src/lib/trpc/routers/identity/revoke.ts — revokeProcedure (admin) + selfRevokeProcedure (GDPR)
+  - EDIT: src/lib/trpc/routers/identity/router.ts — wired revokeVerification + selfRevoke

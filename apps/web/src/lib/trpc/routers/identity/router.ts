@@ -18,10 +18,13 @@ import { router } from "../../server";
 import { finalizeProcedure, finalizeStatusProcedure } from "./finalize";
 import { livenessStatusProcedure } from "./liveness-status";
 import { prepareDocumentProcedure } from "./prepare-document";
+import { revokeProcedure, selfRevokeProcedure } from "./revoke";
 
 export const identityRouter = router({
   prepareDocument: prepareDocumentProcedure,
   livenessStatus: livenessStatusProcedure,
   finalize: finalizeProcedure,
   finalizeStatus: finalizeStatusProcedure,
+  revokeVerification: revokeProcedure,
+  selfRevoke: selfRevokeProcedure,
 });
