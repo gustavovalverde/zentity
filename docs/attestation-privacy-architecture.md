@@ -66,6 +66,8 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - **DPoP nonces**: server-issued single-use tokens prevent DPoP proof replay (RFC 9449).
 - **KB-JWT freshness**: verifiers enforce max age on Key Binding JWT timestamps.
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
+- **FHE ciphertext HMAC binding**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([userId, attributeType]) || ciphertext)` stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
+- **Consent scope HMAC**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([context, userId, clientId, referenceId, sortedScopes]))` stored in `scope_hmac`. Detects DB-level scope escalation.
 
 ---
 
@@ -161,7 +163,7 @@ This system intentionally splits data across **server storage** and **client‑o
 | Location | What lives there | Access & encryption | Why |
 |---|---|---|---|
 | **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), PAR request objects (`haip_pushed_request`), OID4VP session state (`haip_vp_session`), status fields | Server readable | Required for basic UX, auth, and workflow state |
-| **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts | Client‑decrypt only (PRF‑, OPAQUE‑, or wallet‑derived keys) | User‑controlled privacy + encrypted computation |
+| **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts, JWKS private keys (AES-256-GCM envelope via `KEY_ENCRYPTION_KEY`, format `{"v":1,"iv":"...","ct":"..."}`) | Client‑decrypt only for user secrets (PRF‑, OPAQUE‑, or wallet‑derived keys); server‑decrypt for JWKS (server‑held KEK) | User‑controlled privacy + encrypted computation + key-at-rest protection |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
 | **On‑chain (optional)** | Encrypted attestations + public metadata | User‑decrypt only | Auditable compliance checks without PII |
@@ -190,6 +192,8 @@ The vault is **not** a separate storage system. It is a **server‑stored encryp
 9. **JARM encrypted VP responses** - presentation responses encrypted to verifier's key, visible only to intended recipient.
 10. **Pairwise subject identifiers** - DCR clients default to `subject_type: "pairwise"`, preventing cross-RP user correlation.
 11. **Transient OAuth linkage (ARCOM)** - consent records deleted after code issuance for pairwise proof-only flows; access token DB records deleted after JWT issuance; session IP/UA metadata scrubbed. See [ADR-0001](adr/0001-arcom-double-anonymity.md).
+12. **Consent HMAC integrity** - consent scope lists are HMAC-tagged; any DB-level scope widening is detected and the consent is invalidated.
+13. **FHE ciphertext integrity binding** - every FHE ciphertext is HMAC-bound to its owner and attribute type; ciphertext swap attacks are detected before use.
 
 ## Attestation Schema
 
@@ -344,6 +348,7 @@ erDiagram
   ENCRYPTED_ATTRIBUTES {
     text id PK
     text attribute_type "dob_days, liveness_score, etc."
+    text ciphertext_hash "HMAC-SHA256 integrity tag"
   }
   ENCRYPTED_SECRETS {
     text id PK
@@ -374,6 +379,7 @@ erDiagram
     text id PK
     text client_id FK
     text user_id FK
+    text scope_hmac "HMAC-SHA256 scope integrity tag"
   }
   OAUTH_IDENTITY_DATA {
     text id PK
@@ -408,9 +414,10 @@ erDiagram
   JWKS {
     text id PK "kid — key identifier"
     text public_key "JWK JSON (Ed25519) or custom JSON (ML-DSA-65)"
-    text private_key "JWK JSON or raw keying material"
+    text private_key "JWK JSON or raw keying material (AES-256-GCM envelope if KEY_ENCRYPTION_KEY set)"
     text alg "EdDSA | ML-DSA-65 | RS256 | ES256 | ECDH-ES"
     text crv "Ed25519 | P-256 | null"
+    integer expiresAt "Key expiry (e.g. 90d for JARM ECDH-ES)"
   }
 
   HAIP_PUSHED_REQUEST {

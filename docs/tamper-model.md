@@ -117,6 +117,32 @@ When using the NFC chip verification path:
 - Login state is encrypted and time-limited to reduce replay risk.
 - OPAQUE endpoints are rate-limited to slow online guessing.
 
+### FHE Ciphertext Integrity
+
+**Threat:** Ciphertext swap — an attacker with DB access replaces one user's FHE ciphertext with another's (e.g., swapping a minor's encrypted DOB with an adult's).
+
+**Control:** Every ciphertext is bound to its owner and attribute type via HMAC:
+
+```text
+tag = HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([userId, attributeType]) || ciphertext)
+```
+
+The tag is stored in `encrypted_attributes.ciphertext_hash` and verified with `crypto.timingSafeEqual` on every read. A tampered or substituted ciphertext is rejected before it can be used for any computation.
+
+The `encodeAad` function uses length-prefixed encoding to prevent concatenation collisions (e.g., `userId="ab" + type="cd"` produces a different encoding than `userId="abc" + type="d"`).
+
+### Consent Scope Integrity
+
+**Threat:** DB-level scope escalation — widening a consent record's scope list to gain access to claims the user never approved.
+
+**Control:** Consent scope HMAC stored alongside the consent record:
+
+```text
+tag = HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([CONSENT_HMAC_CONTEXT, userId, clientId, referenceId, sortedScopes]))
+```
+
+The tag is stored in `oauth_consent.scope_hmac`. Scopes are sorted before HMAC computation to make the tag order-independent. The before-hook on `/oauth2/authorize` verifies the HMAC before the plugin's auto-skip logic runs. If the HMAC is invalid or missing, the consent record is deleted, forcing the user to re-consent.
+
 ## Tamper-Safe Verification Decision Flow
 
 1. Backend performs OCR, liveness, and face match.

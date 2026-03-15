@@ -398,6 +398,7 @@ OCR_SERVICE_URL=http://localhost:5004
 
 # Privacy & compliance (required in production)
 PAIRWISE_SECRET=<min-32-char-string>    # Required (z.string().min(32)), pairwise subject identifiers
+KEY_ENCRYPTION_KEY=<min-32-char-string> # Optional in dev, required in production (min 32 chars). AES-256-GCM envelope encryption for JWKS private keys at rest.
 
 # Feature flags
 NEXT_PUBLIC_ZKPASSPORT_ENABLED=false     # Enable NFC chip verification via ZKPassport

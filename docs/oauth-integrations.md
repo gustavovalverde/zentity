@@ -388,6 +388,8 @@ sequenceDiagram
 
 Identity scopes are **never persisted** in consent records. The consent page reappears each session, requiring a fresh credential unlock — the server cannot decrypt the profile secret itself.
 
+**Consent scope integrity:** Each consent record is HMAC-tagged (`scope_hmac` column). The HMAC covers userId, clientId, referenceId, and sorted scopes. On every authorize request, the before-hook verifies the HMAC before the plugin's auto-skip logic runs. Invalid or missing HMACs cause the consent to be deleted, forcing re-consent. This prevents DB-level scope escalation.
+
 ### Disclosure paths
 
 | Path | Standard | Delivery |
@@ -517,8 +519,8 @@ The server never stores plaintext PII. The user's profile secret (encrypted with
 | DPoP | RFC 9449 | Enforced globally |
 | PAR | RFC 9126 | Required |
 | Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
-| JARM | OIDC JARM | ECDH-ES P-256 |
-| x5c certificate chain | RFC 5280 | Leaf + CA, env vars or filesystem |
+| JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
+| x5c certificate chain | RFC 5280 | Full chain validation: SHA-256 thumbprint match + validity period (leaf + CA) + CA signature via `X509Certificate.checkIssued()` |
 | Step-up authentication | RFC 9470 / FPA draft | `acr_values` enforcement at authorize, CIBA approval, and token exchange |
 | First-party apps | draft-ietf-oauth-first-party-apps | Authorization Challenge Endpoint for CLI/headless clients |
 | Pairwise subjects | OIDC Core §8.1 | Enforced for all DCR clients |

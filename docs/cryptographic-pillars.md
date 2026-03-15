@@ -104,6 +104,8 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 ## Supporting Techniques
 
 - **JWT Signing (RS256 + EdDSA + ML-DSA-65)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) is the default for id_tokens per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size) and available as an opt-in for id_tokens. ML-DSA-65 (post-quantum, IANA-registered as `AKP` key type) is opt-in per client. Signing keys are generated on first use and persisted in the `jwks` database table — this is the standard OIDC provider pattern, distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](oauth-integrations.md#jwt-signing-and-jwks).
+- **JWKS Private Key Encryption at Rest**: When `KEY_ENCRYPTION_KEY` is set (required in production, min 32 chars), JWKS private keys are encrypted with AES-256-GCM before storage. The KEK is derived via `SHA-256(KEY_ENCRYPTION_KEY)` to normalize any input to 32 bytes. Stored format: `{"v":1,"iv":"...","ct":"..."}` (version field enables future format changes). Plaintext detection: if stored value doesn't start with `{"v":`, it's treated as plaintext (backward-compatible migration). No KEK = no-op (keys stored as plaintext, for dev convenience).
+- **JARM Key Rotation**: ECDH-ES P-256 decryption keys for JARM responses are rotated every 90 days (`KEY_LIFETIME_MS`). On expiry, a new key is generated and the old key is retained in the `jwks` table for a grace period (in-flight VP responses can still be decrypted). The cache is invalidated on rotation so the new key is used immediately.
 - **Merkle Trees**: Enable group membership proofs (e.g., EU nationality) without revealing which country. Used inside ZK proofs.
 - **Hash Functions**: Poseidon2 for ZK efficiency, SHA-256 for commitments.
 - **BBS+ Signatures**: Enable selective disclosure credentials for wallet users. A wallet can prove identity without revealing the wallet address, and multiple presentations are unlinkable. Used internally for privacy-preserving wallet binding. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).
@@ -164,6 +166,18 @@ commitment = SHA256(normalized_value + user_salt)
 
 - `user_salt` lives in the passkey-sealed profile.
 - Deleting the profile breaks linkability while commitments remain non-reversible.
+
+**HMAC-SHA256 integrity tags**
+
+HMAC-SHA256 is used for three distinct server-side integrity purposes:
+
+| Purpose | Key | Input | Where stored |
+|---------|-----|-------|--------------|
+| Sybil deduplication | `DEDUP_HMAC_SECRET` | Identity attributes | `dedup_key` |
+| FHE ciphertext integrity | `BETTER_AUTH_SECRET` | `encodeAad([userId, attributeType]) \|\| ciphertext` | `ciphertext_hash` |
+| Consent scope integrity | `BETTER_AUTH_SECRET` | `encodeAad([context, userId, clientId, referenceId, sortedScopes])` | `scope_hmac` |
+
+These are architecturally distinct from user-salted commitment hashes (e.g., `SHA256(dob + user_salt)`). HMAC tags are **server-keyed** and **server-verifiable** — they protect against DB-level tampering by an attacker with write access. Commitment hashes use a **user-held salt** and are **user-erasable** — deleting the profile vault breaks linkability. The two mechanisms serve complementary roles: commitments preserve user privacy and erasure rights; HMACs preserve system integrity.
 
 **Evidence pack hashes**
 

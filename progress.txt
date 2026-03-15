@@ -256,3 +256,11 @@
 - Files changed:
   - EDIT: docs/zk-nationality-proofs.md — corrected Merkle tree diagram leaf values from ISO numeric (276, 250, 380, 724) to weighted-sum (4474197, 4608577, 4805697, 4543312); updated encoding description; added ZK vs FHE cross-reference callout
   - EDIT: docs/zk-architecture.md — clarified nationality_membership uses weighted-sum encoding; documented dual-commitment design (base_commitment vs binding_commitment) with Poseidon2 formulas; corrected is_bound as return value not public input; added ZK vs FHE encoding callout
+
+## Task 20: Integrity Controls Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — added KEY_ENCRYPTION_KEY env var documentation
+  - EDIT: docs/tamper-model.md — added "FHE Ciphertext Integrity" and "Consent Scope Integrity" subsections with threat/control descriptions and HMAC formulas
+  - EDIT: docs/attestation-privacy-architecture.md — added ciphertext_hash, scope_hmac, expiresAt columns to ER diagram; updated JWKS private_key description; added JWKS encryption to Storage Boundaries; added 2 privacy guarantees (#12 consent HMAC, #13 FHE ciphertext)
+  - EDIT: docs/cryptographic-pillars.md — added JWKS at-rest encryption, JARM 90-day rotation under JWT Signing; added HMAC vs commitment hash distinction table under Commitments
+  - EDIT: docs/oauth-integrations.md — added consent HMAC integrity note; updated x5c to full chain validation; added JARM 90-day rotation to HAIP table
