@@ -360,6 +360,8 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 
 **OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
 
+**Back-Channel Logout** (OIDC BCL): `end_session_endpoint` at `GET /api/auth/oauth2/end-session` validates `id_token_hint` and terminates sessions. `sendBackchannelLogout()` delivers logout tokens to all RPs with registered `backchannel_logout_uri`. `sid` claim injected into id_tokens for BCL-registered clients. `revokePendingCibaOnLogout()` cancels pending CIBA requests on user logout. Discovery: `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`.
+
 - [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 
 ## ZK Circuit Development

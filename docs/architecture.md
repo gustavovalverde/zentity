@@ -295,6 +295,16 @@ sequenceDiagram
 
 Both poll and ping modes are supported. The access token includes an `act` claim per draft-oauth-ai-agents-on-behalf-of-user, identifying both the human (`sub`) and the agent (`act.sub`). See [Agentic Authorization](agentic-authorization.md) for the complete protocol composition, binding chain analysis, and security properties. See [OAuth Integrations](oauth-integrations.md#ciba-backchannel-authorization) for endpoints and configuration.
 
+### OIDC Back-Channel Logout
+
+When a user logs out, Zentity delivers logout tokens to all RPs with a registered `backchannel_logout_uri`:
+
+- **`end_session_endpoint`** (`GET /api/auth/oauth2/end-session`): Validates `id_token_hint` via local JWKS, terminates all user sessions, triggers BCL delivery, and redirects to `post_logout_redirect_uri` (validated against client's registered URIs).
+- **`sendBackchannelLogout()`**: Delivers OIDC BCL §2.4 logout tokens to each RP. Retry: 1s then 3s exponential backoff on 5xx, 10-second timeout per RP. Fire-and-forget — sign-out completes regardless of delivery success.
+- **`revokePendingCibaOnLogout()`**: Sets all pending CIBA requests for the user to `rejected`, preventing agents from obtaining tokens after the user has logged out.
+- **`sid` claim**: Injected into id_tokens only for clients with `backchannel_logout_uri` in their metadata.
+- **Discovery**: `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
+
 ---
 
 ## OCR + Liveness

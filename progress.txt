@@ -305,3 +305,10 @@
   - EDIT: docs/attestation-privacy-architecture.md — added RECOVERY_KEY_PINS and CIBA_REQUESTS tables with relations to ER diagram
   - EDIT: docs/noir-profiling.md — replaced all bun run → pnpm run
   - EDIT: apps/landing/README.md — added /agents page mention
+
+## Task 18: Back-Channel Logout Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — added BCL to OAuth Provider section
+  - EDIT: docs/architecture.md — added OIDC Back-Channel Logout section
+  - EDIT: docs/oauth-integrations.md — added BCL subsection with DCR registration, sid claim, retry, CIBA revocation, discovery
+  - EDIT: docs/tamper-model.md — added CIBA race prevention note

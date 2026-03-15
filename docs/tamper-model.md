@@ -157,6 +157,10 @@ tag = HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([CONSENT_HMAC_CONTEXT, userId, c
 
 The tag is stored in `oauth_consent.scope_hmac`. Scopes are sorted before HMAC computation to make the tag order-independent. The before-hook on `/oauth2/authorize` verifies the HMAC before the plugin's auto-skip logic runs. If the HMAC is invalid or missing, the consent record is deleted, forcing the user to re-consent.
 
+### Session Logout and CIBA Race Prevention
+
+When a user terminates their session via `end_session_endpoint`, pending CIBA requests are revoked server-side (`revokePendingCibaOnLogout()` sets status to `rejected`). This prevents a race condition where an agent polls for a CIBA token after the user has logged out — without this, an agent could obtain tokens for a session that no longer exists.
+
 ## Tamper-Safe Verification Decision Flow
 
 1. Backend performs OCR, liveness, and face match.

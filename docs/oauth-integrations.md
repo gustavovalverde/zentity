@@ -536,6 +536,22 @@ See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
 
 The server never stores plaintext PII. The user's profile secret (encrypted with their credential) is the only copy. Identity claims are staged ephemerally at consent time (5-minute TTL, consumed on read) and delivered via id_token. After delivery, no trace remains.
 
+### Back-Channel Logout (OIDC BCL)
+
+Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session ends.
+
+**RP registration:** Include `backchannel_logout_uri` in DCR client metadata. The URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
+
+**`sid` claim:** Injected into id_tokens only for clients with a registered `backchannel_logout_uri`. This allows the RP to correlate the logout token with a specific session.
+
+**Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
+
+**Retry behavior:** 10-second timeout per RP. On 5xx responses, retries at 1s then 3s (exponential backoff). Fire-and-forget — the user's sign-out completes regardless of delivery success.
+
+**CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
+
+**Discovery fields:** `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
+
 ### HAIP compliance
 
 | Feature | Standard | Status |
