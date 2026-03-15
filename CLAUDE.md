@@ -329,7 +329,6 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 - **Database**: Drizzle ORM with SQLite local files or Turso in production. Schema source of truth: `apps/web/src/lib/db/schema/`. Apply schema with `pnpm db:push` (no runtime migrations)
 - **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db`
 - **SQLite driver**: uses `@libsql/client`
-- **Auth**: better-auth with passkey, OPAQUE, and wallet support
 
 ## tRPC API Structure
 
@@ -349,6 +348,8 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `compliantToken` | CompliantERC20 DeFi token operations |
 | `recovery` | FROST guardian-based key recovery flow |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
+| `admin` | JWKS signing key rotation and cleanup (admin-only via `adminProcedure`) |
+| `agentBoundaries` | CIBA pre-authorized boundary policies CRUD (purchase limits, scope allowlists, custom actions) |
 
 **Client usage:**
 
@@ -377,6 +378,10 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 **OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
 
 **Back-Channel Logout** (OIDC BCL): `end_session_endpoint` at `GET /api/auth/oauth2/end-session` validates `id_token_hint` and terminates sessions. `sendBackchannelLogout()` delivers logout tokens to all RPs with registered `backchannel_logout_uri`. `sid` claim injected into id_tokens for BCL-registered clients. `revokePendingCibaOnLogout()` cancels pending CIBA requests on user logout. Discovery: `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`.
+
+**JWKS Key Rotation**: `rotateSigningKey(alg, overlapHours)` in `jwt-signer.ts` retires the active key with an `expiresAt` timestamp and creates a new one. During the overlap window, both keys are served by the JWKS endpoint. `cleanupExpiredKeys()` removes keys past the overlap window. Both operations are exposed via the `admin` tRPC router (admin-only). JWKS private keys are encrypted at rest with AES-256-GCM (`KEY_ENCRYPTION_KEY` env var).
+
+**Agent Boundaries**: Pre-authorized policies in `agent_boundaries` table allow auto-approval of CIBA requests within user-defined limits. Boundary types: `purchase` (amount/daily cap/cooldown), `scope` (allowlist), `custom` (action count). Identity-scoped requests (`identity.*`) always require manual approval regardless of boundaries. Auto-approved requests are logged with `approvalMethod: "boundary"`. Dashboard at `/dashboard/agent-policies`. "Always allow this" button on CIBA approval page creates policies from real request patterns.
 
 - [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 

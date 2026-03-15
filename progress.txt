@@ -85,3 +85,12 @@
 - Fire-and-forget CIMD metadata refresh on token requests for URL-type client IDs
 - Updated tests: well-known bearer_methods, CIMD trustLevel, TTL expiry window
 - Files: oauth-provider schema, auth.ts, cimd.ts, well-known route, oidc-well-known.test.ts, cimd.test.ts, mcp-e2e.test.ts
+
+## Documentation Sync — COMPLETE
+- Added `admin` and `agentBoundaries` routers to tRPC router table in CLAUDE.md
+- Added admin role system to Auth convention (admin plugin, adminProcedure)
+- Added rate limiting infrastructure to Code Conventions
+- Added JWKS key rotation paragraph to OAuth Provider section
+- Added agent boundaries paragraph to OAuth Provider section
+- All feedback loops pass: typecheck ✓, 312 tests ✓, lint ✓
+- Files: CLAUDE.md
