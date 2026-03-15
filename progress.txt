@@ -1,96 +1,19 @@
+## Task 01: JWKS Plugin Encryption & OAuth Hardening
+Status: Complete
 
-## Task 16: Admin Role System — COMPLETE
-- Wired better-auth `admin` plugin (defaultRole: "user", adminRoles: ["admin"])
-- Added `role`, `banned`, `banReason`, `banExpires` to `users` schema
-- Added `impersonatedBy` to `sessions` schema
-- Created `adminProcedure` in tRPC server.ts extending `protectedProcedure` with role check
-- Gated `revokeProcedure` behind `adminProcedure` (was `protectedProcedure`)
-- `selfRevokeProcedure` unchanged on `protectedProcedure`
-- 6 integration tests: admin can revoke, non-admin FORBIDDEN, null role FORBIDDEN, unauthed UNAUTHORIZED, self-revoke works, self-revoke unauthed
-- `buildSessionFromUserId` includes `role` for OAuth token sessions
-- Fixed mock session in data.integration.test.ts to include `banned`
-- Files: auth.ts, auth schema, server.ts, revoke.ts, revoke.test.ts, data.integration.test.ts
+### Changes
+1. Removed `disablePrivateKeyEncryption: true` from jwt() plugin (auth.ts:1180)
+   - Plugin's internal EdDSA key now encrypted at rest like all keys managed by key-vault.ts
+2. Removed `force` param from cross-org client adoption (approve/route.ts)
+   - Simplified: unowned→adopt, same-org→adopt, different-org→403
+3. Added `at_hash` to token-exchange ID tokens (token-exchange.ts)
+   - Binds ID token to subject access token per OIDC Core §3.3.2.11
+   - Exported `getClientSigningAlg` from jwt-signer.ts for alg resolution
+4. Tests: 2 new (at_hash present for AT→IDT, absent for IDT→IDT), 313 total pass
 
-## Task 18: JWKS Signing Key Rotation — COMPLETE
-- `rotateSigningKey(alg, overlapHours)` in jwt-signer.ts: retires active key with expiresAt, creates new key
-- `cleanupExpiredKeys()` deletes keys past overlap window
-- `getOrCreateSigningKey` now prefers active key (expiresAt IS NULL), falls back to unexpired overlap key, ordered by createdAt desc
-- Created `adminRouter` with `rotateSigningKey` and `cleanupExpiredKeys` procedures
-- Wired adminRouter into appRouter
-- Extracted `createSigningKey()` helper from getOrCreateSigningKey
-- Exported `StandardAlg` type for use in admin router
-- 8 tests: rotation creates new + retires old, null oldKid on fresh, getOrCreateSigningKey returns new after rotation, both keys in JWKS during overlap, cleanup removes expired, cleanup preserves active, admin can rotate, non-admin FORBIDDEN
-- Files: jwt-signer.ts, admin.ts (new), app.ts, key-rotation.test.ts (new)
-
-## Task 17: Rate Limiting Infrastructure — COMPLETE
-- Created `createRateLimiter({ windowMs, max })` shared utility at src/lib/utils/rate-limit.ts
-- Sliding window, Map-based, periodic cleanup via setInterval, unref'd
-- Helper functions: `getClientIp`, `rateLimitResponse` (429 + Retry-After)
-- Pre-configured limiter instances at src/lib/utils/rate-limiters.ts
-- Migrated FPA authorize-challenge from inline `ipRequestLog` to shared utility
-- Applied rate limiting to all unprotected endpoints:
-  - OCR proxy: 5/min per IP
-  - FHE endpoints (5 routes): 10/min per user
-  - CIBA push: 20/min per user
-  - ZK nationality-proof (POST + GET + verify): 5/min per user
-  - OAuth2 identity (intent/stage via identity-handler.ts + unstage): 10/min per user
-  - Secrets blob (POST + GET): 10/min per user
-  - Public (log-client-error, metrics/client, password/pwned): 30/min per IP
-  - tRPC liveness (verify + faceMatch): 10/min per user via rateLimitedProcedure middleware
-- 8 unit tests for rate limiter utility
-- Updated authorize-challenge integration test to use fpaLimiter.reset()
-- Files: rate-limit.ts (new), rate-limiters.ts (new), rate-limit.test.ts (new), 16 route files modified, liveness.ts, authorize-challenge test
-- Fix: createRateLimiter returns no-op in test env, createRealRateLimiter for explicit rate-limit testing
-
-## Task 20: Consent Security Badges — COMPLETE
-- `ClientSecurityBadges` component in consent/_components/ with Badge + Tooltip from shadcn
-- `deriveSecurityBadges()` pure function: signing alg (non-RS256), pairwise, DPoP, post-quantum
-- Expanded consent page.tsx DB query to include subjectType, parse id_token_signed_response_alg and dpop_bound_access_tokens from metadata
-- 7 unit tests covering all badge combinations
-- Updated consent-client.test.tsx to pass securityBadges prop
-- Files: client-security-badges.tsx (new), page.tsx, consent-client.tsx, consent-client.test.tsx, security-badges.test.ts (new)
-
-## Task 21: OIDC Claims Parameter — COMPLETE
-- Created claims-parameter.ts with parseClaimsParameter, filterClaimsByRequest, findUnsatisfiableEssentialClaim, stageClaimsParameter, peekClaimsParameter, consumeClaimsParameter
-- Bridge pattern: before-hook on /oauth2/token extracts `claims` from auth code verification record, stages in module-scoped Map
-- customIdTokenClaims peeks claims param, filters to claims.id_token when present
-- customUserInfoClaims consumes claims param, filters to claims.userinfo when present
-- Added claims_parameter_supported: true to discovery metadata
-- 15 unit tests covering parsing, filtering (null/value/values constraints), essential claim detection, stage/peek/consume lifecycle
-- Files: claims-parameter.ts (new), auth.ts, well-known-utils.ts, claims-parameter.test.ts (new)
-
-## Task 22: Agent Boundaries & Auto-Approval — COMPLETE
-- `agent_boundaries` table: userId+clientId+boundaryType unique, JSON config, enabled flag
-- `approvalMethod` column added to `cibaRequests` for audit trail ("boundary" = auto-approved)
-- Boundary evaluation in `src/lib/ciba/boundary-evaluation.ts`: purchase (amount/cap/cooldown), scope (allowlist), custom (action count)
-- Auto-approval wired into CIBA `sendNotification` callback — checks boundaries before notifying
-- ACR enforcement respected: auto-approval skipped if user tier insufficient
-- Identity scopes (`identity.*`) always bypass auto-approval
-- tRPC `agentBoundaries` router: list, create, update, delete (all scoped to userId)
-- Scope boundary creation rejects configs containing identity scopes
-- Dashboard `/dashboard/agent-policies`: card-per-agent grouped list, create/edit Dialog, delete AlertDialog
-- Sidebar "Agent Policies" entry with ShieldPlus icon under Developer
-- "Always allow this" button on CIBA approval page (hidden for identity-scoped requests)
-- Auto-approved badge (ShieldCheck) in CIBA listing for boundary-approved requests
-- 10 integration tests: evaluation logic (purchase limits/cap/cooldown, scope allow/deny, identity bypass, disabled, AND logic) + 5 CRUD tests
-- Files: agent-boundaries.ts (schema), ciba.ts (approvalMethod), boundary-evaluation.ts, auto-approve.ts, agent-boundaries.ts (router), app.ts, auth.ts, app-sidebar.tsx, agent-policies page+components, ciba page.tsx, ciba-approve-client.tsx, 2 test files
-
-## Task 19: MCP Protocol Compliance — COMPLETE
-- Added `resource` column to oauthClients schema
-- PAR requests now require `resource` parameter (throws invalid_request if absent)
-- Non-PAR authorize defaults `resource` to NEXT_PUBLIC_APP_URL
-- CIMD TTL increased from 1h to 24h per task spec
-- CIMD-verified clients get trustLevel: 1 (was 0)
-- Protected resource metadata now advertises `["header", "dpop"]` as bearer methods
-- Fire-and-forget CIMD metadata refresh on token requests for URL-type client IDs
-- Updated tests: well-known bearer_methods, CIMD trustLevel, TTL expiry window
-- Files: oauth-provider schema, auth.ts, cimd.ts, well-known route, oidc-well-known.test.ts, cimd.test.ts, mcp-e2e.test.ts
-
-## Documentation Sync — COMPLETE
-- Added `admin` and `agentBoundaries` routers to tRPC router table in CLAUDE.md
-- Added admin role system to Auth convention (admin plugin, adminProcedure)
-- Added rate limiting infrastructure to Code Conventions
-- Added JWKS key rotation paragraph to OAuth Provider section
-- Added agent boundaries paragraph to OAuth Provider section
-- All feedback loops pass: typecheck ✓, 312 tests ✓, lint ✓
-- Files: CLAUDE.md
+### Files changed
+- apps/web/src/lib/auth/auth.ts — removed disablePrivateKeyEncryption
+- apps/web/src/app/api/rp-admin/clients/approve/route.ts — simplified adoption logic
+- apps/web/src/lib/auth/oidc/jwt-signer.ts — exported getClientSigningAlg
+- apps/web/src/lib/auth/oidc/token-exchange.ts — at_hash in ID token output
+- apps/web/src/lib/auth/__tests__/token-exchange.integration.test.ts — at_hash tests

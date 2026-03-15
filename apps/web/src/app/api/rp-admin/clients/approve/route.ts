@@ -12,7 +12,6 @@ export const runtime = "nodejs";
 const ApproveSchema = z.object({
   clientId: z.string().min(1),
   scopes: z.array(z.string()).min(1).optional(),
-  force: z.boolean().optional(),
 });
 
 export async function POST(request: Request): Promise<Response> {
@@ -36,7 +35,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const { clientId, scopes, force } = parsed.data;
+  const { clientId, scopes } = parsed.data;
 
   const existing = await db
     .select()
@@ -49,23 +48,9 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
 
-  const isOwned = Boolean(existing.referenceId || existing.userId);
-  if (isOwned && !force) {
+  if (existing.referenceId && existing.referenceId !== admin.organizationId) {
     return NextResponse.json(
-      { error: "Client is already owned. Use force to override." },
-      { status: 409 }
-    );
-  }
-
-  // Cross-org adoption requires the source org's approval (not implemented).
-  // Block force-adoption of clients owned by a different organization.
-  if (
-    force &&
-    existing.referenceId &&
-    existing.referenceId !== admin.organizationId
-  ) {
-    return NextResponse.json(
-      { error: "Cannot force-adopt a client owned by another organization" },
+      { error: "Client is owned by another organization" },
       { status: 403 }
     );
   }

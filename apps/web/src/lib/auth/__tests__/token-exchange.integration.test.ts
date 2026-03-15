@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer } from "@/lib/auth/issuer";
 import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
@@ -196,7 +197,7 @@ describe("Token Exchange (RFC 8693)", () => {
   });
 
   describe("access token → id_token", () => {
-    it("returns a valid id_token with act claim", async () => {
+    it("returns a valid id_token with act claim and at_hash", async () => {
       const subjectToken = await mintAccessToken(userId);
 
       const { status, json } = await postTokenWithDpop({
@@ -216,6 +217,10 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.iss).toBe(authIssuer);
       expect(payload.aud).toBe(TEST_CLIENT_ID);
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+
+      // at_hash binds the id_token to the subject access token (OIDC Core §3.3.2.11)
+      const expectedAtHash = computeAtHash(subjectToken, "RS256");
+      expect(payload.at_hash).toBe(expectedAtHash);
     });
 
     it("includes assurance claims (acr, acr_eidas, amr, auth_time)", async () => {
@@ -261,6 +266,26 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.amr).toEqual(["pop", "hwk", "user"]);
       expect(payload.auth_time).toBeDefined();
       expect(typeof payload.auth_time).toBe("number");
+    });
+  });
+
+  describe("id_token → id_token", () => {
+    it("omits at_hash when subject is not an access token", async () => {
+      const subjectIdToken = await mintIdToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectIdToken,
+        subject_token_type: ID_TOKEN_TYPE,
+        requested_token_type: ID_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      expect(json.issued_token_type).toBe(ID_TOKEN_TYPE);
+
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.at_hash).toBeUndefined();
     });
   });
 

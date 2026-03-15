@@ -16,10 +16,11 @@ import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import {
   computeAcr,
   computeAcrEidas,
+  computeAtHash,
   loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
-import { signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 
@@ -258,6 +259,7 @@ function createTokenExchangeHandler(): (
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
       const assurance = await getAssuranceForOAuth(sub);
+      const signingAlg = await getClientSigningAlg(client.clientId);
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
         sub,
@@ -270,6 +272,9 @@ function createTokenExchangeHandler(): (
         acr_eidas: computeAcrEidas(assurance.tier),
         amr: loginMethodToAmr(assurance.loginMethod),
         auth_time: assurance.authTime,
+        ...(subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
+          ? { at_hash: computeAtHash(subjectToken, signingAlg) }
+          : {}),
       };
 
       const idToken = await signJwt(idTokenPayload);

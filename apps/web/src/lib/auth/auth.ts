@@ -1177,7 +1177,6 @@ export const auth = betterAuth({
     }),
     jwt({
       jwks: {
-        disablePrivateKeyEncryption: true,
         keyPairConfig: { alg: "EdDSA" },
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       },

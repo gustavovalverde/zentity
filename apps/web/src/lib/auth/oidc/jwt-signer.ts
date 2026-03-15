@@ -190,7 +190,9 @@ function resolveClientId(payload: Record<string, unknown>): string | null {
 const algCache = new Map<string, { alg: SigningAlg; expiresAt: number }>();
 const ALG_CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function getClientSigningAlg(clientId: string): Promise<SigningAlg> {
+export async function getClientSigningAlg(
+  clientId: string
+): Promise<SigningAlg> {
   const cached = algCache.get(clientId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.alg;
