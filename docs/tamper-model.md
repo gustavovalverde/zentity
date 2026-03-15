@@ -131,6 +131,14 @@ The tag is stored in `encrypted_attributes.ciphertext_hash` and verified with `c
 
 The `encodeAad` function uses length-prefixed encoding to prevent concatenation collisions (e.g., `userId="ab" + type="cd"` produces a different encoding than `userId="abc" + type="d"`).
 
+### Sybil / Duplicate Identity Prevention
+
+**Threat:** Same identity document registered under multiple accounts (Sybil attack).
+
+**Control (OCR path):** `computeDedupKey(DEDUP_HMAC_SECRET, docNumber, issuerCountry, dob)` → `HMAC-SHA256` stored as `dedup_key` on `identity_verifications` with a unique index. Duplicate registration attempt fails at the DB constraint level.
+
+**Control (NFC path):** `uniqueIdentifier` (ZKPassport nullifier) is checked for uniqueness across all accounts before accepting the verification.
+
 ### ML-KEM Recovery Key TOFU Pinning
 
 **Threat:** Key substitution — an attacker replaces the ML-KEM-768 public key after a user has stored recovery wrappers. The user's wrappers are encrypted under the original key, but new wrappers (or recovery attempts) would use the attacker's key.

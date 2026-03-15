@@ -212,6 +212,16 @@ Key differences from browser-based Noir proving:
 
 The unified `identity_verifications` table stores results from both paths via the `method` discriminator (`"ocr"` | `"nfc_chip"`). FHE encryption is scheduled identically after either path completes.
 
+## Sybil Deduplication
+
+Zentity prevents the same identity document from being registered under multiple accounts using HMAC-based deduplication.
+
+**OCR path:** `computeDedupKey(DEDUP_HMAC_SECRET, docNumber, issuerCountry, dob)` → `HMAC-SHA256` stored as `dedupKey` on `identity_verifications` (unique constraint). Any attempt to register the same document under a different account is rejected at the DB level.
+
+**NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `uniqueIdentifier` (a nullifier from the NFC chip proof). Cross-method dedup (same passport via both OCR and NFC) is handled only by `uniqueIdentifier`.
+
+**Per-RP nullifier:** `computeRpNullifier(DEDUP_HMAC_SECRET, dedupKey, clientId)` → `HMAC-SHA256`. Delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Each RP receives a unique pseudonymous nullifier — the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
+
 ## Implementation Notes
 
 ### Proving flow (Web Worker)

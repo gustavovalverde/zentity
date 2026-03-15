@@ -354,6 +354,7 @@ Non-PII boolean verification flags, delivered via id_token and userinfo.
 | `proof:nationality` | `nationality_proof_verified` |
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
+| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (delivered in access tokens via `customAccessTokenClaims`, NOT in id_tokens) |
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 

@@ -192,7 +192,7 @@ Proofs are generated in Web Workers to keep the UI responsive.
 ### What the Proof Does NOT Guarantee
 
 1. **Liveness:** Doesn't prove you're actually from that country (need passport verification)
-2. **Uniqueness:** Same person could generate multiple proofs
+2. **Uniqueness:** ZK proofs alone don't prevent duplicates. Platform-level HMAC dedup on the OCR path (`dedupKey` unique constraint) prevents the same document from registering under multiple accounts. NFC path uses ZKPassport's `uniqueIdentifier` nullifier.
 3. **Timeliness:** Nonce provides session binding, not timestamp
 
 ### Integration with KYC / Regulated Verification

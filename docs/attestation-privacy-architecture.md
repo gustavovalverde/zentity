@@ -194,6 +194,7 @@ The vault is **not** a separate storage system. It is a **server‑stored encryp
 11. **Transient OAuth linkage (ARCOM)** - consent records deleted after code issuance for pairwise proof-only flows; access token DB records deleted after JWT issuance; session IP/UA metadata scrubbed. See [ADR-0001](adr/0001-arcom-double-anonymity.md).
 12. **Consent HMAC integrity** - consent scope lists are HMAC-tagged; any DB-level scope widening is detected and the consent is invalidated.
 13. **FHE ciphertext integrity binding** - every FHE ciphertext is HMAC-bound to its owner and attribute type; ciphertext swap attacks are detected before use.
+14. **Sybil HMAC deduplication** - same identity document always produces the same `dedup_key` via `HMAC-SHA256(DEDUP_HMAC_SECRET, docNumber+issuerCountry+dob)`, enforcing one-verification-per-document across accounts without storing PII.
 
 ## Attestation Schema
 
@@ -323,6 +324,7 @@ erDiagram
     integer face_match_passed "Boolean"
     integer age_verified "Boolean"
     integer sanctions_cleared "Boolean"
+    text dedup_key "HMAC-SHA256 sybil dedup (OCR only, unique)"
     text unique_identifier "ZKPassport nullifier (NFC only)"
     integer verified_at
     integer revoked_at "Revocation timestamp"

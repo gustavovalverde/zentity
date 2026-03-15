@@ -289,3 +289,13 @@
   - EDIT: apps/signer/README.md — added custodial role, DEK unwrap security, guardian JWT verification
   - EDIT: docs/railway-signer-deployment.md — removed Phase 3, added GUARDIAN_ASSERTION_JWKS_URL, custodial section
   - EDIT: docs/tamper-model.md — added ML-KEM TOFU Pinning subsection
+
+## Task 19: Sybil Deduplication Documentation — COMPLETE
+- Files changed:
+  - EDIT: CLAUDE.md — added DEDUP_HMAC_SECRET env var
+  - EDIT: docs/zk-architecture.md — added Sybil Deduplication section with OCR vs NFC distinction and per-RP nullifier
+  - EDIT: docs/zk-nationality-proofs.md — updated uniqueness limitation with HMAC dedup reference
+  - EDIT: docs/ssi-architecture.md — added sybil_nullifier to Derived Claims table
+  - EDIT: docs/oauth-integrations.md — added proof:sybil scope with access-token delivery note
+  - EDIT: docs/tamper-model.md — added Sybil / Duplicate Identity Prevention subsection
+  - EDIT: docs/attestation-privacy-architecture.md — added dedup_key column to ER diagram and privacy guarantee

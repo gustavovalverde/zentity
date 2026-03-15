@@ -155,6 +155,7 @@ sequenceDiagram
 | `doc_validity_proof_verified` | ◐ | ZK proof | Document validity proof stored |
 | `nationality_proof_verified` | ◐ | ZK proof | Nationality membership proof stored |
 | `chip_verified` | ◐ | Chip verification signed claim | NFC chip-verified (ZKPassport) |
+| `sybil_nullifier` | ◐ | Dedup key + clientId HMAC | Per-RP pseudonymous nullifier (gated by `proof:sybil` scope) |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
 | `issuer_id` | ✅ | Static | Zentity issuer identifier |
 | `verification_time` | ✅ | Server-computed | ISO 8601 timestamp |
