@@ -29,9 +29,9 @@ End-to-end: DCR schema extension → `logout_token` JWT construction and signing
 - [x] Delivery POSTs to all registered RPs on session termination
 - [x] Delivery retries on 5xx (2 retries, exponential backoff)
 - [x] Delivery timeout does not block user's logout
-- [ ] `end_session_endpoint` validates `id_token_hint`, terminates session, triggers BCL delivery
-- [ ] `post_logout_redirect_uri` validated against registered URIs (invalid → error)
-- [ ] `sid` included in ID tokens for BCL-registered clients
+- [x] `end_session_endpoint` validates `id_token_hint`, terminates session, triggers BCL delivery
+- [x] `post_logout_redirect_uri` validated against registered URIs (invalid → error)
+- [x] `sid` included in ID tokens for BCL-registered clients
 - [x] Pending CIBA requests revoked on logout
 - [x] Discovery advertises `backchannel_logout_supported`, `backchannel_logout_session_supported`, `end_session_endpoint`
 - [ ] Demo-rp receives and verifies `logout_token`, invalidates session, shows banner

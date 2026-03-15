@@ -1228,11 +1228,28 @@ export const auth = betterAuth({
           }
         }
 
+        // sid claim for BCL-registered clients (OIDC BCL §2.1)
+        let sidClaim: Record<string, unknown> = {};
+        const bclUri = metadata?.backchannel_logout_uri;
+        if (typeof bclUri === "string" && bclUri.length > 0) {
+          const latestSession = await db
+            .select({ id: sessions.id })
+            .from(sessions)
+            .where(eq(sessions.userId, user.id))
+            .orderBy(desc(sessions.createdAt))
+            .limit(1)
+            .get();
+          if (latestSession) {
+            sidClaim = { sid: latestSession.id };
+          }
+        }
+
         return {
           ...identityClaims,
           ...proofClaims,
           ...assuranceClaims,
           ...atHashClaim,
+          ...sidClaim,
         };
       },
       customUserInfoClaims: async ({ user, scopes }) => {
