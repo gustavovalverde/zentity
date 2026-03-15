@@ -1,6 +1,12 @@
 "use client";
 
-import { Fingerprint, Lock, Shield, ShieldCheck } from "lucide-react";
+import {
+  Fingerprint,
+  Lock,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,11 +22,55 @@ export interface SecurityBadge {
   tooltip: string;
 }
 
+export type EncryptionLevel = "none" | "standard" | "post-quantum";
+
+export type ShieldColor = "green" | "yellow" | "gray";
+
 export interface SecurityBadgeInput {
+  encryptionLevel: EncryptionLevel;
   isPairwise: boolean;
   requiresDpop: boolean;
   signingAlg: string;
 }
+
+const ENCRYPTION_BADGES: Record<
+  Exclude<EncryptionLevel, "none">,
+  SecurityBadge
+> = {
+  standard: {
+    icon: Lock,
+    label: "Encrypted",
+    tooltip: "Data encrypted with AES-GCM (standard)",
+  },
+  "post-quantum": {
+    icon: ShieldCheck,
+    label: "PQ Encrypted",
+    tooltip: "Data encrypted with ML-KEM-768 (post-quantum)",
+  },
+};
+
+export function computeShieldColor(input: SecurityBadgeInput): ShieldColor {
+  const isPqSigning = input.signingAlg === "ML-DSA-65";
+  const isPqEncryption = input.encryptionLevel === "post-quantum";
+
+  if ((isPqSigning || isPqEncryption) && input.isPairwise) {
+    return "green";
+  }
+
+  const hasModernSigning = input.signingAlg !== "RS256";
+  const hasEncryption = input.encryptionLevel !== "none";
+  if (hasModernSigning || hasEncryption) {
+    return "yellow";
+  }
+
+  return "gray";
+}
+
+const SHIELD_ICONS: Record<ShieldColor, typeof Shield> = {
+  green: ShieldCheck,
+  yellow: Shield,
+  gray: ShieldAlert,
+};
 
 export function deriveSecurityBadges(
   input: SecurityBadgeInput
@@ -28,8 +78,9 @@ export function deriveSecurityBadges(
   const badges: SecurityBadge[] = [];
 
   if (input.signingAlg !== "RS256") {
+    const shieldColor = computeShieldColor(input);
     badges.push({
-      icon: input.signingAlg === "ML-DSA-65" ? ShieldCheck : Shield,
+      icon: SHIELD_ICONS[shieldColor],
       label: input.signingAlg,
       tooltip: `Tokens signed with ${input.signingAlg}`,
     });
@@ -41,6 +92,10 @@ export function deriveSecurityBadges(
         tooltip: "Protected with quantum-resistant cryptography",
       });
     }
+  }
+
+  if (input.encryptionLevel !== "none") {
+    badges.push(ENCRYPTION_BADGES[input.encryptionLevel]);
   }
 
   if (input.isPairwise) {

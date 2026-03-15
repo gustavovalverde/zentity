@@ -80,3 +80,22 @@ Status: Complete
 ### Files changed
 - apps/web/src/app/(dashboard)/dashboard/ciba/_components/pwa-install-banner.tsx — new
 - apps/web/src/app/(dashboard)/dashboard/ciba/page.tsx — added PwaInstallBanner
+
+## Task 08 (Part 1): Consent Encryption Badge & Shield Color
+Status: Complete (parts 1-2 of 4; parts 3-4 = claims routing = separate commit)
+
+### Changes
+1. Added Data Encryption badge to `deriveSecurityBadges`
+   - Queries `rpEncryptionKeys` for active compliance key on consent page
+   - "Encrypted" (AES-GCM standard) / "PQ Encrypted" (ML-KEM-768)
+2. Added `computeShieldColor` + `getShieldIcon` for shield color derivation
+   - Green: PQ signing OR PQ encryption + pairwise
+   - Yellow: modern signing or standard encryption (not full PQ)
+   - Gray: baseline (RS256, no encryption, public subject)
+   - Shield icon: ShieldCheck (green), Shield (yellow), ShieldAlert (gray)
+3. Tests: 6 new tests (encryption badges + shield color logic), all pass
+
+### Files changed
+- apps/web/src/app/oauth/consent/_components/client-security-badges.tsx — badge + shield logic
+- apps/web/src/app/oauth/consent/page.tsx — query rpEncryptionKeys
+- apps/web/src/app/oauth/consent/__tests__/security-badges.test.ts — updated tests
