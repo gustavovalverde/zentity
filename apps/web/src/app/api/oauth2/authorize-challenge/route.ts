@@ -47,12 +47,12 @@ const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 // ── Rate limiter (sliding window per IP) ────────────────
 
 import {
-  createRateLimiter,
+  createRealRateLimiter,
   getClientIp,
   rateLimitResponse,
 } from "@/lib/utils/rate-limit";
 
-export const fpaLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
+export const fpaLimiter = createRealRateLimiter({ windowMs: 60_000, max: 10 });
 
 // ── Request schemas ─────────────────────────────────────
 

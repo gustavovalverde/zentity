@@ -40,3 +40,12 @@
 - 8 unit tests for rate limiter utility
 - Updated authorize-challenge integration test to use fpaLimiter.reset()
 - Files: rate-limit.ts (new), rate-limiters.ts (new), rate-limit.test.ts (new), 16 route files modified, liveness.ts, authorize-challenge test
+- Fix: createRateLimiter returns no-op in test env, createRealRateLimiter for explicit rate-limit testing
+
+## Task 20: Consent Security Badges — COMPLETE
+- `ClientSecurityBadges` component in consent/_components/ with Badge + Tooltip from shadcn
+- `deriveSecurityBadges()` pure function: signing alg (non-RS256), pairwise, DPoP, post-quantum
+- Expanded consent page.tsx DB query to include subjectType, parse id_token_signed_response_alg and dpop_bound_access_tokens from metadata
+- 7 unit tests covering all badge combinations
+- Updated consent-client.test.tsx to pass securityBadges prop
+- Files: client-security-badges.tsx (new), page.tsx, consent-client.tsx, consent-client.test.tsx, security-badges.test.ts (new)

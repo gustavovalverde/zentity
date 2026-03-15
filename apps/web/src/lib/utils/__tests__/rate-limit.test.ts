@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createRateLimiter, getClientIp } from "../rate-limit";
+import { createRealRateLimiter, getClientIp } from "../rate-limit";
 
-describe("createRateLimiter", () => {
-  const limiters: ReturnType<typeof createRateLimiter>[] = [];
+describe("createRealRateLimiter", () => {
+  const limiters: ReturnType<typeof createRealRateLimiter>[] = [];
 
   function create(max: number, windowMs = 60_000) {
-    const limiter = createRateLimiter({ windowMs, max });
+    const limiter = createRealRateLimiter({ windowMs, max });
     limiters.push(limiter);
     return limiter;
   }

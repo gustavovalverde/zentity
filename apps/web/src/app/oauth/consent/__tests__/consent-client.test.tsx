@@ -126,6 +126,7 @@ describe("OAuthConsentClient identity hardening", () => {
         clientMeta={{ name: "RP", icon: null, uri: null }}
         optionalScopes={[]}
         scopeParam="openid identity.name"
+        securityBadges={[]}
         wallet={null}
       />
     );
@@ -169,6 +170,7 @@ describe("OAuthConsentClient identity hardening", () => {
         clientMeta={{ name: "RP", icon: null, uri: null }}
         optionalScopes={[]}
         scopeParam="openid identity.name"
+        securityBadges={[]}
         wallet={{ address: "0xabc123", chainId: 1 }}
       />
     );

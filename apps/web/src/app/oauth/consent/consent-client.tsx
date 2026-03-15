@@ -1,5 +1,7 @@
 "use client";
 
+import type { SecurityBadge } from "./_components/client-security-badges";
+
 import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -33,6 +35,8 @@ import {
   HIDDEN_SCOPES,
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/scope-display";
+
+import { ClientSecurityBadges } from "./_components/client-security-badges";
 
 interface ClientMeta {
   icon: string | null;
@@ -76,6 +80,7 @@ export function OAuthConsentClient({
   clientMeta,
   optionalScopes,
   scopeParam,
+  securityBadges,
   authMode,
   wallet,
 }: Readonly<{
@@ -83,6 +88,7 @@ export function OAuthConsentClient({
   clientMeta: ClientMeta | null;
   optionalScopes: string[];
   scopeParam: string;
+  securityBadges: SecurityBadge[];
   authMode: "passkey" | "opaque" | "wallet" | null;
   wallet: { address: string; chainId: number } | null;
 }>) {
@@ -340,6 +346,7 @@ export function OAuthConsentClient({
               </>
             ) : null}
           </CardDescription>
+          <ClientSecurityBadges badges={securityBadges} />
         </CardHeader>
         <CardContent className="space-y-4">
           {requiredGroups.map((group) => (

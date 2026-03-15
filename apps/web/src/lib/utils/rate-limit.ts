@@ -33,7 +33,24 @@ export interface RateLimiter {
   readonly size: number;
 }
 
-export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
+const NO_OP_RESULT: RateLimitResult = { limited: false };
+const noOpLimiter: RateLimiter = {
+  check: () => NO_OP_RESULT,
+  get size() {
+    return 0;
+  },
+  reset() {
+    // no-op in test
+  },
+  destroy() {
+    // no-op in test
+  },
+};
+
+/** Create a real rate limiter (always active regardless of environment). */
+export function createRealRateLimiter(
+  options: RateLimiterOptions
+): RateLimiter {
   const { windowMs, max } = options;
   const store = new Map<string, WindowEntry>();
 
@@ -49,7 +66,6 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
     }
   }, windowMs);
 
-  // Allow Node.js to exit even if the interval is still running
   if (typeof cleanup === "object" && "unref" in cleanup) {
     cleanup.unref();
   }
@@ -93,6 +109,17 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
       store.clear();
     },
   };
+}
+
+/**
+ * Create a rate limiter. Returns a no-op in test environment
+ * to prevent test interference from rate limit state.
+ */
+export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
+  if (process.env.NODE_ENV === "test") {
+    return noOpLimiter;
+  }
+  return createRealRateLimiter(options);
 }
 
 /** Extract client IP from request headers. */
