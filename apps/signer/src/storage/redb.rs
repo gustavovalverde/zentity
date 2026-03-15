@@ -23,6 +23,7 @@ const GROUP_KEYS: TableDefinition<&str, &[u8]> = TableDefinition::new("group_key
 const KEY_SHARES: TableDefinition<&str, &[u8]> = TableDefinition::new("key_shares");
 const SIGNING_NONCE_FINGERPRINTS: TableDefinition<&str, u8> =
     TableDefinition::new("signing_nonce_fingerprints");
+const HPKE_KEYS: TableDefinition<&str, &[u8]> = TableDefinition::new("hpke_keys");
 const AUDIT_LOG: TableDefinition<u64, &[u8]> = TableDefinition::new("audit_log");
 
 /// Storage wrapper for ReDB.
@@ -54,6 +55,7 @@ impl Storage {
             let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
+            let _ = write_txn.open_table(HPKE_KEYS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -77,6 +79,7 @@ impl Storage {
             let _ = write_txn.open_table(GROUP_KEYS)?;
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
+            let _ = write_txn.open_table(HPKE_KEYS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -290,6 +293,32 @@ impl Storage {
         }
         write_txn.commit()?;
         Ok(())
+    }
+
+    // =========================================================================
+    // HPKE Keys (Signer)
+    // =========================================================================
+
+    /// Store an HPKE secret key (base64-encoded).
+    pub fn put_hpke_key(&self, signer_id: &str, secret_key_base64: &str) -> SignerResult<()> {
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(HPKE_KEYS)?;
+            table.insert(signer_id, secret_key_base64.as_bytes())?;
+        }
+        write_txn.commit()?;
+        tracing::info!(signer_id, "Persisted HPKE key");
+        Ok(())
+    }
+
+    /// Load a persisted HPKE secret key (base64-encoded).
+    pub fn get_hpke_key(&self, signer_id: &str) -> SignerResult<Option<String>> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(HPKE_KEYS)?;
+
+        Ok(table
+            .get(signer_id)?
+            .map(|v| String::from_utf8_lossy(v.value()).to_string()))
     }
 
     // =========================================================================

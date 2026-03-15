@@ -86,3 +86,12 @@
   - DEKs wrapped under FROST key at signing time, stored on challenge row
   - Server returns FROST-wrapped DEKs + signature; client derives same key to unwrap
   - DB status manipulation alone is insufficient — need real FROST signature for unwrap key
+
+### Sub-task: HPKE Key Persistence — COMPLETE
+- Files changed:
+  - EDIT: apps/signer/src/storage/redb.rs — added HPKE_KEYS table, put_hpke_key, get_hpke_key
+  - EDIT: apps/signer/src/frost/signer_logic.rs — load_or_create_hpke_keypair loads from ReDB or generates+persists
+- Arch decisions:
+  - HPKE secret key stored as base64 in ReDB (same format as serialization methods)
+  - Keyed by signer_id for multi-signer deployments
+  - Graceful degradation: corrupt key → regenerate with warning; persist failure → log error but continue

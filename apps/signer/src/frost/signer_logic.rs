@@ -65,6 +65,23 @@ pub struct SignerService {
 }
 
 impl SignerService {
+    /// Load a persisted HPKE key pair or generate and persist a new one.
+    fn load_or_create_hpke_keypair(storage: &Storage, signer_id: &str) -> HpkeKeyPair {
+        if let Ok(Some(sk_base64)) = storage.get_hpke_key(signer_id) {
+            if let Ok(sk) = HpkeKeyPair::secret_key_from_base64(&sk_base64) {
+                tracing::info!(signer_id, "Loaded persisted HPKE key");
+                return HpkeKeyPair::from_secret_key(sk);
+            }
+            tracing::warn!(signer_id, "Persisted HPKE key is corrupt, generating new");
+        }
+
+        let kp = HpkeKeyPair::generate();
+        if let Err(e) = storage.put_hpke_key(signer_id, &kp.secret_key_base64()) {
+            tracing::error!(signer_id, error = %e, "Failed to persist HPKE key");
+        }
+        kp
+    }
+
     /// Create a new signer service.
     pub fn new(
         storage: Storage,
@@ -72,12 +89,13 @@ impl SignerService {
         participant_id: ParticipantId,
         ciphersuite: Ciphersuite,
     ) -> Self {
+        let hpke_keypair = Self::load_or_create_hpke_keypair(&storage, &signer_id);
         Self {
             storage,
             signer_id,
             participant_id,
             ciphersuite,
-            hpke_keypair: HpkeKeyPair::generate(),
+            hpke_keypair,
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
             used_nonce_fingerprints: Mutex::new(HashSet::new()),
@@ -93,12 +111,13 @@ impl SignerService {
         ciphersuite: Ciphersuite,
         jwks_url: String,
     ) -> Self {
+        let hpke_keypair = Self::load_or_create_hpke_keypair(&storage, &signer_id);
         Self {
             storage,
             signer_id,
             participant_id,
             ciphersuite,
-            hpke_keypair: HpkeKeyPair::generate(),
+            hpke_keypair,
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
             used_nonce_fingerprints: Mutex::new(HashSet::new()),
