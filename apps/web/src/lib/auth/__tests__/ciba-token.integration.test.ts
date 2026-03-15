@@ -267,7 +267,7 @@ describe("CIBA token endpoint", () => {
       });
 
       const fakeHandle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(authReqId, fakeHandle, userId);
+      stageReleaseHandle(authReqId, fakeHandle, userId, TEST_CLIENT_ID);
 
       const { json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
@@ -295,8 +295,8 @@ describe("CIBA token endpoint", () => {
 
       const handle1 = crypto.randomBytes(32).toString("base64url");
       const handle2 = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(authReqId1, handle1, userId);
-      stageReleaseHandle(authReqId2, handle2, userId);
+      stageReleaseHandle(authReqId1, handle1, userId, TEST_CLIENT_ID);
+      stageReleaseHandle(authReqId2, handle2, userId, TEST_CLIENT_ID);
 
       const { json: json1 } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
@@ -341,7 +341,7 @@ describe("CIBA token endpoint", () => {
         scope: "openid identity.name",
       });
       const handle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(identityAuthReqId, handle, userId);
+      stageReleaseHandle(identityAuthReqId, handle, userId, TEST_CLIENT_ID);
 
       // Issue a non-identity CIBA token (openid only) — interleaved
       const nonIdentityAuthReqId = await insertCibaRequest({

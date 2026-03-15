@@ -88,7 +88,12 @@ export function POST(request: Request): Promise<Response> {
         })
         .run();
 
-      stageReleaseHandle(cibaContext.authReqId, sealed.releaseHandle, userId);
+      stageReleaseHandle(
+        cibaContext.authReqId,
+        sealed.releaseHandle,
+        userId,
+        clientId
+      );
 
       return NextResponse.json({ staged: true });
     }

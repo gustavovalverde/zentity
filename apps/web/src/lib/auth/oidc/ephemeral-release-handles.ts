@@ -12,6 +12,7 @@ import "server-only";
  */
 
 interface ReleaseHandleEntry {
+  clientId: string;
   expiresAt: number;
   releaseHandle: string;
   userId: string;
@@ -45,12 +46,14 @@ function getUserIndex(): Map<string, Set<string>> {
 export function stageReleaseHandle(
   authReqId: string,
   releaseHandle: string,
-  userId: string
+  userId: string,
+  clientId: string
 ): void {
   getStore().set(authReqId, {
     releaseHandle,
     expiresAt: Date.now() + TTL_MS,
     userId,
+    clientId,
   });
   const index = getUserIndex();
   let set = index.get(userId);
@@ -70,7 +73,8 @@ export function stageReleaseHandle(
  */
 export function consumeReleaseHandle(
   userId: string,
-  authReqId?: string
+  authReqId?: string,
+  clientId?: string
 ): string | null {
   const store = getStore();
   const index = getUserIndex();
@@ -78,6 +82,9 @@ export function consumeReleaseHandle(
   if (authReqId) {
     const entry = store.get(authReqId);
     if (!entry || entry.userId !== userId) {
+      return null;
+    }
+    if (clientId && entry.clientId !== clientId) {
       return null;
     }
     store.delete(authReqId);
@@ -100,6 +107,9 @@ export function consumeReleaseHandle(
     const entry = store.get(reqId);
     if (!entry) {
       authReqIds.delete(reqId);
+      continue;
+    }
+    if (clientId && entry.clientId !== clientId) {
       continue;
     }
     store.delete(reqId);

@@ -1100,7 +1100,8 @@ export const auth = betterAuth({
         if (scopeList.some(isIdentityScope)) {
           const handle = consumeReleaseHandle(
             user.id,
-            referenceId ?? undefined
+            referenceId ?? undefined,
+            clientId ?? undefined
           );
           if (handle) {
             claims.release_handle = handle;

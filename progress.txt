@@ -130,3 +130,14 @@
   - Before-hook on /oauth2/authorize verifies HMAC before plugin's auto-skip; invalid/missing → delete consent → force re-consent
   - After-hook on /oauth2/consent stores HMAC after plugin writes consent (runs after pairwise cleanup)
   - No backward compat: records without valid HMAC are deleted (per CLAUDE.md: no users, breaking changes OK)
+
+### Sub-task E: Release Handle Binding — COMPLETE
+- PRD: security-hardening-malicious-server.md Phase 5
+- Files changed:
+  - EDIT: src/lib/auth/oidc/ephemeral-release-handles.ts — added clientId to ReleaseHandleEntry; stageReleaseHandle+consumeReleaseHandle now accept+validate clientId
+  - EDIT: src/app/api/ciba/identity/stage/route.ts — passes clientId to stageReleaseHandle
+  - EDIT: src/lib/auth/auth.ts — passes clientId to consumeReleaseHandle in customAccessTokenClaims
+  - EDIT: test files updated to include clientId parameter
+- Arch decisions:
+  - clientId validation is defense-in-depth (authReqId already globally unique + bound to single client in cibaRequests)
+  - Fallback path (no authReqId) skips entries with mismatched clientId when clientId is provided
