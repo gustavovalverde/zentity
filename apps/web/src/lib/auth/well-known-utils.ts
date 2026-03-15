@@ -56,6 +56,10 @@ export function enrichDiscoveryMetadata(
     // CIBA metadata (OpenID CIBA Core §4)
     backchannel_token_delivery_modes_supported: ["poll", "ping"],
     backchannel_user_code_parameter_supported: false,
+    // OIDC Back-Channel Logout 1.0
+    backchannel_logout_supported: true,
+    backchannel_logout_session_supported: true,
+    ...(issuer ? { end_session_endpoint: `${issuer}/oauth2/end-session` } : {}),
     // Assurance metadata
     acr_values_supported: [...ACR_VALUES_SUPPORTED],
     claims_supported: [

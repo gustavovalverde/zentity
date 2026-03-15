@@ -23,17 +23,17 @@ End-to-end: DCR schema extension → `logout_token` JWT construction and signing
 
 ### Acceptance criteria
 
-- [ ] DCR accepts `backchannel_logout_uri` and `backchannel_logout_session_required`
-- [ ] `logout_token` structure correct: `iss`, `sub` (pairwise), `aud`, `iat`, `jti`, `sid`, `events`
-- [ ] `logout_token` signed with client's ID token algorithm
-- [ ] Delivery POSTs to all registered RPs on session termination
-- [ ] Delivery retries on 5xx (2 retries, exponential backoff)
-- [ ] Delivery timeout does not block user's logout
+- [x] DCR accepts `backchannel_logout_uri` and `backchannel_logout_session_required`
+- [x] `logout_token` structure correct: `iss`, `sub` (pairwise), `aud`, `iat`, `jti`, `sid`, `events`
+- [x] `logout_token` signed with client's ID token algorithm
+- [x] Delivery POSTs to all registered RPs on session termination
+- [x] Delivery retries on 5xx (2 retries, exponential backoff)
+- [x] Delivery timeout does not block user's logout
 - [ ] `end_session_endpoint` validates `id_token_hint`, terminates session, triggers BCL delivery
 - [ ] `post_logout_redirect_uri` validated against registered URIs (invalid → error)
 - [ ] `sid` included in ID tokens for BCL-registered clients
-- [ ] Pending CIBA requests revoked on logout
-- [ ] Discovery advertises `backchannel_logout_supported`, `backchannel_logout_session_supported`, `end_session_endpoint`
+- [x] Pending CIBA requests revoked on logout
+- [x] Discovery advertises `backchannel_logout_supported`, `backchannel_logout_session_supported`, `end_session_endpoint`
 - [ ] Demo-rp receives and verifies `logout_token`, invalidates session, shows banner
 - [ ] Integration test: authorize → logout → verify test server received valid `logout_token`
 - [ ] Integration test: `end_session_endpoint` with redirect

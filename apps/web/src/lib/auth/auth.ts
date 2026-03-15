@@ -42,6 +42,10 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import {
+  revokePendingCibaOnLogout,
+  sendBackchannelLogout,
+} from "@/lib/auth/oidc/backchannel-logout";
 import { resolveCimdClient } from "@/lib/auth/oidc/cimd";
 import { isUrlClientId } from "@/lib/auth/oidc/cimd-validation";
 import {
@@ -504,6 +508,17 @@ function validateDcrRegistration(
         });
       }
     }
+  }
+
+  // OIDC BCL: validate backchannel_logout_uri if present
+  const bclUri =
+    typeof body.backchannel_logout_uri === "string"
+      ? body.backchannel_logout_uri.trim()
+      : undefined;
+  if (bclUri && !isDev && !isValidHttpsUrl(bclUri)) {
+    throw new APIError("BAD_REQUEST", {
+      error_description: "backchannel_logout_uri must be an HTTPS URL",
+    });
   }
 
   // RFC 7591 §2.3: software_statement is a JWT — reject if it's not parseable
@@ -1006,6 +1021,17 @@ export const auth = betterAuth({
       if (ctx.path === "/ciba/authorize") {
         return enforceCibaApprovalAcr(ctx, db);
       }
+      if (ctx.path === "/sign-out") {
+        // Capture session before sign-out deletes it — needed for BCL
+        const session = await getSessionFromCtx(ctx);
+        if (session?.user?.id) {
+          (ctx.context as Record<string, unknown>).__bclUserId =
+            session.user.id;
+          (ctx.context as Record<string, unknown>).__bclSessionId =
+            session.session.id;
+        }
+        return;
+      }
     }),
     after: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/consent") {
@@ -1019,6 +1045,19 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/two-factor/disable") {
         await afterTwoFactorDisableGuardianCleanup(ctx);
+      }
+      if (ctx.path === "/sign-out") {
+        const userId = (ctx.context as Record<string, unknown>).__bclUserId;
+        const sessionId = (ctx.context as Record<string, unknown>)
+          .__bclSessionId;
+        if (typeof userId === "string") {
+          // Fire-and-forget — don't block the logout response
+          sendBackchannelLogout(
+            userId,
+            typeof sessionId === "string" ? sessionId : undefined
+          );
+          revokePendingCibaOnLogout(userId);
+        }
       }
     }),
   },

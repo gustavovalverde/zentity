@@ -196,3 +196,15 @@
 - Files changed:
   - NEW: src/lib/trpc/routers/identity/revoke.ts — revokeProcedure (admin) + selfRevokeProcedure (GDPR)
   - EDIT: src/lib/trpc/routers/identity/router.ts — wired revokeVerification + selfRevoke
+
+## Task 10: Back-Channel Logout — IN PROGRESS
+### Core: Logout Token + Delivery + DCR + Discovery + CIBA Revocation — COMPLETE
+- Files changed:
+  - NEW: src/lib/auth/oidc/backchannel-logout.ts — buildLogoutToken (JWT), deliverLogoutToken (POST with retry), sendBackchannelLogout (fire-and-forget), revokePendingCibaOnLogout
+  - EDIT: src/lib/auth/auth.ts — before-hook on /sign-out captures session; after-hook triggers BCL delivery + CIBA revocation; DCR validates backchannel_logout_uri
+  - EDIT: src/lib/auth/well-known-utils.ts — advertises backchannel_logout_supported, end_session_endpoint
+- Arch decisions:
+  - BCL URI stored in oauthClients.metadata JSON (existing pattern, no schema change)
+  - Before-hook captures userId/sessionId before sign-out deletes session
+  - After-hook fires BCL delivery + CIBA revocation as fire-and-forget
+  - Delivery: 10s timeout, 2 retries with 1s/3s exponential backoff on 5xx
