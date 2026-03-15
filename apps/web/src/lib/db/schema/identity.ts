@@ -14,6 +14,7 @@ export const identityBundleStatusEnum = [
   "pending",
   "verified",
   "failed",
+  "revoked",
 ] as const;
 
 export type IdentityBundleStatus = (typeof identityBundleStatusEnum)[number];
@@ -22,6 +23,7 @@ export const verificationStatusEnum = [
   "pending",
   "verified",
   "failed",
+  "revoked",
 ] as const;
 
 export type VerificationStatus = (typeof verificationStatusEnum)[number];
@@ -99,6 +101,11 @@ export const identityBundles = sqliteTable(
     riskScore: integer("risk_score"),
     riskAssessedAt: text("risk_assessed_at"),
 
+    // Revocation metadata
+    revokedAt: text("revoked_at"),
+    revokedBy: text("revoked_by"),
+    revokedReason: text("revoked_reason"),
+
     // Re-verification tracking
     lastVerifiedAt: text("last_verified_at"),
     nextVerificationDue: text("next_verification_due"),
@@ -139,6 +146,9 @@ export const identityVerifications = sqliteTable(
     // ZKPassport nullifier (NFC only)
     uniqueIdentifier: text("unique_identifier"),
     verifiedAt: text("verified_at"),
+    revokedAt: text("revoked_at"),
+    revokedBy: text("revoked_by"),
+    revokedReason: text("revoked_reason"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },

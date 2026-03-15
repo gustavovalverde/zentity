@@ -9,7 +9,7 @@ import type {
   NewIdentityVerification,
 } from "../schema/identity";
 
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
@@ -17,7 +17,10 @@ import { cache } from "react";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 
 import { db } from "../connection";
-import { attestationEvidence } from "../schema/attestation";
+import {
+  attestationEvidence,
+  blockchainAttestations,
+} from "../schema/attestation";
 import {
   encryptedAttributes,
   encryptedSecrets,
@@ -289,7 +292,12 @@ export const getLatestVerification = cache(async function getLatestVerification(
   const row = await db
     .select()
     .from(identityVerifications)
-    .where(eq(identityVerifications.userId, userId))
+    .where(
+      and(
+        eq(identityVerifications.userId, userId),
+        ne(identityVerifications.status, "revoked")
+      )
+    )
     .orderBy(
       sql`CASE WHEN ${identityVerifications.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
       desc(identityVerifications.verifiedAt),
@@ -429,7 +437,7 @@ export const getSelectedVerification = cache(
       }
     }
 
-    return verifications[0] ?? null;
+    return verifications.find((v) => v.status !== "revoked") ?? null;
   }
 );
 
@@ -782,4 +790,103 @@ export async function isNullifierUsedByOtherUser(
     )
     .get();
   return !!row;
+}
+
+/**
+ * Cascading identity revocation.
+ *
+ * Steps 1-3 (verification, bundle, OID4VCI credentials) execute in a single
+ * transaction. Step 4 (on-chain attestation) is best-effort — failures are
+ * logged but don't roll back the DB revocation.
+ */
+export async function revokeIdentity(
+  userId: string,
+  revokedBy: string,
+  reason: string
+): Promise<{ revokedVerifications: number; revokedCredentials: number }> {
+  const now = new Date().toISOString();
+  let revokedVerifications = 0;
+  let revokedCredentials = 0;
+
+  await db.transaction(async (tx) => {
+    // Step 1: Revoke all active verifications
+    const verificationResult = await tx
+      .update(identityVerifications)
+      .set({
+        status: "revoked",
+        revokedAt: now,
+        revokedBy,
+        revokedReason: reason,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(identityVerifications.userId, userId),
+          ne(identityVerifications.status, "revoked")
+        )
+      )
+      .run();
+    revokedVerifications = verificationResult.rowsAffected;
+
+    // Step 2: Revoke the identity bundle
+    await tx
+      .update(identityBundles)
+      .set({
+        status: "revoked",
+        revokedAt: now,
+        revokedBy,
+        revokedReason: reason,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(identityBundles.userId, userId),
+          ne(identityBundles.status, "revoked")
+        )
+      )
+      .run();
+
+    // Step 3: Revoke OID4VCI issued credentials (status 0 → 1)
+    const { oidc4vciIssuedCredentials } = await import("../schema/oidc4vci");
+    const credResult = await tx
+      .update(oidc4vciIssuedCredentials)
+      .set({
+        status: 1,
+        revokedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(oidc4vciIssuedCredentials.userId, userId),
+          eq(oidc4vciIssuedCredentials.status, 0)
+        )
+      )
+      .run();
+    revokedCredentials = credResult.rowsAffected;
+  });
+
+  // Step 4: Revoke on-chain attestations (best-effort, outside transaction)
+  const attestations = await db
+    .select({ id: blockchainAttestations.id })
+    .from(blockchainAttestations)
+    .where(
+      and(
+        eq(blockchainAttestations.userId, userId),
+        inArray(blockchainAttestations.status, ["pending", "confirmed"])
+      )
+    )
+    .all();
+
+  for (const attestation of attestations) {
+    await db
+      .update(blockchainAttestations)
+      .set({
+        status: "revoked",
+        revokedAt: sql`datetime('now')`,
+        updatedAt: sql`datetime('now')`,
+      })
+      .where(eq(blockchainAttestations.id, attestation.id))
+      .run();
+  }
+
+  return { revokedVerifications, revokedCredentials };
 }
