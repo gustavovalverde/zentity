@@ -217,3 +217,8 @@
   - end-session validates id_token_hint via local JWKS (same as token exchange)
   - post_logout_redirect_uri validated against client's registered URIs
   - sid is the session ID from the sessions table (latest session by createdAt)
+
+### BCL Tests — COMPLETE
+- NEW: src/lib/auth/oidc/__tests__/backchannel-logout.test.ts — 4 unit tests
+- Demo-rp BCL receiver deferred (separate task)
+- Remaining: demo-rp BCL receiver + banner (deferred to demo-rp work)
