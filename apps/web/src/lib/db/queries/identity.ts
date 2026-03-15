@@ -33,7 +33,10 @@ import {
   identityVerificationJobs,
   identityVerifications,
 } from "../schema/identity";
-import { getSignedClaimTypesByUserAndVerification } from "./crypto";
+import {
+  getChipVerificationClaim,
+  getSignedClaimTypesByUserAndVerification,
+} from "./crypto";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
@@ -131,18 +134,21 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   const selectedVerification = await getSelectedVerification(userId);
   const verificationId = selectedVerification?.id ?? null;
 
-  // NFC chip verification — derive checks directly from the verification record
+  // NFC chip verification — derive checks from signed claim (tamper-evident)
   if (selectedVerification && isChipVerified(selectedVerification)) {
+    const chipClaim = verificationId
+      ? await getChipVerificationClaim(userId, verificationId)
+      : null;
     return {
       verified: true,
       level: "chip" as const,
       checks: {
         document: true,
-        liveness: true,
-        ageProof: selectedVerification.ageVerified === true,
+        liveness: chipClaim !== null,
+        ageProof: chipClaim?.ageVerified === true,
         docValidityProof: true,
         nationalityProof: Boolean(selectedVerification.nationalityCommitment),
-        faceMatchProof: selectedVerification.faceMatchPassed === true,
+        faceMatchProof: chipClaim?.faceMatchPassed === true,
         identityBindingProof: Boolean(selectedVerification.uniqueIdentifier),
       },
     };

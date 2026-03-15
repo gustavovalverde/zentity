@@ -12,7 +12,8 @@ const CLAIMS_AUDIENCE = "zentity-claims";
 export type AttestationClaimType =
   | "liveness_score"
   | "face_match_score"
-  | "ocr_result";
+  | "ocr_result"
+  | "chip_verification";
 
 export interface LivenessClaimData {
   antispoofScore: number;
@@ -41,8 +42,22 @@ export interface OcrClaimData {
   issuerCountry?: string | null;
 }
 
+export interface ChipVerificationClaimData {
+  ageVerified: boolean;
+  faceMatchPassed: boolean;
+  hasDob: boolean;
+  hasName: boolean;
+  hasNationality: boolean;
+  livenessScore: number;
+  sanctionsCleared: boolean;
+}
+
 export interface AttestationClaimPayload {
-  data: LivenessClaimData | FaceMatchClaimData | OcrClaimData;
+  data:
+    | LivenessClaimData
+    | FaceMatchClaimData
+    | OcrClaimData
+    | ChipVerificationClaimData;
   documentHash?: string | null;
   documentHashField?: string | null;
   issuedAt: string;

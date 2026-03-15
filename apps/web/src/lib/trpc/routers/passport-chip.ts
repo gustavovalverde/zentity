@@ -9,6 +9,8 @@ import { ZKPassport } from "@zkpassport/sdk";
 import { z } from "zod";
 
 import { env } from "@/env";
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
   createVerification,
   getIdentityBundleByUserId,
@@ -18,6 +20,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { dobToDaysSince1900 } from "@/lib/identity/verification/birth-year";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
+import { signAttestationClaim } from "@/lib/privacy/zk/claims";
 
 import { protectedProcedure, router } from "../server";
 
@@ -156,6 +159,34 @@ export const passportChipRouter = router({
         sanctionsCleared,
         uniqueIdentifier,
         verifiedAt: now,
+      });
+
+      // Store signed claim for chip verification results (tamper-evident)
+      const chipClaimPayload = {
+        type: "chip_verification" as const,
+        userId,
+        version: 1,
+        issuedAt: now,
+        policyVersion: POLICY_VERSION,
+        data: {
+          ageVerified,
+          sanctionsCleared,
+          faceMatchPassed: faceMatchPassed ?? false,
+          livenessScore: 1.0,
+          hasNationality: Boolean(nationalityCommitment),
+          hasName: Boolean(nameCommitment),
+          hasDob: Boolean(dobCommitment),
+        },
+      };
+      const chipClaimSignature = await signAttestationClaim(chipClaimPayload);
+      await insertSignedClaim({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId,
+        claimType: "chip_verification",
+        claimPayload: JSON.stringify(chipClaimPayload),
+        signature: chipClaimSignature,
+        issuedAt: now,
       });
 
       // Convert DOB to dobDays for FHE encryption
