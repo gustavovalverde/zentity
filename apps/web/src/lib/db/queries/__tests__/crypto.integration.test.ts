@@ -21,7 +21,21 @@ import {
   insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import { encryptedAttributes } from "@/lib/db/schema/crypto";
+import { encodeAad } from "@/lib/privacy/primitives/aad";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+
+function expectedHash(
+  ciphertext: Buffer,
+  userId: string,
+  attributeType: string
+): string {
+  const context = encodeAad([userId, attributeType]);
+  return crypto
+    .createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .update(context)
+    .update(ciphertext)
+    .digest("hex");
+}
 
 async function createProofContext(userId: string, verificationId?: string) {
   const resolvedDocumentId = verificationId ?? crypto.randomUUID();
@@ -73,13 +87,14 @@ describe("crypto queries", () => {
     });
 
     const summary = await getUserAgeProof(userId);
-    const expectedHash = crypto
-      .createHmac("sha256", env.BETTER_AUTH_SECRET)
-      .update(Buffer.from("ciphertext"))
-      .digest("hex");
+    const expected = expectedHash(
+      Buffer.from("ciphertext"),
+      userId,
+      "birth_year_offset"
+    );
     expect(summary?.isOver18).toBe(true);
     expect(summary?.generationTimeMs).toBe(120);
-    expect(summary?.birthYearOffsetCiphertextHash).toBe(expectedHash);
+    expect(summary?.birthYearOffsetCiphertextHash).toBe(expected);
     expect(summary?.birthYearOffsetCiphertextBytes).toBe(
       Buffer.byteLength("ciphertext")
     );
@@ -286,10 +301,7 @@ describe("crypto queries", () => {
     );
     expect(latestEncrypted?.ciphertext).toEqual(Buffer.from("cipher-2"));
     expect(latestEncrypted?.ciphertextHash).toBe(
-      crypto
-        .createHmac("sha256", env.BETTER_AUTH_SECRET)
-        .update(Buffer.from("cipher-2"))
-        .digest("hex")
+      expectedHash(Buffer.from("cipher-2"), userId, "birth_year_offset")
     );
     expect(latestEncrypted?.keyId).toBe("key-2");
     expect(latestEncrypted?.encryptionTimeMs).toBe(30);

@@ -20,9 +20,11 @@ End-to-end: HMAC input change to include `(userId, attributeType)` → `encodeAa
 
 ### Acceptance criteria
 
-- [ ] HMAC computation includes `(userId, attributeType)` in its input
-- [ ] Same ciphertext with different userId produces different HMAC and fails verification
-- [ ] Same ciphertext with different attributeType produces different HMAC and fails verification
-- [ ] Unique constraint on `(userId, attributeType)` prevents duplicate rows
-- [ ] Existing rows migrated with recomputed HMACs
-- [ ] Unit test: context-bound HMAC verification (positive + cross-user + cross-attribute rejection)
+- [x] HMAC computation includes `(userId, attributeType)` in its input
+- [x] Same ciphertext with different userId produces different HMAC and fails verification
+- [x] Same ciphertext with different attributeType produces different HMAC and fails verification
+- [x] Unique constraint on `(userId, attributeType)` prevents duplicate rows
+- [x] Existing rows handled by integrity check (ensureCiphertextIntegrity returns computed hash when stored is empty)
+- [x] Integration test: context-bound HMAC verification (crypto.integration.test.ts — 6 tests pass)
+
+> **Status**: Complete

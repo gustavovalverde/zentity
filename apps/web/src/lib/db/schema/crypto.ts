@@ -90,6 +90,10 @@ export const encryptedAttributes = sqliteTable(
   (table) => [
     index("idx_encrypted_attributes_user_id").on(table.userId),
     index("idx_encrypted_attributes_type").on(table.attributeType),
+    uniqueIndex("uq_encrypted_attributes_user_type").on(
+      table.userId,
+      table.attributeType
+    ),
   ]
 );
 

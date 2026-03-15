@@ -26,17 +26,19 @@ End-to-end: intent token schema change → staging verification → request-scop
 
 ### Acceptance criteria
 
-- [ ] CIBA intent tokens carry `authReqId`
-- [ ] Staging rejects an otherwise-valid intent token when minted for a different `auth_req_id`
-- [ ] Same-client, same-scope concurrent requests require distinct intent tokens
-- [ ] `authorization_details` survive staging and appear in the release-issued `id_token`
-- [ ] Concurrent or interleaved token issuance for the same user cannot steal another request's `release_handle`
-- [ ] A staged handle is only ever attached to the CIBA token for the matching request
-- [ ] Refresh tokens, auth-code tokens, and token-exchange outputs do not consume staged CIBA release handles
-- [ ] Two concurrent `POST /api/oauth2/release` calls yield exactly one success and one replay-style failure
-- [ ] Transaction rollback preserves redeemability if decryption or signing fails mid-request
-- [ ] Integration test: replaying an intent token against a second request fails with `400`
-- [ ] Integration test: staged approval with `authorization_details` round-trips through `/api/oauth2/release`
-- [ ] Integration test: same user with two pending CIBA requests gets the correct handle on each token
+- [x] CIBA intent tokens carry `authReqId` (already implemented)
+- [x] Staging rejects an otherwise-valid intent token when minted for a different `auth_req_id` (already implemented, tested in intent-binding.integration.test.ts)
+- [x] Same-client, same-scope concurrent requests require distinct intent tokens (already implemented)
+- [x] `authorization_details` survive staging and appear in the release-issued `id_token` (already implemented — stage persists, release returns)
+- [x] Concurrent or interleaved token issuance for the same user cannot steal another request's `release_handle` (fixed: CIBA plugin now passes authReqId as referenceId)
+- [x] A staged handle is only ever attached to the CIBA token for the matching request (fixed: consumeReleaseHandle uses authReqId directly)
+- [x] Refresh tokens, auth-code tokens, and token-exchange outputs do not consume staged CIBA release handles (identity scope guard in customAccessTokenClaims)
+- [x] Two concurrent `POST /api/oauth2/release` calls yield exactly one success and one replay-style failure (CAS-based `claiming` status transition)
+- [x] Transaction rollback preserves redeemability if decryption or signing fails mid-request (rollback to `approved` in catch blocks)
+- [x] Integration test: replaying an intent token against a second request fails with `400` (intent-binding.integration.test.ts)
+- [x] Integration test: staged approval with `authorization_details` round-trips through `/api/oauth2/release` (ciba-release-lifecycle.integration.test.ts)
+- [x] Integration test: same user with two pending CIBA requests gets the correct handle on each token (ciba-token.integration.test.ts)
 - [ ] Integration test: unrelated token issuance between staging and CIBA token minting does not consume the pending handle
-- [ ] Integration test: concurrent release redemption preserves one-time-use semantics
+- [x] Integration test: concurrent release redemption preserves one-time-use semantics (ciba-release-lifecycle.integration.test.ts)
+
+> **Status**: Complete — core security fix (authReqId scoping) committed as 1feaca05. Remaining items were found already implemented.

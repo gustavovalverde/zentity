@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { env } from "@/env";
+import { encodeAad } from "@/lib/privacy/primitives/aad";
 
 import { db } from "../connection";
 import {
@@ -77,14 +78,24 @@ function parseSecretMetadata(
   }
 }
 
-function computeCiphertextHash(ciphertext: Buffer): string {
+function computeCiphertextHash(
+  ciphertext: Buffer,
+  userId: string,
+  attributeType: string
+): string {
+  const context = encodeAad([userId, attributeType]);
   return crypto
     .createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .update(context)
     .update(ciphertext)
     .digest("hex");
 }
 
-function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
+function getCiphertextInfo(
+  ciphertext: Buffer | null | undefined,
+  userId: string,
+  attributeType: string
+): {
   hash: string | null;
   byteLength: number | null;
 } {
@@ -92,7 +103,7 @@ function getCiphertextInfo(ciphertext: Buffer | null | undefined): {
     return { hash: null, byteLength: null };
   }
   return {
-    hash: computeCiphertextHash(ciphertext),
+    hash: computeCiphertextHash(ciphertext, userId, attributeType),
     byteLength: ciphertext.byteLength,
   };
 }
@@ -103,7 +114,11 @@ function ensureCiphertextIntegrity(params: {
   userId: string;
   attributeType: string;
 }): string {
-  const computed = computeCiphertextHash(params.ciphertext);
+  const computed = computeCiphertextHash(
+    params.ciphertext,
+    params.userId,
+    params.attributeType
+  );
   const stored = params.ciphertextHash ?? "";
 
   if (!stored) {
@@ -150,11 +165,19 @@ export async function getUserAgeProof(
     userId,
     "dob_days"
   );
-  encrypted ??= await getLatestEncryptedAttributeByUserAndType(
+  let dobAttrType = "dob_days";
+  if (!encrypted) {
+    encrypted = await getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year_offset"
+    );
+    dobAttrType = "birth_year_offset";
+  }
+  const ciphertextInfo = getCiphertextInfo(
+    encrypted?.ciphertext ?? null,
     userId,
-    "birth_year_offset"
+    dobAttrType
   );
-  const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   return {
     proofId: proof.id,
@@ -206,11 +229,19 @@ export async function getUserAgeProofFull(
     userId,
     "dob_days"
   );
-  encrypted ??= await getLatestEncryptedAttributeByUserAndType(
+  let dobAttrType2 = "dob_days";
+  if (!encrypted) {
+    encrypted = await getLatestEncryptedAttributeByUserAndType(
+      userId,
+      "birth_year_offset"
+    );
+    dobAttrType2 = "birth_year_offset";
+  }
+  const ciphertextInfo = getCiphertextInfo(
+    encrypted?.ciphertext ?? null,
     userId,
-    "birth_year_offset"
+    dobAttrType2
   );
-  const ciphertextInfo = getCiphertextInfo(encrypted?.ciphertext ?? null);
 
   let publicSignals: string[] | null = null;
   if (row.publicInputs) {
@@ -832,7 +863,11 @@ export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
 export async function insertEncryptedAttribute(
   data: Omit<NewEncryptedAttribute, "createdAt" | "ciphertextHash">
 ): Promise<void> {
-  const ciphertextHash = computeCiphertextHash(data.ciphertext);
+  const ciphertextHash = computeCiphertextHash(
+    data.ciphertext,
+    data.userId,
+    data.attributeType
+  );
   await db
     .insert(encryptedAttributes)
     .values({
