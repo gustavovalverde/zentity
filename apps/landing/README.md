@@ -15,6 +15,8 @@ The landing site reflects the current architecture:
 
 These are the four cryptographic pillars of the product: passkeys, ZK proofs, FHE, and commitments.
 
+The site also includes an `/agents` page explaining the CIBA/MCP agent authorization scenario for AI agent identity.
+
 For the technical details, see:
 
 - `../../docs/attestation-privacy-architecture.md`

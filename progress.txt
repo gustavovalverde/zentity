@@ -299,3 +299,9 @@
   - EDIT: docs/oauth-integrations.md — added proof:sybil scope with access-token delivery note
   - EDIT: docs/tamper-model.md — added Sybil / Duplicate Identity Prevention subsection
   - EDIT: docs/attestation-privacy-architecture.md — added dedup_key column to ER diagram and privacy guarantee
+
+## Task 25: ER Diagram Sync & Minor Fixes — COMPLETE
+- Files changed:
+  - EDIT: docs/attestation-privacy-architecture.md — added RECOVERY_KEY_PINS and CIBA_REQUESTS tables with relations to ER diagram
+  - EDIT: docs/noir-profiling.md — replaced all bun run → pnpm run
+  - EDIT: apps/landing/README.md — added /agents page mention

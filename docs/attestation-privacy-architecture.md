@@ -446,6 +446,31 @@ erDiagram
     text response_mode
     integer expires_at
   }
+
+  RECOVERY_KEY_PINS {
+    text id PK
+    text user_id FK "Unique per user"
+    text key_fingerprint "SHA-256 of ML-KEM public key"
+    integer created_at
+  }
+
+  CIBA_REQUESTS {
+    text id PK
+    text user_id FK
+    text client_id FK
+    text scope
+    text binding_message
+    text status "pending | approved | rejected | expired"
+    integer expires_at
+    integer last_polled_at
+  }
+
+  %% ── Recovery key pinning ──
+  USERS ||--o| RECOVERY_KEY_PINS : pins
+
+  %% ── CIBA requests ──
+  USERS ||--o{ CIBA_REQUESTS : receives
+  OAUTH_CLIENT ||--o{ CIBA_REQUESTS : initiates
 ```
 
 ### Core tables

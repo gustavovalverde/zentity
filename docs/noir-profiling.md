@@ -13,10 +13,10 @@ and proving backend gate breakdowns.
 
 Run from `apps/web`:
 
-- `bun run circuits:profile` (opcodes, all circuits)
-- `bun run circuits:profile:opcodes`
-- `bun run circuits:profile:gates` (requires `bb`)
-- `bun run circuits:profile:execution` (requires `Prover.toml` per circuit)
+- `pnpm run circuits:profile` (opcodes, all circuits)
+- `pnpm run circuits:profile:opcodes`
+- `pnpm run circuits:profile:gates` (requires `bb`)
+- `pnpm run circuits:profile:execution` (requires `Prover.toml` per circuit)
 
 Optional flags:
 
