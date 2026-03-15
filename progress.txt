@@ -95,3 +95,9 @@
   - HPKE secret key stored as base64 in ReDB (same format as serialization methods)
   - Keyed by signer_id for multi-signer deployments
   - Graceful degradation: corrupt key → regenerate with warning; persist failure → log error but continue
+
+### Sub-task: Integration Tests — COMPLETE
+- Files changed:
+  - NEW: src/lib/recovery/__tests__/recovery-auth.integration.test.ts — 7 integration tests
+  - EDIT: src/test/db-test-utils.ts — added recovery tables to resetDatabase()
+- Tests cover: pin storage + retrieval, concurrent pin safety, fingerprint mismatch detection, FROST wrap/unwrap round-trip, fake signature rejection, DB wrapper storage
