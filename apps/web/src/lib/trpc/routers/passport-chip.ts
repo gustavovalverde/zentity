@@ -153,10 +153,6 @@ export const passportChipRouter = router({
         dobCommitment,
         nationalityCommitment,
         livenessScore: 1.0,
-        livenessPassed: true,
-        faceMatchPassed,
-        ageVerified,
-        sanctionsCleared,
         uniqueIdentifier,
         verifiedAt: now,
       });

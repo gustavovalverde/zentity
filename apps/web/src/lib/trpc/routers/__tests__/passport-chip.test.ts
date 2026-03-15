@@ -10,6 +10,8 @@ const mockCreateVerification = vi.fn();
 const mockGetSelectedVerification = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
+const mockInsertSignedClaim = vi.fn();
+const mockSignAttestationClaim = vi.fn();
 
 // --- Module mocks ---
 
@@ -41,6 +43,15 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
 vi.mock("@/lib/privacy/fhe/encryption", () => ({
   scheduleFheEncryption: (...args: unknown[]) =>
     mockScheduleFheEncryption(...args),
+}));
+
+vi.mock("@/lib/db/queries/crypto", () => ({
+  insertSignedClaim: (...args: unknown[]) => mockInsertSignedClaim(...args),
+}));
+
+vi.mock("@/lib/privacy/zk/claims", () => ({
+  signAttestationClaim: (...args: unknown[]) =>
+    mockSignAttestationClaim(...args),
 }));
 
 // Allow overriding specific env values per test
@@ -131,6 +142,7 @@ describe("passportChip.submitResult", () => {
     });
     mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
     mockGetSelectedVerification.mockResolvedValue(null);
+    mockSignAttestationClaim.mockResolvedValue("signed-chip-claim");
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
     mockCreateVerification.mockImplementation((data) => data);
     mockScheduleFheEncryption.mockReturnValue(undefined);
@@ -292,13 +304,9 @@ describe("passportChip.submitResult", () => {
         uniqueIdentifier: verifiedNullifier,
         method: "nfc_chip",
         status: "verified",
-        ageVerified: true,
-        sanctionsCleared: true,
-        faceMatchPassed: true,
         documentType: "passport",
         issuerCountry: "USA",
         livenessScore: 1.0,
-        livenessPassed: true,
       })
     );
 
@@ -355,7 +363,7 @@ describe("passportChip.submitResult", () => {
 
   // --- Face match derivation ---
 
-  it("derives faceMatchPassed=null when facematch is absent", async () => {
+  it("stores faceMatchPassed=false in signed claim when facematch absent", async () => {
     const resultWithoutFace = { ...mockQueryResult, facematch: undefined };
 
     const caller = await createCaller(authedSession);
@@ -364,14 +372,13 @@ describe("passportChip.submitResult", () => {
       result: resultWithoutFace as Record<string, unknown>,
     });
 
-    expect(mockCreateVerification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        faceMatchPassed: null,
-      })
+    const claimPayload = JSON.parse(
+      mockInsertSignedClaim.mock.calls[0][0].claimPayload
     );
+    expect(claimPayload.data.faceMatchPassed).toBe(false);
   });
 
-  it("derives faceMatchPassed=false from QueryResult", async () => {
+  it("stores faceMatchPassed=false in signed claim from QueryResult", async () => {
     const resultFailedFace = {
       ...mockQueryResult,
       facematch: { passed: false },
@@ -383,11 +390,10 @@ describe("passportChip.submitResult", () => {
       result: resultFailedFace as Record<string, unknown>,
     });
 
-    expect(mockCreateVerification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        faceMatchPassed: false,
-      })
+    const claimPayload = JSON.parse(
+      mockInsertSignedClaim.mock.calls[0][0].claimPayload
     );
+    expect(claimPayload.data.faceMatchPassed).toBe(false);
   });
 
   // --- Partial disclosure ---
@@ -415,12 +421,15 @@ describe("passportChip.submitResult", () => {
 
     expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
-        sanctionsCleared: false,
         nameCommitment: null,
         dobCommitment: null,
         nationalityCommitment: null,
       })
     );
+    const claimPayload = JSON.parse(
+      mockInsertSignedClaim.mock.calls[0][0].claimPayload
+    );
+    expect(claimPayload.data.sanctionsCleared).toBe(false);
   });
 
   // --- Birthdate extraction ---

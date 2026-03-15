@@ -393,8 +393,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               status: verified ? "verified" : "failed",
               documentHash: isDuplicateDocument ? null : (documentHash ?? null),
               livenessScore: draft.antispoofScore ?? null,
-              livenessPassed,
-              faceMatchPassed,
               verifiedAt: verified ? new Date().toISOString() : null,
             });
           } catch (error) {

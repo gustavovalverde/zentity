@@ -136,10 +136,6 @@ export const identityVerifications = sqliteTable(
     addressCountryCode: integer("address_country_code"),
     confidenceScore: real("confidence_score"),
     livenessScore: real("liveness_score"),
-    livenessPassed: integer("liveness_passed", { mode: "boolean" }),
-    faceMatchPassed: integer("face_match_passed", { mode: "boolean" }),
-    ageVerified: integer("age_verified", { mode: "boolean" }),
-    sanctionsCleared: integer("sanctions_cleared", { mode: "boolean" }),
     // ZKPassport nullifier (NFC only)
     uniqueIdentifier: text("unique_identifier"),
     verifiedAt: text("verified_at"),

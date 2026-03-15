@@ -35,6 +35,7 @@ import {
 import {
   getIdentityBundleByUserId,
   getSelectedVerification,
+  getVerificationStatus,
 } from "@/lib/db/queries/identity";
 
 interface IdentityCardProps {
@@ -138,7 +139,10 @@ export async function IdentityCard({
 
   // Tier 3: Chip Verified display
   if (tier === 3 && userId) {
-    const verification = await getSelectedVerification(userId);
+    const [verification, verificationStatus] = await Promise.all([
+      getSelectedVerification(userId),
+      getVerificationStatus(userId),
+    ]);
 
     return (
       <Card>
@@ -164,7 +168,7 @@ export async function IdentityCard({
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              {verification?.ageVerified && (
+              {verificationStatus.checks.ageProof && (
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
                     <CheckCircle className="h-5 w-5" />
@@ -174,17 +178,6 @@ export async function IdentityCard({
                       Age Verified
                     </p>
                     <p className="font-medium">18+ Confirmed</p>
-                  </div>
-                </div>
-              )}
-              {verification?.sanctionsCleared && (
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
-                    <Shield className="h-5 w-5" />
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground text-xs">Sanctions</p>
-                    <p className="font-medium">Cleared</p>
                   </div>
                 </div>
               )}
