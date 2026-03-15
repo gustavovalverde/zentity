@@ -1,3 +1,32 @@
+## 2026-03-15 — Patch oauth-provider for RFC 8693 token exchange + FPA code exchange
+
+### Task
+- Fix 16 pre-existing test failures (12 in token-exchange, 4 in authorize-challenge)
+- Root cause: oauth-provider Zod schema strips RFC 8693 fields; FPA code exchange missing sessionId + authSession
+
+### Changes
+- **oauth-provider patch** (`patches/@better-auth__oauth-provider.patch`, 3 hunks):
+  1. Token endpoint body: add `subject_token`, `subject_token_type`, `requested_token_type`, `audience` optional fields so Zod doesn't strip them
+  2. Remove blanket `redirect_uri` required check — FPA codes have no redirect; `checkVerificationValue` already handles optional redirect_uri
+  3. Surface `verificationValue.authSession` as `auth_session` in token response via `extra.tokenResponse`
+- **FPA `issueAuthorizationCode`**: Create a better-auth session and store `sessionId` in verification value so the standard token handler can find it
+
+### Files changed
+- `apps/web/patches/@better-auth__oauth-provider.patch` (new)
+- `apps/web/package.json` (patchedDependencies entry)
+- `apps/web/pnpm-lock.yaml`
+- `apps/web/src/app/api/oauth2/authorize-challenge/route.ts` (import sessions, create session in issueAuthorizationCode)
+
+### Key decisions
+- Patch against vendor tarball (already has CIBA patches), not npm registry base
+- Auth session created per-code so standard handler's session lookup works
+- `auth_session` round-tripped through verification value → token response for FPA step-up correlation
+
+### Blockers
+- None. All 264 tests pass. All quality + CIBA tasks complete.
+
+---
+
 ## 2026-03-15 — Fix all failing unit tests (quality-naming-consistency 5e + test isolation)
 
 ### Task

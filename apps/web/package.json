@@ -191,7 +191,8 @@
       "@better-auth/passkey@1.5.1-beta.3": "vendor/@better-auth__passkey@1.5.1-beta.3.patch",
       "better-auth@1.5.1-beta.3": "patches/better-auth@1.5.1-beta.3.patch",
       "@better-auth/ciba@1.5.1-beta.3": "vendor/@better-auth__ciba@1.5.1-beta.3.patch",
-      "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch"
+      "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch",
+      "@better-auth/oauth-provider": "patches/@better-auth__oauth-provider.patch"
     },
     "overrides": {
       "glob": "^13.0.5",

@@ -24,6 +24,7 @@ import {
 import { db } from "@/lib/db/connection";
 import {
   accounts,
+  sessions,
   users,
   verifications,
   walletAddresses,
@@ -809,7 +810,20 @@ async function issueAuthorizationCode(
 ): Promise<Response> {
   const code = generateRandomString(32, "a-z", "A-Z", "0-9");
   const codeHash = hashCode(code);
-  const iat = Math.floor(Date.now() / 1000);
+  const now = new Date();
+  const iat = Math.floor(now.getTime() / 1000);
+
+  // Create a better-auth session so the standard token endpoint can reference it
+  const sessionId = randomBytes(16).toString("hex");
+  const sessionToken = randomBytes(32).toString("hex");
+  await db.insert(sessions).values({
+    id: sessionId,
+    token: sessionToken,
+    userId,
+    expiresAt: new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString(),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  });
 
   await db.insert(verifications).values({
     id: randomBytes(16).toString("hex"),
@@ -826,12 +840,13 @@ async function issueAuthorizationCode(
         ...(session.resource && { resource: session.resource }),
       },
       userId,
-      authTime: Date.now(),
+      sessionId,
+      authTime: now.getTime(),
       authSession,
     }),
     expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000).toISOString(),
-    createdAt: new Date(iat * 1000).toISOString(),
-    updatedAt: new Date(iat * 1000).toISOString(),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
   });
 
   await db
