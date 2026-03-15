@@ -81,6 +81,7 @@ import { validateX509Hash } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
+import { getLatestVerification } from "@/lib/db/queries/identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -116,6 +117,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { computeRpNullifier } from "@/lib/identity/dedup";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
 import { sendWebPush } from "@/lib/push/web-push";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
@@ -275,6 +277,7 @@ const identityClaimKeys = Array.from(
 const defaultClientScopes = [
   "openid",
   "proof:identity",
+  "proof:sybil",
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
@@ -959,16 +962,40 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customAccessTokenClaims: ({ user, scopes, referenceId }) => {
+      customAccessTokenClaims: async (info) => {
+        const { user, scopes, referenceId } = info;
+        // clientId added via vendor patch (not in upstream types)
+        const clientId = (info as { clientId?: string }).clientId;
         if (!user?.id) {
           return {};
         }
         const scopeList = toScopeList(scopes);
-        if (!scopeList.some(isIdentityScope)) {
-          return {};
+        const claims: Record<string, unknown> = {};
+
+        // Release handle for identity-scoped CIBA flows
+        if (scopeList.some(isIdentityScope)) {
+          const handle = consumeReleaseHandle(
+            user.id,
+            referenceId ?? undefined
+          );
+          if (handle) {
+            claims.release_handle = handle;
+          }
         }
-        const handle = consumeReleaseHandle(user.id, referenceId ?? undefined);
-        return handle ? { release_handle: handle } : {};
+
+        // Per-RP sybil nullifier
+        if (scopeList.includes("proof:sybil") && clientId) {
+          const verification = await getLatestVerification(user.id);
+          if (verification?.dedupKey) {
+            claims.sybil_nullifier = computeRpNullifier(
+              env.DEDUP_HMAC_SECRET,
+              verification.dedupKey,
+              clientId
+            );
+          }
+        }
+
+        return claims;
       },
       customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
         const scopeList = toScopeList(scopes);

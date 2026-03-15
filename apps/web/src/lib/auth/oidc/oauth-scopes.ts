@@ -11,6 +11,7 @@ export const OAUTH_SCOPES = [
   "offline_access",
   "proof:identity",
   ...PROOF_SCOPES,
+  "proof:sybil",
   "compliance:key:read",
   "compliance:key:write",
   ...IDENTITY_SCOPES,

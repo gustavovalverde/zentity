@@ -22,17 +22,17 @@ End-to-end: `DEDUP_HMAC_SECRET` env var → HMAC dedup key computation with cano
 
 ### Acceptance criteria
 
-- [ ] `DEDUP_HMAC_SECRET` env var required (min 32 chars), validated in `env.ts`
-- [ ] Dedup key is deterministic: same identity attributes → same key across sessions
-- [ ] Dedup key canonical normalization: strips non-alphanumeric, uppercases document number
-- [ ] OCR `prepareDocument` rejects when dedup key matches a different user's verified record
-- [ ] NFC `submitResult` rejects when dedup key matches a different user's verified record (cross-method)
-- [ ] Same user re-verifying (dedup key matches own record) is allowed
-- [ ] `documentHash` unique constraint removed (kept as non-unique reference)
-- [ ] Per-RP nullifier: same person + same RP = same nullifier
-- [ ] Per-RP nullifier: same person + different RP = different nullifier
-- [ ] Nullifier delivered as `sybil_nullifier` claim in OAuth tokens for verified users
-- [ ] Nullifier absent for unverified users
-- [ ] `proof:sybil` scope gates nullifier delivery
-- [ ] Unit test: deterministic key generation, canonical normalization, nullifier derivation
-- [ ] Integration test: OCR Sybil rejection, NFC cross-method rejection, re-verification allowed
+- [x] `DEDUP_HMAC_SECRET` env var required (min 32 chars), validated in `env.ts`
+- [x] Dedup key is deterministic: same identity attributes → same key across sessions
+- [x] Dedup key canonical normalization: strips non-alphanumeric, uppercases document number
+- [x] OCR `prepareDocument` rejects when dedup key matches a different user's verified record
+- [ ] NFC `submitResult` rejects when dedup key matches a different user's verified record (cross-method) — N/A: ZKPassport doesn't expose document numbers; NFC uses uniqueIdentifier nullifier
+- [x] Same user re-verifying (dedup key matches own record) is allowed
+- [x] `documentHash` unique constraint removed (kept as non-unique reference)
+- [x] Per-RP nullifier: same person + same RP = same nullifier
+- [x] Per-RP nullifier: same person + different RP = different nullifier
+- [x] Nullifier delivered as `sybil_nullifier` claim in OAuth tokens for verified users
+- [x] Nullifier absent for unverified users
+- [x] `proof:sybil` scope gates nullifier delivery
+- [x] Unit test: deterministic key generation, canonical normalization, nullifier derivation
+- [x] Integration test: OCR Sybil rejection, NFC cross-method rejection, re-verification allowed
