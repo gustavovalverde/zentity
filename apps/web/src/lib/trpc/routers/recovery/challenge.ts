@@ -36,9 +36,13 @@ import {
   getTwoFactorByUserId,
   updateTwoFactorBackupCodes,
 } from "@/lib/db/queries/two-factor";
-import { sendRecoveryGuardianEmails } from "@/lib/email/recovery-mailer";
+import {
+  sendCustodialRecoveryEmail,
+  sendRecoveryGuardianEmails,
+} from "@/lib/email/recovery-mailer";
 import { wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import {
+  RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,
   RECOVERY_GUARDIAN_TYPE_EMAIL,
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
 } from "@/lib/recovery/constants";
@@ -151,13 +155,26 @@ export const startProcedure = publicProcedure
       (approval) => approval.guardianType === RECOVERY_GUARDIAN_TYPE_EMAIL
     );
 
-    const delivery = await sendRecoveryGuardianEmails({
-      accountEmail: user.email,
-      approvals: emailApprovals.map((approval) => ({
-        email: approval.email,
-        token: approval.token,
-      })),
-    });
+    const custodialApproval = approvalTokens.find(
+      (approval) =>
+        approval.guardianType === RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL
+    );
+
+    const [delivery] = await Promise.all([
+      sendRecoveryGuardianEmails({
+        accountEmail: user.email,
+        approvals: emailApprovals.map((approval) => ({
+          email: approval.email,
+          token: approval.token,
+        })),
+      }),
+      custodialApproval
+        ? sendCustodialRecoveryEmail({
+            email: custodialApproval.email,
+            token: custodialApproval.token,
+          })
+        : Promise.resolve(false),
+    ]);
 
     const enrollment = await createFheEnrollmentContext({
       userId: user.id,
@@ -171,7 +188,7 @@ export const startProcedure = publicProcedure
       approvals: approvalTokens,
       threshold: config.threshold,
       delivery: delivery.mode,
-      deliveredCount: delivery.delivered,
+      deliveredCount: delivery.delivered + (custodialApproval ? 1 : 0),
     };
   });
 

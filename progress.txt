@@ -235,8 +235,19 @@
   - Not sole guardian: if totalGuardians=1 and no guardians yet, rejects
   - Uses user's registered email from session
   - DKG participation: same participantIndex slot allocation as other guardian types
-- Remaining: email verification trigger, 15-min TTL, rate limiting, custodial signer orchestration, integration tests
+- Remaining: NONE — all sub-tasks complete
 
 ### Env Vars — COMPLETE
 - EDIT: src/env.ts — added CUSTODIAL_SIGNER_URL and CUSTODIAL_SIGNER_ID (optional)
-- Remaining: email verification flow requires CIBA mailer integration and custodial signer endpoint calls — deferred to next iteration
+
+### Custodial Recovery Email + Integration Tests — COMPLETE
+- Files changed:
+  - EDIT: src/lib/email/recovery-mailer.ts — added sendCustodialRecoveryEmail (self-verification email with 15-min TTL messaging)
+  - EDIT: src/lib/trpc/routers/recovery/challenge.ts — startProcedure sends custodial email in parallel with guardian emails
+  - NEW: src/lib/recovery/__tests__/custodial-guardian.integration.test.ts — 6 integration tests (constraint enforcement, challenge lifecycle, rate limit, TTL)
+- Arch decisions:
+  - Custodial email sent in parallel with guardian emails via Promise.all
+  - Different messaging: "verify your identity" vs "you've been listed as a guardian"
+  - Same approval link/flow — approveGuardian handles all guardian types uniformly
+  - FROST signing infrastructure unchanged — custodial signer is a standard SIGNER_ENDPOINTS entry
+  - 15-min TTL already enforced via challenge expiresAt; 3/24h rate limit via countRecentRecoveryChallenges

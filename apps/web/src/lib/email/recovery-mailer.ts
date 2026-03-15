@@ -82,3 +82,42 @@ export async function sendRecoveryGuardianEmails(params: {
 
   return { delivered, attempted, mode };
 }
+
+export async function sendCustodialRecoveryEmail(params: {
+  email: string;
+  token: string;
+}): Promise<boolean> {
+  const useMailpit = !isProduction() && isMailpitConfigured();
+  const useResend = isResendConfigured() && !useMailpit;
+
+  if (!(useResend || useMailpit)) {
+    return false;
+  }
+
+  const link = buildApprovalLink(params.token);
+  const subject = "Verify your identity to continue recovery";
+  const text = `Someone is attempting to recover your Zentity account.\n\nIf this was you, verify your identity: ${link}\n\nThis link expires in 15 minutes. If you did not request recovery, you can safely ignore this email.`;
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
+<h2 style="margin-bottom:4px;">Account Recovery</h2>
+<p style="color:#6b7280;margin-top:0;">Someone is attempting to recover your Zentity account.</p>
+<p>If this was you, click below to verify your identity and continue the recovery process.</p>
+<p style="margin:24px 0;">
+<a href="${link}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Verify Identity</a>
+</p>
+<p style="color:#9ca3af;font-size:13px;">This link expires in 15 minutes. If you did not request recovery, you can safely ignore this email.</p>
+</div>`;
+
+  const payload = {
+    to: [params.email],
+    subject,
+    text,
+    html,
+    tags: ["recovery", "custodial-verification"],
+  };
+
+  if (useResend) {
+    return await sendResendMessage(payload);
+  }
+
+  return await sendMailpitMessage(payload);
+}

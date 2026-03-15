@@ -24,13 +24,13 @@ End-to-end: `custodialEmail` guardian type in schema → `addGuardianEmail` gets
 
 - [x] `custodialEmail` guardian type added to `recovery_guardians.guardianType` enum
 - [x] DKG includes custodial signer as a standard participant (uses same participantIndex pattern)
-- [ ] Recovery challenge with custodial guardian sends approval email to user's registered email
-- [ ] Email verification triggers custodial signer's commit/partial endpoints
+- [x] Recovery challenge with custodial guardian sends approval email to user's registered email
+- [x] Email verification triggers custodial signer's commit/partial endpoints — approval link uses same `approveGuardian` mutation; threshold triggers `signRecoveryChallenge` which contacts all signer endpoints including custodial
 - [x] Threshold enforcement: custodial + human guardian meets threshold (same DKG/signing flow)
 - [x] Cannot add more than one custodial guardian per user
 - [x] Custodial guardian cannot be the only guardian in the policy
-- [ ] Email verification link has 15-minute TTL
-- [ ] Max 3 custodial recovery attempts per 24 hours per user
+- [x] Email verification link has 15-minute TTL — challenge expiresAt is 15 min from creation
+- [x] Max 3 custodial recovery attempts per 24 hours per user — countRecentRecoveryChallenges enforces 3/24h in startProcedure
 - [x] User can remove custodial signer and replace with human guardian (existing removeGuardian works)
-- [ ] Integration test: full recovery flow with custodial signer
-- [ ] Integration test: constraint enforcement (max 1, not sole)
+- [x] Integration test: full recovery flow with custodial signer
+- [x] Integration test: constraint enforcement (max 1, not sole)
