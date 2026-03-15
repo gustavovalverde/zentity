@@ -146,3 +146,14 @@
 - Files changed:
   - EDIT: src/lib/auth/oidc/token-exchange.ts — explicit ID token branch defaults to ["openid"] regardless of subject payload
   - EDIT: src/lib/auth/__tests__/token-exchange.integration.test.ts — added "defaults to openid" test
+
+### Sub-task A: X509 Full Chain Validation — COMPLETE
+- Files changed:
+  - REWRITE: src/lib/auth/oidc/x509-validation.ts — validateX509Hash → validateX509Chain with signature, expiry, and thumbprint checks
+  - EDIT: src/lib/auth/auth.ts — caller updated to use new validateX509Chain with structured result
+  - EDIT: docs/tamper-model.md — updated documentation
+  - NEW: src/lib/auth/oidc/__tests__/x509-validation.test.ts — 5 unit tests with pre-generated certs
+- Arch decisions:
+  - Uses Node.js crypto.X509Certificate (no external deps)
+  - checkIssued() verifies leaf signature against CA public key
+  - Returns structured {valid, error} instead of boolean for better error messages

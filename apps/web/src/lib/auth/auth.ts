@@ -78,7 +78,7 @@ import {
 } from "@/lib/auth/oidc/token-exchange";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/trusted-dcql-matcher";
 import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
-import { validateX509Hash } from "@/lib/auth/oidc/x509-validation";
+import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { db } from "@/lib/db/connection";
@@ -536,9 +536,15 @@ async function beforeVpResponse(ctx: HookCtx) {
 
   if (vpSession?.clientIdScheme === "x509_hash" && vpSession.clientId) {
     const chain = loadX5cChain();
-    if (!(chain && validateX509Hash(vpSession.clientId, chain))) {
+    if (!chain) {
       throw new APIError("FORBIDDEN", {
-        message: "x509_hash client_id does not match certificate chain",
+        message: "x5c certificate chain not available",
+      });
+    }
+    const result = validateX509Chain(vpSession.clientId, chain);
+    if (!result.valid) {
+      throw new APIError("FORBIDDEN", {
+        message: result.error ?? "x509 chain validation failed",
       });
     }
   }

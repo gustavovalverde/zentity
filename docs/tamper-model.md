@@ -92,7 +92,7 @@ These must be verified by the backend or by on-chain cryptographic checks.
 ### OID4VP Response Integrity
 
 - VP responses use `response_mode: direct_post.jwt` — the wallet encrypts the response JWE to an ephemeral ECDH-ES P-256 key, preventing interception in transit.
-- `client_id_scheme: x509_hash` enforced: the verifier's `client_id` must equal the SHA-256 thumbprint of the leaf certificate from the x5c chain (`validateX509Hash` in `x509-validation.ts`). Mismatched thumbprints reject the request.
+- `client_id_scheme: x509_hash` enforced: full x5c chain validation (`validateX509Chain` in `x509-validation.ts`) verifies the leaf certificate's SHA-256 thumbprint matches `client_id`, checks certificate validity periods, and confirms the leaf was signed by the CA.
 - KB-JWT signature verification is two-phase: first the issuer signature is verified against Zentity JWKS, then the KB-JWT is verified against the holder public key resolved from `cnf.jkt`.
 
 ### ZKPassport NFC Trust Boundary
