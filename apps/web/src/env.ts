@@ -103,6 +103,10 @@ export const env = createEnv({
     LOCAL_COMPLIANCE_RULES: z.string().optional(),
     LOCAL_COMPLIANT_ERC20: z.string().optional(),
 
+    // Custodial FROST Recovery (optional)
+    CUSTODIAL_SIGNER_URL: z.string().optional(),
+    CUSTODIAL_SIGNER_ID: z.string().optional(),
+
     // Web Push (VAPID)
     VAPID_PUBLIC_KEY: z.string().optional(),
     VAPID_PRIVATE_KEY: z.string().optional(),
@@ -202,6 +206,8 @@ export const env = createEnv({
     LOCAL_IDENTITY_REGISTRY: process.env.LOCAL_IDENTITY_REGISTRY,
     LOCAL_COMPLIANCE_RULES: process.env.LOCAL_COMPLIANCE_RULES,
     LOCAL_COMPLIANT_ERC20: process.env.LOCAL_COMPLIANT_ERC20,
+    CUSTODIAL_SIGNER_URL: process.env.CUSTODIAL_SIGNER_URL,
+    CUSTODIAL_SIGNER_ID: process.env.CUSTODIAL_SIGNER_ID,
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,

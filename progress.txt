@@ -236,3 +236,7 @@
   - Uses user's registered email from session
   - DKG participation: same participantIndex slot allocation as other guardian types
 - Remaining: email verification trigger, 15-min TTL, rate limiting, custodial signer orchestration, integration tests
+
+### Env Vars — COMPLETE
+- EDIT: src/env.ts — added CUSTODIAL_SIGNER_URL and CUSTODIAL_SIGNER_ID (optional)
+- Remaining: email verification flow requires CIBA mailer integration and custodial signer endpoint calls — deferred to next iteration
