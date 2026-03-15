@@ -22,6 +22,10 @@ export const users = sqliteTable("user", {
   twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
+  role: text("role"),
+  banned: integer("banned", { mode: "boolean" }).default(false),
+  banReason: text("banReason"),
+  banExpires: integer("banExpires", { mode: "timestamp_ms" }),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
 });
@@ -38,6 +42,7 @@ export const sessions = sqliteTable(
     userAgent: text("userAgent"),
     activeOrganizationId: text("activeOrganizationId"),
     lastLoginMethod: text("lastLoginMethod"),
+    impersonatedBy: text("impersonatedBy"),
     userId: text("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

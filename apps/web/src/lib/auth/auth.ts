@@ -22,6 +22,7 @@ import { APIError, betterAuth } from "better-auth";
 import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import {
+  admin,
   anonymous,
   genericOAuth,
   jwt,
@@ -1063,6 +1064,10 @@ export const auth = betterAuth({
   },
   plugins: [
     nextCookies(),
+    admin({
+      defaultRole: "user",
+      adminRoles: ["admin"],
+    }),
     opaque({
       serverSetup: () => env.OPAQUE_SERVER_SETUP,
       resolveUserByIdentifier: resolveOpaqueUserByIdentifier,

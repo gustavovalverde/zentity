@@ -125,6 +125,7 @@ async function buildSessionFromUserId(userId: string): Promise<Session | null> {
       email: user.email,
       emailVerified: user.emailVerified,
       image: user.image,
+      role: user.role,
       createdAt: new Date(user.createdAt),
       updatedAt: new Date(user.updatedAt),
     },
@@ -402,6 +403,17 @@ export const protectedProcedure = trpc.procedure
   .use(withTracing)
   .use(withLogging)
   .use(enforceAuth);
+
+const ADMIN_ROLES = new Set(["admin"]);
+
+/** Procedure requiring admin role. Extends protectedProcedure with role check. */
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const role = ctx.session.user.role;
+  if (!(role && ADMIN_ROLES.has(role))) {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+  return next({ ctx });
+});
 
 /**
  * Creates a middleware that guards a procedure by feature requirements.

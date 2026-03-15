@@ -395,6 +395,7 @@ function createMockSession(userId: string, loginMethod: string) {
       emailVerified: true,
       isAnonymous: false,
       twoFactorEnabled: loginMethod === "passkey",
+      banned: false,
       createdAt: now,
       updatedAt: now,
     },

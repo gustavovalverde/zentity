@@ -3,17 +3,13 @@ import { z } from "zod";
 
 import { revokeIdentity } from "@/lib/db/queries/identity";
 
-import { protectedProcedure } from "../../server";
+import { adminProcedure, protectedProcedure } from "../../server";
 
 /**
  * Admin revocation — revokes a user's identity with a reason.
- * The caller must be authenticated (protectedProcedure enforces session).
- *
- * In production this would be role-gated to admin users; for now any
- * authenticated user can trigger revocation on their own identity via
- * selfRevoke, while this procedure is intended for admin use.
+ * Only users with the "admin" role can call this procedure.
  */
-export const revokeProcedure = protectedProcedure
+export const revokeProcedure = adminProcedure
   .input(
     z.object({
       userId: z.string().min(1),
