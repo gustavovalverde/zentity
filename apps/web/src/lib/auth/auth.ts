@@ -54,6 +54,13 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
+import {
+  consumeClaimsParameter,
+  filterClaimsByRequest,
+  parseClaimsParameter,
+  peekClaimsParameter,
+  stageClaimsParameter,
+} from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
 import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { consumeReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
@@ -607,6 +614,41 @@ async function beforeTokenPairwiseGuard(ctx: HookCtx) {
   }
 }
 
+async function beforeTokenExtractClaimsParameter(ctx: HookCtx) {
+  const code = typeof ctx.body?.code === "string" ? ctx.body.code : undefined;
+  if (!code) {
+    return;
+  }
+
+  const record = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, code))
+    .limit(1)
+    .get();
+  if (!record?.value) {
+    return;
+  }
+
+  try {
+    const stored = JSON.parse(record.value) as {
+      type?: string;
+      query?: Record<string, unknown>;
+      userId?: string;
+    };
+    if (stored.type !== "authorization_code" || !stored.userId) {
+      return;
+    }
+
+    const parsed = parseClaimsParameter(stored.query?.claims);
+    if (parsed) {
+      stageClaimsParameter(stored.userId, parsed);
+    }
+  } catch {
+    // Malformed verification value — skip claims extraction
+  }
+}
+
 function beforeConsentStripIdentityScopes(ctx: HookCtx) {
   if (typeof ctx.body?.scope !== "string") {
     return;
@@ -1003,6 +1045,7 @@ export const auth = betterAuth({
           await enforceCibaTokenAcr(ctx, db);
         }
         beforeTokenValidateResource(ctx);
+        await beforeTokenExtractClaimsParameter(ctx);
         return;
       }
       if (ctx.path === "/oauth2/consent") {
@@ -1249,23 +1292,38 @@ export const auth = betterAuth({
           }
         }
 
-        return {
+        const allClaims = {
           ...identityClaims,
           ...proofClaims,
           ...assuranceClaims,
           ...atHashClaim,
           ...sidClaim,
         };
+
+        const claimsParam = peekClaimsParameter(user.id);
+        if (!claimsParam?.id_token) {
+          return allClaims;
+        }
+
+        return filterClaimsByRequest(allClaims, claimsParam.id_token);
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList = toScopeList(scopes);
 
         if (!hasAnyProofScope(scopeList)) {
+          consumeClaimsParameter(user.id);
           return {};
         }
 
         const allProofClaims = await buildProofClaims(user.id);
-        return filterProofClaimsByScopes(allProofClaims, scopeList);
+        const filtered = filterProofClaimsByScopes(allProofClaims, scopeList);
+
+        const claimsParam = consumeClaimsParameter(user.id);
+        if (!claimsParam?.userinfo) {
+          return filtered;
+        }
+
+        return filterClaimsByRequest(filtered, claimsParam.userinfo);
       },
     }),
     oidc4ida({

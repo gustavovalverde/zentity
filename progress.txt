@@ -49,3 +49,12 @@
 - 7 unit tests covering all badge combinations
 - Updated consent-client.test.tsx to pass securityBadges prop
 - Files: client-security-badges.tsx (new), page.tsx, consent-client.tsx, consent-client.test.tsx, security-badges.test.ts (new)
+
+## Task 21: OIDC Claims Parameter — COMPLETE
+- Created claims-parameter.ts with parseClaimsParameter, filterClaimsByRequest, findUnsatisfiableEssentialClaim, stageClaimsParameter, peekClaimsParameter, consumeClaimsParameter
+- Bridge pattern: before-hook on /oauth2/token extracts `claims` from auth code verification record, stages in module-scoped Map
+- customIdTokenClaims peeks claims param, filters to claims.id_token when present
+- customUserInfoClaims consumes claims param, filters to claims.userinfo when present
+- Added claims_parameter_supported: true to discovery metadata
+- 15 unit tests covering parsing, filtering (null/value/values constraints), essential claim detection, stage/peek/consume lifecycle
+- Files: claims-parameter.ts (new), auth.ts, well-known-utils.ts, claims-parameter.test.ts (new)

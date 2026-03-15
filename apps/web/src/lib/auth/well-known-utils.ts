@@ -62,6 +62,7 @@ export function enrichDiscoveryMetadata(
     ...(issuer ? { end_session_endpoint: `${issuer}/oauth2/end-session` } : {}),
     // Assurance metadata
     acr_values_supported: [...ACR_VALUES_SUPPORTED],
+    claims_parameter_supported: true,
     claims_supported: [
       ...((metadata.claims_supported as string[]) ?? []),
       "acr",
