@@ -23,6 +23,7 @@ import {
   getRecoveryChallengeById,
   getRecoveryConfigById,
   getRecoveryConfigByUserId,
+  getRecoveryKeyPin,
   getRecoverySecretWrapperBySecretId,
   getUserByEmail,
   getUserByRecoveryId,
@@ -42,7 +43,10 @@ import {
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
 } from "@/lib/recovery/constants";
 import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
-import { decryptRecoveryWrappedDek } from "@/lib/recovery/recovery-keys";
+import {
+  decryptRecoveryWrappedDek,
+  getRecoveryKeyFingerprint,
+} from "@/lib/recovery/recovery-keys";
 import { bytesToBase64 } from "@/lib/utils/base64";
 
 import { publicProcedure } from "../../server";
@@ -393,6 +397,18 @@ export const recoverDekProcedure = publicProcedure
         code: "UNAUTHORIZED",
         message: "Recovery context is invalid.",
       });
+    }
+
+    const pin = await getRecoveryKeyPin(challenge.userId);
+    if (pin) {
+      const currentFingerprint = getRecoveryKeyFingerprint();
+      if (pin.keyFingerprint !== currentFingerprint) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Recovery key fingerprint mismatch. The key may have been substituted since enrollment.",
+        });
+      }
     }
 
     const secrets = await listEncryptedSecretsByUserId(challenge.userId);

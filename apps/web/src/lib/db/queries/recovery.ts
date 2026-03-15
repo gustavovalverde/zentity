@@ -10,12 +10,14 @@ import {
   type RecoveryGuardian,
   type RecoveryGuardianApproval,
   type RecoveryIdentifier,
+  type RecoveryKeyPin,
   type RecoverySecretWrapper,
   recoveryChallenges,
   recoveryConfigs,
   recoveryGuardianApprovals,
   recoveryGuardians,
   recoveryIdentifiers,
+  recoveryKeyPins,
   recoverySecretWrappers,
 } from "../schema/recovery";
 
@@ -507,4 +509,41 @@ export async function getRecoverySecretWrapperBySecretId(
     .where(eq(recoverySecretWrappers.secretId, secretId))
     .get();
   return row ?? null;
+}
+
+export async function getRecoveryKeyPin(
+  userId: string
+): Promise<RecoveryKeyPin | null> {
+  const row = await db
+    .select()
+    .from(recoveryKeyPins)
+    .where(eq(recoveryKeyPins.userId, userId))
+    .get();
+  return row ?? null;
+}
+
+export async function pinRecoveryKey(params: {
+  id: string;
+  userId: string;
+  keyFingerprint: string;
+}): Promise<RecoveryKeyPin> {
+  await db
+    .insert(recoveryKeyPins)
+    .values({
+      id: params.id,
+      userId: params.userId,
+      keyFingerprint: params.keyFingerprint,
+    })
+    .onConflictDoNothing()
+    .run();
+
+  const row = await db
+    .select()
+    .from(recoveryKeyPins)
+    .where(eq(recoveryKeyPins.userId, params.userId))
+    .get();
+  if (!row) {
+    throw new Error("Failed to pin recovery key.");
+  }
+  return row;
 }

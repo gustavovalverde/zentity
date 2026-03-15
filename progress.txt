@@ -59,3 +59,16 @@
   - AAD = encodeAad(["zentity-recovery-dek", secretId, userId]) — length-prefixed, prevents cross-user/cross-secret wrapper substitution
   - Breaking change: existing wrappers without AAD become invalid (acceptable per CLAUDE.md: no users, no backward compat)
   - Reuses encodeAad from FHE integrity binding (Task 08) for consistency
+
+### Sub-task: ML-KEM Key Pinning (TOFU) — COMPLETE
+- Files changed:
+  - EDIT: src/lib/db/schema/recovery.ts — added recovery_key_pins table (userId unique)
+  - EDIT: src/lib/db/queries/recovery.ts — added getRecoveryKeyPin, pinRecoveryKey queries
+  - EDIT: src/lib/recovery/recovery-keys.ts — added getRecoveryKeyFingerprint (SHA-256 of public key)
+  - EDIT: src/lib/trpc/routers/recovery/guardian.ts — pin key on first wrapper store, reject on mismatch
+  - EDIT: src/lib/trpc/routers/recovery/challenge.ts — verify pin before DEK release
+  - EDIT: src/lib/recovery/__tests__/recovery-keys.test.ts — 3 fingerprint tests
+- Arch decisions:
+  - TOFU model: first wrapper store pins SHA-256(publicKey); subsequent stores + DEK recovery verify
+  - Pin stored server-side as immutability constraint — prevents operator from swapping keys after enrollment
+  - onConflictDoNothing for pin insert — concurrent first-store races resolve safely

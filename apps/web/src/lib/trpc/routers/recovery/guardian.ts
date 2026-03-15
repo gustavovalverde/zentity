@@ -14,12 +14,15 @@ import {
   getRecoveryGuardianByEmail,
   getRecoveryGuardianById,
   getRecoveryGuardianByType,
+  getRecoveryKeyPin,
   listRecoveryGuardiansByConfigId,
   listRecoveryWrappersByUserId,
+  pinRecoveryKey,
   upsertRecoverySecretWrapper,
 } from "@/lib/db/queries/recovery";
 import { getTwoFactorByUserId } from "@/lib/db/queries/two-factor";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
+import { getRecoveryKeyFingerprint } from "@/lib/recovery/recovery-keys";
 
 import { protectedProcedure } from "../../server";
 
@@ -215,6 +218,25 @@ export const storeSecretWrapperProcedure = protectedProcedure
     const config = await getRecoveryConfigByUserId(ctx.userId);
     if (!config) {
       return { stored: false };
+    }
+
+    const fingerprint = getRecoveryKeyFingerprint();
+    const existingPin = await getRecoveryKeyPin(ctx.userId);
+
+    if (existingPin && existingPin.keyFingerprint !== fingerprint) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message:
+          "Recovery key has changed since enrollment. This may indicate a key substitution attack.",
+      });
+    }
+
+    if (!existingPin) {
+      await pinRecoveryKey({
+        id: crypto.randomUUID(),
+        userId: ctx.userId,
+        keyFingerprint: fingerprint,
+      });
     }
 
     const wrapper = await upsertRecoverySecretWrapper({

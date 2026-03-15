@@ -1,6 +1,11 @@
 import type { RecoveryEnvelope } from "../recovery-keys";
 
-import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
+import {
+  createCipheriv,
+  createHash,
+  randomBytes,
+  randomUUID,
+} from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +16,8 @@ import {
   mlKemKeygen,
 } from "@/lib/privacy/primitives/ml-kem";
 import { bytesToBase64 } from "@/lib/utils/base64";
+
+const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
 interface AadContext {
   secretId: string;
@@ -245,5 +252,28 @@ describe("recovery-keys AAD binding", () => {
       userId: userA,
     });
     expect(recovered).toEqual(new Uint8Array(dek));
+  });
+});
+
+describe("recovery key fingerprint (TOFU pinning)", () => {
+  it("fingerprint is deterministic for the same public key", () => {
+    const { publicKey } = mlKemKeygen();
+    const fp1 = createHash("sha256").update(publicKey).digest("hex");
+    const fp2 = createHash("sha256").update(publicKey).digest("hex");
+    expect(fp1).toBe(fp2);
+  });
+
+  it("different keys produce different fingerprints", () => {
+    const k1 = mlKemKeygen();
+    const k2 = mlKemKeygen();
+    const fp1 = createHash("sha256").update(k1.publicKey).digest("hex");
+    const fp2 = createHash("sha256").update(k2.publicKey).digest("hex");
+    expect(fp1).not.toBe(fp2);
+  });
+
+  it("fingerprint is a 64-char hex string (SHA-256)", () => {
+    const { publicKey } = mlKemKeygen();
+    const fp = createHash("sha256").update(publicKey).digest("hex");
+    expect(fp).toMatch(SHA256_HEX_PATTERN);
   });
 });

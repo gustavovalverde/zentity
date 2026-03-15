@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createDecipheriv } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -92,6 +92,11 @@ export function getRecoveryPublicKey(): {
     alg: "ML-KEM-768",
     publicKey: bytesToBase64(keys.publicKey),
   };
+}
+
+export function getRecoveryKeyFingerprint(): string {
+  const keys = loadKeys();
+  return createHash("sha256").update(keys.publicKey).digest("hex");
 }
 
 export interface RecoveryEnvelope {
