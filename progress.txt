@@ -251,3 +251,8 @@
   - Same approval link/flow — approveGuardian handles all guardian types uniformly
   - FROST signing infrastructure unchanged — custodial signer is a standard SIGNER_ENDPOINTS entry
   - 15-min TTL already enforced via challenge expiresAt; 3/24h rate limit via countRecentRecoveryChallenges
+
+## Task 24: ZK Encoding & Circuit Documentation — COMPLETE
+- Files changed:
+  - EDIT: docs/zk-nationality-proofs.md — corrected Merkle tree diagram leaf values from ISO numeric (276, 250, 380, 724) to weighted-sum (4474197, 4608577, 4805697, 4543312); updated encoding description; added ZK vs FHE cross-reference callout
+  - EDIT: docs/zk-architecture.md — clarified nationality_membership uses weighted-sum encoding; documented dual-commitment design (base_commitment vs binding_commitment) with Poseidon2 formulas; corrected is_bound as return value not public input; added ZK vs FHE encoding callout

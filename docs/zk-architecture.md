@@ -26,10 +26,10 @@ flowchart TD
 |---------|---------|----------------|---------------|
 | `age_verification` | Prove age >= threshold | DOB (days since 1900) + document hash | Current days, min age days, nonce, claim hash |
 | `doc_validity` | Prove document not expired | Expiry date + document hash | Current date, nonce, claim hash |
-| `nationality_membership` | Prove nationality in group | Nationality code + Merkle path | Merkle root, nonce, claim hash |
+| `nationality_membership` | Prove nationality in group | Nationality code (weighted-sum) + Merkle path | Merkle root, nonce, claim hash |
 | `address_jurisdiction` | Prove address in jurisdiction | Address + Merkle path | Merkle root, nonce, claim hash |
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
-| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, base_commitment, binding_commitment, is_bound |
+| `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, base_commitment, binding_commitment |
 
 **Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
 
@@ -46,17 +46,21 @@ The `identity_binding` circuit provides replay protection by cryptographically b
 
 The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings (e.g., `zentity-binding-wallet-bbs-v1`) to prevent cross-use attacks. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for BBS+ wallet binding details.
 
-**Binding commitment formula:**
+> **ZK vs FHE encoding:** Nationality codes in ZK circuits use weighted-sum encoding (`char1×65536 + char2×256 + char3`), not ISO 3166-1 numeric codes. See [Nationality Proofs](zk-nationality-proofs.md) for details.
 
-```typescript
-commitment = Poseidon2(
-  binding_secret ||
-  user_id_hash ||
-  document_hash ||
-  msg_sender_hash ||
-  audience_hash
-)
+**Dual-commitment design:**
+
+The circuit computes two commitments from the private inputs and verifies them against the corresponding public inputs:
+
+```text
+base_commitment    = Poseidon2(binding_secret, user_id_hash)
+binding_commitment = Poseidon2(binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash)
 ```
+
+- `base_commitment` — binds the proof to the user's identity secret only, enabling linkage across sessions for the same user
+- `binding_commitment` — binds the full session context (document, caller, audience), preventing replay across different verification contexts
+
+The circuit returns `pub bool` (`is_bound`) — `true` when both commitments match, otherwise the circuit panics via `assert`. This is a **return value**, not a public input.
 
 This ensures that:
 

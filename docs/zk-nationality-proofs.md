@@ -50,10 +50,10 @@ flowchart TD
   FRA["Hash(FRA)"]
   ITA["Hash(ITA)"]
   ESP["Hash(ESP)"]
-  C276["276\n(Germany)"]
-  C250["250\n(France)"]
-  C380["380\n(Italy)"]
-  C724["724\n(Spain)"]
+  C_DEU["4474197\n(Germany)"]
+  C_FRA["4608577\n(France)"]
+  C_ITA["4805697\n(Italy)"]
+  C_ESP["4543312\n(Spain)"]
 
   Root --- AB
   Root --- CD
@@ -61,15 +61,17 @@ flowchart TD
   AB --- FRA
   CD --- ITA
   CD --- ESP
-  DEU --- C276
-  FRA --- C250
-  ITA --- C380
-  ESP --- C724
+  DEU --- C_DEU
+  FRA --- C_FRA
+  ITA --- C_ITA
+  ESP --- C_ESP
 ```
 
-1. Each country code is converted to its ISO numeric code (DEU → 276)
+1. Each country code is converted to a **weighted-sum encoding**: `char1×65536 + char2×256 + char3` (e.g., DEU = `'D'×65536 + 'E'×256 + 'U'` = 4474197). This encoding is compatible with the ZKPassport ecosystem via `getCountryWeightedSum()`.
 2. Each code is hashed using **Poseidon2** (a ZK-friendly hash function)
 3. Hashes are paired and hashed together, building up to a single root
+
+> **ZK vs FHE encoding:** ISO 3166-1 numeric codes (e.g., DEU = 276) are used only by FHE encryption (`countryCodeToNumeric` in `compliance.ts`). ZK circuits use the weighted-sum encoding described above.
 
 ### The Merkle Root
 
@@ -85,7 +87,7 @@ The root hash uniquely identifies the set of countries:
 
 To prove Germany (DEU) is in the EU tree, you provide:
 
-1. Your country code (private): 276
+1. Your country code (private): 4474197 (weighted-sum of "DEU")
 2. The "sibling" hashes along the path to the root (private)
 3. The path directions - left or right at each level (private)
 4. The expected root (public)
