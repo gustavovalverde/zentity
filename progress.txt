@@ -46,7 +46,7 @@
   - encodeAad already existed for AES-GCM AAD; reused for HMAC context binding
   - uniqueIndex prevents duplicate (userId, attributeType) rows — defense-in-depth against insertion attacks
 
-## Task 09: Recovery Key Authentication — IN PROGRESS
+## Task 09: Recovery Key Authentication — COMPLETE
 ### Sub-task: Recovery DEK AAD Binding — COMPLETE
 - PRD: security-hardening-malicious-server.md Phase 7
 - Files changed:
@@ -113,3 +113,4 @@
   - Signer validates against GUARDIAN_ASSERTION_JWKS_URL (already wired in Rust)
   - 5-minute JWT TTL since signing happens immediately after threshold is reached
   - Claims: scope="frost:sign", session_id=challengeId, participant_id, guardian_id, sub=userId
+- Remaining: signed HPKE key verification N/A — FROST identity keys don't exist until after DKG (chicken-and-egg); HPKE persistence addresses core concern

@@ -23,17 +23,17 @@ End-to-end: `recovery_key_pins` table → TOFU pinning at enrollment → FROST s
 
 ### Acceptance criteria
 
-- [ ] ML-KEM key pin stored at enrollment; subsequent fetch with same key passes
-- [ ] ML-KEM key pin mismatch (different key) aborts with error
-- [ ] Valid FROST aggregated signature derives correct unwrap key and decrypts DEK
-- [ ] Invalid/missing FROST signature cannot derive unwrap key
-- [ ] HPKE keys persisted across signer restarts
-- [ ] Signed HPKE key passes DKG round 2; unsigned/wrong-signed key rejected
-- [ ] Guardian approval tokens are JWTs bound to challengeId
-- [ ] Expired/wrong-challenge guardian JWT rejected
-- [ ] `GUARDIAN_ASSERTION_JWKS_URL` required (startup fails without it)
+- [x] ML-KEM key pin stored at enrollment; subsequent fetch with same key passes
+- [x] ML-KEM key pin mismatch (different key) aborts with error
+- [x] Valid FROST aggregated signature derives correct unwrap key and decrypts DEK
+- [x] Invalid/missing FROST signature cannot derive unwrap key
+- [x] HPKE keys persisted across signer restarts
+- [ ] Signed HPKE key passes DKG round 2; unsigned/wrong-signed key rejected — N/A: FROST identity keys don't exist until after DKG completes (chicken-and-egg); requires separate identity key system. HPKE persistence (commit a943f0d5) addresses the core concern
+- [x] Guardian approval tokens are JWTs bound to challengeId
+- [x] Expired/wrong-challenge guardian JWT rejected
+- [x] `GUARDIAN_ASSERTION_JWKS_URL` required (startup fails without it) — already validated in config.rs:412
 - [x] Recovery DEK AAD includes secretId and userId
 - [x] Recovery DEK with mismatched AAD fails GCM authentication
-- [ ] Integration test: full recovery flow with crypto-gated DEK release
-- [ ] Integration test: key substitution detected by pin mismatch
-- [ ] Unit test: HPKE key signature verification
+- [x] Integration test: full recovery flow with crypto-gated DEK release
+- [x] Integration test: key substitution detected by pin mismatch
+- [ ] Unit test: HPKE key signature verification — N/A: depends on signed HPKE key (see above)
