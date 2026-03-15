@@ -6,6 +6,8 @@ import { exportJWK, generateKeyPair } from "jose";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 
+import { decryptPrivateKey, encryptPrivateKey } from "./key-vault";
+
 const JARM_ALG = "ECDH-ES";
 let cachedJarmJwk: JsonWebKey | null = null;
 
@@ -26,7 +28,7 @@ export async function getJarmDecryptionKey(): Promise<JsonWebKey> {
     .get();
 
   if (row) {
-    cachedJarmJwk = JSON.parse(row.privateKey) as JsonWebKey;
+    cachedJarmJwk = JSON.parse(decryptPrivateKey(row.privateKey)) as JsonWebKey;
     return cachedJarmJwk;
   }
 
@@ -43,7 +45,7 @@ export async function getJarmDecryptionKey(): Promise<JsonWebKey> {
     .values({
       id: kid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: JARM_ALG,
       crv: "P-256",
     })

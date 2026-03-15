@@ -2,6 +2,10 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
+import {
+  decryptPrivateKey,
+  encryptPrivateKey,
+} from "@/lib/auth/oidc/key-vault";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 import {
@@ -35,7 +39,9 @@ async function getOrCreateMlDsaSigningKey(): Promise<MlDsaSigningKey> {
     .get();
 
   if (existing) {
-    const privateKeyData = JSON.parse(existing.privateKey) as { raw: string };
+    const privateKeyData = JSON.parse(
+      decryptPrivateKey(existing.privateKey)
+    ) as { raw: string };
     const publicKeyData = JSON.parse(existing.publicKey) as { pub: string };
 
     cachedSigningKey = {
@@ -63,7 +69,7 @@ async function getOrCreateMlDsaSigningKey(): Promise<MlDsaSigningKey> {
     .values({
       id: kid,
       publicKey: publicKeyJson,
-      privateKey: privateKeyJson,
+      privateKey: encryptPrivateKey(privateKeyJson),
       alg: ML_DSA_ALG,
       crv: null,
     })

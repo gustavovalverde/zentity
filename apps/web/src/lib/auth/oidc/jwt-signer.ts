@@ -7,6 +7,7 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
+import { decryptPrivateKey, encryptPrivateKey } from "./key-vault";
 import { signJwtWithMlDsa } from "./ml-dsa-signer";
 
 type SigningAlg = "RS256" | "ES256" | "EdDSA" | "ML-DSA-65";
@@ -69,7 +70,7 @@ async function getOrCreateSigningKey(
       .values({
         id: kid,
         publicKey: JSON.stringify(publicJwk),
-        privateKey: JSON.stringify(privateJwk),
+        privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
         alg,
         crv: config.crv,
       })
@@ -80,7 +81,10 @@ async function getOrCreateSigningKey(
     return result;
   }
 
-  const privateJwk = JSON.parse(row.privateKey) as Record<string, unknown>;
+  const privateJwk = JSON.parse(decryptPrivateKey(row.privateKey)) as Record<
+    string,
+    unknown
+  >;
   const privateKey = await importJWK(privateJwk, alg);
 
   if (!(privateKey instanceof CryptoKey)) {

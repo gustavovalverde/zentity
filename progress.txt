@@ -1,60 +1,27 @@
-## 2026-03-15 — Patch oauth-provider for RFC 8693 token exchange + FPA code exchange
+## Task 01: Step-Up Hook Fix — ALREADY COMPLETE
+- Commit a7da9570 already fixed this (getSessionFromCtx replaces manual cookie parsing)
+- 14 integration tests in step-up-auth.integration.test.ts covering acr_values, max_age, prompt=none, PAR
 
-### Task
-- Fix 16 pre-existing test failures (12 in token-exchange, 4 in authorize-challenge)
-- Root cause: oauth-provider Zod schema strips RFC 8693 fields; FPA code exchange missing sessionId + authSession
+## Task 02: MCP HTTP Authentication — ALREADY COMPLETE
+- Hono auth middleware validates Bearer/DPoP tokens on /mcp
+- CORS restricted to localhost via config.allowedOrigins
+- WWW-Authenticate responses per RFC 6750
+- requireAuth() works via AsyncLocalStorage/runWithAuth
 
-### Changes
-- **oauth-provider patch** (`patches/@better-auth__oauth-provider.patch`, 3 hunks):
-  1. Token endpoint body: add `subject_token`, `subject_token_type`, `requested_token_type`, `audience` optional fields so Zod doesn't strip them
-  2. Remove blanket `redirect_uri` required check — FPA codes have no redirect; `checkVerificationValue` already handles optional redirect_uri
-  3. Surface `verificationValue.authSession` as `auth_session` in token response via `extra.tokenResponse`
-- **FPA `issueAuthorizationCode`**: Create a better-auth session and store `sessionId` in verification value so the standard token handler can find it
-
-### Files changed
-- `apps/web/patches/@better-auth__oauth-provider.patch` (new)
-- `apps/web/package.json` (patchedDependencies entry)
-- `apps/web/pnpm-lock.yaml`
-- `apps/web/src/app/api/oauth2/authorize-challenge/route.ts` (import sessions, create session in issueAuthorizationCode)
-
-### Key decisions
-- Patch against vendor tarball (already has CIBA patches), not npm registry base
-- Auth session created per-code so standard handler's session lookup works
-- `auth_session` round-tripped through verification value → token response for FPA step-up correlation
-
-### Blockers
-- None. All 264 tests pass. All quality + CIBA tasks complete.
-
----
-
-## 2026-03-15 — Fix all failing unit tests (quality-naming-consistency 5e + test isolation)
-
-### Task
-- quality-naming-consistency 5e: auth error message consistency (stale period in test assertions)
-- Fix vmThreads cross-test contamination: 11 pre-existing test failures → 0
-
-### Changes
-- **FHE auth message period (5e)**: `route.test.ts` assertions updated to match `requireSession` output ("Authentication required" without period)
-- **Browser mock rename**: `trpcMocks.crypto` → `trpcMocks.zk` in `browser.test.ts` after router rename
-- **vmThreads mock isolation**: Restructured 5 test files to be resilient to vi.mock factory leaking:
-  - `intent/route.test.ts`, `stage/route.test.ts`, `fhe/keys/register/route.test.ts`: Mock `@/lib/auth/api-auth` (direct dep) instead of `@/lib/auth/auth` (transitive); use `vi.mocked(requireSession)` instead of hoisted `authMocks`
-  - `stage/route.test.ts`: Also mock `@/lib/auth/api-auth` to prevent real module caching in VM
-  - `web-push.test.ts`: Use `Object.defineProperty` on imported env to reconfigure VAPID keys per-test, resilient to leaked `@/env` factory from passport-chip
-- **Setup file**: Added comment clarifying inert `@/lib/auth` mock path (no index.ts exists)
-
-### Files changed
-- `apps/web/src/app/api/fhe/keys/register/__tests__/route.test.ts`
-- `apps/web/src/app/api/fhe/verify-age/__tests__/route.test.ts`
-- `apps/web/src/app/api/oauth2/identity/intent/__tests__/route.test.ts`
-- `apps/web/src/app/api/oauth2/identity/stage/__tests__/route.test.ts`
-- `apps/web/src/lib/privacy/fhe/__tests__/browser.test.ts`
-- `apps/web/src/lib/push/__tests__/web-push.test.ts`
-- `apps/web/vitest.setup.mts`
-
-### Key decisions
-- Kept vmThreads pool (memory-efficient) — threads/forks OOM on this codebase
-- Root cause: vmThreads shares vi.mock factory registry across files despite isolate: true
-- Fix pattern: mock at the direct dependency level (@/lib/auth/api-auth not @/lib/auth/auth) and use vi.mocked() on the imported mock module to always configure the actual function the SUT calls
-
-### Blockers
-- None. All quality tasks are now complete.
+## Task 03: JWKS Key Vault — COMPLETE
+- PRD: security-hardening-malicious-server.md Phase 1
+- Files changed:
+  - NEW: src/lib/auth/oidc/key-vault.ts — AES-256-GCM envelope encryption (encrypt/decrypt/detect)
+  - NEW: src/lib/auth/oidc/__tests__/key-vault.test.ts — 8 tests
+  - EDIT: src/env.ts — KEY_ENCRYPTION_KEY env var (required >=32 chars in prod, optional dev)
+  - EDIT: src/lib/auth/oidc/jwt-signer.ts — wrap on write, unwrap on read
+  - EDIT: src/lib/auth/oidc/ml-dsa-signer.ts — wrap on write, unwrap on read
+  - EDIT: src/lib/auth/oidc/jarm-key.ts — wrap on write, unwrap on read
+  - EDIT: src/app/api/auth/oauth2/jwks/route.ts — filter ECDH-ES keys from public JWKS
+- Arch decisions:
+  - KEK derived via SHA-256 to normalize any input to 32 bytes
+  - Envelope format: {"v":1,"iv":"...","ct":"..."} — version field enables future format changes
+  - Plaintext detection: if stored value doesn't start with {"v":, treat as plaintext (migration compat)
+  - No KEK set = no-op (keys stored/read as plaintext, for dev convenience)
+  - disablePrivateKeyEncryption: true KEPT — removing it would make better-auth encrypt with BETTER_AUTH_SECRET in its own format, breaking our signers that query the same jwks table
+  - JARM ECDH-ES filtered from /oauth2/jwks (decryption keys don't belong in verification JWKS)

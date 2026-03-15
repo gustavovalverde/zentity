@@ -66,6 +66,13 @@ export const env = createEnv({
     INTERNAL_SERVICE_TOKEN: z.string().optional(),
 
     // Cryptographic secrets
+    KEY_ENCRYPTION_KEY: z
+      .string()
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || (s && s.length >= 32),
+        "KEY_ENCRYPTION_KEY must be at least 32 characters in production"
+      ),
     BBS_ISSUER_SECRET: z.string().optional(),
     RECOVERY_ML_KEM_SECRET_KEY: z.string().optional(),
 
@@ -170,6 +177,7 @@ export const env = createEnv({
     SIGNER_COORDINATOR_URL: process.env.SIGNER_COORDINATOR_URL,
     SIGNER_ENDPOINTS: process.env.SIGNER_ENDPOINTS,
     INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
+    KEY_ENCRYPTION_KEY: process.env.KEY_ENCRYPTION_KEY,
     BBS_ISSUER_SECRET: process.env.BBS_ISSUER_SECRET,
     RECOVERY_ML_KEM_SECRET_KEY: process.env.RECOVERY_ML_KEM_SECRET_KEY,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
