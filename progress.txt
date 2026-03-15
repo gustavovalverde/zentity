@@ -222,3 +222,17 @@
 - NEW: src/lib/auth/oidc/__tests__/backchannel-logout.test.ts — 4 unit tests
 - Demo-rp BCL receiver deferred (separate task)
 - Remaining: demo-rp BCL receiver + banner (deferred to demo-rp work)
+
+## Task 14: Custodial FROST Recovery — IN PROGRESS
+### Guardian Type + tRPC Procedure + Constraints — COMPLETE
+- Files changed:
+  - EDIT: src/lib/recovery/constants.ts — added RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL
+  - EDIT: src/lib/trpc/routers/recovery/guardian.ts — addGuardianCustodialEmailProcedure with max-1 and not-sole-guardian constraints
+  - EDIT: src/lib/trpc/routers/recovery/router.ts — wired addGuardianCustodialEmail
+- Arch decisions:
+  - guardianType is plain text column — no schema migration needed
+  - Max 1 custodial per user: checked via getRecoveryGuardianByType
+  - Not sole guardian: if totalGuardians=1 and no guardians yet, rejects
+  - Uses user's registered email from session
+  - DKG participation: same participantIndex slot allocation as other guardian types
+- Remaining: email verification trigger, 15-min TTL, rate limiting, custodial signer orchestration, integration tests

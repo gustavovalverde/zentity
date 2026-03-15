@@ -21,7 +21,10 @@ import {
   upsertRecoverySecretWrapper,
 } from "@/lib/db/queries/recovery";
 import { getTwoFactorByUserId } from "@/lib/db/queries/two-factor";
-import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
+import {
+  RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,
+  RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+} from "@/lib/recovery/constants";
 import { getRecoveryKeyFingerprint } from "@/lib/recovery/recovery-keys";
 
 import { protectedProcedure } from "../../server";
@@ -169,6 +172,71 @@ export const addGuardianTwoFactorProcedure = protectedProcedure.mutation(
       recoveryConfigId: config.id,
       email: "authenticator",
       guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
+      participantIndex,
+    });
+
+    return { guardian, created: true };
+  }
+);
+
+export const addGuardianCustodialEmailProcedure = protectedProcedure.mutation(
+  async ({ ctx }) => {
+    const config = await getRecoveryConfigByUserId(ctx.userId);
+    if (!config) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message: "Enable recovery before adding guardians.",
+      });
+    }
+
+    // Constraint: max 1 custodial guardian per user
+    const existing = await getRecoveryGuardianByType({
+      recoveryConfigId: config.id,
+      guardianType: RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,
+    });
+    if (existing) {
+      return { guardian: existing, created: false };
+    }
+
+    // Constraint: custodial guardian cannot be the only guardian
+    const guardians = await listRecoveryGuardiansByConfigId(config.id);
+    if (guardians.length === 0 && config.totalGuardians === 1) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Custodial guardian cannot be the only guardian. Add at least one human guardian first.",
+      });
+    }
+
+    if (guardians.length >= config.totalGuardians) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "All guardian slots are already filled.",
+      });
+    }
+
+    const assignedIndices = new Set(guardians.map((g) => g.participantIndex));
+    let participantIndex = 1;
+    while (
+      participantIndex <= config.totalGuardians &&
+      assignedIndices.has(participantIndex)
+    ) {
+      participantIndex += 1;
+    }
+
+    if (participantIndex > config.totalGuardians) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No guardian slots available.",
+      });
+    }
+
+    // Use the user's registered email as the custodial guardian email
+    const guardian = await createRecoveryGuardian({
+      id: crypto.randomUUID(),
+      recoveryConfigId: config.id,
+      email: ctx.session.user.email ?? "custodial",
+      guardianType: RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,
       participantIndex,
     });
 

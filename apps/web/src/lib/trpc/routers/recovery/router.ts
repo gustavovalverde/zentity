@@ -15,6 +15,7 @@ import {
   setupProcedure,
 } from "./config";
 import {
+  addGuardianCustodialEmailProcedure,
   addGuardianEmailProcedure,
   addGuardianTwoFactorProcedure,
   listGuardiansProcedure,
@@ -32,6 +33,7 @@ export const recoveryRouter = router({
   removeGuardian: removeGuardianProcedure,
   addGuardianEmail: addGuardianEmailProcedure,
   addGuardianTwoFactor: addGuardianTwoFactorProcedure,
+  addGuardianCustodialEmail: addGuardianCustodialEmailProcedure,
   wrappersStatus: wrappersStatusProcedure,
   storeSecretWrapper: storeSecretWrapperProcedure,
   start: startProcedure,
