@@ -20,6 +20,7 @@ import "server-only";
 
 import { router } from "../server";
 import { accountRouter } from "./account";
+import { adminRouter } from "./admin";
 import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
 import { compliantTokenRouter } from "./compliant-token";
@@ -34,6 +35,7 @@ import { zkRouter } from "./zk/router";
 
 export const appRouter = router({
   account: accountRouter,
+  admin: adminRouter,
   assurance: assuranceRouter,
   attestation: attestationRouter,
   credentials: credentialsRouter,

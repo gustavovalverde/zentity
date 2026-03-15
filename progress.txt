@@ -10,3 +10,14 @@
 - `buildSessionFromUserId` includes `role` for OAuth token sessions
 - Fixed mock session in data.integration.test.ts to include `banned`
 - Files: auth.ts, auth schema, server.ts, revoke.ts, revoke.test.ts, data.integration.test.ts
+
+## Task 18: JWKS Signing Key Rotation — COMPLETE
+- `rotateSigningKey(alg, overlapHours)` in jwt-signer.ts: retires active key with expiresAt, creates new key
+- `cleanupExpiredKeys()` deletes keys past overlap window
+- `getOrCreateSigningKey` now prefers active key (expiresAt IS NULL), falls back to unexpired overlap key, ordered by createdAt desc
+- Created `adminRouter` with `rotateSigningKey` and `cleanupExpiredKeys` procedures
+- Wired adminRouter into appRouter
+- Extracted `createSigningKey()` helper from getOrCreateSigningKey
+- Exported `StandardAlg` type for use in admin router
+- 8 tests: rotation creates new + retires old, null oldKid on fresh, getOrCreateSigningKey returns new after rotation, both keys in JWKS during overlap, cleanup removes expired, cleanup preserves active, admin can rotate, non-admin FORBIDDEN
+- Files: jwt-signer.ts, admin.ts (new), app.ts, key-rotation.test.ts (new)

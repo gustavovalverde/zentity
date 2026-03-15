@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
 import { db } from "@/lib/db/connection";
@@ -12,7 +12,7 @@ import { signJwtWithMlDsa } from "./ml-dsa-signer";
 
 type SigningAlg = "RS256" | "ES256" | "EdDSA" | "ML-DSA-65";
 
-type StandardAlg = "RS256" | "ES256" | "EdDSA";
+export type StandardAlg = "RS256" | "ES256" | "EdDSA";
 
 interface CachedSigningKey {
   kid: string;
@@ -21,7 +21,7 @@ interface CachedSigningKey {
 
 const keyCache = new Map<StandardAlg, CachedSigningKey>();
 
-/** Clear the module-level signing key cache (for test isolation). */
+/** Clear the module-level signing key cache (for test isolation and rotation). */
 export function resetSigningKeyCache(): void {
   keyCache.clear();
 }
@@ -43,6 +43,14 @@ const KEY_GEN_OPTIONS: Record<
   },
 };
 
+/**
+ * Get the active signing key for an algorithm, or create one if none exists.
+ *
+ * Selection priority:
+ * 1. Active key (expiresAt IS NULL) — the current signing key
+ * 2. Overlap key (expiresAt > now()) — graceful mid-rotation fallback
+ * 3. No key found — generate and persist a new one
+ */
 export async function getOrCreateSigningKey(
   alg: StandardAlg
 ): Promise<CachedSigningKey> {
@@ -51,34 +59,24 @@ export async function getOrCreateSigningKey(
     return cached;
   }
 
+  const now = new Date();
+
+  // Prefer active key (no expiry), fall back to unexpired overlap key
   const row = await db
     .select()
     .from(jwks)
-    .where(eq(jwks.alg, alg))
+    .where(
+      and(
+        eq(jwks.alg, alg),
+        or(isNull(jwks.expiresAt), gt(jwks.expiresAt, now))
+      )
+    )
+    .orderBy(jwks.expiresAt, desc(jwks.createdAt))
     .limit(1)
     .get();
 
   if (!row) {
-    const config = KEY_GEN_OPTIONS[alg];
-    const keyPair = await generateKeyPair(config.alg, config.opts);
-    const publicJwk = await exportJWK(keyPair.publicKey);
-    const privateJwk = await exportJWK(keyPair.privateKey);
-    const kid = crypto.randomUUID();
-
-    await db
-      .insert(jwks)
-      .values({
-        id: kid,
-        publicKey: JSON.stringify(publicJwk),
-        privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
-        alg,
-        crv: config.crv,
-      })
-      .run();
-
-    const result = { kid, privateKey: keyPair.privateKey };
-    keyCache.set(alg, result);
-    return result;
+    return createSigningKey(alg);
   }
 
   const privateJwk = JSON.parse(decryptPrivateKey(row.privateKey)) as Record<
@@ -94,6 +92,74 @@ export async function getOrCreateSigningKey(
   const result = { kid: row.id, privateKey };
   keyCache.set(alg, result);
   return result;
+}
+
+async function createSigningKey(alg: StandardAlg): Promise<CachedSigningKey> {
+  const config = KEY_GEN_OPTIONS[alg];
+  const keyPair = await generateKeyPair(config.alg, config.opts);
+  const publicJwk = await exportJWK(keyPair.publicKey);
+  const privateJwk = await exportJWK(keyPair.privateKey);
+  const kid = crypto.randomUUID();
+
+  await db
+    .insert(jwks)
+    .values({
+      id: kid,
+      publicKey: JSON.stringify(publicJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
+      alg,
+      crv: config.crv,
+    })
+    .run();
+
+  const result = { kid, privateKey: keyPair.privateKey };
+  keyCache.set(alg, result);
+  return result;
+}
+
+const DEFAULT_OVERLAP_HOURS = 24;
+
+/**
+ * Rotate a signing key: mark the current active key with an expiry window
+ * and generate a fresh key. During overlap, both keys appear in JWKS so
+ * existing tokens remain verifiable.
+ */
+export async function rotateSigningKey(
+  alg: StandardAlg,
+  overlapHours = DEFAULT_OVERLAP_HOURS
+): Promise<{ oldKid: string | null; newKid: string }> {
+  await cleanupExpiredKeys();
+
+  const activeKey = await db
+    .select({ id: jwks.id })
+    .from(jwks)
+    .where(and(eq(jwks.alg, alg), isNull(jwks.expiresAt)))
+    .limit(1)
+    .get();
+
+  let oldKid: string | null = null;
+
+  if (activeKey) {
+    const expiresAt = new Date(Date.now() + overlapHours * 3_600_000);
+    await db
+      .update(jwks)
+      .set({ expiresAt })
+      .where(eq(jwks.id, activeKey.id))
+      .run();
+    oldKid = activeKey.id;
+  }
+
+  keyCache.delete(alg);
+
+  const newKey = await createSigningKey(alg);
+  return { oldKid, newKid: newKey.kid };
+}
+
+/** Delete keys whose overlap window has expired. */
+export async function cleanupExpiredKeys(): Promise<number> {
+  const now = new Date();
+  const result = await db.delete(jwks).where(lt(jwks.expiresAt, now)).run();
+  return result.rowsAffected;
 }
 
 async function signWithAlg(
