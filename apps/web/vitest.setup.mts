@@ -23,6 +23,7 @@ if (
   await ready;
   process.env.OPAQUE_SERVER_SETUP = opaqueServer.createSetup();
 }
+process.env.DEDUP_HMAC_SECRET ||= "test-dedup-hmac-secret-minimum-32-chars";
 process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 
 // Disable logging in tests unless explicitly enabled
