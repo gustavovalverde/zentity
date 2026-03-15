@@ -116,6 +116,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
 import { sendWebPush } from "@/lib/push/web-push";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 
@@ -142,30 +143,6 @@ const betterAuthSchema = {
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
 };
-
-function buildNotificationBody(
-  clientLabel: string,
-  bindingMessage: string | undefined,
-  authorizationDetails: unknown
-): string {
-  if (bindingMessage) {
-    return `${clientLabel}: ${bindingMessage}`;
-  }
-
-  if (Array.isArray(authorizationDetails)) {
-    for (const detail of authorizationDetails) {
-      if (detail?.type === "purchase" && detail?.item) {
-        const amount =
-          detail.amount?.value && detail.amount?.currency
-            ? ` for ${detail.amount.currency === "USD" ? "$" : ""}${detail.amount.value}${detail.amount.currency !== "USD" ? ` ${detail.amount.currency}` : ""}`
-            : "";
-        return `${clientLabel}: ${detail.item}${amount}`;
-      }
-    }
-  }
-
-  return `${clientLabel} is requesting access`;
-}
 
 function toScopeList(scopes: unknown): string[] {
   return Array.isArray(scopes) ? [...scopes] : [];
@@ -1142,24 +1119,10 @@ export const auth = betterAuth({
         );
       },
       sendNotification: async (data) => {
-        const approvalUrl = `${getAppOrigin()}/approve/${encodeURIComponent(data.authReqId)}`;
-        const clientLabel = data.clientName ?? "An application";
-        const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
-        const notificationBody = buildNotificationBody(
-          clientLabel,
-          data.bindingMessage,
-          data.authorizationDetails
-        );
+        const origin = getAppOrigin();
+        const pushPayload = buildCibaPushPayload(data, origin);
         await Promise.allSettled([
-          sendWebPush(data.userId, {
-            title: "Authorization Request",
-            body: notificationBody,
-            data: {
-              authReqId: data.authReqId,
-              approvalUrl,
-              requiresVaultUnlock,
-            },
-          }),
+          sendWebPush(data.userId, pushPayload),
           sendCibaNotification({
             userId: data.userId,
             authReqId: data.authReqId,
@@ -1167,7 +1130,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
-            approvalUrl,
+            approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);
       },
