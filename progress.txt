@@ -157,3 +157,14 @@
   - Uses Node.js crypto.X509Certificate (no external deps)
   - checkIssued() verifies leaf signature against CA public key
   - Returns structured {valid, error} instead of boolean for better error messages
+
+### Sub-task C: DPoP Enforcement — ALREADY COMPLETE
+- requireDpop: true already set in all 3 locations (token binding, access token validator, HAIP config)
+
+### Sub-task G: JARM Key Rotation — COMPLETE
+- Files changed:
+  - EDIT: src/lib/auth/oidc/jarm-key.ts — set expiresAt (90 days) on creation; getJarmDecryptionKey rotates on expiry, old keys remain for grace period
+- Arch decisions:
+  - Old keys remain in jwks table (grace period for in-flight responses)
+  - orderBy(desc(createdAt)) ensures newest key is checked first
+  - Cache invalidated on rotation so new key is used immediately
