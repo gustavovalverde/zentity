@@ -212,3 +212,23 @@ Status: Complete (part 4 of 4; parts 1-3 = demo-rp changes = separate)
 
 ### Files changed
 - apps/web/src/lib/auth/oidc/__tests__/bcl-integration.test.ts — new
+
+## Task 07 (Parts 1+3): Demo-rp BCL Endpoint + DCR Registration
+Status: Complete
+
+### Changes
+1. BCL endpoint at /api/auth/backchannel-logout in demo-rp
+   - Accepts POST application/x-www-form-urlencoded with logout_token JWT
+   - Verifies JWT via Zentity's JWKS (createRemoteJWKSet)
+   - Validates BCL event claim (OIDC BCL §2.4)
+   - Extracts sub → finds local user via account.accountId → deletes all sessions
+   - Returns 200 on success
+2. DCR registration includes backchannel_logout_uri
+   - Added to /api/dcr/route.ts body sent to Zentity's DCR endpoint
+
+### Notes
+- Task 07 Part 2 (UI: "Session ended by Zentity" banner + "Logout from Zentity" button) deferred — per-scenario UI changes across 5 demo scenarios (bank/exchange/wine/aid/aether) require deeper investigation of each scenario's auth flow
+
+### Files changed
+- apps/demo-rp/src/app/api/auth/backchannel-logout/route.ts — new BCL endpoint
+- apps/demo-rp/src/app/api/dcr/route.ts — backchannel_logout_uri in registration
