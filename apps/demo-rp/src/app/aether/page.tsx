@@ -33,7 +33,7 @@ export default function AetherPage() {
   const [task, setTask] = useState<ShoppingTask | null>(null);
   const [dcrReady, setDcrReady] = useState(false);
 
-  const { state, tokens, exchangedTokens, error, startFlow, reset } =
+  const { state, tokens, exchangedTokens, userInfo, error, startFlow, reset } =
     useCibaFlow(scenario.id);
 
   const userEmail = (claims?.email as string) || session?.user?.email || "";
@@ -141,6 +141,7 @@ export default function AetherPage() {
               onTriggerCiba={triggerCiba}
               task={task}
               tokens={tokens}
+              userInfo={userInfo}
             />
           </div>
         ) : (

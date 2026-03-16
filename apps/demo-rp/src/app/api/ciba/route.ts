@@ -48,6 +48,10 @@ const bodySchema = z.discriminatedUnion("action", [
     resource: z.string().min(1),
     scope: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("userinfo"),
+    accessToken: z.string().min(1),
+  }),
 ]);
 
 interface DcrClient {
@@ -138,6 +142,15 @@ export async function POST(request: Request) {
       columns: { received: true },
     });
     return NextResponse.json({ received: row?.received ?? false });
+  }
+
+  if (data.action === "userinfo") {
+    const res = await fetch(
+      new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString(),
+      { headers: { Authorization: `Bearer ${data.accessToken}` } }
+    );
+    const body = (await res.json()) as Record<string, unknown>;
+    return NextResponse.json(body, { status: res.status });
   }
 
   if (!("providerId" in data && isValidProviderId(data.providerId))) {

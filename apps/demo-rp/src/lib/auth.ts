@@ -100,7 +100,7 @@ async function fetchUserInfo(tokens: {
     }
   }
 
-  // Merge id_token claims (always available, contains proof claims)
+  // Merge id_token claims (proof/assurance claims only — PII comes from userinfo)
   if (tokens.idToken) {
     const idTokenClaims = await verifyIdToken(tokens.idToken);
 
@@ -109,7 +109,8 @@ async function fetchUserInfo(tokens: {
       validateAtHash(tokens.accessToken, tokens.idToken, idTokenClaims.at_hash);
     }
 
-    Object.assign(body, idTokenClaims);
+    // id_token as base, userinfo on top — userinfo wins for identity PII
+    body = { ...idTokenClaims, ...body };
   }
 
   const id =

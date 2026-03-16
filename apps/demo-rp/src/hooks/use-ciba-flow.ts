@@ -25,6 +25,7 @@ interface CibaFlowState {
   }) => Promise<void>;
   state: CibaState;
   tokens: Record<string, unknown> | null;
+  userInfo: Record<string, unknown> | null;
 }
 
 const DEFAULT_POLL_INTERVAL = 5;
@@ -78,6 +79,9 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     unknown
   > | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [userInfo, setUserInfo] = useState<Record<string, unknown> | null>(
+    null
+  );
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pingCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expireRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,6 +103,22 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     if (expireRef.current) {
       clearTimeout(expireRef.current);
       expireRef.current = null;
+    }
+  }, []);
+
+  const fetchUserInfo = useCallback(async (accessToken: string) => {
+    try {
+      const res = await fetch("/api/ciba", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "userinfo", accessToken }),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as Record<string, unknown>;
+        setUserInfo(body);
+      }
+    } catch {
+      // Non-critical — identity PII not available for this flow
     }
   }, []);
 
@@ -135,6 +155,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     setAuthReqId(null);
     setTokens(null);
     setExchangedTokens(null);
+    setUserInfo(null);
     setError(null);
     intervalRef.current = DEFAULT_POLL_INTERVAL;
   }, [stopPolling]);
@@ -153,6 +174,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         setState("approved");
         if (typeof result.tokens.access_token === "string") {
           exchangeToken(result.tokens.access_token);
+          fetchUserInfo(result.tokens.access_token);
         }
       } else if (result.kind === "slow_down") {
         restartPoll();
@@ -165,7 +187,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         }
       }
     },
-    [stopPolling, exchangeToken]
+    [stopPolling, exchangeToken, fetchUserInfo]
   );
 
   const pollToken = useCallback(
@@ -309,5 +331,14 @@ export function useCibaFlow(providerId: string): CibaFlowState {
   // Cleanup on unmount
   useEffect(() => stopPolling, [stopPolling]);
 
-  return { state, authReqId, tokens, exchangedTokens, error, startFlow, reset };
+  return {
+    state,
+    authReqId,
+    tokens,
+    exchangedTokens,
+    userInfo,
+    error,
+    startFlow,
+    reset,
+  };
 }

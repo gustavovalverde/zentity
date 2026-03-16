@@ -287,3 +287,26 @@ Status: Complete
 - apps/web/src/test/db-test-utils.ts — removed approvals
 - apps/web/src/lib/utils/rate-limiters.ts — removed oauth2ReleaseLimiter
 - Deleted: approval-crypto.ts, ephemeral-release-handles.ts, approvals.ts, release/route.ts, 3 test files
+
+## Userinfo-Only PII Delivery: Task 02
+Status: Complete
+
+### Changes
+1. Demo-rp `fetchUserInfo`: inverted merge priority — userinfo wins over id_token for PII fields
+2. Demo-rp CIBA route: added "userinfo" action to call Zentity userinfo endpoint
+3. Demo-rp `use-ciba-flow.ts`: calls userinfo after token receipt, exposes `userInfo` state
+4. Demo-rp `agent-chat.tsx`: displays userinfo identity claims in token details panel
+5. Demo-rp `aether/page.tsx`: threads `userInfo` from hook to AgentChat component
+6. `docs/oauth-integrations.md`: removed release endpoint from table, updated identity delivery to userinfo-only, updated disclosure paths, updated zero persistent PII
+7. `docs/agentic-authorization.md`: replaced release handle section with ephemeral userinfo delivery, updated Flow 2/3 sequence diagrams, updated security properties, updated claims/standards tables
+8. `CLAUDE.md`: replaced release handle triple binding with ephemeral userinfo delivery description
+
+### Files changed
+- apps/demo-rp/src/lib/auth.ts — inverted fetchUserInfo merge priority
+- apps/demo-rp/src/app/api/ciba/route.ts — added userinfo action
+- apps/demo-rp/src/hooks/use-ciba-flow.ts — fetchUserInfo + userInfo state
+- apps/demo-rp/src/components/aether/agent-chat.tsx — userInfo display
+- apps/demo-rp/src/app/aether/page.tsx — thread userInfo prop
+- docs/oauth-integrations.md — userinfo-only delivery
+- docs/agentic-authorization.md — removed release handles, updated flows
+- CLAUDE.md — updated CIBA description

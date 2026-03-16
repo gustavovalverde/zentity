@@ -47,8 +47,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
-| `GET /api/auth/oauth2/userinfo` | OIDC Core | Scope-filtered verified claims |
-| `POST /api/oauth2/release` | Zentity extension | One-time PII redemption via CIBA release handle (see [Agentic Authorization](agentic-authorization.md#binding-chains)) |
+| `GET /api/auth/oauth2/userinfo` | OIDC Core | Scope-filtered verified claims + identity PII (sole PII delivery endpoint) |
 | `GET /api/auth/oauth2/end-session` | OIDC Session | Session logout |
 
 ### Client management
@@ -66,7 +65,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | --- | --- |
 | `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch pending request details (for approval page) |
 | `POST /api/ciba/identity/intent` | Acquire intent token for PII staging (binds user + CIBA request + scopes) |
-| `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (seals with release handle) |
+| `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (ephemeral, 10-min TTL) |
 | `POST /api/auth/ciba/authorize` | Approve a pending CIBA request |
 | `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
 | `POST /api/ciba/push/subscribe` | Register browser push subscription for CIBA notifications |
@@ -365,7 +364,7 @@ Non-PII boolean verification flags, delivered via id_token and userinfo.
 
 ### Identity scopes (`identity.*`)
 
-Actual PII, delivered via id_token only (the server stores no persistent PII).
+Actual PII, delivered exclusively via the userinfo endpoint (the server stores no persistent PII).
 
 | Scope | Claims |
 | --- | --- |
@@ -411,9 +410,14 @@ sequenceDiagram
   Consent->>Secret: Decrypt with credential material
   Secret-->>Consent: Plaintext PII
   Consent->>AS: Stage claims (ephemeral, 5min TTL)
-  AS->>RP: Deliver via id_token (consumed on read)
+  RP->>AS: GET /userinfo (Bearer token)
+  AS->>RP: Identity PII (consumed on read)
   Note over AS: Claims deleted after delivery
 ```
+
+PII is delivered exclusively via the **userinfo endpoint** — never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token contains only authentication claims (`sub`, `acr`, `amr`, `at_hash`, `sid`) and proof claims (`proof:*` scopes).
+
+For CIBA flows, the same mechanism applies with a 10-minute TTL: the agent calls the standard userinfo endpoint with the CIBA access token after approval.
 
 Identity scopes are **never persisted** in consent records. The consent page reappears each session, requiring a fresh credential unlock — the server cannot decrypt the profile secret itself.
 
@@ -423,7 +427,8 @@ Identity scopes are **never persisted** in consent records. The consent page rea
 
 | Path | Standard | Delivery |
 | --- | --- | --- |
-| `proof:*` / `identity.*` scopes | OAuth 2.0 custom scopes | id_token + userinfo (proof only) |
+| `proof:*` scopes | OAuth 2.0 custom scopes | id_token + userinfo |
+| `identity.*` scopes | OAuth 2.0 custom scopes | userinfo only (PII never in id_token) |
 | `verified_claims` parameter | OIDC for Identity Assurance | id_token + userinfo |
 | SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
 
@@ -539,7 +544,7 @@ See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
 
 ### Zero persistent PII
 
-The server never stores plaintext PII. The user's profile secret (encrypted with their credential) is the only copy. Identity claims are staged ephemerally at consent time (5-minute TTL, consumed on read) and delivered via id_token. After delivery, no trace remains.
+The server never stores plaintext PII. The user's profile secret (encrypted with their credential) is the only copy. Identity claims are staged ephemerally at consent time (5-minute TTL for OAuth2, 10-minute for CIBA) and delivered exclusively via the userinfo endpoint (single-consume). After delivery, no trace remains. The id_token never contains identity PII.
 
 ### Back-Channel Logout (OIDC BCL)
 

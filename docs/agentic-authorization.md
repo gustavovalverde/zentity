@@ -36,9 +36,7 @@ Every mechanism in this section is a published or draft specification. What is n
 | Intent | What exactly did the human approve? | Rich Authorization Requests | RFC 9396 |
 | Delegation | Who sent this agent? | Actor claim (`act`) | draft-oauth-ai-agents-on-behalf-of-user |
 
-One mechanism is Zentity-specific: the **release handle pattern** for privacy-preserving PII delivery. It fills a gap that no current specification addresses, namely, how to deliver identity claims to an agent in a way that is one-time, cryptographically bound to the approval, and impossible for the server to decrypt without the agent's token.
-
-The following sections trace how these mechanisms connect. The key insight is that the DPoP keypair generated at bootstrap becomes a thread running through every subsequent interaction: FPA challenge, authorization code exchange, CIBA poll, token exchange, and PII release. Every credential the agent receives is sender-constrained to that single key.
+The following sections trace how these mechanisms connect. The key insight is that the DPoP keypair generated at bootstrap becomes a thread running through every subsequent interaction: FPA challenge, authorization code exchange, CIBA poll, and token exchange. Every credential the agent receives is sender-constrained to that single key.
 
 ---
 
@@ -60,46 +58,19 @@ The server delivers a push notification to the human's device. The human opens t
 
 This creates a consent binding: the CIBA access token the agent eventually receives is tied to a specific human approval of a specific action, not a blanket authorization.
 
-### Disclosure binding (release handles)
+### Disclosure binding (ephemeral userinfo delivery)
 
-This is the novel mechanism. When the human approves a CIBA request that includes identity scopes, the approval page stages the decrypted PII through the following steps:
+When the human approves a CIBA request that includes identity scopes, the approval page stages the decrypted PII through the following steps:
 
 1. The client (browser) calls the **intent endpoint**, which returns a short-lived HMAC-signed token binding this staging attempt to the specific CIBA request, user, client, and approved scopes.
 
-2. The client sends the decrypted PII and intent token to the **stage endpoint**. The server generates 32 random bytes (the "release handle"), uses them as an AES-GCM key to encrypt the PII, stores only the encrypted ciphertext and the SHA-256 hash of the handle in the `approvals` table, and holds the plaintext handle in memory (5-minute TTL).
+2. The client sends the decrypted PII and intent token to the **stage endpoint**. The server stores the claims in an ephemeral in-memory store with a 10-minute TTL (5 minutes for standard OAuth2 flows).
 
-3. When the CIBA token is minted, the access token's `customAccessTokenClaims` callback retrieves and deletes the in-memory handle, embedding it as a `release_handle` claim in the JWT.
+3. The agent calls the standard **userinfo endpoint** (`GET /api/auth/oauth2/userinfo`) with the CIBA access token. The server returns the staged identity claims, consuming (deleting) them on first read.
 
-The result: the access token contains the AES-GCM key, the database contains the ciphertext, and the server holds neither in a usable form after token issuance. The agent redeems the PII by calling the release endpoint with the access token, which extracts the handle, decrypts the ciphertext, mints a fresh id_token with the identity claims, and marks the approval as redeemed (one-time use).
+PII is never embedded in id_tokens or access tokens — it flows exclusively through the userinfo endpoint. This prevents identity data from persisting in JWT artifacts. The id_token contains only authentication claims (`sub`, `acr`, `amr`, `at_hash`) and proof claims.
 
-```mermaid
-flowchart TD
-  subgraph Token["Agent Token (JWT)"]
-    T1["release_handle (AES-GCM key)"]
-    T2["cnf.jkt"]
-    T3["act.sub"]
-    T4["scope"]
-  end
-
-  subgraph DB["Approvals Table (DB)"]
-    D1["encrypted PII"]
-    D2["handle_hash"]
-  end
-
-  Token -- "POST /api/oauth2/release\n+ DPoP proof" --> Release
-  DB --> Release
-
-  subgraph Release["Release Endpoint"]
-    R1["1. Verify JWT + DPoP sender constraint"]
-    R2["2. Extract release_handle from token"]
-    R3["3. Look up approval by SHA-256(handle)"]
-    R4["4. Decrypt PII with handle as AES-GCM key"]
-    R5["5. Mint fresh id_token with PII claims"]
-    R6["6. Mark approval as redeemed"]
-  end
-```
-
-The release handle pattern achieves a property that neither standard OIDC userinfo nor token introspection provides: the PII is delivered exactly once, bound to a specific approval, and decryptable only by the bearer of the specific access token that carries the key. The server cannot reconstruct the PII after token issuance because the handle is deleted from memory, and the handle's hash (stored in the DB) is not reversible.
+The ephemeral store achieves single-consume semantics: the first userinfo call retrieves the PII, subsequent calls return only standard claims. Cross-client safety is enforced — if multiple clients have concurrent staged entries for the same user, the store returns null to prevent leakage.
 
 ### Delegation binding (act claim)
 
@@ -172,9 +143,7 @@ sequenceDiagram
   AS-->>User: { intent_token } (HMAC-signed, 120s TTL)
 
   User->>AS: POST /ciba/identity/stage<br/>(identity fields, intent_token)
-  Note over AS: Seal PII with random release handle (AES-GCM)
-  Note over AS: Store ciphertext + handle hash in approvals table
-  Note over AS: Hold plaintext handle in memory (5min TTL)
+  Note over AS: Store in ephemeral memory (10min TTL)
 
   User->>AS: POST /ciba/authorize (approve)
 
@@ -183,12 +152,11 @@ sequenceDiagram
     AS-->>Agent: 400 authorization_pending
   end
 
-  Note over AS: On token mint: embed release_handle in JWT, delete from memory
-  AS-->>Agent: { access_token (with release_handle + act claim) }
+  AS-->>Agent: { access_token (with act claim) }
 
-  Agent->>AS: POST /oauth2/release (DPoP-bound access token)
-  Note over AS: Decrypt PII, mint id_token, mark redeemed
-  AS-->>Agent: { id_token: { name, given_name, family_name } }
+  Agent->>AS: GET /userinfo (Bearer access_token)
+  AS-->>Agent: { name, given_name, family_name }
+  Note over AS: Claims consumed (deleted) on first read
 
   Note over Agent: Cache identity for session (no repeated vault unlocks)
 ```
@@ -217,19 +185,20 @@ sequenceDiagram
   Note over User: Sees structured authorization_details card
 
   User->>AS: Vault unlock + stage PII + approve
-  Note over AS: Approval record stores authorization_details alongside encrypted PII
+  Note over AS: Ephemeral claims stored (10min TTL)
 
   Agent->>AS: POST /oauth2/token (poll, DPoP)
   AS-->>Agent: { access_token, authorization_details: [{...}] }
-  Note over Agent: Token contains: release_handle + act + authorization_details
+  Note over Agent: Token contains: act + authorization_details
 
-  Agent->>AS: POST /oauth2/release (DPoP-bound token)
-  AS-->>Agent: { id_token: { name, address, authorization_details } }
+  Agent->>AS: GET /userinfo (Bearer access_token)
+  AS-->>Agent: { name, address }
+  Note over AS: Claims consumed on first read
 
   Note over Agent: Use name as recipient, address for shipping
 ```
 
-The `authorization_details` parameter travels through the entire chain: from the CIBA request, to the approval record, to the access token JWT, to the release endpoint's id_token. This creates an auditable link between what the agent requested, what the human approved, and what data was released.
+The `authorization_details` parameter travels through the entire chain: from the CIBA request to the access token JWT to the token response body. Identity PII is retrieved separately via the userinfo endpoint. This creates an auditable link between what the agent requested, what the human approved, and what data was released.
 
 ---
 
@@ -241,7 +210,7 @@ The binding chain produces five security properties that together distinguish an
 
 ### Sender constraining
 
-Every token the agent receives is DPoP-bound (RFC 9449). A stolen token is useless without the corresponding ES256 private key. The DPoP proof includes an `ath` (access token hash) when presented to resource servers, binding the proof to the specific token. The same DPoP keypair threads through FPA challenge, authorization code exchange, CIBA poll, and release redemption, so a resource server can verify that the same entity performed every step.
+Every token the agent receives is DPoP-bound (RFC 9449). A stolen token is useless without the corresponding ES256 private key. The DPoP proof includes an `ath` (access token hash) when presented to resource servers, binding the proof to the specific token. The same DPoP keypair threads through FPA challenge, authorization code exchange, CIBA poll, and userinfo retrieval, so a resource server can verify that the same entity performed every step.
 
 ### Real-time human consent
 
@@ -251,15 +220,17 @@ Two approval paths exist: the standalone page at `/approve/[authReqId]` (push no
 
 ### Zero persistent PII
 
-The release handle pattern ensures that PII is never stored in plaintext on the server. The approvals table contains AES-GCM ciphertext, the access token contains the key, and the release endpoint deletes the key from memory after embedding it in the token. After token issuance, the server cannot reconstruct the PII. After redemption, the approval is marked as consumed and cannot be replayed.
+PII is never stored in plaintext on the server and never embedded in JWT artifacts. Identity claims are held in an ephemeral in-memory store (5-minute TTL for OAuth2, 10-minute for CIBA) and delivered exclusively via the userinfo endpoint. The id_token contains only authentication and proof claims — zero identity PII fields.
 
 ### One-time disclosure
 
-The release endpoint enforces single-use through two independent enforcement layers:
+The userinfo endpoint enforces single-consume semantics through the ephemeral claims store:
 
-1. **Ephemeral in-memory handle**: The `consumeReleaseHandle` function deletes the handle from memory on first read. The handle is bound to a `(userId, authReqId, clientId)` triple — all three must match for consumption. This prevents cross-user, cross-request, and cross-client handle theft.
+1. **Single-consume store**: `consumeEphemeralClaimsByUser` deletes the entry on first read. The entry is keyed by `userId:clientId` — both must match. This prevents cross-user and cross-client leakage.
 
-2. **DB approval record status transition**: `approved → claiming → redeemed`. Concurrent requests race on the `WHERE status = 'approved'` condition; exactly one succeeds. Even if the in-memory handle were somehow leaked, the DB transition prevents replay.
+2. **Cross-client safety**: If multiple clients have concurrent staged entries for the same user, the store returns null rather than risk delivering PII to the wrong client.
+
+3. **TTL expiry**: Unclaimed entries are garbage-collected after the TTL window (5 or 10 minutes), ensuring no stale PII accumulates in server memory.
 
 The agent caches the result in its process memory for the session, avoiding repeated CIBA prompts for the same identity data.
 
@@ -294,7 +265,7 @@ A resource server receiving a Zentity agent token can validate the delegation ch
 | `sub` | The human user who authorized the agent |
 | `act.sub` | The agent's OAuth `client_id` |
 | `act.act.sub` | If present, a prior agent in the delegation chain (from token exchange) |
-| `release_handle` | Present if PII was approved; consumable at the release endpoint |
+| `sybil_nullifier` | Per-RP pseudonymous nullifier (when `proof:sybil` scope granted) |
 | `authorization_details` | Structured metadata the human explicitly approved (e.g., purchase details) |
 | `cnf.jkt` | DPoP key thumbprint; the agent's cryptographic identity |
 | `scope` | Consented scopes, including `identity.*` for PII and `proof:*` for ZK proofs |
@@ -346,7 +317,7 @@ The following table catalogs every specification implemented in Zentity's agenti
 | OpenID Connect Core 1.0 | Standard | id_token issuance, standard claims, discovery |
 | draft-oauth-ai-agents-on-behalf-of-user | IETF Draft | `act` claim proving agent delegation |
 | OIDC for Identity Assurance (OIDC4IDA) | Standard | `verified_claims` with trust framework metadata |
-| Release handle pattern | Zentity extension | One-time PII delivery bound to approval |
+| Ephemeral userinfo delivery | Zentity extension | Single-consume PII delivery via standard userinfo endpoint |
 
 ### Interoperability profiles
 

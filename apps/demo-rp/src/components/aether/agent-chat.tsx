@@ -34,6 +34,7 @@ interface AgentChatProps {
   onTriggerCiba: () => void;
   task: ShoppingTask;
   tokens: Record<string, unknown> | null;
+  userInfo: Record<string, unknown> | null;
 }
 
 function buildScript(
@@ -93,6 +94,7 @@ export function AgentChat({
   cibaState,
   tokens,
   exchangedTokens,
+  userInfo,
   error,
   onTriggerCiba,
   onReset,
@@ -209,6 +211,7 @@ export function AgentChat({
               task.results.find((p) => p.id === task.pick) ?? task.results[0]
             }
             tokens={tokens}
+            userInfo={userInfo}
           />
         )}
         {cibaState === "denied" && (
@@ -408,11 +411,13 @@ function CibaResult({
   onReset,
   tokens,
   exchangedTokens,
+  userInfo,
 }: {
   exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   pick: Product;
   tokens: Record<string, unknown>;
+  userInfo: Record<string, unknown> | null;
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const orderId = `AE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
@@ -570,6 +575,19 @@ function CibaResult({
                   </pre>
                 </div>
               )}
+              {userInfo &&
+                Object.keys(userInfo).some(
+                  (k) => !["sub", "iss", "aud"].includes(k)
+                ) && (
+                  <div>
+                    <p className="mb-1 text-white/50 text-xs">
+                      Userinfo — identity claims (via GET /userinfo)
+                    </p>
+                    <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-purple-300/80 text-xs">
+                      {JSON.stringify(userInfo, null, 2)}
+                    </pre>
+                  </div>
+                )}
             </div>
           )}
         </div>
