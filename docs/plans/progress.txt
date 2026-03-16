@@ -24,3 +24,16 @@ serviceTokenFetch kept (was going to be deleted per PRD) because it's correct; t
 the web app not recognizing the headers, now fixed.
 
 Feedback loops: typecheck ✓, tests ✓ (109 MCP, 88 web unit), lint ✓ (changed files clean)
+
+--- Task 43: OAuth Provider Protocol Compliance (findings #8, #9) ---
+Status: COMPLETE
+
+Changes:
+- apps/web/src/app/api/auth/oauth2/end-session/route.ts: extract azp/aud from verified id_token_hint
+  when client_id absent. Uses azp > single-string aud > single-element array aud. Ambiguous multi-aud
+  with no azp → no redirect (safe default). effectiveClientId used for redirect URI validation.
+- apps/web/src/lib/auth/auth.ts: PAR hook now filters by clientId AND resource IS NULL instead of
+  just clientId ORDER BY newest. Eliminates race where concurrent PAR requests from same client
+  could update wrong row. Added isNull import from drizzle-orm.
+
+Feedback loops: typecheck ✓, tests ✓ (86 web unit), lint ✓

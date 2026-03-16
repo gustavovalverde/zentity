@@ -31,7 +31,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -893,7 +893,12 @@ async function afterParPersistResource(ctx: HookCtx) {
   const record = await db
     .select({ id: haipPushedRequests.id })
     .from(haipPushedRequests)
-    .where(eq(haipPushedRequests.clientId, clientId))
+    .where(
+      and(
+        eq(haipPushedRequests.clientId, clientId),
+        isNull(haipPushedRequests.resource)
+      )
+    )
     .orderBy(desc(haipPushedRequests.createdAt))
     .limit(1)
     .get();

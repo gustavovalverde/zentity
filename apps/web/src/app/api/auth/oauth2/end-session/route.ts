@@ -51,6 +51,7 @@ export async function GET(request: Request): Promise<Response> {
   // Verify the id_token_hint JWT
   let sub: string;
   let sid: string | undefined;
+  let tokenAzp: string | undefined;
   try {
     const jwksResolver = await getLocalJwks();
     const { payload } = await jwtVerify(idTokenHint, jwksResolver, {
@@ -66,6 +67,14 @@ export async function GET(request: Request): Promise<Response> {
     if (typeof payload.sid === "string") {
       sid = payload.sid;
     }
+    // Extract authorized party for redirect URI validation fallback
+    if (typeof payload.azp === "string") {
+      tokenAzp = payload.azp;
+    } else if (typeof payload.aud === "string") {
+      tokenAzp = payload.aud;
+    } else if (Array.isArray(payload.aud) && payload.aud.length === 1) {
+      tokenAzp = payload.aud[0] as string;
+    }
   } catch {
     return NextResponse.json(
       { error: "Invalid id_token_hint" },
@@ -73,12 +82,15 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  // Validate post_logout_redirect_uri against client's registered URIs
-  if (postLogoutRedirectUri && clientId) {
+  // Validate post_logout_redirect_uri against client's registered URIs.
+  // Per OIDC RP-Initiated Logout 1.0, client_id is optional when
+  // id_token_hint is provided — infer the client from azp/aud.
+  const effectiveClientId = clientId ?? tokenAzp;
+  if (postLogoutRedirectUri && effectiveClientId) {
     const client = await db
       .select({ postLogoutRedirectUris: oauthClients.postLogoutRedirectUris })
       .from(oauthClients)
-      .where(eq(oauthClients.clientId, clientId))
+      .where(eq(oauthClients.clientId, effectiveClientId))
       .limit(1)
       .get();
 
