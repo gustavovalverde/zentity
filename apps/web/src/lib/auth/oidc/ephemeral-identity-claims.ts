@@ -21,6 +21,7 @@ interface EphemeralEntry {
 }
 
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
 
@@ -83,7 +84,8 @@ export async function storeEphemeralClaims(
   userId: string,
   claims: Partial<IdentityFields>,
   scopes: string[],
-  meta: EphemeralClaimsMeta
+  meta: EphemeralClaimsMeta,
+  ttlMs: number = EPHEMERAL_TTL_MS
 ): Promise<
   { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
 > {
@@ -101,7 +103,7 @@ export async function storeEphemeralClaims(
     return { ok: false, reason: "concurrent_stage" };
   }
 
-  const expiresAt = Date.now() + EPHEMERAL_TTL_MS;
+  const expiresAt = Date.now() + ttlMs;
   s.set(key, {
     claims,
     scopes,
@@ -166,41 +168,6 @@ export function consumeEphemeralClaimsByUser(userId: string): {
     return null;
   }
   s.delete(matchKey);
-  return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
-}
-
-/**
- * Non-destructive peek at ephemeral claims for a user.
- * Used by customIdTokenClaims to read PII without consuming it,
- * leaving it available for customUserInfoClaims when the `claims`
- * parameter routes PII to the userinfo endpoint.
- */
-export function peekEphemeralClaimsByUser(userId: string): {
-  claims: Partial<IdentityFields>;
-  scopes: string[];
-  meta: EphemeralClaimsMeta;
-} | null {
-  evictExpiredClaims();
-  const s = getStore();
-  const prefix = `${userId}:`;
-  let matchKey: string | null = null;
-  let matchCount = 0;
-  for (const key of s.keys()) {
-    if (key.startsWith(prefix)) {
-      matchKey = key;
-      matchCount++;
-      if (matchCount > 1) {
-        return null;
-      }
-    }
-  }
-  if (!matchKey) {
-    return null;
-  }
-  const entry = s.get(matchKey);
-  if (!entry) {
-    return null;
-  }
   return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
 }
 

@@ -62,11 +62,7 @@ import {
   stageClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
-import {
-  consumeEphemeralClaimsByUser,
-  peekEphemeralClaimsByUser,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
-import { consumeReleaseHandle } from "@/lib/auth/oidc/ephemeral-release-handles";
+import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
@@ -1228,26 +1224,13 @@ export const auth = betterAuth({
         claims_supported: advertisedClaims,
       },
       customAccessTokenClaims: async (info) => {
-        const { user, scopes, referenceId } = info;
-        // clientId added via vendor patch (not in upstream types)
+        const { user, scopes } = info;
         const clientId = (info as { clientId?: string }).clientId;
         if (!user?.id) {
           return {};
         }
         const scopeList = toScopeList(scopes);
         const claims: Record<string, unknown> = {};
-
-        // Release handle for identity-scoped CIBA flows
-        if (scopeList.some(isIdentityScope)) {
-          const handle = consumeReleaseHandle(
-            user.id,
-            referenceId ?? undefined,
-            clientId ?? undefined
-          );
-          if (handle) {
-            claims.release_handle = handle;
-          }
-        }
 
         // Per-RP sybil nullifier
         if (scopeList.includes("proof:sybil") && clientId) {
@@ -1265,12 +1248,6 @@ export const auth = betterAuth({
       },
       customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
         const scopeList = toScopeList(scopes);
-
-        // Peek (not consume) — userinfo hook may need the PII too
-        const ephemeral = peekEphemeralClaimsByUser(user.id);
-        const identityClaims = ephemeral
-          ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
-          : {};
 
         // Proof claims use the granted scopes directly — no vault unlock needed
         const proofClaims = hasAnyProofScope(scopeList)
@@ -1320,7 +1297,6 @@ export const auth = betterAuth({
         }
 
         const allClaims = {
-          ...identityClaims,
           ...proofClaims,
           ...assuranceClaims,
           ...atHashClaim,
@@ -1348,18 +1324,15 @@ export const auth = betterAuth({
             )
           : {};
 
-        // Identity PII — only included when claims parameter targets userinfo
-        const claimsParam = consumeClaimsParameter(user.id);
-        const identityClaims =
-          ephemeral && claimsParam?.userinfo
-            ? filterClaimsByRequest(
-                filterIdentityByScopes(ephemeral.claims, ephemeral.scopes),
-                claimsParam.userinfo
-              )
-            : {};
+        // Identity PII — always included when ephemeral is present
+        const identityClaims = ephemeral
+          ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
+          : {};
 
         const allClaims = { ...identityClaims, ...proofClaims };
 
+        // Apply claims.userinfo as data minimization filter if present
+        const claimsParam = consumeClaimsParameter(user.id);
         if (!claimsParam?.userinfo) {
           return allClaims;
         }

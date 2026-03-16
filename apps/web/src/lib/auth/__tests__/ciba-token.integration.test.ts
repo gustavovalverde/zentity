@@ -1,18 +1,10 @@
 import crypto from "node:crypto";
 
-import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
+import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/issuer";
-import {
-  resetReleaseHandleStore,
-  stageReleaseHandle,
-} from "@/lib/auth/oidc/ephemeral-release-handles";
-import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
-import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
@@ -60,7 +52,6 @@ describe("CIBA token endpoint", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    resetReleaseHandleStore();
     userId = await createTestUser();
     await createTestClient();
   });
@@ -261,194 +252,21 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("invalid_grant");
   });
 
-  describe("release handle in access token", () => {
-    it("embeds release_handle when staged before token minting", async () => {
-      const authReqId = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid identity.name",
-      });
-
-      const fakeHandle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(authReqId, fakeHandle, userId, TEST_CLIENT_ID);
-
-      const { json } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.release_handle).toBe(fakeHandle);
+  it("CIBA access token never contains release_handle", async () => {
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+      scope: "openid identity.name",
     });
 
-    it("same user with two CIBA requests gets the correct handle on each token", async () => {
-      const authReqId1 = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid identity.name",
-      });
-      const authReqId2 = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid identity.name",
-      });
-
-      const handle1 = crypto.randomBytes(32).toString("base64url");
-      const handle2 = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(authReqId1, handle1, userId, TEST_CLIENT_ID);
-      stageReleaseHandle(authReqId2, handle2, userId, TEST_CLIENT_ID);
-
-      const { json: json1 } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId1,
-        client_id: TEST_CLIENT_ID,
-      });
-      const { json: json2 } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId2,
-        client_id: TEST_CLIENT_ID,
-      });
-
-      const payload1 = decodeJwt(json1.access_token as string);
-      const payload2 = decodeJwt(json2.access_token as string);
-      expect(payload1.release_handle).toBe(handle1);
-      expect(payload2.release_handle).toBe(handle2);
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
     });
 
-    it("omits release_handle when nothing is staged", async () => {
-      const authReqId = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-      });
-
-      const { json } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.release_handle).toBeUndefined();
-    });
-
-    it("non-identity token issuance does not consume a staged handle", async () => {
-      // Stage a handle for an identity-scoped request
-      const identityAuthReqId = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid identity.name",
-      });
-      const handle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(identityAuthReqId, handle, userId, TEST_CLIENT_ID);
-
-      // Issue a non-identity CIBA token (openid only) — interleaved
-      const nonIdentityAuthReqId = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid",
-      });
-      const { json: nonIdentityJson } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: nonIdentityAuthReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-      const nonIdentityPayload = decodeJwt(
-        nonIdentityJson.access_token as string
-      );
-      expect(nonIdentityPayload.release_handle).toBeUndefined();
-
-      // Now mint the identity-scoped token — handle should still be available
-      const { json: identityJson } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: identityAuthReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-      const identityPayload = decodeJwt(identityJson.access_token as string);
-      expect(identityPayload.release_handle).toBe(handle);
-    });
-
-    it("token exchange between staging and CIBA minting does not consume the pending handle", async () => {
-      // Set up a signing key for token exchange
-      resetSigningKeyCache();
-      const issuer = getAuthIssuer();
-      const keyPair = await generateKeyPair("EdDSA", {
-        crv: "Ed25519",
-        extractable: true,
-      });
-      const kid = crypto.randomUUID();
-      const publicJwk = await exportJWK(keyPair.publicKey);
-      const privateJwk = await exportJWK(keyPair.privateKey);
-      await db
-        .insert(jwksTable)
-        .values({
-          id: kid,
-          publicKey: JSON.stringify(publicJwk),
-          privateKey: JSON.stringify(privateJwk),
-          alg: "EdDSA",
-          crv: "Ed25519",
-        })
-        .run();
-
-      // Register a token exchange client (different from the CIBA client)
-      const exchangeClientId = "exchange-interleave-test";
-      await db
-        .insert(oauthClients)
-        .values({
-          clientId: exchangeClientId,
-          name: "Exchange Test",
-          redirectUris: JSON.stringify(["http://localhost/callback"]),
-          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
-          tokenEndpointAuthMethod: "none",
-          public: true,
-        })
-        .run();
-
-      // Stage a CIBA handle for an identity-scoped request
-      const authReqId = await insertCibaRequest({
-        userId,
-        status: "approved",
-        resource: TEST_RESOURCE,
-        scope: "openid identity.name",
-      });
-      const handle = crypto.randomBytes(32).toString("base64url");
-      stageReleaseHandle(authReqId, handle, userId, TEST_CLIENT_ID);
-
-      // Fire an interleaving token exchange with identity scopes
-      const subjectToken = await new SignJWT({
-        iss: issuer,
-        sub: userId,
-        aud: issuer,
-        scope: "openid identity.name",
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + 3600,
-      })
-        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid })
-        .sign(keyPair.privateKey);
-
-      const { status: exchangeStatus } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: exchangeClientId,
-        subject_token: subjectToken,
-        subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
-        scope: "openid",
-      });
-      expect(exchangeStatus).toBe(200);
-
-      // Now mint the CIBA token — the staged handle must still be intact
-      const { json: cibaJson } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-      const cibaPayload = decodeJwt(cibaJson.access_token as string);
-      expect(cibaPayload.release_handle).toBe(handle);
-    });
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.release_handle).toBeUndefined();
   });
 });

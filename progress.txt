@@ -256,3 +256,34 @@ Status: Complete (TOFU bootstrap; Schnorr signing deferred to multi-DKG scenario
 - apps/signer/src/frost/signer_logic.rs — has_any_key_shares() method
 - apps/signer/src/storage/redb.rs — has_any_shares() storage check
 - apps/web/src/lib/recovery/frost-service.ts — SignerInfo interface + TOFU logging
+
+## Userinfo-Only PII Delivery: Task 01
+Status: Complete
+
+### Changes
+1. Removed identity PII from `customIdTokenClaims` — zero identity fields emitted
+   - Removed ephemeral peek, identityClaims assembly
+   - Proof claims, assurance, at_hash, sid unchanged
+2. Made `customUserInfoClaims` the sole PII consumer
+   - Consumes ephemeral claims regardless of claims parameter
+   - `claims.userinfo` acts as data minimization filter only
+3. Removed `release_handle` from `customAccessTokenClaims`
+   - No longer consumes release handles for CIBA identity flows
+4. CIBA staging route switched from approvals-table encryption to `storeEphemeralClaims` with 10-min TTL
+5. Added TTL parameter to `storeEphemeralClaims` (default 5 min, CIBA 10 min)
+6. Deleted `peekEphemeralClaimsByUser` (single consumer model)
+7. Deleted files: approval-crypto.ts, ephemeral-release-handles.ts, approvals.ts schema, /api/oauth2/release route
+8. Deleted tests: ciba-release-lifecycle, release-endpoint, approval-crypto tests
+9. Updated: ciba-token tests (removed release_handle tests), intent-binding tests (removed approvals assertions), claims-delivery tests (removed peek tests)
+10. Removed approvals schema from db connection and test utils
+11. Removed oauth2ReleaseLimiter from rate-limiters
+12. Tests: 286 pass, typecheck clean, lint clean
+
+### Files changed
+- apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts — TTL param, deleted peek
+- apps/web/src/lib/auth/auth.ts — removed PII from id_token, removed release_handle, userinfo-only delivery
+- apps/web/src/app/api/ciba/identity/stage/route.ts — ephemeral store instead of approvals
+- apps/web/src/lib/db/connection.ts — removed approvals schema
+- apps/web/src/test/db-test-utils.ts — removed approvals
+- apps/web/src/lib/utils/rate-limiters.ts — removed oauth2ReleaseLimiter
+- Deleted: approval-crypto.ts, ephemeral-release-handles.ts, approvals.ts, release/route.ts, 3 test files

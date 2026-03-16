@@ -10,11 +10,8 @@ vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
 
-import { eq } from "drizzle-orm";
-
-import { resetReleaseHandleStore } from "@/lib/auth/oidc/ephemeral-release-handles";
+import { resetEphemeralIdentityClaimsStore } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { db } from "@/lib/db/connection";
-import { approvals } from "@/lib/db/schema/approvals";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -74,7 +71,7 @@ describe("CIBA intent token authReqId binding", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    resetReleaseHandleStore();
+    await resetEphemeralIdentityClaimsStore();
     vi.clearAllMocks();
     userId = await createTestUser();
     await createTestClient();
@@ -177,7 +174,7 @@ describe("CIBA intent token authReqId binding", () => {
     );
     expect(stageA.status).toBe(200);
 
-    // Token A fails for B
+    // Token A fails for B (already used)
     const stageAforB = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
         auth_req_id: reqB,
@@ -198,92 +195,5 @@ describe("CIBA intent token authReqId binding", () => {
       })
     );
     expect(stageB.status).toBe(200);
-  });
-});
-
-describe("CIBA authorization_details persistence", () => {
-  let userId: string;
-
-  beforeEach(async () => {
-    await resetDatabase();
-    resetReleaseHandleStore();
-    vi.clearAllMocks();
-    userId = await createTestUser();
-    await createTestClient();
-  });
-
-  it("persists authorization_details from CIBA request into approval row", async () => {
-    const authDetails = JSON.stringify([
-      { type: "payment", amount: "100.00", currency: "EUR" },
-    ]);
-    const authReqId = await insertCibaRequest({
-      userId,
-      authorizationDetails: authDetails,
-    });
-    mockSession(userId);
-
-    // Issue intent
-    const intentRes = await intentRoute(
-      makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: authReqId,
-        scopes: ["identity.name"],
-      })
-    );
-    const { intent_token } = (await intentRes.json()) as {
-      intent_token: string;
-    };
-
-    // Stage
-    await stageRoute(
-      makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: authReqId,
-        scopes: ["identity.name"],
-        identity: { given_name: "Ada" },
-        intent_token,
-      })
-    );
-
-    // Verify approval row has authorization_details
-    const approval = await db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.authReqId, authReqId))
-      .get();
-
-    expect(approval).toBeDefined();
-    expect(approval?.authorizationDetails).toBe(authDetails);
-  });
-
-  it("leaves authorization_details null when CIBA request has none", async () => {
-    const authReqId = await insertCibaRequest({ userId });
-    mockSession(userId);
-
-    const intentRes = await intentRoute(
-      makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: authReqId,
-        scopes: ["identity.name"],
-      })
-    );
-    const { intent_token } = (await intentRes.json()) as {
-      intent_token: string;
-    };
-
-    await stageRoute(
-      makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: authReqId,
-        scopes: ["identity.name"],
-        identity: { given_name: "Ada" },
-        intent_token,
-      })
-    );
-
-    const approval = await db
-      .select()
-      .from(approvals)
-      .where(eq(approvals.authReqId, authReqId))
-      .get();
-
-    expect(approval).toBeDefined();
-    expect(approval?.authorizationDetails).toBeNull();
   });
 });

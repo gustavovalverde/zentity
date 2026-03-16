@@ -29,12 +29,6 @@ export const oauth2IdentityLimiter = createRateLimiter({
   max: 10,
 });
 
-/** OAuth2 release: 10 req/min per bearer token. */
-export const oauth2ReleaseLimiter = createRateLimiter({
-  windowMs: MINUTE,
-  max: 10,
-});
-
 /** Secrets blob: 10 req/min per session. */
 export const secretsBlobLimiter = createRateLimiter({
   windowMs: MINUTE,
