@@ -15,9 +15,6 @@ overrides:
 packageExtensionsChecksum: sha256-jKpE1aF3N5fCWI1FmAJ2k+7O9zpgj57IUnwjmMJ50uE=
 
 patchedDependencies:
-  '@better-auth/ciba@1.5.1-beta.3':
-    hash: d40efb5f96e22bd52405fcc0a12f6b9f872d4f9895b866c71e6d26292fb9cf32
-    path: vendor/@better-auth__ciba@1.5.1-beta.3.patch
   '@better-auth/core@1.5.1-beta.3':
     hash: ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149
     path: vendor/@better-auth__core@1.5.1-beta.3.patch
@@ -43,7 +40,7 @@ importers:
         version: 3.0.3
       '@better-auth/ciba':
         specifier: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz
-        version: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz(patch_hash=d40efb5f96e22bd52405fcc0a12f6b9f872d4f9895b866c71e6d26292fb9cf32)(ade24c803b901ad51c101eb83e73d4f0)
+        version: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz(ade24c803b901ad51c101eb83e73d4f0)
       '@better-auth/core':
         specifier: 1.5.1-beta.3
         version: 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
@@ -481,7 +478,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-ds+g2lpJqWv3HGy6nx9slg6MqNisaJHe0mPjB422sPGMGG+HfNKHVl7MgKywiRMHbiMONePwU0k9yv0dlzGDUg==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-FUdBB7tpCpuoEHl1K8r1HSg/iqGZmfl6K65Csl03+C1ezq+/CeUGRiPhBXbWbFKv+D78IPbMw8QuGOQeTPYX3Q==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.1-beta.3
@@ -9295,7 +9292,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz(patch_hash=d40efb5f96e22bd52405fcc0a12f6b9f872d4f9895b866c71e6d26292fb9cf32)(ade24c803b901ad51c101eb83e73d4f0)':
+  '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz(ade24c803b901ad51c101eb83e73d4f0)':
     dependencies:
       '@better-auth/core': 1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1)
       '@better-auth/oauth-provider': file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz(patch_hash=905281512114e51149a968376b773c6206274f440cae67f34cdb4609782ed21e)(@better-auth/core@1.5.1-beta.3(patch_hash=ecefe8d3dbc6576c862c5a2053aeac5fada441a87c2f552a0780c3ba20780149)(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-call@1.3.2(zod@4.3.6))(jose@6.1.3)(kysely@0.28.11)(nanostores@1.1.1))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@1.5.1-beta.3(patch_hash=813c392f41f932d0abf3bf2ef321cac9606db38ea6feaf19072d71264ba6e579)(bdaae7acdea21c04fe3488cfbf58d778))(better-call@1.3.2(zod@4.3.6))

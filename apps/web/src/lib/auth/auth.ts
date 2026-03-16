@@ -1463,8 +1463,24 @@ export const auth = betterAuth({
           return;
         }
 
+        let agentName: string | undefined;
+        if (data.agentClaims) {
+          try {
+            const ac = JSON.parse(data.agentClaims) as Record<string, unknown>;
+            const agent = ac.agent as Record<string, unknown> | undefined;
+            if (typeof agent?.name === "string") {
+              agentName = agent.name;
+            }
+          } catch {
+            // Ignore malformed agent claims
+          }
+        }
+
         const origin = getAppOrigin();
-        const pushPayload = buildCibaPushPayload(data, origin);
+        const pushPayload = buildCibaPushPayload(
+          { ...data, agentName },
+          origin
+        );
         await Promise.allSettled([
           sendWebPush(data.userId, pushPayload),
           sendCibaNotification({
