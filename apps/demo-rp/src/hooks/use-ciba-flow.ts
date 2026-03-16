@@ -68,8 +68,6 @@ export function classifyPollResponse(
   };
 }
 
-const MERCHANT_API = "https://merchant.example.com/api";
-
 export function useCibaFlow(providerId: string): CibaFlowState {
   const [state, setState] = useState<CibaState>("idle");
   const [authReqId, setAuthReqId] = useState<string | null>(null);
@@ -116,8 +114,6 @@ export function useCibaFlow(providerId: string): CibaFlowState {
             action: "token-exchange",
             providerId,
             accessToken,
-            resource: MERCHANT_API,
-            scope: "openid",
           }),
         });
         if (res.ok) {

@@ -69,4 +69,16 @@ export async function currentClientIdKey(): Promise<string> {
   return parts.join("|");
 }
 
+export async function findProviderByClientId(
+  clientId: string
+): Promise<ProviderId | null> {
+  const row = await getDb().query.dcrClient.findFirst({
+    where: eq(dcrClient.clientId, clientId),
+    columns: { providerId: true },
+  });
+  return row?.providerId && isValidProviderId(row.providerId)
+    ? row.providerId
+    : null;
+}
+
 export { PROVIDER_IDS };

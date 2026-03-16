@@ -65,11 +65,7 @@ export function registerPurchaseTool(server: McpServer): void {
           resource: config.zentityUrl,
         });
 
-        const pii = await redeemRelease(
-          result.accessToken,
-          auth.dpopKey,
-          auth.loginHint
-        );
+        const pii = await redeemRelease(result.accessToken, auth.dpopKey);
 
         return {
           content: [

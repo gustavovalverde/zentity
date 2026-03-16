@@ -2,7 +2,6 @@ import { config } from "../config.js";
 import { requestCibaApproval } from "./ciba.js";
 import { requireAuth } from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
-import { getServiceTokenHeaders } from "./service-token.js";
 
 export interface IdentityClaims {
   address?: string;
@@ -55,11 +54,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     resource: config.zentityUrl,
   });
 
-  const claims = await redeemRelease(
-    result.accessToken,
-    auth.dpopKey,
-    auth.loginHint
-  );
+  const claims = await redeemRelease(result.accessToken, auth.dpopKey);
   if (!claims) {
     return null;
   }
@@ -77,16 +72,9 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
  */
 export function redeemRelease(
   cibaAccessToken: string,
-  dpopKey: DpopKeyPair,
-  loginHint?: string
+  dpopKey: DpopKeyPair
 ): Promise<IdentityClaims | null> {
   const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
-
-  // HTTP transport: service-token path (no DPoP keypair available)
-  if (config.transport === "http" && loginHint) {
-    return redeemViaServiceToken(userinfoUrl, loginHint);
-  }
-
   return redeemViaDpop(userinfoUrl, cibaAccessToken, dpopKey);
 }
 
@@ -126,17 +114,6 @@ async function redeemViaDpop(
       headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
     });
   }
-
-  return parseUserinfoResponse(response);
-}
-
-async function redeemViaServiceToken(
-  userinfoUrl: string,
-  loginHint: string
-): Promise<IdentityClaims | null> {
-  const response = await fetch(userinfoUrl, {
-    headers: getServiceTokenHeaders(loginHint),
-  });
 
   return parseUserinfoResponse(response);
 }

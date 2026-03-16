@@ -1,10 +1,14 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session } from "@/lib/db/schema";
-import { PROVIDER_IDS, readDcrClientId } from "@/lib/dcr";
+import {
+  findProviderByClientId,
+  PROVIDER_IDS,
+  readDcrClientId,
+} from "@/lib/dcr";
 import { env } from "@/lib/env";
 
 const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
@@ -85,21 +89,46 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Missing sub claim" }, { status: 400 });
     }
 
-    // Find the local user by their Zentity accountId (sub)
-    const db = getDb();
-    const userAccount = await db
-      .select({ userId: account.userId })
-      .from(account)
-      .where(eq(account.accountId, sub))
-      .limit(1)
-      .get();
+    // Scope session invalidation to the provider targeted by this logout token
+    const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
+    const provider = aud ? await findProviderByClientId(aud) : null;
 
-    if (userAccount) {
-      // Delete all sessions for this user
-      await db
-        .delete(session)
-        .where(eq(session.userId, userAccount.userId))
-        .run();
+    const db = getDb();
+
+    if (provider) {
+      const userAccount = await db
+        .select({ userId: account.userId })
+        .from(account)
+        .where(
+          and(
+            eq(account.accountId, sub),
+            eq(account.providerId, `zentity-${provider}`)
+          )
+        )
+        .limit(1)
+        .get();
+
+      if (userAccount) {
+        await db
+          .delete(session)
+          .where(eq(session.userId, userAccount.userId))
+          .run();
+      }
+    } else {
+      // Fallback: unknown provider — delete by sub across all providers
+      const userAccount = await db
+        .select({ userId: account.userId })
+        .from(account)
+        .where(eq(account.accountId, sub))
+        .limit(1)
+        .get();
+
+      if (userAccount) {
+        await db
+          .delete(session)
+          .where(eq(session.userId, userAccount.userId))
+          .run();
+      }
     }
 
     return new Response(null, { status: 200 });

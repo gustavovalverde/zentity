@@ -45,7 +45,7 @@ vi.mock("../../src/server/index.js", () => ({
   })),
 }));
 
-import { createApp, matchOrigin } from "../../src/transports/http.js";
+import { createApp, matchOrigin, setServerCredentials } from "../../src/transports/http.js";
 
 function validPayload(overrides: Partial<JWTPayload> = {}): TokenAuthResult {
   return {
@@ -117,6 +117,13 @@ describe("HTTP transport middleware", () => {
 
   beforeEach(() => {
     mockValidateToken.mockReset();
+    setServerCredentials({
+      clientId: "test-client",
+      dpopKey: {
+        privateJwk: { kty: "EC", crv: "P-256" },
+        publicJwk: { kty: "EC", crv: "P-256" },
+      },
+    });
     app = createApp();
   });
 

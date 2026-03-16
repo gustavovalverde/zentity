@@ -4,11 +4,21 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AuthContext, runWithAuth } from "../auth/context.js";
+import { ensureClientRegistration } from "../auth/dcr.js";
 import { discover } from "../auth/discovery.js";
+import type { DpopKeyPair } from "../auth/dpop.js";
+import { getOrCreateDpopKey } from "../auth/dpop.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
+
+let httpServerCredentials: { clientId: string; dpopKey: DpopKeyPair } | undefined;
+
+/** Set server-level OAuth credentials (used by startHttp and tests). */
+export function setServerCredentials(creds: { clientId: string; dpopKey: DpopKeyPair }): void {
+  httpServerCredentials = creds;
+}
 
 function getTransport(
   transports: Map<string, WebStandardStreamableHTTPServerTransport>,
@@ -87,14 +97,14 @@ export function createApp(): Hono {
       });
     }
 
-    // Build AuthContext from validated token
+    if (!httpServerCredentials) {
+      return c.json({ error: "Server not bootstrapped" }, 503);
+    }
+
     const authCtx: AuthContext = {
       accessToken: "",
-      clientId:
-        (result.payload.client_id as string) ??
-        (result.payload.azp as string) ??
-        "",
-      dpopKey: { privateJwk: {}, publicJwk: {} },
+      clientId: httpServerCredentials.clientId,
+      dpopKey: httpServerCredentials.dpopKey,
       loginHint: (result.payload.sub as string) ?? "",
     };
 
@@ -157,8 +167,11 @@ export function createApp(): Hono {
 }
 
 export async function startHttp(): Promise<void> {
-  // Pre-cache OIDC metadata so token validation uses the correct issuer
-  await discover(config.zentityUrl);
+  // Bootstrap OAuth identity: DCR + DPoP keypair for downstream OAuth calls
+  const discovery = await discover(config.zentityUrl);
+  const clientId = await ensureClientRegistration(discovery);
+  const dpopKey = await getOrCreateDpopKey(config.zentityUrl);
+  httpServerCredentials = { clientId, dpopKey };
 
   const app = createApp();
   const { port } = config;

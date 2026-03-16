@@ -21,6 +21,8 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
 const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
+const MERCHANT_RESOURCE = "https://merchant.example.com/api";
+const EXCHANGE_SCOPE = "openid";
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -45,8 +47,6 @@ const bodySchema = z.discriminatedUnion("action", [
     action: z.literal("token-exchange"),
     providerId: z.string(),
     accessToken: z.string().min(1),
-    resource: z.string().min(1),
-    scope: z.string().optional(),
   }),
 ]);
 
@@ -164,13 +164,11 @@ export async function POST(request: Request) {
       client_id: client.clientId,
       subject_token: data.accessToken,
       subject_token_type: TOKEN_TYPE_ACCESS,
-      resource: data.resource,
+      resource: MERCHANT_RESOURCE,
+      scope: EXCHANGE_SCOPE,
     };
     if (client.clientSecret) {
       params.client_secret = client.clientSecret;
-    }
-    if (data.scope) {
-      params.scope = data.scope;
     }
 
     const { body, status } = await fetchTokenWithDpop(tokenUrl, params);

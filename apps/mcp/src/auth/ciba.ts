@@ -1,7 +1,5 @@
-import { config } from "../config.js";
 import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
-import { getServiceTokenHeaders } from "./service-token.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
@@ -57,18 +55,7 @@ export class CibaTimeoutError extends Error {
   }
 }
 
-export function requestCibaApproval(params: CibaRequest): Promise<CibaResult> {
-  if (config.transport === "http") {
-    return requestCibaViaServiceToken(params);
-  }
-  return requestCibaViaDpop(params);
-}
-
-// ---------------------------------------------------------------------------
-// DPoP path (stdio transport — the MCP server owns a keypair)
-// ---------------------------------------------------------------------------
-
-async function requestCibaViaDpop(params: CibaRequest): Promise<CibaResult> {
+export async function requestCibaApproval(params: CibaRequest): Promise<CibaResult> {
   const { cibaEndpoint, tokenEndpoint, dpopKey } = params;
 
   const body = buildCibaBody(params);
@@ -177,86 +164,6 @@ async function pollForTokenDpop(
     });
 
     currentNonce = extractDpopNonce(response) ?? currentNonce;
-
-    const result = await handlePollResponse(response, currentInterval);
-    if (result.done) {
-      return result.value;
-    }
-    currentInterval = result.nextInterval;
-  }
-
-  throw new CibaTimeoutError();
-}
-
-// ---------------------------------------------------------------------------
-// Service-token path (HTTP transport — no DPoP keypair available)
-// ---------------------------------------------------------------------------
-
-async function requestCibaViaServiceToken(
-  params: CibaRequest
-): Promise<CibaResult> {
-  const { cibaEndpoint, tokenEndpoint } = params;
-  const serviceHeaders = getServiceTokenHeaders(params.loginHint);
-
-  const body = buildCibaBody(params);
-
-  const response = await fetch(cibaEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      ...serviceHeaders,
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`CIBA authorization failed: ${response.status} ${text}`);
-  }
-
-  const authResponse = (await response.json()) as CibaAuthResponse;
-
-  return pollForTokenServiceToken(
-    tokenEndpoint,
-    authResponse.auth_req_id,
-    params.clientId,
-    params.loginHint,
-    authResponse.interval != null
-      ? authResponse.interval * 1000
-      : DEFAULT_POLL_INTERVAL_MS,
-    authResponse.expires_in * 1000
-  );
-}
-
-async function pollForTokenServiceToken(
-  tokenEndpoint: string,
-  authReqId: string,
-  clientId: string,
-  loginHint: string,
-  intervalMs: number,
-  timeoutMs: number
-): Promise<CibaResult> {
-  const deadline = Date.now() + timeoutMs;
-  let currentInterval = intervalMs;
-  const serviceHeaders = getServiceTokenHeaders(loginHint);
-
-  while (Date.now() < deadline) {
-    await sleep(currentInterval);
-
-    const body = new URLSearchParams({
-      grant_type: "urn:openid:params:grant-type:ciba",
-      auth_req_id: authReqId,
-      client_id: clientId,
-    });
-
-    const response = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        ...serviceHeaders,
-      },
-      body,
-    });
 
     const result = await handlePollResponse(response, currentInterval);
     if (result.done) {

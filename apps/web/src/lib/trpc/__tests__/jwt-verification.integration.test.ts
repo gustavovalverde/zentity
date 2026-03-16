@@ -11,6 +11,7 @@ import { verifyAccessToken } from "@/lib/trpc/jwt-session";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 const authIssuer = getAuthIssuer();
+const AUTH_SUFFIX_RE = /\/api\/auth$/;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
 let testKid: string;
@@ -124,6 +125,38 @@ describe("tRPC JWT Signature Verification", () => {
       scope: "openid",
     });
     expect(await verifyAccessToken(token)).toBeNull();
+  });
+
+  it("rejects a JWT with wrong audience", async () => {
+    const token = await mintJwt({
+      iss: authIssuer,
+      sub: userId,
+      aud: "https://evil.example.com",
+      scope: "openid",
+    });
+    expect(await verifyAccessToken(token)).toBeNull();
+  });
+
+  it("rejects a JWT with no audience", async () => {
+    const token = await mintJwt({
+      iss: authIssuer,
+      sub: userId,
+      scope: "openid",
+    });
+    expect(await verifyAccessToken(token)).toBeNull();
+  });
+
+  it("accepts a JWT with appUrl audience", async () => {
+    const appUrl = authIssuer.replace(AUTH_SUFFIX_RE, "");
+    const token = await mintJwt({
+      iss: authIssuer,
+      sub: userId,
+      aud: appUrl,
+      scope: "openid",
+    });
+    const payload = await verifyAccessToken(token);
+    expect(payload).not.toBeNull();
+    expect(payload?.sub).toBe(userId);
   });
 
   it("verifies user exists in DB after JWT validation", async () => {
