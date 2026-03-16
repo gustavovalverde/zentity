@@ -349,7 +349,7 @@ Zentity issues portable verifiable credentials following OpenID standards:
 
 External wallets can receive and hold credentials; third-party verifiers can request presentations without Zentity involvement.
 
-Credentials contain **derived claims only**—no raw PII. Claims like `verified`, `age_proof_verified`, and `verification_level` indicate verification status without exposing underlying data.
+Credentials contain **derived claims only**—no raw PII. Claims like `verified`, `age_verified`, and `verification_level` indicate verification status without exposing underlying data.
 
 See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Identity model.
 

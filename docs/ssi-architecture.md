@@ -151,9 +151,10 @@ sequenceDiagram
 | `document_verified` | ◐ | OCR signed claim | Document processed and validated |
 | `liveness_verified` | ◐ | Liveness signed claim | Liveness detection passed |
 | `face_match_verified` | ◐ | Face match signed claim | Face match threshold exceeded |
-| `age_proof_verified` | ◐ | ZK proof | Age proof generated and stored |
-| `doc_validity_proof_verified` | ◐ | ZK proof | Document validity proof stored |
-| `nationality_proof_verified` | ◐ | ZK proof | Nationality membership proof stored |
+| `age_verified` | ◐ | ZK proof | Age proof generated and stored |
+| `nationality_verified` | ◐ | ZK proof | Nationality membership proof stored |
+| `identity_bound` | ◐ | ZK proof | Identity binding proof stored |
+| `sybil_resistant` | ◐ | Dedup key | Sybil resistance verified |
 | `chip_verified` | ◐ | Chip verification signed claim | NFC chip-verified (ZKPassport) |
 | `sybil_nullifier` | ◐ | Dedup key + clientId HMAC | Per-RP pseudonymous nullifier (gated by `proof:sybil` scope) |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
@@ -166,7 +167,7 @@ sequenceDiagram
 
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
 
-**Compliance derivation:** `verification_level` and `compliance_level` are derived from ZK proof presence and signed claims at computation time — there are no mutable boolean columns like `livenessPassed` or `faceMatchPassed`. For the NFC chip path, `chip_verified` reads from the `chip_verification` signed claim. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
+**Compliance derivation:** `verification_level` and compliance status are derived via `deriveComplianceStatus()` (which returns `numericLevel`) from ZK proof presence and signed claims at computation time — there are no mutable boolean columns like `livenessPassed` or `faceMatchPassed`. For the NFC chip path, `chip_verified` reads from the `chip_verification` signed claim. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
 
 ---
 
@@ -222,7 +223,7 @@ For binary eligibility checks, ZK proofs reveal nothing beyond the answer:
 
 | Component | Relationship to VCs |
 |-----------|---------------------|
-| **ZK proofs** | VC claims like `age_proof_verified` indicate a ZK proof exists |
+| **ZK proofs** | VC claims like `age_verified` indicate a ZK proof exists |
 | **FHE encryption** | `compliance_level` derives from FHE evaluations |
 | **Signed claims** | Document, liveness, and face match claims feed VC issuance |
 | **Evidence packs** | `policy_version` ties credentials to verification policy |

@@ -1,3 +1,4 @@
+import type { ComplianceResult } from "@/lib/identity/verification/compliance";
 import type {
   FheStatus,
   IdentityBundle,
@@ -19,6 +20,7 @@ import {
   canCreateProvider,
   createProvider,
 } from "@/lib/blockchain/providers/factory";
+import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
 import {
@@ -40,10 +42,7 @@ import {
   identityVerificationJobs,
   identityVerifications,
 } from "../schema/identity";
-import {
-  getChipVerificationClaim,
-  getSignedClaimTypesByUserAndVerification,
-} from "./crypto";
+import { getSignedClaimTypesByUserAndVerification } from "./crypto";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
@@ -125,68 +124,65 @@ export async function deleteIdentityData(userId: string): Promise<void> {
 
 export const getVerificationStatus = cache(async function getVerificationStatus(
   userId: string
-): Promise<{
-  verified: boolean;
-  level: "none" | "basic" | "full" | "chip";
-  checks: {
-    document: boolean;
-    liveness: boolean;
-    ageProof: boolean;
-    docValidityProof: boolean;
-    nationalityProof: boolean;
-    faceMatchProof: boolean;
-    identityBindingProof: boolean;
-  };
-}> {
+): Promise<ComplianceResult> {
   const selectedVerification = await getSelectedVerification(userId);
-  const verificationId = selectedVerification?.id ?? null;
 
-  // NFC chip verification — derive checks from signed claim (tamper-evident)
-  if (selectedVerification && isChipVerified(selectedVerification)) {
-    const chipClaim = verificationId
-      ? await getChipVerificationClaim(userId, verificationId)
-      : null;
-    return {
-      verified: true,
-      level: "chip" as const,
-      checks: {
-        document: true,
-        liveness: chipClaim !== null,
-        ageProof: chipClaim?.ageVerified === true,
-        docValidityProof: true,
-        nationalityProof: Boolean(selectedVerification.nationalityCommitment),
-        faceMatchProof: chipClaim?.faceMatchPassed === true,
-        identityBindingProof: Boolean(selectedVerification.uniqueIdentifier),
-      },
-    };
+  if (!selectedVerification) {
+    return deriveComplianceStatus({
+      verificationMethod: null,
+      birthYearOffset: null,
+      zkProofs: [],
+      signedClaims: [],
+      encryptedAttributes: [],
+      hasUniqueIdentifier: false,
+      hasNationalityCommitment: false,
+    });
   }
 
-  // OCR path — check proofs and signed claims
+  const verificationId = selectedVerification.id;
+
+  // NFC chip path — only need signed claim types
+  if (isChipVerified(selectedVerification)) {
+    const claimTypes = await getSignedClaimTypesByUserAndVerification(
+      userId,
+      verificationId
+    );
+    return deriveComplianceStatus({
+      verificationMethod: "nfc_chip",
+      birthYearOffset: selectedVerification.birthYearOffset ?? null,
+      zkProofs: [],
+      signedClaims: claimTypes.map((t) => ({ claimType: t })),
+      encryptedAttributes: [],
+      hasUniqueIdentifier: Boolean(selectedVerification.uniqueIdentifier),
+      hasNationalityCommitment: Boolean(
+        selectedVerification.nationalityCommitment
+      ),
+    });
+  }
+
+  // OCR path — proofs and claims with session grouping
   const [sessionProofRows, signedClaimTypes] = await Promise.all([
-    verificationId
-      ? db
-          .select({
-            proofSessionId: zkProofs.proofSessionId,
-            proofType: zkProofs.proofType,
-            createdAt: zkProofs.createdAt,
-          })
-          .from(zkProofs)
-          .where(
-            and(
-              eq(zkProofs.userId, userId),
-              eq(zkProofs.verificationId, verificationId),
-              eq(zkProofs.verified, true),
-              eq(zkProofs.policyVersion, POLICY_VERSION),
-              sql`${zkProofs.proofSessionId} is not null`
-            )
-          )
-          .all()
-      : Promise.resolve([]),
-    verificationId
-      ? getSignedClaimTypesByUserAndVerification(userId, verificationId)
-      : Promise.resolve([]),
+    db
+      .select({
+        proofSessionId: zkProofs.proofSessionId,
+        proofType: zkProofs.proofType,
+        createdAt: zkProofs.createdAt,
+      })
+      .from(zkProofs)
+      .where(
+        and(
+          eq(zkProofs.userId, userId),
+          eq(zkProofs.verificationId, verificationId),
+          eq(zkProofs.verified, true),
+          eq(zkProofs.policyVersion, POLICY_VERSION),
+          sql`${zkProofs.proofSessionId} is not null`
+        )
+      )
+      .all(),
+    getSignedClaimTypesByUserAndVerification(userId, verificationId),
   ]);
 
+  // Group proofs by session, find the latest complete one
   const requiredProofs = [
     "age_verification",
     "doc_validity",
@@ -219,9 +215,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   let selectedSessionProofTypes: Set<string> = new Set();
   let latestCompleteSessionCreatedAt: string | null = null;
   for (const session of proofTypesBySession.values()) {
-    const complete = requiredProofs.every((proofType) =>
-      session.types.has(proofType)
-    );
+    const complete = requiredProofs.every((t) => session.types.has(t));
     if (!complete) {
       continue;
     }
@@ -234,34 +228,22 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
     }
   }
 
-  const coreChecks = {
-    document: selectedVerification?.status === "verified",
-    liveness: signedClaimTypes.includes("liveness_score"),
-    ageProof: selectedSessionProofTypes.has("age_verification"),
-    docValidityProof: selectedSessionProofTypes.has("doc_validity"),
-    nationalityProof: selectedSessionProofTypes.has("nationality_membership"),
-    faceMatchProof:
-      selectedSessionProofTypes.has("face_match") ||
-      signedClaimTypes.includes("face_match_score"),
-    identityBindingProof: selectedSessionProofTypes.has("identity_binding"),
-  };
-
-  const checks = coreChecks;
-  const passedChecks = Object.values(coreChecks).filter(Boolean).length;
-  const totalChecks = Object.values(coreChecks).length;
-
-  let level: "none" | "basic" | "full" | "chip" = "none";
-  if (passedChecks === totalChecks) {
-    level = "full";
-  } else if (passedChecks >= Math.ceil(totalChecks / 2)) {
-    level = "basic";
-  }
-
-  return {
-    verified: level === "full",
-    level,
-    checks,
-  };
+  return deriveComplianceStatus({
+    verificationMethod: "ocr",
+    birthYearOffset: selectedVerification.birthYearOffset ?? null,
+    zkProofs: [...selectedSessionProofTypes].map((proofType) => ({
+      proofType,
+      verified: true,
+    })),
+    signedClaims: signedClaimTypes.map((t) => ({ claimType: t })),
+    encryptedAttributes: [],
+    hasUniqueIdentifier: Boolean(
+      selectedVerification.dedupKey || selectedVerification.uniqueIdentifier
+    ),
+    hasNationalityCommitment: Boolean(
+      selectedVerification.nationalityCommitment
+    ),
+  });
 });
 
 export const getIdentityBundleByUserId = cache(

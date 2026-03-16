@@ -9,11 +9,11 @@ export const PROOF_DISCLOSURE_KEYS = [
   "verified",
   "document_verified",
   "liveness_verified",
-  "age_proof_verified",
-  "doc_validity_proof_verified",
-  "nationality_proof_verified",
+  "age_verified",
   "face_match_verified",
-  "identity_binding_verified",
+  "nationality_verified",
+  "identity_bound",
+  "sybil_resistant",
   "policy_version",
   "verification_time",
   "attestation_expires_at",
@@ -24,17 +24,17 @@ export const PROOF_DISCLOSURE_KEYS = [
 type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
 
 interface VerificationClaims extends Record<string, unknown> {
-  age_proof_verified: boolean;
+  age_verified: boolean;
   attestation_expires_at?: string;
   chip_verification_method?: "nfc";
   chip_verified: boolean;
-  doc_validity_proof_verified: boolean;
   document_verified: boolean;
   face_match_verified: boolean;
-  identity_binding_verified: boolean;
+  identity_bound: boolean;
   liveness_verified: boolean;
-  nationality_proof_verified: boolean;
+  nationality_verified: boolean;
   policy_version?: string;
+  sybil_resistant: boolean;
   verification_level: VerificationStatus["level"];
   verification_time?: string;
   verified: boolean;
@@ -45,13 +45,13 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
   return {
     verification_level: status.level,
     verified: status.verified,
-    document_verified: status.checks.document,
-    liveness_verified: status.checks.liveness,
-    age_proof_verified: status.checks.ageProof,
-    doc_validity_proof_verified: status.checks.docValidityProof,
-    nationality_proof_verified: status.checks.nationalityProof,
-    face_match_verified: status.checks.faceMatchProof,
-    identity_binding_verified: status.checks.identityBindingProof,
+    document_verified: status.checks.documentVerified,
+    liveness_verified: status.checks.livenessVerified,
+    age_verified: status.checks.ageVerified,
+    face_match_verified: status.checks.faceMatchVerified,
+    nationality_verified: status.checks.nationalityVerified,
+    identity_bound: status.checks.identityBound,
+    sybil_resistant: status.checks.sybilResistant,
     chip_verified: isChip,
     chip_verification_method: isChip ? "nfc" : undefined,
   };

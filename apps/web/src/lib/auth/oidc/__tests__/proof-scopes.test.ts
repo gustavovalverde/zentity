@@ -6,13 +6,13 @@ describe("proof scopes", () => {
   const proofClaims = {
     verification_level: "full",
     verified: true,
-    identity_binding_verified: true,
-    age_proof_verified: true,
-    doc_validity_proof_verified: true,
+    identity_bound: true,
+    sybil_resistant: true,
+    age_verified: true,
     document_verified: true,
     liveness_verified: true,
     face_match_verified: true,
-    nationality_proof_verified: true,
+    nationality_verified: true,
     policy_version: "policy-1",
     issuer_id: "issuer-1",
     verification_time: "2026-01-02T00:00:00.000Z",
@@ -27,13 +27,14 @@ describe("proof scopes", () => {
     expect(filtered).toEqual({
       verification_level: "full",
       verified: true,
-      identity_binding_verified: true,
+      identity_bound: true,
+      sybil_resistant: true,
     });
   });
 
   it("includes identity binding status for proof:identity umbrella scope", () => {
     const filtered = filterProofClaimsByScopes(proofClaims, ["proof:identity"]);
 
-    expect(filtered.identity_binding_verified).toBe(true);
+    expect(filtered.identity_bound).toBe(true);
   });
 });

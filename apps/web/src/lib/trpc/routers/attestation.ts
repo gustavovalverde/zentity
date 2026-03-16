@@ -38,10 +38,7 @@ import {
   getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
-import {
-  countryCodeToNumeric,
-  getComplianceLevel,
-} from "@/lib/identity/verification/compliance";
+import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
@@ -266,22 +263,16 @@ export const attestationRouter = router({
         }
       }
 
-      const birthYearOffset = verification.birthYearOffset;
-      if (
-        birthYearOffset === null ||
-        birthYearOffset === undefined ||
-        !Number.isInteger(birthYearOffset) ||
-        birthYearOffset < 0 ||
-        birthYearOffset > 255
-      ) {
+      if (verificationStatus.birthYearOffset === null) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
             "Birth year offset not available. Please re-verify your identity.",
         });
       }
+      const birthYearOffset = verificationStatus.birthYearOffset;
       const countryCode = countryCodeToNumeric(issuerCountry || "");
-      const complianceLevel = getComplianceLevel(verificationStatus);
+      const complianceLevel = verificationStatus.numericLevel;
 
       try {
         const result = await provider.submitAttestation({

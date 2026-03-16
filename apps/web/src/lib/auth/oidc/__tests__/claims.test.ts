@@ -21,14 +21,16 @@ describe("oidc claim mapping", () => {
     mockGetVerificationStatus.mockResolvedValue({
       verified: true,
       level: "full",
+      numericLevel: 3,
+      birthYearOffset: null,
       checks: {
-        document: true,
-        liveness: true,
-        ageProof: true,
-        docValidityProof: true,
-        nationalityProof: true,
-        faceMatchProof: true,
-        identityBindingProof: true,
+        documentVerified: true,
+        livenessVerified: true,
+        ageVerified: true,
+        nationalityVerified: true,
+        faceMatchVerified: true,
+        identityBound: true,
+        sybilResistant: true,
       },
     });
     mockGetIdentityBundleByUserId.mockResolvedValue({
@@ -50,11 +52,11 @@ describe("oidc claim mapping", () => {
       verified: true,
       document_verified: true,
       liveness_verified: true,
-      age_proof_verified: true,
-      doc_validity_proof_verified: true,
-      nationality_proof_verified: true,
+      age_verified: true,
+      nationality_verified: true,
       face_match_verified: true,
-      identity_binding_verified: true,
+      identity_bound: true,
+      sybil_resistant: true,
       policy_version: "policy-1",
       verification_time: "2026-01-02T00:00:00.000Z",
       attestation_expires_at: "2030-01-01T00:00:00.000Z",
@@ -76,7 +78,7 @@ describe("oidc claim mapping", () => {
         verification_level: "full",
         verified: true,
         document_verified: true,
-        identity_binding_verified: true,
+        identity_bound: true,
       },
     });
   });
@@ -85,14 +87,16 @@ describe("oidc claim mapping", () => {
     mockGetVerificationStatus.mockResolvedValueOnce({
       verified: true,
       level: "chip",
+      numericLevel: 4,
+      birthYearOffset: null,
       checks: {
-        document: true,
-        liveness: true,
-        ageProof: true,
-        docValidityProof: true,
-        nationalityProof: true,
-        faceMatchProof: true,
-        identityBindingProof: true,
+        documentVerified: true,
+        livenessVerified: true,
+        ageVerified: true,
+        nationalityVerified: true,
+        faceMatchVerified: true,
+        identityBound: true,
+        sybilResistant: true,
       },
     });
 
@@ -105,11 +109,11 @@ describe("oidc claim mapping", () => {
       chip_verification_method: "nfc",
       document_verified: true,
       liveness_verified: true,
-      age_proof_verified: true,
-      doc_validity_proof_verified: true,
-      nationality_proof_verified: true,
+      age_verified: true,
+      nationality_verified: true,
       face_match_verified: true,
-      identity_binding_verified: true,
+      identity_bound: true,
+      sybil_resistant: true,
     });
   });
 
@@ -117,14 +121,16 @@ describe("oidc claim mapping", () => {
     mockGetVerificationStatus.mockResolvedValueOnce({
       verified: true,
       level: "chip",
+      numericLevel: 4,
+      birthYearOffset: null,
       checks: {
-        document: true,
-        liveness: true,
-        ageProof: true,
-        docValidityProof: true,
-        nationalityProof: true,
-        faceMatchProof: false,
-        identityBindingProof: true,
+        documentVerified: true,
+        livenessVerified: true,
+        ageVerified: true,
+        nationalityVerified: true,
+        faceMatchVerified: false,
+        identityBound: true,
+        sybilResistant: true,
       },
     });
 
@@ -149,14 +155,16 @@ describe("oidc claim mapping", () => {
     mockGetVerificationStatus.mockResolvedValueOnce({
       verified: false,
       level: "none",
+      numericLevel: 0,
+      birthYearOffset: null,
       checks: {
-        document: false,
-        liveness: false,
-        ageProof: false,
-        docValidityProof: false,
-        nationalityProof: false,
-        faceMatchProof: false,
-        identityBindingProof: false,
+        documentVerified: false,
+        livenessVerified: false,
+        ageVerified: false,
+        nationalityVerified: false,
+        faceMatchVerified: false,
+        identityBound: false,
+        sybilResistant: false,
       },
     });
 

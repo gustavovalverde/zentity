@@ -180,14 +180,16 @@ describe("attestation router", () => {
     mockGetVerificationStatus.mockReturnValue({
       verified: true,
       level: "full",
+      numericLevel: 3,
+      birthYearOffset: 25,
       checks: {
-        document: true,
-        liveness: true,
-        ageProof: true,
-        docValidityProof: true,
-        nationalityProof: true,
-        faceMatchProof: true,
-        identityBindingProof: true,
+        documentVerified: true,
+        livenessVerified: true,
+        ageVerified: true,
+        nationalityVerified: true,
+        faceMatchVerified: true,
+        identityBound: true,
+        sybilResistant: true,
       },
     });
     mockGetSelectedVerification.mockReturnValue({

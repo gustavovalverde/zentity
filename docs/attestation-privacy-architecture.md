@@ -563,7 +563,7 @@ Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
 - `verification_level` (`none` | `basic` | `full`)
 - `verified`, `document_verified`, `liveness_verified`, `face_match_verified`
-- `age_proof_verified`, `doc_validity_proof_verified`, `nationality_proof_verified`
+- `age_verified`, `nationality_verified`, `identity_bound`, `sybil_resistant`
 - `policy_version`, `issuer_id`, `verification_time`
 
 **No raw PII** is included in credentials. Claims derive from existing verification artifacts (ZK proofs, signed claims, FHE).

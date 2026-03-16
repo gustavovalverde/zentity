@@ -791,47 +791,6 @@ export async function getSignedClaimTypesByUserAndVerification(
   return rows.map((row) => row.claimType);
 }
 
-export interface ChipVerificationClaim {
-  ageVerified: boolean;
-  faceMatchPassed: boolean;
-  sanctionsCleared: boolean;
-}
-
-export async function getChipVerificationClaim(
-  userId: string,
-  verificationId: string
-): Promise<ChipVerificationClaim | null> {
-  const row = await db
-    .select({ claimPayload: signedClaims.claimPayload })
-    .from(signedClaims)
-    .where(
-      and(
-        eq(signedClaims.userId, userId),
-        eq(signedClaims.verificationId, verificationId),
-        eq(signedClaims.claimType, "chip_verification")
-      )
-    )
-    .get();
-
-  if (!row) {
-    return null;
-  }
-
-  const payload = JSON.parse(row.claimPayload) as {
-    data?: {
-      ageVerified?: boolean;
-      faceMatchPassed?: boolean;
-      sanctionsCleared?: boolean;
-    };
-  };
-
-  return {
-    ageVerified: payload.data?.ageVerified === true,
-    faceMatchPassed: payload.data?.faceMatchPassed === true,
-    sanctionsCleared: payload.data?.sanctionsCleared === true,
-  };
-}
-
 export async function getProofHashesByUserAndVerification(
   userId: string,
   verificationId: string

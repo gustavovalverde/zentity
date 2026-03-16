@@ -242,27 +242,27 @@ export function UserDataSection() {
           <div className="flex flex-wrap gap-2">
             <VerificationBadge
               label="Document"
-              passed={data.verification.checks.document}
+              passed={data.verification.checks.documentVerified}
             />
             <VerificationBadge
               label="Liveness"
-              passed={data.verification.checks.liveness}
+              passed={data.verification.checks.livenessVerified}
             />
             <VerificationBadge
-              label="Face Match (ZK)"
-              passed={data.verification.checks.faceMatchProof}
+              label="Face Match"
+              passed={data.verification.checks.faceMatchVerified}
             />
             <VerificationBadge
               label="Age (18+)"
-              passed={data.verification.checks.ageProof}
-            />
-            <VerificationBadge
-              label="Document Valid"
-              passed={data.verification.checks.docValidityProof}
+              passed={data.verification.checks.ageVerified}
             />
             <VerificationBadge
               label="Nationality"
-              passed={data.verification.checks.nationalityProof}
+              passed={data.verification.checks.nationalityVerified}
+            />
+            <VerificationBadge
+              label="Identity Bound"
+              passed={data.verification.checks.identityBound}
             />
           </div>
         </div>

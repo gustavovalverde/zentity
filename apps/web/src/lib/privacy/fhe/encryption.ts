@@ -16,7 +16,6 @@ import {
   getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
-import { getComplianceLevel } from "@/lib/identity/verification/compliance";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
@@ -109,7 +108,7 @@ async function runFheEncryption(
 
       const verificationStatus = await getVerificationStatus(userId);
       const complianceLevel = verificationStatus.verified
-        ? getComplianceLevel(verificationStatus)
+        ? verificationStatus.numericLevel
         : null;
 
       // Parallelize independent attribute lookups

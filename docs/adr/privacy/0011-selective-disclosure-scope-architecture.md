@@ -38,11 +38,11 @@ Chosen option: two-layer selective disclosure using granular `proof:*` sub-scope
 | Scope | Claims | Purpose |
 |-------|--------|---------|
 | `proof:identity` | All below (umbrella) | Full verification status |
-| `proof:verification` | `verification_level`, `verified` | Basic "is verified" check |
-| `proof:age` | `age_proof_verified` | Age-gated services |
-| `proof:document` | `document_verified`, `doc_validity_proof_verified` | Document verification |
+| `proof:verification` | `verification_level`, `verified`, `identity_bound`, `sybil_resistant` | Basic "is verified" check |
+| `proof:age` | `age_verified` | Age-gated services |
+| `proof:document` | `document_verified` | Document verification |
 | `proof:liveness` | `liveness_verified`, `face_match_verified` | Biometric verification |
-| `proof:nationality` | `nationality_proof_verified` | Nationality proof |
+| `proof:nationality` | `nationality_verified` | Nationality proof |
 | `proof:compliance` | `policy_version`, `issuer_id`, `verification_time`, `attestation_expires_at` | Audit metadata |
 
 **Identity PII scopes** (actual personal data):
@@ -82,7 +82,7 @@ Zentity also supports two additional disclosure paths alongside scopes:
 ### Expected Consequences
 
 * Users have fine-grained, opt-in control over verification and identity disclosure
-* A wine shop requesting `proof:identity` only gets `verified` + `age_proof_verified` if that's all the user approves
+* A wine shop requesting `proof:identity` only gets `verified` + `age_verified` if that's all the user approves
 * A bank gets full verification status + PII because the user opts in to everything
 * DCR-registered clients request `proof:identity` (allowed in `publicClientScopes`) and the user controls the rest
 * Three disclosure paths coexist: scope-based (this ADR), OIDC4IDA (`verified_claims` via `claims` parameter), and SD-JWT VC

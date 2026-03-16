@@ -34,12 +34,13 @@ const PROOF_SCOPE_CLAIMS: Record<ProofScope, ProofClaimKey[]> = {
   "proof:verification": [
     "verification_level",
     "verified",
-    "identity_binding_verified",
+    "identity_bound",
+    "sybil_resistant",
   ],
-  "proof:age": ["age_proof_verified"],
-  "proof:document": ["document_verified", "doc_validity_proof_verified"],
+  "proof:age": ["age_verified"],
+  "proof:document": ["document_verified"],
   "proof:liveness": ["liveness_verified", "face_match_verified"],
-  "proof:nationality": ["nationality_proof_verified"],
+  "proof:nationality": ["nationality_verified"],
   "proof:compliance": [
     "policy_version",
     "verification_time",

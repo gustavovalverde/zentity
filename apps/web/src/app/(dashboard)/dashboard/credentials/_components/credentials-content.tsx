@@ -52,11 +52,11 @@ const CLAIM_LABELS: Record<string, string> = {
   verification_level: "Level",
   document_verified: "Document",
   liveness_verified: "Liveness",
-  age_proof_verified: "Age",
-  doc_validity_proof_verified: "Document Validity",
-  nationality_proof_verified: "Nationality",
+  age_verified: "Age",
+  nationality_verified: "Nationality",
   face_match_verified: "Face Match",
-  identity_binding_verified: "Identity Binding",
+  identity_bound: "Identity Binding",
+  sybil_resistant: "Sybil Resistant",
 };
 
 const METADATA_CLAIMS = new Set([

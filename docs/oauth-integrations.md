@@ -351,11 +351,11 @@ Non-PII boolean verification flags, delivered via id_token and userinfo.
 | Scope | Claims |
 | --- | --- |
 | `proof:identity` | All verification claims (umbrella — expanded at consent) |
-| `proof:verification` | `verification_level`, `verified`, `identity_binding_verified` |
-| `proof:age` | `age_proof_verified` |
-| `proof:document` | `document_verified`, `doc_validity_proof_verified` |
+| `proof:verification` | `verification_level`, `verified`, `identity_bound`, `sybil_resistant` |
+| `proof:age` | `age_verified` |
+| `proof:document` | `document_verified` |
 | `proof:liveness` | `liveness_verified`, `face_match_verified` |
-| `proof:nationality` | `nationality_proof_verified` |
+| `proof:nationality` | `nationality_verified` |
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (delivered in access tokens via `customAccessTokenClaims`, NOT in id_tokens) |
@@ -454,7 +454,7 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 
 **Deferred issuance**: When verification is pending, the issuer returns a `transaction_id`. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until ready.
 
-**Derived claims only** — credentials contain verification flags (e.g., `verified`, `verification_level`, `age_proof_verified`), never raw PII.
+**Derived claims only** — credentials contain verification flags (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
 ---
 

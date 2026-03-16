@@ -123,10 +123,11 @@ describe("RP contract — scope alignment", () => {
 
     expect(filtered).toHaveProperty("verification_level");
     expect(filtered).toHaveProperty("verified");
-    expect(filtered).toHaveProperty("identity_binding_verified");
+    expect(filtered).toHaveProperty("identity_bound");
+    expect(filtered).toHaveProperty("sybil_resistant");
   });
 
-  it("proof:age scope produces age_proof_verified (wine scenario)", () => {
+  it("proof:age scope produces age_verified (wine scenario)", () => {
     const mockProofClaims: Record<string, unknown> = {};
     for (const key of PROOF_DISCLOSURE_KEYS) {
       mockProofClaims[key] = true;
@@ -134,7 +135,7 @@ describe("RP contract — scope alignment", () => {
 
     const filtered = filterProofClaimsByScopes(mockProofClaims, ["proof:age"]);
 
-    expect(filtered).toHaveProperty("age_proof_verified");
+    expect(filtered).toHaveProperty("age_verified");
     expect(Object.keys(filtered)).toHaveLength(1);
   });
 

@@ -166,7 +166,7 @@ function CodeWindow({ filename }: { readonly filename: string }) {
           <span className={str}>{'"verification_level"'}</span>:{" "}
           <span className={str}>{'"full"'}</span>,{"\n"}
           {"  "}
-          <span className={str}>{'"identity_binding_verified"'}</span>:{" "}
+          <span className={str}>{'"identity_bound"'}</span>:{" "}
           <span className={num}>true</span>
           {"\n}"}
         </pre>

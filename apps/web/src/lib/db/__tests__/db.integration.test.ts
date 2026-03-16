@@ -39,13 +39,13 @@ describe("Database Module", () => {
 
       expect(status.level).toBe("none");
       expect(status.verified).toBe(false);
-      expect(status.checks.document).toBe(false);
-      expect(status.checks.liveness).toBe(false);
-      expect(status.checks.ageProof).toBe(false);
-      expect(status.checks.docValidityProof).toBe(false);
-      expect(status.checks.nationalityProof).toBe(false);
-      expect(status.checks.faceMatchProof).toBe(false);
-      expect(status.checks.identityBindingProof).toBe(false);
+      expect(status.checks.documentVerified).toBe(false);
+      expect(status.checks.livenessVerified).toBe(false);
+      expect(status.checks.ageVerified).toBe(false);
+      expect(status.checks.nationalityVerified).toBe(false);
+      expect(status.checks.faceMatchVerified).toBe(false);
+      expect(status.checks.identityBound).toBe(false);
+      expect(status.checks.sybilResistant).toBe(false);
     });
 
     it("returns full level when all ZK proofs and signed claims are present", async () => {
@@ -59,6 +59,7 @@ describe("Database Module", () => {
         userId,
         method: "ocr",
         status: "verified",
+        dedupKey: "test-dedup-key",
         verifiedAt: new Date().toISOString(),
       });
 
@@ -107,10 +108,13 @@ describe("Database Module", () => {
       const status = await getVerificationStatus(userId);
       expect(status.level).toBe("full");
       expect(status.verified).toBe(true);
-      expect(status.checks.ageProof).toBe(true);
-      expect(status.checks.liveness).toBe(true);
-      expect(status.checks.faceMatchProof).toBe(true);
-      expect(status.checks.identityBindingProof).toBe(true);
+      expect(status.checks.documentVerified).toBe(true);
+      expect(status.checks.livenessVerified).toBe(true);
+      expect(status.checks.ageVerified).toBe(true);
+      expect(status.checks.faceMatchVerified).toBe(true);
+      expect(status.checks.nationalityVerified).toBe(true);
+      expect(status.checks.identityBound).toBe(true);
+      expect(status.checks.sybilResistant).toBe(true);
     });
 
     it("returns lower level when proof session is incomplete", async () => {
@@ -164,11 +168,12 @@ describe("Database Module", () => {
 
       const status = await getVerificationStatus(userId);
       // Incomplete proof session: individual proof checks require all 5 in one session
-      expect(status.checks.document).toBe(true);
-      expect(status.checks.liveness).toBe(true);
-      expect(status.checks.ageProof).toBe(false);
-      expect(status.checks.faceMatchProof).toBe(false);
-      expect(status.checks.identityBindingProof).toBe(false);
+      expect(status.checks.documentVerified).toBe(false);
+      expect(status.checks.livenessVerified).toBe(true);
+      expect(status.checks.ageVerified).toBe(false);
+      expect(status.checks.faceMatchVerified).toBe(false);
+      expect(status.checks.identityBound).toBe(false);
+      expect(status.checks.sybilResistant).toBe(false);
     });
 
     it("derives NFC chip compliance from signed claim, not boolean columns", async () => {
@@ -208,11 +213,13 @@ describe("Database Module", () => {
       const status = await getVerificationStatus(userId);
       expect(status.level).toBe("chip");
       expect(status.verified).toBe(true);
-      expect(status.checks.ageProof).toBe(true);
-      expect(status.checks.faceMatchProof).toBe(true);
-      expect(status.checks.liveness).toBe(true);
-      expect(status.checks.nationalityProof).toBe(true);
-      expect(status.checks.identityBindingProof).toBe(true);
+      expect(status.checks.documentVerified).toBe(true);
+      expect(status.checks.livenessVerified).toBe(true);
+      expect(status.checks.ageVerified).toBe(true);
+      expect(status.checks.faceMatchVerified).toBe(true);
+      expect(status.checks.nationalityVerified).toBe(true);
+      expect(status.checks.identityBound).toBe(true);
+      expect(status.checks.sybilResistant).toBe(true);
     });
 
     it("NFC chip without signed claim returns false for derivable checks", async () => {
@@ -231,9 +238,10 @@ describe("Database Module", () => {
       // No chip_verification signed claim
       const status = await getVerificationStatus(userId);
       expect(status.level).toBe("chip");
-      expect(status.checks.ageProof).toBe(false);
-      expect(status.checks.faceMatchProof).toBe(false);
-      expect(status.checks.liveness).toBe(false);
+      expect(status.checks.ageVerified).toBe(false);
+      expect(status.checks.faceMatchVerified).toBe(false);
+      expect(status.checks.livenessVerified).toBe(false);
+      expect(status.checks.sybilResistant).toBe(true);
     });
   });
 

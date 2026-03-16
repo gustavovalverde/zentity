@@ -414,3 +414,32 @@ Phase 4: crypto.* → zk.* in my_proofs, identity switched to userinfo endpoint
 - apps/mcp/src/config.ts, auth/resource-metadata.ts, auth/token-auth.ts
 - apps/mcp/src/auth/identity.ts, auth/api-client.ts, tools/my-proofs.ts
 - apps/mcp/__tests__/ (12 files) — mcpPublicUrl in config mocks
+
+## Task 27: Compliance Derivation Engine
+Status: Complete
+
+### Architectural decisions
+- `deriveComplianceStatus()` is a pure function with zero DB/env/tRPC imports
+- 7 boolean checks: documentVerified, livenessVerified, ageVerified, faceMatchVerified, nationalityVerified, identityBound, sybilResistant
+- NFC chip path derives from claim TYPE presence (not boolean payloads)
+- OCR `documentVerified` = `doc_validity` ZK proof (not verification status field)
+- `sybilResistant` maps to dedupKey (OCR) or uniqueIdentifier (NFC)
+- `getComplianceLevel()` absorbed into `numericLevel` return field
+- `getChipVerificationClaim()` + `ChipVerificationClaim` interface deleted
+- OIDC claims renamed: age_proof_verified→age_verified, nationality_proof_verified→nationality_verified, identity_binding_verified→identity_bound, doc_validity_proof_verified→removed, sybil_resistant→added
+
+### Files changed
+- apps/web/src/lib/identity/verification/compliance.ts — deriveComplianceStatus pure fn, types, deleted getComplianceLevel
+- apps/web/src/lib/db/queries/identity.ts — getVerificationStatus delegates to derivation engine
+- apps/web/src/lib/db/queries/crypto.ts — deleted getChipVerificationClaim + ChipVerificationClaim
+- apps/web/src/lib/trpc/routers/attestation.ts — uses numericLevel + birthYearOffset from derivation result
+- apps/web/src/lib/privacy/fhe/encryption.ts — uses numericLevel instead of getComplianceLevel()
+- apps/web/src/lib/auth/oidc/claims.ts — new claim names in VerificationClaims + mapVerificationClaims
+- apps/web/src/lib/auth/oidc/proof-scopes.ts — updated scope-to-claim mapping
+- apps/web/src/components/dashboard/user-data-section.tsx — new check prop names
+- apps/web/src/app/(dashboard)/dashboard/_components/identity-card.tsx — ageVerified
+- apps/web/src/app/(dashboard)/dashboard/credentials/_components/credentials-content.tsx — claim labels
+- apps/demo-rp/src/data/veripass.ts — claim display names
+- apps/landing/src/pages/zk-auth-page.tsx — identity_bound
+- 6 test files updated (23 new unit tests + all integration tests pass)
+- 5 core docs updated (oauth-integrations, attestation-privacy-architecture, architecture, ssi-architecture, ADR-0011)
