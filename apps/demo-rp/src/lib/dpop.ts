@@ -17,7 +17,7 @@ async function hashAccessToken(token: string): Promise<string> {
     .replace(BASE64_PAD, "");
 }
 
-interface DpopClient {
+export interface DpopClient {
   proofFor(
     method: string,
     url: string,

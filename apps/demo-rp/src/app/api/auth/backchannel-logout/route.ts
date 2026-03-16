@@ -4,21 +4,41 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session } from "@/lib/db/schema";
+import { PROVIDER_IDS, readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 
-const BCL_EVENT_URI =
-  "http://schemas.openid.net/event/backchannel-logout";
+const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
 
-let jwksPromise: ReturnType<typeof createRemoteJWKSet> | null = null;
+interface OidcDiscovery {
+  issuer: string;
+  jwks: ReturnType<typeof createRemoteJWKSet>;
+}
 
-function getJwks() {
-  if (!jwksPromise) {
-    const jwksUrl =
-      env.ZENTITY_JWKS_URL ??
-      `${env.ZENTITY_URL}/.well-known/jwks.json`;
-    jwksPromise = createRemoteJWKSet(new URL(jwksUrl));
+let cached: OidcDiscovery | null = null;
+
+async function getOidcConfig(): Promise<OidcDiscovery> {
+  if (cached) {
+    return cached;
   }
-  return jwksPromise;
+  const discoveryUrl = `${env.ZENTITY_URL}/.well-known/openid-configuration`;
+  const res = await fetch(discoveryUrl);
+  const meta = (await res.json()) as { issuer: string; jwks_uri: string };
+  cached = {
+    issuer: meta.issuer,
+    jwks: createRemoteJWKSet(new URL(meta.jwks_uri)),
+  };
+  return cached;
+}
+
+async function getAllClientIds(): Promise<string[]> {
+  const ids: string[] = [];
+  for (const providerId of PROVIDER_IDS) {
+    const clientId = await readDcrClientId(providerId);
+    if (clientId) {
+      ids.push(clientId);
+    }
+  }
+  return ids;
 }
 
 /**
@@ -44,14 +64,16 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const jwks = getJwks();
-    const { payload } = await jwtVerify(logoutToken, jwks, {
-      issuer: env.ZENTITY_URL,
+    const oidc = await getOidcConfig();
+    const clientIds = await getAllClientIds();
+    const { payload } = await jwtVerify(logoutToken, oidc.jwks, {
+      issuer: oidc.issuer,
+      audience: clientIds.length > 0 ? clientIds : undefined,
     });
 
     // Validate BCL event claim (OIDC BCL §2.4)
     const events = payload.events as Record<string, unknown> | undefined;
-    if (!events || !(BCL_EVENT_URI in events)) {
+    if (!(events && BCL_EVENT_URI in events)) {
       return NextResponse.json(
         { error: "Missing backchannel-logout event" },
         { status: 400 }
@@ -60,10 +82,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const sub = payload.sub;
     if (!sub) {
-      return NextResponse.json(
-        { error: "Missing sub claim" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing sub claim" }, { status: 400 });
     }
 
     // Find the local user by their Zentity accountId (sub)

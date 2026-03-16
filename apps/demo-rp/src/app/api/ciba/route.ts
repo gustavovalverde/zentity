@@ -7,8 +7,12 @@ import { z } from "zod";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
-import { createDpopClient } from "@/lib/dpop";
+import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
+
+// Store DPoP clients from token exchange so the subsequent userinfo call
+// can reuse the same keypair (access tokens are cnf.jkt-bound).
+const dpopByToken = new Map<string, DpopClient>();
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
@@ -108,7 +112,7 @@ async function handleAuthorize(
 async function fetchTokenWithDpop(
   tokenUrl: string,
   params: Record<string, string>
-): Promise<{ body: unknown; status: number }> {
+): Promise<{ body: unknown; dpop: DpopClient; status: number }> {
   const dpop = await createDpopClient();
   const { response, result } = await dpop.withNonceRetry(async (nonce) => {
     const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
@@ -122,7 +126,7 @@ async function fetchTokenWithDpop(
     });
     return { response, result: await response.json() };
   });
-  return { body: result, status: response.status };
+  return { body: result, dpop, status: response.status };
 }
 
 export async function POST(request: Request) {
@@ -145,10 +149,21 @@ export async function POST(request: Request) {
   }
 
   if (data.action === "userinfo") {
-    const res = await fetch(
-      new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString(),
-      { headers: { Authorization: `Bearer ${data.accessToken}` } }
-    );
+    const url = new URL(
+      "/api/auth/oauth2/userinfo",
+      env.ZENTITY_URL
+    ).toString();
+    const dpop = dpopByToken.get(data.accessToken);
+    dpopByToken.delete(data.accessToken);
+
+    const headers: Record<string, string> = dpop
+      ? {
+          Authorization: `DPoP ${data.accessToken}`,
+          DPoP: await dpop.proofFor("GET", url, data.accessToken),
+        }
+      : { Authorization: `Bearer ${data.accessToken}` };
+
+    const res = await fetch(url, { headers });
     const body = (await res.json()) as Record<string, unknown>;
     return NextResponse.json(body, { status: res.status });
   }
@@ -186,7 +201,15 @@ export async function POST(request: Request) {
       params.scope = data.scope;
     }
 
-    const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
+    const {
+      body,
+      dpop: txDpop,
+      status,
+    } = await fetchTokenWithDpop(tokenUrl, params);
+    const txBody = body as Record<string, unknown>;
+    if (typeof txBody.access_token === "string") {
+      dpopByToken.set(txBody.access_token, txDpop);
+    }
     return NextResponse.json(body, { status });
   }
 
@@ -199,6 +222,14 @@ export async function POST(request: Request) {
     resource: env.ZENTITY_URL,
   };
 
-  const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
+  const {
+    body,
+    dpop: cibaTokenDpop,
+    status,
+  } = await fetchTokenWithDpop(tokenUrl, params);
+  const cibaBody = body as Record<string, unknown>;
+  if (typeof cibaBody.access_token === "string") {
+    dpopByToken.set(cibaBody.access_token, cibaTokenDpop);
+  }
   return NextResponse.json(body, { status });
 }

@@ -49,3 +49,28 @@ Changes:
   CIBA plugin's internal ping delivery (POST with Bearer token + auth_req_id body).
 
 Feedback loops: typecheck ✓, tests ✓, lint ✓
+
+--- Task 41: Demo-rp Auth & Session Hardening (findings #4, #5, #6) ---
+Status: COMPLETE
+
+Changes:
+- apps/demo-rp/src/lib/auth.ts: fetchUserInfo uses DPoP proof when dpopClients Map has entry
+  for the access token. getToken stores DPoP client by access token after exchange.
+  Module-level dpopClients Map bridges getToken → getUserInfo across genericOAuth callback chain.
+- apps/demo-rp/src/lib/dpop.ts: exported DpopClient interface
+- apps/demo-rp/src/app/api/ciba/route.ts: fetchTokenWithDpop returns dpop client. Token exchange
+  and CIBA token callers store DPoP client in dpopByToken Map. Userinfo handler retrieves and uses
+  stored DPoP client for proof-of-possession. Falls back to Bearer if no DPoP client stored.
+- apps/demo-rp/src/app/api/auth/backchannel-logout/route.ts: replaced hardcoded JWKS URL + issuer
+  with OIDC Discovery fetch (cached at module level). Added audience check using all registered
+  client IDs. Removed ZENTITY_JWKS_URL env var dependency for BCL.
+
+Architectural Decisions:
+- DPoP client bridging via module-level Map keyed by access token. Necessary because genericOAuth's
+  getToken and getUserInfo are separate callbacks — no way to thread state through the plugin.
+  Map entries are consumed (deleted) on use, so no memory leak.
+- CIBA route uses same pattern: dpopByToken Map bridges token exchange → userinfo across separate
+  HTTP requests from the frontend.
+- BCL audience check uses ALL registered client IDs (jose supports array). Token must match at least one.
+
+Feedback loops: typecheck ✓, lint ✓

@@ -17,12 +17,16 @@ import {
   type ProviderId,
   readDcrClientId,
 } from "@/lib/dcr";
-import { createDpopClient } from "@/lib/dpop";
+import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 function zentityUserInfoUrl() {
   return new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString();
 }
+
+// Store DPoP clients by access token so getUserInfo can reuse the same
+// keypair that getToken bound the token to (cnf.jkt).
+const dpopClients = new Map<string, DpopClient>();
 
 const STRIP_FIELDS = new Set([
   "is_anonymous",
@@ -89,12 +93,20 @@ async function fetchUserInfo(tokens: {
 }) {
   let body: Record<string, unknown> = {};
 
-  // Try userinfo endpoint (may fail for privacy-preserving proof-only flows
-  // where the access token record is ephemeral)
+  // Try userinfo endpoint with DPoP proof-of-possession
   if (tokens.accessToken) {
-    const response = await fetch(zentityUserInfoUrl(), {
-      headers: { Authorization: `Bearer ${tokens.accessToken}` },
-    });
+    const dpop = dpopClients.get(tokens.accessToken);
+    dpopClients.delete(tokens.accessToken);
+
+    const url = zentityUserInfoUrl();
+    const headers: Record<string, string> = dpop
+      ? {
+          Authorization: `DPoP ${tokens.accessToken}`,
+          DPoP: await dpop.proofFor("GET", url, tokens.accessToken),
+        }
+      : { Authorization: `Bearer ${tokens.accessToken}` };
+
+    const response = await fetch(url, { headers });
     if (response.ok) {
       body = (await response.json()) as Record<string, unknown>;
     }
@@ -239,8 +251,12 @@ function makeProviderConfig(
           result: (await response.json()) as Record<string, unknown>,
         };
       });
+      const accessToken = result.access_token as string | undefined;
+      if (accessToken) {
+        dpopClients.set(accessToken, dpop);
+      }
       return {
-        accessToken: result.access_token as string | undefined,
+        accessToken,
         idToken: result.id_token as string | undefined,
         refreshToken: result.refresh_token as string | undefined,
         tokenType: result.token_type as string | undefined,
