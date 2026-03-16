@@ -146,3 +146,25 @@ Status: Complete
 - apps/web/src/lib/trpc/routers/identity/router.ts — wire revokeCredential
 - apps/web/src/components/dashboard/on-chain-attestation.tsx — revocation_pending status
 - apps/web/src/lib/db/queries/__tests__/revocation.integration.test.ts — updated
+
+## Task 10 (Partial): Structured Agent Claims — Schema + UI + Push
+Status: Partial (schema, UI, push ready; bc-authorize acceptance needs vendor patch)
+
+### Changes
+1. Added `agentClaims` text column to `cibaRequests` schema
+2. Created AgentIdentityCard component in ciba-approve-client.tsx
+   - Renders agent name, model, runtime, version with "Unverified" badge
+   - Task description shown if present
+3. Updated push notification title: "[Agent Name] requests approval" when agent claims present
+4. Approval page queries `agentClaims` server-side, passes as prop
+
+### Blocker
+- bc-authorize endpoint (vendor plugin) strips unknown fields via Zod
+- Agent claims need vendor patch to accept `agent_claims` parameter
+- Without this, the column is never populated
+
+### Files changed
+- apps/web/src/lib/db/schema/ciba.ts — agentClaims column
+- apps/web/src/components/ciba/ciba-approve-client.tsx — AgentIdentityCard + prop
+- apps/web/src/app/approve/[authReqId]/page.tsx — server-side agent claims query
+- apps/web/src/lib/push/ciba-payload.ts — agent name in push title

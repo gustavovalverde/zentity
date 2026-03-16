@@ -1,9 +1,12 @@
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import Link from "next/link";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { db } from "@/lib/db/connection";
+import { cibaRequests } from "@/lib/db/schema/ciba";
 
 export default async function ApprovePage({
   params,
@@ -21,9 +24,22 @@ export default async function ApprovePage({
     wallet = detected.wallet;
   }
 
+  // Fetch agent claims from DB (the verify endpoint doesn't expose them)
+  const cibaRow = await db
+    .select({ agentClaims: cibaRequests.agentClaims })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, authReqId))
+    .limit(1)
+    .get();
+
+  const agentClaims = cibaRow?.agentClaims
+    ? (JSON.parse(cibaRow.agentClaims) as Record<string, unknown>)
+    : null;
+
   return (
     <div className="w-full max-w-md">
       <CibaApproveClient
+        agentClaims={agentClaims}
         authMode={authMode}
         authReqId={authReqId}
         wallet={wallet}

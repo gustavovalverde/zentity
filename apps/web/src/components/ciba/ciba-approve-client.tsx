@@ -2,7 +2,7 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { ShieldCheck, ShieldPlus } from "lucide-react";
+import { Bot, ShieldCheck, ShieldPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -62,8 +62,22 @@ function buildPolicyLink(details: CibaRequestDetails): string {
   return `/dashboard/agent-policies?create=true&${params.toString()}`;
 }
 
+interface AgentClaims {
+  agent?: {
+    model?: string;
+    name?: string;
+    runtime?: string;
+    version?: string;
+  };
+  task?: {
+    description?: string;
+    id?: string;
+  };
+}
+
 interface CibaRequestDetails {
   acr_values?: string;
+  agent_claims?: AgentClaims;
   auth_req_id: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
@@ -83,11 +97,47 @@ type PageState =
   | "expired"
   | "error";
 
+function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
+  const agent = claims.agent;
+  if (!agent?.name) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/50 p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <Bot className="size-4 text-muted-foreground" />
+        <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+          Agent
+        </p>
+        <Badge className="text-xs" variant="outline">
+          Unverified
+        </Badge>
+      </div>
+      <p className="font-medium">{agent.name}</p>
+      {(agent.model || agent.runtime || agent.version) && (
+        <p className="text-muted-foreground text-sm">
+          {[agent.model, agent.runtime, agent.version]
+            .filter(Boolean)
+            .join(" / ")}
+        </p>
+      )}
+      {claims.task?.description && (
+        <p className="mt-1 text-muted-foreground text-sm">
+          {claims.task.description}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function CibaApproveClient({
+  agentClaims: serverAgentClaims,
   authMode,
   authReqId,
   wallet,
 }: Readonly<{
+  agentClaims?: AgentClaims | null;
   authMode: AuthMode;
   authReqId: string | null;
   wallet: { address: string; chainId: number } | null;
@@ -415,6 +465,14 @@ export function CibaApproveClient({
                 ))}
               </div>
             </div>
+          )}
+
+          {(serverAgentClaims || details?.agent_claims) && (
+            <AgentIdentityCard
+              claims={
+                (serverAgentClaims ?? details?.agent_claims) as AgentClaims
+              }
+            />
           )}
 
           {details?.authorization_details &&

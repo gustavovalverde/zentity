@@ -1,6 +1,7 @@
 import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
 
 interface CibaNotificationData {
+  agentName?: string;
   authorizationDetails?: unknown;
   authReqId: string;
   bindingMessage?: string;
@@ -55,8 +56,12 @@ export function buildCibaPushPayload(
     data.authorizationDetails
   );
 
+  const title = data.agentName
+    ? `${data.agentName} requests approval`
+    : "Authorization Request";
+
   return {
-    title: "Authorization Request",
+    title,
     body,
     data: {
       authReqId: data.authReqId,

@@ -26,6 +26,7 @@ export const cibaRequests = sqliteTable(
     clientNotificationToken: text("client_notification_token"),
     clientNotificationEndpoint: text("client_notification_endpoint"),
     pollingInterval: integer("polling_interval").notNull().default(5),
+    agentClaims: text("agent_claims"),
     approvalMethod: text("approval_method"),
     lastPolledAt: integer("last_polled_at"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
