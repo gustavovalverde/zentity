@@ -240,31 +240,57 @@ export async function createRecoveryKeySet(params: {
   };
 }
 
-export async function signRecoveryChallenge(params: {
+/**
+ * Initialize a FROST signing session with the coordinator.
+ * Returns the session ID needed for guardian JWT minting.
+ */
+export async function initSigningSession(params: {
+  groupPubkey: string;
+  message: string;
+  participantIds: number[];
+}): Promise<{ sessionId: string }> {
+  const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
+  const initResponse = await fetchJson<SigningInitResponse>(
+    `${coordinatorUrl}/signing/init`,
+    {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        group_pubkey: params.groupPubkey,
+        message: toBase64(params.message),
+        selected_signers: params.participantIds,
+      }),
+    }
+  );
+  return { sessionId: initResponse.session_id };
+}
+
+/**
+ * Execute FROST signing rounds (commit → partial → aggregate).
+ * Requires a session ID from initSigningSession.
+ */
+export async function executeSigningRounds(params: {
+  sessionId: string;
   groupPubkey: string;
   ciphersuite: Ciphersuite;
-  threshold: number;
   message: string;
-  participantIds?: number[];
+  participantIds: number[];
   totalParticipants?: number;
   guardianAssertions?: Map<number, string>;
   endpointOverrides?: Map<number, string>;
 }): Promise<{ signature: string; signaturesCollected: number }> {
   const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
-  const totalParticipants = params.totalParticipants ?? params.threshold;
+  const totalParticipants =
+    params.totalParticipants ?? params.participantIds.length;
   const endpointMap = resolveSignerEndpointMap(totalParticipants);
 
-  // Overlay custodial/custom signer endpoints
   if (params.endpointOverrides) {
     for (const [participantId, endpoint] of params.endpointOverrides) {
       endpointMap.set(participantId, endpoint);
     }
   }
-  const participantIds =
-    params.participantIds ??
-    Array.from({ length: params.threshold }, (_, i) => i + 1);
 
-  const signerEntries = participantIds.map((participantId) => {
+  const signerEntries = params.participantIds.map((participantId) => {
     const endpoint = endpointMap.get(participantId);
     if (!endpoint) {
       throw new Error(
@@ -274,20 +300,7 @@ export async function signRecoveryChallenge(params: {
     return { participantId, endpoint };
   });
 
-  const initResponse = await fetchJson<SigningInitResponse>(
-    `${coordinatorUrl}/signing/init`,
-    {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        group_pubkey: params.groupPubkey,
-        message: toBase64(params.message),
-        selected_signers: participantIds,
-      }),
-    }
-  );
-
-  const sessionId = initResponse.session_id;
+  const { sessionId } = params;
 
   const commitments = await Promise.all(
     signerEntries.map(({ endpoint, participantId }) =>

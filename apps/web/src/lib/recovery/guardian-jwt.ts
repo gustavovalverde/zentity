@@ -10,6 +10,7 @@ const GUARDIAN_JWT_SCOPE = "frost:sign";
 
 export async function signGuardianAssertionJwt(params: {
   challengeId: string;
+  frostSessionId: string;
   guardianId: string;
   participantIndex: number;
   userId: string;
@@ -19,7 +20,8 @@ export async function signGuardianAssertionJwt(params: {
 
   return new SignJWT({
     scope: GUARDIAN_JWT_SCOPE,
-    session_id: params.challengeId,
+    session_id: params.frostSessionId,
+    challenge_id: params.challengeId,
     guardian_id: params.guardianId,
     participant_id: params.participantIndex,
   })

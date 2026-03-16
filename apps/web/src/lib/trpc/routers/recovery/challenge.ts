@@ -46,7 +46,10 @@ import {
   RECOVERY_GUARDIAN_TYPE_EMAIL,
   RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
 } from "@/lib/recovery/constants";
-import { signRecoveryChallenge } from "@/lib/recovery/frost-service";
+import {
+  executeSigningRounds,
+  initSigningSession,
+} from "@/lib/recovery/frost-service";
 import { signGuardianAssertionJwt } from "@/lib/recovery/guardian-jwt";
 import {
   decryptRecoveryWrappedDek,
@@ -344,9 +347,18 @@ export const approveGuardianProcedure = publicProcedure
         challengeNonce: challenge.challengeNonce,
       });
 
+      // Step 1: Initialize FROST signing session (creates session ID)
+      const { sessionId: frostSessionId } = await initSigningSession({
+        groupPubkey: config.frostGroupPubkey,
+        message,
+        participantIds,
+      });
+
+      // Step 2: Mint guardian JWTs with the FROST session ID
       const guardianAssertions = new Map<number, string>();
       for (const entry of sortedApproved) {
         const jwt = await signGuardianAssertionJwt({
+          frostSessionId,
           challengeId: challenge.id,
           guardianId: entry.guardian.id,
           participantIndex: entry.guardian.participantIndex,
@@ -372,10 +384,11 @@ export const approveGuardianProcedure = publicProcedure
         }
       }
 
-      const { signature, signaturesCollected } = await signRecoveryChallenge({
+      // Step 3: Execute signing rounds with guardian assertions
+      const { signature, signaturesCollected } = await executeSigningRounds({
+        sessionId: frostSessionId,
         groupPubkey: config.frostGroupPubkey,
         ciphersuite: config.frostCiphersuite as "secp256k1" | "ed25519",
-        threshold: config.threshold,
         message,
         participantIds,
         totalParticipants: config.totalGuardians,
