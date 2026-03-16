@@ -52,14 +52,14 @@
   "dependencies": {
     "@aztec/bb.js": "3.0.3",
     "@better-auth/ciba": "file:vendor/better-auth-ciba-1.5.1-beta.3.tgz",
-    "@better-auth/core": "1.5.1-beta.3",
-    "@better-auth/drizzle-adapter": "1.5.1-beta.3",
+    "@better-auth/core": "1.5.5",
+    "@better-auth/drizzle-adapter": "1.5.5",
     "@better-auth/haip": "file:vendor/better-auth-haip-0.0.0.tgz",
     "@better-auth/oauth-provider": "file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz",
     "@better-auth/oidc4ida": "file:vendor/better-auth-oidc4ida-0.0.0.tgz",
     "@better-auth/oidc4vci": "file:vendor/better-auth-oidc4vci-0.0.0.tgz",
     "@better-auth/oidc4vp": "file:vendor/better-auth-oidc4vp-0.0.0.tgz",
-    "@better-auth/passkey": "1.5.1-beta.3",
+    "@better-auth/passkey": "1.5.5",
     "@better-auth/utils": "^0.3.1",
     "@daveyplate/better-auth-ui": "3.3.15",
     "@fhevm/mock-utils": "0.3.0-4",
@@ -108,7 +108,7 @@
     "@zkpassport/registry": "^0.13.0",
     "@zkpassport/sdk": "^0.12.5",
     "@zkpassport/utils": "^0.34.0",
-    "better-auth": "1.5.1-beta.3",
+    "better-auth": "1.5.5",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
@@ -187,16 +187,15 @@
   },
   "pnpm": {
     "patchedDependencies": {
-      "@better-auth/core@1.5.1-beta.3": "vendor/@better-auth__core@1.5.1-beta.3.patch",
-      "@better-auth/passkey@1.5.1-beta.3": "vendor/@better-auth__passkey@1.5.1-beta.3.patch",
-      "better-auth@1.5.1-beta.3": "patches/better-auth@1.5.1-beta.3.patch",
       "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch",
-      "@better-auth/oauth-provider": "patches/@better-auth__oauth-provider.patch"
+      "better-auth@1.5.5": "patches/better-auth@1.5.5.patch",
+      "@better-auth/core@1.5.5": "patches/@better-auth__core@1.5.5.patch",
+      "@better-auth/passkey@1.5.5": "patches/@better-auth__passkey@1.5.5.patch"
     },
     "overrides": {
       "glob": "^13.0.5",
       "tar": ">=7.5.3",
-      "@better-auth/core": "1.5.1-beta.3",
+      "@better-auth/core": "1.5.5",
       "axios": ">=1.12.0",
       "ws": ">=8.17.1",
       "esbuild": ">=0.25.0"

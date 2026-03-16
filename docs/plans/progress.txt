@@ -1,0 +1,66 @@
+═══════════════════════════════════════════════════
+Better-Auth Branch Realignment & Patch Elimination
+PRD: docs/plans/prd-better-auth-branch-realignment.md
+Plan: docs/plans/better-auth-branch-realignment.md
+═══════════════════════════════════════════════════
+
+Task 44: Foundation — Update canary base ✅
+- Local canary already up to date with origin/canary
+- Pairwise (#8292 ab7ec8a70) and customIdTokenClaims (#7865 c59833549) confirmed on canary
+- v1.5.5 tag confirmed present
+- feat/pairwise-jwt-access-token-sub deleted locally and from fork remote
+
+Task 45: CIBA plugin realignment ✅
+- feat/ciba-plugin rebased onto canary (61 commits, lockfile conflict resolved)
+- agentClaims column added to schema
+- agent_claims wired through bc-authorize → verify → approval → grant-handler
+- authReqId passed as referenceId to createUserTokens
+- redirect_uri mandatory check removed from oauth-provider token exchange
+- deliverPing exported from @better-auth/ciba package entry point
+- packages/ciba and packages/oauth-provider build
+
+Task 46: OIDC-VC + HAIP stack realignment ✅
+- feat/oidc-verifiable-credentials rebased onto canary (lockfile conflict resolved)
+- clientId added to customAccessTokenClaims in 2 call sites + type definition
+- feat/oidc-haip rebased onto updated oidc-vc (clean, skipped applied commits)
+- PAR requestId exposed in after-hook context via ctx.context.__parRequestId
+- All 5 packages build (oauth-provider, oidc4ida, oidc4vci, oidc4vp, haip)
+
+Task 47: OAuth-provider fix branches ✅
+- fix/oauth-provider-par-loopback-dcr: PAR scope loss, loopback port matching, DCR skip_consent. 1 commit, builds.
+- fix/oauth-provider-acr-auth-time-override: auth_time/acr before customClaims spread. 1 commit, builds.
+- feat/oauth-provider-at-hash: accessToken to customIdTokenClaims, id_token after access token. 1 commit, builds.
+
+Task 48: Standalone branch rebases ✅
+- fix/oauth-response-format rebased, builds (clean)
+- feat/public-endpoints-infrastructure rebased, builds (clean)
+- feat/passkey-preauth-extensions rebased, builds (error-codes conflict merged)
+- feat/two-factor-passwordless-canary rebased, builds (clean)
+
+Task 49: FPA + Token Exchange branches ✅
+- feat/first-party-apps: auth_session passthrough + authSession on VerificationValue. 1 commit, builds.
+- feat/token-exchange: grant_type widened to string, customGrantTypeHandlers dispatch, RFC 8693 fields + auth_req_id + client_assertion. 1 commit, builds.
+
+Task 50: Assembly — combined branch rebuild + Zentity integration ✅
+- feat/zentity-combined rebuilt as pure merge of all 12 branches (18 non-merge commits, zero unique)
+- 6 vendored packages built and packed from combined branch
+- Zentity package.json bumped to better-auth@1.5.5, @better-auth/core@1.5.5, @better-auth/passkey@1.5.5
+- patches/@better-auth__oauth-provider.patch deleted (all changes in vendored tarball)
+- 4 unused tarballs deleted (better-auth, core, passkey, telemetry at 1.5.1-beta.3)
+- 3 patches regenerated for v1.5.5 (better-auth, core, passkey)
+- Old 1.5.1-beta.3 patch files deleted
+- pnpm install ✅, typecheck ✅, test:unit ✅, test:integration ✅ (32 files, 302 tests), lint ✅, build ✅
+
+Files changed:
+- apps/web/package.json (version bumps, patch entries)
+- apps/web/patches/ (new v1.5.5 patches, deleted old)
+- apps/web/vendor/ (new tarballs, deleted old)
+- apps/web/pnpm-lock.yaml (regenerated)
+
+Architectural decisions:
+- Kept vendored tarball approach for 6 custom packages (oauth-provider, ciba, haip, oidc4ida, oidc4vci, oidc4vp)
+- Kept pnpm patches for 3 npm packages (better-auth, core, passkey) that have feature branches with open PRs
+- oauth-provider patch eliminated entirely (was the goal)
+- Token exchange branch includes customGrantTypeHandlers dispatch (needed for CIBA + future plugins)
+- VerificationValue changed from interface to discriminated union (auth_code | pre_authorized_code)
+- Grant type enum widened to string for plugin extensibility

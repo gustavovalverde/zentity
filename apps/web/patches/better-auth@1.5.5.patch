@@ -359,26 +359,6 @@ index 875a46439cceff4e219a77aa51dd862f62990d8e..1c1876190abaca511df5f172964cf9dd
  			...BASE_ERROR_CODES
  		}
  	};
-diff --git a/dist/plugins/index.d.mts b/dist/plugins/index.d.mts
-index 7fedecfec637b3e8037991c4ce2d52f70104692a..4e9e501e6c4dddbda25fe65a0330798121be85ba 100644
---- a/dist/plugins/index.d.mts
-+++ b/dist/plugins/index.d.mts
-@@ -1,6 +1,6 @@
- import { InferOptionSchema, InferPluginContext, InferPluginErrorCodes, InferPluginIDs } from "../types/plugins.mjs";
- import { HIDE_METADATA } from "../utils/hide-metadata.mjs";
--import { AccessControl, Role, Statements, SubArray, Subset } from "./access/types.mjs";
-+import { AccessControl, ArrayElement, Role, Statements, SubArray, Subset } from "./access/types.mjs";
- import { AuthorizeResponse, createAccessControl, role } from "./access/access.mjs";
- import "./access/index.mjs";
- import { OrganizationOptions } from "./organization/types.mjs";
-@@ -65,4 +65,4 @@ import { UsernameOptions, username } from "./username/index.mjs";
- import { hasPermission } from "./organization/has-permission.mjs";
- import { DefaultOrganizationPlugin, DynamicAccessControlEndpoints, OrganizationCreator, OrganizationEndpoints, OrganizationPlugin, TeamEndpoints, organization, parseRoles } from "./organization/organization.mjs";
- import "./organization/index.mjs";
--export { AccessControl, AdminOptions, AnonymousOptions, AnonymousSession, Auth0Options, AuthorizationQuery, AuthorizeResponse, BackupCodeOptions, BaseCaptchaOptions, BaseOAuthProviderOptions, BearerOptions, CaptchaFoxOptions, CaptchaOptions, Client, CloudflareTurnstileOptions, CodeVerificationValue, CustomSessionPluginOptions, DefaultOrganizationPlugin, DeviceAuthorizationOptions, DynamicAccessControlEndpoints, MULTI_SESSION_ERROR_CODES as ERROR_CODES, EmailOTPOptions, FieldSchema, GenericOAuthConfig, GenericOAuthOptions, GoogleRecaptchaOptions, GumroadOptions, HCaptchaOptions, HIDE_METADATA, HaveIBeenPwnedOptions, HubSpotOptions, InferAdminRolesFromOption, InferInvitation, InferMember, InferOptionSchema, InferOrganization, InferOrganizationRolesFromOption, InferOrganizationZodRolesFromOption, InferPluginContext, InferPluginErrorCodes, InferPluginIDs, InferTeam, Invitation, InvitationInput, InvitationStatus, JWKOptions, JWSAlgorithms, Jwk, JwtOptions, KeycloakOptions, LastLoginMethodOptions, LineOptions, LoginResult, MagicLinkOptions, Member, MemberInput, MicrosoftEntraIdOptions, MultiSessionConfig, OAuthAccessToken, OAuthProxyOptions, OIDCMetadata, OIDCOptions, OTPOptions, OktaOptions, OneTapOptions, OneTimeTokenOptions, OpenAPIModelSchema, OpenAPIOptions, Organization, OrganizationCreator, OrganizationEndpoints, OrganizationInput, OrganizationOptions, OrganizationPlugin, OrganizationRole, OrganizationSchema, Path, PatreonOptions, PhoneNumberOptions, Provider, Role, SIWEPluginOptions, SessionWithImpersonatedBy, SlackOptions, Statements, SubArray, Subset, TOTPOptions, TWO_FACTOR_ERROR_CODES, Team, TeamEndpoints, TeamInput, TeamMember, TeamMemberInput, TestCookie, TestHelpers, TestUtilsOptions, TimeString, TokenBody, TwoFactorOptions, TwoFactorProvider, TwoFactorTable, USERNAME_ERROR_CODES, UserWithAnonymous, UserWithPhoneNumber, UserWithRole, UserWithTwoFactor, UsernameOptions, admin, anonymous, auth0, backupCode2fa, bearer, captcha, createAccessControl, createJwk, customSession, defaultRolesSchema, deviceAuthorization, deviceAuthorizationOptionsSchema, emailOTP, generateBackupCodes, generateExportedKeyPair, generator, genericOAuth, getBackupCodes, getClient, getJwtToken, getMCPProtectedResourceMetadata, getMCPProviderMetadata, getMetadata, getOrgAdapter, gumroad, hasPermission, haveIBeenPwned, hubspot, invitationSchema, invitationStatus, jwt, keycloak, lastLoginMethod, line, magicLink, mcp, memberSchema, microsoftEntraId, ms, multiSession, oAuthDiscoveryMetadata, oAuthProtectedResourceMetadata, oAuthProxy, oidcProvider, okta, oneTap, oneTimeToken, openAPI, organization, organizationRoleSchema, organizationSchema, otp2fa, parseRoles, patreon, phoneNumber, role, roleSchema, sec, signJWT, siwe, slack, teamMemberSchema, teamSchema, testUtils, toExpJWT, totp2fa, twoFactor, twoFactorClient, username, verifyBackupCode, verifyJWT, withMcpAuth };
-\ No newline at end of file
-+export { AccessControl, AdminOptions, AnonymousOptions, AnonymousSession, ArrayElement, Auth0Options, AuthorizationQuery, AuthorizeResponse, BackupCodeOptions, BaseCaptchaOptions, BaseOAuthProviderOptions, BearerOptions, CaptchaFoxOptions, CaptchaOptions, Client, CloudflareTurnstileOptions, CodeVerificationValue, CustomSessionPluginOptions, DefaultOrganizationPlugin, DeviceAuthorizationOptions, DynamicAccessControlEndpoints, MULTI_SESSION_ERROR_CODES as ERROR_CODES, EmailOTPOptions, FieldSchema, GenericOAuthConfig, GenericOAuthOptions, GoogleRecaptchaOptions, GumroadOptions, HCaptchaOptions, HIDE_METADATA, HaveIBeenPwnedOptions, HubSpotOptions, InferAdminRolesFromOption, InferInvitation, InferMember, InferOptionSchema, InferOrganization, InferOrganizationRolesFromOption, InferOrganizationZodRolesFromOption, InferPluginContext, InferPluginErrorCodes, InferPluginIDs, InferTeam, Invitation, InvitationInput, InvitationStatus, JWKOptions, JWSAlgorithms, Jwk, JwtOptions, KeycloakOptions, LastLoginMethodOptions, LineOptions, LoginResult, MagicLinkOptions, Member, MemberInput, MicrosoftEntraIdOptions, MultiSessionConfig, OAuthAccessToken, OAuthProxyOptions, OIDCMetadata, OIDCOptions, OTPOptions, OktaOptions, OneTapOptions, OneTimeTokenOptions, OpenAPIModelSchema, OpenAPIOptions, Organization, OrganizationCreator, OrganizationEndpoints, OrganizationInput, OrganizationOptions, OrganizationPlugin, OrganizationRole, OrganizationSchema, Path, PatreonOptions, PhoneNumberOptions, Provider, Role, SIWEPluginOptions, SessionWithImpersonatedBy, SlackOptions, Statements, SubArray, Subset, TOTPOptions, TWO_FACTOR_ERROR_CODES, Team, TeamEndpoints, TeamInput, TeamMember, TeamMemberInput, TestCookie, TestHelpers, TestUtilsOptions, TimeString, TokenBody, TwoFactorOptions, TwoFactorProvider, TwoFactorTable, USERNAME_ERROR_CODES, UserWithAnonymous, UserWithPhoneNumber, UserWithRole, UserWithTwoFactor, UsernameOptions, admin, anonymous, auth0, backupCode2fa, bearer, captcha, createAccessControl, createJwk, customSession, defaultRolesSchema, deviceAuthorization, deviceAuthorizationOptionsSchema, emailOTP, generateBackupCodes, generateExportedKeyPair, generator, genericOAuth, getBackupCodes, getClient, getJwtToken, getMCPProtectedResourceMetadata, getMCPProviderMetadata, getMetadata, getOrgAdapter, gumroad, hasPermission, haveIBeenPwned, hubspot, invitationSchema, invitationStatus, jwt, keycloak, lastLoginMethod, line, magicLink, mcp, memberSchema, microsoftEntraId, ms, multiSession, oAuthDiscoveryMetadata, oAuthProtectedResourceMetadata, oAuthProxy, oidcProvider, okta, oneTap, oneTimeToken, openAPI, organization, organizationRoleSchema, organizationSchema, otp2fa, parseRoles, patreon, phoneNumber, role, roleSchema, sec, signJWT, siwe, slack, teamMemberSchema, teamSchema, testUtils, toExpJWT, totp2fa, twoFactor, twoFactorClient, username, verifyBackupCode, verifyJWT, withMcpAuth };
-\ No newline at end of file
 diff --git a/dist/plugins/two-factor/backup-codes/index.d.mts b/dist/plugins/two-factor/backup-codes/index.d.mts
 index 3d2942d1365175a37b6c74fc6048b3f2336d845c..2b6ef95ed44210c7f8a005978896610f26162425 100644
 --- a/dist/plugins/two-factor/backup-codes/index.d.mts
@@ -1662,7 +1642,7 @@ index 119aaef385f9bcdc2e03bef28ac7ef35df929cd0..0c171501d662355ca562e3682290c227
    };
    schema: {
 diff --git a/dist/plugins/two-factor/index.mjs b/dist/plugins/two-factor/index.mjs
-index e0f08951b08ef7a538fb968dec11ddcb593c6642..a1c7dff0c270500a8022279b0bc64035ed71f0ba 100644
+index 94c05ed9385257f923fbc8523cf37dd089ee90c9..3f4b799cb75a355a80fd47d18a5871e4d8d49d9f 100644
 --- a/dist/plugins/two-factor/index.mjs
 +++ b/dist/plugins/two-factor/index.mjs
 @@ -3,7 +3,7 @@ import { generateRandomString } from "../../crypto/random.mjs";
@@ -2027,10 +2007,10 @@ index ccb3e7d82d0771a3894b288f73036366f855bc24..90bc90ad4c44eadef2e59f7b3e305573
  					digits: opts.digits,
  					period: opts.period
 diff --git a/dist/plugins/two-factor/types.d.mts b/dist/plugins/two-factor/types.d.mts
-index e1fcd351df411f6130df89755908718763683aff..447a8524199830d25411b3b9aab58ba673ef8ceb 100644
+index 5dd1dd8d0f1c77d1105cae12962d005937206b44..b75562660d9001e36c44bc0f9149b26e4fc9cb60 100644
 --- a/dist/plugins/two-factor/types.d.mts
 +++ b/dist/plugins/two-factor/types.d.mts
-@@ -30,6 +30,13 @@ interface TwoFactorOptions {
+@@ -37,6 +37,13 @@ interface TwoFactorOptions {
     * @default false
     */
    skipVerificationOnEnable?: boolean | undefined;

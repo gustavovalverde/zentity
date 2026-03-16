@@ -1,5 +1,5 @@
 diff --git a/dist/api/index.d.mts b/dist/api/index.d.mts
-index 18133fd..9db7924 100644
+index 18133fd2f4794f346ae8f1158b6b6074b0189b7a..9db7924ddb6ab24e9cd368b1e03dea6b9c9fbd6c 100644
 --- a/dist/api/index.d.mts
 +++ b/dist/api/index.d.mts
 @@ -7,13 +7,15 @@ import "../types/index.mjs";
@@ -77,7 +77,7 @@ index 18133fd..9db7924 100644
  //# sourceMappingURL=index.d.mts.map
 \ No newline at end of file
 diff --git a/dist/api/index.mjs.map b/dist/api/index.mjs.map
-index 4493c93..d2cf985 100644
+index 4493c9390def7d71ef8c59150ab7c70d374b1896..d2cf985d6da9959eec0671e8391900195f4554f2 100644
 --- a/dist/api/index.mjs.map
 +++ b/dist/api/index.mjs.map
 @@ -1 +1 @@
@@ -86,7 +86,7 @@ index 4493c93..d2cf985 100644
 +{"version":3,"file":"index.mjs","names":[],"sources":["../../src/api/index.ts"],"sourcesContent":["import type {\n\tEndpoint,\n\tEndpointContext,\n\tEndpointMetadata,\n\tEndpointRuntimeOptions,\n\tHTTPMethod,\n\tMiddleware,\n\tResolveBodyInput,\n\tResolveErrorInput,\n\tResolveMetaInput,\n\tResolveQueryInput,\n\tStandardSchemaV1,\n} from \"better-call\";\nimport { createEndpoint, createMiddleware } from \"better-call\";\nimport { runWithEndpointContext } from \"../context\";\nimport type { AuthContext } from \"../types\";\n\nexport const optionsMiddleware = createMiddleware(async () => {\n\t/**\n\t * This will be passed on the instance of\n\t * the context. Used to infer the type\n\t * here.\n\t */\n\treturn {} as AuthContext;\n});\n\nexport const createAuthMiddleware = createMiddleware.create({\n\tuse: [\n\t\toptionsMiddleware,\n\t\t/**\n\t\t * Only use for post hooks\n\t\t */\n\t\tcreateMiddleware(async () => {\n\t\t\treturn {} as {\n\t\t\t\treturned?: unknown | undefined;\n\t\t\t\tresponseHeaders?: Headers | undefined;\n\t\t\t};\n\t\t}),\n\t],\n});\n\nconst use = [optionsMiddleware];\n\ntype BodyOption<M, B extends object | undefined = undefined> = M extends\n\t| \"GET\"\n\t| \"HEAD\"\n\t| (\"GET\" | \"HEAD\")[]\n\t? { body?: never }\n\t: { body?: B };\n\ntype AuthEndpointOptions<\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined,\n\tQuerySchema extends object | undefined,\n\tUse extends Middleware[],\n\tReqHeaders extends boolean,\n\tReqRequest extends boolean,\n\tMeta extends EndpointMetadata | undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n> = { method: Method } & BodyOption<Method, BodySchema> & {\n\t\tquery?: QuerySchema;\n\t\tuse?: [...Use];\n\t\trequireHeaders?: ReqHeaders;\n\t\trequireRequest?: ReqRequest;\n\t\terror?: ErrorSchema;\n\t\tcloneRequest?: boolean;\n\t\tdisableBody?: boolean;\n\t\tmetadata?: Meta;\n\t\t[key: string]: any;\n\t};\n\n// Path + options + handler overload\nexport function createAuthEndpoint<\n\tPath extends string,\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined = undefined,\n\tQuerySchema extends object | undefined = undefined,\n\tUse extends Middleware[] = [],\n\tReqHeaders extends boolean = false,\n\tReqRequest extends boolean = false,\n\tR = unknown,\n\tMeta extends EndpointMetadata | undefined = undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n>(\n\tpath: Path,\n\toptions: AuthEndpointOptions<\n\t\tMethod,\n\t\tBodySchema,\n\t\tQuerySchema,\n\t\tUse,\n\t\tReqHeaders,\n\t\tReqRequest,\n\t\tMeta,\n\t\tErrorSchema\n\t>,\n\thandler: (\n\t\tctx: EndpointContext<\n\t\t\tPath,\n\t\t\tMethod,\n\t\t\tBodySchema,\n\t\t\tQuerySchema,\n\t\t\tUse,\n\t\t\tReqHeaders,\n\t\t\tReqRequest,\n\t\t\tAuthContext,\n\t\t\tMeta\n\t\t>,\n\t) => Promise<R>,\n): Endpoint<\n\tPath,\n\tany,\n\tResolveBodyInput<BodySchema, Meta>,\n\tResolveQueryInput<QuerySchema, Meta>,\n\tany,\n\tR,\n\tResolveMetaInput<Meta>,\n\tResolveErrorInput<ErrorSchema, Meta>\n>;\n\n// Options-only (virtual/path-less) overload\nexport function createAuthEndpoint<\n\tMethod extends HTTPMethod | HTTPMethod[] | \"*\",\n\tBodySchema extends object | undefined = undefined,\n\tQuerySchema extends object | undefined = undefined,\n\tUse extends Middleware[] = [],\n\tReqHeaders extends boolean = false,\n\tReqRequest extends boolean = false,\n\tR = unknown,\n\tMeta extends EndpointMetadata | undefined = undefined,\n\tErrorSchema extends StandardSchemaV1 | undefined = undefined,\n>(\n\toptions: AuthEndpointOptions<\n\t\tMethod,\n\t\tBodySchema,\n\t\tQuerySchema,\n\t\tUse,\n\t\tReqHeaders,\n\t\tReqRequest,\n\t\tMeta,\n\t\tErrorSchema\n\t>,\n\thandler: (\n\t\tctx: EndpointContext<\n\t\t\tstring,\n\t\t\tMethod,\n\t\t\tBodySchema,\n\t\t\tQuerySchema,\n\t\t\tUse,\n\t\t\tReqHeaders,\n\t\t\tReqRequest,\n\t\t\tAuthContext,\n\t\t\tMeta\n\t\t>,\n\t) => Promise<R>,\n): Endpoint<\n\tstring,\n\tany,\n\tResolveBodyInput<BodySchema, Meta>,\n\tResolveQueryInput<QuerySchema, Meta>,\n\tany,\n\tR,\n\tResolveMetaInput<Meta>,\n\tResolveErrorInput<ErrorSchema, Meta>\n>;\n\n// Implementation\nexport function createAuthEndpoint(\n\tpathOrOptions: any,\n\thandlerOrOptions: any,\n\thandlerOrNever?: any,\n) {\n\tconst path: string | undefined =\n\t\ttypeof pathOrOptions === \"string\" ? pathOrOptions : undefined;\n\tconst options: EndpointRuntimeOptions =\n\t\ttypeof handlerOrOptions === \"object\" ? handlerOrOptions : pathOrOptions;\n\tconst handler =\n\t\ttypeof handlerOrOptions === \"function\" ? handlerOrOptions : handlerOrNever;\n\n\tif (path) {\n\t\treturn createEndpoint(\n\t\t\tpath,\n\t\t\t{\n\t\t\t\t...options,\n\t\t\t\tuse: [...(options?.use || []), ...use],\n\t\t\t} as any,\n\t\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\t\tasync (ctx: any) => runWithEndpointContext(ctx, () => handler(ctx)),\n\t\t);\n\t}\n\n\treturn createEndpoint(\n\t\t{\n\t\t\t...options,\n\t\t\tuse: [...(options?.use || []), ...use],\n\t\t} as any,\n\t\t// todo: prettify the code, we want to call `runWithEndpointContext` to top level\n\t\tasync (ctx: any) => runWithEndpointContext(ctx, () => handler(ctx)),\n\t);\n}\n\nexport type AuthEndpoint = ReturnType<typeof createAuthEndpoint>;\n/**\n * The handler type for plugin hooks.\n *\n * Accepts both `Middleware` instances (from `createAuthMiddleware`)\n * and plain async functions for better-call v1/v2 compatibility.\n */\nexport type AuthMiddleware = (\n\tinputContext: Record<string, any>,\n) => Promise<unknown>;\n"],"mappings":";;;;;AAiBA,MAAa,oBAAoB,iBAAiB,YAAY;;;;;;AAM7D,QAAO,EAAE;EACR;AAEF,MAAa,uBAAuB,iBAAiB,OAAO,EAC3D,KAAK,CACJ,mBAIA,iBAAiB,YAAY;AAC5B,QAAO,EAAE;EAIR,CACF,EACD,CAAC;AAEF,MAAM,MAAM,CAAC,kBAAkB;AA6H/B,SAAgB,mBACf,eACA,kBACA,gBACC;CACD,MAAM,OACL,OAAO,kBAAkB,WAAW,gBAAgB;CACrD,MAAM,UACL,OAAO,qBAAqB,WAAW,mBAAmB;CAC3D,MAAM,UACL,OAAO,qBAAqB,aAAa,mBAAmB;AAE7D,KAAI,KACH,QAAO,eACN,MACA;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAa,uBAAuB,WAAW,QAAQ,IAAI,CAAC,CACnE;AAGF,QAAO,eACN;EACC,GAAG;EACH,KAAK,CAAC,GAAI,SAAS,OAAO,EAAE,EAAG,GAAG,IAAI;EACtC,EAED,OAAO,QAAa,uBAAuB,WAAW,QAAQ,IAAI,CAAC,CACnE"}
 \ No newline at end of file
 diff --git a/dist/context/endpoint-context.d.mts b/dist/context/endpoint-context.d.mts
-index d78c3ec..9807e97 100644
+index d78c3ecb70cce0a92ec83bae4d7dd0be9211e0d0..9807e97fbd48032e98701fd27dc913f495f9b257 100644
 --- a/dist/context/endpoint-context.d.mts
 +++ b/dist/context/endpoint-context.d.mts
 @@ -4,7 +4,7 @@ import { EndpointContext, InputContext } from "better-call";
@@ -99,7 +99,7 @@ index d78c3ec..9807e97 100644
  };
  /**
 diff --git a/dist/context/endpoint-context.mjs.map b/dist/context/endpoint-context.mjs.map
-index 53a5bf3..d83f805 100644
+index 53a5bf350b0135a23e9c0c7d1163c050861cd50d..d83f805d0736a1baf05a7b5d248276a521bf003b 100644
 --- a/dist/context/endpoint-context.mjs.map
 +++ b/dist/context/endpoint-context.mjs.map
 @@ -1 +1 @@
@@ -108,7 +108,7 @@ index 53a5bf3..d83f805 100644
 +{"version":3,"file":"endpoint-context.mjs","names":[],"sources":["../../src/context/endpoint-context.ts"],"sourcesContent":["import type { AsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport { getAsyncLocalStorage } from \"@better-auth/core/async_hooks\";\nimport type { EndpointContext, InputContext } from \"better-call\";\nimport type { AuthContext } from \"../types\";\nimport { __getBetterAuthGlobal } from \"./global\";\n\nexport type AuthEndpointContext = Partial<\n\tInputContext<string, any, any, any, any, any> &\n\t\tEndpointContext<string, any, any, any, any, any, any, AuthContext>\n> & {\n\tcontext: AuthContext;\n};\n\nconst ensureAsyncStorage = async () => {\n\tconst betterAuthGlobal = __getBetterAuthGlobal();\n\tif (!betterAuthGlobal.context.endpointContextAsyncStorage) {\n\t\tconst AsyncLocalStorage = await getAsyncLocalStorage();\n\t\tbetterAuthGlobal.context.endpointContextAsyncStorage =\n\t\t\tnew AsyncLocalStorage<AuthEndpointContext>();\n\t}\n\treturn betterAuthGlobal.context\n\t\t.endpointContextAsyncStorage as AsyncLocalStorage<AuthEndpointContext>;\n};\n\n/**\n * This is for internal use only. Most users should use `getCurrentAuthContext` instead.\n *\n * It is exposed for advanced use cases where you need direct access to the AsyncLocalStorage instance.\n */\nexport async function getCurrentAuthContextAsyncLocalStorage() {\n\treturn ensureAsyncStorage();\n}\n\nexport async function getCurrentAuthContext(): Promise<AuthEndpointContext> {\n\tconst als = await ensureAsyncStorage();\n\tconst context = als.getStore();\n\tif (!context) {\n\t\tthrow new Error(\n\t\t\t\"No auth context found. Please make sure you are calling this function within a `runWithEndpointContext` callback.\",\n\t\t);\n\t}\n\treturn context;\n}\n\nexport async function runWithEndpointContext<T>(\n\tcontext: AuthEndpointContext,\n\tfn: () => T,\n): Promise<T> {\n\tconst als = await ensureAsyncStorage();\n\treturn als.run(context, fn);\n}\n"],"mappings":";;;;AAaA,MAAM,qBAAqB,YAAY;CACtC,MAAM,mBAAmB,uBAAuB;AAChD,KAAI,CAAC,iBAAiB,QAAQ,6BAA6B;EAC1D,MAAM,oBAAoB,MAAM,sBAAsB;AACtD,mBAAiB,QAAQ,8BACxB,IAAI,mBAAwC;;AAE9C,QAAO,iBAAiB,QACtB;;;;;;;AAQH,eAAsB,yCAAyC;AAC9D,QAAO,oBAAoB;;AAG5B,eAAsB,wBAAsD;CAE3E,MAAM,WADM,MAAM,oBAAoB,EAClB,UAAU;AAC9B,KAAI,CAAC,QACJ,OAAM,IAAI,MACT,oHACA;AAEF,QAAO;;AAGR,eAAsB,uBACrB,SACA,IACa;AAEb,SADY,MAAM,oBAAoB,EAC3B,IAAI,SAAS,GAAG"}
 \ No newline at end of file
 diff --git a/dist/db/adapter/factory.mjs b/dist/db/adapter/factory.mjs
-index 8a06079..cc2354a 100644
+index 8a060794d57f332cbffd6a7d92cdaf9ecd065f6e..cc2354a359b2f596c9ed6edd51097f32cb8c3b86 100644
 --- a/dist/db/adapter/factory.mjs
 +++ b/dist/db/adapter/factory.mjs
 @@ -1,7 +1,7 @@
@@ -121,7 +121,7 @@ index 8a06079..cc2354a 100644
  import { safeJSONParse } from "../../utils/json.mjs";
  import { initGetDefaultModelName } from "./get-default-model-name.mjs";
 diff --git a/dist/types/context.d.mts b/dist/types/context.d.mts
-index 796895d..6302f53 100644
+index 796895d50717f498c1c4e7e7150756c06b4f37d9..6302f537530d4003bc6f0eee2b6833ed8b3ecf14 100644
 --- a/dist/types/context.d.mts
 +++ b/dist/types/context.d.mts
 @@ -51,9 +51,7 @@ type InferPluginOptions<O extends BetterAuthOptions, ID extends BetterAuthPlugin
@@ -136,7 +136,7 @@ index 796895d..6302f53 100644
    createOAuthUser(user: Omit<User, "id" | "createdAt" | "updatedAt">, account: Omit<Account, "userId" | "id" | "createdAt" | "updatedAt"> & Partial<Account>): Promise<{
      user: User;
 diff --git a/dist/types/plugin.d.mts b/dist/types/plugin.d.mts
-index 6dcde9c..bf3548c 100644
+index 6dcde9c911d0aed8e9a7c6e4884ea22577ab563a..bf3548cebe997cc0c24b7bfd1ce18847c4893cb8 100644
 --- a/dist/types/plugin.d.mts
 +++ b/dist/types/plugin.d.mts
 @@ -10,7 +10,10 @@ import { Migration } from "kysely";

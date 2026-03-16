@@ -1,5 +1,5 @@
 diff --git a/dist/client.d.mts b/dist/client.d.mts
-index 467ff9c1f319197c7b426f7ab95e73b19e590e6a..e32d65c113d7b0770935e7c188aba641ef18a02c 100644
+index 467ff9c1f319197c7b426f7ab95e73b19e590e6a..3298f78397881326494c805c327c9ba27f84e290 100644
 --- a/dist/client.d.mts
 +++ b/dist/client.d.mts
 @@ -1,4 +1,5 @@
@@ -184,8 +184,9 @@ index 467ff9c1f319197c7b426f7ab95e73b19e590e6a..e32d65c113d7b0770935e7c188aba641
 -export { PASSKEY_ERROR_CODES, Passkey, PasskeyOptions, WebAuthnChallengeValue, getPasskeyActions, passkeyClient };
 +export { PASSKEY_ERROR_CODES, Passkey, PasskeyAuthenticationOptions, PasskeyExtensionsResolver, PasskeyOptions, PasskeyRegistrationOptions, PasskeyRegistrationUser, WebAuthnChallengeValue, getPasskeyActions, passkeyClient };
  //# sourceMappingURL=client.d.mts.map
+\ No newline at end of file
 diff --git a/dist/client.mjs b/dist/client.mjs
-index f5f228391867d08abda88426b363866ba6fc2a02..9b2066c0fbafcb75f9927e87613da313b631b03c 100644
+index f5f228391867d08abda88426b363866ba6fc2a02..29f8d78f552151732f5965c866711a6fa07ef962 100644
 --- a/dist/client.mjs
 +++ b/dist/client.mjs
 @@ -12,11 +12,20 @@ const getPasskeyActions = ($fetch, { $listPasskeys, $store }) => {
@@ -276,7 +277,7 @@ index f5f228391867d08abda88426b363866ba6fc2a02..9b2066c0fbafcb75f9927e87613da313
  		} catch (e) {
  			if (e instanceof WebAuthnError) {
 diff --git a/dist/error-codes-Dvu2mv33.mjs b/dist/error-codes-Dvu2mv33.mjs
-index f45d4c111d4c982da4d092421ef8fdc084bb0a98..183b6eaacb5086c8788739e2f2f38453fdc122f4 100644
+index f45d4c111d4c982da4d092421ef8fdc084bb0a98..bbde0a9d6b8fabba82b94bc5ef041d03cc08aab1 100644
 --- a/dist/error-codes-Dvu2mv33.mjs
 +++ b/dist/error-codes-Dvu2mv33.mjs
 @@ -8,7 +8,10 @@ const PASSKEY_ERROR_CODES = defineErrorCodes({
@@ -1276,7 +1277,7 @@ index 2e446d05ef903dd2932f0031219975f587a17da4..70fdb7b881e72ee1482492f1e1bdc822
 +import { a as PasskeyOptions, n as Passkey, t as passkey } from "./index-D7iFzFli.mjs";
  export { Passkey, PasskeyOptions, passkey };
 diff --git a/dist/index.mjs b/dist/index.mjs
-index ac113814c396e7f3787a31b35ff61d0c106b6ec2..540f925425d0b002bc73226629154148d2d22caa 100644
+index ac113814c396e7f3787a31b35ff61d0c106b6ec2..f98703ad7ca3f11591b9aabb4206beb16de7896c 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
 @@ -16,136 +16,183 @@ function getRpID(options, baseURL) {
