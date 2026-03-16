@@ -539,7 +539,7 @@ packages:
       mongodb: ^6.0.0 || ^7.0.0
 
   '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-/zoKU2ceId5OIQFtuwHqfk4vfLcOtk5AuUvOWjwqlL052lHJm2epfhmVBPjB9yb7YMeTwxam4b42uN4fNzSGcw==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-MxNFBtXE/Z4io3J9VIiW4rTM8uWYSJCxIohG1S5CstrZOynoMZb18xGH0iaGtx8Se6nTBy+qV5wyuTqNbcpVDg==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.5
