@@ -9,13 +9,14 @@ import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/types";
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
+import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { auth, type Session } from "@/lib/auth/auth";
@@ -129,6 +130,28 @@ async function resolveOpaqueSession(token: string): Promise<Session | null> {
   return buildSessionFromUserId(accessToken.userId);
 }
 
+/**
+ * Resolve session from internal service token headers.
+ * Used by trusted internal services (MCP HTTP transport) that have
+ * already validated the caller's identity and pass the user ID directly.
+ */
+function resolveServiceTokenSession(req: Request): Promise<Session | null> {
+  const token = req.headers.get("x-zentity-internal-token");
+  const userId = req.headers.get("x-zentity-user-id");
+
+  if (!(token && userId && env.INTERNAL_SERVICE_TOKEN)) {
+    return Promise.resolve(null);
+  }
+
+  const expected = Buffer.from(env.INTERNAL_SERVICE_TOKEN);
+  const actual = Buffer.from(token);
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    return Promise.resolve(null);
+  }
+
+  return buildSessionFromUserId(userId);
+}
+
 async function buildSessionFromUserId(userId: string): Promise<Session | null> {
   const user = await db
     .select()
@@ -191,6 +214,17 @@ export async function createTrpcContext(args: {
       logError(error, {
         requestId: requestContext.requestId,
         path: "auth.resolveOAuth",
+      });
+    }
+  }
+
+  if (!session) {
+    try {
+      session = await resolveServiceTokenSession(args.req);
+    } catch (error) {
+      logError(error, {
+        requestId: requestContext.requestId,
+        path: "auth.resolveServiceToken",
       });
     }
   }

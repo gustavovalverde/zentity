@@ -26,7 +26,7 @@ let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
 
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   if (!jwks) {
-    const url = new URL("/api/auth/jwks", config.zentityUrl);
+    const url = new URL("/api/auth/oauth2/jwks", config.zentityUrl);
     jwks = createRemoteJWKSet(url);
   }
   return jwks;

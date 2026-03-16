@@ -9,8 +9,6 @@ import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
-const AUTH_TOKEN_RE = /\s+/;
-
 function getTransport(
   transports: Map<string, WebStandardStreamableHTTPServerTransport>,
   sessionId: string | undefined
@@ -88,17 +86,14 @@ export function createApp(): Hono {
       });
     }
 
-    // Build AuthContext from validated token (authHeader guaranteed non-null after validateToken succeeds)
-    const rawToken = (authHeader ?? "").split(AUTH_TOKEN_RE)[1] ?? "";
+    // Build AuthContext from validated token
     const authCtx: AuthContext = {
-      accessToken: rawToken,
+      accessToken: "",
       clientId:
         (result.payload.client_id as string) ??
         (result.payload.azp as string) ??
         "",
-      dpopKey: result.dpopPublicJwk
-        ? { privateJwk: {}, publicJwk: result.dpopPublicJwk }
-        : { privateJwk: {}, publicJwk: {} },
+      dpopKey: { privateJwk: {}, publicJwk: {} },
       loginHint: (result.payload.sub as string) ?? "",
     };
 

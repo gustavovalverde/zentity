@@ -1,0 +1,26 @@
+═══════════════════════════════════════════════════
+Cross-App Auth & Protocol Hardening
+PRD: docs/plans/prd-cross-app-auth-hardening.md
+═══════════════════════════════════════════════════
+
+--- Task 39: MCP HTTP Transport Auth (findings #1, #2, #3) ---
+Status: COMPLETE
+
+Changes:
+- apps/mcp/src/auth/token-auth.ts: JWKS URL /api/auth/jwks → /api/auth/oauth2/jwks
+- apps/mcp/src/transports/http.ts: removed unused AUTH_TOKEN_RE, cleaned up auth context (no fake DPoP key)
+- apps/mcp/src/auth/api-client.ts: fixed pre-existing lint (async→sync serviceTokenFetch, let→const dpopNonce)
+- apps/web/src/lib/trpc/server.ts: added resolveServiceTokenSession (timing-safe compare X-Zentity-Internal-Token, lookup user by X-Zentity-User-Id)
+
+Architectural Decision:
+DPoP relay (PRD choice) is architecturally impossible — DPoP proofs are URL-bound (htu claim),
+so caller's proof for POST /mcp can't be reused for GET /api/trpc/*. Token's cnf.jkt is bound
+to caller's key, so MCP can't mint new proofs. Implemented service token approach instead —
+MCP validates caller via DPoP, then authenticates to web app as trusted internal service with
+X-Zentity-Internal-Token + X-Zentity-User-Id. Web app uses timing-safe comparison and
+buildSessionFromUserId. This is the standard microservice gateway pattern.
+
+serviceTokenFetch kept (was going to be deleted per PRD) because it's correct; the bug was
+the web app not recognizing the headers, now fixed.
+
+Feedback loops: typecheck ✓, tests ✓ (109 MCP, 88 web unit), lint ✓ (changed files clean)

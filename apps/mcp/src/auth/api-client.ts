@@ -22,7 +22,7 @@ export async function zentityFetch(
 
   // stdio transport: DPoP-bound relay
   const nonceKey = getNonceKey(auth.loginHint);
-  let dpopNonce = dpopNonces.get(nonceKey);
+  const dpopNonce = dpopNonces.get(nonceKey);
 
   let proof = await createDpopProof(
     auth.dpopKey,
@@ -76,7 +76,7 @@ export async function zentityFetch(
   return response;
 }
 
-async function serviceTokenFetch(
+function serviceTokenFetch(
   url: string,
   method: string,
   userId: string,
