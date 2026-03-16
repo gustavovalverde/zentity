@@ -1,5 +1,7 @@
+import { config } from "../config.js";
 import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
+import { getServiceTokenHeaders } from "./service-token.js";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
@@ -55,27 +57,21 @@ export class CibaTimeoutError extends Error {
   }
 }
 
-export async function requestCibaApproval(
-  params: CibaRequest
-): Promise<CibaResult> {
+export function requestCibaApproval(params: CibaRequest): Promise<CibaResult> {
+  if (config.transport === "http") {
+    return requestCibaViaServiceToken(params);
+  }
+  return requestCibaViaDpop(params);
+}
+
+// ---------------------------------------------------------------------------
+// DPoP path (stdio transport — the MCP server owns a keypair)
+// ---------------------------------------------------------------------------
+
+async function requestCibaViaDpop(params: CibaRequest): Promise<CibaResult> {
   const { cibaEndpoint, tokenEndpoint, dpopKey } = params;
 
-  // Step 1: Send CIBA backchannel authorization request
-  const body = new URLSearchParams({
-    client_id: params.clientId,
-    login_hint: params.loginHint,
-    scope: params.scope,
-    binding_message: params.bindingMessage,
-  });
-  if (params.resource) {
-    body.set("resource", params.resource);
-  }
-  if (params.authorizationDetails) {
-    body.set(
-      "authorization_details",
-      JSON.stringify(params.authorizationDetails)
-    );
-  }
+  const body = buildCibaBody(params);
 
   let dpopNonce: string | undefined;
   let dpopProof = await createDpopProof(
@@ -128,8 +124,7 @@ export async function requestCibaApproval(
 
   const authResponse = (await response.json()) as CibaAuthResponse;
 
-  // Step 2: Poll for token
-  return pollForToken(
+  return pollForTokenDpop(
     tokenEndpoint,
     authResponse.auth_req_id,
     params.clientId,
@@ -142,7 +137,7 @@ export async function requestCibaApproval(
   );
 }
 
-async function pollForToken(
+async function pollForTokenDpop(
   tokenEndpoint: string,
   authReqId: string,
   clientId: string,
@@ -183,37 +178,160 @@ async function pollForToken(
 
     currentNonce = extractDpopNonce(response) ?? currentNonce;
 
-    if (response.ok) {
-      const data = (await response.json()) as CibaTokenResponse;
-      return {
-        accessToken: data.access_token,
-        authorizationDetails: data.authorization_details,
-        idToken: data.id_token,
-      };
+    const result = await handlePollResponse(response, currentInterval);
+    if (result.done) {
+      return result.value;
     }
-
-    const error = (await response.json()) as CibaErrorResponse;
-
-    if (error.error === "authorization_pending") {
-      continue;
-    }
-    if (error.error === "slow_down") {
-      currentInterval += SLOW_DOWN_INCREMENT_MS;
-      continue;
-    }
-    if (error.error === "access_denied") {
-      throw new CibaDeniedError(error.error_description);
-    }
-    if (error.error === "expired_token") {
-      throw new CibaTimeoutError();
-    }
-
-    throw new Error(
-      `CIBA poll error: ${error.error} ${error.error_description ?? ""}`
-    );
+    currentInterval = result.nextInterval;
   }
 
   throw new CibaTimeoutError();
+}
+
+// ---------------------------------------------------------------------------
+// Service-token path (HTTP transport — no DPoP keypair available)
+// ---------------------------------------------------------------------------
+
+async function requestCibaViaServiceToken(
+  params: CibaRequest
+): Promise<CibaResult> {
+  const { cibaEndpoint, tokenEndpoint } = params;
+  const serviceHeaders = getServiceTokenHeaders(params.loginHint);
+
+  const body = buildCibaBody(params);
+
+  const response = await fetch(cibaEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      ...serviceHeaders,
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`CIBA authorization failed: ${response.status} ${text}`);
+  }
+
+  const authResponse = (await response.json()) as CibaAuthResponse;
+
+  return pollForTokenServiceToken(
+    tokenEndpoint,
+    authResponse.auth_req_id,
+    params.clientId,
+    params.loginHint,
+    authResponse.interval != null
+      ? authResponse.interval * 1000
+      : DEFAULT_POLL_INTERVAL_MS,
+    authResponse.expires_in * 1000
+  );
+}
+
+async function pollForTokenServiceToken(
+  tokenEndpoint: string,
+  authReqId: string,
+  clientId: string,
+  loginHint: string,
+  intervalMs: number,
+  timeoutMs: number
+): Promise<CibaResult> {
+  const deadline = Date.now() + timeoutMs;
+  let currentInterval = intervalMs;
+  const serviceHeaders = getServiceTokenHeaders(loginHint);
+
+  while (Date.now() < deadline) {
+    await sleep(currentInterval);
+
+    const body = new URLSearchParams({
+      grant_type: "urn:openid:params:grant-type:ciba",
+      auth_req_id: authReqId,
+      client_id: clientId,
+    });
+
+    const response = await fetch(tokenEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        ...serviceHeaders,
+      },
+      body,
+    });
+
+    const result = await handlePollResponse(response, currentInterval);
+    if (result.done) {
+      return result.value;
+    }
+    currentInterval = result.nextInterval;
+  }
+
+  throw new CibaTimeoutError();
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+function buildCibaBody(params: CibaRequest): URLSearchParams {
+  const body = new URLSearchParams({
+    client_id: params.clientId,
+    login_hint: params.loginHint,
+    scope: params.scope,
+    binding_message: params.bindingMessage,
+  });
+  if (params.resource) {
+    body.set("resource", params.resource);
+  }
+  if (params.authorizationDetails) {
+    body.set(
+      "authorization_details",
+      JSON.stringify(params.authorizationDetails)
+    );
+  }
+  return body;
+}
+
+type PollOutcome =
+  | { done: true; value: CibaResult }
+  | { done: false; nextInterval: number };
+
+async function handlePollResponse(
+  response: Response,
+  currentInterval: number
+): Promise<PollOutcome> {
+  if (response.ok) {
+    const data = (await response.json()) as CibaTokenResponse;
+    return {
+      done: true,
+      value: {
+        accessToken: data.access_token,
+        authorizationDetails: data.authorization_details,
+        idToken: data.id_token,
+      },
+    };
+  }
+
+  const error = (await response.json()) as CibaErrorResponse;
+
+  if (error.error === "authorization_pending") {
+    return { done: false, nextInterval: currentInterval };
+  }
+  if (error.error === "slow_down") {
+    return {
+      done: false,
+      nextInterval: currentInterval + SLOW_DOWN_INCREMENT_MS,
+    };
+  }
+  if (error.error === "access_denied") {
+    throw new CibaDeniedError(error.error_description);
+  }
+  if (error.error === "expired_token") {
+    throw new CibaTimeoutError();
+  }
+
+  throw new Error(
+    `CIBA poll error: ${error.error} ${error.error_description ?? ""}`
+  );
 }
 
 function sleep(ms: number): Promise<void> {

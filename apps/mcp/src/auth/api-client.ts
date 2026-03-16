@@ -1,6 +1,7 @@
 import { config } from "../config.js";
 import { getAuthContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
+import { getServiceTokenHeaders } from "./service-token.js";
 
 const dpopNonces = new Map<string, string>();
 
@@ -82,16 +83,8 @@ function serviceTokenFetch(
   userId: string,
   body?: string
 ): Promise<Response> {
-  const serviceToken = process.env.INTERNAL_SERVICE_TOKEN;
-  if (!serviceToken) {
-    throw new Error(
-      "INTERNAL_SERVICE_TOKEN required for HTTP transport downstream calls"
-    );
-  }
-
   const headers: Record<string, string> = {
-    "X-Zentity-Internal-Token": serviceToken,
-    "X-Zentity-User-Id": userId,
+    ...getServiceTokenHeaders(userId),
   };
   if (body) {
     headers["Content-Type"] = "application/json";

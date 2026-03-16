@@ -111,7 +111,8 @@ describe("purchase", () => {
     expect(parsed.binding_message).toContain("Acme Store");
     expect(mockRedeemRelease).toHaveBeenCalledWith(
       "ciba-token",
-      mockAuthContext.dpopKey
+      mockAuthContext.dpopKey,
+      mockAuthContext.loginHint
     );
   });
 

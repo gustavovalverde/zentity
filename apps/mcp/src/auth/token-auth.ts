@@ -15,6 +15,7 @@ import {
   jwtVerify,
 } from "jose";
 import { config } from "../config.js";
+import { getDiscoveredIssuer } from "./discovery.js";
 
 const AUTH_HEADER_RE = /^(Bearer|DPoP)\s+(.+)$/i;
 const DPOP_MAX_AGE_S = 300; // 5 minutes
@@ -103,7 +104,7 @@ export async function validateToken(
   let result: JWTVerifyResult<JWTPayload>;
   try {
     result = await jwtVerify(token, getJwks(), {
-      issuer: config.zentityUrl,
+      issuer: getDiscoveredIssuer() ?? `${config.zentityUrl}/api/auth`,
       audience: config.mcpPublicUrl,
     });
   } catch (err) {

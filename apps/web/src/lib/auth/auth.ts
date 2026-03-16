@@ -62,7 +62,10 @@ import {
   stageClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
-import { consumeEphemeralClaimsByUser } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import {
+  consumeEphemeralClaims,
+  consumeEphemeralClaimsByUser,
+} from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
@@ -1349,11 +1352,15 @@ export const auth = betterAuth({
 
         return filterClaimsByRequest(allClaims, idTokenFilter);
       },
-      customUserInfoClaims: async ({ user, scopes }) => {
+      customUserInfoClaims: async (info) => {
+        const { user, scopes } = info;
+        const clientId = (info as { clientId?: string }).clientId;
         const scopeList = toScopeList(scopes);
 
-        // Consume ephemeral PII (terminal consumer — frees memory)
-        const ephemeral = consumeEphemeralClaimsByUser(user.id);
+        // Consume ephemeral PII scoped to the requesting client
+        const ephemeral = clientId
+          ? consumeEphemeralClaims(user.id, clientId)
+          : consumeEphemeralClaimsByUser(user.id);
 
         // Proof claims from DB
         const proofClaims = hasAnyProofScope(scopeList)

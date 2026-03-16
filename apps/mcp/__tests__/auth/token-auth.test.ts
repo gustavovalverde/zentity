@@ -66,7 +66,7 @@ async function signToken(
     .setProtectedHeader({ alg: "EdDSA", kid: "test-kid" })
     .setIssuedAt()
     .setExpirationTime(opts.expiresIn ?? "5m")
-    .setIssuer(opts.issuer ?? "http://localhost:3000")
+    .setIssuer(opts.issuer ?? "http://localhost:3000/api/auth")
     .setAudience(opts.audience ?? "http://localhost:3200")
     .setSubject("user-123")
     .sign(key);

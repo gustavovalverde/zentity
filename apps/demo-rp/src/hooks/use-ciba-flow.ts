@@ -203,6 +203,17 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         }
 
         const promise = (async () => {
+          const restartPoll = () => {
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+            }
+            intervalRef.current += 5;
+            pollRef.current = setInterval(
+              fetchTokens,
+              intervalRef.current * 1000
+            );
+          };
+
           try {
             const res = await fetch("/api/ciba", {
               method: "POST",
@@ -216,23 +227,16 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
             const body = (await res.json()) as Record<string, unknown>;
             const result = classifyPollResponse(res.status, body);
-            const restartPoll = () => {
-              if (pollRef.current) {
-                clearInterval(pollRef.current);
-              }
-              intervalRef.current += 5;
-              pollRef.current = setInterval(
-                fetchTokens,
-                intervalRef.current * 1000
-              );
-            };
             handlePollResult(result, restartPoll);
             // Resume polling if ping-triggered fetch returned pending (pollRef was cleared)
             if (result.kind === "pending" && !pollRef.current) {
               restartPoll();
             }
           } catch {
-            // Network error — retry on next interval
+            // Restore polling if ping path cleared it before the network error
+            if (!(pollRef.current || terminalRef.current)) {
+              restartPoll();
+            }
           } finally {
             inflightRef.current = null;
           }

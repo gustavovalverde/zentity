@@ -1,11 +1,27 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { ensureAuthenticated } from "../auth/bootstrap.js";
-import { setAuthFactory, setAuthPromise } from "../auth/context.js";
+import { ensureAuthenticated, refreshAuthContext } from "../auth/bootstrap.js";
+import {
+  getAuthContext,
+  setAuthFactory,
+  setAuthPromise,
+} from "../auth/context.js";
 import { createServer } from "../server/index.js";
+
+const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
 
 async function runAuth(): Promise<void> {
   try {
-    await ensureAuthenticated();
+    const tokenManager = await ensureAuthenticated();
+    const auth = getAuthContext();
+    setInterval(async () => {
+      try {
+        await refreshAuthContext(tokenManager, auth.clientId, auth.dpopKey);
+        console.error("[auth] Token refreshed");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[auth] Token refresh failed: ${msg}`);
+      }
+    }, REFRESH_INTERVAL_MS);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`[auth] Authentication failed: ${msg}`);

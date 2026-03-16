@@ -1,8 +1,8 @@
-import { decodeJwt } from "jose";
 import { config } from "../config.js";
 import { requestCibaApproval } from "./ciba.js";
 import { requireAuth } from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
+import { getServiceTokenHeaders } from "./service-token.js";
 
 export interface IdentityClaims {
   address?: string;
@@ -21,9 +21,13 @@ interface CacheEntry {
 const identityCache = new Map<string, CacheEntry>();
 
 export function getCachedIdentity(userId?: string): IdentityClaims | null {
-  if (!userId) return null;
+  if (!userId) {
+    return null;
+  }
   const entry = identityCache.get(userId);
-  if (!entry) return null;
+  if (!entry) {
+    return null;
+  }
   if (entry.expiresAt <= Date.now()) {
     identityCache.delete(userId);
     return null;
@@ -36,7 +40,9 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
   const userId = auth.loginHint;
 
   const cached = getCachedIdentity(userId);
-  if (cached) return cached;
+  if (cached) {
+    return cached;
+  }
 
   const result = await requestCibaApproval({
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
@@ -49,8 +55,14 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     resource: config.zentityUrl,
   });
 
-  const claims = await redeemRelease(result.accessToken, auth.dpopKey);
-  if (!claims) return null;
+  const claims = await redeemRelease(
+    result.accessToken,
+    auth.dpopKey,
+    auth.loginHint
+  );
+  if (!claims) {
+    return null;
+  }
 
   identityCache.set(userId, {
     claims,
@@ -63,11 +75,26 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
 /**
  * Redeem a CIBA access token for PII via the userinfo endpoint.
  */
-export async function redeemRelease(
+export function redeemRelease(
+  cibaAccessToken: string,
+  dpopKey: DpopKeyPair,
+  loginHint?: string
+): Promise<IdentityClaims | null> {
+  const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
+
+  // HTTP transport: service-token path (no DPoP keypair available)
+  if (config.transport === "http" && loginHint) {
+    return redeemViaServiceToken(userinfoUrl, loginHint);
+  }
+
+  return redeemViaDpop(userinfoUrl, cibaAccessToken, dpopKey);
+}
+
+async function redeemViaDpop(
+  userinfoUrl: string,
   cibaAccessToken: string,
   dpopKey: DpopKeyPair
 ): Promise<IdentityClaims | null> {
-  const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
   let dpopNonce: string | undefined;
 
   let proof = await createDpopProof(
@@ -100,6 +127,23 @@ export async function redeemRelease(
     });
   }
 
+  return parseUserinfoResponse(response);
+}
+
+async function redeemViaServiceToken(
+  userinfoUrl: string,
+  loginHint: string
+): Promise<IdentityClaims | null> {
+  const response = await fetch(userinfoUrl, {
+    headers: getServiceTokenHeaders(loginHint),
+  });
+
+  return parseUserinfoResponse(response);
+}
+
+async function parseUserinfoResponse(
+  response: Response
+): Promise<IdentityClaims | null> {
   if (!response.ok) {
     console.error(
       `[identity] Userinfo endpoint failed: ${response.status} ${await response.text()}`

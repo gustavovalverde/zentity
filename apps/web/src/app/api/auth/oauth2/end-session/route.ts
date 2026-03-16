@@ -82,6 +82,15 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
+  // OIDC RP-Initiated Logout 1.0 §2: when both client_id and id_token_hint
+  // are present, verify they refer to the same RP.
+  if (clientId && tokenAzp && clientId !== tokenAzp) {
+    return NextResponse.json(
+      { error: "client_id does not match id_token_hint" },
+      { status: 400 }
+    );
+  }
+
   // Validate post_logout_redirect_uri against client's registered URIs.
   // Per OIDC RP-Initiated Logout 1.0, client_id is optional when
   // id_token_hint is provided — infer the client from azp/aud.

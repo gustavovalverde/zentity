@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AuthContext, runWithAuth } from "../auth/context.js";
+import { discover } from "../auth/discovery.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { config } from "../config.js";
@@ -155,7 +156,10 @@ export function createApp(): Hono {
   return app;
 }
 
-export function startHttp(): void {
+export async function startHttp(): Promise<void> {
+  // Pre-cache OIDC metadata so token validation uses the correct issuer
+  await discover(config.zentityUrl);
+
   const app = createApp();
   const { port } = config;
 

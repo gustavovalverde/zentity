@@ -50,6 +50,10 @@ export async function discover(zentityUrl: string): Promise<DiscoveryState> {
   return state;
 }
 
+export function getDiscoveredIssuer(): string | undefined {
+  return cachedDiscovery?.issuer;
+}
+
 export function clearDiscoveryCache(): void {
   cachedDiscovery = undefined;
 }
