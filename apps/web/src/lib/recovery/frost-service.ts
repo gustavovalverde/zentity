@@ -237,10 +237,18 @@ export async function signRecoveryChallenge(params: {
   participantIds?: number[];
   totalParticipants?: number;
   guardianAssertions?: Map<number, string>;
+  endpointOverrides?: Map<number, string>;
 }): Promise<{ signature: string; signaturesCollected: number }> {
   const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
   const totalParticipants = params.totalParticipants ?? params.threshold;
   const endpointMap = resolveSignerEndpointMap(totalParticipants);
+
+  // Overlay custodial/custom signer endpoints
+  if (params.endpointOverrides) {
+    for (const [participantId, endpoint] of params.endpointOverrides) {
+      endpointMap.set(participantId, endpoint);
+    }
+  }
   const participantIds =
     params.participantIds ??
     Array.from({ length: params.threshold }, (_, i) => i + 1);

@@ -355,6 +355,23 @@ export const approveGuardianProcedure = publicProcedure
         guardianAssertions.set(entry.guardian.participantIndex, jwt);
       }
 
+      // Include custodial signer endpoint if configured
+      let endpointOverrides: Map<number, string> | undefined;
+      if (env.CUSTODIAL_SIGNER_URL) {
+        const custodialGuardian = sortedApproved.find(
+          (a) =>
+            a.guardian.guardianType === RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL
+        );
+        if (custodialGuardian) {
+          endpointOverrides = new Map([
+            [
+              custodialGuardian.guardian.participantIndex,
+              env.CUSTODIAL_SIGNER_URL,
+            ],
+          ]);
+        }
+      }
+
       const { signature, signaturesCollected } = await signRecoveryChallenge({
         groupPubkey: config.frostGroupPubkey,
         ciphersuite: config.frostCiphersuite as "secp256k1" | "ed25519",
@@ -363,6 +380,7 @@ export const approveGuardianProcedure = publicProcedure
         participantIds,
         totalParticipants: config.totalGuardians,
         guardianAssertions,
+        endpointOverrides,
       });
 
       const frostKey = deriveFrostUnwrapKey({

@@ -168,3 +168,24 @@ Status: Partial (schema, UI, push ready; bc-authorize acceptance needs vendor pa
 - apps/web/src/components/ciba/ciba-approve-client.tsx — AgentIdentityCard + prop
 - apps/web/src/app/approve/[authReqId]/page.tsx — server-side agent claims query
 - apps/web/src/lib/push/ciba-payload.ts — agent name in push title
+
+## Task 06: Custodial FROST Email-Triggered Signing
+Status: Complete (web-side wiring; signer binary unchanged)
+
+### Changes
+1. `signRecoveryChallenge` accepts `endpointOverrides` param
+   - Overlays custom signer endpoints by participant index
+   - Used when CUSTODIAL_SIGNER_URL is configured
+2. `approveGuardianProcedure` detects custodialEmail guardians
+   - Passes CUSTODIAL_SIGNER_URL as endpoint override for the custodial guardian's participant index
+   - Custodial signer receives the same guardian_assertion JWT as all other signers
+3. Non-custodial guardian flow unaffected (no endpointOverrides = existing behavior)
+
+### Architectural decision
+- endpointOverrides Map injected at the challenge level, not at frost-service global config
+- Custodial signer's participant index resolved from DB guardian record, not from CUSTODIAL_SIGNER_ID
+- CUSTODIAL_SIGNER_ID remains for signer identity correlation in logging/admin UI (future use)
+
+### Files changed
+- apps/web/src/lib/recovery/frost-service.ts — endpointOverrides param
+- apps/web/src/lib/trpc/routers/recovery/challenge.ts — custodial signer wiring
