@@ -475,7 +475,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-SETw54BLGJreVrSf8Za6T0+RyAWHr3K5bdhLh09GifJMQhRQ/rdDILAvjksc3kAWKZ2nnpyZv2MxMWEw2MYqOw==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-Dt2InK3BvU3+bZjiDBKa7LPXu8O0wuqqx22FXlaQ3NK0c6oyBenIK46r6d2WZ5WJYc4d/ZgJtyytdfLglfHHRg==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.5
@@ -510,7 +510,7 @@ packages:
         optional: true
 
   '@better-auth/haip@file:vendor/better-auth-haip-0.0.0.tgz':
-    resolution: {integrity: sha512-BOnb42EQbHStmQZjTjGRhmJIdj//8nsr4rFN2F6kcwvlLB0xOZHokn6N3gW8Xx5rgKVZOsf6zjC3EIyEI4EUDA==, tarball: file:vendor/better-auth-haip-0.0.0.tgz}
+    resolution: {integrity: sha512-2O9YfSgeRXkUw5Np6S2J3MEkYzNZuhkEWCUGQi/LlVNDmDczWMvZeojlF7+K6nz3P1hvRr4ZuC/SPYtJZWOcOw==, tarball: file:vendor/better-auth-haip-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.5
@@ -539,7 +539,7 @@ packages:
       mongodb: ^6.0.0 || ^7.0.0
 
   '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-ugxDaCHdCXSCAqcADz/DWinDmihuuwianBpF5B5lPbcbaDE2uIYqqP3nYlpNudy0XL6M3I+brFTbtL4V9LmrjQ==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-/zoKU2ceId5OIQFtuwHqfk4vfLcOtk5AuUvOWjwqlL052lHJm2epfhmVBPjB9yb7YMeTwxam4b42uN4fNzSGcw==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.5
@@ -549,14 +549,14 @@ packages:
       better-call: 2.0.2
 
   '@better-auth/oidc4ida@file:vendor/better-auth-oidc4ida-0.0.0.tgz':
-    resolution: {integrity: sha512-tbsfkzWe6jQIaG5EgeijhiMIFx8rFmJa1oIJPpc6R9E7AcbaV9iz1GRtpOI/pe1inFZtYrfOZnvYOdaAp3kVbA==, tarball: file:vendor/better-auth-oidc4ida-0.0.0.tgz}
+    resolution: {integrity: sha512-0q3cAP25N4lpfy9zA3DKBRvgqbmF6LZ9MNskpR8FcGs5COBEFZsZ2/ZeGv3A46Syfhpp8mOg9bUUhMqUyfoWAg==, tarball: file:vendor/better-auth-oidc4ida-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.5
       better-auth: 1.5.1-beta.3
 
   '@better-auth/oidc4vci@file:vendor/better-auth-oidc4vci-0.0.0.tgz':
-    resolution: {integrity: sha512-FBVrQiTo96su7dVX7bl00xCZ30PjKp9T7V9aGaS9IMByRhePKhm75BOLvxjbRdMVvMpDmS6dJBoXkDk3kykciA==, tarball: file:vendor/better-auth-oidc4vci-0.0.0.tgz}
+    resolution: {integrity: sha512-bXULXZp9d26yV+qdM2RKCsfIH0CTRW0tk9K4pOQwNbD+Mdu+XiIQbH8V3cOf9yngdr94h0Uhx2c8bATWsssEeg==, tarball: file:vendor/better-auth-oidc4vci-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.5
@@ -565,7 +565,7 @@ packages:
       better-call: 2.0.2
 
   '@better-auth/oidc4vp@file:vendor/better-auth-oidc4vp-0.0.0.tgz':
-    resolution: {integrity: sha512-MDv5/cC+GeCFNJLMUm5wz2lqmmNrHGYVs13AML7ljHYxnGyODJsdZ0upI8TTAnJMmewXUcV5B3gNQZ7PKpv77w==, tarball: file:vendor/better-auth-oidc4vp-0.0.0.tgz}
+    resolution: {integrity: sha512-ryOKiTFRQMcg5QceKkOYG98JYDteqyCDH/qoUgd+ryi3N/EZpJ2PSwRq5gaiDtqp3Kwa9gmzOiWWwMr77yRpyg==, tarball: file:vendor/better-auth-oidc4vp-0.0.0.tgz}
     version: 0.0.0
     peerDependencies:
       '@better-auth/core': 1.5.5
