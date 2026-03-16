@@ -64,7 +64,7 @@ export function proxy(request: NextRequest) {
       headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
       headers.set(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization"
+        "Content-Type, Authorization, DPoP"
       );
     }
     return new NextResponse(null, { status: 204, headers });
@@ -98,7 +98,7 @@ export function proxy(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     response.headers.set(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
+      "Content-Type, Authorization, DPoP"
     );
   }
 

@@ -63,7 +63,13 @@ export const env = createEnv({
           .filter(Boolean)
           .map((e) => e.replace(TRAILING_SLASHES, ""))
       ),
-    INTERNAL_SERVICE_TOKEN: z.string().optional(),
+    INTERNAL_SERVICE_TOKEN: z
+      .string()
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || (s && s.length >= 32),
+        "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production"
+      ),
 
     // Cryptographic secrets
     KEY_ENCRYPTION_KEY: z
@@ -108,8 +114,20 @@ export const env = createEnv({
     CUSTODIAL_SIGNER_ID: z.string().optional(),
 
     // Web Push (VAPID)
-    VAPID_PUBLIC_KEY: z.string().optional(),
-    VAPID_PRIVATE_KEY: z.string().optional(),
+    VAPID_PUBLIC_KEY: z
+      .string()
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || !!s,
+        "VAPID_PUBLIC_KEY is required in production"
+      ),
+    VAPID_PRIVATE_KEY: z
+      .string()
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || !!s,
+        "VAPID_PRIVATE_KEY is required in production"
+      ),
     VAPID_SUBJECT: z.string().default("mailto:notifications@zentity.xyz"),
 
     // Email
@@ -117,7 +135,13 @@ export const env = createEnv({
     MAILPIT_SEND_API_URL: z.string().optional(),
     MAILPIT_SEND_API_USERNAME: z.string().optional(),
     MAILPIT_SEND_API_PASSWORD: z.string().optional(),
-    RESEND_API_KEY: z.string().optional(),
+    RESEND_API_KEY: z
+      .string()
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || !!s,
+        "RESEND_API_KEY is required in production"
+      ),
     MAIL_FROM_EMAIL: z.string().default("no-reply@zentity.local"),
     MAIL_FROM_NAME: z.string().default("Zentity"),
 

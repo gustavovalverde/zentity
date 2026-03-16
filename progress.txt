@@ -443,3 +443,21 @@ Status: Complete
 - apps/landing/src/pages/zk-auth-page.tsx — identity_bound
 - 6 test files updated (23 new unit tests + all integration tests pass)
 - 5 core docs updated (oauth-integrations, attestation-privacy-architecture, architecture, ssi-architecture, ADR-0011)
+
+## Task 26: Production Environment Hardening
+Status: Complete
+
+### Changes
+1. Email: sendResetPasswordEmail + sendMagicLinkEmail in auth-mailer.ts, wired into auth.ts opaque/magicLink plugins
+2. Transport: Mailpit (dev) → Resend (prod) → console fallback (same pattern as ciba-mailer)
+3. Env: INTERNAL_SERVICE_TOKEN requires min(32) in prod, RESEND_API_KEY/VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY required in prod
+4. CORS: Added DPoP to Access-Control-Allow-Headers in proxy.ts (preflight + passthrough)
+5. Middleware: Created src/middleware.ts wiring proxy.ts into Next.js middleware
+
+### Files changed
+- apps/web/src/lib/email/auth-mailer.ts — new, sendResetPasswordEmail + sendMagicLinkEmail
+- apps/web/src/lib/auth/auth.ts — replaced no-op callbacks with real email sending
+- apps/web/src/env.ts — production .refine() guards for 4 env vars
+- apps/web/src/proxy.ts — DPoP in CORS headers
+- apps/web/src/middleware.ts — new, wires proxy as Next.js middleware
+- apps/web/src/lib/email/__tests__/auth-mailer.test.ts — 6 integration tests

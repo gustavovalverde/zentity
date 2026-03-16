@@ -1142,9 +1142,11 @@ export const auth = betterAuth({
     opaque({
       serverSetup: () => env.OPAQUE_SERVER_SETUP,
       resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
-      sendResetPassword: async ({ user: _user, url: _url }) => {
-        // TODO: Implement email sending when SMTP is configured
-        // For now, silently succeed - the user won't receive an email but can retry
+      sendResetPassword: async ({ user, url }) => {
+        const { sendResetPasswordEmail } = await import(
+          "@/lib/email/auth-mailer"
+        );
+        await sendResetPasswordEmail({ user, url });
       },
       revokeSessionsOnPasswordReset: true,
     }),
@@ -1152,9 +1154,9 @@ export const auth = betterAuth({
       emailDomainName: "anon.zentity.app",
     }),
     magicLink({
-      sendMagicLink: async ({ email: _email, url: _url }) => {
-        // TODO: Implement email sending when SMTP is configured
-        // For now, silently succeed - the user won't receive an email but can retry
+      sendMagicLink: async ({ email, url }) => {
+        const { sendMagicLinkEmail } = await import("@/lib/email/auth-mailer");
+        await sendMagicLinkEmail({ email, url });
       },
       expiresIn: 300, // 5 minutes
     }),
