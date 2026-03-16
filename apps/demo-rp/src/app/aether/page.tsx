@@ -206,6 +206,7 @@ function LandingView({
           <DcrRegistration
             clientName={scenario.dcr.clientName}
             defaultScopes={scenario.dcr.defaultScopes}
+            grantTypes={scenario.dcr.grantTypes}
             onRegistered={onDcrRegistered}
             providerId={scenario.id}
           />

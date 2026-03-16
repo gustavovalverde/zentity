@@ -20,7 +20,11 @@ import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { redirectTo } from "@/lib/utils/navigation";
 
-export function OpaqueSignInForm() {
+export function OpaqueSignInForm({
+  callbackURL = "/dashboard",
+}: {
+  callbackURL?: string;
+} = {}) {
   const identifierId = useId();
   const passwordId = useId();
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +56,8 @@ export function OpaqueSignInForm() {
 
         toast.success("Signed in successfully!");
 
-        // Continue OAuth flow if we're in one, otherwise go to dashboard
-        const redirectUrl = await getPostAuthRedirectUrl("/dashboard");
+        // Continue OAuth flow if we're in one, otherwise use callbackURL
+        const redirectUrl = await getPostAuthRedirectUrl(callbackURL);
         redirectTo(redirectUrl);
       } catch (err) {
         const message =

@@ -106,22 +106,6 @@ export function useCibaFlow(providerId: string): CibaFlowState {
     }
   }, []);
 
-  const fetchUserInfo = useCallback(async (accessToken: string) => {
-    try {
-      const res = await fetch("/api/ciba", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "userinfo", accessToken }),
-      });
-      if (res.ok) {
-        const body = (await res.json()) as Record<string, unknown>;
-        setUserInfo(body);
-      }
-    } catch {
-      // Non-critical — identity PII not available for this flow
-    }
-  }, []);
-
   const exchangeToken = useCallback(
     async (accessToken: string) => {
       try {
@@ -172,9 +156,15 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         stopPolling();
         setTokens(result.tokens);
         setState("approved");
+        // Userinfo is merged into the token response by the BFF
+        if (
+          result.tokens.userinfo &&
+          typeof result.tokens.userinfo === "object"
+        ) {
+          setUserInfo(result.tokens.userinfo as Record<string, unknown>);
+        }
         if (typeof result.tokens.access_token === "string") {
           exchangeToken(result.tokens.access_token);
-          fetchUserInfo(result.tokens.access_token);
         }
       } else if (result.kind === "slow_down") {
         restartPoll();
@@ -187,7 +177,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         }
       }
     },
-    [stopPolling, exchangeToken, fetchUserInfo]
+    [stopPolling, exchangeToken]
   );
 
   const pollToken = useCallback(

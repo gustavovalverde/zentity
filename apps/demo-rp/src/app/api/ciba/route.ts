@@ -10,10 +10,6 @@ import { isValidProviderId, readDcrClient } from "@/lib/dcr";
 import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
-// Store DPoP clients from token exchange so the subsequent userinfo call
-// can reuse the same keypair (access tokens are cnf.jkt-bound).
-const dpopByToken = new Map<string, DpopClient>();
-
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
 /**
@@ -51,10 +47,6 @@ const bodySchema = z.discriminatedUnion("action", [
     accessToken: z.string().min(1),
     resource: z.string().min(1),
     scope: z.string().optional(),
-  }),
-  z.object({
-    action: z.literal("userinfo"),
-    accessToken: z.string().min(1),
   }),
 ]);
 
@@ -148,26 +140,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: row?.received ?? false });
   }
 
-  if (data.action === "userinfo") {
-    const url = new URL(
-      "/api/auth/oauth2/userinfo",
-      env.ZENTITY_URL
-    ).toString();
-    const dpop = dpopByToken.get(data.accessToken);
-    dpopByToken.delete(data.accessToken);
-
-    const headers: Record<string, string> = dpop
-      ? {
-          Authorization: `DPoP ${data.accessToken}`,
-          DPoP: await dpop.proofFor("GET", url, data.accessToken),
-        }
-      : { Authorization: `Bearer ${data.accessToken}` };
-
-    const res = await fetch(url, { headers });
-    const body = (await res.json()) as Record<string, unknown>;
-    return NextResponse.json(body, { status: res.status });
-  }
-
   if (!("providerId" in data && isValidProviderId(data.providerId))) {
     return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
   }
@@ -201,15 +173,7 @@ export async function POST(request: Request) {
       params.scope = data.scope;
     }
 
-    const {
-      body,
-      dpop: txDpop,
-      status,
-    } = await fetchTokenWithDpop(tokenUrl, params);
-    const txBody = body as Record<string, unknown>;
-    if (typeof txBody.access_token === "string") {
-      dpopByToken.set(txBody.access_token, txDpop);
-    }
+    const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
     return NextResponse.json(body, { status });
   }
 
@@ -228,8 +192,37 @@ export async function POST(request: Request) {
     status,
   } = await fetchTokenWithDpop(tokenUrl, params);
   const cibaBody = body as Record<string, unknown>;
-  if (typeof cibaBody.access_token === "string") {
-    dpopByToken.set(cibaBody.access_token, cibaTokenDpop);
+
+  // If token fetch succeeded, immediately fetch userinfo with the same DPoP keypair
+  if (
+    status >= 200 &&
+    status < 300 &&
+    typeof cibaBody.access_token === "string"
+  ) {
+    try {
+      const userinfoUrl = new URL(
+        "/api/auth/oauth2/userinfo",
+        env.ZENTITY_URL
+      ).toString();
+      const proof = await cibaTokenDpop.proofFor(
+        "GET",
+        userinfoUrl,
+        cibaBody.access_token
+      );
+      const uiRes = await fetch(userinfoUrl, {
+        headers: {
+          Authorization: `DPoP ${cibaBody.access_token}`,
+          DPoP: proof,
+        },
+      });
+      if (uiRes.ok) {
+        const userinfo = (await uiRes.json()) as Record<string, unknown>;
+        return NextResponse.json({ ...cibaBody, userinfo }, { status });
+      }
+    } catch {
+      // Non-critical — return tokens without userinfo
+    }
   }
+
   return NextResponse.json(body, { status });
 }

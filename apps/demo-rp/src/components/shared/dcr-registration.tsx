@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 interface DcrRegistrationProps {
   clientName: string;
   defaultScopes: string;
+  grantTypes?: string[];
   onRegistered: (clientId: string) => void;
   providerId: string;
 }
@@ -22,6 +23,7 @@ export function DcrRegistration({
   providerId,
   clientName,
   defaultScopes,
+  grantTypes,
   onRegistered,
 }: DcrRegistrationProps) {
   const [state, setState] = useState<RegistrationState>({
@@ -65,6 +67,7 @@ export function DcrRegistration({
           providerId,
           clientName,
           scopes: defaultScopes,
+          ...(grantTypes ? { grantTypes } : {}),
         }),
       });
       const data = await res.json();

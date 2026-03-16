@@ -31,7 +31,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -889,29 +889,15 @@ async function afterParPersistResource(ctx: HookCtx) {
   if (!ctx.body?.resource) {
     return;
   }
-  const clientId = ctx.body.client_id as string | undefined;
-  if (!clientId) {
+  const requestId = (ctx.context as Record<string, unknown>).__parRequestId;
+  if (typeof requestId !== "string") {
     return;
   }
-  const record = await db
-    .select({ id: haipPushedRequests.id })
-    .from(haipPushedRequests)
-    .where(
-      and(
-        eq(haipPushedRequests.clientId, clientId),
-        isNull(haipPushedRequests.resource)
-      )
-    )
-    .orderBy(desc(haipPushedRequests.createdAt))
-    .limit(1)
-    .get();
-  if (record) {
-    await db
-      .update(haipPushedRequests)
-      .set({ resource: ctx.body.resource as string })
-      .where(eq(haipPushedRequests.id, record.id))
-      .run();
-  }
+  await db
+    .update(haipPushedRequests)
+    .set({ resource: ctx.body.resource as string })
+    .where(eq(haipPushedRequests.requestId, requestId))
+    .run();
 }
 
 async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {

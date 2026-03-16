@@ -11,11 +11,14 @@ import { logError, logWarn } from "@/lib/logging/error-logger";
 
 import { getAuthIssuer } from "../issuer";
 import { signJwt } from "./jwt-signer";
+import { resolveSubForClient } from "./pairwise";
 
 interface BclClient {
   backchannelLogoutSessionRequired: boolean;
   backchannelLogoutUri: string;
   clientId: string;
+  redirectUris: string;
+  subjectType: string | null;
 }
 
 /**
@@ -26,6 +29,8 @@ async function getBclClients(): Promise<BclClient[]> {
     .select({
       clientId: oauthClients.clientId,
       metadata: oauthClients.metadata,
+      redirectUris: oauthClients.redirectUris,
+      subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
     .where(isNotNull(oauthClients.metadata))
@@ -45,6 +50,8 @@ async function getBclClients(): Promise<BclClient[]> {
           backchannelLogoutUri: uri,
           backchannelLogoutSessionRequired:
             meta.backchannel_logout_session_required === true,
+          redirectUris: c.redirectUris,
+          subjectType: c.subjectType,
         });
       }
     } catch {
@@ -147,8 +154,12 @@ export async function sendBackchannelLogout(
     }
 
     const deliveries = clients.map(async (client) => {
+      const resolvedSub = await resolveSubForClient(userId, {
+        subjectType: client.subjectType,
+        redirectUris: client.redirectUris,
+      });
       const token = await buildLogoutToken(
-        userId,
+        resolvedSub,
         client.clientId,
         sessionId,
         client.backchannelLogoutSessionRequired

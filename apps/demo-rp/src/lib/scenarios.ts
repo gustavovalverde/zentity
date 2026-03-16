@@ -7,7 +7,7 @@ export interface ComplianceBadge {
 export interface Scenario {
   acrValues?: string;
   compliance: ComplianceBadge[];
-  dcr: { clientName: string; defaultScopes: string };
+  dcr: { clientName: string; defaultScopes: string; grantTypes?: string[] };
   description: string;
   id: string;
   maxAge?: number;
@@ -289,6 +289,11 @@ export const SCENARIOS: Record<string, Scenario> = {
       dcr: {
         clientName: "Aether AI",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
+        grantTypes: [
+          "authorization_code",
+          "urn:openid:params:grant-type:ciba",
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        ],
       },
       compliance: [
         {

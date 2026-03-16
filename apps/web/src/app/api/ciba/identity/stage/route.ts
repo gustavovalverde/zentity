@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import {
   CIBA_EPHEMERAL_TTL_MS,
-  clearEphemeralClaims,
   storeEphemeralClaims,
 } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
@@ -60,9 +59,6 @@ export function POST(request: Request): Promise<Response> {
       scopeHash,
       intentJti,
     }) => {
-      // Clear any prior staging for this user+client (idempotent re-staging)
-      clearEphemeralClaims(userId, clientId);
-
       const stored = await storeEphemeralClaims(
         userId,
         filteredIdentity,
@@ -79,7 +75,10 @@ export function POST(request: Request): Promise<Response> {
           );
         }
         return NextResponse.json(
-          { error: "An active identity stage already exists for this user" },
+          {
+            error:
+              "An identity stage already exists for this client. Wait for the pending request to complete or expire.",
+          },
           { status: 409 }
         );
       }

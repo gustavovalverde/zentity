@@ -7,6 +7,7 @@ import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
+import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { jwks } from "@/lib/db/schema/jwks";
@@ -116,11 +117,22 @@ export async function GET(request: Request): Promise<Response> {
     }
   }
 
+  // Resolve pairwise sub → raw userId for session/BCL/CIBA operations
+  const userId = effectiveClientId
+    ? await resolveUserIdFromSub(sub, effectiveClientId)
+    : sub;
+  if (!userId) {
+    return NextResponse.json(
+      { error: "Unable to resolve user from id_token_hint" },
+      { status: 400 }
+    );
+  }
+
   // Terminate all sessions for this user
   const userSessions = await db
     .select({ token: sessions.token })
     .from(sessions)
-    .where(eq(sessions.userId, sub))
+    .where(eq(sessions.userId, userId))
     .all();
 
   for (const s of userSessions) {
@@ -128,8 +140,8 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Fire-and-forget: BCL delivery + CIBA revocation
-  sendBackchannelLogout(sub, sid);
-  revokePendingCibaOnLogout(sub);
+  sendBackchannelLogout(userId, sid);
+  revokePendingCibaOnLogout(userId);
 
   // Redirect or return success
   if (postLogoutRedirectUri) {

@@ -29,6 +29,7 @@ const postSchema = z.object({
   scopes: z
     .union([z.string().min(1), z.array(z.string().min(1))])
     .transform((v) => (Array.isArray(v) ? v.join(" ") : v)),
+  grantTypes: z.array(z.string()).optional(),
 });
 
 export async function POST(request: Request) {
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const { providerId, clientName, scopes } = parsed.data;
+  const { providerId, clientName, scopes, grantTypes } = parsed.data;
 
   if (!isValidProviderId(providerId)) {
     return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
       redirect_uris: [redirectUri],
       scope: scopes,
       token_endpoint_auth_method: "none",
-      grant_types: ["authorization_code"],
+      grant_types: grantTypes ?? ["authorization_code"],
       response_types: ["code"],
       backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
     }),

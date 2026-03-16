@@ -29,24 +29,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // StaleWhileRevalidate for /approve/* navigation requests
-  if (
-    event.request.mode === "navigate" &&
-    url.pathname.startsWith("/approve/")
-  ) {
-    event.respondWith(
-      caches.open(CACHE_NAME).then((cache) =>
-        cache.match(event.request).then((cached) => {
-          const networkFetch = fetch(event.request).then((response) => {
-            cache.put(event.request, response.clone());
-            return response;
-          });
-          return cached || networkFetch;
-        })
-      )
-    );
-    return;
-  }
+  // /approve/* pages are security-sensitive — always fetch from server
 });
 
 self.addEventListener("activate", (event) => {

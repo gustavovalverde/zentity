@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -18,22 +18,39 @@ export default async function ApprovePage({
   const session = await getCachedSession(await headers());
 
   if (!session?.user?.id) {
-    redirect("/sign-in");
+    redirect(
+      `/sign-in?callbackURL=${encodeURIComponent(`/approve/${authReqId}`)}`
+    );
   }
 
   const detected = await detectAuthMode(session.user.id);
   const { authMode } = detected;
   const { wallet } = detected;
 
-  // Fetch agent claims from DB (the verify endpoint doesn't expose them)
+  // Fetch agent claims — scoped to the current user to prevent cross-user leakage
   const cibaRow = await db
     .select({ agentClaims: cibaRequests.agentClaims })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqId))
+    .where(
+      and(
+        eq(cibaRequests.authReqId, authReqId),
+        eq(cibaRequests.userId, session.user.id)
+      )
+    )
     .limit(1)
     .get();
 
-  const agentClaims = cibaRow?.agentClaims
+  if (!cibaRow) {
+    return (
+      <div className="w-full max-w-md">
+        <div className="rounded-lg border p-6 text-center">
+          <p className="text-muted-foreground">Request not found</p>
+        </div>
+      </div>
+    );
+  }
+
+  const agentClaims = cibaRow.agentClaims
     ? (JSON.parse(cibaRow.agentClaims) as Record<string, unknown>)
     : null;
 

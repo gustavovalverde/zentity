@@ -21,6 +21,10 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  resolveSubForClient,
+  resolveUserIdFromSub,
+} from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 
@@ -193,7 +197,17 @@ function createTokenExchangeHandler(): (
       });
     }
 
-    const user = await ctx.context.internalAdapter.findUserById(sub);
+    // Resolve pairwise sub → raw userId for id_token subjects
+    let rawUserId = sub;
+    if (subjectTokenType === TOKEN_TYPE_ID_TOKEN) {
+      const sourceClientId = (subjectPayload.azp ??
+        subjectPayload.aud) as string;
+      if (sourceClientId) {
+        rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
+      }
+    }
+
+    const user = await ctx.context.internalAdapter.findUserById(rawUserId);
     if (!user) {
       throw new APIError("BAD_REQUEST", {
         error: "invalid_grant",
@@ -258,11 +272,17 @@ function createTokenExchangeHandler(): (
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
-      const assurance = await getAssuranceForOAuth(sub);
+      const assurance = await getAssuranceForOAuth(rawUserId);
       const signingAlg = await getClientSigningAlg(client.clientId);
+      const outputSub = client.redirectUris
+        ? await resolveSubForClient(rawUserId, {
+            subjectType: client.subjectType ?? null,
+            redirectUris: client.redirectUris,
+          })
+        : rawUserId;
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
-        sub,
+        sub: outputSub,
         aud: client.clientId,
         azp: client.clientId,
         iat: now,
@@ -299,7 +319,7 @@ function createTokenExchangeHandler(): (
 
     const accessTokenPayload: Record<string, unknown> = {
       iss: authIssuer,
-      sub,
+      sub: rawUserId,
       aud: targetAudience,
       azp: client.clientId,
       scope: targetScopes.join(" "),

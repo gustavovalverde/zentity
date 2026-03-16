@@ -34,7 +34,7 @@ import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { redirectTo } from "@/lib/utils/navigation";
+import { getSafeRedirectPath, redirectTo } from "@/lib/utils/navigation";
 
 function getLastUsedLabel(method: string | null): string | null {
   if (!method) {
@@ -63,6 +63,10 @@ function getLastUsedLabel(method: string | null): string | null {
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
+  const callbackURL = getSafeRedirectPath(
+    searchParams.get("callbackURL"),
+    "/dashboard"
+  );
   const [lastUsedMethod, setLastUsedMethod] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
@@ -108,7 +112,7 @@ export default function SignInPage() {
       }
 
       toast.success("Signed in successfully!");
-      const url = await getPostAuthRedirectUrl("/dashboard");
+      const url = await getPostAuthRedirectUrl(callbackURL);
       redirectTo(url);
     } catch (err) {
       const message =
@@ -197,7 +201,7 @@ export default function SignInPage() {
             <span>Or sign in with password</span>
             <Separator className="flex-1" />
           </div>
-          <OpaqueSignInForm />
+          <OpaqueSignInForm callbackURL={callbackURL} />
         </div>
 
         {/* Wallet + Social */}
