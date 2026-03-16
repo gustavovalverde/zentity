@@ -6,6 +6,7 @@ import {
   cleanupExpiredKeys,
   rotateSigningKey,
 } from "@/lib/auth/oidc/jwt-signer";
+import { reconcilePendingRevocations } from "@/lib/db/queries/attestation";
 
 import { adminProcedure, router } from "../server";
 
@@ -25,4 +26,8 @@ export const adminRouter = router({
     const deleted = await cleanupExpiredKeys();
     return { deleted };
   }),
+
+  retryPendingRevocations: adminProcedure.mutation(() =>
+    reconcilePendingRevocations()
+  ),
 });

@@ -42,7 +42,8 @@ export type AttestationStatus =
   | "submitted"
   | "confirmed"
   | "failed"
-  | "revoked";
+  | "revoked"
+  | "revocation_pending";
 
 export const blockchainAttestations = sqliteTable(
   "blockchain_attestations",
@@ -55,7 +56,14 @@ export const blockchainAttestations = sqliteTable(
     networkId: text("network_id").notNull(),
     chainId: integer("chain_id").notNull(),
     status: text("status", {
-      enum: ["pending", "submitted", "confirmed", "failed", "revoked"],
+      enum: [
+        "pending",
+        "submitted",
+        "confirmed",
+        "failed",
+        "revoked",
+        "revocation_pending",
+      ],
     }).default("pending"),
     txHash: text("tx_hash"),
     blockNumber: integer("block_number"),

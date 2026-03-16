@@ -15,6 +15,10 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import {
+  canCreateProvider,
+  createProvider,
+} from "@/lib/blockchain/providers/factory";
 
 import { db } from "../connection";
 import {
@@ -862,7 +866,11 @@ export async function revokeIdentity(
 
   // Step 4: Revoke on-chain attestations (best-effort, outside transaction)
   const attestations = await db
-    .select({ id: blockchainAttestations.id })
+    .select({
+      id: blockchainAttestations.id,
+      walletAddress: blockchainAttestations.walletAddress,
+      networkId: blockchainAttestations.networkId,
+    })
     .from(blockchainAttestations)
     .where(
       and(
@@ -873,10 +881,22 @@ export async function revokeIdentity(
     .all();
 
   for (const attestation of attestations) {
+    let onChainRevoked = false;
+
+    if (canCreateProvider(attestation.networkId)) {
+      try {
+        const provider = createProvider(attestation.networkId);
+        await provider.revokeAttestation(attestation.walletAddress);
+        onChainRevoked = true;
+      } catch {
+        // On-chain failure → mark as revocation_pending for retry
+      }
+    }
+
     await db
       .update(blockchainAttestations)
       .set({
-        status: "revoked",
+        status: onChainRevoked ? "revoked" : "revocation_pending",
         revokedAt: sql`datetime('now')`,
         updatedAt: sql`datetime('now')`,
       })

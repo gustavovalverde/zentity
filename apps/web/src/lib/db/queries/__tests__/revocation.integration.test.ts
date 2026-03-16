@@ -95,7 +95,8 @@ describe("identity revocation cascade", () => {
       .from(blockchainAttestations)
       .where(eq(blockchainAttestations.userId, userId))
       .get();
-    expect(attestation?.status).toBe("revoked");
+    // No provider available in test env → status is revocation_pending
+    expect(attestation?.status).toBe("revocation_pending");
   });
 
   it("revoked records filtered from getLatestVerification", async () => {

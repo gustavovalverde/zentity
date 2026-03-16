@@ -122,3 +122,27 @@ Status: Complete
 - apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts — peekEphemeralClaimsByUser
 - apps/web/src/lib/auth/auth.ts — peek in customIdTokenClaims, consume+route in customUserInfoClaims
 - apps/web/src/lib/auth/oidc/__tests__/claims-delivery.test.ts — new test
+
+## Task 04: On-Chain Revocation Cascade & Admin Credential Revocation
+Status: Complete
+
+### Changes
+1. Wired actual on-chain revocation in revokeIdentity step 4
+   - Calls provider.revokeAttestation(walletAddress) for each confirmed attestation
+   - Success → "revoked"; failure → "revocation_pending" (non-blocking)
+2. Added "revocation_pending" to AttestationStatus enum + schema
+3. Reconciliation function: reconcilePendingRevocations() with exponential backoff (1s, 3s, 9s, max 3 retries)
+4. Admin procedure: admin.retryPendingRevocations
+5. Individual credential revocation: identity.revokeCredential({ credentialId })
+   - Revokes single OID4VCI credential without full cascade
+   - Sets status=1 + revokedAt
+
+### Files changed
+- apps/web/src/lib/db/schema/attestation.ts — revocation_pending enum
+- apps/web/src/lib/db/queries/identity.ts — on-chain call in revokeIdentity
+- apps/web/src/lib/db/queries/attestation.ts — reconcilePendingRevocations
+- apps/web/src/lib/trpc/routers/admin.ts — retryPendingRevocations procedure
+- apps/web/src/lib/trpc/routers/identity/revoke.ts — revokeCredentialProcedure
+- apps/web/src/lib/trpc/routers/identity/router.ts — wire revokeCredential
+- apps/web/src/components/dashboard/on-chain-attestation.tsx — revocation_pending status
+- apps/web/src/lib/db/queries/__tests__/revocation.integration.test.ts — updated

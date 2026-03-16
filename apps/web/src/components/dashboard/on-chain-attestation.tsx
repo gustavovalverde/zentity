@@ -368,7 +368,14 @@ const STATUS_VARIANT: Record<
 interface ApiNetworkStatus {
   attestation: {
     id: string;
-    status: "pending" | "submitted" | "confirmed" | "failed" | "revoked" | null;
+    status:
+      | "pending"
+      | "submitted"
+      | "confirmed"
+      | "failed"
+      | "revoked"
+      | "revocation_pending"
+      | null;
     txHash: string | null;
     blockNumber: number | null;
     confirmedAt: string | null;
