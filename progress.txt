@@ -370,3 +370,47 @@ Status: Complete
 - apps/web/src/lib/ciba/boundary-evaluation.ts — three-state match, typed AuthorizationDetail[]
 - apps/web/src/lib/ciba/auto-approve.ts — normalizeAuthorizationDetails at entry
 - apps/web/src/lib/ciba/__tests__/boundary-evaluation.integration.test.ts — 8 new tests
+
+## Task 07: FROST Guardian Session Binding
+Status: Complete
+
+### Changes
+1. Split signRecoveryChallenge into initSigningSession + executeSigningRounds
+2. signGuardianAssertionJwt accepts frostSessionId + challengeId as separate params
+3. JWT session_id = FROST session ID, challenge_id = recovery challenge ID
+4. approveGuardianProcedure: init → mint JWTs → execute rounds
+5. Removed unused signRecoveryChallenge wrapper (Knip)
+
+### Files changed
+- apps/web/src/lib/recovery/frost-service.ts — split functions
+- apps/web/src/lib/recovery/guardian-jwt.ts — new claims
+- apps/web/src/lib/trpc/routers/recovery/challenge.ts — new orchestration
+- apps/web/src/lib/recovery/__tests__/guardian-jwt.test.ts — new
+
+## Task 08: OAuth Lifecycle Correctness
+Status: Complete
+
+### Changes
+1. Claims parameter TTL (5 min) + passive eviction
+2. Split into consumeIdTokenClaims (partial) and consumeUserinfoClaims (terminal)
+3. End-session route: extract sid from id_token_hint, pass to sendBackchannelLogout
+
+### Files changed
+- apps/web/src/lib/auth/oidc/claims-parameter.ts — TTL + split consumption
+- apps/web/src/lib/auth/auth.ts — new consume functions
+- apps/web/src/lib/auth/oidc/__tests__/claims-parameter.test.ts — updated
+- apps/web/src/app/api/auth/oauth2/end-session/route.ts — sid propagation
+
+## Task 05: MCP Auth Stack Hardening
+Status: Complete
+
+### Changes
+Phase 1: mcpPublicUrl config, audience validation in validateToken, configurable resource metadata
+Phase 2: per-user identity cache (10-min TTL), per-user DPoP nonces
+Phase 3: HTTP transport uses service token (INTERNAL_SERVICE_TOKEN), stdio keeps DPoP relay
+Phase 4: crypto.* → zk.* in my_proofs, identity switched to userinfo endpoint
+
+### Files changed
+- apps/mcp/src/config.ts, auth/resource-metadata.ts, auth/token-auth.ts
+- apps/mcp/src/auth/identity.ts, auth/api-client.ts, tools/my-proofs.ts
+- apps/mcp/__tests__/ (12 files) — mcpPublicUrl in config mocks
