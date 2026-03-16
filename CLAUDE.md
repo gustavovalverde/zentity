@@ -348,7 +348,7 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `compliantToken` | CompliantERC20 DeFi token operations |
 | `recovery` | FROST guardian-based key recovery flow |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
-| `admin` | JWKS signing key rotation and cleanup (admin-only via `adminProcedure`) |
+| `admin` | JWKS signing key rotation, cleanup, and on-chain revocation retry (admin-only via `adminProcedure`) |
 | `agentBoundaries` | CIBA pre-authorized boundary policies CRUD (purchase limits, scope allowlists, custom actions) |
 
 **Client usage:**
