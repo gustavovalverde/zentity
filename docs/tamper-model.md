@@ -145,6 +145,12 @@ The `encodeAad` function uses length-prefixed encoding to prevent concatenation 
 
 **Control:** Trust-On-First-Use (TOFU) pinning via `recovery_key_pins` table. On first wrapper store, `SHA-256(publicKey)` is recorded per user. Every subsequent wrapper operation and recovery challenge verifies the stored fingerprint against the current key. Mismatch throws before any wrap/unwrap proceeds. Pin insert uses `onConflictDoNothing` for concurrent first-store race safety.
 
+### FROST Crypto-Gated DEK Release
+
+**Threat:** Server bypass — an attacker with DB access reads `recovery_secret_wrappers.wrapped_dek` and unwraps the DEK without guardian authorization.
+
+**Control:** The FROST aggregated signature is cryptographically entangled with DEK release. `deriveFrostUnwrapKey(signatureHex, challengeId)` uses `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` to derive a 32-byte AES-256-GCM key. The recovery DEK is wrapped under this key via `wrapDekWithFrostKey()` at enrollment time. Without a valid FROST threshold signature for the specific challenge, the unwrap key cannot be derived and the DEK remains inaccessible. Combined with ML-KEM TOFU pinning, this provides defense-in-depth: pinning catches key substitution, crypto-gating prevents server bypass.
+
 ### Consent Scope Integrity
 
 **Threat:** DB-level scope escalation — widening a consent record's scope list to gain access to claims the user never approved.
@@ -156,6 +162,18 @@ tag = HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([CONSENT_HMAC_CONTEXT, userId, c
 ```
 
 The tag is stored in `oauth_consent.scope_hmac`. Scopes are sorted before HMAC computation to make the tag order-independent. The before-hook on `/oauth2/authorize` verifies the HMAC before the plugin's auto-skip logic runs. If the HMAC is invalid or missing, the consent record is deleted, forcing the user to re-consent.
+
+### JWKS Private Key Encryption at Rest
+
+**Threat:** An attacker with DB read access extracts JWKS private keys and forges tokens (id_tokens, access tokens, logout tokens).
+
+**Control:** When `KEY_ENCRYPTION_KEY` is set (required in production, min 32 chars), all JWKS private keys are encrypted with AES-256-GCM before storage. The KEK is derived via `SHA-256(KEY_ENCRYPTION_KEY)` to normalize any input to 32 bytes. Stored format: `{"v":1,"iv":"...","ct":"..."}`. Plaintext detection: if the stored value does not start with `{"v":`, it is treated as legacy plaintext (backward-compatible migration path). Without the KEK, extracted ciphertext is unusable.
+
+### JARM Response Encryption Key
+
+**Threat:** OID4VP presentation responses intercepted in transit or extracted from server storage, exposing holder credentials.
+
+**Control:** JARM responses are encrypted with ECDH-ES using a P-256 key that is lazy-created on first VP session and persisted in the `jwks` table (alg `ECDH-ES`, crv `P-256`). Keys rotate every 90 days (`KEY_LIFETIME_MS`); expired keys are retained for a grace period so in-flight VP responses can still be decrypted. The private key component follows the same AES-256-GCM envelope encryption as other JWKS keys when `KEY_ENCRYPTION_KEY` is set.
 
 ### Session Logout and CIBA Race Prevention
 

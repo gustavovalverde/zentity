@@ -68,6 +68,8 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
 - **FHE ciphertext HMAC binding**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([userId, attributeType]) || ciphertext)` stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
 - **Consent scope HMAC**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([context, userId, clientId, referenceId, sortedScopes]))` stored in `scope_hmac`. Detects DB-level scope escalation.
+- **JWKS private key encryption at rest**: AES-256-GCM envelope encryption via `KEY_ENCRYPTION_KEY` (required in production). Prevents token forgery from DB read access. Stored format: `{"v":1,"iv":"...","ct":"..."}`.
+- **JARM response encryption**: ECDH-ES P-256 key encrypts OID4VP presentation responses. Keys rotate every 90 days with grace period for in-flight decryption.
 
 ---
 
@@ -85,7 +87,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only (EU, US, etc.). |
 | Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
 | Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
-| Compliance level | — | ✅ | Server-derived | — | Policy gating input. Derived from ZK proof existence + signed claims at encryption time (no mutable booleans). NFC chip path derives from `chip_verification` signed claim. |
+| Compliance level | — | ✅ | Server-derived | — | Policy gating input. Derived by `deriveComplianceStatus()` pure function from ZK proof existence + signed claim types (no mutable booleans). Levels: `none`(1), `basic`(2), `full`(3), `chip`(4). NFC chip path derives from `chip_verification` claim type presence (boolean payloads ignored). See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine). |
 
 ### DOB Storage (Production)
 
@@ -320,10 +322,7 @@ erDiagram
     integer address_country_code "Plaintext country code"
     real confidence_score "OCR confidence"
     real liveness_score "1.0 for NFC chip"
-    integer liveness_passed "Boolean"
-    integer face_match_passed "Boolean"
-    integer age_verified "Boolean"
-    integer sanctions_cleared "Boolean"
+    integer birth_year_offset "u8 0-255 for on-chain attestation"
     text dedup_key "HMAC-SHA256 sybil dedup (OCR only, unique)"
     text unique_identifier "ZKPassport nullifier (NFC only)"
     integer verified_at
@@ -433,6 +432,7 @@ erDiagram
     text request_id UK
     text client_id FK
     text request_params
+    text resource "RFC 8707 audience"
     integer expires_at
   }
   HAIP_VP_SESSION {
@@ -460,9 +460,13 @@ erDiagram
     text client_id FK
     text scope
     text binding_message
+    text authorization_details "JSON — RFC 9396 structured action metadata"
+    text acr_values "Required assurance tier"
+    text resource "RFC 8707 audience"
+    text status "pending | approved | rejected | expired"
+    text delivery_mode "poll | ping | push"
     text agent_claims "JSON — self-declared agent identity metadata"
     text approval_method "boundary | manual — how the request was approved"
-    text status "pending | approved | rejected | expired"
     integer expires_at
     integer last_polled_at
   }
@@ -473,7 +477,17 @@ erDiagram
     text client_id FK
     text boundary_type "purchase | scope | custom"
     text config "JSON — limits, allowlists, cooldowns"
-    text status "active | disabled"
+    integer enabled "Boolean — active or disabled"
+    integer created_at
+    integer updated_at
+  }
+
+  PUSH_SUBSCRIPTIONS {
+    text id PK
+    text user_id FK
+    text endpoint UK "Web push endpoint URL"
+    text p256dh "ECDH P-256 public key"
+    text auth "Auth secret"
     integer created_at
   }
 
@@ -483,6 +497,9 @@ erDiagram
   %% ── CIBA requests ──
   USERS ||--o{ CIBA_REQUESTS : receives
   OAUTH_CLIENT ||--o{ CIBA_REQUESTS : initiates
+
+  %% ── Push subscriptions ──
+  USERS ||--o{ PUSH_SUBSCRIPTIONS : subscribes
 
   %% ── Agent boundaries ──
   USERS ||--o{ AGENT_BOUNDARIES : configures
@@ -561,7 +578,7 @@ This enables a bank or exchange to:
 
 Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
-- `verification_level` (`none` | `basic` | `full`)
+- `verification_level` (`none` | `basic` | `full` | `chip`)
 - `verified`, `document_verified`, `liveness_verified`, `face_match_verified`
 - `age_verified`, `nationality_verified`, `identity_bound`, `sybil_resistant`
 - `policy_version`, `issuer_id`, `verification_time`

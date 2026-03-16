@@ -46,7 +46,7 @@ The `identity_binding` circuit provides replay protection by cryptographically b
 
 The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings (e.g., `zentity-binding-wallet-bbs-v1`) to prevent cross-use attacks. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for BBS+ wallet binding details.
 
-> **ZK vs FHE encoding:** Nationality codes in ZK circuits use weighted-sum encoding (`char1×65536 + char2×256 + char3`), not ISO 3166-1 numeric codes. See [Nationality Proofs](zk-nationality-proofs.md) for details.
+> **ZK vs FHE encoding:** Nationality codes in ZK circuits use weighted-sum encoding (`char1×65536 + char2×256 + char3`) via `getCountryWeightedSum()` from `@zkpassport/utils`. FHE encryption uses a separate encoding for homomorphic operations. See [Nationality Proofs](zk-nationality-proofs.md) for details.
 
 **Dual-commitment design:**
 

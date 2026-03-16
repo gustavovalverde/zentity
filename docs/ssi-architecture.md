@@ -167,7 +167,7 @@ sequenceDiagram
 
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
 
-**Compliance derivation:** `verification_level` and compliance status are derived via `deriveComplianceStatus()` (which returns `numericLevel`) from ZK proof presence and signed claims at computation time — there are no mutable boolean columns like `livenessPassed` or `faceMatchPassed`. For the NFC chip path, `chip_verified` reads from the `chip_verification` signed claim. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
+**Compliance derivation:** `verification_level` and all boolean check claims are derived at computation time by `deriveComplianceStatus()` (`apps/web/src/lib/identity/verification/compliance.ts`), a pure function with no DB access. It takes ZK proofs, signed claims, and flags as input and produces 7 boolean checks plus a compliance level (`none`=1, `basic`=2, `full`=3, `chip`=4). There are no mutable boolean columns. For the NFC chip path, checks derive from `chip_verification` signed claim **type presence** (boolean payloads are ignored). This makes compliance tamper-resistant: values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix.
 
 ---
 

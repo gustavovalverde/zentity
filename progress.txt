@@ -479,3 +479,24 @@ Status: Complete (4 of 5 flags)
 - apps/web/biome.json — removed 2 noFloatingPromises overrides
 - apps/web/.claude/CLAUDE.md — TypeScript Patterns section
 - ~50 source files — explicit undefined checks for indexed access
+
+## Tasks 29-38: Documentation Sync
+Status: Complete (all 10 documentation tasks)
+
+### Changes
+- Task 29 (MCP Server): MCP server added to architecture service tables
+- Task 30 (CIBA Push): Push notification lifecycle + Aether demo documented in oauth-integrations
+- Task 31 (BCL): Back-channel logout protocol documented
+- Task 32 (Sybil Dedup): computeDedupKey, cross-method blocking, tamper model updated
+- Task 33 (Integrity Controls): FHE HMAC binding, consent HMAC, JWKS encryption, JARM key documented
+- Task 34 (FROST Recovery): FROST DEK unwrap, ML-KEM TOFU, custodial guardian constraints
+- Task 35 (Compliance Derivation): deriveComplianceStatus pure fn, 4 levels, revocation cascade
+- Task 36 (OAuth Security): Token exchange modes, scope attenuation, act claim nesting
+- Task 37 (ZK Encoding): Nationality encoding corrected (weighted-sum not ISO numeric), base/binding commitment distinction
+- Task 38 (ER Diagram): New tables added to Mermaid ER, dedup_key + revocation columns
+
+### Files changed
+- CLAUDE.md, docs/architecture.md, docs/attestation-privacy-architecture.md
+- docs/oauth-integrations.md, docs/ssi-architecture.md, docs/tamper-model.md
+- docs/zk-architecture.md, docs/zk-nationality-proofs.md, docs/agentic-authorization.md
+- docs/rfcs/0033-agentic-auth-integration.md, apps/web/README.md

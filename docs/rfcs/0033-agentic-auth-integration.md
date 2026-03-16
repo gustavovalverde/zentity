@@ -582,26 +582,26 @@ How the protocols compose for each scenario:
 |-----------|---------------|-----|----------|
 | OAuth 2.1-style AS | Implemented | None | -- |
 | PKCE | Implemented | None | -- |
-| DPoP | Implemented (permissive) | Flip to required for agent clients | Low |
+| DPoP | Implemented (enforced on tRPC + token endpoints) | None | -- |
 | PAR | Implemented + required | None | -- |
-| RAR (`authorization_details`) | Discovery metadata + partial plumbing | Need general policy semantics and enforcement for actions / releases | **High** |
+| RAR (`authorization_details`) | Implemented | CIBA + token exchange carry `authorization_details` end-to-end | -- |
 | DCR | Implemented | Need CIMD support for MCP clients | Medium |
 | Pairwise subjects | Implemented | None | -- |
 | Multi-alg JWT | RS256/ES256/EdDSA/ML-DSA-65 | None | -- |
 | OID4VCI | Implemented | Pre-authorized agent VCs (future, optional) | Medium |
 | OID4VP | Implemented (demo-rp) | Agent as VP presenter | Medium |
 | HAIP | Implemented | None | -- |
-| **CIBA** | **Implemented** | Poll mode via `@better-auth/ciba` plugin | **Critical** |
-| **Durable approval / release state** | **Implemented** | Approval records + release handles + DB status transitions | **Critical** |
-| **MCP Resource Server Metadata** | **Not implemented** | **RFC 9728 endpoint needed** | **High** |
+| CIBA | Implemented | Poll mode via `@better-auth/ciba` plugin, agent boundaries for auto-approval | -- |
+| Durable approval / release state | Implemented | Approval records + ephemeral release handles + DB status transitions | -- |
+| MCP Resource Server Metadata | Implemented | `/.well-known/oauth-protected-resource` endpoint (RFC 9728) | -- |
 | **CIMD** | **Not implemented** | **URL-based client_id support** | **High** |
-| **Resource Indicators (RFC 8707)** | **Not implemented** | **`resource` param validation + audience binding** | **High** |
-| **Token Exchange (RFC 8693)** | **Implemented** | Three exchange modes, scope attenuation, `act` nesting | **High** |
+| Resource Indicators (RFC 8707) | Implemented | `resource` param validation + audience binding on PAR, CIBA, token exchange | -- |
+| Token Exchange (RFC 8693) | Implemented | Three exchange modes, scope attenuation, DPoP passthrough, `act` nesting | -- |
 | **A2A Agent Card** | **Not implemented** | **Agent discovery + per-skill security** | **Medium** |
 | **AuthZEN PDP** | **Not implemented** | **Real-time policy evaluation across APIs, gateways, and agent surfaces** | **High** |
 | **Transaction Tokens** | **Not implemented** | **Call-chain context propagation** | **Low** |
-| **`act` claim in JWTs** | **Implemented** | CIBA grant handler adds `act: { sub: client_id }` | **High** |
-| **Push notifications** | **Implemented** | VAPID web push with inline approve/deny actions | **Critical** |
+| `act` claim in JWTs | Implemented | CIBA grant handler + token exchange add `act: { sub: client_id }` with nesting | -- |
+| Push notifications | Implemented | VAPID web push with inline approve/deny, email fallback | -- |
 
 ---
 

@@ -76,7 +76,23 @@ The ephemeral store achieves single-consume semantics: the first userinfo call r
 
 The CIBA access token includes an `act` claim per draft-oauth-ai-agents-on-behalf-of-user: `{ "sub": "<user-id>", "act": { "sub": "<agent-client-id>" } }`. This asserts that the token was issued for the human (`sub`) but is being wielded by the agent (`act.sub`).
 
-When the agent performs a token exchange (RFC 8693, implemented at `urn:ietf:params:oauth:grant-type:token-exchange` on the standard token endpoint) to narrow the audience to a specific merchant, the delegation chain nests: `{ "act": { "sub": "<agent>", "act": { "sub": "<original-agent>" } } }`. Resource servers can inspect this chain to determine the full delegation path.
+When the agent performs a token exchange (RFC 8693, implemented at `urn:ietf:params:oauth:grant-type:token-exchange` on the standard token endpoint) to narrow the audience to a specific merchant, the delegation chain nests:
+
+```json
+{
+  "sub": "<user-id>",
+  "act": {
+    "sub": "<merchant-client-id>",
+    "act": {
+      "sub": "<agent-client-id>"
+    }
+  }
+}
+```
+
+Each exchange layer preserves the full delegation history. Resource servers inspect the chain to determine which entities participated in the delegation path and can enforce policies such as "reject tokens with more than N delegation hops."
+
+Token exchange enforces **scope attenuation**: the requested scope must be a subset of the source token's scope. When the source is an ID token (which carries no scopes), only `openid` is permitted. **DPoP passthrough** ensures that if the source token is sender-constrained, the exchanged token inherits the same `cnf.jkt` binding. When the output type is an ID token and the source is an access token, the response includes an `at_hash` claim binding the identity assertion to the original access token.
 
 ---
 

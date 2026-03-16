@@ -375,6 +375,41 @@ See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
 
 ---
 
+## Compliance Derivation Engine
+
+Compliance status is computed by `deriveComplianceStatus()` — a pure function in `apps/web/src/lib/identity/verification/compliance.ts` with no DB, tRPC, or environment imports. This is the sole source of truth for compliance level.
+
+**Input:** `verificationMethod` (`ocr` | `nfc_chip` | null), `zkProofs`, `signedClaims`, `encryptedAttributes`, `hasUniqueIdentifier`, `hasNationalityCommitment`, `birthYearOffset`.
+
+**Output:** `{ verified, level, numericLevel, birthYearOffset, checks }`.
+
+### Compliance levels
+
+| Level | Numeric | Meaning |
+|-------|---------|---------|
+| `none` | 1 | Unverified or fewer than half of checks passed |
+| `basic` | 2 | At least half of the 7 checks passed |
+| `full` | 3 | All 7 checks passed (OCR path) |
+| `chip` | 4 | NFC chip path with sybil resistance |
+
+`verified` is `true` only for `full` or `chip`.
+
+### 7 boolean checks
+
+| Check | OCR source | NFC chip source |
+|-------|-----------|-----------------|
+| `documentVerified` | `doc_validity` ZK proof | Always true |
+| `livenessVerified` | `liveness_score` signed claim | `chip_verification` claim presence |
+| `ageVerified` | `age_verification` ZK proof | `chip_verification` claim presence |
+| `faceMatchVerified` | `face_match` ZK proof or `face_match_score` claim | `chip_verification` claim presence |
+| `nationalityVerified` | `nationality_membership` ZK proof | `hasNationalityCommitment` flag |
+| `identityBound` | `identity_binding` ZK proof | `uniqueIdentifier` exists |
+| `sybilResistant` | `hasUniqueIdentifier` (dedup key) | `uniqueIdentifier` exists |
+
+For the NFC chip path, boolean payloads in chip claims are ignored — only claim type presence matters. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
+
+---
+
 ## Identity Revocation
 
 Identity verifications can be revoked via two tRPC procedures:
@@ -382,13 +417,21 @@ Identity verifications can be revoked via two tRPC procedures:
 - **`identity.revokeVerification`** — Admin-initiated revocation (e.g., fraud detection)
 - **`identity.selfRevoke`** — User-initiated GDPR self-service revocation
 
-The `revokeIdentity()` function executes a cascade in a single DB transaction:
+The `revokeIdentity()` function (`apps/web/src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction:
 
 1. Mark active `identity_verifications` as `revoked` (sets `revokedAt`, `revokedBy`, `revokedReason`)
-2. Mark `identity_bundle` as `revoked`
-3. Set OID4VCI credentials to `status=1` (revoked)
+2. Mark `identity_bundle` as `revoked` (same revocation columns)
+3. Set OID4VCI credentials to `status=1` (revoked via Status List 2021)
 
 A fourth step revokes on-chain attestations **outside** the transaction (best-effort — DB revocation is committed even if on-chain revocation fails).
+
+### Revocation columns
+
+Both `identity_verifications` and `identity_bundles` carry three revocation columns:
+
+- `revokedAt` — timestamp of revocation
+- `revokedBy` — `"admin"` or `"self"`
+- `revokedReason` — free-text reason string
 
 After revocation, the user's assurance tier drops to Tier 1 (no verified verification found). The `dedupKeyExistsForOtherUser` check gates on `status=verified`, so revoked dedup keys are auto-released for re-registration.
 

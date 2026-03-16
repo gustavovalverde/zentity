@@ -71,7 +71,7 @@ flowchart TD
 2. Each code is hashed using **Poseidon2** (a ZK-friendly hash function)
 3. Hashes are paired and hashed together, building up to a single root
 
-> **ZK vs FHE encoding:** ISO 3166-1 numeric codes (e.g., DEU = 276) are used only by FHE encryption (`countryCodeToNumeric` in `compliance.ts`). ZK circuits use the weighted-sum encoding described above.
+> **ZK vs FHE encoding:** ZK circuits use the weighted-sum encoding described above. FHE encryption uses a separate encoding (`countryCodeToNumeric` in `compliance.ts`) for homomorphic operations on country codes. The two encodings serve different subsystems and are not interchangeable.
 
 ### The Merkle Root
 

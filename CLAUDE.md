@@ -300,8 +300,21 @@ Users choose a verification method via `VerificationMethodCards` (OCR or NFC chi
 2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
 3. **Profile Secret** → Extracted PII is encrypted with the user's credential (passkey/password/wallet) and stored as a `PROFILE` secret. This is the only persistent copy of the user's PII and is only decryptable by the user.
 4. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
-5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service. Compliance level is derived at encryption time from ZK proof existence and signed claims, not stored as a settable boolean.
-6. User reaches **Tier 2/3** depending on proof completeness
+5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
+6. **Compliance derivation** → `deriveComplianceStatus()` pure function (`src/lib/identity/verification/compliance.ts`) computes level from proofs, claims, and flags — no DB access, no mutable booleans
+7. User reaches **Tier 2/3** depending on proof completeness
+
+**Compliance Derivation Engine:**
+
+`deriveComplianceStatus(input) → { verified, level, numericLevel, birthYearOffset, checks }` is the sole source of truth for compliance status. It takes `verificationMethod`, `zkProofs`, `signedClaims`, `encryptedAttributes`, `hasUniqueIdentifier`, `hasNationalityCommitment`, and `birthYearOffset`.
+
+Levels: `none`(1) → `basic`(2) → `full`(3) → `chip`(4). Level is `chip` when NFC + sybilResistant; `full` when all 7 checks pass; `basic` when >= half pass; `none` otherwise. `verified` is true only for `full` or `chip`.
+
+7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/uniqueIdentifier).
+
+NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `uniqueIdentifier`.
+
+**Identity Revocation:** `revokeIdentity()` (`src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction: (1) mark `identity_verifications` as revoked (`revokedAt`, `revokedBy`, `revokedReason`), (2) mark `identity_bundle` as revoked, (3) set OID4VCI credentials to `status=1` (revoked). Step 4 revokes on-chain attestations **outside** the transaction (best-effort). After revocation, assurance tier drops to Tier 1. Revoked dedup keys are auto-released for re-registration. Triggered via `identity.revokeVerification` (admin) or `identity.selfRevoke` (user GDPR).
 
 **NFC chip path (ZKPassport):**
 

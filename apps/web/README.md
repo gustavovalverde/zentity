@@ -266,8 +266,11 @@ The web application implements privacy-preserving patterns:
    via Noir/UltraHonk (client-side)
 4. **Signed Claims** — OCR, liveness, and face match scores signed by the
    backend
-5. **Transient Processing** — Images processed and discarded immediately
-6. **Password Security** — Server-side blocked breached passwords
+5. **Compliance Derivation** — `deriveComplianceStatus()` pure function derives
+   compliance level (`none`/`basic`/`full`/`chip`) from ZK proof existence +
+   signed claim types, with no mutable booleans or DB access
+6. **Transient Processing** — Images processed and discarded immediately
+7. **Password Security** — Server-side blocked breached passwords
    (Better Auth) + privacy-preserving UX pre-check
 
 No raw ID document images or extracted document fields are stored in plaintext

@@ -246,7 +246,9 @@ Token Exchange enables audience narrowing and delegation chain construction at t
 
 **`act` claim nesting:** Each exchange adds a delegation layer. A token exchanged once has `{ sub, act: { sub: agent } }`. Exchanged again, it becomes `{ sub, act: { sub: merchant, act: { sub: agent } } }`. Resource servers inspect the chain to determine the full delegation path.
 
-**`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token.
+**`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim (left half of SHA-256 of the access token, base64url-encoded). This follows the same algorithm as standard OIDC `at_hash` computation, using the signing algorithm's hash function.
+
+**`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token. Precedence: `resource` > `audience` > issuer URI.
 
 ---
 

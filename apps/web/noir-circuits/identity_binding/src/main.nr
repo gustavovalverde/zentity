@@ -9,7 +9,8 @@
 //   - nonce: Challenge nonce for replay resistance
 //   - msg_sender_hash: Hash of caller identity context
 //   - audience_hash: Hash of relying party audience context
-//   - binding_commitment: Expected Poseidon2(binding_secret || user_id_hash || document_hash)
+//   - base_commitment: Poseidon2(binding_secret, user_id_hash)
+//   - binding_commitment: Poseidon2(binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash)
 //
 // Private inputs:
 //   - binding_secret: Auth-mode-specific cryptographic secret
