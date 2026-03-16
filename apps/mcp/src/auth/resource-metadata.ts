@@ -2,7 +2,7 @@ import { config } from "../config.js";
 
 export function getResourceMetadata(): Record<string, unknown> {
   return {
-    resource: `http://localhost:${config.port}`,
+    resource: config.mcpPublicUrl,
     authorization_servers: [config.zentityUrl],
     scopes_supported: [
       "openid",

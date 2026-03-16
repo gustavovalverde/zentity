@@ -8,10 +8,14 @@ function getArg(name: string, fallback: string): string {
   return fallback;
 }
 
+const port = Number.parseInt(getArg("port", "3200"), 10);
+
 export const config = {
   transport: getArg("transport", "stdio") as "stdio" | "http",
-  port: Number.parseInt(getArg("port", "3200"), 10),
+  port,
   zentityUrl: process.env.ZENTITY_URL ?? "http://localhost:3000",
+  mcpPublicUrl:
+    process.env.MCP_PUBLIC_URL ?? `http://localhost:${port}`,
   allowedOrigins: (
     process.env.MCP_ALLOWED_ORIGINS ?? "http://localhost:*,http://127.0.0.1:*"
   ).split(","),

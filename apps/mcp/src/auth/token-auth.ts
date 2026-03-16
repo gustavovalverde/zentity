@@ -58,7 +58,7 @@ function authError(
   description: string
 ): TokenAuthError {
   const realm = `Bearer realm="zentity-mcp"`;
-  const metadataUrl = `http://localhost:${config.port}/.well-known/oauth-protected-resource`;
+  const metadataUrl = `${config.mcpPublicUrl}/.well-known/oauth-protected-resource`;
 
   const parts = [
     realm,
@@ -99,11 +99,12 @@ export async function validateToken(
   const scheme = match[1].toLowerCase() === "dpop" ? "DPoP" : "Bearer";
   const token = match[2];
 
-  // Verify the access token JWT
+  // Verify the access token JWT (issuer + audience)
   let result: JWTVerifyResult<JWTPayload>;
   try {
     result = await jwtVerify(token, getJwks(), {
       issuer: config.zentityUrl,
+      audience: config.mcpPublicUrl,
     });
   } catch (err) {
     const message =

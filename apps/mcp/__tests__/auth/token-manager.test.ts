@@ -4,6 +4,7 @@ import type { DpopKeyPair } from "../../src/auth/dpop.js";
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "stdio",
   },
@@ -57,6 +58,7 @@ describe("TokenManager", () => {
       accessToken: "valid-token",
       expiresAt: Date.now() + 300_000,
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -72,6 +74,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() + 30_000,
       refreshToken: "refresh-abc",
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -103,6 +106,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "original-refresh",
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -130,6 +134,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "original-refresh",
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -158,6 +163,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "bad-refresh",
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -186,6 +192,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "good-refresh",
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 

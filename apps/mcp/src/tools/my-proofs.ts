@@ -38,9 +38,9 @@ export function registerMyProofsTool(server: McpServer): void {
 
       const [ageRes, allRes] = await Promise.all([
         zentityFetch(
-          `${config.zentityUrl}/api/trpc/crypto.getUserProof?input=${encodeURIComponent(JSON.stringify({ json: {} }))}`
+          `${config.zentityUrl}/api/trpc/zk.getUserProof?input=${encodeURIComponent(JSON.stringify({ json: {} }))}`
         ),
-        zentityFetch(`${config.zentityUrl}/api/trpc/crypto.getAllProofs`),
+        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getAllProofs`),
       ]);
 
       const ageProof = ageRes.ok

@@ -11,18 +11,32 @@ export interface IdentityClaims {
   name?: string;
 }
 
-let cached: IdentityClaims | null = null;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export function getCachedIdentity(): IdentityClaims | null {
-  return cached;
+interface CacheEntry {
+  claims: IdentityClaims;
+  expiresAt: number;
+}
+
+const identityCache = new Map<string, CacheEntry>();
+
+export function getCachedIdentity(userId?: string): IdentityClaims | null {
+  if (!userId) return null;
+  const entry = identityCache.get(userId);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    identityCache.delete(userId);
+    return null;
+  }
+  return entry.claims;
 }
 
 export async function getIdentity(): Promise<IdentityClaims | null> {
-  if (cached) {
-    return cached;
-  }
-
   const auth = await requireAuth();
+  const userId = auth.loginHint;
+
+  const cached = getCachedIdentity(userId);
+  if (cached) return cached;
 
   const result = await requestCibaApproval({
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
@@ -36,35 +50,34 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
   });
 
   const claims = await redeemRelease(result.accessToken, auth.dpopKey);
-  if (!claims) {
-    return null;
-  }
+  if (!claims) return null;
 
-  cached = claims;
-  return cached;
+  identityCache.set(userId, {
+    claims,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+
+  return claims;
 }
 
 /**
- * Redeem a CIBA access token's release_handle for PII.
- * The release endpoint decrypts sealed PII from the approvals table
- * and returns a fresh id_token with identity claims.
+ * Redeem a CIBA access token for PII via the userinfo endpoint.
  */
 export async function redeemRelease(
   cibaAccessToken: string,
   dpopKey: DpopKeyPair
 ): Promise<IdentityClaims | null> {
-  const releaseUrl = `${config.zentityUrl}/api/oauth2/release`;
+  const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
   let dpopNonce: string | undefined;
 
   let proof = await createDpopProof(
     dpopKey,
-    "POST",
-    releaseUrl,
+    "GET",
+    userinfoUrl,
     cibaAccessToken,
     dpopNonce
   );
-  let response = await fetch(releaseUrl, {
-    method: "POST",
+  let response = await fetch(userinfoUrl, {
     headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
   });
 
@@ -77,39 +90,38 @@ export async function redeemRelease(
     dpopNonce = nonce;
     proof = await createDpopProof(
       dpopKey,
-      "POST",
-      releaseUrl,
+      "GET",
+      userinfoUrl,
       cibaAccessToken,
       dpopNonce
     );
-    response = await fetch(releaseUrl, {
-      method: "POST",
+    response = await fetch(userinfoUrl, {
       headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
     });
   }
 
   if (!response.ok) {
     console.error(
-      `[identity] Release endpoint failed: ${response.status} ${await response.text()}`
+      `[identity] Userinfo endpoint failed: ${response.status} ${await response.text()}`
     );
     return null;
   }
 
-  const data = (await response.json()) as { id_token?: string };
-  if (!data.id_token) {
-    console.error("[identity] Release response missing id_token");
-    return null;
-  }
+  const data = (await response.json()) as Record<string, unknown>;
+  // Zentity userinfo wraps response in { response: { ... } }
+  const userinfo = (
+    typeof data.response === "object" && data.response !== null
+      ? data.response
+      : data
+  ) as Record<string, unknown>;
 
-  const jwtClaims = decodeJwt(data.id_token);
   const claims: IdentityClaims = {
-    name: asOptionalString(jwtClaims.name),
-    given_name: asOptionalString(jwtClaims.given_name),
-    family_name: asOptionalString(jwtClaims.family_name),
-    address: asOptionalString(jwtClaims.address),
+    name: asOptionalString(userinfo.name),
+    given_name: asOptionalString(userinfo.given_name),
+    family_name: asOptionalString(userinfo.family_name),
+    address: asOptionalString(userinfo.address),
   };
 
-  // Only return if we actually got identity data
   if (!(claims.name || claims.given_name || claims.family_name)) {
     return null;
   }

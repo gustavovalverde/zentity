@@ -15,6 +15,7 @@ const BASE64URL_PAD = /=+$/;
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "http",
     allowedOrigins: ["http://localhost:*", "http://127.0.0.1:*"],
@@ -55,7 +56,7 @@ beforeAll(async () => {
 
 async function signToken(
   claims: Record<string, unknown> = {},
-  opts: { expiresIn?: string; issuer?: string } = {}
+  opts: { audience?: string; expiresIn?: string; issuer?: string } = {}
 ): Promise<string> {
   const key = await importJWK(
     { ...signingJwk, ...(await exportJWK(signingPrivateKey)) },
@@ -66,6 +67,7 @@ async function signToken(
     .setIssuedAt()
     .setExpirationTime(opts.expiresIn ?? "5m")
     .setIssuer(opts.issuer ?? "http://localhost:3000")
+    .setAudience(opts.audience ?? "http://localhost:3200")
     .setSubject("user-123")
     .sign(key);
 }

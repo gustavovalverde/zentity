@@ -5,6 +5,7 @@ import type { PkceChallenge } from "../../src/auth/pkce.js";
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "stdio",
   },

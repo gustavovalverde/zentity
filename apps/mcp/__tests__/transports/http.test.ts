@@ -8,6 +8,7 @@ import type {
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "http",
     allowedOrigins: ["http://localhost:*", "http://127.0.0.1:*"],

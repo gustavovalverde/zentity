@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "stdio",
   },
@@ -145,6 +146,7 @@ describe("performStepUp", () => {
   it("re-authenticates via FPA and returns new access token", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });
@@ -188,6 +190,7 @@ describe("performStepUp", () => {
   it("throws readable error on passkey redirect", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });

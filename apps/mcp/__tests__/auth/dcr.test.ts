@@ -10,6 +10,7 @@ vi.mock("../../src/auth/credentials.js", () => ({
   updateCredentials: (_url: string, updates: Record<string, unknown>) => {
     credentialsMock.stored = {
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "",
       ...credentialsMock.stored,
       ...updates,
@@ -21,6 +22,7 @@ vi.mock("../../src/auth/credentials.js", () => ({
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
     port: 3200,
     transport: "stdio",
   },
@@ -67,6 +69,7 @@ describe("DCR", () => {
   it("reuses existing client_id", async () => {
     credentialsMock.stored = {
       zentityUrl: "http://localhost:3000",
+    mcpPublicUrl: "http://localhost:3200",
       clientId: "existing-client",
     };
 

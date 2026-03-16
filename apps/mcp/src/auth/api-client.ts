@@ -1,7 +1,12 @@
+import { config } from "../config.js";
 import { getAuthContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 
-let dpopNonce: string | undefined;
+const dpopNonces = new Map<string, string>();
+
+function getNonceKey(userId: string): string {
+  return userId;
+}
 
 export async function zentityFetch(
   url: string,
@@ -9,6 +14,15 @@ export async function zentityFetch(
 ): Promise<Response> {
   const method = options?.method ?? "GET";
   const auth = getAuthContext();
+
+  // HTTP transport: use service token (no DPoP private key available)
+  if (config.transport === "http") {
+    return serviceTokenFetch(url, method, auth.loginHint, options?.body);
+  }
+
+  // stdio transport: DPoP-bound relay
+  const nonceKey = getNonceKey(auth.loginHint);
+  let dpopNonce = dpopNonces.get(nonceKey);
 
   let proof = await createDpopProof(
     auth.dpopKey,
@@ -39,13 +53,13 @@ export async function zentityFetch(
     dpopNonce !== newNonce &&
     (response.status === 400 || response.status === 401)
   ) {
-    dpopNonce = newNonce;
+    dpopNonces.set(nonceKey, newNonce);
     proof = await createDpopProof(
       auth.dpopKey,
       method,
       url,
       auth.accessToken,
-      dpopNonce
+      newNonce
     );
     headers.DPoP = proof;
     response = await fetch(url, {
@@ -54,7 +68,34 @@ export async function zentityFetch(
       body: options?.body,
     });
   }
-  dpopNonce = extractDpopNonce(response) ?? dpopNonce;
+  const finalNonce = extractDpopNonce(response);
+  if (finalNonce) {
+    dpopNonces.set(nonceKey, finalNonce);
+  }
 
   return response;
+}
+
+async function serviceTokenFetch(
+  url: string,
+  method: string,
+  userId: string,
+  body?: string
+): Promise<Response> {
+  const serviceToken = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!serviceToken) {
+    throw new Error(
+      "INTERNAL_SERVICE_TOKEN required for HTTP transport downstream calls"
+    );
+  }
+
+  const headers: Record<string, string> = {
+    "X-Zentity-Internal-Token": serviceToken,
+    "X-Zentity-User-Id": userId,
+  };
+  if (body) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return fetch(url, { method, headers, body });
 }
