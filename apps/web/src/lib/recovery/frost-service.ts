@@ -6,6 +6,8 @@ type Ciphersuite = "secp256k1" | "ed25519";
 
 interface SignerInfo {
   hpke_pubkey: string;
+  hpke_pubkey_signature: string | null;
+  hpke_pubkey_verified: boolean;
   participant_id: number;
 }
 
@@ -111,6 +113,15 @@ export async function createRecoveryKeySet(params: {
   const signerInfos = await Promise.all(
     signerEndpoints.map((endpoint) => fetchSignerInfo(endpoint))
   );
+
+  // Log HPKE key verification status (TOFU: unverified on initial DKG)
+  for (const info of signerInfos) {
+    if (!info.hpke_pubkey_verified) {
+      console.warn(
+        `[FROST DKG] Signer ${info.participant_id} HPKE key unverified (TOFU bootstrap)`
+      );
+    }
+  }
 
   const participantHpke = toParticipantMap(
     signerInfos.map((info, index) => [

@@ -311,6 +311,22 @@ impl Storage {
         Ok(())
     }
 
+    /// Check if any FROST key shares exist in this signer's storage.
+    /// Each signer instance has its own DB, so any entries are for this signer.
+    pub fn has_any_shares(&self, _signer_id: &str) -> bool {
+        let Ok(read_txn) = self.db.begin_read() else {
+            return false;
+        };
+        let Ok(table) = read_txn.open_table(KEY_SHARES) else {
+            return false;
+        };
+        table
+            .iter()
+            .ok()
+            .map(|mut i| i.next().is_some())
+            .unwrap_or(false)
+    }
+
     /// Load a persisted HPKE secret key (base64-encoded).
     pub fn get_hpke_key(&self, signer_id: &str) -> SignerResult<Option<String>> {
         let read_txn = self.db.begin_read()?;

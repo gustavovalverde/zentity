@@ -140,6 +140,12 @@ impl SignerService {
         self.hpke_keypair.public_key_base64()
     }
 
+    /// Check if this signer has any stored FROST key shares from prior DKG sessions.
+    /// Used for HPKE key authentication: if no prior shares exist, TOFU model applies.
+    pub fn has_any_key_shares(&self) -> bool {
+        self.storage.has_any_shares(&self.signer_id)
+    }
+
     /// Get this signer's configured ciphersuite.
     pub fn ciphersuite(&self) -> Ciphersuite {
         self.ciphersuite

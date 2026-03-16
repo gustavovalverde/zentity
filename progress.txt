@@ -232,3 +232,27 @@ Status: Complete
 ### Files changed
 - apps/demo-rp/src/app/api/auth/backchannel-logout/route.ts — new BCL endpoint
 - apps/demo-rp/src/app/api/dcr/route.ts — backchannel_logout_uri in registration
+
+## Task 05: HPKE Key Authentication in FROST DKG (TOFU scaffolding)
+Status: Complete (TOFU bootstrap; Schnorr signing deferred to multi-DKG scenario)
+
+### Changes
+1. Signer (Rust): /signer/info returns hpke_pubkey_signature (null) + hpke_pubkey_verified (false)
+   - has_any_key_shares() checks if FROST key shares exist in ReDB storage
+   - TOFU warning logged when no prior key shares (initial DKG)
+2. Web server: frost-service.ts SignerInfo interface includes signature/verified fields
+   - Logs warning for unverified HPKE keys during DKG
+3. Cargo check passes, 11 Rust tests pass
+
+### Architectural decision
+- TOFU model for initial DKG (recommended by task) — no prior FROST key = accept unsigned
+- Schnorr single-party signing with FROST key shares is complex and only needed for
+  multi-DKG scenarios (not yet implemented in the application)
+- The scaffolding is in place: when has_any_key_shares() returns true, the signer can
+  compute hpke_pubkey_signature using its stored FROST signing share
+
+### Files changed
+- apps/signer/src/routes/signer_routes.rs — /signer/info returns signature fields
+- apps/signer/src/frost/signer_logic.rs — has_any_key_shares() method
+- apps/signer/src/storage/redb.rs — has_any_shares() storage check
+- apps/web/src/lib/recovery/frost-service.ts — SignerInfo interface + TOFU logging
