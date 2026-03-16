@@ -460,9 +460,21 @@ erDiagram
     text client_id FK
     text scope
     text binding_message
+    text agent_claims "JSON — self-declared agent identity metadata"
+    text approval_method "boundary | manual — how the request was approved"
     text status "pending | approved | rejected | expired"
     integer expires_at
     integer last_polled_at
+  }
+
+  AGENT_BOUNDARIES {
+    text id PK
+    text user_id FK
+    text client_id FK
+    text boundary_type "purchase | scope | custom"
+    text config "JSON — limits, allowlists, cooldowns"
+    text status "active | disabled"
+    integer created_at
   }
 
   %% ── Recovery key pinning ──
@@ -471,6 +483,10 @@ erDiagram
   %% ── CIBA requests ──
   USERS ||--o{ CIBA_REQUESTS : receives
   OAUTH_CLIENT ||--o{ CIBA_REQUESTS : initiates
+
+  %% ── Agent boundaries ──
+  USERS ||--o{ AGENT_BOUNDARIES : configures
+  OAUTH_CLIENT ||--o{ AGENT_BOUNDARIES : scoped_to
 ```
 
 ### Core tables

@@ -520,6 +520,20 @@ Stale subscriptions (user uninstalls browser, clears data) return `410 Gone` fro
 the push service. The sender must delete these rows to avoid wasting bandwidth and
 leaking endpoint URLs. This is handled in `sendWebPush` (see Section 5).
 
+### Vault Unlock via Push (`requiresVaultUnlock`)
+
+When a CIBA request includes identity scopes (`identity.*`), the push notification includes a `requiresVaultUnlock` flag. The service worker cannot trigger a passkey PRF prompt or OPAQUE password dialog — these require a full browser rendering context. Therefore, identity-scoped notifications show only a "Deny" inline action. Tapping the notification body or the "Deny" button are the only options; approval requires navigating to the approval page in a browser tab where vault unlock can proceed.
+
+### Expired Request Notification Path
+
+If a user taps a notification after the CIBA request has expired or been rejected:
+
+1. The service worker's `fetch("/api/auth/ciba/authorize")` receives a non-200 response (401 or 410)
+2. The service worker falls back to `clients.openWindow(approvalUrl)`
+3. The approval page detects the expired/rejected state and displays an appropriate message
+
+This prevents silent failure when notifications are acted upon after the request lifetime has elapsed.
+
 ### Notification Spoofing
 
 An attacker who obtains a user's push subscription endpoint and keys could send
@@ -570,8 +584,8 @@ the approval page — the notification only carries a human-readable summary.
 | `public/icon-192.png` | web | Create — PWA icon (192x192) |
 | `public/icon-512.png` | web | Create — PWA icon (512x512) |
 | `public/badge-72.png` | web | Create — notification badge (72x72, monochrome) |
-| `src/app/api/push/subscribe/route.ts` | web | Create — subscription endpoint |
-| `src/app/api/push/unsubscribe/route.ts` | web | Create — unsubscription endpoint |
+| `src/app/api/ciba/push/subscribe/route.ts` | web | Create — subscription endpoint |
+| `src/app/api/ciba/push/unsubscribe/route.ts` | web | Create — unsubscription endpoint |
 | `src/env.ts` | web | Modify — add VAPID env vars |
 | `src/lib/auth/auth.ts` | web | Modify — add `sendWebPush` to `sendNotification` callback |
 | `scripts/setup.ts` | web | Modify — generate VAPID keys |

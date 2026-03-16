@@ -187,12 +187,13 @@ Security impact:
 
 #### 2B. Threshold signature or threshold decryption (closest to your provisional narrative)
 
-Your repo already has a FROST-related service layer (`docs` + `apps/web/src/lib/recovery/frost-service.ts`), but today that code is **server-run orchestration**, which means the server can obtain the aggregated result.
+Your repo already has a FROST-related service layer (`docs` + `apps/web/src/lib/recovery/frost-service.ts`). The coordinator orchestrates DKG and signing rounds, but **HPKE encryption** (X25519-HKDF-SHA256 + ChaCha20Poly1305) now encrypts round-2 shares directly to each recipient signer's HPKE public key. The coordinator relays encrypted blobs but cannot see plaintext shares.
 
-To get "not the server":
+To get "not the server" fully:
 
 - Guardians must hold signing shares in a place the server cannot access without guardian consent.
 - Aggregation and key derivation must occur client-side (or in a neutral party the server does not control).
+- **HPKE TOFU bootstrap**: On the first DKG, signer HPKE public keys are accepted unsigned (Trust-On-First-Use) with a logged warning. Once a signer holds a key share, subsequent HPKE keys are signed with the share. Operators should verify signer HPKE public keys via side-channel before trusting the first DKG output.
 
 UX impact:
 
@@ -230,15 +231,15 @@ This improves "accidental leakage" risk and logging hygiene, but does not fix th
 - Shamir path: introduce share storage/retrieval for guardians.
 - Threshold signature/decryption path: move signing shares to guardian-controlled devices/services and ensure server cannot invoke them unilaterally.
 
-### Step 3b: FROST signature-derived DEK unwrap (implemented)
+### Step 3b: FROST signature-authorized ML-KEM recovery (implemented)
 
-The current implementation uses the FROST aggregated signature as the IKM for key derivation:
+The current implementation uses the FROST aggregated signature as **cryptographic authorization** that gates access to ML-KEM-768 recovery wrappers:
 
-```text
-unwrap_key = HKDF-SHA256(ikm=frost_signature, salt=challengeId, info="zentity:frost-unwrap")
-```
+1. **Authorization**: The FROST aggregate signature proves that a threshold of guardians approved recovery. The server verifies it against `frost_group_pubkey`.
+2. **Confidentiality**: Recovery wrappers use ML-KEM-768 encapsulation — the DEK is wrapped under the ML-KEM shared secret (AES-256-GCM). The server holds the ML-KEM secret key for decapsulation.
+3. **Key derivation for FROST-wrapped DEKs**: Additionally, the FROST signature is used as IKM for `HKDF-SHA256(ikm=frost_signature, salt=challengeId, info="zentity:frost-unwrap")` to derive a key that wraps DEKs on the challenge row (`frostWrappedDeks`). The client derives the same key from the returned signature and unwraps locally.
 
-At signing time, DEKs are wrapped under this FROST-derived key and stored on the challenge row (`frostWrappedDeks`). The server returns the FROST-wrapped DEKs + the signature. The client derives the same HKDF key from the signature and unwraps the DEKs locally. DB status manipulation alone is insufficient — the real FROST signature is cryptographically required.
+DB status manipulation alone is insufficient — the real FROST signature is cryptographically required. The ML-KEM recovery wrapper adds a second layer: the server can only decapsulate when the FROST signature authorizes the recovery challenge.
 
 ### Step 4: Operational hardening (both models)
 

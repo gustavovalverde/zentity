@@ -78,6 +78,20 @@ Optional coordinator variables:
 GUARDIAN_ASSERTION_JWKS_URL=https://app.zentity.xyz/api/auth/pq-jwks  # JWKS for guardian assertion JWT verification
 ```
 
+### Signer Info Endpoint
+
+Each signer exposes `GET /signer/info` returning its HPKE public key (and signature when available):
+
+```json
+{
+  "signer_id": "signer-1",
+  "hpke_pubkey": "<base64-encoded X25519 public key>",
+  "hpke_pubkey_signature": "<base64-encoded signature, null on first DKG>"
+}
+```
+
+The coordinator fetches HPKE public keys before round-2 to encrypt shares to each recipient signer.
+
 ### Web Service Connection
 
 The web service needs these variables to connect to the signer system:
@@ -174,11 +188,13 @@ curl http://signer-3.railway.internal:5101/health
    - Signer coordinator
    - All signer instances
 
-3. **Key Isolation**: Each signer holds exactly one encrypted key share. The coordinator never sees plaintext shares.
+3. **Key Isolation**: Each signer holds exactly one encrypted key share. The coordinator never sees plaintext shares — HPKE encryption (X25519-HKDF-SHA256 + ChaCha20Poly1305) encrypts round-2 shares directly to each recipient signer's HPKE public key. The coordinator relays encrypted blobs only.
 
-4. **Nonce Reuse Safety**: Do not restore signer DB snapshots to an older point-in-time while active signing sessions may still be replayed. Nonce fingerprint state must be monotonic.
+4. **HPKE TOFU Bootstrap**: On the first DKG, signer HPKE public keys are accepted unsigned (Trust-On-First-Use) with a logged warning. Once a signer holds a key share, subsequent HPKE keys are signed with the share. Operators should verify signer HPKE public keys via side-channel before trusting the first DKG output.
 
-5. **mTLS (Future)**: Production deployments should enable mTLS between coordinator and signers using:
+5. **Nonce Reuse Safety**: Do not restore signer DB snapshots to an older point-in-time while active signing sessions may still be replayed. Nonce fingerprint state must be monotonic.
+
+6. **mTLS (Future)**: Production deployments should enable mTLS between coordinator and signers using:
    - `SIGNER_MTLS_CA_PATH`
    - `SIGNER_MTLS_CERT_PATH`
    - `SIGNER_MTLS_KEY_PATH`

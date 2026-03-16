@@ -41,6 +41,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
 | `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
 | `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
+| `GET /api/auth/pq-jwks` | — | Post-quantum signing keys (ML-DSA-65) |
 
 ### User data
 
@@ -184,7 +185,7 @@ sequenceDiagram
   AS-->>Agent: { client_id }
 
   Note over Agent,AS: Backchannel Authorize
-  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message }
+  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message, agent_claims }
   AS->>Notify: Push notification + email with approval link
   AS-->>Agent: { auth_req_id, expires_in: 300, interval: 5 }
 
@@ -209,7 +210,7 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
-CIBA requests support `authorization_details` (RFC 9396) for structured action metadata (e.g., purchase amounts, merchant info). These flow through to the approval UI, email notification, and token response.
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata (e.g., purchase amounts, merchant info) and `agent_claims` for self-declared agent identity metadata (name, version, provider). Both flow through to the approval UI, email notification, and token response. Agent claims are stored in `cibaRequests.agentClaims` and displayed via the `AgentIdentityCard` component on the approval page.
 
 The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`. Push notifications route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome). The dashboard-integrated page at `/dashboard/ciba/approve` is a secondary entry point.
 
@@ -489,7 +490,7 @@ See [SSI Architecture](ssi-architecture.md) for the complete model.
   "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
   "subject_types_supported": ["public", "pairwise"],
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
-  "backchannel_token_delivery_modes_supported": ["poll", "ping"],
+  "backchannel_token_delivery_modes_supported": ["poll"],
   "client_id_metadata_document_supported": true,
   "resource_indicators_supported": true
 }

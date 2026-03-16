@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Partially Implemented |
 | **Created** | 2025-01-06 |
 | **Updated** | 2026-01-10 |
 | **Author** | Gustavo Valverde |
@@ -388,6 +388,26 @@ Re-verification is intentionally difficult:
 - Prevents social engineering attacks
 - Maintains zero-knowledge property (server never holds plaintext keys)
 - Ensures user understands data loss consequences
+
+## Custodial Email Guardian
+
+The `custodialEmail` guardian type provides zero-friction recovery setup by having the platform hold 1 FROST share via a Zentity-operated signer instance (`CUSTODIAL_SIGNER_URL` / `CUSTODIAL_SIGNER_ID`).
+
+**Constraints:**
+
+- Maximum 1 custodial guardian per user
+- Cannot be the sole guardian (must have at least one non-custodial guardian)
+- Auto-triggered signing: when a recovery challenge reaches threshold and includes the custodial guardian, the web service automatically requests signing from the custodial signer
+
+**Trust trade-off:** With a custodial guardian, the platform holds one FROST share. If the threshold is 2-of-3 and one other share is compromised, the platform could participate in recovery without the user's knowledge.
+
+## HPKE Key Authentication
+
+Signer instances generate HPKE keypairs (X25519-HKDF-SHA256 + ChaCha20Poly1305) used to encrypt round-2 shares during DKG and signing ceremonies. The coordinator fetches each signer's HPKE public key via `GET /signer/info` before relaying encrypted shares.
+
+**TOFU bootstrap:** On the first DKG, signer HPKE public keys are accepted unsigned (Trust-On-First-Use) with a logged warning. Once a signer holds a FROST key share, subsequent HPKE keys are signed with the share, and the coordinator verifies the signature before round-2.
+
+**ML-KEM-768 for recovery wrappers:** Recovery wrappers use ML-KEM-768 (post-quantum KEM) for confidentiality. The FROST aggregate signature serves as cryptographic authorization that gates access to the ML-KEM decapsulation, not as the direct key derivation input for the recovery wrapper itself.
 
 ## Security Considerations
 

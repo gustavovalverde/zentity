@@ -390,6 +390,18 @@ sequenceDiagram
   API-->>UI: Pending status
 ```
 
+### Revocation Flow
+
+When an identity verification is revoked (admin or self-service), the on-chain attestation is also revoked:
+
+1. DB revocation is committed in a transaction (marks `identity_verifications` and `identity_bundle` as revoked).
+2. On-chain revocation is attempted **outside** the DB transaction (best-effort).
+3. If the on-chain call fails, the attestation enters `revocation_pending` status.
+4. Retry uses exponential backoff: 1s → 3s → 9s, max 3 attempts.
+5. If all retries fail, an admin tRPC procedure (`admin.retryOnChainRevocation`) allows manual retry.
+
+DB revocation is committed regardless of on-chain success — the server-side state is always authoritative.
+
 ---
 
 ## Data Privacy Model

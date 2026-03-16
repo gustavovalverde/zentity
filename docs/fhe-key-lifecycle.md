@@ -45,7 +45,7 @@ Each credential type derives a KEK differently:
 | **Passkey** | WebAuthn PRF extension output (32 bytes) | HKDF-SHA256 |
 | **OPAQUE** | PAKE protocol export key (64 bytes) | HKDF-SHA256 |
 | **Wallet** | EIP-712 typed data signature (65 bytes) | HKDF-SHA256 |
-| **FROST recovery** | Aggregated FROST signature (hex, 64 bytes) | `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` |
+| **FROST recovery** | Aggregated FROST signature (hex, 64 bytes) | The FROST signature authorizes recovery (crypto authorization); the actual DEK unwrap uses ML-KEM-768 decapsulation of the recovery wrapper (crypto confidentiality). Additionally, `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` derives a key for FROST-wrapped DEKs on the challenge row. |
 
 The DEK is wrapped (encrypted) with the KEK using AES-256-GCM with authenticated additional data (AAD) binding the secret to a specific user and credential.
 
@@ -365,6 +365,14 @@ DEK wrapping uses Authenticated Additional Data (AAD):
 Prevents wrapped DEK from being used with different secrets or users.
 
 Recovery wrappers use additional AAD binding: `encodeAad([RECOVERY_AAD_CONTEXT, secretId, userId])` prevents cross-user and cross-secret wrapper substitution.
+
+### FHE Ciphertext Integrity
+
+Every FHE ciphertext stored in `encrypted_attributes` includes a `ciphertext_hash` — an HMAC-SHA256 tag binding the ciphertext to its owner and attribute type. The tag is verified with `crypto.timingSafeEqual` on every read, preventing ciphertext swap attacks where an attacker substitutes one user's encrypted data with another's.
+
+### Server-Side FHE Input Validation
+
+The server never accepts client-encrypted values as FHE truth. FHE inputs are derived server-side from verified data (signed OCR claims, liveness scores). This prevents a hostile browser from submitting pre-computed ciphertexts that encode false attributes.
 
 ### Multi-Credential Support
 

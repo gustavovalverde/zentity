@@ -369,7 +369,7 @@ Agent -> MCP Client -> MCP Gateway (PEP) -> AuthZEN PDP (Zentity)
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Approval / release tables | `src/lib/db/schema/agent-approvals.ts` | Durable state for approvals, decisions, and sensitive release handles |
+| Approval / release tables | `src/lib/db/schema/ciba.ts` | Durable state for approvals, decisions, and sensitive release handles |
 | CIBA backchannel endpoint | `/api/auth/oauth2/bc-authorize` | Accept backchannel auth requests |
 | CIBA grant handler | Token endpoint extension | Handle `grant_type=urn:openid:params:grant-type:ciba` |
 | `ciba_requests` table | `src/lib/db/schema/ciba.ts` | Track auth_req_id lifecycle |
@@ -591,7 +591,7 @@ How the protocols compose for each scenario:
 | OID4VCI | Implemented | Pre-authorized agent VCs (future, optional) | Medium |
 | OID4VP | Implemented (demo-rp) | Agent as VP presenter | Medium |
 | HAIP | Implemented | None | -- |
-| **CIBA** | **Implemented** | Poll + ping modes via `@better-auth/ciba` plugin | **Critical** |
+| **CIBA** | **Implemented** | Poll mode via `@better-auth/ciba` plugin | **Critical** |
 | **Durable approval / release state** | **Implemented** | Approval records + release handles + DB status transitions | **Critical** |
 | **MCP Resource Server Metadata** | **Not implemented** | **RFC 9728 endpoint needed** | **High** |
 | **CIMD** | **Not implemented** | **URL-based client_id support** | **High** |
@@ -789,7 +789,7 @@ Phase 1 implementation is complete. The following items from the Section 7 gap a
 
 | Item | Implementation |
 | --- | --- |
-| CIBA | `@better-auth/ciba` vendor plugin, poll + ping modes, `customGrantTypeHandlers` extension via oauth-provider patch (predicted by Section 10.1) |
+| CIBA | `@better-auth/ciba` vendor plugin, poll mode, `customGrantTypeHandlers` extension via oauth-provider patch (predicted by Section 10.1). Agent identity: `agent_claims` parameter on `bc-authorize` stores self-declared agent metadata in `cibaRequests.agentClaims`, displayed via `AgentIdentityCard` on approval UI. `requiresVaultUnlock` flag: identity-scoped requests show only "Deny" inline in push notifications (vault unlock requires browser context). |
 | Durable approval / release state | Approval records with CAS-based status transitions (`approved → claiming → redeemed`), ephemeral release handles with AES-GCM sealing |
 | Token Exchange (RFC 8693) | Three exchange modes at standard token endpoint, scope attenuation, DPoP passthrough, `act` claim nesting |
 | `act` claim in JWTs | CIBA grant handler adds `act: { sub: client_id }` per draft-oauth-ai-agents-on-behalf-of-user-02 |

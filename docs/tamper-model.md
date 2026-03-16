@@ -161,6 +161,29 @@ The tag is stored in `oauth_consent.scope_hmac`. Scopes are sorted before HMAC c
 
 When a user terminates their session via `end_session_endpoint`, pending CIBA requests are revoked server-side (`revokePendingCibaOnLogout()` sets status to `rejected`). This prevents a race condition where an agent polls for a CIBA token after the user has logged out — without this, an agent could obtain tokens for a session that no longer exists.
 
+### CIBA Request Binding & Replay Protection
+
+**Threat:** An attacker intercepts or guesses an `auth_req_id` and redeems it at the token endpoint, or replays a previously approved request.
+
+**Controls:**
+
+- `auth_req_id` is generated with cryptographic entropy (UUID v4 or equivalent)
+- **Release handle triple binding**: `(userId, authReqId, clientId)` — the release handle is sealed with AES-GCM and bound to all three identifiers. A handle from one request cannot be used for another.
+- **Ephemeral TTL**: Release handles expire after 5 minutes (matching CIBA `requestLifetime`).
+- **CAS-based status transitions**: `approved → claiming → redeemed` using compare-and-swap updates. Only one token exchange can succeed per request — concurrent polling attempts that race the transition fail atomically.
+- **Expired/rejected requests**: Polling against an expired or rejected `auth_req_id` returns a non-200 error (`expired_token` or `access_denied`), not a pending status.
+
+### Push Notification Safety
+
+**Threat:** Notification spoofing, unauthorized vault unlock via push, or stale notification exploitation.
+
+**Controls:**
+
+- **VAPID signing + payload encryption**: Push messages are VAPID-signed (RFC 8292) and payload-encrypted per RFC 8291 using the subscription's P-256DH and auth keys. The push service (Google, Apple, Mozilla) cannot read the payload.
+- **`requiresVaultUnlock` flag**: When a CIBA request includes identity scopes (`identity.*`), the push notification shows only a "Deny" inline action. Vault unlock requires a full browser context — the service worker cannot trigger a passkey PRF prompt or OPAQUE password dialog. The user must tap through to the approval page to unlock their vault and approve.
+- **Expired request fallback**: If a user taps a notification after the `auth_req_id` has expired or been rejected, the service worker's fetch receives a non-200 response and falls back to `clients.openWindow(approvalUrl)`, which shows the expired state in the approval page UI.
+- **Push subscription ownership**: Subscriptions are stored per-user in the `push_subscriptions` table. When a user switches accounts, stale subscriptions from the previous user are not inherited — the subscription endpoint is unique per browser/device.
+
 ## Tamper-Safe Verification Decision Flow
 
 1. Backend performs OCR, liveness, and face match.
