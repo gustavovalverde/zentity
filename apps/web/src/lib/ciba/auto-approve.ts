@@ -2,7 +2,10 @@ import { and, eq } from "drizzle-orm";
 
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
-import { evaluateBoundaries } from "@/lib/ciba/boundary-evaluation";
+import {
+  evaluateBoundaries,
+  normalizeAuthorizationDetails,
+} from "@/lib/ciba/boundary-evaluation";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
@@ -43,10 +46,7 @@ export async function tryAutoApprove(
     }
   }
 
-  const authDetails =
-    typeof data.authorizationDetails === "string"
-      ? data.authorizationDetails
-      : null;
+  const authDetails = normalizeAuthorizationDetails(data.authorizationDetails);
 
   const result = await evaluateBoundaries(
     data.userId,
