@@ -37,3 +37,15 @@ Changes:
   could update wrong row. Added isNull import from drizzle-orm.
 
 Feedback loops: typecheck ✓, tests ✓ (86 web unit), lint ✓
+
+--- Task 42: CIBA Auto-Approve Ping Delivery (finding #7) ---
+Status: COMPLETE
+
+Changes:
+- apps/web/src/lib/ciba/auto-approve.ts: tryAutoApprove returns discriminated union (AutoApproveResult)
+  with deliveryMode, clientNotificationEndpoint, clientNotificationToken on success
+- apps/web/src/lib/auth/auth.ts: sendNotification callback checks deliveryMode==="ping" after
+  auto-approve, calls deliverCibaPing (fire-and-forget). New deliverCibaPing function mirrors
+  CIBA plugin's internal ping delivery (POST with Bearer token + auth_req_id body).
+
+Feedback loops: typecheck ✓, tests ✓, lint ✓

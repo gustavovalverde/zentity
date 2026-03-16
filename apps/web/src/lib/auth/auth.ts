@@ -932,6 +932,25 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
   }
 }
 
+/**
+ * Fire-and-forget ping notification to a CIBA client's notification endpoint.
+ * Mirrors the CIBA plugin's internal deliverPing behavior.
+ */
+async function deliverCibaPing(
+  endpoint: string,
+  token: string,
+  authReqId: string
+): Promise<void> {
+  await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ auth_req_id: authReqId }),
+  });
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1451,8 +1470,22 @@ export const auth = betterAuth({
         );
       },
       sendNotification: async (data) => {
-        const autoApproved = await tryAutoApprove(data);
-        if (autoApproved) {
+        const autoApproveResult = await tryAutoApprove(data);
+        if (autoApproveResult.approved) {
+          if (
+            autoApproveResult.deliveryMode === "ping" &&
+            autoApproveResult.clientNotificationEndpoint &&
+            autoApproveResult.clientNotificationToken
+          ) {
+            deliverCibaPing(
+              autoApproveResult.clientNotificationEndpoint,
+              autoApproveResult.clientNotificationToken,
+              data.authReqId
+            ).catch(
+              // Fire-and-forget — ping failures shouldn't break the flow
+              () => undefined
+            );
+          }
           return;
         }
 
