@@ -74,3 +74,18 @@ Architectural Decisions:
 - BCL audience check uses ALL registered client IDs (jose supports array). Token must match at least one.
 
 Feedback loops: typecheck ✓, lint ✓
+
+--- Task 40: MCP Purchase Authorization Shape (finding #11) ---
+Status: COMPLETE
+
+Changes:
+- apps/mcp/src/tools/purchase.ts: authorization_details uses nested amount: { value: string, currency }
+  matching RAR shape expected by boundary-evaluation.ts, ciba-mailer.ts, ciba-approve-client.tsx,
+  and ciba-payload.ts. amount.toFixed(2) converts number to string.
+- apps/mcp/__tests__/tools/purchase.test.ts: updated assertion to match new nested shape
+
+Feedback loops: typecheck ✓, tests ✓ (109 MCP), lint ✓
+
+═══════════════════════════════════════════════════
+ALL 5 TASKS COMPLETE
+═══════════════════════════════════════════════════

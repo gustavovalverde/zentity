@@ -41,7 +41,12 @@ export function registerPurchaseTool(server: McpServer): void {
       }
 
       const authorizationDetails = [
-        { type: "purchase", merchant, amount, currency, item },
+        {
+          type: "purchase",
+          merchant,
+          item,
+          amount: { value: amount.toFixed(2), currency },
+        },
       ];
       const bindingMessage = description
         ? `Purchase ${item} from ${merchant} for ${amount} ${currency}: ${description}`

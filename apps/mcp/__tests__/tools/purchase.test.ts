@@ -169,7 +169,8 @@ describe("purchase", () => {
           expect.objectContaining({
             type: "purchase",
             merchant: "Acme Store",
-            amount: 49.99,
+            item: "Widget Pro",
+            amount: { value: "49.99", currency: "USD" },
           }),
         ],
         scope: "openid identity.name identity.address",
