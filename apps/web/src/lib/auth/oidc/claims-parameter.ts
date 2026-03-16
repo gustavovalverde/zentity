@@ -25,30 +25,81 @@ export interface ParsedClaimsParameter {
   userinfo?: ClaimsRequest;
 }
 
-const pendingClaims = new Map<string, ParsedClaimsParameter>();
+const CLAIMS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface ClaimsEntry {
+  claims: ParsedClaimsParameter;
+  expiresAt: number;
+}
+
+const pendingClaims = new Map<string, ClaimsEntry>();
+
+function evictExpired(): void {
+  const now = Date.now();
+  for (const [key, entry] of pendingClaims) {
+    if (entry.expiresAt <= now) {
+      pendingClaims.delete(key);
+    }
+  }
+}
+
+function getEntry(userId: string): ClaimsEntry | null {
+  const entry = pendingClaims.get(userId);
+  if (!entry) {
+    return null;
+  }
+  if (entry.expiresAt <= Date.now()) {
+    pendingClaims.delete(userId);
+    return null;
+  }
+  return entry;
+}
 
 /** Store a parsed claims parameter for a user during token exchange. */
 export function stageClaimsParameter(
   userId: string,
   claims: ParsedClaimsParameter
 ): void {
-  pendingClaims.set(userId, claims);
+  evictExpired();
+  pendingClaims.set(userId, {
+    claims,
+    expiresAt: Date.now() + CLAIMS_TTL_MS,
+  });
 }
 
-/** Peek at the staged claims parameter without consuming it. */
-export function peekClaimsParameter(
+/**
+ * Consume the id_token portion of the claims parameter.
+ * Leaves the userinfo portion intact for a subsequent userinfo call.
+ */
+export function consumeIdTokenClaims(
   userId: string
-): ParsedClaimsParameter | null {
-  return pendingClaims.get(userId) ?? null;
+): ClaimsRequest | undefined {
+  const entry = getEntry(userId);
+  if (!entry) {
+    return undefined;
+  }
+  const idTokenClaims = entry.claims.id_token;
+  entry.claims.id_token = undefined;
+  if (!entry.claims.userinfo) {
+    pendingClaims.delete(userId);
+  }
+  return idTokenClaims;
 }
 
-/** Consume the staged claims parameter (one-time use). */
-export function consumeClaimsParameter(
+/**
+ * Consume the userinfo portion of the claims parameter.
+ * Deletes the entry entirely (terminal consumer).
+ */
+export function consumeUserinfoClaims(
   userId: string
-): ParsedClaimsParameter | null {
-  const claims = pendingClaims.get(userId) ?? null;
+): ClaimsRequest | undefined {
+  const entry = getEntry(userId);
+  if (!entry) {
+    return undefined;
+  }
+  const userinfoClaims = entry.claims.userinfo;
   pendingClaims.delete(userId);
-  return claims;
+  return userinfoClaims;
 }
 
 /**

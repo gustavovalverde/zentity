@@ -55,10 +55,10 @@ import {
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
 import {
-  consumeClaimsParameter,
+  consumeIdTokenClaims,
+  consumeUserinfoClaims,
   filterClaimsByRequest,
   parseClaimsParameter,
-  peekClaimsParameter,
   stageClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
@@ -1303,12 +1303,12 @@ export const auth = betterAuth({
           ...sidClaim,
         };
 
-        const claimsParam = peekClaimsParameter(user.id);
-        if (!claimsParam?.id_token) {
+        const idTokenFilter = consumeIdTokenClaims(user.id);
+        if (!idTokenFilter) {
           return allClaims;
         }
 
-        return filterClaimsByRequest(allClaims, claimsParam.id_token);
+        return filterClaimsByRequest(allClaims, idTokenFilter);
       },
       customUserInfoClaims: async ({ user, scopes }) => {
         const scopeList = toScopeList(scopes);
@@ -1332,12 +1332,12 @@ export const auth = betterAuth({
         const allClaims = { ...identityClaims, ...proofClaims };
 
         // Apply claims.userinfo as data minimization filter if present
-        const claimsParam = consumeClaimsParameter(user.id);
-        if (!claimsParam?.userinfo) {
+        const userinfoFilter = consumeUserinfoClaims(user.id);
+        if (!userinfoFilter) {
           return allClaims;
         }
 
-        return filterClaimsByRequest(allClaims, claimsParam.userinfo);
+        return filterClaimsByRequest(allClaims, userinfoFilter);
       },
     }),
     oidc4ida({

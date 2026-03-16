@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  consumeClaimsParameter,
+  consumeIdTokenClaims,
+  consumeUserinfoClaims,
   filterClaimsByRequest,
   findUnsatisfiableEssentialClaim,
   parseClaimsParameter,
-  peekClaimsParameter,
   stageClaimsParameter,
 } from "../claims-parameter";
 
@@ -125,32 +125,74 @@ describe("findUnsatisfiableEssentialClaim", () => {
   });
 });
 
-describe("stageClaimsParameter / peekClaimsParameter / consumeClaimsParameter", () => {
-  beforeEach(() => {
-    consumeClaimsParameter("test-user");
+describe("claims parameter lifecycle", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  it("stages and peeks without consuming", () => {
+  it("consumeIdTokenClaims returns and removes id_token portion only", () => {
+    stageClaimsParameter("test-user", {
+      id_token: { acr: null },
+      userinfo: { email: null },
+    });
+
+    const idToken = consumeIdTokenClaims("test-user");
+    expect(idToken).toEqual({ acr: null });
+
+    // userinfo portion still available
+    const userinfo = consumeUserinfoClaims("test-user");
+    expect(userinfo).toEqual({ email: null });
+  });
+
+  it("consumeUserinfoClaims returns and removes entire entry", () => {
+    stageClaimsParameter("test-user", {
+      id_token: { acr: null },
+      userinfo: { email: null },
+    });
+
+    const userinfo = consumeUserinfoClaims("test-user");
+    expect(userinfo).toEqual({ email: null });
+
+    // everything gone
+    expect(consumeIdTokenClaims("test-user")).toBeUndefined();
+    expect(consumeUserinfoClaims("test-user")).toBeUndefined();
+  });
+
+  it("returns undefined for non-existent user", () => {
+    expect(consumeIdTokenClaims("unknown")).toBeUndefined();
+    expect(consumeUserinfoClaims("unknown")).toBeUndefined();
+  });
+
+  it("expires entries after TTL", () => {
     stageClaimsParameter("test-user", {
       id_token: { acr: null },
     });
 
-    const first = peekClaimsParameter("test-user");
-    expect(first).toEqual({ id_token: { acr: null } });
+    // Advance time past 5-minute TTL
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6 * 60 * 1000);
 
-    const second = peekClaimsParameter("test-user");
-    expect(second).toEqual({ id_token: { acr: null } });
+    expect(consumeIdTokenClaims("test-user")).toBeUndefined();
   });
 
-  it("consume removes the entry", () => {
+  it("second stage for same user replaces the first", () => {
+    stageClaimsParameter("test-user", {
+      id_token: { acr: null },
+    });
+    stageClaimsParameter("test-user", {
+      id_token: { email: null },
+    });
+
+    const idToken = consumeIdTokenClaims("test-user");
+    expect(idToken).toEqual({ email: null });
+  });
+
+  it("deletes entry when only id_token is present and consumed", () => {
     stageClaimsParameter("test-user", {
       id_token: { acr: null },
     });
 
-    const consumed = consumeClaimsParameter("test-user");
-    expect(consumed).toEqual({ id_token: { acr: null } });
-
-    expect(peekClaimsParameter("test-user")).toBeNull();
-    expect(consumeClaimsParameter("test-user")).toBeNull();
+    consumeIdTokenClaims("test-user");
+    // No userinfo → entry deleted
+    expect(consumeUserinfoClaims("test-user")).toBeUndefined();
   });
 });

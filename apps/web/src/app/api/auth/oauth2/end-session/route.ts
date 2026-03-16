@@ -50,6 +50,7 @@ export async function GET(request: Request): Promise<Response> {
 
   // Verify the id_token_hint JWT
   let sub: string;
+  let sid: string | undefined;
   try {
     const jwksResolver = await getLocalJwks();
     const { payload } = await jwtVerify(idTokenHint, jwksResolver, {
@@ -62,6 +63,9 @@ export async function GET(request: Request): Promise<Response> {
       );
     }
     sub = payload.sub;
+    if (typeof payload.sid === "string") {
+      sid = payload.sid;
+    }
   } catch {
     return NextResponse.json(
       { error: "Invalid id_token_hint" },
@@ -103,7 +107,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Fire-and-forget: BCL delivery + CIBA revocation
-  sendBackchannelLogout(sub);
+  sendBackchannelLogout(sub, sid);
   revokePendingCibaOnLogout(sub);
 
   // Redirect or return success
