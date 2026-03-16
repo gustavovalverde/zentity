@@ -9,10 +9,8 @@
 #   SIGNER_DB_PATH=/var/lib/zentity/signer/coordinator.redb
 #   SIGNER_ENDPOINTS=http://signer-1.railway.internal:5101,http://signer-2.railway.internal:5101,http://signer-3.railway.internal:5101
 #   INTERNAL_SERVICE_TOKEN=<shared-secret>
+#   GUARDIAN_ASSERTION_JWKS_URL=https://app.zentity.xyz/api/auth/pq-jwks
 #   RUST_LOG=signer_service=info,actix_web=info
-#
-# Optional env vars:
-#   GUARDIAN_ASSERTION_JWKS_URL=<jwks-url>  (for JWT verification)
 #
 # Required volumes (create via Railway dashboard):
 #   signer-volume -> /var/lib/zentity/signer
