@@ -286,8 +286,12 @@ describe("wallet credentials", () => {
       ciphertext: string;
     };
     const ciphertext = base64ToBytes(wrapper.ciphertext);
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    ciphertext[ciphertext.length - 1] ^= 0xff;
+    const lastIdx = ciphertext.length - 1;
+    const lastByte = ciphertext[lastIdx];
+    if (lastByte !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      ciphertext[lastIdx] = lastByte ^ 0xff;
+    }
     wrapper.ciphertext = bytesToBase64(ciphertext);
     const tamperedWrappedDek = JSON.stringify(wrapper);
 
@@ -334,8 +338,12 @@ describe("wallet credentials", () => {
     });
 
     const tamperedBlob = new Uint8Array(envelope.encryptedBlob);
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    tamperedBlob[tamperedBlob.length - 1] ^= 0xff;
+    const blobLastIdx = tamperedBlob.length - 1;
+    const blobLastByte = tamperedBlob[blobLastIdx];
+    if (blobLastByte !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      tamperedBlob[blobLastIdx] = blobLastByte ^ 0xff;
+    }
 
     const unwrappedDek = await unwrapDekWithWalletSignature({
       secretId,

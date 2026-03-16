@@ -284,9 +284,13 @@ function getWorkerPool(): Promise<WorkerState[]> {
 
 async function getLeastBusyWorker(): Promise<WorkerState> {
   const pool = await getWorkerPool();
+  const first = pool[0];
+  if (!first) {
+    throw new Error("Worker pool is empty.");
+  }
   return pool.reduce(
     (best, current) => (current.inflight < best.inflight ? current : best),
-    pool[0]
+    first
   );
 }
 

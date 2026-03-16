@@ -86,13 +86,21 @@ function redactEmails(message: string): string {
     }
 
     let start = atIndex - 1;
-    while (start >= 0 && isLocalEmailChar(message[start])) {
+    while (start >= 0) {
+      const ch = message[start];
+      if (!(ch && isLocalEmailChar(ch))) {
+        break;
+      }
       start -= 1;
     }
     start += 1;
 
     let end = atIndex + 1;
-    while (end < message.length && isDomainEmailChar(message[end])) {
+    while (end < message.length) {
+      const ch = message[end];
+      if (!(ch && isDomainEmailChar(ch))) {
+        break;
+      }
       end += 1;
     }
 

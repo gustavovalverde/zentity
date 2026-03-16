@@ -140,7 +140,7 @@ describe("signed-claims", () => {
       const token = await signAttestationClaim(validLivenessClaim);
       // Tamper with the signature (last part of JWT)
       const parts = token.split(".");
-      parts[2] = `${parts[2].slice(0, -5)}XXXXX`;
+      parts[2] = `${parts[2]?.slice(0, -5)}XXXXX`;
       const tamperedToken = parts.join(".");
 
       await expect(verifyAttestationClaim(tamperedToken)).rejects.toThrow();
@@ -150,7 +150,7 @@ describe("signed-claims", () => {
       const token = await signAttestationClaim(validLivenessClaim);
       // Tamper with the payload (middle part of JWT)
       const parts = token.split(".");
-      parts[1] = `${parts[1].slice(0, -3)}YYY`;
+      parts[1] = `${parts[1]?.slice(0, -3)}YYY`;
       const tamperedToken = parts.join(".");
 
       await expect(verifyAttestationClaim(tamperedToken)).rejects.toThrow();

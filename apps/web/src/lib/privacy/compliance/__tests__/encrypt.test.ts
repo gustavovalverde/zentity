@@ -33,8 +33,11 @@ describe("compliance encryption ML-KEM-768", () => {
 
     const tampered = { ...bundle };
     const kemBytes = Buffer.from(tampered.kemCipherText, "base64");
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    kemBytes[0] ^= 0xff;
+    const kemByte0 = kemBytes[0];
+    if (kemByte0 !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      kemBytes[0] = kemByte0 ^ 0xff;
+    }
     tampered.kemCipherText = kemBytes.toString("base64");
 
     await expect(decryptFromZentity(tampered, secretKey)).rejects.toThrow();
@@ -46,8 +49,11 @@ describe("compliance encryption ML-KEM-768", () => {
 
     const tampered = { ...bundle };
     const ctBytes = Buffer.from(tampered.ciphertext, "base64");
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    ctBytes[0] ^= 0xff;
+    const ctByte0 = ctBytes[0];
+    if (ctByte0 !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      ctBytes[0] = ctByte0 ^ 0xff;
+    }
     tampered.ciphertext = ctBytes.toString("base64");
 
     await expect(decryptFromZentity(tampered, secretKey)).rejects.toThrow();
@@ -87,8 +93,11 @@ describe("compliance encryption ML-KEM-768", () => {
 
       const tampered = { ...bundle };
       const ivBytes = Buffer.from(tampered.iv, "base64");
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-      ivBytes[0] ^= 0xff;
+      const ivByte0 = ivBytes[0];
+      if (ivByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+        ivBytes[0] = ivByte0 ^ 0xff;
+      }
       tampered.iv = ivBytes.toString("base64");
 
       await expect(decryptFromZentity(tampered, secretKey)).rejects.toThrow();

@@ -147,7 +147,7 @@ export function AgentPoliciesClient() {
             <Card key={clientId}>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">
-                  {items[0].clientName ?? clientId}
+                  {items[0]?.clientName ?? clientId}
                 </CardTitle>
                 <CardDescription>
                   {items.length} {items.length === 1 ? "policy" : "policies"}

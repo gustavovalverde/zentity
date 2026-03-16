@@ -70,7 +70,9 @@ async function deriveProof(
   const revealedIndices = disclosures
     .filter((d) => d.reveal)
     .map((d) => d.index);
-  const revealedMessages = revealedIndices.map((i) => messageValues[i]);
+  const revealedMessages = revealedIndices
+    .map((i) => messageValues[i])
+    .filter((m): m is Uint8Array => m !== undefined);
 
   return {
     proof,

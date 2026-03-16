@@ -66,9 +66,9 @@ describe("agentBoundaries router", () => {
 
     const list = await caller.list();
     expect(list).toHaveLength(1);
-    expect(list[0].boundaryType).toBe("purchase");
-    expect(list[0].config.maxAmount).toBe(50);
-    expect(list[0].clientName).toBe("Router Test Agent");
+    expect(list[0]?.boundaryType).toBe("purchase");
+    expect(list[0]?.config.maxAmount).toBe(50);
+    expect(list[0]?.clientName).toBe("Router Test Agent");
   });
 
   it("updates a boundary config", async () => {
@@ -85,7 +85,11 @@ describe("agentBoundaries router", () => {
       },
     });
 
-    const [boundary] = await caller.list();
+    const boundaries = await caller.list();
+    const boundary = boundaries[0];
+    if (!boundary) {
+      throw new Error("Expected boundary to exist");
+    }
 
     await caller.update({
       id: boundary.id,
@@ -98,7 +102,7 @@ describe("agentBoundaries router", () => {
     });
 
     const list = await caller.list();
-    expect(list[0].config.maxAmount).toBe(100);
+    expect(list[0]?.config.maxAmount).toBe(100);
   });
 
   it("deletes a boundary", async () => {
@@ -110,7 +114,11 @@ describe("agentBoundaries router", () => {
       config: { allowedScopes: ["proof:age"] },
     });
 
-    const [boundary] = await caller.list();
+    const boundaries = await caller.list();
+    const boundary = boundaries[0];
+    if (!boundary) {
+      throw new Error("Expected boundary to exist");
+    }
     await caller.delete({ id: boundary.id });
 
     const list = await caller.list();

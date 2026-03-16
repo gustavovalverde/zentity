@@ -27,7 +27,7 @@ function buildJwt(
 }
 
 function parseJwtParts(jwt: string) {
-  const [header, payload, signature] = jwt.split(".");
+  const [header = "", payload = "", signature = ""] = jwt.split(".");
   const decoder = new TextDecoder();
   return {
     header: JSON.parse(decoder.decode(base64UrlToBytes(header))),

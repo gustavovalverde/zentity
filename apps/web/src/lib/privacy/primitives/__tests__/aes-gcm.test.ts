@@ -77,8 +77,11 @@ describe("aes-gcm", () => {
 
       // Flip a bit in the ciphertext
       const corrupted = new Uint8Array(encrypted.ciphertext);
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-      corrupted[0] ^= 0x01;
+      const corruptedByte0 = corrupted[0];
+      if (corruptedByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+        corrupted[0] = corruptedByte0 ^ 0x01;
+      }
 
       await expect(
         decryptAesGcm(key, { ...encrypted, ciphertext: corrupted })
@@ -94,8 +97,12 @@ describe("aes-gcm", () => {
       // AES-GCM ciphertext includes the auth tag at the end (16 bytes)
       // Corrupt the last byte (part of the auth tag)
       const corrupted = new Uint8Array(encrypted.ciphertext);
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-      corrupted[corrupted.length - 1] ^= 0xff;
+      const corruptedLastIdx = corrupted.length - 1;
+      const corruptedLastByte = corrupted[corruptedLastIdx];
+      if (corruptedLastByte !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+        corrupted[corruptedLastIdx] = corruptedLastByte ^ 0xff;
+      }
 
       await expect(
         decryptAesGcm(key, { ...encrypted, ciphertext: corrupted })

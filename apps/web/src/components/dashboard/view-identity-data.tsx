@@ -363,11 +363,26 @@ export function ViewIdentityData() {
       return null;
     }
 
+    const birthYearHandle = handles[0];
+    const countryCodeHandle = handles[1];
+    const complianceLevelHandle = handles[2];
+    const blacklistHandle = handles[3];
+    if (
+      !(
+        birthYearHandle &&
+        countryCodeHandle &&
+        complianceLevelHandle &&
+        blacklistHandle
+      )
+    ) {
+      return null;
+    }
+
     return {
-      birthYearOffset: Number(decryptResults[handles[0]] ?? 0),
-      countryCode: Number(decryptResults[handles[1]] ?? 0),
-      complianceLevel: Number(decryptResults[handles[2]] ?? 0),
-      isBlacklisted: Boolean(decryptResults[handles[3]] ?? false),
+      birthYearOffset: Number(decryptResults[birthYearHandle] ?? 0),
+      countryCode: Number(decryptResults[countryCodeHandle] ?? 0),
+      complianceLevel: Number(decryptResults[complianceLevelHandle] ?? 0),
+      isBlacklisted: Boolean(decryptResults[blacklistHandle] ?? false),
     };
   }, [decryptResults, decryptRequests]);
 

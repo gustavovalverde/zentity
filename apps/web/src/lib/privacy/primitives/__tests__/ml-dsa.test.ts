@@ -66,8 +66,11 @@ describe("ml-dsa-65", () => {
 
       const signature = mlDsaSign(message, secretKey);
       const tampered = new Uint8Array(signature);
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for signature integrity test
-      tampered[0] ^= 0xff;
+      const tamperedByte0 = tampered[0];
+      if (tamperedByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for signature integrity test
+        tampered[0] = tamperedByte0 ^ 0xff;
+      }
 
       expect(mlDsaVerify(tampered, message, publicKey)).toBe(false);
     });

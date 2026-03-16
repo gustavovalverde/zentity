@@ -366,7 +366,10 @@ const x5cChain = loadX5cChain();
 const nonceStore = getDpopNonceStore(env.DPOP_NONCE_TTL_SECONDS);
 
 function extractDpopNonce(proofJwt: string): string | undefined {
-  const [, b64] = proofJwt.split(".");
+  const b64 = proofJwt.split(".")[1];
+  if (!b64) {
+    return undefined;
+  }
   const { nonce } = JSON.parse(
     Buffer.from(b64, "base64url").toString("utf8")
   ) as { nonce?: string };
@@ -541,8 +544,14 @@ function validateDcrRegistration(
         error_description: "software_statement must be a valid JWT",
       });
     }
+    const payload = parts[1];
+    if (!payload) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "software_statement payload is missing",
+      });
+    }
     try {
-      JSON.parse(Buffer.from(parts[1], "base64url").toString());
+      JSON.parse(Buffer.from(payload, "base64url").toString());
     } catch {
       throw new APIError("BAD_REQUEST", {
         error_description: "software_statement payload is not valid JSON",

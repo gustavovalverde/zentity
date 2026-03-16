@@ -85,23 +85,23 @@ describe("A2A Agent Card — security schemes", () => {
     const card = await parseCard(await getAgentCard());
     const oauth2 = card.securitySchemes["zentity-oauth2"];
 
-    expect(oauth2.type).toBe("oauth2");
+    expect(oauth2?.type).toBe("oauth2");
 
-    const flows = oauth2.flows as Record<string, Record<string, unknown>>;
-    const authCode = flows.authorizationCode;
+    const flows = oauth2?.flows as Record<string, Record<string, unknown>>;
+    const authCode = flows?.authorizationCode;
 
-    expect(authCode.authorizationUrl).toContain("oauth2/authorize");
-    expect(authCode.tokenUrl).toContain("oauth2/token");
-    expect(authCode.pkceRequired).toBe(true);
+    expect(authCode?.authorizationUrl).toContain("oauth2/authorize");
+    expect(authCode?.tokenUrl).toContain("oauth2/token");
+    expect(authCode?.pkceRequired).toBe(true);
   });
 
   it("OAuth2 scopes include required scope keys", async () => {
     const card = await parseCard(await getAgentCard());
-    const flows = card.securitySchemes["zentity-oauth2"].flows as Record<
+    const flows = card.securitySchemes["zentity-oauth2"]?.flows as Record<
       string,
       Record<string, unknown>
     >;
-    const scopes = flows.authorizationCode.scopes as Record<string, string>;
+    const scopes = flows.authorizationCode?.scopes as Record<string, string>;
 
     for (const key of [
       "openid",
@@ -122,8 +122,8 @@ describe("A2A Agent Card — security schemes", () => {
     const card = await parseCard(await getAgentCard());
     const oidc = card.securitySchemes["zentity-oidc"];
 
-    expect(oidc.type).toBe("openIdConnect");
-    expect(oidc.openIdConnectUrl as string).toContain("openid-configuration");
+    expect(oidc?.type).toBe("openIdConnect");
+    expect(oidc?.openIdConnectUrl as string).toContain("openid-configuration");
   });
 
   it("security array references both defined schemes", async () => {
@@ -234,14 +234,14 @@ describe("A2A Agent Card — URL resolution", () => {
 
   it("OAuth2 URLs use the same base URL as the card", async () => {
     const card = await parseCard(await getAgentCard());
-    const flows = card.securitySchemes["zentity-oauth2"].flows as Record<
+    const flows = card.securitySchemes["zentity-oauth2"]?.flows as Record<
       string,
       Record<string, unknown>
     >;
-    const authCode = flows.authorizationCode;
+    const authCode = flows?.authorizationCode;
 
-    const authUrl = authCode.authorizationUrl as string;
-    const tokenUrl = authCode.tokenUrl as string;
+    const authUrl = authCode?.authorizationUrl as string;
+    const tokenUrl = authCode?.tokenUrl as string;
 
     expect(authUrl).toContain("localhost");
     expect(tokenUrl).toContain("localhost");
@@ -251,6 +251,6 @@ describe("A2A Agent Card — URL resolution", () => {
     const card = await parseCard(await getAgentCard());
     const oidc = card.securitySchemes["zentity-oidc"];
 
-    expect(oidc.openIdConnectUrl as string).toContain("localhost");
+    expect(oidc?.openIdConnectUrl as string).toContain("localhost");
   });
 });

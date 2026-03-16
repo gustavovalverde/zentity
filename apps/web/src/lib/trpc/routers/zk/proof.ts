@@ -190,7 +190,14 @@ function assertResultBit(
   },
   verificationTimeMs: number
 ): { result: ProofVerificationResult; nonceHex: string } | null {
-  const bit = Number(BigInt(publicInputs[resultIndex]));
+  const resultInput = publicInputs[resultIndex];
+  if (resultInput === undefined) {
+    return failure(
+      `Missing public input at index ${resultIndex}`,
+      verificationTimeMs
+    );
+  }
+  const bit = Number(BigInt(resultInput));
   if (bit !== 1) {
     return failure(failureReason, verificationTimeMs);
   }
@@ -218,9 +225,14 @@ async function verifyProofInternal(args: {
     });
   }
 
-  const nonceHex = normalizeChallengeNonce(
-    args.publicInputs[circuitSpec.nonceIndex]
-  );
+  const nonceInput = args.publicInputs[circuitSpec.nonceIndex];
+  if (nonceInput === undefined) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Missing nonce in public inputs",
+    });
+  }
+  const nonceHex = normalizeChallengeNonce(nonceInput);
 
   const failure = (reason: string, verificationTimeMs = 0) => ({
     result: {
@@ -248,15 +260,22 @@ async function verifyProofInternal(args: {
       message: "Missing claim hash in public inputs",
     });
   }
-  const claimHashBigInt = requiresClaimHash
-    ? parseFieldToBigInt(claimHashInput)
-    : BigInt(0);
+  const claimHashBigInt =
+    requiresClaimHash && claimHashInput
+      ? parseFieldToBigInt(claimHashInput)
+      : BigInt(0);
 
   // Identity binding validation: binding_commitment only (auth_mode removed for privacy)
   if (circuitType === "identity_binding") {
-    const bindingCommitment = parseFieldToBigInt(
-      args.publicInputs[circuitSpec.claimHashIndex]
-    );
+    const bindingCommitmentInput =
+      args.publicInputs[circuitSpec.claimHashIndex];
+    if (bindingCommitmentInput === undefined) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing binding commitment in public inputs",
+      });
+    }
+    const bindingCommitment = parseFieldToBigInt(bindingCommitmentInput);
 
     if (bindingCommitment === BigInt(0)) {
       throw new TRPCError({
@@ -281,9 +300,14 @@ async function verifyProofInternal(args: {
 
     const baseCommitmentIndex =
       circuitSpec.publicInputOrder.indexOf("base_commitment");
-    const providedBaseCommitment = parseFieldToBigInt(
-      args.publicInputs[baseCommitmentIndex]
-    );
+    const baseCommitmentInput = args.publicInputs[baseCommitmentIndex];
+    if (baseCommitmentInput === undefined) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing base commitment in public inputs",
+      });
+    }
+    const providedBaseCommitment = parseFieldToBigInt(baseCommitmentInput);
 
     if (providedBaseCommitment === BigInt(0)) {
       throw new TRPCError({
@@ -341,14 +365,16 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "age_verification") {
-    const providedCurrentDays = parseU32PublicInput(
-      args.publicInputs[0],
-      "current_days"
-    );
-    const providedMinAgeDays = parseU32PublicInput(
-      args.publicInputs[1],
-      "min_age_days"
-    );
+    const ageInput0 = args.publicInputs[0];
+    const ageInput1 = args.publicInputs[1];
+    if (ageInput0 === undefined || ageInput1 === undefined) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing age verification public inputs",
+      });
+    }
+    const providedCurrentDays = parseU32PublicInput(ageInput0, "current_days");
+    const providedMinAgeDays = parseU32PublicInput(ageInput1, "min_age_days");
     const actualCurrentDays = getTodayDobDays();
 
     // Allow minor drift to avoid timezone edge cases.
@@ -377,7 +403,14 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "doc_validity") {
-    const providedDate = Number(BigInt(args.publicInputs[0]));
+    const docInput0 = args.publicInputs[0];
+    if (docInput0 === undefined) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing doc validity public input",
+      });
+    }
+    const providedDate = Number(BigInt(docInput0));
     const actualDate = getTodayAsInt();
     if (providedDate !== actualDate) {
       throw new TRPCError({
@@ -406,7 +439,14 @@ async function verifyProofInternal(args: {
   }
 
   if (circuitType === "face_match") {
-    const providedThreshold = Number(BigInt(args.publicInputs[0]));
+    const faceInput0 = args.publicInputs[0];
+    if (faceInput0 === undefined) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Missing face match public input",
+      });
+    }
+    const providedThreshold = Number(BigInt(faceInput0));
 
     if (providedThreshold < MIN_FACE_MATCH_THRESHOLD) {
       throw new TRPCError({

@@ -522,15 +522,16 @@ export const compliantTokenRouter = router({
           toBlock: "latest",
         });
 
+        const firstLog = logs[0];
         const latestLog =
-          logs.length > 0
+          firstLog !== undefined
             ? logs.reduce(
                 (latest, log) =>
                   (log.blockNumber ?? BigInt(0)) >
                   (latest.blockNumber ?? BigInt(0))
                     ? log
                     : latest,
-                logs[0]
+                firstLog
               )
             : null;
 

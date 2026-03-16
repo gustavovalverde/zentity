@@ -117,8 +117,11 @@ describe("BBS+ Security", () => {
       );
 
       // Tamper with signature bytes
-      // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
-      credential.signature.signature[0] ^= 0xff;
+      const sigByte = credential.signature.signature[0];
+      if (sigByte !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
+        credential.signature.signature[0] = sigByte ^ 0xff;
+      }
 
       expect(await verifyCredential(credential)).toBe(false);
     });
@@ -209,8 +212,11 @@ describe("BBS+ Security", () => {
       );
 
       // Tamper with proof bytes
-      // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
-      presentation.proof.proof[0] ^= 0xff;
+      const proofByte = presentation.proof.proof[0];
+      if (proofByte !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
+        presentation.proof.proof[0] = proofByte ^ 0xff;
+      }
 
       const result = await verifyPresentation(presentation);
       expect(result.verified).toBe(false);

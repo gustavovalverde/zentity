@@ -12,9 +12,13 @@ function normalizeVersion(version: string | null | undefined): string | null {
 }
 
 function readPackageVersion(packageName: string): string | null {
+  const firstSegment = packageName.split("/")[0];
+  if (!firstSegment) {
+    return null;
+  }
   const parts = packageName.startsWith("@")
     ? packageName.split("/").slice(0, 2)
-    : [packageName.split("/")[0]];
+    : [firstSegment];
 
   let currentDir = process.cwd();
   for (let i = 0; i < 10; i += 1) {

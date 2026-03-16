@@ -116,7 +116,7 @@ describe("FhevmDecryptionSignature", () => {
       signatureData.eip712.domain,
       {
         UserDecryptRequestVerification: [
-          ...signatureData.eip712.types.UserDecryptRequestVerification,
+          ...(signatureData.eip712.types.UserDecryptRequestVerification ?? []),
         ],
       },
       signatureData.eip712.message,

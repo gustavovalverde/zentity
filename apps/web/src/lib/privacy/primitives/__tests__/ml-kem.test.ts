@@ -89,8 +89,11 @@ describe("ml-kem-768", () => {
       const { cipherText, sharedSecret } = mlKemEncapsulate(publicKey);
 
       const tampered = new Uint8Array(cipherText);
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for KEM implicit reject test
-      tampered[0] ^= 0xff;
+      const tamperedByte0 = tampered[0];
+      if (tamperedByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for KEM implicit reject test
+        tampered[0] = tamperedByte0 ^ 0xff;
+      }
 
       const result = mlKemDecapsulate(tampered, secretKey);
       expect(result).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);

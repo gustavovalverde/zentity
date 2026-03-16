@@ -200,6 +200,9 @@ export function extractCredentialRegistrationData(
 
   // Flags byte is at offset 32 (after rpIdHash)
   const flags = authData[32];
+  if (flags === undefined) {
+    throw new Error("Authenticator data too short: missing flags byte.");
+  }
   // Bit 0 = User Present, Bit 2 = User Verified, Bit 3 = Backup Eligibility, Bit 4 = Backed Up
   // Bit 6 = Attested credential data included
   // biome-ignore lint/suspicious/noBitwiseOperators: WebAuthn spec requires bit flag extraction
@@ -303,11 +306,19 @@ export async function evaluatePrf(params: {
 
   const evalByCredential: Record<string, { first: ArrayBuffer }> = {};
   for (const credentialId of credentialIds) {
+    const salt = params.credentialIdToSalt[credentialId];
+    if (!salt) {
+      continue;
+    }
     evalByCredential[credentialId] = {
-      first: toArrayBuffer(params.credentialIdToSalt[credentialId]),
+      first: toArrayBuffer(salt),
     };
   }
   const isSingle = credentialIds.length === 1;
+  const singleEntry =
+    isSingle && credentialIds[0]
+      ? evalByCredential[credentialIds[0]]
+      : undefined;
 
   const options: PublicKeyCredentialRequestOptions = {
     challenge,
@@ -315,8 +326,8 @@ export async function evaluatePrf(params: {
     userVerification: params.userVerification ?? "required",
     timeout: params.timeoutMs,
     extensions: {
-      prf: isSingle
-        ? { eval: { first: evalByCredential[credentialIds[0]].first } }
+      prf: singleEntry
+        ? { eval: { first: singleEntry.first } }
         : { evalByCredential },
     },
   };

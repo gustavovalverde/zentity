@@ -94,7 +94,7 @@ describe("RP contract — scope alignment", () => {
     for (const [scenario, stepUpScopes] of Object.entries(
       DEMO_RP_STEP_UP_SCOPES
     )) {
-      const expectedClaimKeys = DEMO_RP_STEP_UP_CLAIM_KEYS[scenario];
+      const expectedClaimKeys = DEMO_RP_STEP_UP_CLAIM_KEYS[scenario] ?? [];
       const zentityClaimKeys = stepUpScopes.flatMap(
         (scope) =>
           IDENTITY_SCOPE_CLAIMS[scope as keyof typeof IDENTITY_SCOPE_CLAIMS] ??
@@ -242,7 +242,7 @@ describe("RP contract — discovery metadata shape", () => {
     });
 
     const header = JSON.parse(
-      Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+      Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
     );
     expect(header.alg).toBe("RS256");
   });

@@ -38,7 +38,7 @@ describe("auth-mailer", () => {
       });
 
       expect(mockSendMailpitMessage).toHaveBeenCalledOnce();
-      const payload = mockSendMailpitMessage.mock.calls[0][0];
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
       expect(payload.to).toEqual(["test@example.com"]);
       expect(payload.subject).toContain("Reset");
       expect(payload.text).toContain("https://zentity.xyz/reset?token=abc");
@@ -57,7 +57,7 @@ describe("auth-mailer", () => {
 
       expect(mockSendResendMessage).toHaveBeenCalledOnce();
       expect(mockSendMailpitMessage).not.toHaveBeenCalled();
-      const payload = mockSendResendMessage.mock.calls[0][0];
+      const payload = mockSendResendMessage.mock.calls[0]?.[0];
       expect(payload.to).toEqual(["prod@example.com"]);
       expect(payload.text).toContain("https://app.zentity.xyz/reset?token=xyz");
     });
@@ -88,7 +88,7 @@ describe("auth-mailer", () => {
       });
 
       expect(mockSendMailpitMessage).toHaveBeenCalledOnce();
-      const payload = mockSendMailpitMessage.mock.calls[0][0];
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
       expect(payload.to).toEqual(["magic@example.com"]);
       expect(payload.subject).toContain("Sign in");
       expect(payload.text).toContain("https://zentity.xyz/magic?token=abc");
@@ -105,7 +105,7 @@ describe("auth-mailer", () => {
       });
 
       expect(mockSendResendMessage).toHaveBeenCalledOnce();
-      const payload = mockSendResendMessage.mock.calls[0][0];
+      const payload = mockSendResendMessage.mock.calls[0]?.[0];
       expect(payload.to).toEqual(["resend@example.com"]);
       expect(payload.text).toContain("https://zentity.xyz/magic?token=xyz");
     });

@@ -515,6 +515,9 @@ async function buildMerkleCacheForGroup(
 
   for (let i = 0; i < paddedCodes.length; i++) {
     const code = paddedCodes[i];
+    if (code === undefined) {
+      throw new Error("Unexpected undefined in padded codes");
+    }
     const leafHash = await poseidon2Hash([BigInt(code)]);
     leaves.push(leafHash);
     if (code !== 0) {
@@ -529,6 +532,9 @@ async function buildMerkleCacheForGroup(
     for (let i = 0; i < currentLevel.length; i += 2) {
       const left = currentLevel[i];
       const right = currentLevel[i + 1];
+      if (left === undefined || right === undefined) {
+        throw new Error("Merkle tree level has odd number of elements");
+      }
       const parent = await poseidon2Hash([left, right]);
       nextLevel.push(parent);
     }
@@ -592,16 +598,27 @@ async function computeMerklePath(
   for (let level = 0; level < TREE_DEPTH; level++) {
     const isRight = idx % 2 === 1;
     const siblingIdx = isRight ? idx - 1 : idx + 1;
-    pathElements.push(levels[level][siblingIdx]);
+    const levelNodes = levels[level];
+    if (levelNodes === undefined) {
+      throw new Error(`Missing Merkle tree level ${level}`);
+    }
+    const sibling = levelNodes[siblingIdx];
+    if (sibling === undefined) {
+      throw new Error(`Missing sibling at level ${level}, index ${siblingIdx}`);
+    }
+    pathElements.push(sibling);
     pathIndices.push(isRight ? 1 : 0);
     idx = Math.floor(idx / 2);
   }
 
-  const root = levels.at(-1);
-  if (!root) {
+  const rootLevel = levels.at(-1);
+  if (!rootLevel) {
     throw new Error("Invalid Merkle tree: no root level");
   }
-  const merkleRoot = root[0];
+  const merkleRoot = rootLevel[0];
+  if (merkleRoot === undefined) {
+    throw new Error("Invalid Merkle tree: empty root level");
+  }
 
   return {
     nationalityCodeNumeric: numericCode,

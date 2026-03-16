@@ -248,7 +248,8 @@ const _buildParamsFromAbi = (
 
   return fn.inputs.map((input: AbiParameter, index: number) => {
     // First param is typically the handle, second is the proof
-    const raw = index === 0 ? enc.handles[0] : enc.inputProof;
+    const raw =
+      index === 0 ? (enc.handles[0] ?? enc.inputProof) : enc.inputProof;
     switch (input.type) {
       case "bytes32":
       case "bytes":

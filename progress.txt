@@ -461,3 +461,21 @@ Status: Complete
 - apps/web/src/proxy.ts — DPoP in CORS headers
 - apps/web/src/middleware.ts — new, wires proxy as Next.js middleware
 - apps/web/src/lib/email/__tests__/auth-mailer.test.ts — 6 integration tests
+
+## Task 28: TypeScript Quality Guardrails
+Status: Complete (4 of 5 flags)
+
+### Changes
+1. Enabled noUncheckedIndexedAccess — 188 violations fixed across ~50 files
+2. Enabled noImplicitReturns — 6 violations fixed
+3. Enabled noFallthroughCasesInSwitch — 0 violations
+4. Enabled noImplicitOverride — 0 violations
+5. exactOptionalPropertyTypes SKIPPED — 131 violations, 16 from better-auth InferAPI type inference (unfixable)
+6. Removed both noFloatingPromises Biome overrides (hooks + dashboard pages) — 0 violations
+7. Added TypeScript Patterns section to apps/web/.claude/CLAUDE.md
+
+### Files changed
+- apps/web/tsconfig.json — 4 strict flags
+- apps/web/biome.json — removed 2 noFloatingPromises overrides
+- apps/web/.claude/CLAUDE.md — TypeScript Patterns section
+- ~50 source files — explicit undefined checks for indexed access

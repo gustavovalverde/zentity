@@ -84,7 +84,7 @@ function resolveKey(userId: string, clientId?: string): string | null {
       matches.push(key);
     }
   }
-  return matches.length === 1 ? matches[0] : null;
+  return (matches.length === 1 ? matches[0] : null) ?? null;
 }
 
 /**

@@ -144,7 +144,7 @@ describe("HAIP — credential issuer metadata", () => {
 
     expect(configs).toBeDefined();
     expect(configs.identity_verification).toBeDefined();
-    expect(configs.identity_verification.format).toBe("dc+sd-jwt");
+    expect(configs.identity_verification?.format).toBe("dc+sd-jwt");
   });
 });
 

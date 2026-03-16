@@ -64,7 +64,7 @@ export async function createAuthenticatedUser(
 ) {
   const testEmail = email || `e2e-${Date.now()}@example.com`;
   const testPassword = password || "TestPassword123!";
-  const testName = testEmail.split("@")[0];
+  const testName = testEmail.split("@")[0] ?? "e2e-user";
 
   const applyCookies = async (
     response: Awaited<ReturnType<typeof signInViaAPI>>

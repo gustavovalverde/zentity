@@ -85,9 +85,9 @@ describe("POST /api/ciba/push/subscribe", () => {
       .where(eq(pushSubscriptions.userId, userId));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].endpoint).toBe(validSubscription.endpoint);
-    expect(rows[0].p256dh).toBe(validSubscription.keys.p256dh);
-    expect(rows[0].auth).toBe(validSubscription.keys.auth);
+    expect(rows[0]?.endpoint).toBe(validSubscription.endpoint);
+    expect(rows[0]?.p256dh).toBe(validSubscription.keys.p256dh);
+    expect(rows[0]?.auth).toBe(validSubscription.keys.auth);
   });
 
   it("upserts on duplicate endpoint", async () => {
@@ -109,8 +109,8 @@ describe("POST /api/ciba/push/subscribe", () => {
       .where(eq(pushSubscriptions.userId, userId));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].p256dh).toBe("new-p256dh-key");
-    expect(rows[0].auth).toBe("new-auth-key");
+    expect(rows[0]?.p256dh).toBe("new-p256dh-key");
+    expect(rows[0]?.auth).toBe("new-auth-key");
   });
 
   it("returns 400 for invalid payload", async () => {
@@ -136,7 +136,7 @@ describe("POST /api/ciba/push/subscribe", () => {
       .from(pushSubscriptions)
       .where(eq(pushSubscriptions.endpoint, validSubscription.endpoint));
     expect(rowsA).toHaveLength(1);
-    expect(rowsA[0].userId).toBe(userA);
+    expect(rowsA[0]?.userId).toBe(userA);
 
     // User B re-subscribes with the same endpoint
     mockSession(userB);
@@ -148,7 +148,7 @@ describe("POST /api/ciba/push/subscribe", () => {
       .from(pushSubscriptions)
       .where(eq(pushSubscriptions.endpoint, validSubscription.endpoint));
     expect(rowsB).toHaveLength(1);
-    expect(rowsB[0].userId).toBe(userB);
+    expect(rowsB[0]?.userId).toBe(userB);
 
     // User A no longer has any subscriptions
     const rowsForA = await db

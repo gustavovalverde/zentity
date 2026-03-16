@@ -410,11 +410,11 @@ describe("BBS+ Credential Lifecycle", () => {
       const messages = subjectToMessages(subject);
 
       expect(messages).toHaveLength(5);
-      expect(messages[0].id).toBe("walletCommitment");
-      expect(messages[1].id).toBe("network");
-      expect(messages[2].id).toBe("chainId");
-      expect(messages[3].id).toBe("verifiedAt");
-      expect(messages[4].id).toBe("tier");
+      expect(messages[0]?.id).toBe("walletCommitment");
+      expect(messages[1]?.id).toBe("network");
+      expect(messages[2]?.id).toBe("chainId");
+      expect(messages[3]?.id).toBe("verifiedAt");
+      expect(messages[4]?.id).toBe("tier");
     });
 
     it("undefined chainId is encoded as empty string", () => {
@@ -428,7 +428,7 @@ describe("BBS+ Credential Lifecycle", () => {
       const messages = subjectToMessages(subject);
       const decoder = new TextDecoder();
 
-      expect(decoder.decode(messages[2].value)).toBe("");
+      expect(decoder.decode(messages[2]?.value)).toBe("");
     });
   });
 

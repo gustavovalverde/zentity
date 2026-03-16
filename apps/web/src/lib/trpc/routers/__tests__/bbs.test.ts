@@ -300,8 +300,11 @@ describe("BBS credentials router", () => {
 
       // Tamper with proof bytes
       const tamperedProof = Buffer.from(presentation.proof.proof, "base64");
-      // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
-      tamperedProof[0] ^= 0xff;
+      const proofByte0 = tamperedProof[0];
+      if (proofByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: Intentional bit flip for tampering test
+        tamperedProof[0] = proofByte0 ^ 0xff;
+      }
       presentation.proof.proof = tamperedProof.toString("base64");
 
       const unauthedCaller = await createCaller(null);

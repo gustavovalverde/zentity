@@ -166,7 +166,12 @@ function generateChallenges(count: number): ChallengeType[] {
   const shuffled = [...pool];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = randomInt(i + 1);
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    const a = shuffled[i];
+    const b = shuffled[j];
+    if (a !== undefined && b !== undefined) {
+      shuffled[i] = b;
+      shuffled[j] = a;
+    }
   }
 
   const challenges = shuffled.slice(0, count);

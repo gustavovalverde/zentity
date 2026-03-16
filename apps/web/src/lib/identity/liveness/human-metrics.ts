@@ -25,11 +25,15 @@ export function getLargestFace(result: unknown): HumanFaceResult | null {
     return null;
   }
 
+  const first = faces[0];
+  if (!first) {
+    return null;
+  }
   return faces.reduce((best, face) => {
     const bestArea = getBoxArea(best?.box ?? undefined);
     const area = getBoxArea(face?.box ?? undefined);
     return area > bestArea ? face : best;
-  }, faces[0]);
+  }, first);
 }
 
 function getGestureNames(result: unknown): string[] {

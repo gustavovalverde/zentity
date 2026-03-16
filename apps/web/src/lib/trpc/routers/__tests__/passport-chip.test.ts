@@ -315,7 +315,7 @@ describe("passportChip.submitResult", () => {
     );
 
     // Commitments are SHA-256 hashes, not raw PII
-    const call = mockCreateVerification.mock.calls[0][0];
+    const call = mockCreateVerification.mock.calls[0]?.[0];
     expect(call.nameCommitment).toMatch(SHA256_HEX_RE);
     expect(call.dobCommitment).toMatch(SHA256_HEX_RE);
     expect(call.nationalityCommitment).toMatch(SHA256_HEX_RE);
@@ -346,7 +346,7 @@ describe("passportChip.submitResult", () => {
     );
 
     // dobDays should be non-null since birthdate is disclosed
-    const call = mockScheduleFheEncryption.mock.calls[0][0];
+    const call = mockScheduleFheEncryption.mock.calls[0]?.[0];
     expect(call.dobDays).toBeTypeOf("number");
     expect(call.dobDays).toBeGreaterThan(0);
   });
@@ -377,7 +377,7 @@ describe("passportChip.submitResult", () => {
     });
 
     const claimPayload = JSON.parse(
-      mockInsertSignedClaim.mock.calls[0][0].claimPayload
+      mockInsertSignedClaim.mock.calls[0]?.[0].claimPayload
     );
     expect(claimPayload.data.faceMatchPassed).toBe(false);
   });
@@ -395,7 +395,7 @@ describe("passportChip.submitResult", () => {
     });
 
     const claimPayload = JSON.parse(
-      mockInsertSignedClaim.mock.calls[0][0].claimPayload
+      mockInsertSignedClaim.mock.calls[0]?.[0].claimPayload
     );
     expect(claimPayload.data.faceMatchPassed).toBe(false);
   });
@@ -431,7 +431,7 @@ describe("passportChip.submitResult", () => {
       })
     );
     const claimPayload = JSON.parse(
-      mockInsertSignedClaim.mock.calls[0][0].claimPayload
+      mockInsertSignedClaim.mock.calls[0]?.[0].claimPayload
     );
     expect(claimPayload.data.sanctionsCleared).toBe(false);
   });
@@ -473,7 +473,7 @@ describe("passportChip.submitResult", () => {
       result: resultWithDocNumber as Record<string, unknown>,
     });
 
-    const createCall = mockCreateVerification.mock.calls[0][0];
+    const createCall = mockCreateVerification.mock.calls[0]?.[0];
     expect(createCall.dedupKey).toMatch(SHA256_HEX_RE);
   });
 
@@ -498,7 +498,7 @@ describe("passportChip.submitResult", () => {
     const caller = await createCaller(authedSession);
     await caller.submitResult(validInput());
 
-    const createCall = mockCreateVerification.mock.calls[0][0];
+    const createCall = mockCreateVerification.mock.calls[0]?.[0];
     expect(createCall.dedupKey).toBeNull();
     expect(mockDedupKeyExistsForOtherUser).not.toHaveBeenCalled();
   });

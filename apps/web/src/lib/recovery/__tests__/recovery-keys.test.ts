@@ -116,8 +116,11 @@ describe("recovery-keys ML-KEM round-trip", () => {
 
     const envelope: RecoveryEnvelope = JSON.parse(wrappedDek);
     const kemBytes = Buffer.from(envelope.kemCipherText, "base64");
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    kemBytes[0] ^= 0xff;
+    const kemByte0 = kemBytes[0];
+    if (kemByte0 !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      kemBytes[0] = kemByte0 ^ 0xff;
+    }
     envelope.kemCipherText = kemBytes.toString("base64");
 
     expect(() =>
@@ -131,8 +134,11 @@ describe("recovery-keys ML-KEM round-trip", () => {
 
     const envelope: RecoveryEnvelope = JSON.parse(wrappedDek);
     const ctBytes = Buffer.from(envelope.ciphertext, "base64");
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    ctBytes[0] ^= 0xff;
+    const ctByte0 = ctBytes[0];
+    if (ctByte0 !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      ctBytes[0] = ctByte0 ^ 0xff;
+    }
     envelope.ciphertext = ctBytes.toString("base64");
 
     expect(() =>
@@ -146,8 +152,11 @@ describe("recovery-keys ML-KEM round-trip", () => {
 
     const envelope: RecoveryEnvelope = JSON.parse(wrappedDek);
     const ivBytes = Buffer.from(envelope.iv, "base64");
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    ivBytes[0] ^= 0xff;
+    const ivByte0 = ivBytes[0];
+    if (ivByte0 !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      ivBytes[0] = ivByte0 ^ 0xff;
+    }
     envelope.iv = ivBytes.toString("base64");
 
     expect(() =>

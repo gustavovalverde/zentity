@@ -113,7 +113,7 @@ export function getUserFriendlyError(error: unknown): string {
 
   // Extract the reason from viem/wagmi errors
   const reasonMatch = ERROR_REASON_PATTERN.exec(msg);
-  if (reasonMatch) {
+  if (reasonMatch?.[1]) {
     return reasonMatch[1];
   }
 

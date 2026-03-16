@@ -147,7 +147,7 @@ for (const asset of assets) {
       );
     }
     fs.mkdirSync(path.dirname(asset.to), { recursive: true });
-    fs.writeFileSync(asset.to, Buffer.from(match[1], "base64"));
+    fs.writeFileSync(asset.to, Buffer.from(match[1] ?? "", "base64"));
     continue;
   }
 

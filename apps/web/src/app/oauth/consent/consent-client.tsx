@@ -67,7 +67,7 @@ function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
     );
   }
 
-  const letter = (meta?.name ?? "?")[0].toUpperCase();
+  const letter = (meta?.name ?? "?")[0]?.toUpperCase() ?? "?";
   return (
     <div className="flex size-12 items-center justify-center rounded-full bg-muted font-semibold text-lg text-muted-foreground">
       {letter}

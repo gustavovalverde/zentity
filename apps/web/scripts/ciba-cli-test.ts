@@ -106,7 +106,7 @@ function parseArgs(): Args {
         i++;
         break;
       case "--timeout":
-        args.timeout = Number.parseInt(next, 10);
+        args.timeout = Number.parseInt(next ?? "30000", 10);
         i++;
         break;
       case "--help":

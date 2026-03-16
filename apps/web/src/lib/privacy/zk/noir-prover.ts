@@ -285,7 +285,11 @@ export async function generateBaseCommitmentNoir(
     userIdHashField: input.userIdHashField,
   });
 
-  return result.publicInputs[0];
+  const commitment = result.publicInputs[0];
+  if (!commitment) {
+    throw new Error("Base commitment proof returned no public inputs.");
+  }
+  return commitment;
 }
 
 /**

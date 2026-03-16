@@ -149,7 +149,7 @@ export async function createRecoveryKeySet(params: {
   const round1Results = await Promise.all(
     signerInfos.map((info, index) =>
       fetchJson<{ package: string }>(
-        `${signerEndpoints[index]}/signer/dkg/round1`,
+        `${signerEndpoints[index] ?? ""}/signer/dkg/round1`,
         {
           method: "POST",
           body: JSON.stringify({
@@ -166,7 +166,7 @@ export async function createRecoveryKeySet(params: {
 
   const round1Packages = toParticipantMap(
     round1Results.map((result, index) => [
-      signerInfos[index].participant_id || index + 1,
+      signerInfos[index]?.participant_id || index + 1,
       result.package,
     ])
   );
@@ -177,7 +177,7 @@ export async function createRecoveryKeySet(params: {
       headers: getAuthHeaders(),
       body: JSON.stringify({
         session_id: sessionId,
-        participant_id: signerInfos[index].participant_id || index + 1,
+        participant_id: signerInfos[index]?.participant_id || index + 1,
         package: result.package,
       }),
     });
@@ -202,7 +202,7 @@ export async function createRecoveryKeySet(params: {
   );
 
   for (const [fromIndex, round2] of round2Results.entries()) {
-    const fromId = signerInfos[fromIndex].participant_id || fromIndex + 1;
+    const fromId = signerInfos[fromIndex]?.participant_id || fromIndex + 1;
     const packages = round2.packages ?? {};
     for (const [toId, encrypted] of Object.entries(packages)) {
       await fetchJson(`${coordinatorUrl}/dkg/round2`, {

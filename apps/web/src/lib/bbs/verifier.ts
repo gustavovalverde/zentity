@@ -30,7 +30,10 @@ export async function verifyProof(
     const messages: Record<number, Uint8Array> = {};
     for (let i = 0; i < proof.revealedIndices.length; i++) {
       const index = proof.revealedIndices[i];
-      messages[index] = proof.revealedMessages[i];
+      const message = proof.revealedMessages[i];
+      if (index !== undefined && message !== undefined) {
+        messages[index] = message;
+      }
     }
 
     // Validate we have correct number of revealed messages

@@ -403,8 +403,10 @@ export function useLivenessCamera(
       const step = Math.max(1, Math.floor(data.length / 4 / sampleSize));
       for (let i = 0; i < sampleSize; i++) {
         const idx = i * step * 4;
-        totalBrightness +=
-          data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+        const r = data[idx] ?? 0;
+        const g = data[idx + 1] ?? 0;
+        const b = data[idx + 2] ?? 0;
+        totalBrightness += r * 0.299 + g * 0.587 + b * 0.114;
       }
       const avgBrightness = totalBrightness / sampleSize;
 
@@ -414,9 +416,9 @@ export function useLivenessCamera(
           brightnessTarget / Math.max(avgBrightness, 1)
         );
         for (let i = 0; i < data.length; i += 4) {
-          data[i] = Math.min(255, data[i] * multiplier);
-          data[i + 1] = Math.min(255, data[i + 1] * multiplier);
-          data[i + 2] = Math.min(255, data[i + 2] * multiplier);
+          data[i] = Math.min(255, (data[i] ?? 0) * multiplier);
+          data[i + 1] = Math.min(255, (data[i + 1] ?? 0) * multiplier);
+          data[i + 2] = Math.min(255, (data[i + 2] ?? 0) * multiplier);
         }
         ctx.putImageData(imageData, 0, 0);
       }

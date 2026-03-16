@@ -52,13 +52,16 @@ export function parseDob(dateOfBirth: string | undefined): Date | undefined {
     return;
   }
 
-  let year: number;
-  let month: number;
-  let day: number;
-
   const first = parts[0];
   const middle = parts[1];
   const last = parts[2];
+  if (first === undefined || middle === undefined || last === undefined) {
+    return;
+  }
+
+  let year: number;
+  let month: number;
+  let day: number;
 
   if (FOUR_DIGIT_YEAR_PATTERN.test(first)) {
     // YYYY-MM-DD or YYYY/MM/DD

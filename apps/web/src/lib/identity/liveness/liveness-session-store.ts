@@ -51,12 +51,15 @@ export function createLivenessSession(
 
   if (requireHeadTurn) {
     const headTurns: ChallengeType[] = ["turn_left", "turn_right"];
-    challenges.push(headTurns[randomInt(headTurns.length)]);
+    const picked = headTurns[randomInt(headTurns.length)];
+    if (picked !== undefined) {
+      challenges.push(picked);
+    }
   }
 
   while (challenges.length < count) {
     const next = available[randomInt(available.length)];
-    if (!challenges.includes(next)) {
+    if (next !== undefined && !challenges.includes(next)) {
       challenges.push(next);
     }
   }
@@ -64,7 +67,12 @@ export function createLivenessSession(
   // Fisher-Yates shuffle with cryptographically secure randomness
   for (let i = challenges.length - 1; i > 0; i--) {
     const j = randomInt(i + 1);
-    [challenges[i], challenges[j]] = [challenges[j], challenges[i]];
+    const a = challenges[i];
+    const b = challenges[j];
+    if (a !== undefined && b !== undefined) {
+      challenges[i] = b;
+      challenges[j] = a;
+    }
   }
 
   const session: LivenessSession = {
@@ -94,6 +102,9 @@ export function getChallengeInfo(
     return null;
   }
   const challengeType = session.challenges[session.currentIndex];
+  if (challengeType === undefined) {
+    return null;
+  }
   const meta = CHALLENGE_INSTRUCTIONS[challengeType];
   return {
     challengeType,

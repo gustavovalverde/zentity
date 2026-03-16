@@ -79,7 +79,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       expect(parts).toHaveLength(3);
 
       const header = JSON.parse(
-        Buffer.from(parts[0], "base64url").toString("utf-8")
+        Buffer.from(parts[0] ?? "", "base64url").toString("utf-8")
       );
       expect(header.alg).toBe("EdDSA");
       expect(header.typ).toBe("JWT");
@@ -109,7 +109,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       });
 
       const header = JSON.parse(
-        Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
       );
       expect(header.alg).toBe("RS256");
       expect(header.kid).toBe(rsaKid);
@@ -146,7 +146,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         });
 
         const header = JSON.parse(
-          Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+          Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
         );
         expect(header.alg).toBe("EdDSA");
         expect(header.kid).toBe(edDsaKid);
@@ -176,7 +176,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         });
 
         const header = JSON.parse(
-          Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+          Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
         );
         expect(header.alg).toBe("ML-DSA-65");
       } finally {
@@ -222,7 +222,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       });
 
       const header = JSON.parse(
-        Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
       );
       expect(header.alg).toBe("RS256");
     });
@@ -247,7 +247,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         const token = await signJwt({ aud: testClientId, sub: "user-2" });
 
         const header = JSON.parse(
-          Buffer.from(token.split(".")[0], "base64url").toString("utf-8")
+          Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
         );
         expect(header.alg).toBe("EdDSA");
       } finally {

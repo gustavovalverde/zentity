@@ -120,6 +120,7 @@ export function useDocumentProcessing(
       setPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     }
+    return undefined;
   }, [idDocument]);
 
   // Timeout for long-running processing
@@ -222,7 +223,7 @@ export function useDocumentProcessing(
 
         if (hasExpiredDocument) {
           setProcessingState("rejected");
-          setUploadError(ERROR_RECOVERY_TIPS.document_expired);
+          setUploadError(ERROR_RECOVERY_TIPS.document_expired ?? null);
           toast.error("Document expired", {
             description: ERROR_RECOVERY_TIPS.document_expired,
           });

@@ -215,8 +215,9 @@ export function OnChainAttestation({
 
   // Auto-select first network if none selected
   useEffect(() => {
-    if (networks && networks.length > 0 && !selectedNetwork) {
-      setSelectedNetwork(networks[0].id);
+    const first = networks?.[0];
+    if (first && !selectedNetwork) {
+      setSelectedNetwork(first.id);
     }
   }, [networks, selectedNetwork]);
 

@@ -139,12 +139,14 @@ function isSignatureValid(
   userAddress: string
 ): boolean {
   try {
+    const verificationTypeFields = eip712.types.UserDecryptRequestVerification;
+    if (!verificationTypeFields) {
+      return false;
+    }
     const recovered = ethers.verifyTypedData(
       eip712.domain,
       {
-        UserDecryptRequestVerification: [
-          ...eip712.types.UserDecryptRequestVerification,
-        ],
+        UserDecryptRequestVerification: [...verificationTypeFields],
       },
       eip712.message,
       signature
@@ -219,12 +221,12 @@ class FhevmDecryptionSignatureStorageKey {
     );
 
     // Hash the EIP-712 structure to create a compact, unique identifier
+    const emptyVerificationTypes =
+      emptyEIP712.types.UserDecryptRequestVerification ?? [];
     const hash = ethers.TypedDataEncoder.hash(
       emptyEIP712.domain,
       {
-        UserDecryptRequestVerification: [
-          ...emptyEIP712.types.UserDecryptRequestVerification,
-        ],
+        UserDecryptRequestVerification: [...emptyVerificationTypes],
       },
       emptyEIP712.message
     );
@@ -555,7 +557,8 @@ export class FhevmDecryptionSignature {
         return null;
       }
 
-      const nonceField = eip712.types.UserDecryptRequestVerification?.find(
+      const verificationTypes = eip712.types.UserDecryptRequestVerification;
+      const nonceField = verificationTypes?.find(
         (field) => field.name === "nonce"
       );
       if (nonceField) {
@@ -569,12 +572,12 @@ export class FhevmDecryptionSignature {
       }
 
       // Try standard ethers.js signTypedData first
+      const signVerificationTypes =
+        eip712.types.UserDecryptRequestVerification ?? [];
       let signature = await signer.signTypedData(
         eip712.domain,
         {
-          UserDecryptRequestVerification: [
-            ...eip712.types.UserDecryptRequestVerification,
-          ],
+          UserDecryptRequestVerification: [...signVerificationTypes],
         },
         eip712.message
       );

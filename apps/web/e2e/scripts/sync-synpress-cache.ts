@@ -44,7 +44,12 @@ if (entries.length === 0) {
 }
 
 // Rename the first cache directory to expected hash
-const existingCache = join(cacheDir, entries[0]);
+const firstEntry = entries[0];
+if (!firstEntry) {
+  console.error("No valid cache entry found.");
+  process.exit(1);
+}
+const existingCache = join(cacheDir, firstEntry);
 console.log(`Renaming ${existingCache} -> ${expectedPath}`);
 renameSync(existingCache, expectedPath);
 console.log("Cache synced successfully!");

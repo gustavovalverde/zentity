@@ -370,7 +370,10 @@ async function tryLoadWithPrf(
     userId,
     wrappedDek: selectedWrapper.wrappedDek,
     prfOutput,
-    prfSalt: saltByCredential[selectedWrapper.credentialId],
+    prfSalt: requireCredentialPrfSalt(
+      saltByCredential,
+      selectedWrapper.credentialId
+    ),
   });
 
   const plaintext = await decryptWithDek({

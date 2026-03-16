@@ -103,7 +103,7 @@ describe("sendWebPush", () => {
     expect(transport.sendNotification).toHaveBeenCalledTimes(2);
     expect(transport.sendNotification).toHaveBeenCalledWith(
       {
-        endpoint: subs[0].endpoint,
+        endpoint: subs[0]?.endpoint,
         keys: { p256dh: "key1", auth: "auth1" },
       },
       expect.any(String),
@@ -177,7 +177,7 @@ describe("sendWebPush", () => {
       transport
     );
 
-    const serialized = transport.sendNotification.mock.calls[0][1] as string;
+    const serialized = transport.sendNotification.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(serialized);
     expect(parsed.data.requiresVaultUnlock).toBe(true);
   });

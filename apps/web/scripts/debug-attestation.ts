@@ -10,7 +10,7 @@ async function getSessionCookie(): Promise<string> {
   if (!cookie) {
     throw new Error("No session cookie returned. Make sure you're signed in.");
   }
-  return cookie.split(";")[0];
+  return cookie.split(";")[0] ?? cookie;
 }
 
 async function fetchTrpc(cookie: string): Promise<unknown> {

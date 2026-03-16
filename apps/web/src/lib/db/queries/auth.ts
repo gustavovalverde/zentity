@@ -22,7 +22,7 @@ export async function updateUserEmail(
   userId: string,
   email: string
 ): Promise<void> {
-  const localPart = email.split("@")[0];
+  const localPart = email.split("@")[0] ?? email;
   const name = localPart.replaceAll(/[._+-]+/g, " ").trim() || localPart;
 
   await db

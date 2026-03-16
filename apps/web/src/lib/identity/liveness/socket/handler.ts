@@ -475,13 +475,17 @@ function advanceAfterCountdown(
   session.baselineFrame = frameDataUrl;
   session.baselineHappy = session.lastHappyScore ?? null;
 
+  const firstChallenge = session.challenges[0];
+  if (firstChallenge === undefined) {
+    throw new Error("Session has no challenges configured");
+  }
   session.phase = "challenging";
   session.challenge = {
-    type: session.challenges[0],
+    type: firstChallenge,
     index: 0,
     total: session.challenges.length,
     progress: 0,
-    hint: getHintForChallenge(session.challenges[0]),
+    hint: getHintForChallenge(firstChallenge),
   };
   session.challengeAwaitingClient = true;
   session.challengeRequestedAt = Date.now();
@@ -573,6 +577,9 @@ function handleChallengePhase(
   }
 
   const challengeType = session.challenges[session.currentIndex];
+  if (challengeType === undefined) {
+    return;
+  }
   const { passed, progress, hint } = evaluateChallenge(
     challengeType,
     face,
@@ -607,6 +614,9 @@ function handleChallengePhase(
       } else {
         // Next challenge
         const nextType = session.challenges[session.currentIndex];
+        if (nextType === undefined) {
+          return;
+        }
         session.challenge = {
           type: nextType,
           index: session.currentIndex,

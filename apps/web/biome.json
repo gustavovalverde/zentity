@@ -105,26 +105,6 @@
       }
     },
     {
-      "includes": ["src/hooks/**/*.ts"],
-      "linter": {
-        "rules": {
-          "nursery": {
-            "noFloatingPromises": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/app/(dashboard)/**/*.tsx", "src/app/demo/**/*.tsx"],
-      "linter": {
-        "rules": {
-          "nursery": {
-            "noFloatingPromises": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["src/app/layout.tsx"],
       "linter": {
         "rules": {

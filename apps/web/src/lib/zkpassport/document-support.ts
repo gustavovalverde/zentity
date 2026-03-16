@@ -61,10 +61,17 @@ export async function buildCountryDocumentList(): Promise<
   // Query support for all countries in parallel (~1ms, all sync lookups)
   const entries = await Promise.all(
     allAlpha3.map(async (alpha3) => {
-      const [passport, id_card, residence_permit] = await Promise.all(
+      const results = await Promise.all(
         DOC_TYPES.map((t) => client.isDocumentSupported(alpha3, undefined, t))
       );
-      return { alpha3, support: { passport, id_card, residence_permit } };
+      return {
+        alpha3,
+        support: {
+          passport: results[0] ?? 0,
+          id_card: results[1] ?? 0,
+          residence_permit: results[2] ?? 0,
+        },
+      };
     })
   );
 

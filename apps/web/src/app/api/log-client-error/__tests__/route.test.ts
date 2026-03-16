@@ -37,7 +37,7 @@ describe("log-client-error route", () => {
     const response = await POST(req as unknown as NextRequest);
     expect(response.status).toBe(200);
 
-    const payload = logError.mock.calls[0][0] as Record<string, unknown>;
+    const payload = logError.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.path).toBe("/path");
     expect(payload.message).toBeUndefined();
     expect(payload.stack).toBeUndefined();
@@ -59,7 +59,7 @@ describe("log-client-error route", () => {
     const response = await POST(req as unknown as NextRequest);
     expect(response.status).toBe(200);
 
-    const payload = logError.mock.calls[0][0] as Record<string, unknown>;
+    const payload = logError.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.path).toBe("/other");
     expect(String(payload.message)).toContain("[redacted-email]");
     expect(String(payload.message)).toContain("[redacted-number]");

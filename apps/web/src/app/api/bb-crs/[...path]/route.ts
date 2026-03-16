@@ -51,7 +51,11 @@ export async function GET(
   if (rangeHeader) {
     const match = RANGE_PATTERN.exec(rangeHeader);
     if (match) {
-      const start = Number.parseInt(match[1], 10);
+      const startStr = match[1];
+      if (!startStr) {
+        return NextResponse.json({ error: "Bad range" }, { status: 416 });
+      }
+      const start = Number.parseInt(startStr, 10);
       const end = match[2] ? Number.parseInt(match[2], 10) : stat.size - 1;
       const chunkSize = end - start + 1;
 

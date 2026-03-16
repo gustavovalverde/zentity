@@ -173,8 +173,12 @@ describe("opaque credentials", () => {
       ciphertext: string;
     };
     const ciphertext = base64ToBytes(wrapper.ciphertext);
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    ciphertext[ciphertext.length - 1] ^= 0xff;
+    const lastIdx = ciphertext.length - 1;
+    const lastByte = ciphertext[lastIdx];
+    if (lastByte !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      ciphertext[lastIdx] = lastByte ^ 0xff;
+    }
     wrapper.ciphertext = bytesToBase64(ciphertext);
     const tamperedWrappedDek = JSON.stringify(wrapper);
 
@@ -215,8 +219,12 @@ describe("opaque credentials", () => {
     });
 
     const tamperedBlob = new Uint8Array(envelope.encryptedBlob);
-    // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-    tamperedBlob[tamperedBlob.length - 1] ^= 0xff;
+    const blobLastIdx = tamperedBlob.length - 1;
+    const blobLastByte = tamperedBlob[blobLastIdx];
+    if (blobLastByte !== undefined) {
+      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
+      tamperedBlob[blobLastIdx] = blobLastByte ^ 0xff;
+    }
 
     const unwrappedDek = await unwrapDekWithOpaqueExport({
       secretId,
@@ -317,8 +325,11 @@ describe("opaque credentials", () => {
       const dek = generateDek();
       const correctExportKey = crypto.getRandomValues(new Uint8Array(64));
       const wrongExportKey = new Uint8Array(correctExportKey);
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional single-byte change for test
-      wrongExportKey[0] ^= 0x01;
+      const wrongByte0 = wrongExportKey[0];
+      if (wrongByte0 !== undefined) {
+        // biome-ignore lint/suspicious/noBitwiseOperators: intentional single-byte change for test
+        wrongExportKey[0] = wrongByte0 ^ 0x01;
+      }
 
       const wrappedDek = await wrapDekWithOpaqueExport({
         secretId,

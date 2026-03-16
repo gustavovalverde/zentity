@@ -135,6 +135,7 @@ export function ComplianceAccessCard({
         if (chainId === 11_155_111) {
           return { gas: BigInt(1_000_000) }; // Sepolia (fhEVM operations need more gas)
         }
+        return undefined;
       })();
 
       await writeContractAsync({

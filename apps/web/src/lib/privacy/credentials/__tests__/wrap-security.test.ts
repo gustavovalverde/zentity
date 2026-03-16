@@ -91,7 +91,7 @@ describe("wrap binding pitfall tests", () => {
     };
 
     const ciphertextBytes = base64ToBytes(parsed.ciphertext);
-    ciphertextBytes[0] = (ciphertextBytes[0] + 1) % 256;
+    ciphertextBytes[0] = ((ciphertextBytes[0] ?? 0) + 1) % 256;
     parsed.ciphertext = bytesToBase64(ciphertextBytes);
 
     await expect(

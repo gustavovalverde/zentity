@@ -16,7 +16,7 @@ export function parseAcrValues(raw: string): string[] {
 
 export function extractTierFromAcr(acr: string): number | null {
   const match = ACR_TIER_PATTERN.exec(acr);
-  return match ? Number.parseInt(match[1], 10) : null;
+  return match?.[1] ? Number.parseInt(match[1], 10) : null;
 }
 
 /**

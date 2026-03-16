@@ -121,6 +121,17 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 5. **User experience** - Accessibility, performance, and usability considerations
 6. **Documentation** - Add comments for complex logic, but prefer self-documenting code
 
+## TypeScript Patterns
+
+Strict flags enabled: `noUncheckedIndexedAccess`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noImplicitOverride`.
+
+- **Indexed access**: `array[i]` returns `T | undefined`. Always check before use: `const item = arr[i]; if (!item) return;`
+- **Type assertions**: Use `as` only at system boundaries (API responses, external data). Prefer type narrowing with `if` guards.
+- **Discriminated unions** over boolean flags for state machines and result types.
+- **`void` prefix** for intentional fire-and-forget: `void someAsyncFn()` (Biome enforces `noFloatingPromises` globally).
+- **Optional chaining** over non-null assertions: `arr[0]?.prop` not `arr[0]!.prop` (Biome forbids `!` assertions).
+- **Explicit returns**: Every code path must return. Add `return undefined` for guard clauses.
+
 ---
 
 Most formatting and common issues are automatically fixed by Biome. Run `pnpm exec ultracite fix` before committing to ensure compliance.

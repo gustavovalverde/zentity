@@ -43,7 +43,8 @@ function generateConfetti(count: number): ConfettiParticle[] {
   return Array.from({ length: count }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
-    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    color:
+      CONFETTI_COLORS[i % CONFETTI_COLORS.length] ?? "oklch(0.723 0.219 142.5)",
     delay: Math.random() * 0.3,
     size: 6 + Math.random() * 4,
   }));
@@ -70,6 +71,7 @@ export function SuccessAnimation({
       }, autoHideDuration);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [autoHideDuration, onComplete]);
 
   if (!visible) {

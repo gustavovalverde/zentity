@@ -132,7 +132,11 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
       }
 
       // Convert handles and proof to hex strings
-      const encryptedAmount = toHex(encrypted.handles[0]);
+      const handle = encrypted.handles[0];
+      if (!handle) {
+        throw new Error("Encrypted output missing handle");
+      }
+      const encryptedAmount = toHex(handle);
       const inputProof = toHex(encrypted.inputProof);
 
       // Submit transaction - user signs with their wallet

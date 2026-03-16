@@ -26,6 +26,7 @@ export function getPasswordLengthError(password: string): string | undefined {
   if (password.length > PASSWORD_MAX_LENGTH) {
     return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
   }
+  return undefined;
 }
 
 export function getPasswordSimilarityError(
@@ -61,6 +62,7 @@ export function getPasswordSimilarityError(
   ) {
     return "Password can't contain your document number";
   }
+  return undefined;
 }
 
 export function getPasswordRequirementStatus(

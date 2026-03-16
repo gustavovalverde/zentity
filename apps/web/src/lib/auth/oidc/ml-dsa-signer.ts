@@ -116,7 +116,13 @@ export function verifyMlDsaJwt(
     return null;
   }
 
-  const [encodedHeader, encodedPayload, encodedSignature] = parts;
+  const encodedHeader = parts[0];
+  const encodedPayload = parts[1];
+  const encodedSignature = parts[2];
+  if (!(encodedHeader && encodedPayload && encodedSignature)) {
+    return null;
+  }
+
   const signingInput = new TextEncoder().encode(
     `${encodedHeader}.${encodedPayload}`
   );

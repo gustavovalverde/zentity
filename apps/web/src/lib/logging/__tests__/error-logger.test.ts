@@ -33,7 +33,7 @@ describe("error logger", () => {
     expect(fingerprint).toMatch(FINGERPRINT_PATTERN);
     expect(log.error).toHaveBeenCalled();
 
-    const payload = log.error.mock.calls[0][0] as Record<string, unknown>;
+    const payload = log.error.mock.calls[0]?.[0] as Record<string, unknown>;
     const error = payload.error as { message?: string; stack?: string };
 
     expect(error.message).toContain("[redacted-email]");
@@ -57,7 +57,7 @@ describe("error logger", () => {
   it("sanitizes warning messages", () => {
     logWarn("Email test@example.com", {}, log as any);
     expect(log.warn).toHaveBeenCalled();
-    const message = log.warn.mock.calls[0][1] as string;
+    const message = log.warn.mock.calls[0]?.[1] as string;
     expect(message).toContain("[redacted-email]");
   });
 });
