@@ -12,7 +12,7 @@ dependencies = [
     "iso3166==2.1.1",
     "mrz==0.6.2",
     "numpy==2.4.2",
-    "onnxruntime==1.24.1",
+    "onnxruntime==1.24.3",
     "opencv-python-headless==4.13.0.92",
     "opentelemetry-api==1.39.1",
     "opentelemetry-exporter-otlp==1.39.1",
