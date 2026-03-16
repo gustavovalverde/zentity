@@ -14,7 +14,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import { decodeJwt } from "jose";
 
 import { getAssuranceState } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
@@ -31,6 +30,7 @@ import {
   resolveRequestContext,
 } from "@/lib/observability/request-context";
 import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
+import { verifyAccessToken } from "@/lib/trpc/jwt-session";
 
 type SpanAttributes = Record<string, string | number | boolean>;
 
@@ -76,11 +76,8 @@ async function resolveOAuthSession(headers: Headers): Promise<Session | null> {
 }
 
 async function resolveJwtSession(token: string): Promise<Session | null> {
-  const payload = decodeJwt(token);
-  if (!(payload.sub && payload.exp)) {
-    return null;
-  }
-  if (payload.exp * 1000 < Date.now()) {
+  const payload = await verifyAccessToken(token);
+  if (!payload?.sub) {
     return null;
   }
   return await buildSessionFromUserId(payload.sub);
