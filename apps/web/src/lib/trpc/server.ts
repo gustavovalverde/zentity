@@ -11,6 +11,7 @@ import type { FeatureName } from "@/lib/assurance/types";
 
 import { createHash, randomUUID } from "node:crypto";
 
+import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
@@ -48,38 +49,63 @@ interface TrpcContext {
   traceId?: string;
 }
 
-const AUTH_HEADER_RE = /^(?:DPoP|Bearer)\s+(.+)$/i;
+const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
+
+const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
 
 /**
  * Resolve a user from an OAuth access token (DPoP or Bearer).
  * Handles both JWT tokens (decode + sub lookup) and opaque tokens (hash lookup).
+ * Validates DPoP proof-of-possession when the token is DPoP-bound (cnf.jkt).
  */
-async function resolveOAuthSession(headers: Headers): Promise<Session | null> {
-  const authHeader = headers.get("authorization");
+async function resolveOAuthSession(req: Request): Promise<Session | null> {
+  const authHeader = req.headers.get("authorization");
   if (!authHeader) {
     return null;
   }
 
   const match = authHeader.match(AUTH_HEADER_RE);
-  if (!match?.[1]) {
+  if (!(match?.[1] && match[2])) {
     return null;
   }
 
-  const token = match[1];
+  const scheme = match[1];
+  const token = match[2];
 
   // JWT tokens start with "eyJ" (base64url-encoded "{")
   if (token.startsWith("eyJ")) {
-    return await resolveJwtSession(token);
+    return await resolveJwtSession(token, scheme, req);
   }
 
   return await resolveOpaqueSession(token);
 }
 
-async function resolveJwtSession(token: string): Promise<Session | null> {
+async function resolveJwtSession(
+  token: string,
+  scheme: string,
+  req: Request
+): Promise<Session | null> {
   const payload = await verifyAccessToken(token);
   if (!payload?.sub) {
     return null;
   }
+
+  // Enforce DPoP proof-of-possession for DPoP-bound tokens
+  const cnf = payload.cnf as { jkt?: string } | undefined;
+  if (cnf?.jkt) {
+    if (scheme.toLowerCase() !== "dpop") {
+      return null;
+    }
+    try {
+      await dpopValidator({
+        request: req,
+        tokenPayload: payload as Record<string, unknown>,
+      });
+    } catch {
+      return null;
+    }
+  }
+
   return await buildSessionFromUserId(payload.sub);
 }
 
@@ -160,7 +186,7 @@ export async function createTrpcContext(args: {
 
   if (!session) {
     try {
-      session = await resolveOAuthSession(args.req.headers);
+      session = await resolveOAuthSession(args.req);
     } catch (error) {
       logError(error, {
         requestId: requestContext.requestId,

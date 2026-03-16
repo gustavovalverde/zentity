@@ -202,6 +202,7 @@ export function AgentPoliciesClient() {
 
       <BoundaryFormDialog
         boundary={editTarget}
+        key={editTarget?.id ?? "create"}
         onClose={() => {
           setShowCreate(false);
           setEditTarget(null);

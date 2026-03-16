@@ -216,16 +216,21 @@ export function useCibaFlow(providerId: string): CibaFlowState {
 
             const body = (await res.json()) as Record<string, unknown>;
             const result = classifyPollResponse(res.status, body);
-            handlePollResult(result, () => {
+            const restartPoll = () => {
               if (pollRef.current) {
                 clearInterval(pollRef.current);
-                intervalRef.current += 5;
-                pollRef.current = setInterval(
-                  fetchTokens,
-                  intervalRef.current * 1000
-                );
               }
-            });
+              intervalRef.current += 5;
+              pollRef.current = setInterval(
+                fetchTokens,
+                intervalRef.current * 1000
+              );
+            };
+            handlePollResult(result, restartPoll);
+            // Resume polling if ping-triggered fetch returned pending (pollRef was cleared)
+            if (result.kind === "pending" && !pollRef.current) {
+              restartPoll();
+            }
           } catch {
             // Network error — retry on next interval
           } finally {

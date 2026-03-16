@@ -642,7 +642,11 @@ async function beforeTokenExtractClaimsParameter(ctx: HookCtx) {
 
     const parsed = parseClaimsParameter(stored.query?.claims);
     if (parsed) {
-      stageClaimsParameter(stored.userId, parsed);
+      const clientId =
+        typeof stored.query?.client_id === "string"
+          ? stored.query.client_id
+          : "unknown";
+      stageClaimsParameter(stored.userId, clientId, parsed);
     }
   } catch {
     // Malformed verification value — skip claims extraction

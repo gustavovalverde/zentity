@@ -55,16 +55,36 @@ function getEntry(userId: string): ClaimsEntry | null {
   return entry;
 }
 
-/** Store a parsed claims parameter for a user during token exchange. */
+/** Store a parsed claims parameter keyed by userId + clientId. */
 export function stageClaimsParameter(
   userId: string,
+  clientId: string,
   claims: ParsedClaimsParameter
 ): void {
   evictExpired();
-  pendingClaims.set(userId, {
+  pendingClaims.set(`${userId}:${clientId}`, {
     claims,
     expiresAt: Date.now() + CLAIMS_TTL_MS,
   });
+}
+
+/**
+ * Resolve the composite key for a user.
+ * If clientId is provided, use it directly. Otherwise, prefix-scan for a
+ * unique match (same pattern as ephemeral-identity-claims.ts).
+ */
+function resolveKey(userId: string, clientId?: string): string | null {
+  if (clientId) {
+    return `${userId}:${clientId}`;
+  }
+  const prefix = `${userId}:`;
+  const matches: string[] = [];
+  for (const key of pendingClaims.keys()) {
+    if (key.startsWith(prefix)) {
+      matches.push(key);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
 }
 
 /**
@@ -72,16 +92,21 @@ export function stageClaimsParameter(
  * Leaves the userinfo portion intact for a subsequent userinfo call.
  */
 export function consumeIdTokenClaims(
-  userId: string
+  userId: string,
+  clientId?: string
 ): ClaimsRequest | undefined {
-  const entry = getEntry(userId);
+  const key = resolveKey(userId, clientId);
+  if (!key) {
+    return undefined;
+  }
+  const entry = getEntry(key);
   if (!entry) {
     return undefined;
   }
   const idTokenClaims = entry.claims.id_token;
   entry.claims.id_token = undefined;
   if (!entry.claims.userinfo) {
-    pendingClaims.delete(userId);
+    pendingClaims.delete(key);
   }
   return idTokenClaims;
 }
@@ -91,14 +116,19 @@ export function consumeIdTokenClaims(
  * Deletes the entry entirely (terminal consumer).
  */
 export function consumeUserinfoClaims(
-  userId: string
+  userId: string,
+  clientId?: string
 ): ClaimsRequest | undefined {
-  const entry = getEntry(userId);
+  const key = resolveKey(userId, clientId);
+  if (!key) {
+    return undefined;
+  }
+  const entry = getEntry(key);
   if (!entry) {
     return undefined;
   }
   const userinfoClaims = entry.claims.userinfo;
-  pendingClaims.delete(userId);
+  pendingClaims.delete(key);
   return userinfoClaims;
 }
 

@@ -131,7 +131,7 @@ describe("claims parameter lifecycle", () => {
   });
 
   it("consumeIdTokenClaims returns and removes id_token portion only", () => {
-    stageClaimsParameter("test-user", {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { acr: null },
       userinfo: { email: null },
     });
@@ -145,7 +145,7 @@ describe("claims parameter lifecycle", () => {
   });
 
   it("consumeUserinfoClaims returns and removes entire entry", () => {
-    stageClaimsParameter("test-user", {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { acr: null },
       userinfo: { email: null },
     });
@@ -164,7 +164,7 @@ describe("claims parameter lifecycle", () => {
   });
 
   it("expires entries after TTL", () => {
-    stageClaimsParameter("test-user", {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { acr: null },
     });
 
@@ -174,11 +174,11 @@ describe("claims parameter lifecycle", () => {
     expect(consumeIdTokenClaims("test-user")).toBeUndefined();
   });
 
-  it("second stage for same user replaces the first", () => {
-    stageClaimsParameter("test-user", {
+  it("second stage for same user+client replaces the first", () => {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { acr: null },
     });
-    stageClaimsParameter("test-user", {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { email: null },
     });
 
@@ -186,8 +186,35 @@ describe("claims parameter lifecycle", () => {
     expect(idToken).toEqual({ email: null });
   });
 
+  it("different clients for same user are independent", () => {
+    stageClaimsParameter("test-user", "client-a", {
+      id_token: { acr: null },
+    });
+    stageClaimsParameter("test-user", "client-b", {
+      id_token: { email: null },
+    });
+
+    const a = consumeIdTokenClaims("test-user", "client-a");
+    expect(a).toEqual({ acr: null });
+
+    const b = consumeIdTokenClaims("test-user", "client-b");
+    expect(b).toEqual({ email: null });
+  });
+
+  it("prefix-scan fails when multiple clients exist (no clientId)", () => {
+    stageClaimsParameter("test-user", "client-a", {
+      id_token: { acr: null },
+    });
+    stageClaimsParameter("test-user", "client-b", {
+      id_token: { email: null },
+    });
+
+    // Without clientId, prefix-scan finds 2 matches → returns undefined
+    expect(consumeIdTokenClaims("test-user")).toBeUndefined();
+  });
+
   it("deletes entry when only id_token is present and consumed", () => {
-    stageClaimsParameter("test-user", {
+    stageClaimsParameter("test-user", "client-a", {
       id_token: { acr: null },
     });
 
