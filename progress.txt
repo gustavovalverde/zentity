@@ -310,3 +310,20 @@ Status: Complete
 - docs/oauth-integrations.md — userinfo-only delivery
 - docs/agentic-authorization.md — removed release handles, updated flows
 - CLAUDE.md — updated CIBA description
+
+## Userinfo-Only PII Delivery: Task 03
+Status: Complete
+
+### Changes
+1. E2E Playwright test: CIBA flow with identity scopes
+   - Full flow: DCR → bc-authorize → intent → stage → approve → poll → userinfo
+   - Asserts: userinfo returns PII (given_name, family_name, birthdate)
+   - Asserts: id_token contains zero PII fields (all 10 identity fields absent)
+   - Asserts: access_token has no release_handle
+   - Asserts: second userinfo call returns no PII (single-consume)
+2. E2E negative test: CIBA without identity scopes
+   - Asserts: userinfo returns no PII when no identity scopes granted
+   - Asserts: id_token has no PII fields
+
+### Files changed
+- apps/web/e2e/oidc/pii-delivery.spec.ts — new E2E test file
