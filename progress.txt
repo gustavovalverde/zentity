@@ -327,3 +327,46 @@ Status: Complete
 
 ### Files changed
 - apps/web/e2e/oidc/pii-delivery.spec.ts — new E2E test file
+
+## Task 04: tRPC JWT Signature Verification
+Status: Complete
+
+### Changes
+1. Replaced `decodeJwt` (decode-only) with `jwtVerify` (cryptographic) in tRPC OAuth session resolution
+2. Extracted `verifyAccessToken` into `jwt-session.ts` — validates signature via local JWKS, checks issuer
+3. `jwtVerify` natively handles expiry, no manual `exp` check needed
+4. 7 integration tests: valid JWT accepted, forged/unknown-kid/wrong-issuer/expired/no-sub/nonexistent-user all rejected
+
+### Architectural decisions
+- `createLocalJWKSet` reads keys from DB (same process) — no HTTP round-trip
+- Issuer check via `getAuthIssuer()` — must match `{APP_URL}/api/auth`
+- No audience enforcement — tokens carry different aud values for different clients
+- Extracted into separate module to avoid vitest module isolation issues with `auth.ts` import graph
+
+### Files changed
+- apps/web/src/lib/trpc/jwt-session.ts — new, verifyAccessToken with JWKS verification
+- apps/web/src/lib/trpc/server.ts — use verifyAccessToken, remove decodeJwt
+- apps/web/src/lib/trpc/__tests__/jwt-verification.integration.test.ts — 7 new tests
+
+## Task 06: CIBA Boundary Evaluation Pipeline
+Status: Complete
+
+### Changes
+1. Fixed authorization_details type flow: `evaluateBoundaries` now accepts `AuthorizationDetail[]` instead of `string | null`
+2. Added `normalizeAuthorizationDetails(raw: unknown)` — accepts parsed array, JSON string, or null
+3. `tryAutoApprove` uses normalizeAuthorizationDetails at the boundary instead of string-only guard
+4. Changed match semantics: boundaries return three-state `{ match, pass, reason }` or `{ match: false }`
+5. Purchase/custom boundaries: no matching detail → `match: false` (neutral) instead of `pass: true` (vacuous approval)
+6. Scope boundaries: always `match: true` (scopes are always present)
+7. Loop requires at least one positive match — "no matching boundary" rejection added
+8. 19 tests total (was 11): added vacuous approval prevention, match semantics, normalizeAuthorizationDetails tests
+
+### Architectural decisions
+- Parse once at the boundary (`normalizeAuthorizationDetails`), not inside evaluation
+- Three-state result eliminates vacuous pass: boundaries that don't apply are skipped
+- Scope boundaries always match (every CIBA request has scopes), so a user with only a scope boundary still works
+
+### Files changed
+- apps/web/src/lib/ciba/boundary-evaluation.ts — three-state match, typed AuthorizationDetail[]
+- apps/web/src/lib/ciba/auto-approve.ts — normalizeAuthorizationDetails at entry
+- apps/web/src/lib/ciba/__tests__/boundary-evaluation.integration.test.ts — 8 new tests
