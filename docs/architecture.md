@@ -363,6 +363,45 @@ See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
 
 ---
 
+## Compliance Derivation Engine
+
+Compliance level is the sole output of `deriveComplianceStatus()`, a **pure function** in `src/lib/identity/verification/compliance.ts`. It takes ZK proofs, signed claims, encrypted attribute presence, and flags as input — no DB access, no mutable booleans, no side effects.
+
+### Levels
+
+| Level | Numeric | Criteria |
+|---|---|---|
+| `none` | 1 | Default — fewer than half of the 7 checks pass |
+| `basic` | 2 | At least half of the 7 checks pass |
+| `full` | 3 | All 7 checks pass |
+| `chip` | 4 | NFC chip verification + sybil resistance |
+
+`verified` is `true` only for `full` or `chip`.
+
+### The 7 Boolean Checks
+
+Each check is derived from **proof/claim existence**, not stored boolean columns.
+
+| Check | OCR path source | NFC chip path source |
+|---|---|---|
+| `documentVerified` | `doc_validity` ZK proof exists | Always `true` (chip is the document) |
+| `livenessVerified` | `liveness_score` signed claim exists | `chip_verification` claim **type** present |
+| `ageVerified` | `age_verification` ZK proof exists | `chip_verification` claim **type** present |
+| `faceMatchVerified` | `face_match` ZK proof or `face_match_score` claim | `chip_verification` claim **type** present |
+| `nationalityVerified` | `nationality_membership` ZK proof exists | `hasNationalityCommitment` flag |
+| `identityBound` | `identity_binding` ZK proof exists | `uniqueIdentifier` present |
+| `sybilResistant` | `dedupKey` / `uniqueIdentifier` present | `uniqueIdentifier` present |
+
+For NFC chip checks, only claim **type presence** matters — boolean payloads inside the claim are ignored. This prevents a malicious server from downgrading compliance by flipping a stored boolean.
+
+### `birthYearOffset`
+
+A privacy-preserving age representation: `currentYear - birthYear`. Validated to the range 0–255 (uint8). Stored in `identity_verifications` as a proof output, never client-supplied.
+
+See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for the full data classification table and [SSI Architecture](ssi-architecture.md) for how compliance level feeds into verifiable credential claims.
+
+---
+
 ## Identity Revocation
 
 Identity verifications can be revoked by an admin (fraud detection) or by the user themselves (GDPR self-service). Revocation cascades through a single DB transaction: verification records, identity bundles, and issued credentials are all marked revoked atomically. On-chain attestation revocation follows outside the transaction on a best-effort basis.

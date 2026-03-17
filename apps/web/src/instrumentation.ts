@@ -3,38 +3,41 @@ export async function register() {
     const { initTelemetry } = await import("@/lib/observability/telemetry");
     await initTelemetry();
 
-    // Preload Human.js models for faster first liveness request
-    const { warmupHumanServer } = await import(
-      "@/lib/identity/liveness/human-server"
+    const { markWarmupComplete } = await import(
+      "@/lib/observability/warmup-state"
     );
-    await warmupHumanServer();
 
-    // Preload shared Barretenberg instance for server-side crypto (ZK verification, hashing)
-    const { warmupBarretenberg } = await import(
-      "@/lib/privacy/primitives/barretenberg"
-    );
-    await warmupBarretenberg();
+    // Parallel group: Human.js models + Barretenberg + backend service checks
+    // (warmupCRS depends on Barretenberg so it runs after BB completes)
+    const [{ warmupHumanServer }, { warmupBarretenberg }, { warmupServices }] =
+      await Promise.all([
+        import("@/lib/identity/liveness/human-server"),
+        import("@/lib/privacy/primitives/barretenberg"),
+        import("@/lib/observability/service-warmup"),
+      ]);
 
-    // Preload ZK verification keys and CRS cache (uses shared BB instance)
-    const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
-    await warmupCRS();
+    const [, bbResult] = await Promise.allSettled([
+      warmupHumanServer(),
+      warmupBarretenberg(),
+      warmupServices(),
+    ]);
 
-    // Check Noir/bb.js WASM assets presence
+    // CRS + ZK checks depend on the shared Barretenberg instance
+    if (bbResult.status === "fulfilled") {
+      const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
+      await warmupCRS();
+    }
+
     const { logNoirWasmAssetStatus } = await import(
       "@/lib/privacy/zk/asset-integrity"
     );
     logNoirWasmAssetStatus();
 
-    // Warn if Noir runtime version mismatches compiled artifacts
     const { checkNoirVersions } = await import(
       "@/lib/privacy/zk/version-check"
     );
     await checkNoirVersions();
 
-    // Check backend services health and establish connections
-    const { warmupServices } = await import(
-      "@/lib/observability/service-warmup"
-    );
-    await warmupServices();
+    markWarmupComplete();
   }
 }

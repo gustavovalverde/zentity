@@ -32,7 +32,7 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq } from "drizzle-orm";
-import { decodeJwt } from "jose";
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -451,9 +451,9 @@ function isValidHttpsUrl(value: string): boolean {
   }
 }
 
-function validateDcrRegistration(
+async function validateDcrRegistration(
   body: Record<string, unknown> | undefined
-): void {
+): Promise<void> {
   if (!body) {
     return;
   }
@@ -536,7 +536,7 @@ function validateDcrRegistration(
     });
   }
 
-  // RFC 7591 §2.3: software_statement is a JWT — reject if it's not parseable
+  // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
   const softwareStatement =
     typeof body.software_statement === "string"
       ? body.software_statement
@@ -548,17 +548,40 @@ function validateDcrRegistration(
         error_description: "software_statement must be a valid JWT",
       });
     }
-    const payload = parts[1];
-    if (!payload) {
-      throw new APIError("BAD_REQUEST", {
-        error_description: "software_statement payload is missing",
-      });
-    }
+
+    let claims: Record<string, unknown>;
     try {
-      JSON.parse(Buffer.from(payload, "base64url").toString());
+      const payload = parts[1];
+      if (!payload) {
+        throw new Error("missing payload");
+      }
+      claims = JSON.parse(
+        Buffer.from(payload, "base64url").toString()
+      ) as Record<string, unknown>;
     } catch {
       throw new APIError("BAD_REQUEST", {
         error_description: "software_statement payload is not valid JSON",
+      });
+    }
+
+    const iss = typeof claims.iss === "string" ? claims.iss : undefined;
+    if (!iss) {
+      throw new APIError("BAD_REQUEST", {
+        error_description:
+          "software_statement must contain an iss claim for signature verification",
+      });
+    }
+
+    try {
+      const issuerUrl = new URL(iss);
+      const jwksUrl = new URL("/.well-known/jwks.json", issuerUrl.origin);
+      const jwks = createRemoteJWKSet(jwksUrl);
+      await jwtVerify(softwareStatement, jwks, { issuer: iss });
+    } catch (err) {
+      const detail =
+        err instanceof Error ? err.message : "signature verification failed";
+      throw new APIError("BAD_REQUEST", {
+        error_description: `software_statement verification failed: ${detail}`,
       });
     }
   }
@@ -568,8 +591,8 @@ function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
-function beforeDcrRegister(ctx: HookCtx) {
-  validateDcrRegistration(ctx.body);
+async function beforeDcrRegister(ctx: HookCtx) {
+  await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
   }
