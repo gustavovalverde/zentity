@@ -53,9 +53,14 @@ export default async function ApprovePage({
     );
   }
 
-  const agentClaims = cibaRow.agentClaims
-    ? (JSON.parse(cibaRow.agentClaims) as Record<string, unknown>)
-    : null;
+  let agentClaims: Record<string, unknown> | null = null;
+  if (cibaRow.agentClaims) {
+    try {
+      agentClaims = JSON.parse(cibaRow.agentClaims) as Record<string, unknown>;
+    } catch {
+      // Malformed — render page without agent context
+    }
+  }
 
   return (
     <div className="w-full max-w-md">

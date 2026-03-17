@@ -9,6 +9,8 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
+import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   buildDefaultTypedData,
   nonceIdentifier,
@@ -707,22 +709,33 @@ async function handleStepUpReEntry(
     return errorJson(400, "invalid_request", "Missing auth_session");
   }
 
-  const sessionOrError = await validateChallengeSession(authSession);
-  if (sessionOrError instanceof Response) {
-    return sessionOrError;
-  }
-  const session = sessionOrError;
-  // Only step-up sessions (created without challengeType) can enter here
-  if (session.challengeType) {
-    return errorJson(400, "invalid_session", "Invalid session state");
-  }
-  if (!session.userId) {
-    return errorJson(400, "invalid_session", "No user associated with session");
+  const session = await loadSession(authSession);
+  if (!session || isExpired(session)) {
+    return errorJson(400, "invalid_session", "Session expired or not found");
   }
 
   const dpopError = await checkDpopContinuity(request, session);
   if (dpopError) {
     return dpopError;
+  }
+
+  // ACR re-check: user already authenticated, retrying after tier upgrade
+  if (session.state === "authenticated") {
+    if (!session.userId) {
+      return errorJson(400, "invalid_session", "Invalid session state");
+    }
+    return issueAuthorizationCode(session, session.userId, authSession);
+  }
+
+  // Only pending step-up sessions (created without challengeType) continue
+  if (session.state !== "pending") {
+    return errorJson(400, "invalid_session", "Invalid session state");
+  }
+  if (session.challengeType) {
+    return errorJson(400, "invalid_session", "Invalid session state");
+  }
+  if (!session.userId) {
+    return errorJson(400, "invalid_session", "No user associated with session");
   }
 
   // Verify user still exists
@@ -757,10 +770,33 @@ async function handleStepUpReEntry(
     .where(eq(authChallengeSessions.id, session.id));
 
   if (challengeType === "redirect_to_web") {
+    const extras: Record<string, unknown> = { auth_session: authSession };
+
+    const effectiveCodeChallenge = codeChallenge ?? session.codeChallenge;
+    if (effectiveCodeChallenge) {
+      const requestId = generateRandomString(32, "a-z", "A-Z", "0-9");
+      await db.insert(haipPushedRequests).values({
+        requestId,
+        clientId: session.clientId,
+        requestParams: JSON.stringify({
+          client_id: session.clientId,
+          response_type: "code",
+          scope: session.scope,
+          code_challenge: effectiveCodeChallenge,
+          code_challenge_method:
+            codeChallengeMethod ?? session.codeChallengeMethod ?? "S256",
+          ...(session.resource && { resource: session.resource }),
+        }),
+        expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
+      });
+      extras.request_uri = `${PAR_URI_PREFIX}${requestId}`;
+    }
+
     return errorJson(
       400,
       "redirect_to_web",
-      "Passkey-only users must use browser flow"
+      "Passkey-only users must use browser flow",
+      extras
     );
   }
 
@@ -803,6 +839,24 @@ async function issueAuthorizationCode(
   userId: string,
   authSession: string
 ): Promise<Response> {
+  if (session.acrValues) {
+    const assurance = await getAssuranceForOAuth(userId);
+    const satisfied = findSatisfiedAcr(session.acrValues, assurance.tier);
+    if (!satisfied) {
+      await db
+        .update(authChallengeSessions)
+        .set({ state: "authenticated" })
+        .where(eq(authChallengeSessions.id, session.id));
+
+      return errorJson(
+        403,
+        "insufficient_authorization",
+        `Assurance tier-${assurance.tier} does not satisfy ${session.acrValues}`,
+        { auth_session: authSession }
+      );
+    }
+  }
+
   const code = generateRandomString(32, "a-z", "A-Z", "0-9");
   const codeHash = hashCode(code);
   const now = new Date();

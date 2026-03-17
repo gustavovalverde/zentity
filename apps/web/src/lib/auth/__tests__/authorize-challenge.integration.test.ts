@@ -913,5 +913,141 @@ describe("Authorization Challenge Endpoint", () => {
       expect(reEntry.json.error).toBe("invalid_session");
       expect(reEntry.json.error_description).toBe("DPoP key mismatch");
     });
+
+    it("rejects code issuance when acr_values not satisfied after OPAQUE auth", async () => {
+      const { userId } = await createUserWithOpaque(TEST_EMAIL);
+      await createFpaCibaClient();
+
+      // Step-up session requiring tier-1 (user is tier-0)
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: FPA_CIBA_CLIENT_ID,
+          userId,
+          scope: "openid",
+          acrValues: "urn:zentity:assurance:tier-1",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      // Step-up re-entry → OPAQUE challenge
+      await ready;
+      const reEntry = await callChallenge({ auth_session: authSession });
+      expect(reEntry.status).toBe(401);
+      expect(reEntry.json.challenge_type).toBe("opaque");
+
+      // Complete OPAQUE auth (tier still 0 — no identity verification)
+      const { clientLoginState, startLoginRequest } = client.startLogin({
+        password: TEST_PASSWORD,
+      });
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        opaque_login_request: startLoginRequest,
+      });
+      const loginResult = client.finishLogin({
+        clientLoginState,
+        loginResponse: round2.json.opaque_login_response as string,
+        password: TEST_PASSWORD,
+      });
+      const round3 = await callChallenge({
+        auth_session: authSession,
+        opaque_finish_request: loginResult?.finishLoginRequest,
+      });
+
+      // Auth succeeded but ACR not satisfied → 403 (NOT 200)
+      expect(round3.status).toBe(403);
+      expect(round3.json.error).toBe("insufficient_authorization");
+      expect(round3.json.auth_session).toBe(authSession);
+      expect(round3.json.authorization_code).toBeUndefined();
+    });
+
+    it("issues code after tier upgrade via ACR re-check on auth_session", async () => {
+      const { userId } = await createUserWithOpaque(TEST_EMAIL);
+      await createFpaCibaClient();
+
+      // Step-up session requiring tier-1 (user is tier-0)
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: FPA_CIBA_CLIENT_ID,
+          userId,
+          scope: "openid",
+          acrValues: "urn:zentity:assurance:tier-1",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      // Complete auth (tier still 0)
+      await ready;
+      const reEntry = await callChallenge({
+        auth_session: authSession,
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      });
+      expect(reEntry.json.challenge_type).toBe("opaque");
+
+      const { clientLoginState, startLoginRequest } = client.startLogin({
+        password: TEST_PASSWORD,
+      });
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        opaque_login_request: startLoginRequest,
+      });
+      const loginResult = client.finishLogin({
+        clientLoginState,
+        loginResponse: round2.json.opaque_login_response as string,
+        password: TEST_PASSWORD,
+      });
+      const round3 = await callChallenge({
+        auth_session: authSession,
+        opaque_finish_request: loginResult?.finishLoginRequest,
+      });
+      expect(round3.status).toBe(403);
+
+      // Upgrade tier
+      await seedTier1(userId);
+
+      // Re-send auth_session → ACR re-check → code issued
+      const recheck = await callChallenge({ auth_session: authSession });
+      expect(recheck.status).toBe(200);
+      expect(recheck.json.authorization_code).toBeTypeOf("string");
+      expect((recheck.json.authorization_code as string).length).toBe(32);
+    });
+
+    it("step-up re-entry returns request_uri for passkey-only user", async () => {
+      const userId = await createTestUser({ email: TEST_EMAIL });
+
+      // Step-up session (passkey-only user has no OPAQUE or wallet accounts)
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          scope: "openid",
+          acrValues: "urn:zentity:assurance:tier-1",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      const { status, json } = await callChallenge({
+        auth_session: authSession,
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("redirect_to_web");
+      expect(json.auth_session).toBe(authSession);
+      expect(json.request_uri).toMatch(PAR_URI_RE);
+    });
   });
 });
