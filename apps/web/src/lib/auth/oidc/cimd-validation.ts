@@ -1,22 +1,9 @@
 // Pure validation functions for CIMD (Client ID Metadata Document).
 // No side-effectful imports — safe for unit testing.
 
-const PRIVATE_RANGES = [
-  /^127\./, // loopback
-  /^10\./, // Class A
-  /^172\.(1[6-9]|2\d|3[01])\./, // Class B
-  /^192\.168\./, // Class C
-  /^0\./, // "this" network
-  /^169\.254\./, // link-local
-  /^\[?::1\]?$/, // IPv6 loopback
-  /^\[?fe80:/i, // IPv6 link-local
-  /^\[?fc00:/i, // IPv6 ULA
-  /^\[?fd/i, // IPv6 ULA
-];
+import { isPrivateHost as _isPrivateHost } from "@/lib/auth/url-safety";
 
-export function isPrivateHost(hostname: string): boolean {
-  return PRIVATE_RANGES.some((re) => re.test(hostname));
-}
+export const isPrivateHost = _isPrivateHost;
 
 /**
  * Detect URL-formatted client_id (MCP CIMD pattern).

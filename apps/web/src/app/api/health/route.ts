@@ -3,23 +3,24 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db/connection";
 
+const DB_TIMEOUT_MS = 2000;
+
+function checkDb(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), DB_TIMEOUT_MS);
+    db.run(sql`SELECT 1`)
+      .then(() => resolve(true))
+      .catch(() => resolve(false))
+      .finally(() => clearTimeout(timer));
+  });
+}
+
 export async function GET() {
-  let dbStatus: "ok" | "unreachable" = "unreachable";
-
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    await db.run(sql`SELECT 1`);
-    clearTimeout(timeout);
-    dbStatus = "ok";
-  } catch {
-    // DB unreachable — report degraded, don't crash
-  }
-
-  const status = dbStatus === "ok" ? "healthy" : "degraded";
+  const dbOk = await checkDb();
+  const status = dbOk ? "healthy" : "degraded";
 
   return NextResponse.json(
-    { status, checks: { db: dbStatus } },
+    { status, checks: { db: dbOk ? "ok" : "unreachable" } },
     {
       status: 200,
       headers: { "cache-control": "no-store" },

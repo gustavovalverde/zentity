@@ -113,7 +113,6 @@ export function createApp(): Hono {
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
       loginHint: (result.payload.sub as string) ?? "",
-      ...(dpopHeader ? { callerDpopProof: dpopHeader } : {}),
     };
 
     // Store validated auth info for transport.handleRequest

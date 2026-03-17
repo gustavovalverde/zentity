@@ -15,9 +15,9 @@ export async function zentityFetch(
   const method = options?.method ?? "GET";
   const auth = getAuthContext();
 
-  // HTTP transport: relay the caller's DPoP-bound access token
+  // HTTP transport: service token auth (same pattern as FHE/OCR/signer)
   if (config.transport === "http") {
-    return httpRelayFetch(url, method, auth, options?.body);
+    return serviceTokenFetch(url, method, auth.loginHint, options?.body);
   }
 
   // stdio transport: DPoP-bound relay with server's keypair
@@ -78,24 +78,26 @@ export async function zentityFetch(
 }
 
 /**
- * Relay the caller's DPoP-bound access token to Zentity.
- * The HTTP transport validates the caller's token on ingress and
- * forwards it as-is to downstream Zentity API calls.
+ * Authenticate as a trusted internal service to Zentity.
+ * The HTTP transport has already validated the caller's token on ingress;
+ * downstream calls use the shared INTERNAL_SERVICE_TOKEN (same as FHE/OCR/signer).
  */
-function httpRelayFetch(
+function serviceTokenFetch(
   url: string,
   method: string,
-  auth: { accessToken: string; callerDpopProof?: string | undefined },
+  userId: string,
   body?: string
 ): Promise<Response> {
-  const headers: Record<string, string> = {};
-
-  if (auth.callerDpopProof) {
-    headers.Authorization = `DPoP ${auth.accessToken}`;
-    headers.DPoP = auth.callerDpopProof;
-  } else {
-    headers.Authorization = `Bearer ${auth.accessToken}`;
+  if (!config.internalServiceToken) {
+    throw new Error(
+      "INTERNAL_SERVICE_TOKEN is required for MCP HTTP transport"
+    );
   }
+
+  const headers: Record<string, string> = {
+    "x-zentity-internal-token": config.internalServiceToken,
+    "x-zentity-user-id": userId,
+  };
 
   if (body) {
     headers["Content-Type"] = "application/json";

@@ -96,6 +96,7 @@ import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
 import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
+import { validateSafeUrl } from "@/lib/auth/url-safety";
 import { tryAutoApprove } from "@/lib/ciba/auto-approve";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
@@ -572,9 +573,35 @@ async function validateDcrRegistration(
       });
     }
 
+    // Issuer allowlist: fail-closed in production, SSRF-only check in dev
+    const trustedIssuers = env.TRUSTED_SOFTWARE_STATEMENT_ISSUERS?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (trustedIssuers && trustedIssuers.length > 0) {
+      if (!trustedIssuers.includes(iss)) {
+        throw new APIError("BAD_REQUEST", {
+          error_description: `software_statement issuer is not trusted: ${iss}`,
+        });
+      }
+    } else if (isDev) {
+      // No allowlist in dev — SSRF check still applies below
+    } else {
+      throw new APIError("BAD_REQUEST", {
+        error_description:
+          "TRUSTED_SOFTWARE_STATEMENT_ISSUERS must be configured in production",
+      });
+    }
+
+    // SSRF protection: block private IPs, enforce HTTPS in prod
+    const ssrfError = validateSafeUrl(iss, !isDev);
+    if (ssrfError) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: `software_statement issuer URL rejected: ${ssrfError}`,
+      });
+    }
+
     try {
-      const issuerUrl = new URL(iss);
-      const jwksUrl = new URL("/.well-known/jwks.json", issuerUrl.origin);
+      const jwksUrl = new URL(joinAuthIssuerPath(iss, ".well-known/jwks.json"));
       const jwks = createRemoteJWKSet(jwksUrl);
       await jwtVerify(softwareStatement, jwks, { issuer: iss });
     } catch (err) {
