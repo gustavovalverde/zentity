@@ -953,72 +953,73 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: authIssuer,
   trustedOrigins: getTrustedOrigins(),
-  rateLimit: isOidcE2e
-    ? { enabled: false }
-    : {
-        enabled: true,
-        window: 60, // 1 minute window
-        max: 100, // 100 requests per minute globally
-        customRules: {
-          // Stricter limits for authentication endpoints
-          "/sign-in/opaque/challenge": {
-            window: 60, // 1 minute
-            max: 10, // 10 login attempts per minute
-          },
-          "/sign-in/opaque/complete": {
-            window: 60, // 1 minute
-            max: 10, // 10 login completions per minute
-          },
-          "/sign-up/opaque/challenge": {
-            window: 60, // 1 minute
-            max: 5, // 5 sign-up attempts per minute
-          },
-          "/sign-up/opaque/complete": {
-            window: 60, // 1 minute
-            max: 5, // 5 sign-up completions per minute
-          },
-          "/password/opaque/registration/challenge": {
-            window: 60, // 1 minute
-            max: 5, // 5 password set attempts per minute
-          },
-          "/password/opaque/registration/complete": {
-            window: 60, // 1 minute
-            max: 5, // 5 password set completions per minute
-          },
-          "/password/opaque/verify/challenge": {
-            window: 60, // 1 minute
-            max: 5, // 5 password verify attempts per minute
-          },
-          "/password/opaque/verify/complete": {
-            window: 60, // 1 minute
-            max: 5, // 5 password verify completions per minute
-          },
-          "/password-reset/opaque/request": {
-            window: 300, // 5 minutes
-            max: 3, // 3 password reset requests per 5 minutes
-          },
-          "/password-reset/opaque/challenge": {
-            window: 60, // 1 minute
-            max: 5, // 5 password reset challenges per minute
-          },
-          "/password-reset/opaque/complete": {
-            window: 60, // 1 minute
-            max: 5, // 5 password reset completions per minute
-          },
-          "/eip712/nonce": {
-            window: 60,
-            max: 10,
-          },
-          "/sign-up/eip712/register": {
-            window: 60,
-            max: 5,
-          },
-          "/sign-in/eip712/verify": {
-            window: 60,
-            max: 10,
+  rateLimit:
+    isOidcE2e || process.env.NODE_ENV === "test"
+      ? { enabled: false }
+      : {
+          enabled: true,
+          window: 60, // 1 minute window
+          max: 100, // 100 requests per minute globally
+          customRules: {
+            // Stricter limits for authentication endpoints
+            "/sign-in/opaque/challenge": {
+              window: 60, // 1 minute
+              max: 10, // 10 login attempts per minute
+            },
+            "/sign-in/opaque/complete": {
+              window: 60, // 1 minute
+              max: 10, // 10 login completions per minute
+            },
+            "/sign-up/opaque/challenge": {
+              window: 60, // 1 minute
+              max: 5, // 5 sign-up attempts per minute
+            },
+            "/sign-up/opaque/complete": {
+              window: 60, // 1 minute
+              max: 5, // 5 sign-up completions per minute
+            },
+            "/password/opaque/registration/challenge": {
+              window: 60, // 1 minute
+              max: 5, // 5 password set attempts per minute
+            },
+            "/password/opaque/registration/complete": {
+              window: 60, // 1 minute
+              max: 5, // 5 password set completions per minute
+            },
+            "/password/opaque/verify/challenge": {
+              window: 60, // 1 minute
+              max: 5, // 5 password verify attempts per minute
+            },
+            "/password/opaque/verify/complete": {
+              window: 60, // 1 minute
+              max: 5, // 5 password verify completions per minute
+            },
+            "/password-reset/opaque/request": {
+              window: 300, // 5 minutes
+              max: 3, // 3 password reset requests per 5 minutes
+            },
+            "/password-reset/opaque/challenge": {
+              window: 60, // 1 minute
+              max: 5, // 5 password reset challenges per minute
+            },
+            "/password-reset/opaque/complete": {
+              window: 60, // 1 minute
+              max: 5, // 5 password reset completions per minute
+            },
+            "/eip712/nonce": {
+              window: 60,
+              max: 10,
+            },
+            "/sign-up/eip712/register": {
+              window: 60,
+              max: 5,
+            },
+            "/sign-in/eip712/verify": {
+              window: 60,
+              max: 10,
+            },
           },
         },
-      },
   disabledPaths: isOidcE2e
     ? []
     : [

@@ -270,16 +270,18 @@ function createTokenExchangeHandler(): (
       (audienceParam as string | undefined) ??
       authIssuer;
 
+    // Resolve pairwise subject for the requesting client (used by both output paths)
+    const outputSub = client.redirectUris
+      ? await resolveSubForClient(rawUserId, {
+          subjectType: client.subjectType ?? null,
+          redirectUris: client.redirectUris,
+        })
+      : rawUserId;
+
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
       const assurance = await getAssuranceForOAuth(rawUserId);
       const signingAlg = await getClientSigningAlg(client.clientId);
-      const outputSub = client.redirectUris
-        ? await resolveSubForClient(rawUserId, {
-            subjectType: client.subjectType ?? null,
-            redirectUris: client.redirectUris,
-          })
-        : rawUserId;
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
         sub: outputSub,
@@ -319,7 +321,7 @@ function createTokenExchangeHandler(): (
 
     const accessTokenPayload: Record<string, unknown> = {
       iss: authIssuer,
-      sub: rawUserId,
+      sub: outputSub,
       aud: targetAudience,
       azp: client.clientId,
       scope: targetScopes.join(" "),

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer } from "@/lib/auth/issuer";
 import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
+import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
@@ -403,6 +404,121 @@ describe("Token Exchange (RFC 8693)", () => {
         sub: agentBId,
         act: { sub: agentAId },
       });
+    });
+  });
+
+  describe("pairwise subject identifiers", () => {
+    const PAIRWISE_CLIENT_ID = "pairwise-exchange-agent";
+    const PAIRWISE_REDIRECT = "https://pairwise-rp.example.com/callback";
+
+    async function createPairwiseClient() {
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId: PAIRWISE_CLIENT_ID,
+          name: "Pairwise Exchange Agent",
+          redirectUris: JSON.stringify([PAIRWISE_REDIRECT]),
+          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+          tokenEndpointAuthMethod: "none",
+          public: true,
+          subjectType: "pairwise",
+        })
+        .run();
+    }
+
+    it("uses pairwise sub in access token output", async () => {
+      await createPairwiseClient();
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: PAIRWISE_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+
+      // Must NOT be the raw userId
+      expect(payload.sub).not.toBe(userId);
+
+      // Must match the deterministic pairwise computation
+      const expectedSub = await computePairwiseSub(
+        userId,
+        [PAIRWISE_REDIRECT],
+        process.env.PAIRWISE_SECRET as string
+      );
+      expect(payload.sub).toBe(expectedSub);
+    });
+
+    it("uses pairwise sub in id_token output", async () => {
+      await createPairwiseClient();
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: PAIRWISE_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        requested_token_type: ID_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+
+      expect(payload.sub).not.toBe(userId);
+
+      const expectedSub = await computePairwiseSub(
+        userId,
+        [PAIRWISE_REDIRECT],
+        process.env.PAIRWISE_SECRET as string
+      );
+      expect(payload.sub).toBe(expectedSub);
+    });
+
+    it("preserves raw userId for public-subject clients", async () => {
+      // Default test client is public-subject
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.sub).toBe(userId);
+    });
+
+    it("resolves pairwise id_token input to raw userId for user lookup", async () => {
+      await createPairwiseClient();
+
+      // Mint an id_token with pairwise sub (as if issued to the pairwise client)
+      const pairwiseSub = await computePairwiseSub(
+        userId,
+        [PAIRWISE_REDIRECT],
+        process.env.PAIRWISE_SECRET as string
+      );
+      const pairwiseIdToken = await mintIdToken(
+        pairwiseSub,
+        PAIRWISE_CLIENT_ID
+      );
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: PAIRWISE_CLIENT_ID,
+        subject_token: pairwiseIdToken,
+        subject_token_type: ID_TOKEN_TYPE,
+        requested_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      // Output sub should also be pairwise (same client)
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.sub).toBe(pairwiseSub);
     });
   });
 

@@ -53,30 +53,15 @@ export async function resolveSubForClient(
 }
 
 /**
- * Reverse direction: given a `sub` from an id_token and the issuing client,
- * resolve back to the raw userId.
+ * Reverse direction with pre-fetched client config: given a `sub` and the
+ * issuing client's config, resolve back to the raw userId.
  *
- * For public clients, `sub` IS the userId.
- * For pairwise clients, scan users and find the one whose pairwise sub matches.
+ * Use this when the caller already has client data (avoids a redundant query).
  */
-export async function resolveUserIdFromSub(
+export async function resolveUserIdFromSubForClient(
   sub: string,
-  clientId: string
+  client: { subjectType: string | null; redirectUris: string | string[] }
 ): Promise<string | null> {
-  const client = await db
-    .select({
-      subjectType: oauthClients.subjectType,
-      redirectUris: oauthClients.redirectUris,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-
-  if (!client) {
-    return null;
-  }
-
   if (client.subjectType !== "pairwise") {
     return sub;
   }
@@ -97,4 +82,31 @@ export async function resolveUserIdFromSub(
   }
 
   return null;
+}
+
+/**
+ * Reverse direction: given a `sub` from an id_token and the issuing client ID,
+ * resolve back to the raw userId.
+ *
+ * Convenience wrapper that looks up the client first.
+ */
+export async function resolveUserIdFromSub(
+  sub: string,
+  clientId: string
+): Promise<string | null> {
+  const client = await db
+    .select({
+      subjectType: oauthClients.subjectType,
+      redirectUris: oauthClients.redirectUris,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+
+  if (!client) {
+    return null;
+  }
+
+  return resolveUserIdFromSubForClient(sub, client);
 }

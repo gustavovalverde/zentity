@@ -7,7 +7,7 @@ import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
-import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
+import { resolveUserIdFromSubForClient } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { jwks } from "@/lib/db/schema/jwks";
@@ -31,7 +31,7 @@ async function getLocalJwks() {
  *
  * Validates the id_token_hint, terminates the user's sessions,
  * triggers BCL delivery to all registered RPs, and redirects to
- * post_logout_redirect_uri if valid.
+ * post_logout_redirect_uri if registered for the client.
  */
 export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
@@ -92,35 +92,52 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  // Validate post_logout_redirect_uri against client's registered URIs.
-  // Per OIDC RP-Initiated Logout 1.0, client_id is optional when
-  // id_token_hint is provided — infer the client from azp/aud.
+  // Look up client once for both redirect validation and pairwise resolution
   const effectiveClientId = clientId ?? tokenAzp;
-  if (postLogoutRedirectUri && effectiveClientId) {
-    const client = await db
-      .select({ postLogoutRedirectUris: oauthClients.postLogoutRedirectUris })
-      .from(oauthClients)
-      .where(eq(oauthClients.clientId, effectiveClientId))
-      .limit(1)
-      .get();
+  const client = effectiveClientId
+    ? await db
+        .select({
+          subjectType: oauthClients.subjectType,
+          redirectUris: oauthClients.redirectUris,
+          postLogoutRedirectUris: oauthClients.postLogoutRedirectUris,
+        })
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, effectiveClientId))
+        .limit(1)
+        .get()
+    : undefined;
 
-    if (client?.postLogoutRedirectUris) {
-      const registeredUris: string[] = JSON.parse(
-        client.postLogoutRedirectUris
+  // Strict redirect URI validation (OIDC RP-Initiated Logout 1.0 §2):
+  // post_logout_redirect_uri MUST be validated against registered values.
+  // Reject when the client has no registered URIs or is unknown.
+  if (postLogoutRedirectUri) {
+    if (!client?.postLogoutRedirectUris) {
+      return NextResponse.json(
+        { error: "post_logout_redirect_uri not registered" },
+        { status: 400 }
       );
-      if (!registeredUris.includes(postLogoutRedirectUri)) {
-        return NextResponse.json(
-          { error: "post_logout_redirect_uri not registered" },
-          { status: 400 }
-        );
-      }
+    }
+    const registeredUris: string[] = JSON.parse(client.postLogoutRedirectUris);
+    if (!registeredUris.includes(postLogoutRedirectUri)) {
+      return NextResponse.json(
+        { error: "post_logout_redirect_uri not registered" },
+        { status: 400 }
+      );
     }
   }
 
   // Resolve pairwise sub → raw userId for session/BCL/CIBA operations
-  const userId = effectiveClientId
-    ? await resolveUserIdFromSub(sub, effectiveClientId)
-    : sub;
+  let userId: string | null;
+  if (client) {
+    userId = await resolveUserIdFromSubForClient(sub, client);
+  } else if (effectiveClientId) {
+    // Token references a client that no longer exists
+    userId = null;
+  } else {
+    // No client identification — treat sub as raw userId
+    userId = sub;
+  }
+
   if (!userId) {
     return NextResponse.json(
       { error: "Unable to resolve user from id_token_hint" },
@@ -129,15 +146,7 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Terminate all sessions for this user
-  const userSessions = await db
-    .select({ token: sessions.token })
-    .from(sessions)
-    .where(eq(sessions.userId, userId))
-    .all();
-
-  for (const s of userSessions) {
-    await db.delete(sessions).where(eq(sessions.token, s.token)).run();
-  }
+  await db.delete(sessions).where(eq(sessions.userId, userId)).run();
 
   // Fire-and-forget: BCL delivery + CIBA revocation
   sendBackchannelLogout(userId, sid);
