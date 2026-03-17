@@ -45,6 +45,48 @@ repos:
         args: [--branch, main, --branch, master]
 
   # ===========================================
+  # Lockfile sync checks
+  # ===========================================
+  - repo: local
+    hooks:
+      - id: lockfile-sync-web
+        name: pnpm lockfile sync (web)
+        entry: bash -c 'cd apps/web && pnpm install --frozen-lockfile'
+        language: system
+        files: ^apps/web/package\.json$
+        pass_filenames: false
+      - id: lockfile-sync-demo-rp
+        name: pnpm lockfile sync (demo-rp)
+        entry: bash -c 'cd apps/demo-rp && pnpm install --frozen-lockfile'
+        language: system
+        files: ^apps/demo-rp/package\.json$
+        pass_filenames: false
+      - id: lockfile-sync-landing
+        name: pnpm lockfile sync (landing)
+        entry: bash -c 'cd apps/landing && pnpm install --frozen-lockfile'
+        language: system
+        files: ^apps/landing/package\.json$
+        pass_filenames: false
+      - id: lockfile-sync-mcp
+        name: pnpm lockfile sync (mcp)
+        entry: bash -c 'cd apps/mcp && pnpm install --frozen-lockfile'
+        language: system
+        files: ^apps/mcp/package\.json$
+        pass_filenames: false
+      - id: lockfile-sync-fhe
+        name: Cargo lockfile sync (fhe)
+        entry: bash -c 'cd apps/fhe && cargo check --locked 2>&1 | tail -3'
+        language: system
+        files: ^apps/fhe/Cargo\.toml$
+        pass_filenames: false
+      - id: lockfile-sync-signer
+        name: Cargo lockfile sync (signer)
+        entry: bash -c 'cd apps/signer && cargo check --locked 2>&1 | tail -3'
+        language: system
+        files: ^apps/signer/Cargo\.toml$
+        pass_filenames: false
+
+  # ===========================================
   # TypeScript/JavaScript/JSON/CSS (apps/web + apps/landing)
   # ===========================================
   - repo: local
