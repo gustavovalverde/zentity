@@ -5,6 +5,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { signOut as betterAuthSignOut } from "@/lib/auth/auth-client";
 import { resetFlowId } from "@/lib/observability/flow-client";
 import { clearAllCredentialCaches } from "@/lib/privacy/credentials";
+import { resetBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/store";
 import { resetProfileSecretCache } from "@/lib/privacy/secrets/profile";
 import { redirectTo as navigateTo } from "@/lib/utils/navigation";
@@ -27,6 +28,7 @@ function clearClientCaches(): void {
   resetFheKeyStoreCache();
   resetProfileSecretCache();
   clearAllCredentialCaches();
+  resetBackgroundKeygen();
 
   resetFlowId();
 }

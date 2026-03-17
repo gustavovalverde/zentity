@@ -153,6 +153,15 @@ const nextConfig: NextConfig = {
       { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
     ];
 
+    // Verify pages: require-corp COEP guarantees crossOriginIsolated on all
+    // browsers (Firefox/Safari don't grant it with credentialless).
+    // Cross-origin resources on verify pages need crossorigin="anonymous".
+    const verifyIsolatedHeaders = isolatedHeaders.map((h) =>
+      h.key === "Cross-Origin-Embedder-Policy"
+        ? { key: h.key, value: "require-corp" }
+        : h
+    );
+
     return [
       // Service worker: no-cache ensures users always get the latest version
       {
@@ -182,6 +191,11 @@ const nextConfig: NextConfig = {
           { key: "Content-Type", value: "application/wasm" },
           { key: "Content-Encoding", value: "gzip" },
         ],
+      },
+      // Verify routes: require-corp COEP for guaranteed multi-threaded WASM
+      {
+        source: "/dashboard/verify/:path*",
+        headers: verifyIsolatedHeaders,
       },
       // Dashboard routes: cross-origin isolated for multi-threaded WASM
       {

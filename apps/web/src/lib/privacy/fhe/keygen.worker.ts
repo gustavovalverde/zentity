@@ -1,9 +1,15 @@
 /// <reference lib="webworker" />
 
-interface WorkerRequest {
+interface WorkerKeygenRequest {
   id: number;
   type: "generate_key_material";
 }
+
+interface WorkerInitRequest {
+  type: "init";
+}
+
+type WorkerRequest = WorkerKeygenRequest | WorkerInitRequest;
 
 interface WorkerSuccess {
   durationMs: number;
@@ -15,6 +21,13 @@ interface WorkerSuccess {
     createdAt: string;
   };
   type: "result";
+}
+
+interface WorkerInitComplete {
+  crossOriginIsolated: boolean;
+  durationMs: number;
+  threads: number;
+  type: "init_complete";
 }
 
 interface WorkerError {
@@ -108,11 +121,31 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
   }
 
   const message = event.data;
+  if (!message || typeof message !== "object") {
+    return;
+  }
 
-  // Validate message structure (defense-in-depth for postMessage security)
+  if (message.type === "init") {
+    const start = performance.now();
+    try {
+      await loadTfhe();
+      const threads = globalThis.crossOriginIsolated
+        ? navigator.hardwareConcurrency || 4
+        : 1;
+      const response: WorkerInitComplete = {
+        type: "init_complete",
+        crossOriginIsolated: globalThis.crossOriginIsolated,
+        threads,
+        durationMs: performance.now() - start,
+      };
+      self.postMessage(response);
+    } catch {
+      // Init failure is non-fatal — keygen will retry loadTfhe on demand
+    }
+    return;
+  }
+
   if (
-    !message ||
-    typeof message !== "object" ||
     typeof message.id !== "number" ||
     message.type !== "generate_key_material"
   ) {

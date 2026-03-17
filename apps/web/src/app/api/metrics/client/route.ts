@@ -16,6 +16,8 @@ import {
   recordClientNoirProofDuration,
   recordClientOpaqueDuration,
   recordClientPasskeyDuration,
+  recordClientTfheBgKeygenDuration,
+  recordClientTfheInitDuration,
   recordClientTfheKeygenDuration,
   recordClientTfheKeygenWorkerDuration,
   recordClientTfheLoadDuration,
@@ -159,6 +161,20 @@ const handlers: Record<
     record: recordClientTfheKeygenWorkerDuration,
     attributes: new Set(
       CLIENT_METRIC_DEFINITIONS["client.tfhe.keygen.worker.duration"].attributes
+    ),
+  },
+  "client.tfhe.init": {
+    unit: "ms",
+    record: recordClientTfheInitDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.tfhe.init"].attributes
+    ),
+  },
+  "client.tfhe.bg_keygen.duration": {
+    unit: "ms",
+    record: recordClientTfheBgKeygenDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.tfhe.bg_keygen.duration"].attributes
     ),
   },
 };

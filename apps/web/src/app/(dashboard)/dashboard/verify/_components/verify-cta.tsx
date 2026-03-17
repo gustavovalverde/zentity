@@ -2,10 +2,11 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Web3Provider } from "@/components/providers/web3-provider";
 import { Button } from "@/components/ui/button";
+import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 
 const FheEnrollmentDialog = dynamic(
   () => import("./fhe-enrollment-dialog").then((m) => m.FheEnrollmentDialog),
@@ -41,6 +42,12 @@ export function VerifyCta({
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleOpen = useCallback(() => setDialogOpen(true), []);
+
+  useEffect(() => {
+    if (!hasEnrollment) {
+      startBackgroundKeygen();
+    }
+  }, [hasEnrollment]);
 
   if (hasEnrollment) {
     return (

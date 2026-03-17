@@ -65,6 +65,14 @@ export const CLIENT_METRIC_DEFINITIONS = {
     unit: "ms",
     attributes: ["result", "flow_present"],
   },
+  "client.tfhe.init": {
+    unit: "ms",
+    attributes: ["result", "crossOriginIsolated", "threads"],
+  },
+  "client.tfhe.bg_keygen.duration": {
+    unit: "ms",
+    attributes: ["result", "source"],
+  },
 } as const;
 
 export type ClientMetricName = keyof typeof CLIENT_METRIC_DEFINITIONS;

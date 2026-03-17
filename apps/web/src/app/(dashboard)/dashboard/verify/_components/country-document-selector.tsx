@@ -113,6 +113,7 @@ export function CountryDocumentSelector({
               <span className="flex items-center gap-2">
                 <CircleFlag
                   countryCode={selectedCountry.alpha2.toLowerCase()}
+                  crossOrigin="anonymous"
                   height={20}
                   width={20}
                 />
@@ -146,6 +147,7 @@ export function CountryDocumentSelector({
                   >
                     <CircleFlag
                       countryCode={country.alpha2.toLowerCase()}
+                      crossOrigin="anonymous"
                       height={20}
                       width={20}
                     />

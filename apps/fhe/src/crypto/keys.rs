@@ -296,14 +296,14 @@ impl KeyStore {
     /// Register public + server keys derived from a client-provided keypair.
     ///
     /// Stores compressed keys immediately and persists them to disk.
+    /// Validation is deferred to first use (`get_server_key`) where
+    /// decompression is wrapped in `catch_unwind`. Bincode deserialization
+    /// in the HTTP handler already rejects malformed bytes with 400.
     pub fn register_key(
         &self,
         public_key: CompressedPublicKey,
         server_key: CompressedServerKey,
     ) -> Result<String, FheError> {
-        tracing::info_span!("fhe.validate_key_material")
-            .in_scope(|| validate_registered_keys(&public_key, &server_key))?;
-
         let key_id = Uuid::new_v4().to_string();
 
         let persist_ms = self

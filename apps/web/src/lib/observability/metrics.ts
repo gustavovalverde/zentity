@@ -207,6 +207,24 @@ const clientTfheKeygenWorkerDuration = meter.createHistogram(
   }
 );
 
+const clientTfheInitDuration = meter.createHistogram(
+  "zentity.client.tfhe.init.duration",
+  {
+    description: "Client-side TFHE WASM init duration (prewarm).",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
+const clientTfheBgKeygenDuration = meter.createHistogram(
+  "zentity.client.tfhe.bg_keygen.duration",
+  {
+    description: "Background FHE key generation + registration duration.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
 function recordSafe(
   histogram: { record: (value: number, attributes?: Attributes) => void },
   value: number,
@@ -370,4 +388,18 @@ export function recordClientTfheKeygenWorkerDuration(
   attributes?: Attributes
 ): void {
   recordSafe(clientTfheKeygenWorkerDuration, durationMs, attributes);
+}
+
+export function recordClientTfheInitDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientTfheInitDuration, durationMs, attributes);
+}
+
+export function recordClientTfheBgKeygenDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientTfheBgKeygenDuration, durationMs, attributes);
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { recordClientMetric } from "@/lib/observability/client-metrics";
+
 interface WorkerRequest {
   id: number;
   type: "generate_key_material";
@@ -17,11 +19,20 @@ interface WorkerSuccess {
   type: "result";
 }
 
+interface WorkerInitComplete {
+  crossOriginIsolated: boolean;
+  durationMs: number;
+  threads: number;
+  type: "init_complete";
+}
+
 interface WorkerError {
   id: number;
   message: string;
   type: "error";
 }
+
+type WorkerMessage = WorkerSuccess | WorkerInitComplete | WorkerError;
 
 export interface FheKeygenResult {
   durationMs: number;
@@ -35,6 +46,7 @@ export interface FheKeygenResult {
 
 let workerInstance: Worker | null = null;
 let nextId = 1;
+let initSent = false;
 const pending = new Map<
   number,
   { resolve: (value: FheKeygenResult) => void; reject: (error: Error) => void }
@@ -52,10 +64,22 @@ function getWorker(): Worker {
     workerInstance = new Worker(new URL("./keygen.worker", import.meta.url), {
       type: "module",
     });
-    workerInstance.onmessage = (
-      event: MessageEvent<WorkerSuccess | WorkerError>
-    ) => {
+    workerInstance.onmessage = (event: MessageEvent<WorkerMessage>) => {
       const message = event.data;
+
+      if (message.type === "init_complete") {
+        recordClientMetric({
+          name: "client.tfhe.init",
+          value: message.durationMs,
+          attributes: {
+            result: "ok",
+            crossOriginIsolated: message.crossOriginIsolated,
+            threads: message.threads,
+          },
+        });
+        return;
+      }
+
       const handlers = pending.get(message.id);
       if (!handlers) {
         return;
@@ -103,15 +127,17 @@ export function generateFheKeyMaterialInWorker(): Promise<FheKeygenResult> {
 }
 
 /**
- * Pre-warm the TFHE worker by spawning it early.
- * This loads the WASM module in the background, reducing latency
- * when key generation is actually needed.
- *
- * Call this on pages where users are likely to create accounts.
+ * Pre-warm the TFHE worker by spawning it and triggering WASM loading.
+ * Sends an init message that loads the WASM module, compiles it, and
+ * initializes the thread pool — so keygen starts instantly when needed.
  */
 export function prewarmTfheWorker(): void {
   if (typeof Worker === "undefined") {
     return;
   }
-  getWorker();
+  const worker = getWorker();
+  if (!initSent) {
+    initSent = true;
+    worker.postMessage({ type: "init" });
+  }
 }

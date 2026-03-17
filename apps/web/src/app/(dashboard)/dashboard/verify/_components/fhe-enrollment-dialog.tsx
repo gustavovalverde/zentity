@@ -34,6 +34,7 @@ import {
   signatureToBytes,
 } from "@/lib/privacy/credentials";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
+import { getPreGeneratedKeys } from "@/lib/privacy/fhe/background-keygen";
 import {
   generateFheKeyMaterialForStorage,
   prepareFheKeyEnrollment,
@@ -350,24 +351,42 @@ export function FheEnrollmentDialog({
         throw new Error("Missing passkey credential ID.");
       }
 
+      const credentialId = signInResult.credentialId;
+      const prfOutput = signInResult.prfOutput;
+
       setCachedBindingMaterial({
         mode: "passkey",
-        prfOutput: signInResult.prfOutput,
-        credentialId: signInResult.credentialId,
+        prfOutput,
+        credentialId,
         prfSalt,
       });
 
       advanceStage("generating");
-      const enrollment = await prepareFheKeyEnrollment({
-        enrollment: {
-          userId,
-          credentialId: signInResult.credentialId,
-          prfOutput: signInResult.prfOutput,
-          prfSalt,
-        },
-        onStage: (s) =>
-          advanceStage(s === "generate-keys" ? "generating" : "encrypting"),
-      });
+      const preGenerated = await getPreGeneratedKeys();
+      const enrollmentCtx = { userId, credentialId, prfOutput, prfSalt };
+      const enrollment = preGenerated
+        ? await (async () => {
+            advanceStage("encrypting");
+            const { createFheKeyEnvelope } = await import(
+              "@/lib/privacy/fhe/store"
+            );
+            const envelope = await createFheKeyEnvelope({
+              keys: preGenerated.storedKeys,
+              enrollment: enrollmentCtx,
+            });
+            return {
+              ...envelope,
+              publicKeyBytes: preGenerated.storedKeys.publicKey,
+              serverKeyBytes: preGenerated.storedKeys.serverKey,
+              storedKeys: preGenerated.storedKeys,
+              preRegisteredKeyId: preGenerated.keyId,
+            };
+          })()
+        : await prepareFheKeyEnrollment({
+            enrollment: enrollmentCtx,
+            onStage: (s) =>
+              advanceStage(s === "generate-keys" ? "generating" : "encrypting"),
+          });
 
       const contextResponse = await fetch("/api/fhe/enrollment/context", {
         method: "POST",
@@ -394,11 +413,16 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("registering");
-      const registration = await registerFheKeyForEnrollment({
-        registrationToken: context.registrationToken,
-        publicKeyBytes: enrollment.publicKeyBytes,
-        serverKeyBytes: enrollment.serverKeyBytes,
-      });
+      const keyId =
+        "preRegisteredKeyId" in enrollment && enrollment.preRegisteredKeyId
+          ? enrollment.preRegisteredKeyId
+          : (
+              await registerFheKeyForEnrollment({
+                registrationToken: context.registrationToken,
+                publicKeyBytes: enrollment.publicKeyBytes,
+                serverKeyBytes: enrollment.serverKeyBytes,
+              })
+            ).keyId;
 
       advanceStage("finalizing");
 
@@ -406,7 +430,7 @@ export function FheEnrollmentDialog({
         authMode: AuthMode.PASSKEY,
         userId,
         documentHash: "0x00",
-        prfOutput: signInResult.prfOutput,
+        prfOutput,
       });
       const proofInputs = prepareBindingProofInputs(secretParams);
       const baseCommitment = await generateBaseCommitment(
@@ -421,8 +445,8 @@ export function FheEnrollmentDialog({
           registrationToken: context.registrationToken,
           wrappedDek: enrollment.wrappedDek,
           prfSalt: enrollment.prfSalt,
-          credentialId: signInResult.credentialId,
-          keyId: registration.keyId,
+          credentialId,
+          keyId,
           envelopeFormat: enrollment.envelopeFormat,
           baseCommitment,
         }),
@@ -434,7 +458,7 @@ export function FheEnrollmentDialog({
         throw new Error(body?.error || "Failed to complete FHE enrollment.");
       }
 
-      await updateIdentityStatus(registration.keyId);
+      await updateIdentityStatus(keyId);
     },
     [hasPasskeys, prfSupported, updateIdentityStatus, advanceStage]
   );
@@ -465,7 +489,10 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("generating");
-      const { storedKeys } = await generateFheKeyMaterialForStorage();
+      const preGenerated = await getPreGeneratedKeys();
+      const storedKeys = preGenerated
+        ? preGenerated.storedKeys
+        : (await generateFheKeyMaterialForStorage()).storedKeys;
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.OPAQUE,
@@ -490,17 +517,26 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("registering");
-      const { fetchMsgpack } = await import(
-        "@/lib/privacy/utils/binary-transport"
-      );
-      const registration = await fetchMsgpack<{ keyId: string }>(
-        "/api/fhe/keys/register",
-        { serverKey: storedKeys.serverKey, publicKey: storedKeys.publicKey },
-        { credentials: "include" }
-      );
+      const keyId = preGenerated
+        ? preGenerated.keyId
+        : await (async () => {
+            const { fetchMsgpack } = await import(
+              "@/lib/privacy/utils/binary-transport"
+            );
+            return (
+              await fetchMsgpack<{ keyId: string }>(
+                "/api/fhe/keys/register",
+                {
+                  serverKey: storedKeys.serverKey,
+                  publicKey: storedKeys.publicKey,
+                },
+                { credentials: "include" }
+              )
+            ).keyId;
+          })();
 
-      await persistFheKeyId(registration.keyId);
-      await updateIdentityStatus(registration.keyId);
+      await persistFheKeyId(keyId);
+      await updateIdentityStatus(keyId);
     },
     [password, updateIdentityStatus, advanceStage]
   );
@@ -529,7 +565,10 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("generating");
-      const { storedKeys } = await generateFheKeyMaterialForStorage();
+      const preGeneratedNew = await getPreGeneratedKeys();
+      const storedKeys = preGeneratedNew
+        ? preGeneratedNew.storedKeys
+        : (await generateFheKeyMaterialForStorage()).storedKeys;
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.OPAQUE,
@@ -554,17 +593,26 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("registering");
-      const { fetchMsgpack } = await import(
-        "@/lib/privacy/utils/binary-transport"
-      );
-      const registration = await fetchMsgpack<{ keyId: string }>(
-        "/api/fhe/keys/register",
-        { serverKey: storedKeys.serverKey, publicKey: storedKeys.publicKey },
-        { credentials: "include" }
-      );
+      const keyId = preGeneratedNew
+        ? preGeneratedNew.keyId
+        : await (async () => {
+            const { fetchMsgpack } = await import(
+              "@/lib/privacy/utils/binary-transport"
+            );
+            return (
+              await fetchMsgpack<{ keyId: string }>(
+                "/api/fhe/keys/register",
+                {
+                  serverKey: storedKeys.serverKey,
+                  publicKey: storedKeys.publicKey,
+                },
+                { credentials: "include" }
+              )
+            ).keyId;
+          })();
 
-      await persistFheKeyId(registration.keyId);
-      await updateIdentityStatus(registration.keyId);
+      await persistFheKeyId(keyId);
+      await updateIdentityStatus(keyId);
     },
     [password, updateIdentityStatus, advanceStage]
   );
@@ -615,7 +663,10 @@ export function FheEnrollmentDialog({
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 
       advanceStage("generating");
-      const { storedKeys } = await generateFheKeyMaterialForStorage();
+      const preGeneratedWallet = await getPreGeneratedKeys();
+      const storedKeys = preGeneratedWallet
+        ? preGeneratedWallet.storedKeys
+        : (await generateFheKeyMaterialForStorage()).storedKeys;
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.WALLET,
@@ -647,17 +698,26 @@ export function FheEnrollmentDialog({
       });
 
       advanceStage("registering");
-      const { fetchMsgpack } = await import(
-        "@/lib/privacy/utils/binary-transport"
-      );
-      const registration = await fetchMsgpack<{ keyId: string }>(
-        "/api/fhe/keys/register",
-        { serverKey: storedKeys.serverKey, publicKey: storedKeys.publicKey },
-        { credentials: "include" }
-      );
+      const keyId = preGeneratedWallet
+        ? preGeneratedWallet.keyId
+        : await (async () => {
+            const { fetchMsgpack } = await import(
+              "@/lib/privacy/utils/binary-transport"
+            );
+            return (
+              await fetchMsgpack<{ keyId: string }>(
+                "/api/fhe/keys/register",
+                {
+                  serverKey: storedKeys.serverKey,
+                  publicKey: storedKeys.publicKey,
+                },
+                { credentials: "include" }
+              )
+            ).keyId;
+          })();
 
-      await persistFheKeyId(registration.keyId);
-      await updateIdentityStatus(registration.keyId);
+      await persistFheKeyId(keyId);
+      await updateIdentityStatus(keyId);
     },
     [wallet, updateIdentityStatus, advanceStage]
   );
