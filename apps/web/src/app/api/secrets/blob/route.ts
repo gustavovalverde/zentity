@@ -9,6 +9,7 @@ import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/crypto";
+import { withSpan } from "@/lib/observability/telemetry";
 import {
   computeSecretBlobRef,
   getSecretBlobMaxBytes,
@@ -81,7 +82,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    if (!request.body) {
+    const body = request.body;
+    if (!body) {
       return NextResponse.json({ error: "Missing body" }, { status: 400 });
     }
 
@@ -97,20 +99,30 @@ export async function POST(request: Request): Promise<NextResponse> {
       }
     }
 
-    const blobMeta = await writeSecretBlob({
-      secretId,
-      body: request.body,
-    });
+    return await withSpan(
+      "fhe.enrollment.upload_blob",
+      {
+        "secret.type": secretType,
+        "secret.id": secretId,
+        "blob.content_length": contentLength ?? undefined,
+      },
+      async () => {
+        const blobMeta = await writeSecretBlob({
+          secretId,
+          body,
+        });
 
-    if (registrationToken) {
-      await storeRegistrationBlob(registrationToken, {
-        secretId,
-        secretType,
-        ...blobMeta,
-      });
-    }
+        if (registrationToken) {
+          await storeRegistrationBlob(registrationToken, {
+            secretId,
+            secretType,
+            ...blobMeta,
+          });
+        }
 
-    return NextResponse.json(blobMeta, { status: 201 });
+        return NextResponse.json(blobMeta, { status: 201 });
+      }
+    );
   } catch (error) {
     if (error instanceof SecretBlobTooLargeError) {
       return NextResponse.json(

@@ -53,6 +53,18 @@ export const CLIENT_METRIC_DEFINITIONS = {
     unit: "ms",
     attributes: ["result", "flow_present"],
   },
+  "client.fhe.enrollment.stage.duration": {
+    unit: "ms",
+    attributes: ["stage", "method", "result", "flow_present"],
+  },
+  "client.fhe.enrollment.total.duration": {
+    unit: "ms",
+    attributes: ["method", "result", "flow_present"],
+  },
+  "client.tfhe.keygen.worker.duration": {
+    unit: "ms",
+    attributes: ["result", "flow_present"],
+  },
 } as const;
 
 export type ClientMetricName = keyof typeof CLIENT_METRIC_DEFINITIONS;

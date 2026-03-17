@@ -172,7 +172,7 @@ export function recordClientMetric(input: {
   }
 }
 
-async function _measureClientDuration<T>(args: {
+export async function measureClientDuration<T>(args: {
   name: ClientMetricName;
   attributes?: MetricAttributes;
   run: () => Promise<T> | T;

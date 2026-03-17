@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
+import { withSpan } from "@/lib/observability/telemetry";
 import { rateLimitResponse } from "@/lib/utils/rate-limit";
 import { fheLimiter } from "@/lib/utils/rate-limiters";
 
@@ -43,12 +44,18 @@ export async function POST(request: Request): Promise<Response> {
   const { fheKeyId, fheStatus, fheError } = parsed.data;
   const userId = authResult.session.user.id;
 
-  await upsertIdentityBundle({
-    userId,
-    fheKeyId,
-    fheStatus,
-    fheError: fheError ?? null,
-  });
+  return await withSpan(
+    "fhe.enrollment.status",
+    { "fhe.key_id": fheKeyId, "fhe.status": fheStatus },
+    async () => {
+      await upsertIdentityBundle({
+        userId,
+        fheKeyId,
+        fheStatus,
+        fheError: fheError ?? null,
+      });
 
-  return NextResponse.json({ success: true }, { status: 200 });
+      return NextResponse.json({ success: true }, { status: 200 });
+    }
+  );
 }

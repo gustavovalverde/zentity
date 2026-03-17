@@ -14,6 +14,7 @@ import {
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
+import { withSpan } from "@/lib/observability/telemetry";
 import { prfSaltSchema, wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
 import { rateLimitResponse } from "@/lib/utils/rate-limit";
@@ -97,57 +98,63 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingSecret = await getEncryptedSecretByUserAndType(
-    sessionUserId,
-    secretType
-  );
-  if (
-    existingSecret &&
-    existingSecret.id !== registration.blob.secretId &&
-    existingSecret.userId === sessionUserId
-  ) {
-    await deleteEncryptedSecretByUserAndType(sessionUserId, secretType);
-  }
+  return await withSpan(
+    "fhe.enrollment.complete",
+    { "fhe.key_id": enrollment.keyId },
+    async () => {
+      const existingSecret = await getEncryptedSecretByUserAndType(
+        sessionUserId,
+        secretType
+      );
+      if (
+        existingSecret &&
+        existingSecret.id !== registration.blob.secretId &&
+        existingSecret.userId === sessionUserId
+      ) {
+        await deleteEncryptedSecretByUserAndType(sessionUserId, secretType);
+      }
 
-  await upsertEncryptedSecret({
-    id: registration.blob.secretId,
-    userId: sessionUserId,
-    secretType,
-    encryptedBlob: "",
-    blobRef: registration.blob.blobRef,
-    blobHash: registration.blob.blobHash,
-    blobSize: registration.blob.blobSize,
-    metadata: {
-      envelopeFormat: enrollment.envelopeFormat,
-      keyId: enrollment.keyId,
-    },
-  });
+      await upsertEncryptedSecret({
+        id: registration.blob.secretId,
+        userId: sessionUserId,
+        secretType,
+        encryptedBlob: "",
+        blobRef: registration.blob.blobRef,
+        blobHash: registration.blob.blobHash,
+        blobSize: registration.blob.blobSize,
+        metadata: {
+          envelopeFormat: enrollment.envelopeFormat,
+          keyId: enrollment.keyId,
+        },
+      });
 
-  await upsertSecretWrapper({
-    id: crypto.randomUUID(),
-    secretId: registration.blob.secretId,
-    userId: sessionUserId,
-    credentialId: enrollment.credentialId,
-    wrappedDek: enrollment.wrappedDek,
-    prfSalt: enrollment.prfSalt,
-    kekSource: "prf",
-    baseCommitment: enrollment.baseCommitment,
-  });
+      await upsertSecretWrapper({
+        id: crypto.randomUUID(),
+        secretId: registration.blob.secretId,
+        userId: sessionUserId,
+        credentialId: enrollment.credentialId,
+        wrappedDek: enrollment.wrappedDek,
+        prfSalt: enrollment.prfSalt,
+        kekSource: "prf",
+        baseCommitment: enrollment.baseCommitment,
+      });
 
-  await upsertIdentityBundle({
-    userId: sessionUserId,
-    fheKeyId: enrollment.keyId,
-    fheStatus: "complete",
-    fheError: null,
-  });
+      await upsertIdentityBundle({
+        userId: sessionUserId,
+        fheKeyId: enrollment.keyId,
+        fheStatus: "complete",
+        fheError: null,
+      });
 
-  await consumeFheEnrollmentContext(registration.contextToken);
+      await consumeFheEnrollmentContext(registration.contextToken);
 
-  return NextResponse.json(
-    {
-      success: true,
-      keyId: enrollment.keyId,
-    },
-    { status: 200 }
+      return NextResponse.json(
+        {
+          success: true,
+          keyId: enrollment.keyId,
+        },
+        { status: 200 }
+      );
+    }
   );
 }

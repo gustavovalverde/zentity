@@ -9,7 +9,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 
@@ -27,6 +27,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   buildKekSignatureTypedData,
   generatePrfSalt,
@@ -184,6 +185,51 @@ export function FheEnrollmentDialog({
   const [password, setPassword] = useState("");
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
 
+  const timingRef = useRef<{
+    method: string;
+    totalStart: number;
+    lastAt: number;
+    currentStage: EnrollmentStage;
+  } | null>(null);
+
+  const advanceStage = useCallback((next: EnrollmentStage) => {
+    const timing = timingRef.current;
+    if (timing && timing.currentStage !== next) {
+      const now = performance.now();
+      recordClientMetric({
+        name: "client.fhe.enrollment.stage.duration",
+        value: now - timing.lastAt,
+        attributes: { stage: timing.currentStage, method: timing.method },
+      });
+      timing.lastAt = now;
+      timing.currentStage = next;
+    }
+    setStage(next);
+  }, []);
+
+  const finishTiming = useCallback((result: "ok" | "error") => {
+    const timing = timingRef.current;
+    if (!timing) {
+      return;
+    }
+    const now = performance.now();
+    recordClientMetric({
+      name: "client.fhe.enrollment.stage.duration",
+      value: now - timing.lastAt,
+      attributes: {
+        stage: timing.currentStage,
+        method: timing.method,
+        result,
+      },
+    });
+    recordClientMetric({
+      name: "client.fhe.enrollment.total.duration",
+      value: now - timing.totalStart,
+      attributes: { method: timing.method, result },
+    });
+    timingRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (open) {
       prewarmTfheWorker();
@@ -287,7 +333,7 @@ export function FheEnrollmentDialog({
         throw new Error("No passkeys registered.");
       }
 
-      setStage("unlocking");
+      advanceStage("unlocking");
       const prfSalt = generatePrfSalt();
       const signInResult = await signInWithPasskey({
         prfSalt,
@@ -311,7 +357,7 @@ export function FheEnrollmentDialog({
         prfSalt,
       });
 
-      setStage("generating");
+      advanceStage("generating");
       const enrollment = await prepareFheKeyEnrollment({
         enrollment: {
           userId,
@@ -320,7 +366,7 @@ export function FheEnrollmentDialog({
           prfSalt,
         },
         onStage: (s) =>
-          setStage(s === "generate-keys" ? "generating" : "encrypting"),
+          advanceStage(s === "generate-keys" ? "generating" : "encrypting"),
       });
 
       const contextResponse = await fetch("/api/fhe-enrollment/context", {
@@ -339,7 +385,7 @@ export function FheEnrollmentDialog({
         throw new Error("Missing enrollment registration token.");
       }
 
-      setStage("uploading");
+      advanceStage("uploading");
       await uploadSecretBlob({
         secretId: enrollment.secretId,
         secretType: SECRET_TYPES.FHE_KEYS,
@@ -347,14 +393,14 @@ export function FheEnrollmentDialog({
         registrationToken: context.registrationToken,
       });
 
-      setStage("registering");
+      advanceStage("registering");
       const registration = await registerFheKeyForEnrollment({
         registrationToken: context.registrationToken,
         publicKeyBytes: enrollment.publicKeyBytes,
         serverKeyBytes: enrollment.serverKeyBytes,
       });
 
-      setStage("finalizing");
+      advanceStage("finalizing");
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.PASSKEY,
@@ -390,7 +436,7 @@ export function FheEnrollmentDialog({
 
       await updateIdentityStatus(registration.keyId);
     },
-    [hasPasskeys, prfSupported, updateIdentityStatus]
+    [hasPasskeys, prfSupported, updateIdentityStatus, advanceStage]
   );
 
   const enrollOpaque = useCallback(
@@ -399,8 +445,14 @@ export function FheEnrollmentDialog({
         throw new Error("Enter your password to continue.");
       }
 
-      setStage("unlocking");
+      advanceStage("unlocking");
+      const opaqueStart = performance.now();
       const result = await authClient.opaque.verifyPassword({ password });
+      recordClientMetric({
+        name: "client.opaque.duration",
+        value: performance.now() - opaqueStart,
+        attributes: { result: result.error ? "error" : "ok" },
+      });
       if (!result.data || result.error) {
         throw new Error(
           result.error?.message || "Password verification failed."
@@ -412,7 +464,7 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      setStage("generating");
+      advanceStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
       const secretParams = await deriveBindingSecret({
@@ -427,7 +479,7 @@ export function FheEnrollmentDialog({
         proofInputs.userIdHashField
       );
 
-      setStage("encrypting");
+      advanceStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
         credential: {
@@ -437,7 +489,7 @@ export function FheEnrollmentDialog({
         baseCommitment,
       });
 
-      setStage("registering");
+      advanceStage("registering");
       const { fetchMsgpack } = await import(
         "@/lib/privacy/utils/binary-transport"
       );
@@ -450,7 +502,7 @@ export function FheEnrollmentDialog({
       await persistFheKeyId(registration.keyId);
       await updateIdentityStatus(registration.keyId);
     },
-    [password, updateIdentityStatus]
+    [password, updateIdentityStatus, advanceStage]
   );
 
   const enrollNewPassword = useCallback(
@@ -459,8 +511,14 @@ export function FheEnrollmentDialog({
         throw new Error("Password must be at least 10 characters.");
       }
 
-      setStage("unlocking");
+      advanceStage("unlocking");
+      const opaqueStart = performance.now();
       const result = await authClient.opaque.setPassword({ password });
+      recordClientMetric({
+        name: "client.opaque.duration",
+        value: performance.now() - opaqueStart,
+        attributes: { result: result.error ? "error" : "ok" },
+      });
       if (!result.data || result.error) {
         throw new Error(result.error?.message || "Password creation failed.");
       }
@@ -470,7 +528,7 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      setStage("generating");
+      advanceStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
       const secretParams = await deriveBindingSecret({
@@ -485,7 +543,7 @@ export function FheEnrollmentDialog({
         proofInputs.userIdHashField
       );
 
-      setStage("encrypting");
+      advanceStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
         credential: {
@@ -495,7 +553,7 @@ export function FheEnrollmentDialog({
         baseCommitment,
       });
 
-      setStage("registering");
+      advanceStage("registering");
       const { fetchMsgpack } = await import(
         "@/lib/privacy/utils/binary-transport"
       );
@@ -508,7 +566,7 @@ export function FheEnrollmentDialog({
       await persistFheKeyId(registration.keyId);
       await updateIdentityStatus(registration.keyId);
     },
-    [password, updateIdentityStatus]
+    [password, updateIdentityStatus, advanceStage]
   );
 
   const enrollWallet = useCallback(
@@ -517,7 +575,7 @@ export function FheEnrollmentDialog({
         throw new Error("No wallet linked.");
       }
 
-      setStage("unlocking");
+      advanceStage("unlocking");
       const typedData = buildKekSignatureTypedData({
         userId,
         chainId: walletCtx.chainId,
@@ -533,8 +591,14 @@ export function FheEnrollmentDialog({
         message: typedData.message as Record<string, unknown>,
       };
 
+      const walletSignStart = performance.now();
       const signature1 = await walletCtx.signTypedData(signArgs);
       const signature2 = await walletCtx.signTypedData(signArgs);
+      recordClientMetric({
+        name: "client.wallet.sign.duration",
+        value: performance.now() - walletSignStart,
+        attributes: { result: "ok" },
+      });
 
       if (signature1 !== signature2) {
         throw new Error(
@@ -550,7 +614,7 @@ export function FheEnrollmentDialog({
       const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 
-      setStage("generating");
+      advanceStage("generating");
       const { storedKeys } = await generateFheKeyMaterialForStorage();
 
       const secretParams = await deriveBindingSecret({
@@ -565,7 +629,7 @@ export function FheEnrollmentDialog({
         proofInputs.userIdHashField
       );
 
-      setStage("encrypting");
+      advanceStage("encrypting");
       await storeFheKeysWithCredential({
         keys: storedKeys,
         credential: {
@@ -582,7 +646,7 @@ export function FheEnrollmentDialog({
         baseCommitment,
       });
 
-      setStage("registering");
+      advanceStage("registering");
       const { fetchMsgpack } = await import(
         "@/lib/privacy/utils/binary-transport"
       );
@@ -595,7 +659,7 @@ export function FheEnrollmentDialog({
       await persistFheKeyId(registration.keyId);
       await updateIdentityStatus(registration.keyId);
     },
-    [wallet, updateIdentityStatus]
+    [wallet, updateIdentityStatus, advanceStage]
   );
 
   const handleEnroll = useCallback(
@@ -605,6 +669,13 @@ export function FheEnrollmentDialog({
       }
 
       setError(null);
+      const now = performance.now();
+      timingRef.current = {
+        method,
+        totalStart: now,
+        lastAt: now,
+        currentStage: "checking",
+      };
       setStage("checking");
 
       try {
@@ -635,6 +706,7 @@ export function FheEnrollmentDialog({
           throw new Error("No enrollment method available.");
         }
 
+        finishTiming("ok");
         setStage("done");
         toast.success("Encryption keys secured.");
         router.refresh();
@@ -647,6 +719,7 @@ export function FheEnrollmentDialog({
           message.toLowerCase().includes("aborted") ||
           message.toLowerCase().includes("rejected");
 
+        finishTiming("error");
         setError(
           isCancelled
             ? "Key setup was cancelled. Try again when ready."
@@ -664,6 +737,7 @@ export function FheEnrollmentDialog({
       enrollOpaque,
       enrollNewPassword,
       enrollWallet,
+      finishTiming,
     ]
   );
 

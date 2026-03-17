@@ -6,6 +6,8 @@ import {
   type ClientMetricName,
 } from "@/lib/observability/client-metric-definitions";
 import {
+  recordClientFheEnrollmentStageDuration,
+  recordClientFheEnrollmentTotalDuration,
   recordClientFhevmDecryptDuration,
   recordClientFhevmEncryptDuration,
   recordClientFhevmEncryptProofBytes,
@@ -15,6 +17,7 @@ import {
   recordClientOpaqueDuration,
   recordClientPasskeyDuration,
   recordClientTfheKeygenDuration,
+  recordClientTfheKeygenWorkerDuration,
   recordClientTfheLoadDuration,
   recordClientTfheLoadRetry,
   recordClientWalletSignDuration,
@@ -133,6 +136,29 @@ const handlers: Record<
     record: recordClientWalletSignDuration,
     attributes: new Set(
       CLIENT_METRIC_DEFINITIONS["client.wallet.sign.duration"].attributes
+    ),
+  },
+  "client.fhe.enrollment.stage.duration": {
+    unit: "ms",
+    record: recordClientFheEnrollmentStageDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.fhe.enrollment.stage.duration"]
+        .attributes
+    ),
+  },
+  "client.fhe.enrollment.total.duration": {
+    unit: "ms",
+    record: recordClientFheEnrollmentTotalDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.fhe.enrollment.total.duration"]
+        .attributes
+    ),
+  },
+  "client.tfhe.keygen.worker.duration": {
+    unit: "ms",
+    record: recordClientTfheKeygenWorkerDuration,
+    attributes: new Set(
+      CLIENT_METRIC_DEFINITIONS["client.tfhe.keygen.worker.duration"].attributes
     ),
   },
 };

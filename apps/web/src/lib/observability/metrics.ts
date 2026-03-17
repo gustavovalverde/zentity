@@ -180,6 +180,33 @@ const clientWalletSignDuration = meter.createHistogram(
   }
 );
 
+const clientFheEnrollmentStageDuration = meter.createHistogram(
+  "zentity.client.fhe.enrollment.stage.duration",
+  {
+    description: "Client-side FHE enrollment per-stage duration.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
+const clientFheEnrollmentTotalDuration = meter.createHistogram(
+  "zentity.client.fhe.enrollment.total.duration",
+  {
+    description: "Client-side FHE enrollment total duration.",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
+const clientTfheKeygenWorkerDuration = meter.createHistogram(
+  "zentity.client.tfhe.keygen.worker.duration",
+  {
+    description: "Client-side TFHE key generation duration (worker-internal).",
+    unit: "ms",
+    advice: durationAdvice,
+  }
+);
+
 function recordSafe(
   histogram: { record: (value: number, attributes?: Attributes) => void },
   value: number,
@@ -322,4 +349,25 @@ export function recordClientWalletSignDuration(
   attributes?: Attributes
 ): void {
   recordSafe(clientWalletSignDuration, durationMs, attributes);
+}
+
+export function recordClientFheEnrollmentStageDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientFheEnrollmentStageDuration, durationMs, attributes);
+}
+
+export function recordClientFheEnrollmentTotalDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientFheEnrollmentTotalDuration, durationMs, attributes);
+}
+
+export function recordClientTfheKeygenWorkerDuration(
+  durationMs: number,
+  attributes?: Attributes
+): void {
+  recordSafe(clientTfheKeygenWorkerDuration, durationMs, attributes);
 }

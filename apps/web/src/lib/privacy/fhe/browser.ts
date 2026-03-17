@@ -213,7 +213,13 @@ export async function generateFheKeyMaterialForStorage(): Promise<{
   let result: "ok" | "error" = "ok";
 
   try {
-    return await generateFheKeyMaterialInWorker();
+    const workerResult = await generateFheKeyMaterialInWorker();
+    recordClientMetric({
+      name: "client.tfhe.keygen.worker.duration",
+      value: workerResult.durationMs,
+      attributes: { result: "ok" },
+    });
+    return workerResult;
   } catch (error) {
     result = "error";
     throw error;
