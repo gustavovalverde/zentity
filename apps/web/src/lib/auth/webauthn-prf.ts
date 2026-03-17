@@ -304,7 +304,7 @@ export async function evaluatePrf(params: {
       return {
         type: "public-key" as const,
         id: toArrayBuffer(base64UrlToBytes(credentialId)),
-        ...(transports !== undefined ? { transports } : {}),
+        ...(transports === undefined ? {} : { transports }),
       };
     }
   );
@@ -329,7 +329,7 @@ export async function evaluatePrf(params: {
     challenge,
     allowCredentials,
     userVerification: params.userVerification ?? "required",
-    ...(params.timeoutMs !== undefined ? { timeout: params.timeoutMs } : {}),
+    ...(params.timeoutMs === undefined ? {} : { timeout: params.timeoutMs }),
     extensions: {
       prf: singleEntry
         ? { eval: { first: singleEntry.first } }

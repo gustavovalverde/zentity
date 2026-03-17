@@ -462,9 +462,9 @@ export async function findIssuedCredentialRecord(credential: string) {
 
   const client = createClient({
     url,
-    ...(process.env.TURSO_AUTH_TOKEN !== undefined
-      ? { authToken: process.env.TURSO_AUTH_TOKEN }
-      : {}),
+    ...(process.env.TURSO_AUTH_TOKEN === undefined
+      ? {}
+      : { authToken: process.env.TURSO_AUTH_TOKEN }),
   });
   const db = drizzle(client, { schema: { oidc4vciIssuedCredentials } });
 

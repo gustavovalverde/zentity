@@ -245,7 +245,7 @@ async function evaluate(
 ): Promise<StepUpAction | null> {
   const maxAgeStr = params.max_age;
   const maxAge =
-    maxAgeStr !== undefined ? Number.parseInt(maxAgeStr, 10) : undefined;
+    maxAgeStr === undefined ? undefined : Number.parseInt(maxAgeStr, 10);
   const maxAgeExceeded =
     maxAge !== undefined &&
     !Number.isNaN(maxAge) &&

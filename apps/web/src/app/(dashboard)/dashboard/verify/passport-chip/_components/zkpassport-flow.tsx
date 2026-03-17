@@ -269,7 +269,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     try {
       const { ZKPassport } = await import("@zkpassport/sdk");
       const zkpassport = new ZKPassport(
-        typeof window !== "undefined" ? window.location.hostname : undefined
+        typeof window === "undefined" ? undefined : window.location.hostname
       );
 
       const isDevMode =

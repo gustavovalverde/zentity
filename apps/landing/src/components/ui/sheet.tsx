@@ -110,9 +110,9 @@ function SheetDescription({
 
 export {
   Sheet,
-  SheetTrigger,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetDescription,
+  SheetTrigger,
 };

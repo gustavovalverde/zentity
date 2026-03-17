@@ -27,5 +27,6 @@ function Spinner({ className, size = "sm", ...props }: Readonly<SpinnerProps>) {
   );
 }
 
-export { Spinner };
 export type { SpinnerProps, SpinnerSize };
+
+export { Spinner };

@@ -20,9 +20,9 @@ const metadata = {
   name: "Zentity",
   description: "Privacy-preserving identity verification",
   url:
-    globalThis.window !== undefined
-      ? globalThis.location.origin
-      : "https://zentity.app",
+    globalThis.window === undefined
+      ? "https://zentity.app"
+      : globalThis.location.origin,
   icons: ["/icon.png"],
 };
 

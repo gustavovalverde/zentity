@@ -68,7 +68,7 @@ function DropdownMenuItem({
 
 export {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuTrigger,
 };

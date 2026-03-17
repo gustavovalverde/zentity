@@ -287,7 +287,7 @@ export function OnChainAttestation({
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>
               {confirmedCount > 0 && (
                 <Badge className="ml-2" variant="secondary">
-                  {confirmedCount} network{confirmedCount !== 1 ? "s" : ""}
+                  {confirmedCount} network{confirmedCount === 1 ? "" : "s"}
                 </Badge>
               )}
             </div>

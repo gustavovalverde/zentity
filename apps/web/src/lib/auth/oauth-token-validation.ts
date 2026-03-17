@@ -66,9 +66,9 @@ export async function validateOAuthAccessToken(
         audience: RP_API_AUDIENCE,
       },
       jwksUrl,
-      ...(options?.requiredScopes !== undefined
-        ? { scopes: options.requiredScopes }
-        : {}),
+      ...(options?.requiredScopes === undefined
+        ? {}
+        : { scopes: options.requiredScopes }),
     });
 
     const clientId =

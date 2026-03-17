@@ -6,7 +6,10 @@
   "type": "module",
   "pnpm": {
     "overrides": {
-      "hono": ">=4.11.4"
+      "hono": ">=4.12.7",
+      "@hono/node-server": ">=1.19.10",
+      "dompurify": ">=3.3.2",
+      "express-rate-limit": ">=8.2.2"
     }
   },
   "scripts": {
@@ -22,34 +25,34 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@base-ui/react": "^1.2.0",
+    "@base-ui/react": "^1.3.0",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",
-    "@tabler/icons-react": "^3.36.1",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tabler/icons-react": "^3.40.0",
+    "@tailwindcss/vite": "^4.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "mermaid": "^11.12.3",
+    "mermaid": "^11.13.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.13.0",
+    "react-router-dom": "^7.13.1",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "shadcn": "^3.8.5",
-    "tailwind-merge": "^3.4.1",
-    "tailwindcss": "^4.1.18",
+    "shadcn": "^4.0.8",
+    "tailwind-merge": "^3.5.0",
+    "tailwindcss": "^4.2.1",
     "tw-animate-css": "^1.4.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.2",
-    "@types/node": "^25.2.3",
+    "@biomejs/biome": "^2.4.7",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.1.4",
-    "knip": "^5.85.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "knip": "^5.87.0",
     "typescript": "~5.9.3",
-    "vite": "^7.3.1",
+    "vite": "^8.0.0",
     "vitest": "^4.1.0"
   }
 }

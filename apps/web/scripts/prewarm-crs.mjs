@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-import { UltraHonkBackend } from "@aztec/bb.js";
+import { BackendType, Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 
 const crsPath = process.env.BB_CRS_PATH || "/tmp/.bb-crs";
 
@@ -41,11 +41,11 @@ for (const name of circuits) {
   }
 
   console.log(`[prewarm] Loading CRS via ${name} circuit`);
-  const backend = new UltraHonkBackend(bytecode, {
-    threads: 1,
-    crsPath,
-  });
+  const api = await Barretenberg.new({ crsPath, backend: BackendType.Wasm });
+  const backend = new UltraHonkBackend(bytecode, api);
   await backend.getVerificationKey();
+  api.destroy();
+  break;
 }
 
 console.log(`[prewarm] CRS cache ready at ${crsPath}`);

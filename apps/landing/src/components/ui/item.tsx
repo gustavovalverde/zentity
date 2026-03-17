@@ -89,4 +89,4 @@ function ItemDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
-export { Item, ItemMedia, ItemContent, ItemGroup, ItemTitle, ItemDescription };
+export { Item, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle };

@@ -29,28 +29,28 @@ frost-secp256k1 = { version = "2.2.0", features = ["serialization"] }
 frost-ed25519 = { version = "2.2.0", features = ["serialization"] }
 
 # Web framework (Actix for native mTLS client cert extraction)
-actix-web = { version = "4.12.1", features = ["rustls-0_23"] }
+actix-web = { version = "4.13.0", features = ["rustls-0_23"] }
 actix-rt = "2.11"
 actix-tls = "3.5.0"
-futures-util = "0.3.31"
+futures-util = "0.3.32"
 
 # Rate limiting
 actix-governor = "0.10.0"
 governor = "0.10.4"
 
 # Async runtime
-tokio = { version = "1.49.0", features = ["full"] }
+tokio = { version = "1.50.0", features = ["full"] }
 
 # mTLS
-rustls = { version = "0.23.36", default-features = false, features = [
+rustls = { version = "0.23.37", default-features = false, features = [
     "std",
     "ring",
 ] }
 rustls-pemfile = "2.2"
-webpki-roots = "1.0.4"
+webpki-roots = "1.0.6"
 
 # Storage
-redb = "3.1.0"
+redb = "3.1.1"
 
 # Serialization
 serde = { version = "1.0.228", features = ["derive"] }
@@ -79,11 +79,11 @@ jsonwebtoken = { version = "10.3.0", default-features = false, features = [
 chrono = { version = "0.4", features = ["serde"] }
 
 # ID generation
-uuid = { version = "1.19", features = ["v4", "serde"] }
+uuid = { version = "1.22", features = ["v4", "serde"] }
 
 # Observability
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 tracing-actix-web = "0.7"
 
 # OpenTelemetry (optional) - v0.30+ has stable Metrics-SDK
@@ -99,8 +99,8 @@ opentelemetry-otlp = { version = "0.30", features = [
 tracing-opentelemetry = { version = "0.31", optional = true }
 
 # Error handling
-thiserror = "2.0.17"
-anyhow = "1.0.100"
+thiserror = "2.0.18"
+anyhow = "1.0.102"
 
 # HTTP client (for coordinator -> signer communication)
 reqwest = { version = "0.12", default-features = false, features = [
@@ -128,11 +128,11 @@ chrono = "0.4"
 
 [dev-dependencies]
 # Certificate generation for mTLS testing
-rcgen = "0.14.6"
+rcgen = "0.14.7"
 
 # Test utilities
 tokio-test = "0.4"
-tempfile = "3.24"
+tempfile = "3.27"
 
 # Actix test utilities
 actix-test = "0.1"

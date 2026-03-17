@@ -195,9 +195,9 @@ export function BetterAuthUIProvider({
   }, []);
 
   const baseURL =
-    globalThis.window !== undefined
-      ? globalThis.window.location.origin
-      : env.NEXT_PUBLIC_APP_URL;
+    globalThis.window === undefined
+      ? env.NEXT_PUBLIC_APP_URL
+      : globalThis.window.location.origin;
 
   return (
     <AuthUIProvider

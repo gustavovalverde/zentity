@@ -41,4 +41,4 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export { Card, CardHeader, CardTitle, CardContent };
+export { Card, CardContent, CardHeader, CardTitle };

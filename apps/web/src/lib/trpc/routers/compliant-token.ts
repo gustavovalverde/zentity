@@ -524,16 +524,16 @@ export const compliantTokenRouter = router({
 
         const firstLog = logs[0];
         const latestLog =
-          firstLog !== undefined
-            ? logs.reduce(
+          firstLog === undefined
+            ? null
+            : logs.reduce(
                 (latest, log) =>
                   (log.blockNumber ?? BigInt(0)) >
                   (latest.blockNumber ?? BigInt(0))
                     ? log
                     : latest,
                 firstLog
-              )
-            : null;
+              );
 
         const txHash = latestLog?.transactionHash ?? null;
         const blockNumber = latestLog?.blockNumber

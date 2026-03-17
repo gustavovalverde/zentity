@@ -61,7 +61,7 @@ function NavigationMenuLink({
 
 export {
   NavigationMenu,
-  NavigationMenuList,
   NavigationMenuItem,
   NavigationMenuLink,
+  NavigationMenuList,
 };

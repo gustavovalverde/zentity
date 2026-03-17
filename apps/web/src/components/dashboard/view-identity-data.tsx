@@ -543,9 +543,9 @@ export function ViewIdentityData() {
             isVisible={isVisible}
             label="Compliance Level"
             value={
-              decryptedData?.complianceLevel !== undefined
-                ? `Level ${decryptedData.complianceLevel}`
-                : undefined
+              decryptedData?.complianceLevel === undefined
+                ? undefined
+                : `Level ${decryptedData.complianceLevel}`
             }
           />
           <IdentityField

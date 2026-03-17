@@ -33,7 +33,7 @@ export function buildNotificationBody(
       if (detail?.type === "purchase" && detail?.item) {
         const amount =
           detail.amount?.value && detail.amount?.currency
-            ? ` for ${detail.amount.currency === "USD" ? "$" : ""}${detail.amount.value}${detail.amount.currency !== "USD" ? ` ${detail.amount.currency}` : ""}`
+            ? ` for ${detail.amount.currency === "USD" ? "$" : ""}${detail.amount.value}${detail.amount.currency === "USD" ? "" : ` ${detail.amount.currency}`}`
             : "";
         return `${clientLabel}: ${detail.item}${amount}`;
       }
