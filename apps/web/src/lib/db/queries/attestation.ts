@@ -275,7 +275,7 @@ export async function reconcilePendingRevocations(): Promise<{
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      const provider = createProvider(row.networkId);
+      const provider = await createProvider(row.networkId);
       await provider.revokeAttestation(row.walletAddress);
 
       await db

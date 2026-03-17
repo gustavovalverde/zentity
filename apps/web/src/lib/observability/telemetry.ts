@@ -10,19 +10,6 @@ import {
   SpanStatusCode,
   trace,
 } from "@opentelemetry/api";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import {
-  defaultResource,
-  resourceFromAttributes,
-} from "@opentelemetry/resources";
-import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
 
 import { env } from "@/env";
 
@@ -31,7 +18,8 @@ const DEFAULT_OTLP_METRICS_ENDPOINT = "http://localhost:4318/v1/metrics";
 const OTLP_SIGNAL_SUFFIX_REGEX = /\/v1\/(traces|metrics|logs)$/;
 const TRAILING_SLASH_REGEX = /\/$/;
 
-let sdk: NodeSDK | null = null;
+// biome-ignore lint/suspicious/noExplicitAny: SDK type loaded dynamically
+let sdk: any = null;
 
 function parseHeaders(raw?: string): Record<string, string> | undefined {
   if (!raw) {
@@ -128,13 +116,31 @@ function getMetricsExportIntervalMs(): number {
   return env.OTEL_METRICS_EXPORT_INTERVAL_MS;
 }
 
-export function initTelemetry(): void {
+export async function initTelemetry(): Promise<void> {
   if (sdk) {
     return;
   }
   if (!telemetryEnabled()) {
     return;
   }
+
+  const [
+    { getNodeAutoInstrumentations },
+    { OTLPMetricExporter },
+    { OTLPTraceExporter },
+    { defaultResource, resourceFromAttributes },
+    { PeriodicExportingMetricReader },
+    { NodeSDK },
+    { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION },
+  ] = await Promise.all([
+    import("@opentelemetry/auto-instrumentations-node"),
+    import("@opentelemetry/exporter-metrics-otlp-http"),
+    import("@opentelemetry/exporter-trace-otlp-http"),
+    import("@opentelemetry/resources"),
+    import("@opentelemetry/sdk-metrics"),
+    import("@opentelemetry/sdk-node"),
+    import("@opentelemetry/semantic-conventions"),
+  ]);
 
   const traceEndpoint = resolveOtlpEndpoint("traces");
   const metricsEndpoint = resolveOtlpEndpoint("metrics");

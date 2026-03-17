@@ -1,7 +1,7 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { initTelemetry } = await import("@/lib/observability/telemetry");
-    initTelemetry();
+    await initTelemetry();
 
     // Preload Human.js models for faster first liveness request
     const { warmupHumanServer } = await import(

@@ -150,7 +150,7 @@ export const attestationRouter = router({
         });
       }
 
-      const provider = createProvider(input.networkId);
+      const provider = await createProvider(input.networkId);
 
       const existing = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
@@ -353,7 +353,7 @@ export const attestationRouter = router({
       }
 
       try {
-        const provider = createProvider(input.networkId);
+        const provider = await createProvider(input.networkId);
         const txStatus = await provider.checkTransaction(attestation.txHash);
 
         if (txStatus.confirmed && txStatus.blockNumber) {
@@ -372,7 +372,7 @@ export const attestationRouter = router({
 });
 
 async function waitForConfirmation(
-  provider: ReturnType<typeof createProvider>,
+  provider: Awaited<ReturnType<typeof createProvider>>,
   txHash: string,
   maxAttempts = 30,
   intervalMs = 2000

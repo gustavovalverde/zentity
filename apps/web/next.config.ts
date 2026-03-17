@@ -65,6 +65,26 @@ const nextConfig: NextConfig = {
     "node-tfhe",
     "node-tkms",
 
+    // Blockchain / FHEVM (Hardhat utils, contract ABIs, viem)
+    "@fhevm/mock-utils",
+    "@zentity/fhevm-contracts",
+    "viem",
+
+    // Post-quantum cryptography
+    "@noble/post-quantum",
+
+    // OpenTelemetry (auto-instrumentations alone imports ~30 Node modules)
+    "@opentelemetry/sdk-node",
+    "@opentelemetry/auto-instrumentations-node",
+    "@opentelemetry/exporter-metrics-otlp-http",
+    "@opentelemetry/exporter-trace-otlp-http",
+    "@opentelemetry/sdk-metrics",
+    "@opentelemetry/resources",
+
+    // Auth protocol libraries (WASM/native bindings)
+    "@serenity-kit/opaque",
+    "web-push",
+
     // BBS+ signatures (WASM runtime loading)
     "@mattrglobal/pairing-crypto",
 

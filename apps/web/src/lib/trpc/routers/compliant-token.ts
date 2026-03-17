@@ -267,7 +267,7 @@ export const compliantTokenRouter = router({
 
       // Mint tokens using provider's wallet (owner)
       try {
-        const provider = createProvider(input.networkId);
+        const provider = await createProvider(input.networkId);
         // Access the wallet client through the provider
         // @ts-expect-error - accessing protected method for mint operation
         const walletClient = provider.getWalletClient();
@@ -323,7 +323,7 @@ export const compliantTokenRouter = router({
       }
 
       try {
-        const provider = createProvider(input.networkId);
+        const provider = await createProvider(input.networkId);
         const status = await provider.getAttestationStatus(input.address);
         return { isAttested: status.isAttested };
       } catch {

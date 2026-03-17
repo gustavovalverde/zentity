@@ -867,7 +867,7 @@ export async function revokeIdentity(
 
     if (canCreateProvider(attestation.networkId)) {
       try {
-        const provider = createProvider(attestation.networkId);
+        const provider = await createProvider(attestation.networkId);
         await provider.revokeAttestation(attestation.walletAddress);
         onChainRevoked = true;
       } catch {
