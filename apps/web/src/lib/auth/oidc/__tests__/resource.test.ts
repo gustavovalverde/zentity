@@ -57,4 +57,9 @@ describe("validateResourceUri", () => {
     expect(result.valid).toBe(false);
     expect(result.error).toContain("http");
   });
+
+  it("rejects schemes that start with http but are not http/https", () => {
+    expect(validateResourceUri("httpx://evil.com").valid).toBe(false);
+    expect(validateResourceUri("https+unix://sock/path").valid).toBe(false);
+  });
 });

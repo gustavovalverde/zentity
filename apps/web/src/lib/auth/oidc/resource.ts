@@ -31,7 +31,7 @@ export function validateResourceUri(
     };
   }
 
-  if (!url.protocol.startsWith("http")) {
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { valid: false, error: "resource must use http or https scheme" };
   }
 

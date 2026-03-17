@@ -23,7 +23,13 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 vi.mock("@/lib/db/schema/push", () => ({
-  pushSubscriptions: { userId: "userId", endpoint: "endpoint" },
+  pushSubscriptions: {
+    id: "id",
+    userId: "userId",
+    endpoint: "endpoint",
+    p256dh: "p256dh",
+    auth: "auth",
+  },
 }));
 
 vi.mock("@/env", () => ({
@@ -111,10 +117,10 @@ describe("sendWebPush", () => {
     );
   });
 
-  it("auto-deletes subscriptions on gone error", async () => {
+  it("auto-deletes subscriptions on gone error by row id", async () => {
     mockDbSelect.mockResolvedValue([
       {
-        id: "1",
+        id: "sub-42",
         endpoint: "https://fcm.googleapis.com/push/stale",
         p256dh: "k",
         auth: "a",
@@ -127,7 +133,9 @@ describe("sendWebPush", () => {
 
     await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
-    expect(mockDbDelete).toHaveBeenCalled();
+    expect(mockDbDelete).toHaveBeenCalledWith(
+      expect.objectContaining({ col: "id", val: "sub-42" })
+    );
   });
 
   it("short-circuits when no subscriptions exist", async () => {

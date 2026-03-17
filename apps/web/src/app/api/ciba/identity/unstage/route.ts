@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-handler";
-import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
+import { validateCibaRequestOwnership } from "@/lib/db/queries/ciba";
 
 const UnstageSchema = z.object({
   auth_req_id: z.string().min(1),
@@ -15,7 +15,7 @@ export function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const result = await validatePendingCibaRequest(
+    const result = await validateCibaRequestOwnership(
       parsed.data.auth_req_id,
       userId
     );

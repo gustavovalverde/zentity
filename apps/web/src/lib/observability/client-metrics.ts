@@ -171,28 +171,3 @@ export function recordClientMetric(input: {
     scheduleFlush();
   }
 }
-
-export async function measureClientDuration<T>(args: {
-  name: ClientMetricName;
-  attributes?: MetricAttributes;
-  run: () => Promise<T> | T;
-}): Promise<T> {
-  const start = performance.now();
-  let result: "ok" | "error" = "ok";
-
-  try {
-    return await args.run();
-  } catch (error) {
-    result = "error";
-    throw error;
-  } finally {
-    recordClientMetric({
-      name: args.name,
-      value: performance.now() - start,
-      attributes: {
-        ...args.attributes,
-        result,
-      },
-    });
-  }
-}

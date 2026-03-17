@@ -10,15 +10,18 @@ export interface ValidatedCibaRequest {
   scope: string;
 }
 
-/**
- * Validate a CIBA request by authReqId: exists → belongs to userId → is pending.
- * Returns the row on success, or a NextResponse error on failure.
- */
-export async function validatePendingCibaRequest(
-  authReqId: string,
-  userId: string
-): Promise<ValidatedCibaRequest | Response> {
-  const cibaRequest = await db
+interface CibaRequestRow {
+  authorizationDetails: string | null | undefined;
+  clientId: string;
+  scope: string;
+  status: string;
+  userId: string;
+}
+
+function fetchCibaRequest(
+  authReqId: string
+): Promise<CibaRequestRow | undefined> {
+  return db
     .select({
       clientId: cibaRequests.clientId,
       userId: cibaRequests.userId,
@@ -29,19 +32,45 @@ export async function validatePendingCibaRequest(
     .from(cibaRequests)
     .where(eq(cibaRequests.authReqId, authReqId))
     .get();
+}
 
-  if (!cibaRequest) {
-    return NextResponse.json({ error: "Unknown auth_req_id" }, { status: 404 });
+function validateOwnership(
+  row: CibaRequestRow | undefined,
+  userId: string
+): { error: Response } | { row: CibaRequestRow } {
+  if (!row) {
+    return {
+      error: NextResponse.json(
+        { error: "Unknown auth_req_id" },
+        { status: 404 }
+      ),
+    };
+  }
+  if (row.userId !== userId) {
+    return {
+      error: NextResponse.json(
+        { error: "CIBA request does not belong to current user" },
+        { status: 403 }
+      ),
+    };
+  }
+  return { row };
+}
+
+/**
+ * Validate a CIBA request by authReqId: exists → belongs to userId → is pending.
+ * Returns the row on success, or a NextResponse error on failure.
+ */
+export async function validatePendingCibaRequest(
+  authReqId: string,
+  userId: string
+): Promise<ValidatedCibaRequest | Response> {
+  const result = validateOwnership(await fetchCibaRequest(authReqId), userId);
+  if ("error" in result) {
+    return result.error;
   }
 
-  if (cibaRequest.userId !== userId) {
-    return NextResponse.json(
-      { error: "CIBA request does not belong to current user" },
-      { status: 403 }
-    );
-  }
-
-  if (cibaRequest.status !== "pending") {
+  if (result.row.status !== "pending") {
     return NextResponse.json(
       { error: "CIBA request is no longer pending" },
       { status: 400 }
@@ -49,8 +78,24 @@ export async function validatePendingCibaRequest(
   }
 
   return {
-    clientId: cibaRequest.clientId,
-    scope: cibaRequest.scope,
-    authorizationDetails: cibaRequest.authorizationDetails,
+    clientId: result.row.clientId,
+    scope: result.row.scope,
+    authorizationDetails: result.row.authorizationDetails,
   };
+}
+
+/**
+ * Validate CIBA request ownership only (exists + belongs to userId).
+ * Does NOT check status — suitable for cleanup operations like unstage
+ * where PII removal should succeed regardless of request state.
+ */
+export async function validateCibaRequestOwnership(
+  authReqId: string,
+  userId: string
+): Promise<{ clientId: string } | Response> {
+  const result = validateOwnership(await fetchCibaRequest(authReqId), userId);
+  if ("error" in result) {
+    return result.error;
+  }
+  return { clientId: result.row.clientId };
 }

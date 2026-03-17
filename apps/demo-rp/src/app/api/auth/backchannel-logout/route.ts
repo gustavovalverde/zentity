@@ -3,7 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
-import { account, session } from "@/lib/db/schema";
+import { account } from "@/lib/db/schema";
 import {
   findProviderByClientId,
   PROVIDER_IDS,
@@ -95,46 +95,38 @@ export async function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Missing sub claim" }, { status: 400 });
     }
 
-    // Scope session invalidation to the provider targeted by this logout token
     const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
     const provider = aud ? await findProviderByClientId(aud) : null;
 
     const db = getDb();
 
     if (provider) {
-      const userAccount = await db
-        .select({ userId: account.userId })
-        .from(account)
+      // Revoke only the targeted provider's tokens — other providers stay active
+      await db
+        .update(account)
+        .set({
+          accessToken: null,
+          refreshToken: null,
+          idToken: null,
+        })
         .where(
           and(
             eq(account.accountId, sub),
             eq(account.providerId, `zentity-${provider}`)
           )
         )
-        .limit(1)
-        .get();
-
-      if (userAccount) {
-        await db
-          .delete(session)
-          .where(eq(session.userId, userAccount.userId))
-          .run();
-      }
+        .run();
     } else {
-      // Fallback: unknown provider — delete by sub across all providers
-      const userAccount = await db
-        .select({ userId: account.userId })
-        .from(account)
+      // Fallback: unknown provider — revoke all accounts matching sub
+      await db
+        .update(account)
+        .set({
+          accessToken: null,
+          refreshToken: null,
+          idToken: null,
+        })
         .where(eq(account.accountId, sub))
-        .limit(1)
-        .get();
-
-      if (userAccount) {
-        await db
-          .delete(session)
-          .where(eq(session.userId, userAccount.userId))
-          .run();
-      }
+        .run();
     }
 
     return new Response(null, { status: 200 });

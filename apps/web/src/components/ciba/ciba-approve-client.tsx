@@ -138,6 +138,20 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
   );
 }
 
+function resolveTerminalState(message: string): PageState | null {
+  const lower = message.toLowerCase();
+  if (lower.includes("already approved")) {
+    return "approved";
+  }
+  if (lower.includes("already rejected")) {
+    return "rejected";
+  }
+  if (lower.includes("expired")) {
+    return "expired";
+  }
+  return null;
+}
+
 export function CibaApproveClient({
   agentClaims: serverAgentClaims,
   authMode,
@@ -354,8 +368,15 @@ export function CibaApproveClient({
             body: JSON.stringify({ auth_req_id: authReqId }),
           }).catch(() => undefined);
         }
-        setError(err instanceof Error ? err.message : "Unknown error");
-        setState("ready");
+
+        const message = err instanceof Error ? err.message : "Unknown error";
+        const terminalState = resolveTerminalState(message);
+        if (terminalState) {
+          setState(terminalState);
+        } else {
+          setError(message);
+          setState("ready");
+        }
       }
     },
     [

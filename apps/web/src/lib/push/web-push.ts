@@ -52,7 +52,12 @@ export async function sendWebPush(
   }
 
   const subscriptions = await db
-    .select()
+    .select({
+      id: pushSubscriptions.id,
+      endpoint: pushSubscriptions.endpoint,
+      p256dh: pushSubscriptions.p256dh,
+      auth: pushSubscriptions.auth,
+    })
     .from(pushSubscriptions)
     .where(eq(pushSubscriptions.userId, userId));
 
@@ -84,7 +89,7 @@ export async function sendWebPush(
         if (transport.isGoneError(error)) {
           await db
             .delete(pushSubscriptions)
-            .where(eq(pushSubscriptions.endpoint, sub.endpoint));
+            .where(eq(pushSubscriptions.id, sub.id));
           return;
         }
 
