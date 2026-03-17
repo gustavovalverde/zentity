@@ -217,6 +217,17 @@ The user is notified through three channels: web push notifications with inline 
 
 The `act` claim in the token response identifies the agent acting on behalf of the user, per `draft-oauth-ai-agents-on-behalf-of-user-02`.
 
+#### Ping mode
+
+CIBA also supports **ping mode** for clients that can receive callbacks instead of polling:
+
+1. The client registers a `backchannel_client_notification_endpoint` via DCR
+2. The client includes a `client_notification_token` in the `POST /oauth2/bc-authorize` request
+3. When the user approves, the AS sends a POST to the client's notification endpoint with `{ "auth_req_id": "..." }`
+4. The client then exchanges the `auth_req_id` at the token endpoint (with DPoP proof) to obtain tokens
+
+Ping mode eliminates polling overhead and reduces latency between approval and token acquisition.
+
 **`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) approval time — the user cannot approve if their tier is insufficient, and (2) token exchange — a safety net if the tier decreased between approval and polling. For first-party clients, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Non-first-party clients receive 400 `interaction_required`.
 
 ### Grant types
@@ -224,7 +235,8 @@ The `act` claim in the token response identifies the agent acting on behalf of t
 | Grant type | Flow |
 | --- | --- |
 | `authorization_code` | Browser redirect (PAR required) or first-party challenge |
-| `urn:openid:params:grant-type:ciba` | CIBA poll mode |
+| `urn:openid:params:grant-type:ciba` | CIBA poll and ping modes |
+| `client_credentials` | Machine-to-machine (RFC 8707 resource required) |
 | `urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 token exchange (audience narrowing, delegation) |
 | `urn:ietf:params:oauth:grant-type:pre-authorized_code` | OIDC4VCI credential issuance |
 
@@ -338,7 +350,7 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint for headless authentication and receive step-up `auth_session` tokens instead of redirect errors.
+Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for DCR, `"public"` available). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint for headless authentication and receive step-up `auth_session` tokens instead of redirect errors.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The signature is not verified (no trusted SSA issuers configured), but structural validation prevents garbage data from being accepted.
 
@@ -375,8 +387,9 @@ Actual PII, delivered exclusively via the userinfo endpoint (the server stores n
 | `identity.address` | `address` |
 | `identity.document` | `document_number`, `document_type`, `issuing_country` |
 | `identity.nationality` | `nationality`, `nationalities` |
+| `identity_verification` | Pre-authorization for credential issuance (OIDC4VCI) |
 
-Standard OIDC scopes (`openid`, `profile`, `email`, `offline_access`) are auto-approved.
+Standard OIDC scopes (`openid`, `email`, `offline_access`) are auto-approved.
 
 ### Consent and selective disclosure
 
@@ -497,7 +510,7 @@ See [SSI Architecture](ssi-architecture.md) for the complete model.
   "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
   "subject_types_supported": ["public", "pairwise"],
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
-  "backchannel_token_delivery_modes_supported": ["poll"],
+  "backchannel_token_delivery_modes_supported": ["poll", "ping"],
   "client_id_metadata_document_supported": true,
   "resource_indicators_supported": true
 }
@@ -511,7 +524,7 @@ See [SSI Architecture](ssi-architecture.md) for the complete model.
 {
   "resource": "https://app.zentity.xyz",
   "authorization_servers": ["https://app.zentity.xyz/api/auth"],
-  "bearer_methods_supported": ["dpop"],
+  "bearer_methods_supported": ["header", "dpop"],
   "scopes_supported": ["openid", "email", "proof:identity", "proof:age", "..."],
   "resource_signing_alg_values_supported": ["EdDSA"]
 }
@@ -528,7 +541,7 @@ Clients follow `authorization_servers[0]` to the AS metadata, then proceed with 
 All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a unique opaque `sub`:
 
 ```text
-sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + userId))
+sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
 ```
 
 The `sectorId` is derived from the host of the client's first `redirect_uri` (per OIDC Core §8.1). Related services under one domain share a sector; cross-domain tracking is prevented.
@@ -568,7 +581,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 | Feature | Standard | Status |
 | --- | --- | --- |
-| DPoP | RFC 9449 | Enforced globally |
+| DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer fallback |
 | PAR | RFC 9126 | Required |
 | Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
@@ -576,3 +589,15 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 | Step-up authentication | RFC 9470 / FPA draft | `acr_values` enforcement at authorize, CIBA approval, and token exchange |
 | First-party apps | draft-ietf-oauth-first-party-apps | Authorization Challenge Endpoint for CLI/headless clients |
 | Pairwise subjects | OIDC Core §8.1 | Enforced for all DCR clients |
+
+### `acr_eidas` claim
+
+ID tokens include an `acr_eidas` claim that maps Zentity assurance tiers to eIDAS Levels of Assurance:
+
+| Tier | `acr_eidas` value |
+| --- | --- |
+| 0–1 | `http://eidas.europa.eu/LoA/low` |
+| 2 | `http://eidas.europa.eu/LoA/substantial` |
+| 3 | `http://eidas.europa.eu/LoA/high` |
+
+This claim is emitted alongside `acr` (Zentity-native URN) whenever the `openid` scope is present. Relying parties in EU-regulated contexts can use `acr_eidas` to map Zentity tiers to eIDAS trust framework requirements.

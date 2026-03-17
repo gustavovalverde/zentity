@@ -29,7 +29,7 @@ Non-goals:
 | Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
-| CIBA | @better-auth/ciba (backchannel auth, poll mode) | Agent-initiated async authorization via email/push notification and user approval. |
+| CIBA | @better-auth/ciba (backchannel auth, poll + ping modes) | Agent-initiated async authorization via email/push notification and user approval. |
 | Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | MCP identity server | Node.js, Hono, @modelcontextprotocol/sdk | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_proofs, check_compliance, purchase, request_approval). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
@@ -245,7 +245,7 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 ### Disclosure
 
-Disclosure uses a two-tier scope system: **Proof scopes** (`proof:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII via id_token only (ephemeral, never persisted). Both support user-controlled selective disclosure at consent time.
+Disclosure uses a two-tier scope system: **Proof scopes** (`proof:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII via the userinfo endpoint only (ephemeral, never persisted in id_tokens). Both support user-controlled selective disclosure at consent time.
 
 Wallets can receive credentials and respond to presentation requests directly via OID4VP, bypassing the OAuth consent UI. The verifier creates a VP session with a DCQL query, signs a JAR JWT with x5c chain, encodes it as an `openid4vp://` QR code URI. The wallet presents an SD-JWT VP with KB-JWT binding, encrypted via JARM.
 
@@ -273,11 +273,11 @@ sequenceDiagram
   API-->>RP: Scope-filtered proof claims (non-PII flags)
 ```
 
-When DPoP is used, the token endpoint validates the DPoP proof and returns a server-managed `DPoP-Nonce` for replay prevention. The `DpopNonceStore` enforces single-use nonces with a configurable TTL (`DPOP_NONCE_TTL_SECONDS`, default 30s). PAR is mandatory (`requirePar: true`) — all authorization requests must first be pushed to the PAR endpoint.
+All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](oauth-integrations.md) for protocol details.
 
 ### Agent Authorization (CIBA)
 
-Agents and applications can request user authorization without a browser redirect via CIBA (Client-Initiated Backchannel Authentication). The agent sends a backchannel request with `login_hint` (user ID or email), `scope`, `binding_message`, optional `authorization_details` (RFC 9396 RAR), and optional `agent_claims` (self-declared agent identity metadata). The user receives a push notification (with email fallback) and approves from the Zentity dashboard, where the `AgentIdentityCard` component displays the agent's self-declared identity (name, version, provider). If identity scopes are requested, the user unlocks their vault client-side and the PII is sealed with a one-time release handle. The agent polls the token endpoint until approval, then redeems the release handle for identity claims.
+Agents and applications can request user authorization without a browser redirect via CIBA. The agent sends a backchannel request identifying the user; the user receives a push notification (with email fallback) and approves from the dashboard. If identity scopes are requested, the user unlocks their vault and PII is staged ephemerally for delivery via the userinfo endpoint. Poll and ping delivery modes are supported.
 
 ```mermaid
 sequenceDiagram
@@ -286,30 +286,18 @@ sequenceDiagram
   participant Agent as Agent
   participant AS as Zentity AS
 
-  Agent->>AS: POST /oauth2/bc-authorize
+  Agent->>AS: Backchannel authorize
   AS->>User: Push notification + email
   AS-->>Agent: { auth_req_id }
-  Agent->>AS: POST /oauth2/token (poll)
+  Agent->>AS: Poll token endpoint
   AS-->>Agent: authorization_pending
-  User->>AS: Vault unlock + approve on dashboard
-  Note over AS: Seal PII with release handle
-  Agent->>AS: POST /oauth2/token (poll)
-  AS-->>Agent: { access_token (with release_handle, act claim) }
-  Agent->>AS: POST /oauth2/release (DPoP-bound)
-  AS-->>Agent: { id_token with PII claims }
+  User->>AS: Approve (vault unlock if identity scopes)
+  Agent->>AS: Poll token endpoint
+  AS-->>Agent: { access_token, id_token }
+  Agent->>AS: Userinfo (identity PII if scoped)
 ```
 
-Poll mode is supported. The access token includes an `act` claim per draft-oauth-ai-agents-on-behalf-of-user, identifying both the human (`sub`) and the agent (`act.sub`). See [Agentic Authorization](agentic-authorization.md) for the complete protocol composition, binding chain analysis, and security properties. See [OAuth Integrations](oauth-integrations.md#ciba-backchannel-authorization) for endpoints and configuration.
-
-### OIDC Back-Channel Logout
-
-When a user logs out, Zentity delivers logout tokens to all RPs with a registered `backchannel_logout_uri`:
-
-- **`end_session_endpoint`** (`GET /api/auth/oauth2/end-session`): Validates `id_token_hint` via local JWKS, terminates all user sessions, triggers BCL delivery, and redirects to `post_logout_redirect_uri` (validated against client's registered URIs).
-- **`sendBackchannelLogout()`**: Delivers OIDC BCL §2.4 logout tokens to each RP. Retry: 1s then 3s exponential backoff on 5xx, 10-second timeout per RP. Fire-and-forget — sign-out completes regardless of delivery success.
-- **`revokePendingCibaOnLogout()`**: Sets all pending CIBA requests for the user to `rejected`, preventing agents from obtaining tokens after the user has logged out.
-- **`sid` claim**: Injected into id_tokens only for clients with `backchannel_logout_uri` in their metadata.
-- **Discovery**: `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
+The access token includes an `act` claim identifying both the human and the agent. See [Agentic Authorization](agentic-authorization.md) for protocol composition and security properties. See [OAuth Integrations](oauth-integrations.md) for endpoints, scopes, and configuration.
 
 ---
 
@@ -375,65 +363,11 @@ See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
 
 ---
 
-## Compliance Derivation Engine
-
-Compliance status is computed by `deriveComplianceStatus()` — a pure function in `apps/web/src/lib/identity/verification/compliance.ts` with no DB, tRPC, or environment imports. This is the sole source of truth for compliance level.
-
-**Input:** `verificationMethod` (`ocr` | `nfc_chip` | null), `zkProofs`, `signedClaims`, `encryptedAttributes`, `hasUniqueIdentifier`, `hasNationalityCommitment`, `birthYearOffset`.
-
-**Output:** `{ verified, level, numericLevel, birthYearOffset, checks }`.
-
-### Compliance levels
-
-| Level | Numeric | Meaning |
-|-------|---------|---------|
-| `none` | 1 | Unverified or fewer than half of checks passed |
-| `basic` | 2 | At least half of the 7 checks passed |
-| `full` | 3 | All 7 checks passed (OCR path) |
-| `chip` | 4 | NFC chip path with sybil resistance |
-
-`verified` is `true` only for `full` or `chip`.
-
-### 7 boolean checks
-
-| Check | OCR source | NFC chip source |
-|-------|-----------|-----------------|
-| `documentVerified` | `doc_validity` ZK proof | Always true |
-| `livenessVerified` | `liveness_score` signed claim | `chip_verification` claim presence |
-| `ageVerified` | `age_verification` ZK proof | `chip_verification` claim presence |
-| `faceMatchVerified` | `face_match` ZK proof or `face_match_score` claim | `chip_verification` claim presence |
-| `nationalityVerified` | `nationality_membership` ZK proof | `hasNationalityCommitment` flag |
-| `identityBound` | `identity_binding` ZK proof | `uniqueIdentifier` exists |
-| `sybilResistant` | `hasUniqueIdentifier` (dedup key) | `uniqueIdentifier` exists |
-
-For the NFC chip path, boolean payloads in chip claims are ignored — only claim type presence matters. This makes compliance tamper-resistant: values cannot be flipped by DB manipulation.
-
----
-
 ## Identity Revocation
 
-Identity verifications can be revoked via two tRPC procedures:
+Identity verifications can be revoked by an admin (fraud detection) or by the user themselves (GDPR self-service). Revocation cascades through a single DB transaction: verification records, identity bundles, and issued credentials are all marked revoked atomically. On-chain attestation revocation follows outside the transaction on a best-effort basis.
 
-- **`identity.revokeVerification`** — Admin-initiated revocation (e.g., fraud detection)
-- **`identity.selfRevoke`** — User-initiated GDPR self-service revocation
-
-The `revokeIdentity()` function (`apps/web/src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction:
-
-1. Mark active `identity_verifications` as `revoked` (sets `revokedAt`, `revokedBy`, `revokedReason`)
-2. Mark `identity_bundle` as `revoked` (same revocation columns)
-3. Set OID4VCI credentials to `status=1` (revoked via Status List 2021)
-
-A fourth step revokes on-chain attestations **outside** the transaction (best-effort — DB revocation is committed even if on-chain revocation fails).
-
-### Revocation columns
-
-Both `identity_verifications` and `identity_bundles` carry three revocation columns:
-
-- `revokedAt` — timestamp of revocation
-- `revokedBy` — `"admin"` or `"self"`
-- `revokedReason` — free-text reason string
-
-After revocation, the user's assurance tier drops to Tier 1 (no verified verification found). The `dedupKeyExistsForOtherUser` check gates on `status=verified`, so revoked dedup keys are auto-released for re-registration.
+After revocation, the user's assurance tier drops to Tier 1 and their dedup key is released for re-registration.
 
 ---
 

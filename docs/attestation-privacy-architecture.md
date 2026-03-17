@@ -535,6 +535,23 @@ This enables auditors and relying parties to validate **exactly which proofs** a
 
 ---
 
+## Compliance Derivation
+
+Compliance status is computed by a single pure function — the sole source of truth for a user's assurance level. It evaluates ZK proofs, signed claims, encrypted attributes, and sybil-resistance signals to produce a graduated tier:
+
+| Level | Meaning |
+|-------|---------|
+| `none` | Unverified or fewer than half of checks passed |
+| `basic` | At least half of 7 checks passed |
+| `full` | All 7 checks passed (OCR path) |
+| `chip` | NFC chip path with sybil resistance |
+
+A user is considered `verified` only at `full` or `chip`.
+
+The function evaluates 7 boolean checks covering document validity, liveness, age, face match, nationality, identity binding, and sybil resistance. Each check has different evidence sources depending on the verification method (OCR vs NFC chip). For the NFC chip path, only claim type presence matters — boolean payloads are ignored, making compliance tamper-resistant against DB manipulation.
+
+---
+
 ## Multi-Document Model
 
 - Users can register **multiple documents** (passport, ID, license) via OCR or NFC chip.
