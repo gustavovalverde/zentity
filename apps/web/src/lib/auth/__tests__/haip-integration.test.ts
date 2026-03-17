@@ -16,7 +16,11 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 
 import { auth } from "../auth";
-import { enrichDiscoveryMetadata, unwrapMetadata } from "../well-known-utils";
+import {
+  callAuthApi,
+  enrichDiscoveryMetadata,
+  unwrapMetadata,
+} from "../well-known-utils";
 
 let signJwt: typeof import("../oidc/jwt-signer").signJwt;
 
@@ -96,7 +100,7 @@ describe("HAIP — ES256 signing support", () => {
 
 describe("HAIP — discovery metadata", () => {
   async function getEnrichedOpenIdConfig(): Promise<Record<string, unknown>> {
-    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
     const parsed =
       raw instanceof Response
         ? ((await raw.json()) as Record<string, unknown>)

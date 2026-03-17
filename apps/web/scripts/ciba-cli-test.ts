@@ -66,8 +66,8 @@ function stripAnsi(s: string): string {
 
 interface Args {
   baseUrl: string;
-  bindingMessage?: string;
-  clientId?: string;
+  bindingMessage?: string | undefined;
+  clientId?: string | undefined;
   email: string;
   scope: string;
   timeout: number;
@@ -83,7 +83,7 @@ function parseArgs(): Args {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    const next = argv[i + 1];
+    const next = argv[i + 1] ?? "";
     switch (arg) {
       case "--email":
         args.email = next;

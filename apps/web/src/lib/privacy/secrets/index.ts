@@ -50,7 +50,7 @@ interface ResolvedPasskeyUnlock {
 
 async function resolvePasskeyUnlock(params: {
   credentialIdToSalt: Record<string, Uint8Array>;
-  credentialTransports?: Record<string, AuthenticatorTransport[]>;
+  credentialTransports?: Record<string, AuthenticatorTransport[]> | undefined;
 }): Promise<ResolvedPasskeyUnlock> {
   const credentialIds = Object.keys(params.credentialIdToSalt);
   if (credentialIds.length === 0) {
@@ -111,7 +111,7 @@ function readEnvelopeFormat(
 
 function mergeSecretMetadata(params: {
   envelopeFormat: EnvelopeFormat;
-  metadata?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown> | null | undefined;
 }): Record<string, unknown> {
   return {
     ...params.metadata,
@@ -187,8 +187,8 @@ export async function storeSecretWithCredential(params: {
   plaintext: Uint8Array;
   credential: EnrollmentCredential;
   envelopeFormat: EnvelopeFormat;
-  metadata?: Record<string, unknown> | null;
-  baseCommitment?: string;
+  metadata?: Record<string, unknown> | null | undefined;
+  baseCommitment?: string | undefined;
 }): Promise<{ secretId: string; envelopeFormat: EnvelopeFormat }> {
   const secretId = crypto.randomUUID();
   const dek = generateDek();
@@ -604,8 +604,8 @@ export async function addWrapperForSecretType(params: {
   newCredentialId: string;
   newPrfOutput: Uint8Array;
   newPrfSalt: Uint8Array;
-  userId?: string;
-  opaqueExportKey?: Uint8Array;
+  userId?: string | undefined;
+  opaqueExportKey?: Uint8Array | undefined;
 }): Promise<boolean> {
   const bundle = await trpc.secrets.getSecretBundle.query({
     secretType: params.secretType,

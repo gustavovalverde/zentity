@@ -125,18 +125,22 @@ const DropdownMenuCheckboxItem = ({
   ref,
   ...props
 }: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem> & {
-  ref?: React.RefObject<React.ComponentRef<
-    typeof DropdownMenuPrimitive.CheckboxItem
-  > | null>;
+  ref?:
+    | React.RefObject<React.ComponentRef<
+        typeof DropdownMenuPrimitive.CheckboxItem
+      > | null>
+    | undefined;
 }) => (
   <DropdownMenuPrimitive.CheckboxItem
-    checked={checked}
     className={cn(
       "relative flex cursor-default select-none items-center rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       className
     )}
-    ref={ref}
-    {...props}
+    {...(checked !== undefined ? { checked } : {})}
+    {...(ref !== undefined ? { ref } : {})}
+    {...Object.fromEntries(
+      Object.entries(props).filter(([, v]) => v !== undefined)
+    )}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <DropdownMenuPrimitive.ItemIndicator>

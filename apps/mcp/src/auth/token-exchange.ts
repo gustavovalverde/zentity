@@ -124,16 +124,16 @@ export async function exchangeAuthCode(
   updateCredentials(config.zentityUrl, {
     accessToken: data.access_token,
     expiresAt,
-    loginHint,
-    refreshToken: data.refresh_token,
+    ...(loginHint ? { loginHint } : {}),
+    ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}),
   });
 
   return {
     accessToken: data.access_token,
     expiresAt,
-    idToken: data.id_token,
-    loginHint,
-    refreshToken: data.refresh_token,
+    ...(data.id_token ? { idToken: data.id_token } : {}),
+    ...(loginHint ? { loginHint } : {}),
+    ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}),
   };
 }
 
@@ -210,7 +210,7 @@ export async function exchangeToken(
   return {
     accessToken: data.access_token,
     expiresIn: data.expires_in ?? 3600,
-    scope: data.scope,
+    ...(data.scope ? { scope: data.scope } : {}),
     tokenType: data.token_type,
   };
 }

@@ -2,9 +2,9 @@ import { Globe02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 interface AidHeaderProps {
-  isVerified?: boolean;
+  isVerified?: boolean | undefined;
   onSignOut: () => void;
-  userEmail?: string | null;
+  userEmail?: string | null | undefined;
 }
 
 export function AidHeader({

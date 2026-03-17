@@ -31,7 +31,7 @@ export type BoundaryConfig = PurchaseConfig | ScopeConfig | CustomConfig;
 
 export interface EvaluationResult {
   autoApproved: boolean;
-  reason?: string;
+  reason?: string | undefined;
 }
 
 /**

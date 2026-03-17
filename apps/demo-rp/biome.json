@@ -65,24 +65,11 @@
       }
     },
     {
-      "includes": ["src/hooks/**/*.ts"],
-      "linter": {
-        "rules": {
-          "nursery": {
-            "noFloatingPromises": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["src/app/**/page.tsx"],
       "linter": {
         "rules": {
           "style": {
             "noNestedTernary": "off"
-          },
-          "nursery": {
-            "noFloatingPromises": "off"
           }
         }
       }

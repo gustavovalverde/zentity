@@ -88,8 +88,8 @@ function validateAtHash(accessToken: string, idToken: string, atHash: string) {
 }
 
 async function fetchUserInfo(tokens: {
-  accessToken?: string;
-  idToken?: string;
+  accessToken?: string | undefined;
+  idToken?: string | undefined;
 }) {
   let body: Record<string, unknown> = {};
 
@@ -221,7 +221,7 @@ function makeProviderConfig(
     async getToken(data: {
       code: string;
       redirectURI: string;
-      codeVerifier?: string;
+      codeVerifier?: string | undefined;
     }) {
       const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
       const dpop = await createDpopClient();
@@ -261,7 +261,10 @@ function makeProviderConfig(
         tokenType: result.token_type as string | undefined,
       };
     },
-    async getUserInfo(tokens: { accessToken?: string; idToken?: string }) {
+    async getUserInfo(tokens: {
+      accessToken?: string | undefined;
+      idToken?: string | undefined;
+    }) {
       const { id, profile } = await fetchUserInfo(tokens);
       await syncClaimsToDb(id, providerId, profile);
       profile.__existingClaims = await readExistingClaims(id);

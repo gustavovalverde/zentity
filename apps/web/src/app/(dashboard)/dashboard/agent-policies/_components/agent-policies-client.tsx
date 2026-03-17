@@ -79,7 +79,7 @@ function typeBadgeLabel(type: string): string {
 
 export function AgentPoliciesClient({
   prefill,
-}: Readonly<{ prefill?: PolicyPrefill }>) {
+}: Readonly<{ prefill?: PolicyPrefill | undefined }>) {
   const utils = trpcReact.useUtils();
   const { data: boundaries, isLoading } =
     trpcReact.agentBoundaries.list.useQuery();

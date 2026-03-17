@@ -12,7 +12,7 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
 interface CibaNotificationData {
   authorizationDetails?: unknown;
   authReqId: string;
-  clientName?: string;
+  clientName?: string | undefined;
   scope: string;
   userId: string;
 }

@@ -76,6 +76,9 @@ const LANDING_UI: LandingScenario[] = [
 
 const SCENARIOS = LANDING_UI.map((ui) => {
   const source = SOURCE_SCENARIOS[ui.id];
+  if (!source) {
+    throw new Error(`Unknown scenario: ${ui.id}`);
+  }
   return {
     ...ui,
     href: `/${ui.id}`,

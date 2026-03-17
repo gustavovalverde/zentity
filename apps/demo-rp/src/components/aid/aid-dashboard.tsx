@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { COLLECTION_HISTORY, PROGRAMS } from "@/data/aid";
 
 interface AidDashboardProps {
-  claims?: Record<string, unknown>;
+  claims?: Record<string, unknown> | undefined;
   isSteppedUp: boolean;
   onStepUp: () => void;
 }

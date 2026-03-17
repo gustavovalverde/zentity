@@ -40,7 +40,7 @@ export function SignUpForm() {
   // PRF support check
   const [prfStatus, setPrfStatus] = useState<{
     supported: boolean;
-    reason?: string;
+    reason?: string | undefined;
   } | null>(null);
 
   // Clean stale state on mount (each credential path creates its own session on demand)

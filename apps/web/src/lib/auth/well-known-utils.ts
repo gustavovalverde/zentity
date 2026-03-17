@@ -108,6 +108,23 @@ export function unwrapMetadata(value: unknown): unknown {
   return value;
 }
 
+/**
+ * Call auth.api methods that exist at runtime but aren't in the InferAPI type.
+ * The oauth-provider plugin registers these endpoints but TypeScript can't infer
+ * them through the betterAuth() generic chain.
+ */
+export function callAuthApi(
+  api: Record<string, unknown>,
+  method: string,
+  ...args: unknown[]
+): unknown {
+  const fn = api[method];
+  if (typeof fn !== "function") {
+    throw new Error(`auth.api.${method} is not available`);
+  }
+  return fn(...args);
+}
+
 export function buildWellKnownResponse(metadata: unknown): Response {
   if (metadata instanceof Response) {
     return metadata;

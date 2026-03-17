@@ -93,7 +93,7 @@ export async function validateToken(
   }
 
   const match = AUTH_HEADER_RE.exec(authHeader);
-  if (!match) {
+  if (!(match?.[1] && match[2])) {
     return authError(401, "invalid_request", "Malformed Authorization header");
   }
 

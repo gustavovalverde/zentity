@@ -70,7 +70,7 @@ type TfheModule = TfheModuleStatic;
 
 interface FheKeyMaterial {
   clientKey: TfheClientKey;
-  keyId?: string;
+  keyId?: string | undefined;
   publicKey: TfheCompressedPublicKey;
   publicKeyBytes: Uint8Array;
   serverKey: TfheCompressedServerKey;
@@ -233,11 +233,11 @@ export async function generateFheKeyMaterialForStorage(): Promise<{
 }
 
 export async function getOrCreateFheKeyRegistrationMaterial(params?: {
-  enrollment?: PasskeyEnrollmentContext;
+  enrollment?: PasskeyEnrollmentContext | undefined;
 }): Promise<{
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
-  keyId?: string;
+  keyId?: string | undefined;
 }> {
   const existing = await getStoredFheKeys();
   if (existing) {

@@ -136,14 +136,19 @@ async function parseUserinfoResponse(
       : data
   ) as Record<string, unknown>;
 
+  const name = asOptionalString(userinfo.name);
+  const givenName = asOptionalString(userinfo.given_name);
+  const familyName = asOptionalString(userinfo.family_name);
+  const address = asOptionalAddress(userinfo.address);
+
   const claims: IdentityClaims = {
-    name: asOptionalString(userinfo.name),
-    given_name: asOptionalString(userinfo.given_name),
-    family_name: asOptionalString(userinfo.family_name),
-    address: asOptionalAddress(userinfo.address),
+    ...(name ? { name } : {}),
+    ...(givenName ? { given_name: givenName } : {}),
+    ...(familyName ? { family_name: familyName } : {}),
+    ...(address ? { address } : {}),
   };
 
-  if (!(claims.name || claims.given_name || claims.family_name)) {
+  if (!(name || givenName || familyName)) {
     return null;
   }
 

@@ -144,7 +144,9 @@ function ensureDatabaseInitialized(dbUrl: string) {
 async function runSql(dbUrl: string, sql: string) {
   const client = createClient({
     url: dbUrl,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    ...(process.env.TURSO_AUTH_TOKEN !== undefined
+      ? { authToken: process.env.TURSO_AUTH_TOKEN }
+      : {}),
   });
   try {
     const trimmed = sql.trim();

@@ -67,9 +67,9 @@ export interface DocumentProcessingResult {
  */
 export interface ProcessDocumentParams {
   dedupSecret: string;
-  existingDraftId?: string | null;
-  existingVerificationId?: string | null;
-  flowId?: string;
+  existingDraftId?: string | null | undefined;
+  existingVerificationId?: string | null | undefined;
+  flowId?: string | undefined;
   image: string;
   requestId: string;
   userId: string;

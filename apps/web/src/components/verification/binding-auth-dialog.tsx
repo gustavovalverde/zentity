@@ -200,7 +200,7 @@ export function BindingAuthDialog({
   );
 
   return (
-    <Dialog onOpenChange={isRunning ? undefined : onOpenChange} open={open}>
+    <Dialog {...(isRunning ? {} : { onOpenChange })} open={open}>
       <DialogContent showCloseButton={!isRunning}>
         <DialogHeader>
           <DialogTitle>Confirm Your Identity</DialogTitle>

@@ -58,11 +58,11 @@ export interface AttestationResult {
  * Current attestation status for a user on a network.
  */
 export interface AttestationStatus {
-  attestationId?: number;
-  attestedAt?: string;
-  blockNumber?: number;
+  attestationId?: number | undefined;
+  attestedAt?: string | undefined;
+  blockNumber?: number | undefined;
   isAttested: boolean;
-  txHash?: string;
+  txHash?: string | undefined;
 }
 
 /**

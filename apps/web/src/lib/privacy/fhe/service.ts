@@ -44,8 +44,8 @@ export type FheOperation =
 export class FheServiceError extends Error {
   readonly operation: FheOperation;
   readonly kind: "http" | "timeout" | "network" | "unknown";
-  readonly status?: number;
-  readonly bodyText?: string;
+  readonly status?: number | undefined;
+  readonly bodyText?: string | undefined;
 
   constructor(args: {
     operation: FheOperation;
@@ -249,11 +249,11 @@ function buildMsgpackHeaders(
 export function encryptBatchFhe(args: {
   keyId: string;
   /** Full DOB as days since 1900-01-01 (UTC) */
-  dobDays?: number;
-  complianceLevel?: number;
-  livenessScore?: number;
-  requestId?: string;
-  flowId?: string;
+  dobDays?: number | undefined;
+  complianceLevel?: number | undefined;
+  livenessScore?: number | undefined;
+  requestId?: string | undefined;
+  flowId?: string | undefined;
 }): Promise<FheBatchEncryptResponse> {
   const url = `${env.FHE_SERVICE_URL}/encrypt-batch`;
   const payload = {
@@ -287,8 +287,8 @@ export function encryptBatchFhe(args: {
 export function registerFheKey(args: {
   serverKey: Uint8Array;
   publicKey: Uint8Array;
-  requestId?: string;
-  flowId?: string;
+  requestId?: string | undefined;
+  flowId?: string | undefined;
 }): Promise<FheRegisterKeyResult> {
   const url = `${env.FHE_SERVICE_URL}/keys/register`;
   const payload = {
@@ -328,8 +328,8 @@ export function verifyAgeFromDobFhe(args: {
   currentDays: number;
   minAge: number;
   keyId: string;
-  requestId?: string;
-  flowId?: string;
+  requestId?: string | undefined;
+  flowId?: string | undefined;
 }): Promise<FheVerifyAgeResult> {
   const url = `${env.FHE_SERVICE_URL}/verify-age-from-dob`;
   const payload = {

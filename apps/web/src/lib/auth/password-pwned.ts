@@ -46,7 +46,7 @@ export async function checkPasswordPwned(
       ...(flowId ? { "X-Zentity-Flow-Id": flowId } : {}),
     },
     credentials: "include",
-    signal: opts?.signal,
+    ...(opts?.signal !== undefined ? { signal: opts.signal } : {}),
     body: JSON.stringify({ sha1 }),
   });
 

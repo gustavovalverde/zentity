@@ -79,7 +79,7 @@ type ProofVerificationResult = NoirVerificationResult & { reason?: string };
 
 async function requireActiveProofSession(args: {
   audience: string;
-  verificationId?: string | null;
+  verificationId?: string | null | undefined;
   proofSessionId: string;
   userId: string;
 }) {

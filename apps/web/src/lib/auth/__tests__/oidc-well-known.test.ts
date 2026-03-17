@@ -5,6 +5,7 @@ import { IDENTITY_SCOPES } from "@/lib/auth/oidc/identity-scopes";
 import { PROOF_SCOPES } from "@/lib/auth/oidc/proof-scopes";
 import {
   buildWellKnownResponse,
+  callAuthApi,
   enrichDiscoveryMetadata,
   ID_TOKEN_SIGNING_ALGS,
   unwrapMetadata,
@@ -42,7 +43,7 @@ describe("oidc well-known metadata", () => {
 
   it("keeps OpenID config issuer aligned with auth base path", async () => {
     const config = parseOpenIdConfig(
-      unwrapMetadata(await auth.api.getOpenIdConfig())
+      unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"))
     );
     const resolved = config instanceof Promise ? await config : config;
 
@@ -54,7 +55,7 @@ describe("oidc well-known metadata", () => {
 
   it("points jwks_uri to the combined JWKS endpoint", async () => {
     const config = parseOpenIdConfig(
-      unwrapMetadata(await auth.api.getOpenIdConfig())
+      unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"))
     );
     const resolved = config instanceof Promise ? await config : config;
 
@@ -78,7 +79,9 @@ describe("oidc discovery — signing algorithm advertisement", () => {
   });
 
   it("route handler enrichment matches expected algorithm set", async () => {
-    const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const metadata = unwrapMetadata(
+      await callAuthApi(auth.api, "getOpenIdConfig")
+    );
     const resolved = await parseOpenIdConfig(metadata);
 
     const enriched = enrichDiscoveryMetadata(
@@ -108,7 +111,7 @@ describe("oidc discovery — HAIP metadata fields", () => {
   });
 
   it("OpenID config enrichment includes HAIP fields", async () => {
-    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>
@@ -122,7 +125,9 @@ describe("oidc discovery — HAIP metadata fields", () => {
   });
 
   it("OAuth AS config enrichment includes HAIP fields", async () => {
-    const raw = unwrapMetadata(await auth.api.getOAuthServerConfig());
+    const raw = unwrapMetadata(
+      await callAuthApi(auth.api, "getOAuthServerConfig")
+    );
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>
@@ -152,7 +157,7 @@ describe("oidc discovery — CIBA metadata fields", () => {
   });
 
   it("OpenID config includes CIBA grant type in grant_types_supported", async () => {
-    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>
@@ -181,7 +186,7 @@ describe("oidc discovery — MCP compatibility metadata", () => {
   });
 
   it("OpenID config includes MCP capability flags", async () => {
-    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>
@@ -192,7 +197,9 @@ describe("oidc discovery — MCP compatibility metadata", () => {
   });
 
   it("OAuth AS config includes MCP capability flags", async () => {
-    const raw = unwrapMetadata(await auth.api.getOAuthServerConfig());
+    const raw = unwrapMetadata(
+      await callAuthApi(auth.api, "getOAuthServerConfig")
+    );
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>
@@ -231,7 +238,7 @@ describe("oidc discovery — assurance & grant type completeness", () => {
   });
 
   it("grant_types_supported includes token-exchange", async () => {
-    const raw = unwrapMetadata(await auth.api.getOpenIdConfig());
+    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
     const resolved = await parseOpenIdConfig(raw);
     const enriched = enrichDiscoveryMetadata(
       resolved as Record<string, unknown>

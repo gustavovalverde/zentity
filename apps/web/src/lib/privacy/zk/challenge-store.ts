@@ -17,21 +17,21 @@ import { db } from "@/lib/db/connection";
 import { zkChallenges } from "@/lib/db/schema/crypto";
 
 interface ChallengeBinding {
-  audience?: string;
-  msgSender?: string;
-  proofSessionId?: string;
-  userId?: string;
+  audience?: string | undefined;
+  msgSender?: string | undefined;
+  proofSessionId?: string | undefined;
+  userId?: string | undefined;
 }
 
 interface Challenge {
-  audience?: string; // Optional: bind to relying-party audience/domain
+  audience?: string | undefined;
   circuitType: ProofType;
   createdAt: number;
   expiresAt: number;
-  msgSender?: string; // Optional: bind to signer/did context
-  nonce: string; // 128-bit hex string
-  proofSessionId?: string; // Optional: bind to a cohesive proof session
-  userId?: string; // Optional: bind to specific user
+  msgSender?: string | undefined;
+  nonce: string;
+  proofSessionId?: string | undefined;
+  userId?: string | undefined;
 }
 
 // 15 minute TTL for challenges (covers slower client-side proving on low-end devices)

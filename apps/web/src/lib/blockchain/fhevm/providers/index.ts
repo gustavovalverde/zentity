@@ -19,7 +19,7 @@ export type FhevmProviderId = "zama" | "mock" | (string & Record<never, never>);
 interface FhevmProviderInitParams {
   chainId: number;
   provider: unknown;
-  rpcUrl?: string;
+  rpcUrl?: string | undefined;
   signal: AbortSignal;
 }
 

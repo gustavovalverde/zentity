@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 interface VeriPassHeaderProps {
   hasCredential: boolean;
   onSignOut: () => void;
-  userEmail?: string;
+  userEmail?: string | undefined;
 }
 
 export function VeriPassHeader({

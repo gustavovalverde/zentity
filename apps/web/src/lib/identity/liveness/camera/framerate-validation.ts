@@ -12,7 +12,7 @@ export interface FrameRateValidation {
   /** Actual frame rate reported by the camera */
   actualFrameRate: number;
   /** Raw capabilities from the track, if available */
-  capabilities?: MediaTrackCapabilities;
+  capabilities?: MediaTrackCapabilities | undefined;
   /** Whether the frame rate meets minimum requirements */
   isValid: boolean;
   /** Minimum frame rate required */

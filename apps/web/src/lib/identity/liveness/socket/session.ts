@@ -109,7 +109,7 @@ const MAX_CHALLENGES = 3;
 export function createSession(
   numChallenges = 2,
   timeouts: Partial<SessionTimeouts> = {},
-  options?: { draftId?: string; userId?: string }
+  options?: { draftId?: string | undefined; userId?: string | undefined }
 ): SessionState {
   // Silently clamp to valid range (security: prevent DoS)
   const count = Math.max(

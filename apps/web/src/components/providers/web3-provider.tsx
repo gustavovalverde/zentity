@@ -31,7 +31,11 @@ const defaultNetwork = networks[0] ?? fhevmSepolia;
 // Initialize AppKit once at module level — must use the same adapter as WagmiProvider
 if (globalThis.window !== undefined && projectId) {
   createAppKit({
-    adapters: [wagmiAdapter],
+    adapters: [
+      Object.fromEntries(
+        Object.entries(wagmiAdapter).filter(([, v]) => v !== undefined)
+      ),
+    ],
     projectId,
     networks,
     defaultNetwork,

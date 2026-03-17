@@ -19,9 +19,9 @@ if (rawArgs[0] && !rawArgs[0].startsWith("--")) {
 }
 
 const options: {
-  circuit?: string;
-  backendPath?: string;
-  proverTomlPath?: string;
+  circuit?: string | undefined;
+  backendPath?: string | undefined;
+  proverTomlPath?: string | undefined;
   outputDir: string;
 } = {
   outputDir: "target",

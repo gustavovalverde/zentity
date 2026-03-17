@@ -69,7 +69,9 @@ function getDatabaseUrl(): string {
 
 const dbClient = createClient({
   url: getDatabaseUrl(),
-  authToken: env.TURSO_AUTH_TOKEN,
+  ...(env.TURSO_AUTH_TOKEN !== undefined
+    ? { authToken: env.TURSO_AUTH_TOKEN }
+    : {}),
 });
 
 // Configure SQLite for better concurrent access (defense in depth)

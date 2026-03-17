@@ -465,7 +465,9 @@ const ADMIN_ROLES = new Set(["admin"]);
 
 /** Procedure requiring admin role. Extends protectedProcedure with role check. */
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const role = ctx.session.user.role;
+  const role = (ctx.session.user as Record<string, unknown>).role as
+    | string
+    | undefined;
   if (!(role && ADMIN_ROLES.has(role))) {
     throw new TRPCError({ code: "FORBIDDEN" });
   }

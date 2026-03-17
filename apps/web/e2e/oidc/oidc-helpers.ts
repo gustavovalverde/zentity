@@ -81,13 +81,13 @@ async function buildCookieHeaderFromContext(
 
 interface AuthResult {
   cookies: string[] | undefined;
-  email?: string | null;
-  userId?: string;
+  email?: string | null | undefined;
+  userId?: string | undefined;
 }
 
 async function readAuthUser(
   response: Awaited<ReturnType<APIRequestContext["post"]>>
-): Promise<{ userId?: string; email?: string | null }> {
+): Promise<{ userId?: string | undefined; email?: string | null | undefined }> {
   const body = (await response.json().catch(() => null)) as {
     user?: { id?: string; email?: string | null } | null;
   } | null;
@@ -376,11 +376,10 @@ export async function issueCredential(
   request: APIRequestContext,
   input: {
     accessToken: string;
-    credentialConfigurationId?: string;
-    credentialIdentifier?: string;
-    // Draft 11 backwards compatibility: use format instead of credential_configuration_id
-    format?: string;
-    vct?: string;
+    credentialConfigurationId?: string | undefined;
+    credentialIdentifier?: string | undefined;
+    format?: string | undefined;
+    vct?: string | undefined;
     proofJwt: string;
   }
 ) {
@@ -463,7 +462,9 @@ export async function findIssuedCredentialRecord(credential: string) {
 
   const client = createClient({
     url,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    ...(process.env.TURSO_AUTH_TOKEN !== undefined
+      ? { authToken: process.env.TURSO_AUTH_TOKEN }
+      : {}),
   });
   const db = drizzle(client, { schema: { oidc4vciIssuedCredentials } });
 

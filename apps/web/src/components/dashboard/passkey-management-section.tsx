@@ -89,7 +89,9 @@ function formatDate(dateValue: string | Date | null | undefined): string {
   });
 }
 
-function DeviceIcon({ deviceType }: Readonly<{ deviceType?: string | null }>) {
+function DeviceIcon({
+  deviceType,
+}: Readonly<{ deviceType?: string | null | undefined }>) {
   if (deviceType === "platform" || deviceType === "singleDevice") {
     return <Monitor className="h-4 w-4" />;
   }

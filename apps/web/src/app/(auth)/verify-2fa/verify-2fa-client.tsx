@@ -30,7 +30,7 @@ import { authClient } from "@/lib/auth/auth-client";
 
 interface VerifyTwoFactorClientProps {
   redirectTo: string;
-  totpUri?: string;
+  totpUri?: string | undefined;
 }
 
 export function VerifyTwoFactorClient({

@@ -28,14 +28,14 @@ const NEVER_STORED_ITEMS = [
 ] as const;
 
 interface TransparencySectionProps {
-  birthYearOffsetCiphertextBytes?: number | null;
-  birthYearOffsetCiphertextHash?: string | null;
-  documentHash?: string;
-  encryptedAttributes?: string[];
+  birthYearOffsetCiphertextBytes?: number | null | undefined;
+  birthYearOffsetCiphertextHash?: string | null | undefined;
+  documentHash?: string | undefined;
+  encryptedAttributes?: string[] | undefined;
   hasAgeProof: boolean;
-  nameCommitment?: string;
-  proofTypes?: string[];
-  signedClaimTypes?: string[];
+  nameCommitment?: string | undefined;
+  proofTypes?: string[] | undefined;
+  signedClaimTypes?: string[] | undefined;
 }
 
 export function TransparencySection({

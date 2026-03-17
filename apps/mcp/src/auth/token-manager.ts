@@ -1,5 +1,9 @@
 import { config } from "../config.js";
-import { loadCredentials, updateCredentials } from "./credentials.js";
+import {
+  clearTokenCredentials,
+  loadCredentials,
+  updateCredentials,
+} from "./credentials.js";
 import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 
@@ -110,11 +114,7 @@ export class TokenManager {
     if (!response.ok) {
       const text = await response.text();
       if (text.includes("invalid_grant")) {
-        updateCredentials(config.zentityUrl, {
-          accessToken: undefined,
-          expiresAt: undefined,
-          refreshToken: undefined,
-        });
+        clearTokenCredentials(config.zentityUrl);
         throw new TokenExpiredError();
       }
       throw new Error(`Token refresh failed: ${response.status} ${text}`);

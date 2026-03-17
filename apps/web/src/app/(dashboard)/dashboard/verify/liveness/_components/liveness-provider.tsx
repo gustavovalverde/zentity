@@ -161,22 +161,21 @@ function useLivenessContext(): LivenessStateContextValue &
 export interface LivenessProviderProps {
   children: ReactNode;
   /** Enable debug logging */
-  debug?: boolean;
+  debug?: boolean | undefined;
   /** Identity draft ID for dashboard flow - enables server-side result persistence */
-  draftId?: string;
+  draftId?: string | undefined;
   /** Number of challenges (default: 2) */
-  numChallenges?: number;
+  numChallenges?: number | undefined;
   /** Called when session resets */
-  onReset?: () => void;
+  onReset?: (() => void) | undefined;
   /** Called on session errors (e.g., expired session) */
-  onSessionError?: () => void;
+  onSessionError?: (() => void) | undefined;
   /** Called when verification succeeds */
-  onVerified?: (result: {
-    selfieImage: string;
-    bestSelfieFrame: string;
-  }) => void;
+  onVerified?:
+    | ((result: { selfieImage: string; bestSelfieFrame: string }) => void)
+    | undefined;
   /** User ID for dashboard flow - required if draftId is provided */
-  userId?: string;
+  userId?: string | undefined;
 }
 
 // ============================================================================

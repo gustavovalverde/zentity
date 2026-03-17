@@ -99,7 +99,7 @@ interface ActionButtonProps {
   actionHref: string;
   actionLabel: string;
   locked: boolean;
-  passkeyAction?: "auth" | "enroll";
+  passkeyAction?: "auth" | "enroll" | undefined;
 }
 
 function ActionButton({
@@ -154,11 +154,11 @@ function ActionButton({
 interface ActionCardProps {
   actionHref: string;
   actionLabel: string;
-  badge?: string;
+  badge?: string | undefined;
   description: string;
   icon: React.ElementType;
   locked: boolean;
-  passkeyAction?: "auth" | "enroll";
+  passkeyAction?: "auth" | "enroll" | undefined;
   requiredTier: number;
   title: string;
 }

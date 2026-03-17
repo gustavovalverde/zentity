@@ -13,7 +13,7 @@ export default async function BackupCodesPage() {
     redirect("/sign-in");
   }
 
-  if (!session.user.twoFactorEnabled) {
+  if (!(session.user as Record<string, unknown>).twoFactorEnabled) {
     redirect("/dashboard/settings");
   }
 

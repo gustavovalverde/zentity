@@ -18,11 +18,11 @@ import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
 
 interface AgentMessage {
-  content?: string;
+  content?: string | undefined;
   id: string;
-  pick?: Product;
-  products?: Product[];
-  total?: number;
+  pick?: Product | undefined;
+  products?: Product[] | undefined;
+  total?: number | undefined;
   type: "text" | "products" | "cart" | "ciba-waiting" | "result";
 }
 
@@ -37,11 +37,22 @@ interface AgentChatProps {
   userInfo: Record<string, unknown> | null;
 }
 
+function resolvePick(task: ShoppingTask): Product {
+  const match = task.results.find((p) => p.id === task.pick);
+  if (match) {
+    return match;
+  }
+  const first = task.results[0];
+  if (!first) {
+    throw new Error(`Task "${task.id}" has no results`);
+  }
+  return first;
+}
+
 function buildScript(
   task: ShoppingTask
 ): { delay: number; msg: AgentMessage }[] {
-  const picked =
-    task.results.find((p) => p.id === task.pick) ?? task.results[0];
+  const picked = resolvePick(task);
   const tax = picked.price * 0.0875;
   const total = picked.price + tax;
 
@@ -123,7 +134,8 @@ export function AgentChat({
     let cancelled = false;
 
     function next() {
-      if (step >= script.length) {
+      const entry = script[step];
+      if (!entry) {
         setTyping(false);
         if (!(cancelled || cibaSentRef.current)) {
           cibaSentRef.current = true;
@@ -131,7 +143,7 @@ export function AgentChat({
         }
         return;
       }
-      const { delay, msg } = script[step];
+      const { delay, msg } = entry;
       timer = setTimeout(() => {
         if (cancelled) {
           return;
@@ -165,11 +177,12 @@ export function AgentChat({
     const script = scriptRef.current;
     let step = 0;
     function next() {
-      if (step >= script.length) {
+      const entry = script[step];
+      if (!entry) {
         setTyping(false);
         return;
       }
-      const { delay, msg } = script[step];
+      const { delay, msg } = entry;
       replayTimerRef.current = setTimeout(() => {
         setMessages((prev) => [...prev, msg]);
         setTimeout(scrollToBottom, 50);
@@ -207,9 +220,7 @@ export function AgentChat({
           <CibaResult
             exchangedTokens={exchangedTokens}
             onReset={handleReset}
-            pick={
-              task.results.find((p) => p.id === task.pick) ?? task.results[0]
-            }
+            pick={resolvePick(task)}
             tokens={tokens}
             userInfo={userInfo}
           />
@@ -397,10 +408,11 @@ function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split(".");
-    if (parts.length !== 3) {
+    const payload = parts[1];
+    if (parts.length !== 3 || !payload) {
       return null;
     }
-    return JSON.parse(atob(parts[1])) as Record<string, unknown>;
+    return JSON.parse(atob(payload)) as Record<string, unknown>;
   } catch {
     return null;
   }

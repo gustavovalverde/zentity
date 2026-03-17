@@ -126,7 +126,7 @@ async function createCaller(
   const { zkRouter } = await import("@/lib/trpc/routers/zk/router");
   return zkRouter.createCaller({
     req: new Request(options.url ?? "http://localhost/api/trpc", {
-      headers: options.headers,
+      ...(options.headers !== undefined ? { headers: options.headers } : {}),
     }),
     resHeaders: new Headers(),
     session,

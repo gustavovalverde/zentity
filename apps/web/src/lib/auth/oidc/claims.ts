@@ -25,18 +25,18 @@ type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
 
 interface VerificationClaims extends Record<string, unknown> {
   age_verified: boolean;
-  attestation_expires_at?: string;
-  chip_verification_method?: "nfc";
+  attestation_expires_at?: string | undefined;
+  chip_verification_method?: "nfc" | undefined;
   chip_verified: boolean;
   document_verified: boolean;
   face_match_verified: boolean;
   identity_bound: boolean;
   liveness_verified: boolean;
   nationality_verified: boolean;
-  policy_version?: string;
+  policy_version?: string | undefined;
   sybil_resistant: boolean;
   verification_level: VerificationStatus["level"];
-  verification_time?: string;
+  verification_time?: string | undefined;
   verified: boolean;
 }
 

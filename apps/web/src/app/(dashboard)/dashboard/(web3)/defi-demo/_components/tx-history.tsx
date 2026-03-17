@@ -94,7 +94,7 @@ function TxHistoryContent({
   getTypeIcon: (type: string) => React.ReactNode;
   getTypeLabel: (type: string) => string;
   formatAddress: (address: string) => string;
-  onMintClick?: () => void;
+  onMintClick?: (() => void) | undefined;
 }>) {
   if (isLoading) {
     return (

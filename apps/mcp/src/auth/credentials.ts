@@ -62,3 +62,17 @@ export function updateCredentials(
   saveCredentials(merged);
   return merged;
 }
+
+export function clearTokenCredentials(zentityUrl: string): void {
+  const existing = loadCredentials(zentityUrl);
+  if (!existing) {
+    return;
+  }
+  const {
+    accessToken: _,
+    expiresAt: __,
+    refreshToken: ___,
+    ...rest
+  } = existing;
+  saveCredentials({ ...rest, zentityUrl, clientId: rest.clientId });
+}

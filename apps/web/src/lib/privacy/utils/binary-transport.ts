@@ -64,8 +64,8 @@ export async function fetchMsgpack<T>(
     method: fetchInit.method ?? "POST",
     ...fetchInit,
     headers,
-    body,
-    signal,
+    ...(body !== undefined ? { body } : {}),
+    ...(signal !== undefined ? { signal } : {}),
   }).finally(cleanup);
 
   if (!response.ok) {

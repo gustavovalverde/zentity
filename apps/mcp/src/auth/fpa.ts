@@ -76,7 +76,8 @@ async function postChallenge(
     return { dpopNonce: extractDpopNonce(response) ?? newNonce, response };
   }
 
-  return { dpopNonce: newNonce ?? dpopNonce, response };
+  const resolvedNonce = newNonce ?? dpopNonce;
+  return { ...(resolvedNonce ? { dpopNonce: resolvedNonce } : {}), response };
 }
 
 /**

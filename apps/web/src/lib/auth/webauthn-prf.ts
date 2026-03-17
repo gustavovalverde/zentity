@@ -8,7 +8,7 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
 
 export interface PrfSupportStatus {
-  reason?: string;
+  reason?: string | undefined;
   supported: boolean;
 }
 
@@ -74,7 +74,7 @@ function toPrfOutput(output?: ArrayBuffer): Uint8Array | null {
 
 export function extractPrfOutputFromClientResults(params: {
   clientExtensionResults: unknown;
-  credentialId?: string;
+  credentialId?: string | undefined;
 }): Uint8Array | null {
   if (
     !params.clientExtensionResults ||
@@ -277,9 +277,9 @@ export function extractCredentialRegistrationData(
 
 export async function evaluatePrf(params: {
   credentialIdToSalt: Record<string, Uint8Array>;
-  credentialTransports?: Record<string, AuthenticatorTransport[]>;
-  userVerification?: UserVerificationRequirement;
-  timeoutMs?: number;
+  credentialTransports?: Record<string, AuthenticatorTransport[]> | undefined;
+  userVerification?: UserVerificationRequirement | undefined;
+  timeoutMs?: number | undefined;
 }): Promise<{
   assertion: PublicKeyCredential;
   prfOutputs: Map<string, Uint8Array>;
@@ -298,11 +298,16 @@ export async function evaluatePrf(params: {
   const credentialBucket = getCredentialBucket(credentialIds.length);
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
-  const allowCredentials = credentialIds.map((credentialId) => ({
-    type: "public-key" as const,
-    id: toArrayBuffer(base64UrlToBytes(credentialId)),
-    transports: params.credentialTransports?.[credentialId],
-  }));
+  const allowCredentials: PublicKeyCredentialDescriptor[] = credentialIds.map(
+    (credentialId) => {
+      const transports = params.credentialTransports?.[credentialId];
+      return {
+        type: "public-key" as const,
+        id: toArrayBuffer(base64UrlToBytes(credentialId)),
+        ...(transports !== undefined ? { transports } : {}),
+      };
+    }
+  );
 
   const evalByCredential: Record<string, { first: ArrayBuffer }> = {};
   for (const credentialId of credentialIds) {
@@ -324,7 +329,7 @@ export async function evaluatePrf(params: {
     challenge,
     allowCredentials,
     userVerification: params.userVerification ?? "required",
-    timeout: params.timeoutMs,
+    ...(params.timeoutMs !== undefined ? { timeout: params.timeoutMs } : {}),
     extensions: {
       prf: singleEntry
         ? { eval: { first: singleEntry.first } }

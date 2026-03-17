@@ -35,7 +35,7 @@ export interface BbsMessage {
  */
 export interface BbsSignature {
   /** Header bound to signature (optional context) */
-  header?: Uint8Array;
+  header?: Uint8Array | undefined;
   /** Number of messages signed */
   messageCount: number;
   /** Raw signature bytes */
@@ -59,7 +59,7 @@ export interface DisclosureRequest {
  */
 export interface BbsProof {
   /** Presentation header (binds proof to context) */
-  presentationHeader?: Uint8Array;
+  presentationHeader?: Uint8Array | undefined;
   /** Derived proof bytes */
   proof: Uint8Array;
   /** Indices of revealed messages */
@@ -93,7 +93,7 @@ export type WalletCredentialClaimKey =
  */
 export interface WalletIdentitySubject {
   /** Chain ID (optional, for EVM chains) */
-  chainId?: number;
+  chainId?: number | undefined;
   /** Blockchain network (e.g., "ethereum", "polygon") */
   network: string;
   /** Verification tier achieved */
@@ -146,7 +146,7 @@ export interface BbsPresentation {
   /** Presentation format */
   format: "bbs+vp";
   /** Original credential header */
-  header?: Uint8Array;
+  header?: Uint8Array | undefined;
   /** Original credential issuer */
   issuer: string;
   /** Issuer public key for verification */

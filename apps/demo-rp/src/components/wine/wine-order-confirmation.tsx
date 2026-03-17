@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { CartItem } from "./wine-cart";
 
 interface WineOrderConfirmationProps {
-  claims?: Record<string, unknown>;
+  claims?: Record<string, unknown> | undefined;
   items: CartItem[];
   onContinueShopping: () => void;
   orderId: string;

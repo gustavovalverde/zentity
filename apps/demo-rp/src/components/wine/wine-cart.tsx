@@ -8,7 +8,7 @@ interface CartItem {
 }
 
 interface WineCartProps {
-  claims?: Record<string, unknown>;
+  claims?: Record<string, unknown> | undefined;
   isSteppedUp: boolean;
   items: CartItem[];
   onPlaceOrder: () => void;

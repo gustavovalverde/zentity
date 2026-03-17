@@ -59,9 +59,9 @@ async function handleAuthorize(
   data: {
     scope: string;
     loginHint: string;
-    bindingMessage?: string;
-    authorizationDetails?: string;
-    acrValues?: string;
+    bindingMessage?: string | undefined;
+    authorizationDetails?: string | undefined;
+    acrValues?: string | undefined;
   },
   client: DcrClient
 ) {

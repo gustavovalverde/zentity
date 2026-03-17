@@ -20,17 +20,17 @@ import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
  * Binary fields are base64-encoded.
  */
 export interface SerializedBbsCredential {
-  credentialType?: "wallet";
+  credentialType?: "wallet" | undefined;
   format: "bbs+vc";
   holder: string;
   /** Credential ID (generated from content hash) */
-  id?: string;
+  id?: string | undefined;
   issuedAt: string;
   issuer: string;
   issuerPublicKey: string;
   signature: {
     signature: string;
-    header?: string;
+    header?: string | undefined;
     messageCount: number;
   };
   subject: WalletIdentitySubject;
@@ -41,16 +41,16 @@ export interface SerializedBbsCredential {
  * Binary fields are base64-encoded.
  */
 export interface SerializedBbsPresentation {
-  credentialType?: "wallet";
+  credentialType?: "wallet" | undefined;
   format: "bbs+vp";
-  header?: string;
+  header?: string | undefined;
   issuer: string;
   issuerPublicKey: string;
   proof: {
     proof: string;
     revealedIndices: number[];
     revealedMessages: string[];
-    presentationHeader?: string;
+    presentationHeader?: string | undefined;
   };
   revealedClaims: Partial<WalletIdentitySubject>;
 }

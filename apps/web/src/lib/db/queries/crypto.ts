@@ -29,25 +29,25 @@ import {
 } from "../schema/crypto";
 
 export interface ZkProofInsert {
-  bbVersion?: string | null;
-  circuitHash?: string | null;
-  circuitType?: string | null;
-  generationTimeMs?: number | null;
+  bbVersion?: string | null | undefined;
+  circuitHash?: string | null | undefined;
+  circuitType?: string | null | undefined;
+  generationTimeMs?: number | null | undefined;
   id: string;
-  isOver18?: boolean | null;
-  noirVersion?: string | null;
-  nonce?: string | null;
-  policyVersion?: string | null;
+  isOver18?: boolean | null | undefined;
+  noirVersion?: string | null | undefined;
+  nonce?: string | null | undefined;
+  policyVersion?: string | null | undefined;
   proofHash: string;
-  proofPayload?: string | null;
+  proofPayload?: string | null | undefined;
   proofSessionId: string;
   proofType: string;
-  publicInputs?: string | null;
+  publicInputs?: string | null | undefined;
   userId: string;
-  verificationId?: string | null;
-  verificationKeyHash?: string | null;
-  verificationKeyPoseidonHash?: string | null;
-  verified?: boolean;
+  verificationId?: string | null | undefined;
+  verificationKeyHash?: string | null | undefined;
+  verificationKeyPoseidonHash?: string | null | undefined;
+  verified?: boolean | undefined;
 }
 
 export interface ZkProofSessionInsert {
@@ -415,9 +415,9 @@ export async function upsertSecretWrapper(data: {
   userId: string;
   credentialId: string;
   wrappedDek: string;
-  prfSalt?: string | null;
-  kekSource?: string;
-  baseCommitment?: string | null;
+  prfSalt?: string | null | undefined;
+  kekSource?: string | undefined;
+  baseCommitment?: string | null | undefined;
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
 

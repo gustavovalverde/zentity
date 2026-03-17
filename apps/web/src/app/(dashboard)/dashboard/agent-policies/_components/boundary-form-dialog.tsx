@@ -25,12 +25,12 @@ interface BoundaryRow {
 }
 
 export interface PolicyPrefill {
-  clientId?: string;
+  clientId?: string | undefined;
   create: true;
-  currency?: string;
-  maxAmount?: string;
-  scopes?: string;
-  type?: string;
+  currency?: string | undefined;
+  maxAmount?: string | undefined;
+  scopes?: string | undefined;
+  type?: string | undefined;
 }
 
 const BOUNDARY_TYPES = [
@@ -62,7 +62,7 @@ interface BoundaryFormDialogProps {
   boundary: BoundaryRow | null;
   onClose: () => void;
   open: boolean;
-  prefill?: PolicyPrefill;
+  prefill?: PolicyPrefill | undefined;
 }
 
 export function BoundaryFormDialog({

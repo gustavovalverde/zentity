@@ -153,7 +153,7 @@ export function isBbsStorageAvailable(): boolean {
  * Get credential metadata without full deserialization.
  */
 export interface CredentialMetadata {
-  chainId?: number;
+  chainId?: number | undefined;
   hasCommitmentSalt: boolean;
   holder: string;
   id: string;

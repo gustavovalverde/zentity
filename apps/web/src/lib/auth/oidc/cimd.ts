@@ -65,7 +65,7 @@ async function fetchMetadataDocument(
 
 export async function resolveCimdClient(clientId: string): Promise<{
   resolved: boolean;
-  error?: string;
+  error?: string | undefined;
 }> {
   const existing = await db.query.oauthClients.findFirst({
     where: eq(oauthClients.clientId, clientId),

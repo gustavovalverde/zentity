@@ -5,7 +5,7 @@ import { BALANCE, TRANSACTIONS } from "@/data/bank";
 import { BankTransactionItem } from "./bank-transaction-item";
 
 interface BankDashboardProps {
-  claims?: Record<string, unknown>;
+  claims?: Record<string, unknown> | undefined;
 }
 
 export function BankDashboard({ claims }: BankDashboardProps) {

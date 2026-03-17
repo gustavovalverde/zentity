@@ -21,8 +21,8 @@ export type ClaimsRequest = Record<
 >;
 
 export interface ParsedClaimsParameter {
-  id_token?: ClaimsRequest;
-  userinfo?: ClaimsRequest;
+  id_token?: ClaimsRequest | undefined;
+  userinfo?: ClaimsRequest | undefined;
 }
 
 const CLAIMS_TTL_MS = 5 * 60 * 1000; // 5 minutes

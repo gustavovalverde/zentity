@@ -499,8 +499,8 @@ function createMockCredential(params: {
   rawId: Uint8Array;
   publicKey: Uint8Array | null;
   authenticatorData: Uint8Array;
-  authenticatorAttachment?: string | null;
-  transports?: string[];
+  authenticatorAttachment?: string | null | undefined;
+  transports?: string[] | undefined;
 }): PublicKeyCredential {
   const { publicKey } = params;
   return {

@@ -38,10 +38,10 @@ export function isUrlClientId(
 export interface CimdMetadata {
   client_id: string;
   client_name: string;
-  grant_types?: string[];
+  grant_types?: string[] | undefined;
   redirect_uris: string[];
-  response_types?: string[];
-  token_endpoint_auth_method?: string;
+  response_types?: string[] | undefined;
+  token_endpoint_auth_method?: string | undefined;
 }
 
 export interface CimdValidationResult {

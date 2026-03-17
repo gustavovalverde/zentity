@@ -97,9 +97,9 @@ async function withOcrMetrics<T>(args: {
 
 export function processDocumentOcr(args: {
   image: string;
-  userSalt?: string;
-  requestId?: string;
-  flowId?: string;
+  userSalt?: string | undefined;
+  requestId?: string | undefined;
+  flowId?: string | undefined;
 }): Promise<OcrProcessResult> {
   try {
     assertOcrImagePayloadSize(args.image);
@@ -141,8 +141,8 @@ export function processDocumentOcr(args: {
 
 export function ocrDocumentOcr(args: {
   image: string;
-  requestId?: string;
-  flowId?: string;
+  requestId?: string | undefined;
+  flowId?: string | undefined;
 }): Promise<unknown> {
   try {
     assertOcrImagePayloadSize(args.image);

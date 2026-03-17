@@ -41,10 +41,11 @@ export async function zentityFetch(
     headers["Content-Type"] = "application/json";
   }
 
+  const fetchBody = options?.body;
   let response = await fetch(url, {
     method,
     headers,
-    body: options?.body,
+    ...(fetchBody ? { body: fetchBody } : {}),
   });
 
   // DPoP nonce retry
@@ -66,7 +67,7 @@ export async function zentityFetch(
     response = await fetch(url, {
       method,
       headers,
-      body: options?.body,
+      ...(fetchBody ? { body: fetchBody } : {}),
     });
   }
   const finalNonce = extractDpopNonce(response);
@@ -90,5 +91,5 @@ function serviceTokenFetch(
     headers["Content-Type"] = "application/json";
   }
 
-  return fetch(url, { method, headers, body });
+  return fetch(url, { method, headers, ...(body ? { body } : {}) });
 }

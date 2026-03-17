@@ -51,9 +51,10 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
 
   // No valid credentials — authenticate via browser
   const pkce = await generatePkce();
+  const parEndpoint = discovery.pushed_authorization_request_endpoint;
   const result = await authenticateViaBrowser({
     authorizeEndpoint: discovery.authorization_endpoint,
-    parEndpoint: discovery.pushed_authorization_request_endpoint,
+    ...(parEndpoint ? { parEndpoint } : {}),
     tokenEndpoint: discovery.token_endpoint,
     clientId,
     dpopKey,

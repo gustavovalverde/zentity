@@ -13,10 +13,15 @@ import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
-let httpServerCredentials: { clientId: string; dpopKey: DpopKeyPair } | undefined;
+let httpServerCredentials:
+  | { clientId: string; dpopKey: DpopKeyPair }
+  | undefined;
 
 /** Set server-level OAuth credentials (used by startHttp and tests). */
-export function setServerCredentials(creds: { clientId: string; dpopKey: DpopKeyPair }): void {
+export function setServerCredentials(creds: {
+  clientId: string;
+  dpopKey: DpopKeyPair;
+}): void {
   httpServerCredentials = creds;
 }
 
@@ -87,7 +92,8 @@ export function createApp(): Hono {
     const authHeader = c.req.header("authorization");
     const dpopHeader = c.req.header("dpop");
     const method = c.req.method;
-    const url = new URL(c.req.url).href.split("?")[0]; // Strip query params for htu
+    const fullHref = new URL(c.req.url).href;
+    const url = fullHref.split("?")[0] ?? fullHref; // Strip query params for htu
 
     const result = await validateToken(authHeader, dpopHeader, method, url);
 

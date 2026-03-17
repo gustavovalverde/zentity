@@ -1,11 +1,11 @@
 import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
 
 interface CibaNotificationData {
-  agentName?: string;
+  agentName?: string | undefined;
   authorizationDetails?: unknown;
   authReqId: string;
-  bindingMessage?: string;
-  clientName?: string;
+  bindingMessage?: string | undefined;
+  clientName?: string | undefined;
   scope: string;
 }
 

@@ -233,10 +233,10 @@ export function useFhevmSdk(parameters: UseFhevmSdkParams): UseFhevmSdkReturn {
 }
 
 interface CreateFhevmInstanceParams {
-  mockChains?: Record<number, string>;
-  onStatusChange?: (status: FhevmRelayerStatusType) => void;
+  mockChains?: Record<number, string> | undefined;
+  onStatusChange?: ((status: FhevmRelayerStatusType) => void) | undefined;
   provider: unknown;
-  providerId?: string;
+  providerId?: string | undefined;
   signal: AbortSignal;
 }
 

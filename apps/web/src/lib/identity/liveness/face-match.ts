@@ -1,9 +1,9 @@
 export interface FaceMatchResult {
   confidence: number;
   distance: number;
-  error?: string;
+  error?: string | undefined;
   idFaceExtracted: boolean;
-  idFaceImage?: string;
+  idFaceImage?: string | undefined;
   matched: boolean;
   processingTimeMs: number;
   threshold: number;

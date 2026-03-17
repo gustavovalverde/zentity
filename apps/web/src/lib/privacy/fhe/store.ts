@@ -17,7 +17,7 @@ import { trpc } from "@/lib/trpc/client";
 export interface StoredFheKeys {
   clientKey: Uint8Array;
   createdAt: string;
-  keyId?: string;
+  keyId?: string | undefined;
   publicKey: Uint8Array;
   serverKey: Uint8Array;
 }

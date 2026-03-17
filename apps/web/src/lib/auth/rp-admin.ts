@@ -21,7 +21,8 @@ export async function requireRpAdmin(
   }
 
   const session = sessionResult.session;
-  const organizationId = session.session.activeOrganizationId;
+  const organizationId = (session.session as Record<string, unknown>)
+    .activeOrganizationId as string | null;
   if (!organizationId) {
     return {
       ok: false,

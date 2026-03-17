@@ -70,19 +70,19 @@ interface FailedResult {
 
 export interface UseLivenessArgs {
   /** Enable debug logging */
-  debugEnabled?: boolean;
+  debugEnabled?: boolean | undefined;
   /** Identity draft ID for dashboard flow - enables server-side result persistence */
-  draftId?: string;
+  draftId?: string | undefined;
   isStreaming: boolean;
   /** Number of challenges (default: 2) */
-  numChallenges?: number;
+  numChallenges?: number | undefined;
   onReset: () => void;
-  onSessionError?: () => void;
+  onSessionError?: (() => void) | undefined;
   onVerified: (args: { selfieImage: string; bestSelfieFrame: string }) => void;
   startCamera: () => Promise<void>;
   stopCamera: () => void;
   /** User ID for dashboard flow - required if draftId is provided */
-  userId?: string;
+  userId?: string | undefined;
   videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 

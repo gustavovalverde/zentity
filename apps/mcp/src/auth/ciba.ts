@@ -55,7 +55,9 @@ export class CibaTimeoutError extends Error {
   }
 }
 
-export async function requestCibaApproval(params: CibaRequest): Promise<CibaResult> {
+export async function requestCibaApproval(
+  params: CibaRequest
+): Promise<CibaResult> {
   const { cibaEndpoint, tokenEndpoint, dpopKey } = params;
 
   const body = buildCibaBody(params);
@@ -212,8 +214,10 @@ async function handlePollResponse(
       done: true,
       value: {
         accessToken: data.access_token,
-        authorizationDetails: data.authorization_details,
-        idToken: data.id_token,
+        ...(data.authorization_details
+          ? { authorizationDetails: data.authorization_details }
+          : {}),
+        ...(data.id_token ? { idToken: data.id_token } : {}),
       },
     };
   }

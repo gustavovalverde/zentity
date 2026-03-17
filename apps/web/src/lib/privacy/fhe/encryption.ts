@@ -23,12 +23,12 @@ import { encryptBatchFhe, FheServiceError } from "./service";
 
 export interface FheEncryptionSchedule {
   /** Full DOB as days since 1900-01-01 (UTC) */
-  dobDays?: number | null;
-  flowId?: string;
+  dobDays?: number | null | undefined;
+  flowId?: string | undefined;
   /** Synthetic liveness score for non-OCR paths (e.g. chip NFC = 1.0) */
-  livenessScore?: number | null;
-  reason?: string;
-  requestId?: string;
+  livenessScore?: number | null | undefined;
+  reason?: string | undefined;
+  requestId?: string | undefined;
   userId: string;
 }
 

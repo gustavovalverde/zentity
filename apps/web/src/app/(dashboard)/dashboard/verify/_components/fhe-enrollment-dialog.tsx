@@ -817,7 +817,7 @@ export function FheEnrollmentDialog({
     availableMethods.length === 0 && hasPasskeys && prfSupported === false;
 
   return (
-    <Dialog onOpenChange={isRunning ? undefined : onOpenChange} open={open}>
+    <Dialog {...(isRunning ? {} : { onOpenChange })} open={open}>
       <DialogContent showCloseButton={!isRunning}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

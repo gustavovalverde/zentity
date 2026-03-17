@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/auth";
 import {
   buildWellKnownResponse,
+  callAuthApi,
   DEFAULT_AUTH_BASE_PATH,
   enrichDiscoveryMetadata,
   issuerPathMatches,
@@ -18,7 +19,9 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  const metadata = unwrapMetadata(await auth.api.getOpenIdConfig());
+  const metadata = unwrapMetadata(
+    await callAuthApi(auth.api, "getOpenIdConfig")
+  );
 
   const enriched =
     typeof metadata === "object" && metadata !== null

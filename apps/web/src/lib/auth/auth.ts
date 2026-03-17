@@ -18,7 +18,7 @@ import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
-import { APIError, betterAuth } from "better-auth";
+import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import {
@@ -1395,7 +1395,7 @@ export const auth = betterAuth({
     oidc4ida({
       getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
         buildOidcVerifiedClaims(user.id),
-    }),
+    }) as BetterAuthPlugin,
     oidc4vci({
       defaultWalletClientId: "zentity-wallet",
       credentialIssuer: authIssuer,

@@ -68,8 +68,8 @@ export function getPasswordSimilarityError(
 export function getPasswordRequirementStatus(
   password: string,
   opts: {
-    email?: string | null;
-    documentNumber?: string | null;
+    email?: string | null | undefined;
+    documentNumber?: string | null | undefined;
   }
 ) {
   const lengthOk =

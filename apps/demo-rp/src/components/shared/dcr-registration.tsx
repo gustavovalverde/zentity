@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 interface DcrRegistrationProps {
   clientName: string;
   defaultScopes: string;
-  grantTypes?: string[];
+  grantTypes?: string[] | undefined;
   onRegistered: (clientId: string) => void;
   providerId: string;
 }

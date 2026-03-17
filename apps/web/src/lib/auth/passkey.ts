@@ -44,7 +44,7 @@ function getWebauthnPayload(result: unknown): WebauthnResponse | null {
 }
 
 function getCredentialId(params: {
-  data?: { credentialID?: string };
+  data?: { credentialID?: string } | undefined;
   webauthn: WebauthnResponse | null;
 }): string | null {
   const dataId = params.data?.credentialID;

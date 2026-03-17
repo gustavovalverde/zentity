@@ -657,12 +657,12 @@ const NetworkActions = memo(function NetworkActions({
 }: Readonly<{
   network: NetworkStatus;
   walletAddress: string;
-  attestedWalletAddress?: string;
+  attestedWalletAddress?: string | undefined;
   onSubmit: (forceUpdate?: boolean) => void;
   onRefresh: () => void;
   isSubmitting: boolean;
   isRefreshing: boolean;
-  error?: string;
+  error?: string | undefined;
 }>) {
   const { disconnect } = useDisconnect();
   const [confirmingUpdate, setConfirmingUpdate] = useState(false);

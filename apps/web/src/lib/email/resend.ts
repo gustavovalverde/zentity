@@ -61,8 +61,8 @@ export async function sendResendMessage(
       to: recipients,
       subject: message.subject,
       text: message.text,
-      html: message.html,
-      tags,
+      ...(message.html !== undefined ? { html: message.html } : {}),
+      ...(tags !== undefined ? { tags } : {}),
     });
 
     if (error) {

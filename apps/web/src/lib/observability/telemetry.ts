@@ -149,14 +149,14 @@ export async function initTelemetry(): Promise<void> {
   const traceExporter = tracingEnabled()
     ? new OTLPTraceExporter({
         url: traceEndpoint,
-        headers,
+        ...(headers !== undefined ? { headers } : {}),
       })
     : undefined;
   const metricReader = metricsEnabled()
     ? new PeriodicExportingMetricReader({
         exporter: new OTLPMetricExporter({
           url: metricsEndpoint,
-          headers,
+          ...(headers !== undefined ? { headers } : {}),
         }),
         exportIntervalMillis: getMetricsExportIntervalMs(),
       })
@@ -172,8 +172,8 @@ export async function initTelemetry(): Promise<void> {
 
   sdk = new NodeSDK({
     resource,
-    traceExporter,
-    metricReader,
+    ...(traceExporter !== undefined ? { traceExporter } : {}),
+    ...(metricReader !== undefined ? { metricReader } : {}),
     instrumentations: tracingEnabled()
       ? [
           getNodeAutoInstrumentations({

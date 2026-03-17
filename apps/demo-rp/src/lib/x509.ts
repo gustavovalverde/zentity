@@ -157,6 +157,9 @@ function readDerLength(
     return null;
   }
   const first = buf[pos];
+  if (first === undefined) {
+    return null;
+  }
   if (first < 0x80) {
     return { length: first, nextPos: pos + 1 };
   }
@@ -167,8 +170,12 @@ function readDerLength(
   }
   let length = 0;
   for (let i = 0; i < numBytes; i++) {
+    const byte = buf[pos + 1 + i];
+    if (byte === undefined) {
+      return null;
+    }
     // biome-ignore lint/suspicious/noBitwiseOperators: DER multi-byte length parsing
-    length = (length << 8) | buf[pos + 1 + i];
+    length = (length << 8) | byte;
   }
   return { length, nextPos: pos + 1 + numBytes };
 }

@@ -20,7 +20,7 @@ const IntentPayloadSchema = z.object({
 });
 
 export interface IdentityIntentPayload {
-  authReqId?: string;
+  authReqId?: string | undefined;
   clientId: string;
   exp: number;
   jti: string;

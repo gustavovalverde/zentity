@@ -44,6 +44,9 @@ export default function AetherPage() {
     }
     const pick =
       task.results.find((p) => p.id === task.pick) ?? task.results[0];
+    if (!pick) {
+      return;
+    }
     const tax = pick.price * 0.0875;
     const total = pick.price + tax;
     startFlow({
@@ -58,7 +61,9 @@ export default function AetherPage() {
           amount: { currency: "USD", value: total.toFixed(2) },
         },
       ]),
-      acrValues: scenario.acrValues,
+      ...(scenario.acrValues !== undefined
+        ? { acrValues: scenario.acrValues }
+        : {}),
     });
   }, [userEmail, task, startFlow]);
 

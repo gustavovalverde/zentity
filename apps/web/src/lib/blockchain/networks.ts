@@ -28,13 +28,13 @@ export interface NetworkConfig {
   /** Deployed contract addresses */
   contracts: {
     identityRegistry: string;
-    complianceRules?: string;
-    compliantERC20?: string;
+    complianceRules?: string | undefined;
+    compliantERC20?: string | undefined;
   };
   /** Whether this network is currently enabled */
   enabled: boolean;
   /** Block explorer URL (for tx links) */
-  explorer?: string;
+  explorer?: string | undefined;
   /** Network capabilities */
   features: NetworkFeature[];
   /** Unique identifier (e.g., "fhevm_sepolia", "hardhat") */
@@ -42,9 +42,9 @@ export interface NetworkConfig {
   /** Display name for UI */
   name: string;
   /** Provider implementation ID for FHEVM networks (e.g., "zama", "mock") */
-  providerId?: string;
+  providerId?: string | undefined;
   /** Registrar private key for this network (server-side only) */
-  registrarPrivateKey?: string;
+  registrarPrivateKey?: string | undefined;
   /** RPC endpoint URL */
   rpcUrl: string;
   /** Provider type - determines which provider class to use */
@@ -64,7 +64,7 @@ const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
 const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
 const FHEVM_PROVIDER_ID = "zama";
 
-function toOverrides(values: Partial<Record<ContractName, string>>) {
+function toOverrides(values: Record<ContractName, string | undefined>) {
   const overrides = Object.fromEntries(
     Object.entries(values).filter(([, value]) => Boolean(value?.trim()))
   ) as Partial<Record<ContractName, string>>;

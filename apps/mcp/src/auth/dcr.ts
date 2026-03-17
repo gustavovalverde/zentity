@@ -54,7 +54,7 @@ export async function ensureClientRegistration(
 
   updateCredentials(config.zentityUrl, {
     clientId: data.client_id,
-    clientSecret: data.client_secret,
+    ...(data.client_secret ? { clientSecret: data.client_secret } : {}),
   });
 
   console.error(`[dcr] Registered as client_id: ${data.client_id}`);

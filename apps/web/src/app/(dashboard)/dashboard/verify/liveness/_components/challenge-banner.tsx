@@ -10,13 +10,13 @@ interface ChallengeBannerProps {
   /** The type of challenge being performed */
   challenge: ChallengeType;
   /** Optional class name */
-  className?: string;
+  className?: string | undefined;
   /** Current challenge index (1-based) */
-  currentIndex?: number;
+  currentIndex?: number | undefined;
   /** Optional hint text to display */
-  hint?: string;
+  hint?: string | undefined;
   /** Total number of challenges */
-  totalChallenges?: number;
+  totalChallenges?: number | undefined;
 }
 
 /**

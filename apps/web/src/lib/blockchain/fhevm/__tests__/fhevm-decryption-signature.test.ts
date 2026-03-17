@@ -72,7 +72,7 @@ function createTestInstance(
       contractsChainId: TEST_CHAIN_ID,
       startTimestamp,
       durationDays,
-      nonce,
+      ...(nonce !== undefined ? { nonce } : {}),
       extraData: "0x00",
     },
   });

@@ -93,9 +93,9 @@ async function fetchSignerInfo(endpoint: string): Promise<SignerInfo> {
 }
 
 export async function createRecoveryKeySet(params: {
-  threshold?: number;
-  totalGuardians?: number;
-  ciphersuite?: Ciphersuite;
+  threshold?: number | undefined;
+  totalGuardians?: number | undefined;
+  ciphersuite?: Ciphersuite | undefined;
 }): Promise<{
   groupPubkey: string;
   publicKeyPackage: string;
@@ -275,9 +275,9 @@ export async function executeSigningRounds(params: {
   ciphersuite: Ciphersuite;
   message: string;
   participantIds: number[];
-  totalParticipants?: number;
-  guardianAssertions?: Map<number, string>;
-  endpointOverrides?: Map<number, string>;
+  totalParticipants?: number | undefined;
+  guardianAssertions?: Map<number, string> | undefined;
+  endpointOverrides?: Map<number, string> | undefined;
 }): Promise<{ signature: string; signaturesCollected: number }> {
   const coordinatorUrl = env.SIGNER_COORDINATOR_URL;
   const totalParticipants =

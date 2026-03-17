@@ -72,9 +72,9 @@ function parseAuthorizationDetails(raw: unknown): AuthorizationDetail[] | null {
 export async function sendCibaNotification(params: {
   userId: string;
   authReqId: string;
-  clientName?: string;
+  clientName?: string | undefined;
   scope: string;
-  bindingMessage?: string;
+  bindingMessage?: string | undefined;
   authorizationDetails?: unknown;
   approvalUrl: string;
 }): Promise<void> {

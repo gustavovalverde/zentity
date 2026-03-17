@@ -454,7 +454,7 @@ export class FhevmDecryptionSignature {
     instance: FhevmInstance;
     contractAddresses: string[];
     userAddress: string;
-    publicKey?: string;
+    publicKey?: string | undefined;
   }): Promise<FhevmDecryptionSignature | null> {
     const { storage, instance, contractAddresses, userAddress, publicKey } =
       options;

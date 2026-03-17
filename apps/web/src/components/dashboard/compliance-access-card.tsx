@@ -33,10 +33,10 @@ import { getUserFriendlyError } from "@/lib/utils/error-messages";
 
 interface ComplianceAccessCardProps {
   complianceRules: `0x${string}` | null | undefined;
-  expectedChainId?: number;
-  expectedNetworkName?: string;
-  grantedExplorerUrl?: string | null;
-  grantedTxHash?: string | null;
+  expectedChainId?: number | undefined;
+  expectedNetworkName?: string | undefined;
+  grantedExplorerUrl?: string | null | undefined;
+  grantedTxHash?: string | null | undefined;
   identityRegistry: `0x${string}` | null | undefined;
   isGranted: boolean;
   onGranted: () => void;
