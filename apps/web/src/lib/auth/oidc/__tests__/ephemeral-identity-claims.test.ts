@@ -162,7 +162,7 @@ describe("ephemeral identity claims store", () => {
     expect(consumeEphemeralClaimsByUser("user-1")).toBeNull();
   });
 
-  it("replaces existing entry on re-stage for the same user+client", async () => {
+  it("rejects concurrent stage attempts within the lock window", async () => {
     const scopes = ["openid", "identity.name"];
 
     expect(
@@ -181,11 +181,42 @@ describe("ephemeral identity claims store", () => {
         scopes,
         makeMeta("intent-4", scopes)
       )
+    ).toEqual({ ok: false, reason: "concurrent_stage" });
+
+    // Original entry is preserved
+    const consumed = consumeEphemeralClaims("user-1", "client-1");
+    expect(consumed?.claims.given_name).toBe("Ada");
+  });
+
+  it("allows replacement after the lock window expires (stale entry)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+
+    const scopes = ["openid", "identity.name"];
+
+    expect(
+      await storeEphemeralClaims(
+        "user-1",
+        { given_name: "Ada" },
+        scopes,
+        makeMeta("intent-stale-1", scopes)
+      )
+    ).toEqual({ ok: true });
+
+    // Advance past the 2-minute lock window
+    vi.advanceTimersByTime(2 * 60 * 1000 + 1);
+
+    expect(
+      await storeEphemeralClaims(
+        "user-1",
+        { given_name: "Grace" },
+        scopes,
+        makeMeta("intent-stale-2", scopes)
+      )
     ).toEqual({ ok: true });
 
     const consumed = consumeEphemeralClaims("user-1", "client-1");
     expect(consumed?.claims.given_name).toBe("Grace");
-    expect(consumed?.meta.intentJti).toBe("intent-4");
   });
 
   it("clearEphemeralClaims removes a staged entry", async () => {

@@ -15,6 +15,7 @@ export interface EphemeralClaimsMeta {
 
 interface EphemeralEntry {
   claims: Partial<IdentityFields>;
+  createdAt: number;
   expiresAt: number;
   meta: EphemeralClaimsMeta;
   scopes: string[];
@@ -22,6 +23,11 @@ interface EphemeralEntry {
 
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+// During this window a concurrent stage for the same user+client is rejected
+// to prevent PII misdelivery between parallel authorization sessions.
+// After this window the entry is considered abandoned and can be replaced.
+const STAGE_LOCK_MS = 2 * 60 * 1000; // 2 minutes (matches intent token TTL)
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
 
@@ -86,7 +92,9 @@ export async function storeEphemeralClaims(
   scopes: string[],
   meta: EphemeralClaimsMeta,
   ttlMs: number = EPHEMERAL_TTL_MS
-): Promise<{ ok: true } | { ok: false; reason: "intent_reused" }> {
+): Promise<
+  { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
+> {
   evictExpiredClaims();
   await cleanupExpiredJtis();
 
@@ -96,10 +104,18 @@ export async function storeEphemeralClaims(
 
   const s = getStore();
   const key = storeKey(userId, meta.clientId);
-  const expiresAt = Date.now() + ttlMs;
+  const now = Date.now();
+
+  const existing = s.get(key);
+  if (existing && now - existing.createdAt < STAGE_LOCK_MS) {
+    return { ok: false, reason: "concurrent_stage" };
+  }
+
+  const expiresAt = now + ttlMs;
   s.set(key, {
     claims,
     scopes,
+    createdAt: now,
     expiresAt,
     meta,
   });

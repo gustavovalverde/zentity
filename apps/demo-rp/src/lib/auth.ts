@@ -94,12 +94,18 @@ async function fetchUserInfo(tokens: {
   let body: Record<string, unknown> = {};
 
   if (tokens.accessToken) {
+    const dpop = dpopClients.get(tokens.accessToken);
     dpopClients.delete(tokens.accessToken);
 
     const url = zentityUserInfoUrl();
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${tokens.accessToken}` },
-    });
+    const headers: Record<string, string> = dpop
+      ? {
+          Authorization: `DPoP ${tokens.accessToken}`,
+          DPoP: await dpop.proofFor("GET", url, tokens.accessToken),
+        }
+      : { Authorization: `Bearer ${tokens.accessToken}` };
+
+    const response = await fetch(url, { headers });
     if (response.ok) {
       body = (await response.json()) as Record<string, unknown>;
     }

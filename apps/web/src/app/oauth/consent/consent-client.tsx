@@ -291,7 +291,7 @@ export function OAuthConsentClient({
       globalThis.window.location.assign(redirectUri);
     } catch (err) {
       // If staging succeeded but consent failed, clear the stale ephemeral
-      // entry so the user can retry cleanly.
+      // entry so the user can retry without hitting "concurrent_stage".
       if (didStage) {
         const oauthQuery = getSignedOAuthQuery();
         if (oauthQuery) {

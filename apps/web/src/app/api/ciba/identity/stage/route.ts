@@ -68,8 +68,17 @@ export function POST(request: Request): Promise<Response> {
       );
 
       if (!stored.ok) {
+        if (stored.reason === "intent_reused") {
+          return NextResponse.json(
+            { error: "Identity intent token has already been used" },
+            { status: 409 }
+          );
+        }
         return NextResponse.json(
-          { error: "Identity intent token has already been used" },
+          {
+            error:
+              "An identity stage already exists for this client. Wait for the pending request to complete or expire.",
+          },
           { status: 409 }
         );
       }

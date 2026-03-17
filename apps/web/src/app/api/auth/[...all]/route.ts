@@ -1,6 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth";
+import { rewriteDpopForUserinfo } from "@/lib/auth/oidc/dpop-userinfo";
 import { getProtectedResourceMetadataUrl } from "@/lib/auth/oidc/www-authenticate";
 import {
   attachRequestContextToSpan,
@@ -78,8 +79,26 @@ function addWwwAuthenticate(response: Response): Response {
 export async function GET(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
-  const response = await authGET(request);
-  return addWwwAuthenticate(await unwrapIfNeeded(request, response));
+
+  let effectiveRequest = request;
+  const url = new URL(request.url);
+  if (url.pathname.endsWith("/oauth2/userinfo")) {
+    try {
+      effectiveRequest = await rewriteDpopForUserinfo(request);
+    } catch (err) {
+      return new Response(
+        JSON.stringify({
+          error: "invalid_dpop_proof",
+          error_description:
+            err instanceof Error ? err.message : "DPoP validation failed",
+        }),
+        { status: 401, headers: { "content-type": "application/json" } }
+      );
+    }
+  }
+
+  const response = await authGET(effectiveRequest);
+  return addWwwAuthenticate(await unwrapIfNeeded(effectiveRequest, response));
 }
 
 export async function POST(request: Request) {

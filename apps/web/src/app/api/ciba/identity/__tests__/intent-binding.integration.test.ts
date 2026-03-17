@@ -185,7 +185,8 @@ describe("CIBA intent token authReqId binding", () => {
     );
     expect(stageAforB.status).toBe(400);
 
-    // Token B replaces A's entry (same user+client, new intent)
+    // Token B fails for B — an active stage for this user+client already exists
+    // (concurrent_stage: PII is dropped rather than delivered to the wrong request)
     const stageB = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
         auth_req_id: reqB,
@@ -194,6 +195,6 @@ describe("CIBA intent token authReqId binding", () => {
         intent_token: tokenB,
       })
     );
-    expect(stageB.status).toBe(200);
+    expect(stageB.status).toBe(409);
   });
 });

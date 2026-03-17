@@ -209,7 +209,7 @@ describe("oauth2 identity stage route", () => {
     });
   });
 
-  it("replaces existing staged entry on retry for the same user", async () => {
+  it("rejects concurrent staged flows for the same user", async () => {
     const scopes = ["openid", "identity.name"];
     const oauthQuery = await makeSignedOAuthQuery({
       client_id: "client-1",
@@ -244,7 +244,9 @@ describe("oauth2 identity stage route", () => {
         identity: { given_name: "Grace" },
       })
     );
-    expect(second.status).toBe(200);
-    await expect(second.json()).resolves.toEqual({ staged: true });
+    expect(second.status).toBe(409);
+    await expect(second.json()).resolves.toEqual({
+      error: "An active identity stage already exists for this user",
+    });
   });
 });
