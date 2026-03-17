@@ -222,4 +222,39 @@ describe("claims parameter lifecycle", () => {
     // No userinfo → entry deleted
     expect(consumeUserinfoClaims("test-user")).toBeUndefined();
   });
+
+  it("consumeIdTokenClaims with explicit clientId finds exact match", () => {
+    stageClaimsParameter("u1", "c1", {
+      id_token: { acr: null },
+    });
+
+    expect(consumeIdTokenClaims("u1", "c1")).toEqual({ acr: null });
+    expect(consumeIdTokenClaims("u1", "c2")).toBeUndefined();
+  });
+
+  it("consumeUserinfoClaims with explicit clientId finds exact match", () => {
+    stageClaimsParameter("u1", "c1", {
+      id_token: { acr: null },
+      userinfo: { email: null },
+    });
+
+    expect(consumeUserinfoClaims("u1", "c1")).toEqual({ email: null });
+    expect(consumeUserinfoClaims("u1", "c2")).toBeUndefined();
+  });
+
+  it("concurrent entries for different clients are disambiguated when clientId is provided", () => {
+    stageClaimsParameter("u1", "c1", {
+      id_token: { claim_a: null },
+    });
+    stageClaimsParameter("u1", "c2", {
+      id_token: { claim_b: null },
+    });
+
+    // Without clientId: ambiguous → undefined
+    expect(consumeIdTokenClaims("u1")).toBeUndefined();
+
+    // With clientId: exact match
+    expect(consumeIdTokenClaims("u1", "c1")).toEqual({ claim_a: null });
+    expect(consumeIdTokenClaims("u1", "c2")).toEqual({ claim_b: null });
+  });
 });

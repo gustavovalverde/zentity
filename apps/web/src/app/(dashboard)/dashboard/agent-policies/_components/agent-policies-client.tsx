@@ -1,5 +1,7 @@
 "use client";
 
+import type { PolicyPrefill } from "./boundary-form-dialog";
+
 import { Pencil, Plus, ShieldPlus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
@@ -75,7 +77,9 @@ function typeBadgeLabel(type: string): string {
   }
 }
 
-export function AgentPoliciesClient() {
+export function AgentPoliciesClient({
+  prefill,
+}: Readonly<{ prefill?: PolicyPrefill }>) {
   const utils = trpcReact.useUtils();
   const { data: boundaries, isLoading } =
     trpcReact.agentBoundaries.list.useQuery();
@@ -97,7 +101,7 @@ export function AgentPoliciesClient() {
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<BoundaryRow | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(prefill?.create ?? false);
 
   const handleToggle = useCallback(
     (id: string, enabled: boolean) => {
@@ -208,6 +212,7 @@ export function AgentPoliciesClient() {
           setEditTarget(null);
         }}
         open={showCreate || editTarget !== null}
+        prefill={editTarget ? undefined : prefill}
       />
 
       <AlertDialog

@@ -31,7 +31,8 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { decodeJwt } from "jose";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -571,6 +572,10 @@ function beforeDcrRegister(ctx: HookCtx) {
   validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
+  }
+  // Enable the plugin's native sid injection for BCL-registered clients
+  if (ctx.body?.backchannel_logout_uri) {
+    ctx.body.enable_end_session = true;
   }
 }
 
@@ -1308,30 +1313,16 @@ export const auth = betterAuth({
           }
         }
 
-        // sid claim for BCL-registered clients (OIDC BCL §2.1)
-        let sidClaim: Record<string, unknown> = {};
-        const bclUri = metadata?.backchannel_logout_uri;
-        if (typeof bclUri === "string" && bclUri.length > 0) {
-          const latestSession = await db
-            .select({ id: sessions.id })
-            .from(sessions)
-            .where(eq(sessions.userId, user.id))
-            .orderBy(desc(sessions.createdAt))
-            .limit(1)
-            .get();
-          if (latestSession) {
-            sidClaim = { sid: latestSession.id };
-          }
-        }
-
         const allClaims = {
           ...proofClaims,
           ...assuranceClaims,
           ...atHashClaim,
-          ...sidClaim,
         };
 
-        const idTokenFilter = consumeIdTokenClaims(user.id);
+        const clientId = accessToken
+          ? (decodeJwt(accessToken).azp as string | undefined)
+          : undefined;
+        const idTokenFilter = consumeIdTokenClaims(user.id, clientId);
         if (!idTokenFilter) {
           return allClaims;
         }
@@ -1340,7 +1331,7 @@ export const auth = betterAuth({
       },
       customUserInfoClaims: async (info) => {
         const { user, scopes } = info;
-        const clientId = (info as { clientId?: string }).clientId;
+        const clientId = (info as { jwt?: { azp?: string } }).jwt?.azp;
         const scopeList = toScopeList(scopes);
 
         // Consume ephemeral PII scoped to the requesting client
@@ -1364,7 +1355,7 @@ export const auth = betterAuth({
         const allClaims = { ...identityClaims, ...proofClaims };
 
         // Apply claims.userinfo as data minimization filter if present
-        const userinfoFilter = consumeUserinfoClaims(user.id);
+        const userinfoFilter = consumeUserinfoClaims(user.id, clientId);
         if (!userinfoFilter) {
           return allClaims;
         }

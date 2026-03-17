@@ -4,7 +4,7 @@ import { requireAuth } from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
 
 export interface IdentityClaims {
-  address?: string;
+  address?: string | Record<string, unknown>;
   family_name?: string;
   given_name?: string;
   name?: string;
@@ -140,7 +140,7 @@ async function parseUserinfoResponse(
     name: asOptionalString(userinfo.name),
     given_name: asOptionalString(userinfo.given_name),
     family_name: asOptionalString(userinfo.family_name),
-    address: asOptionalString(userinfo.address),
+    address: asOptionalAddress(userinfo.address),
   };
 
   if (!(claims.name || claims.given_name || claims.family_name)) {
@@ -152,4 +152,16 @@ async function parseUserinfoResponse(
 
 function asOptionalString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function asOptionalAddress(
+  value: unknown
+): string | Record<string, unknown> | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return undefined;
 }

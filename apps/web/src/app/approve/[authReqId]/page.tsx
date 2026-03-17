@@ -29,7 +29,10 @@ export default async function ApprovePage({
 
   // Fetch agent claims — scoped to the current user to prevent cross-user leakage
   const cibaRow = await db
-    .select({ agentClaims: cibaRequests.agentClaims })
+    .select({
+      agentClaims: cibaRequests.agentClaims,
+      clientId: cibaRequests.clientId,
+    })
     .from(cibaRequests)
     .where(
       and(
@@ -60,6 +63,7 @@ export default async function ApprovePage({
         agentClaims={agentClaims}
         authMode={authMode}
         authReqId={authReqId}
+        clientId={cibaRow.clientId}
         wallet={wallet}
       />
       <div className="mt-4 hidden text-center md:block">

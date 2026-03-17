@@ -38,8 +38,14 @@ interface AuthorizationDetail {
   [key: string]: unknown;
 }
 
-function buildPolicyLink(details: CibaRequestDetails): string {
+function buildPolicyLink(
+  details: CibaRequestDetails,
+  clientId: string | undefined
+): string {
   const params = new URLSearchParams();
+  if (clientId) {
+    params.set("clientId", clientId);
+  }
   if (details.authorization_details?.some((d) => d.type === "purchase")) {
     params.set("type", "purchase");
     const purchase = details.authorization_details.find(
@@ -81,6 +87,7 @@ interface CibaRequestDetails {
   auth_req_id: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
+  client_id?: string;
   client_name?: string;
   expires_at: string;
   scope: string;
@@ -135,11 +142,13 @@ export function CibaApproveClient({
   agentClaims: serverAgentClaims,
   authMode,
   authReqId,
+  clientId: serverClientId,
   wallet,
 }: Readonly<{
   agentClaims?: AgentClaims | null;
   authMode: AuthMode;
   authReqId: string | null;
+  clientId?: string;
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
@@ -305,6 +314,7 @@ export function CibaApproveClient({
       setState(action === "authorize" ? "approving" : "rejecting");
       setError(null);
 
+      let didStage = false;
       try {
         if (action === "authorize" && hasIdentityScopes) {
           if (vault.vaultState.status !== "loaded") {
@@ -316,6 +326,7 @@ export function CibaApproveClient({
             );
           }
           await stageIdentityAndApprove();
+          didStage = true;
         }
 
         const res = await fetch(`/api/auth/ciba/${action}`, {
@@ -336,6 +347,13 @@ export function CibaApproveClient({
 
         setState(action === "authorize" ? "approved" : "rejected");
       } catch (err) {
+        if (didStage) {
+          fetch("/api/ciba/identity/unstage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ auth_req_id: authReqId }),
+          }).catch(() => undefined);
+        }
         setError(err instanceof Error ? err.message : "Unknown error");
         setState("ready");
       }
@@ -591,7 +609,12 @@ export function CibaApproveClient({
           </div>
           {!hasIdentityScopes && details && (
             <Button asChild size="sm" variant="outline">
-              <Link href={buildPolicyLink(details)}>
+              <Link
+                href={buildPolicyLink(
+                  details,
+                  serverClientId ?? details.client_id
+                )}
+              >
                 <ShieldPlus className="mr-2 size-4" />
                 Always allow this
               </Link>

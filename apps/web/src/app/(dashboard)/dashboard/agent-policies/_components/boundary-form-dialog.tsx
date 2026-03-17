@@ -24,37 +24,69 @@ interface BoundaryRow {
   id: string;
 }
 
+export interface PolicyPrefill {
+  clientId?: string;
+  create: true;
+  currency?: string;
+  maxAmount?: string;
+  scopes?: string;
+  type?: string;
+}
+
 const BOUNDARY_TYPES = [
   { label: "Purchase", value: "purchase" },
   { label: "Scope", value: "scope" },
   { label: "Custom", value: "custom" },
 ] as const;
 
+type BoundaryType = "purchase" | "scope" | "custom";
+
+function resolveBoundaryType(
+  boundary: BoundaryRow | null,
+  prefill?: PolicyPrefill
+): BoundaryType {
+  if (boundary) {
+    return (boundary.boundaryType as BoundaryType) ?? "purchase";
+  }
+  if (
+    prefill?.type === "purchase" ||
+    prefill?.type === "scope" ||
+    prefill?.type === "custom"
+  ) {
+    return prefill.type;
+  }
+  return "purchase";
+}
+
 interface BoundaryFormDialogProps {
   boundary: BoundaryRow | null;
   onClose: () => void;
   open: boolean;
+  prefill?: PolicyPrefill;
 }
 
 export function BoundaryFormDialog({
   boundary,
   onClose,
   open,
+  prefill,
 }: Readonly<BoundaryFormDialogProps>) {
   const isEdit = boundary !== null;
   const utils = trpcReact.useUtils();
 
-  const [clientId, setClientId] = useState(boundary?.clientId ?? "");
-  const [boundaryType, setBoundaryType] = useState<
-    "purchase" | "scope" | "custom"
-  >((boundary?.boundaryType as "purchase" | "scope" | "custom") ?? "purchase");
+  const [clientId, setClientId] = useState(
+    boundary?.clientId ?? prefill?.clientId ?? ""
+  );
+  const [boundaryType, setBoundaryType] = useState<BoundaryType>(
+    resolveBoundaryType(boundary, prefill)
+  );
 
   // Purchase fields
   const [maxAmount, setMaxAmount] = useState(
-    String(boundary?.config.maxAmount ?? "50")
+    String(boundary?.config.maxAmount ?? prefill?.maxAmount ?? "50")
   );
   const [currency, setCurrency] = useState(
-    String(boundary?.config.currency ?? "USD")
+    String(boundary?.config.currency ?? prefill?.currency ?? "USD")
   );
   const [dailyCap, setDailyCap] = useState(
     String(boundary?.config.dailyCap ?? "200")
@@ -67,7 +99,7 @@ export function BoundaryFormDialog({
   const [allowedScopes, setAllowedScopes] = useState(
     Array.isArray(boundary?.config.allowedScopes)
       ? (boundary.config.allowedScopes as string[]).join(", ")
-      : ""
+      : (prefill?.scopes?.replace(/,/g, ", ") ?? "")
   );
 
   // Custom fields

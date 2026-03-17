@@ -70,9 +70,15 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const oidc = await getOidcConfig();
     const clientIds = await getAllClientIds();
+    if (clientIds.length === 0) {
+      return NextResponse.json(
+        { error: "No registered clients — cannot validate logout token" },
+        { status: 503 }
+      );
+    }
     const { payload } = await jwtVerify(logoutToken, oidc.jwks, {
       issuer: oidc.issuer,
-      audience: clientIds.length > 0 ? clientIds : undefined,
+      audience: clientIds,
     });
 
     // Validate BCL event claim (OIDC BCL §2.4)

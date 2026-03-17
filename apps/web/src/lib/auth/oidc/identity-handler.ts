@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
+import { clearEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { normalizeIdentityFields } from "@/lib/auth/oidc/identity-fields-schema";
 import {
   createIdentityIntentToken,
@@ -208,4 +209,25 @@ export async function handleIdentityStage(
     scopeHash,
     intentJti: intentPayload.jti,
   });
+}
+
+// ── Unstage handler ─────────────────────────────────────
+
+export async function handleIdentityUnstage(
+  request: Request,
+  resolveClientId: (body: unknown, userId: string) => Promise<string | Response>
+): Promise<Response> {
+  const sessionResult = await resolveSessionAndBody(request);
+  if (sessionResult instanceof Response) {
+    return sessionResult;
+  }
+  const { userId, body } = sessionResult;
+
+  const result = await resolveClientId(body, userId);
+  if (result instanceof Response) {
+    return result;
+  }
+
+  clearEphemeralClaims(userId, result);
+  return NextResponse.json({ cleared: true });
 }

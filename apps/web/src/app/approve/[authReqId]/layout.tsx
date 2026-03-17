@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 
 import { StandaloneLayout } from "@/components/layouts/standalone-layout";
+import { Web3Provider } from "@/components/providers/web3-provider";
 
 export default async function ApproveLayout({
   children,
@@ -9,5 +10,9 @@ export default async function ApproveLayout({
 }>) {
   const cookies = (await headers()).get("cookie");
 
-  return <StandaloneLayout cookies={cookies}>{children}</StandaloneLayout>;
+  return (
+    <StandaloneLayout cookies={cookies}>
+      <Web3Provider cookies={cookies}>{children}</Web3Provider>
+    </StandaloneLayout>
+  );
 }

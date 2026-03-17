@@ -226,4 +226,44 @@ describe("ephemeral identity claims store", () => {
       )
     ).toEqual({ ok: true });
   });
+
+  it("clearEphemeralClaims lifecycle: store → clear → re-store succeeds", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    await storeEphemeralClaims(
+      "test-user",
+      { given_name: "Ada" },
+      scopes,
+      makeMeta("intent-lc-1", scopes)
+    );
+
+    clearEphemeralClaims("test-user", "client-1");
+
+    const reStoreResult = await storeEphemeralClaims(
+      "test-user",
+      { given_name: "Grace" },
+      scopes,
+      makeMeta("intent-lc-2", scopes)
+    );
+    expect(reStoreResult).toEqual({ ok: true });
+
+    const consumed = consumeEphemeralClaims("test-user", "client-1");
+    expect(consumed?.claims).toEqual({ given_name: "Grace" });
+    expect(consumed?.meta.intentJti).toBe("intent-lc-2");
+  });
+
+  it("store → clear → consume returns null (entry was cleared, not consumed)", async () => {
+    const scopes = ["openid", "identity.name"];
+
+    await storeEphemeralClaims(
+      "test-user",
+      { given_name: "Ada" },
+      scopes,
+      makeMeta("intent-clr", scopes)
+    );
+
+    clearEphemeralClaims("test-user", "client-1");
+
+    expect(consumeEphemeralClaims("test-user", "client-1")).toBeNull();
+  });
 });
