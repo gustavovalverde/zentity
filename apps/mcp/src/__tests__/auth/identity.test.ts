@@ -92,7 +92,9 @@ describe("redeemRelease – address parsing", () => {
 
   it("returns undefined address when field is missing", async () => {
     mockFetch.mockResolvedValueOnce(
-      userinfoResponse({ response: { given_name: "Ada", family_name: "Lovelace" } })
+      userinfoResponse({
+        response: { given_name: "Ada", family_name: "Lovelace" },
+      })
     );
 
     const { redeemRelease } = await import("../../auth/identity.js");

@@ -3,11 +3,11 @@ import type { DpopKeyPair } from "./dpop.js";
 
 export interface AuthContext {
   accessToken: string;
+  /** Raw DPoP proof header from the caller (HTTP relay mode only) */
+  callerDpopProof?: string | undefined;
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
-  /** Raw DPoP proof header from the caller (HTTP relay mode only) */
-  callerDpopProof?: string | undefined;
 }
 
 const authStorage = new AsyncLocalStorage<AuthContext>();

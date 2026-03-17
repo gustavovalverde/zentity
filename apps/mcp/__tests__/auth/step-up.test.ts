@@ -146,7 +146,7 @@ describe("performStepUp", () => {
   it("re-authenticates via FPA and returns new access token", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });
@@ -190,7 +190,7 @@ describe("performStepUp", () => {
   it("throws readable error on passkey redirect", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });

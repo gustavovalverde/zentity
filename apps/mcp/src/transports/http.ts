@@ -108,7 +108,8 @@ export function createApp(): Hono {
     }
 
     const authCtx: AuthContext = {
-      accessToken: authHeader?.replace(/^DPoP\s+/i, "").replace(/^Bearer\s+/i, "") ?? "",
+      accessToken:
+        authHeader?.replace(/^DPoP\s+/i, "").replace(/^Bearer\s+/i, "") ?? "",
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
       loginHint: (result.payload.sub as string) ?? "",

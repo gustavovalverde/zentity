@@ -22,7 +22,12 @@ vi.mock("../../src/auth/credentials.js", () => ({
   }),
   clearTokenCredentials: vi.fn(() => {
     if (credentialsMock.stored) {
-      const { accessToken: _, expiresAt: __, refreshToken: ___, ...rest } = credentialsMock.stored as Record<string, unknown>;
+      const {
+        accessToken: _,
+        expiresAt: __,
+        refreshToken: ___,
+        ...rest
+      } = credentialsMock.stored as Record<string, unknown>;
       credentialsMock.stored = rest;
     }
   }),
@@ -33,7 +38,10 @@ vi.mock("../../src/auth/dpop.js", () => ({
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
 }));
 
-import { clearTokenCredentials, updateCredentials } from "../../src/auth/credentials.js";
+import {
+  clearTokenCredentials,
+  updateCredentials,
+} from "../../src/auth/credentials.js";
 import { extractDpopNonce } from "../../src/auth/dpop.js";
 import {
   TokenExpiredError,
@@ -64,7 +72,7 @@ describe("TokenManager", () => {
       accessToken: "valid-token",
       expiresAt: Date.now() + 300_000,
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -80,7 +88,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() + 30_000,
       refreshToken: "refresh-abc",
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -112,7 +120,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "original-refresh",
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -140,7 +148,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "original-refresh",
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -169,7 +177,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "bad-refresh",
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 
@@ -192,7 +200,7 @@ describe("TokenManager", () => {
       expiresAt: Date.now() - 1000,
       refreshToken: "good-refresh",
       zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
+      mcpPublicUrl: "http://localhost:3200",
       clientId: "test-client",
     };
 

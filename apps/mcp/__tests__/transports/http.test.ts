@@ -45,7 +45,11 @@ vi.mock("../../src/server/index.js", () => ({
   })),
 }));
 
-import { createApp, matchOrigin, setServerCredentials } from "../../src/transports/http.js";
+import {
+  createApp,
+  matchOrigin,
+  setServerCredentials,
+} from "../../src/transports/http.js";
 
 function validPayload(overrides: Partial<JWTPayload> = {}): TokenAuthResult {
   return {
