@@ -369,7 +369,7 @@ export function FheEnrollmentDialog({
           advanceStage(s === "generate-keys" ? "generating" : "encrypting"),
       });
 
-      const contextResponse = await fetch("/api/fhe-enrollment/context", {
+      const contextResponse = await fetch("/api/fhe/enrollment/context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
