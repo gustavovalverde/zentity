@@ -6,6 +6,8 @@ export interface AuthContext {
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
+  /** Raw DPoP proof header from the caller (HTTP relay mode only) */
+  callerDpopProof?: string | undefined;
 }
 
 const authStorage = new AsyncLocalStorage<AuthContext>();

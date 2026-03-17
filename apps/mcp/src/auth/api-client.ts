@@ -1,7 +1,6 @@
 import { config } from "../config.js";
 import { getAuthContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
-import { getServiceTokenHeaders } from "./service-token.js";
 
 const dpopNonces = new Map<string, string>();
 
@@ -16,12 +15,12 @@ export async function zentityFetch(
   const method = options?.method ?? "GET";
   const auth = getAuthContext();
 
-  // HTTP transport: use service token (no DPoP private key available)
+  // HTTP transport: relay the caller's DPoP-bound access token
   if (config.transport === "http") {
-    return serviceTokenFetch(url, method, auth.loginHint, options?.body);
+    return httpRelayFetch(url, method, auth, options?.body);
   }
 
-  // stdio transport: DPoP-bound relay
+  // stdio transport: DPoP-bound relay with server's keypair
   const nonceKey = getNonceKey(auth.loginHint);
   const dpopNonce = dpopNonces.get(nonceKey);
 
@@ -78,15 +77,26 @@ export async function zentityFetch(
   return response;
 }
 
-function serviceTokenFetch(
+/**
+ * Relay the caller's DPoP-bound access token to Zentity.
+ * The HTTP transport validates the caller's token on ingress and
+ * forwards it as-is to downstream Zentity API calls.
+ */
+function httpRelayFetch(
   url: string,
   method: string,
-  userId: string,
+  auth: { accessToken: string; callerDpopProof?: string | undefined },
   body?: string
 ): Promise<Response> {
-  const headers: Record<string, string> = {
-    ...getServiceTokenHeaders(userId),
-  };
+  const headers: Record<string, string> = {};
+
+  if (auth.callerDpopProof) {
+    headers.Authorization = `DPoP ${auth.accessToken}`;
+    headers.DPoP = auth.callerDpopProof;
+  } else {
+    headers.Authorization = `Bearer ${auth.accessToken}`;
+  }
+
   if (body) {
     headers["Content-Type"] = "application/json";
   }

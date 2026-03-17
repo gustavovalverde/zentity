@@ -108,10 +108,11 @@ export function createApp(): Hono {
     }
 
     const authCtx: AuthContext = {
-      accessToken: "",
+      accessToken: authHeader?.replace(/^DPoP\s+/i, "").replace(/^Bearer\s+/i, "") ?? "",
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
       loginHint: (result.payload.sub as string) ?? "",
+      ...(dpopHeader ? { callerDpopProof: dpopHeader } : {}),
     };
 
     // Store validated auth info for transport.handleRequest

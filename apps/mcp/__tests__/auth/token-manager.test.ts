@@ -20,6 +20,12 @@ vi.mock("../../src/auth/credentials.js", () => ({
     credentialsMock.stored = { ...credentialsMock.stored, ...updates };
     return credentialsMock.stored;
   }),
+  clearTokenCredentials: vi.fn(() => {
+    if (credentialsMock.stored) {
+      const { accessToken: _, expiresAt: __, refreshToken: ___, ...rest } = credentialsMock.stored as Record<string, unknown>;
+      credentialsMock.stored = rest;
+    }
+  }),
 }));
 
 vi.mock("../../src/auth/dpop.js", () => ({
@@ -27,7 +33,7 @@ vi.mock("../../src/auth/dpop.js", () => ({
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
 }));
 
-import { updateCredentials } from "../../src/auth/credentials.js";
+import { clearTokenCredentials, updateCredentials } from "../../src/auth/credentials.js";
 import { extractDpopNonce } from "../../src/auth/dpop.js";
 import {
   TokenExpiredError,
@@ -172,13 +178,7 @@ describe("TokenManager", () => {
     );
 
     await expect(manager.getAccessToken()).rejects.toThrow(TokenExpiredError);
-    expect(updateCredentials).toHaveBeenCalledWith(
-      "http://localhost:3000",
-      expect.objectContaining({
-        accessToken: undefined,
-        refreshToken: undefined,
-      })
-    );
+    expect(clearTokenCredentials).toHaveBeenCalledWith("http://localhost:3000");
   });
 
   it("throws TokenExpiredError when no credentials exist", () => {
