@@ -17,6 +17,11 @@ processors:
         - 'IsMatch(attributes["http.route"], "^/api/metrics/client(/|$)")'
         - 'IsMatch(attributes["url.path"], "^/health$")'
         - 'IsMatch(attributes["http.target"], "^/health$")'
+  filter/metrics:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'IsMatch(name, "^nodejs\\.")'
   batch:
     timeout: 5s
     send_batch_size: 1024
@@ -35,5 +40,5 @@ service:
       exporters: [otlphttp/tempo]
     metrics:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/metrics, batch]
       exporters: [otlphttp/mimir]
