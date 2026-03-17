@@ -1,6 +1,6 @@
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
-import { ciba } from "@better-auth/ciba";
+import { ciba, deliverPing } from "@better-auth/ciba";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
@@ -949,25 +949,6 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
   }
 }
 
-/**
- * Fire-and-forget ping notification to a CIBA client's notification endpoint.
- * Mirrors the CIBA plugin's internal deliverPing behavior.
- */
-async function deliverCibaPing(
-  endpoint: string,
-  token: string,
-  authReqId: string
-): Promise<void> {
-  await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ auth_req_id: authReqId }),
-  });
-}
-
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1490,14 +1471,11 @@ export const auth = betterAuth({
             autoApproveResult.clientNotificationEndpoint &&
             autoApproveResult.clientNotificationToken
           ) {
-            deliverCibaPing(
+            deliverPing(
               autoApproveResult.clientNotificationEndpoint,
               autoApproveResult.clientNotificationToken,
               data.authReqId
-            ).catch(
-              // Fire-and-forget — ping failures shouldn't break the flow
-              () => undefined
-            );
+            ).catch(() => undefined);
           }
           return;
         }
@@ -1529,6 +1507,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
+            agentClaims: data.agentClaims,
             approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);

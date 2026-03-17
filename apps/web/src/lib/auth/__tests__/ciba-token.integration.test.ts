@@ -252,6 +252,48 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("invalid_grant");
   });
 
+  it("includes agent claim in access token when agent_claims provided", async () => {
+    const agentClaims = JSON.stringify({
+      agent: { name: "Test Agent", model: "gpt-4", runtime: "test-runner" },
+    });
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+      agentClaims,
+    });
+
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.agent).toEqual({
+      name: "Test Agent",
+      model: "gpt-4",
+      runtime: "test-runner",
+    });
+  });
+
+  it("omits agent claim when no agent_claims provided", async () => {
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+    });
+
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.agent).toBeUndefined();
+  });
+
   it("CIBA access token never contains release_handle", async () => {
     const authReqId = await insertCibaRequest({
       userId,

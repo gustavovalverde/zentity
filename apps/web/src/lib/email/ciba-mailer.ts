@@ -69,6 +69,67 @@ function parseAuthorizationDetails(raw: unknown): AuthorizationDetail[] | null {
   return parsed as AuthorizationDetail[];
 }
 
+interface AgentIdentity {
+  model?: string | undefined;
+  name: string;
+  runtime?: string | undefined;
+  version?: string | undefined;
+}
+
+function parseAgentIdentity(raw: unknown): AgentIdentity | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    const agent = (parsed as Record<string, unknown>).agent as
+      | Record<string, unknown>
+      | undefined;
+    if (typeof agent?.name !== "string") {
+      return null;
+    }
+    return {
+      name: agent.name,
+      model: typeof agent.model === "string" ? agent.model : undefined,
+      runtime: typeof agent.runtime === "string" ? agent.runtime : undefined,
+      version: typeof agent.version === "string" ? agent.version : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatAgentText(agent: AgentIdentity): string {
+  const parts = [agent.name];
+  if (agent.model) {
+    parts.push(`Model: ${agent.model}`);
+  }
+  if (agent.runtime) {
+    parts.push(`Runtime: ${agent.runtime}`);
+  }
+  if (agent.version) {
+    parts.push(`Version: ${agent.version}`);
+  }
+  return `Agent: ${parts.join(" | ")}\n(Unverified — self-declared by the requesting application)`;
+}
+
+function formatAgentHtml(agent: AgentIdentity): string {
+  const fields = [`<strong>${agent.name}</strong>`];
+  if (agent.model) {
+    fields.push(`Model: ${agent.model}`);
+  }
+  if (agent.runtime) {
+    fields.push(`Runtime: ${agent.runtime}`);
+  }
+  if (agent.version) {
+    fields.push(`v${agent.version}`);
+  }
+  return `<div style="background:#eff6ff;border:1px solid #bfdbfe;padding:12px 16px;border-radius:8px;margin:12px 0;">
+<p style="margin:0 0 4px;font-weight:600;">${fields.join(" &middot; ")}</p>
+<p style="margin:0;color:#6b7280;font-size:12px;">Unverified — self-declared by the requesting application</p>
+</div>`;
+}
+
 export async function sendCibaNotification(params: {
   userId: string;
   authReqId: string;
@@ -76,6 +137,7 @@ export async function sendCibaNotification(params: {
   scope: string;
   bindingMessage?: string | undefined;
   authorizationDetails?: unknown;
+  agentClaims?: string | undefined;
   approvalUrl: string;
 }): Promise<void> {
   const user = await db
@@ -105,7 +167,9 @@ export async function sendCibaNotification(params: {
   const subject = `Authorization Request from ${clientLabel}`;
 
   const parsedDetails = parseAuthorizationDetails(params.authorizationDetails);
+  const agent = parseAgentIdentity(params.agentClaims);
 
+  const agentLine = agent ? `\n${formatAgentText(agent)}\n` : "";
   const bindingLine = params.bindingMessage
     ? `\nMessage: "${params.bindingMessage}"\n`
     : "";
@@ -113,8 +177,9 @@ export async function sendCibaNotification(params: {
     ? `\nAuthorization Details:\n${formatAuthorizationDetailsText(parsedDetails)}\n`
     : "";
 
-  const text = `${clientLabel} is requesting access to your account.\n\nScopes: ${scopeList}${bindingLine}${detailsLine}\nApprove or deny: ${params.approvalUrl}\n\nIf you did not expect this request, you can safely ignore it.`;
+  const text = `${clientLabel} is requesting access to your account.\n\nScopes: ${scopeList}${agentLine}${bindingLine}${detailsLine}\nApprove or deny: ${params.approvalUrl}\n\nIf you did not expect this request, you can safely ignore it.`;
 
+  const agentHtml = agent ? formatAgentHtml(agent) : "";
   const bindingHtml = params.bindingMessage
     ? `<p style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:16px 0;font-style:italic;">"${params.bindingMessage}"</p>`
     : "";
@@ -125,6 +190,7 @@ export async function sendCibaNotification(params: {
   const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
 <h2 style="margin-bottom:4px;">${clientLabel}</h2>
 <p style="color:#6b7280;margin-top:0;">is requesting access to your account</p>
+${agentHtml}
 <p><strong>Scopes:</strong> ${scopeList}</p>
 ${bindingHtml}
 ${detailsHtml}

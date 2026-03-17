@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { requestCibaApproval } from "./ciba.js";
+import { DEFAULT_AGENT_CLAIMS, requestCibaApproval } from "./ciba.js";
 import { requireAuth } from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
 
@@ -52,6 +52,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     scope: "openid identity.name identity.address",
     bindingMessage: "Unlock identity for this session",
     resource: config.zentityUrl,
+    agentClaims: DEFAULT_AGENT_CLAIMS,
   });
 
   const claims = await redeemRelease(result.accessToken, auth.dpopKey);

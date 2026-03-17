@@ -4,6 +4,10 @@ import { createDpopProof, extractDpopNonce } from "./dpop.js";
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
 
+export const DEFAULT_AGENT_CLAIMS = {
+  agent: { name: "Zentity MCP", runtime: "node" },
+} as const;
+
 interface CibaAuthResponse {
   auth_req_id: string;
   expires_in: number;
@@ -24,13 +28,23 @@ interface CibaErrorResponse {
 }
 
 export interface CibaRequest {
+  agentClaims?:
+    | {
+        agent: {
+          name: string;
+          model?: string | undefined;
+          runtime?: string | undefined;
+          version?: string | undefined;
+        };
+      }
+    | undefined;
   authorizationDetails?: unknown[];
   bindingMessage: string;
   cibaEndpoint: string;
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
-  resource?: string;
+  resource?: string | undefined;
   scope: string;
   tokenEndpoint: string;
 }
@@ -196,6 +210,9 @@ function buildCibaBody(params: CibaRequest): URLSearchParams {
       "authorization_details",
       JSON.stringify(params.authorizationDetails)
     );
+  }
+  if (params.agentClaims) {
+    body.set("agent_claims", JSON.stringify(params.agentClaims));
   }
   return body;
 }

@@ -40,6 +40,9 @@ vi.mock("../../src/auth/ciba.js", () => ({
   CibaTimeoutError: class CibaTimeoutError extends Error {
     name = "CibaTimeoutError";
   },
+  DEFAULT_AGENT_CLAIMS: {
+    agent: { name: "Zentity MCP", runtime: "node" },
+  },
   requestCibaApproval: mockRequestCibaApproval,
 }));
 

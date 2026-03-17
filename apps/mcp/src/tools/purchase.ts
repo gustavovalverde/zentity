@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CibaDeniedError,
   CibaTimeoutError,
+  DEFAULT_AGENT_CLAIMS,
   requestCibaApproval,
 } from "../auth/ciba.js";
 import { type AuthContext, requireAuth } from "../auth/context.js";
@@ -63,6 +64,7 @@ export function registerPurchaseTool(server: McpServer): void {
           bindingMessage,
           authorizationDetails,
           resource: config.zentityUrl,
+          agentClaims: DEFAULT_AGENT_CLAIMS,
         });
 
         const pii = await redeemRelease(result.accessToken, auth.dpopKey);

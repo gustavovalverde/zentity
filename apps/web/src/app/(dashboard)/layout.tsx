@@ -15,6 +15,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { getCachedSession } from "@/lib/auth/cached-session";
+import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
+
+import { FheBackgroundKeygen } from "./_components/fhe-background-keygen";
 
 export default async function DashboardLayout({
   children,
@@ -28,8 +31,12 @@ export default async function DashboardLayout({
     redirect("/sign-in");
   }
 
+  const bundle = await getIdentityBundleByUserId(session.user.id);
+  const hasEnrollment = Boolean(bundle?.fheKeyId);
+
   return (
     <TrpcProvider>
+      <FheBackgroundKeygen hasEnrollment={hasEnrollment} />
       <PasskeyAuthProvider>
         <BetterAuthUIProvider>
           <SidebarProvider>

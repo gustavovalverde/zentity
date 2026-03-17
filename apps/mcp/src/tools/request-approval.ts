@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   CibaDeniedError,
   CibaTimeoutError,
+  DEFAULT_AGENT_CLAIMS,
   requestCibaApproval,
 } from "../auth/ciba.js";
 import { type AuthContext, requireAuth } from "../auth/context.js";
@@ -49,6 +50,7 @@ export function registerRequestApprovalTool(server: McpServer): void {
           scope: "openid",
           bindingMessage,
           resource: config.zentityUrl,
+          agentClaims: DEFAULT_AGENT_CLAIMS,
         });
 
         return {
