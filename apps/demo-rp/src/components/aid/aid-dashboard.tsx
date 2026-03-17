@@ -21,8 +21,7 @@ export function AidDashboard({
   claims,
   onStepUp,
 }: AidDashboardProps) {
-  const givenName = claims?.given_name as string | undefined;
-  const familyName = claims?.family_name as string | undefined;
+  const name = claims?.name as string | undefined;
   const nationality = claims?.nationality as string | undefined;
 
   return (
@@ -38,11 +37,9 @@ export function AidDashboard({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isSteppedUp && givenName ? (
+          {isSteppedUp && name ? (
             <p className="text-muted-foreground">
-              <strong className="text-foreground">
-                {givenName} {familyName}
-              </strong>
+              <strong className="text-foreground">{name}</strong>
               {nationality && (
                 <>
                   {" "}
@@ -95,11 +92,17 @@ export function AidDashboard({
           {isSteppedUp ? (
             <>
               <div className="size-40 rounded-lg bg-white p-2 shadow-sm">
-                <div className="rendering-pixelated size-full bg-[url('https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=ZentityAidVerification')] bg-cover" />
+                {/* biome-ignore lint/performance/noImgElement: external QR service URL */}
+                {/* biome-ignore lint/correctness/useImageSize: dimensions set via CSS */}
+                <img
+                  alt="Collection pass QR code"
+                  className="rendering-pixelated size-full"
+                  src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=ZentityAidVerification"
+                />
               </div>
-              {givenName && (
+              {name && (
                 <p className="text-center font-medium text-sm">
-                  {givenName} {familyName}
+                  {name}
                   {nationality && ` \u00B7 ${nationality}`}
                 </p>
               )}

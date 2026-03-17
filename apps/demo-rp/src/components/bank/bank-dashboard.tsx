@@ -9,16 +9,12 @@ interface BankDashboardProps {
 }
 
 export function BankDashboard({ claims }: BankDashboardProps) {
-  const givenName = claims?.given_name as string | undefined;
-  const familyName = claims?.family_name as string | undefined;
-  const cardholderName =
-    givenName && familyName
-      ? `${givenName} ${familyName}`.toUpperCase()
-      : "ACCOUNT HOLDER";
+  const name = claims?.name as string | undefined;
+  const cardholderName = name ? name.toUpperCase() : "ACCOUNT HOLDER";
 
   return (
     <div className="space-y-8">
-      {givenName && (
+      {name && (
         <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-4">
           <div className="flex size-8 items-center justify-center rounded-full bg-success/15">
             <HugeiconsIcon
@@ -28,7 +24,7 @@ export function BankDashboard({ claims }: BankDashboardProps) {
             />
           </div>
           <p className="font-medium text-sm">
-            Welcome, {givenName}. Your account is now active.
+            Welcome, {name}. Your account is now active.
           </p>
         </div>
       )}

@@ -50,15 +50,13 @@ export function WineOrderConfirmation({
 
       <Card>
         <CardContent className="space-y-6 pt-6">
-          {(claims?.given_name != null || claims?.address != null) && (
+          {(claims?.name != null || claims?.address != null) && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <h4 className="font-medium text-muted-foreground text-sm">
                 Delivery Details
               </h4>
-              {claims.given_name != null && (
-                <p className="font-medium text-sm">
-                  {String(claims.given_name)} {String(claims.family_name ?? "")}
-                </p>
+              {claims.name != null && (
+                <p className="font-medium text-sm">{String(claims.name)}</p>
               )}
               {claims.address != null && (
                 <p className="text-muted-foreground text-sm">

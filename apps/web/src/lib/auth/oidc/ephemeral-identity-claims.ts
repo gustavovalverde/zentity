@@ -86,9 +86,7 @@ export async function storeEphemeralClaims(
   scopes: string[],
   meta: EphemeralClaimsMeta,
   ttlMs: number = EPHEMERAL_TTL_MS
-): Promise<
-  { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
-> {
+): Promise<{ ok: true } | { ok: false; reason: "intent_reused" }> {
   evictExpiredClaims();
   await cleanupExpiredJtis();
 
@@ -98,11 +96,6 @@ export async function storeEphemeralClaims(
 
   const s = getStore();
   const key = storeKey(userId, meta.clientId);
-  const existing = s.get(key);
-  if (existing) {
-    return { ok: false, reason: "concurrent_stage" };
-  }
-
   const expiresAt = Date.now() + ttlMs;
   s.set(key, {
     claims,

@@ -16,21 +16,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+import {
+  computeShieldColor,
+  type EncryptionLevel,
+  type SecurityBadgeInput,
+  type ShieldColor,
+} from "./security-badges";
+
 export interface SecurityBadge {
   icon: typeof Shield;
   label: string;
   tooltip: string;
-}
-
-export type EncryptionLevel = "none" | "standard" | "post-quantum";
-
-export type ShieldColor = "green" | "yellow" | "gray";
-
-export interface SecurityBadgeInput {
-  encryptionLevel: EncryptionLevel;
-  isPairwise: boolean;
-  requiresDpop: boolean;
-  signingAlg: string;
 }
 
 const ENCRYPTION_BADGES: Record<
@@ -48,23 +44,6 @@ const ENCRYPTION_BADGES: Record<
     tooltip: "Data encrypted with ML-KEM-768 (post-quantum)",
   },
 };
-
-export function computeShieldColor(input: SecurityBadgeInput): ShieldColor {
-  const isPqSigning = input.signingAlg === "ML-DSA-65";
-  const isPqEncryption = input.encryptionLevel === "post-quantum";
-
-  if ((isPqSigning || isPqEncryption) && input.isPairwise) {
-    return "green";
-  }
-
-  const hasModernSigning = input.signingAlg !== "RS256";
-  const hasEncryption = input.encryptionLevel !== "none";
-  if (hasModernSigning || hasEncryption) {
-    return "yellow";
-  }
-
-  return "gray";
-}
 
 const SHIELD_ICONS: Record<ShieldColor, typeof Shield> = {
   green: ShieldCheck,
@@ -119,8 +98,13 @@ export function deriveSecurityBadges(
 }
 
 export function ClientSecurityBadges({
-  badges,
-}: Readonly<{ badges: SecurityBadge[] }>) {
+  input,
+}: Readonly<{ input: SecurityBadgeInput | null }>) {
+  if (!input) {
+    return null;
+  }
+
+  const badges = deriveSecurityBadges(input);
   if (badges.length === 0) {
     return null;
   }

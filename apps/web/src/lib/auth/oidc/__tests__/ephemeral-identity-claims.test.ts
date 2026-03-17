@@ -162,7 +162,7 @@ describe("ephemeral identity claims store", () => {
     expect(consumeEphemeralClaimsByUser("user-1")).toBeNull();
   });
 
-  it("rejects concurrent stage attempts for the same user+client", async () => {
+  it("replaces existing entry on re-stage for the same user+client", async () => {
     const scopes = ["openid", "identity.name"];
 
     expect(
@@ -181,7 +181,11 @@ describe("ephemeral identity claims store", () => {
         scopes,
         makeMeta("intent-4", scopes)
       )
-    ).toEqual({ ok: false, reason: "concurrent_stage" });
+    ).toEqual({ ok: true });
+
+    const consumed = consumeEphemeralClaims("user-1", "client-1");
+    expect(consumed?.claims.given_name).toBe("Grace");
+    expect(consumed?.meta.intentJti).toBe("intent-4");
   });
 
   it("clearEphemeralClaims removes a staged entry", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import type { SecurityBadge } from "./_components/client-security-badges";
+import type { SecurityBadgeInput } from "./_components/security-badges";
 
 import { ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -80,7 +80,7 @@ export function OAuthConsentClient({
   clientMeta,
   optionalScopes,
   scopeParam,
-  securityBadges,
+  securityBadgeInput,
   authMode,
   wallet,
 }: Readonly<{
@@ -88,7 +88,7 @@ export function OAuthConsentClient({
   clientMeta: ClientMeta | null;
   optionalScopes: string[];
   scopeParam: string;
-  securityBadges: SecurityBadge[];
+  securityBadgeInput: SecurityBadgeInput | null;
   authMode: "passkey" | "opaque" | "wallet" | null;
   wallet: { address: string; chainId: number } | null;
 }>) {
@@ -291,7 +291,7 @@ export function OAuthConsentClient({
       globalThis.window.location.assign(redirectUri);
     } catch (err) {
       // If staging succeeded but consent failed, clear the stale ephemeral
-      // entry so the user can retry without hitting "concurrent_stage".
+      // entry so the user can retry cleanly.
       if (didStage) {
         const oauthQuery = getSignedOAuthQuery();
         if (oauthQuery) {
@@ -346,7 +346,7 @@ export function OAuthConsentClient({
               </>
             ) : null}
           </CardDescription>
-          <ClientSecurityBadges badges={securityBadges} />
+          <ClientSecurityBadges input={securityBadgeInput} />
         </CardHeader>
         <CardContent className="space-y-4">
           {requiredGroups.map((group) => (

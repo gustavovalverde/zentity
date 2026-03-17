@@ -1,3 +1,8 @@
+import type {
+  EncryptionLevel,
+  SecurityBadgeInput,
+} from "./_components/security-badges";
+
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
@@ -8,11 +13,6 @@ import { db } from "@/lib/db/connection";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-import {
-  deriveSecurityBadges,
-  type EncryptionLevel,
-  type SecurityBadge,
-} from "./_components/client-security-badges";
 import { OAuthConsentClient } from "./consent-client";
 
 export default async function OAuthConsentPage({
@@ -29,7 +29,7 @@ export default async function OAuthConsentPage({
     uri: string | null;
   } | null = null;
   let optionalScopes: string[] = [];
-  let securityBadges: SecurityBadge[] = [];
+  let securityBadgeInput: SecurityBadgeInput | null = null;
 
   if (clientId) {
     const row = await db
@@ -91,12 +91,12 @@ export default async function OAuthConsentPage({
       encryptionLevel = "standard";
     }
 
-    securityBadges = deriveSecurityBadges({
+    securityBadgeInput = {
       signingAlg,
       isPairwise,
       requiresDpop,
       encryptionLevel,
-    });
+    };
   }
 
   // Detect auth mode for vault unlock UI
@@ -117,7 +117,7 @@ export default async function OAuthConsentPage({
       clientMeta={clientMeta}
       optionalScopes={optionalScopes}
       scopeParam={params.scope ?? ""}
-      securityBadges={securityBadges}
+      securityBadgeInput={securityBadgeInput}
       wallet={wallet}
     />
   );

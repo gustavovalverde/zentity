@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
-import { isMobile, openOAuthPopup } from "@/lib/oauth-popup";
 import type { Scenario } from "@/lib/scenarios";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -14,12 +13,26 @@ export function useOAuthFlow(scenario: Scenario) {
   const { data: session, isPending } = useSession();
   const [oauthError, setOauthError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(globalThis.window.location.search);
+    const error = params.get("error");
+    if (error) {
+      const description = params.get("error_description");
+      setOauthError(
+        ERROR_MESSAGES[error] ?? description ?? `OAuth error: ${error}`
+      );
+      const url = new URL(globalThis.window.location.href);
+      url.searchParams.delete("error");
+      url.searchParams.delete("error_description");
+      globalThis.window.history.replaceState({}, "", url.pathname);
+    }
+  }, []);
+
   const allClaims = (
     session?.user as { claims?: Record<string, Record<string, unknown>> }
   )?.claims;
   const claims = allClaims?.[scenario.providerId];
 
-  // User is authenticated for THIS provider only if they have claims from it
   const isAuthenticated = !!claims;
 
   const isSteppedUp = useMemo(
@@ -35,21 +48,6 @@ export function useOAuthFlow(scenario: Scenario) {
   const runOAuthFlow = useCallback(
     async (scopes?: string[]) => {
       setOauthError(null);
-      if (!isMobile()) {
-        const result = await openOAuthPopup(scenario.providerId, scopes);
-        if (result.error) {
-          setOauthError(
-            ERROR_MESSAGES[result.error] ??
-              result.errorDescription ??
-              `OAuth error: ${result.error}`
-          );
-          return;
-        }
-        if (result.completed) {
-          globalThis.window.location.reload();
-        }
-        return;
-      }
       await authClient.signIn.oauth2({
         providerId: scenario.providerId,
         callbackURL: `/${scenario.id}`,

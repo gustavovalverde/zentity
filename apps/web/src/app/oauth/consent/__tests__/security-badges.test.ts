@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  computeShieldColor,
-  deriveSecurityBadges,
-} from "../_components/client-security-badges";
+import { deriveSecurityBadges } from "../_components/client-security-badges";
+import { computeShieldColor } from "../_components/security-badges";
 
 const DEFAULTS = {
   signingAlg: "RS256",

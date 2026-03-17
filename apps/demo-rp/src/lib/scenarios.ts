@@ -42,7 +42,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       providerId: "zentity-bank",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: ["given_name", "family_name"],
+      stepUpClaimKeys: ["name"],
       stepUpAction: "Open Account",
       dcr: {
         clientName: "Velocity Bank",
@@ -147,7 +147,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       providerId: "zentity-wine",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: ["given_name", "address"],
+      stepUpClaimKeys: ["name", "address"],
       stepUpAction: "Complete Purchase",
       dcr: {
         clientName: "Vino Delivery",
@@ -193,7 +193,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       providerId: "zentity-aid",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: ["given_name", "nationality"],
+      stepUpClaimKeys: ["name", "nationality"],
       stepUpAction: "Claim Aid",
       dcr: {
         clientName: "Relief Global",
