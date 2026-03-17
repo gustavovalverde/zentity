@@ -12,23 +12,9 @@ vi.mock("@/env", () => ({
 
 const insertedJtis = new Set<string>();
 
-// Capture the JTI value being queried via eq() so the mock can check membership.
-// The real code calls eq(usedIntentJtis.jti, jtiValue) — our schema mock sets
-// usedIntentJtis.jti = "jti", so we match on that column name.
-let lastQueriedJti: string | undefined;
-
-vi.mock("drizzle-orm", async (importOriginal) => {
-  const original = await importOriginal<typeof import("drizzle-orm")>();
-  return {
-    ...original,
-    eq: (...args: unknown[]) => {
-      if (args[0] === "jti" && typeof args[1] === "string") {
-        lastQueriedJti = args[1];
-      }
-      return original.eq(...(args as Parameters<typeof original.eq>));
-    },
-  };
-});
+vi.mock("drizzle-orm", () => ({
+  eq: (col: string, val: string) => ({ col, val }),
+}));
 
 vi.mock("@/lib/db/connection", () => ({
   db: {
@@ -40,11 +26,15 @@ vi.mock("@/lib/db/connection", () => ({
     }),
     select: () => ({
       from: () => ({
-        where: () => ({
+        where: (condition: unknown) => ({
           limit: () => ({
             get: vi.fn().mockImplementation(() => {
-              if (lastQueriedJti && insertedJtis.has(lastQueriedJti)) {
-                return { jti: lastQueriedJti };
+              const queriedJti =
+                condition && typeof condition === "object" && "val" in condition
+                  ? (condition as { val: string }).val
+                  : undefined;
+              if (queriedJti && insertedJtis.has(queriedJti)) {
+                return { jti: queriedJti };
               }
               return undefined;
             }),
@@ -105,7 +95,6 @@ describe("oauth2 identity stage route", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     insertedJtis.clear();
-    lastQueriedJti = undefined;
     vi.mocked(requireSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },

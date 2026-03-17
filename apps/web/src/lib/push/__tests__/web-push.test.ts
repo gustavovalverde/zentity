@@ -33,11 +33,7 @@ vi.mock("@/lib/db/schema/push", () => ({
 }));
 
 vi.mock("@/env", () => ({
-  env: {
-    VAPID_PUBLIC_KEY: "test-public-key",
-    VAPID_PRIVATE_KEY: "test-private-key",
-    VAPID_SUBJECT: "mailto:test@zentity.xyz",
-  },
+  env: {},
 }));
 
 vi.mock("@/lib/logging/error-logger", () => ({
@@ -47,11 +43,13 @@ vi.mock("@/lib/logging/error-logger", () => ({
 
 import type { PushTransport } from "../web-push";
 
-// Import the mock module to reconfigure env properties in beforeEach,
-// making the test resilient to vmThreads mock factory leaking.
-import { env } from "@/env";
-
 import { sendWebPush } from "../web-push";
+
+const TEST_VAPID = {
+  publicKey: "test-public-key",
+  privateKey: "test-private-key",
+  subject: "mailto:test@zentity.xyz",
+};
 
 function createMockTransport(): PushTransport & {
   sendNotification: ReturnType<typeof vi.fn>;
@@ -67,23 +65,6 @@ describe("sendWebPush", () => {
   beforeEach(() => {
     mockDbSelect.mockReset();
     mockDbDelete.mockReset();
-    // Reconfigure env properties directly on the mock object.
-    // This is resilient to vmThreads leaking another file's @/env mock factory.
-    Object.defineProperty(env, "VAPID_PUBLIC_KEY", {
-      value: "test-public-key",
-      writable: true,
-      configurable: true,
-    });
-    Object.defineProperty(env, "VAPID_PRIVATE_KEY", {
-      value: "test-private-key",
-      writable: true,
-      configurable: true,
-    });
-    Object.defineProperty(env, "VAPID_SUBJECT", {
-      value: "mailto:test@zentity.xyz",
-      writable: true,
-      configurable: true,
-    });
   });
 
   it("sends to all user subscriptions", async () => {
@@ -104,7 +85,12 @@ describe("sendWebPush", () => {
     mockDbSelect.mockResolvedValue(subs);
     const transport = createMockTransport();
 
-    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      transport,
+      TEST_VAPID
+    );
 
     expect(transport.sendNotification).toHaveBeenCalledTimes(2);
     expect(transport.sendNotification).toHaveBeenCalledWith(
@@ -131,7 +117,12 @@ describe("sendWebPush", () => {
     transport.sendNotification.mockRejectedValue(new Error("Gone"));
     mockDbDelete.mockResolvedValue(undefined);
 
-    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      transport,
+      TEST_VAPID
+    );
 
     expect(mockDbDelete).toHaveBeenCalledWith(
       expect.objectContaining({ col: "id", val: "sub-42" })
@@ -142,7 +133,12 @@ describe("sendWebPush", () => {
     mockDbSelect.mockResolvedValue([]);
     const transport = createMockTransport();
 
-    await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
+    await sendWebPush(
+      "user-1",
+      { title: "Test", body: "Hello" },
+      transport,
+      TEST_VAPID
+    );
 
     expect(transport.sendNotification).not.toHaveBeenCalled();
   });
@@ -160,7 +156,12 @@ describe("sendWebPush", () => {
     transport.sendNotification.mockRejectedValue(new Error("network error"));
 
     await expect(
-      sendWebPush("user-1", { title: "Test", body: "Hello" }, transport)
+      sendWebPush(
+        "user-1",
+        { title: "Test", body: "Hello" },
+        transport,
+        TEST_VAPID
+      )
     ).resolves.toBeUndefined();
   });
 
@@ -182,7 +183,8 @@ describe("sendWebPush", () => {
         body: "App: buy things",
         data: { authReqId: "req-1", requiresVaultUnlock: true },
       },
-      transport
+      transport,
+      TEST_VAPID
     );
 
     const serialized = transport.sendNotification.mock.calls[0]?.[1] as string;
@@ -191,18 +193,9 @@ describe("sendWebPush", () => {
   });
 
   it("short-circuits when VAPID keys are not configured", async () => {
-    Object.defineProperty(env, "VAPID_PUBLIC_KEY", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
-    Object.defineProperty(env, "VAPID_PRIVATE_KEY", {
-      value: undefined,
-      writable: true,
-      configurable: true,
-    });
     const transport = createMockTransport();
 
+    // No vapid parameter and env has no VAPID keys → short-circuit
     await sendWebPush("user-1", { title: "Test", body: "Hello" }, transport);
 
     expect(transport.sendNotification).not.toHaveBeenCalled();

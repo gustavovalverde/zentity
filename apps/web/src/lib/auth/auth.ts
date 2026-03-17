@@ -1319,9 +1319,14 @@ export const auth = betterAuth({
           ...atHashClaim,
         };
 
-        const clientId = accessToken
-          ? (decodeJwt(accessToken).azp as string | undefined)
-          : undefined;
+        let clientId: string | undefined;
+        if (accessToken) {
+          try {
+            clientId = decodeJwt(accessToken).azp as string | undefined;
+          } catch {
+            // Opaque access token — prefix-scan fallback in consumeIdTokenClaims
+          }
+        }
         const idTokenFilter = consumeIdTokenClaims(user.id, clientId);
         if (!idTokenFilter) {
           return allClaims;

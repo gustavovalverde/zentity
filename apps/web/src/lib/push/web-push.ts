@@ -44,9 +44,11 @@ const defaultTransport: PushTransport = {
 export async function sendWebPush(
   userId: string,
   payload: PushPayload,
-  transport: PushTransport = defaultTransport
+  transport: PushTransport = defaultTransport,
+  vapid?: { publicKey: string; privateKey: string; subject: string }
 ): Promise<void> {
-  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = env;
+  const VAPID_PUBLIC_KEY = vapid?.publicKey ?? env.VAPID_PUBLIC_KEY;
+  const VAPID_PRIVATE_KEY = vapid?.privateKey ?? env.VAPID_PRIVATE_KEY;
   if (!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)) {
     return;
   }
@@ -78,7 +80,7 @@ export async function sendWebPush(
           body,
           {
             vapidDetails: {
-              subject: env.VAPID_SUBJECT,
+              subject: vapid?.subject ?? env.VAPID_SUBJECT,
               publicKey: VAPID_PUBLIC_KEY,
               privateKey: VAPID_PRIVATE_KEY,
             },
