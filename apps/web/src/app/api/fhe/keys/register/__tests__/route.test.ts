@@ -1,18 +1,9 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock requireSession directly instead of @/lib/auth/auth.
-// This avoids vmThreads mock factory leaking from other test files
-// that also mock @/lib/auth/auth.
 vi.mock("@/lib/auth/api-auth", () => ({
   requireSession: vi.fn(),
 }));
-
-const enrollmentMocks = vi.hoisted(() => ({
-  isRegistrationTokenValid: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/fhe-enrollment-tokens", () => enrollmentMocks);
 
 const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),
@@ -47,7 +38,6 @@ describe("fhe keys/register route", () => {
         { status: 401, headers: { "content-type": "application/json" } }
       ),
     } as never);
-    enrollmentMocks.isRegistrationTokenValid.mockResolvedValue(false);
     dbMocks.getEncryptedSecretByUserAndType.mockResolvedValue(null);
   });
 
@@ -77,7 +67,7 @@ describe("fhe keys/register route", () => {
     });
   });
 
-  it("requires authentication when no registration token", async () => {
+  it("requires authentication", async () => {
     const req = makeRequest({
       serverKey: new Uint8Array([1]),
       publicKey: new Uint8Array([2]),
@@ -113,23 +103,6 @@ describe("fhe keys/register route", () => {
     };
     expect(payload).toEqual({ keyId: "existing-key" });
     expect(fheMocks.registerFheKey).not.toHaveBeenCalled();
-  });
-
-  it("rejects invalid registration token", async () => {
-    enrollmentMocks.isRegistrationTokenValid.mockResolvedValue(false);
-
-    const response = await POST(
-      makeRequest({
-        serverKey: new Uint8Array([1]),
-        publicKey: new Uint8Array([2]),
-        registrationToken: "bad-token",
-      })
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Invalid or expired registration token.",
-    });
   });
 
   it("registers key and updates metadata for authenticated users", async () => {

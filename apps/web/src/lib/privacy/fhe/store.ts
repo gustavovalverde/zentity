@@ -4,11 +4,9 @@ import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
 
 import { decode, encode } from "@msgpack/msgpack";
 
-import { createSecretEnvelope } from "@/lib/privacy/credentials";
 import {
   type EnrollmentCredential,
   loadSecret,
-  type PasskeyEnrollmentContext,
   storeSecretWithCredential,
 } from "@/lib/privacy/secrets";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
@@ -71,28 +69,6 @@ function cacheKeys(secretId: string, keys: StoredFheKeys) {
   cached = { keys, secretId, cachedAt: Date.now() };
 }
 
-export async function createFheKeyEnvelope(params: {
-  keys: StoredFheKeys;
-  enrollment: PasskeyEnrollmentContext;
-}): Promise<{
-  secretId: string;
-  encryptedBlob: Uint8Array;
-  wrappedDek: string;
-  prfSalt: string;
-  envelopeFormat: EnvelopeFormat;
-}> {
-  const secretPayload = serializeKeys(params.keys);
-  return await createSecretEnvelope({
-    secretType: SECRET_TYPE,
-    plaintext: secretPayload,
-    prfOutput: params.enrollment.prfOutput,
-    credentialId: params.enrollment.credentialId,
-    userId: params.enrollment.userId,
-    prfSalt: params.enrollment.prfSalt,
-    envelopeFormat: FHE_ENVELOPE_FORMAT,
-  });
-}
-
 function getCachedKeys(): StoredFheKeys | null {
   if (!cached) {
     return null;
@@ -104,27 +80,6 @@ function getCachedKeys(): StoredFheKeys | null {
   return cached.keys;
 }
 
-export async function storeFheKeys(params: {
-  keys: StoredFheKeys;
-  enrollment: PasskeyEnrollmentContext;
-}): Promise<{ secretId: string }> {
-  const secretPayload = serializeKeys(params.keys);
-  const result = await storeSecretWithCredential({
-    secretType: SECRET_TYPE,
-    plaintext: secretPayload,
-    credential: { type: "passkey", context: params.enrollment },
-    envelopeFormat: FHE_ENVELOPE_FORMAT,
-  });
-
-  cacheKeys(result.secretId, params.keys);
-
-  return { secretId: result.secretId };
-}
-
-/**
- * Store FHE keys with support for both passkey and OPAQUE credential types.
- * This is the recommended function for new code during sign-up.
- */
 export async function storeFheKeysWithCredential(params: {
   keys: StoredFheKeys;
   credential: EnrollmentCredential;

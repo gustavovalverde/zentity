@@ -470,21 +470,6 @@ export async function deleteSecretWrapper(
     .run();
 }
 
-export async function deleteEncryptedSecretByUserAndType(
-  userId: string,
-  secretType: string
-): Promise<void> {
-  await db
-    .delete(encryptedSecrets)
-    .where(
-      and(
-        eq(encryptedSecrets.userId, userId),
-        eq(encryptedSecrets.secretType, secretType)
-      )
-    )
-    .run();
-}
-
 export async function getLatestZkProofPayloadByUserAndType(
   userId: string,
   proofType: string,

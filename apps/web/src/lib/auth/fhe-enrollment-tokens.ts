@@ -9,28 +9,11 @@ import { verifications } from "@/lib/db/schema/auth";
 const CONTEXT_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 const contextIdentifier = (token: string) => `fhe-enrollment:context:${token}`;
-const registrationIdentifier = (token: string) =>
-  `fhe-enrollment:registration:${token}`;
-
-export interface RegistrationBlobMeta {
-  blobHash: string;
-  blobRef: string;
-  blobSize: number;
-  secretId: string;
-  secretType: string;
-}
 
 interface FheEnrollmentContextValue {
   createdAt: string;
   email: string | null;
-  registrationToken: string;
   userId: string;
-}
-
-interface RegistrationTokenValue {
-  blob?: RegistrationBlobMeta;
-  contextToken: string;
-  createdAt: string;
 }
 
 function toIso(date: Date): string {
@@ -62,48 +45,29 @@ export async function createFheEnrollmentContext(params: {
   email?: string | null;
 }): Promise<{
   contextToken: string;
-  registrationToken: string;
   expiresAt: string;
 }> {
   const contextToken = nanoid(32);
-  const registrationToken = nanoid(32);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + CONTEXT_TOKEN_TTL_MS);
 
   const contextValue: FheEnrollmentContextValue = {
     userId: params.userId,
     email: params.email ?? null,
-    registrationToken,
     createdAt: toIso(now),
   };
 
-  const registrationValue: RegistrationTokenValue = {
-    contextToken,
+  await db.insert(verifications).values({
+    id: crypto.randomUUID(),
+    identifier: contextIdentifier(contextToken),
+    value: JSON.stringify(contextValue),
+    expiresAt: toIso(expiresAt),
     createdAt: toIso(now),
-  };
-
-  await db.insert(verifications).values([
-    {
-      id: crypto.randomUUID(),
-      identifier: contextIdentifier(contextToken),
-      value: JSON.stringify(contextValue),
-      expiresAt: toIso(expiresAt),
-      createdAt: toIso(now),
-      updatedAt: toIso(now),
-    },
-    {
-      id: crypto.randomUUID(),
-      identifier: registrationIdentifier(registrationToken),
-      value: JSON.stringify(registrationValue),
-      expiresAt: toIso(expiresAt),
-      createdAt: toIso(now),
-      updatedAt: toIso(now),
-    },
-  ]);
+    updatedAt: toIso(now),
+  });
 
   return {
     contextToken,
-    registrationToken,
     expiresAt: toIso(expiresAt),
   };
 }
@@ -123,75 +87,6 @@ export async function getFheEnrollmentContext(
   } catch {
     return null;
   }
-}
-
-export async function isRegistrationTokenValid(
-  token: string
-): Promise<boolean> {
-  const record = await getVerificationByIdentifier(
-    registrationIdentifier(token)
-  );
-  return Boolean(record);
-}
-
-export async function storeRegistrationBlob(
-  token: string,
-  blob: RegistrationBlobMeta
-) {
-  const record = await getVerificationByIdentifier(
-    registrationIdentifier(token)
-  );
-  if (!record) {
-    throw new Error("Invalid or expired registration token.");
-  }
-
-  let parsed: RegistrationTokenValue;
-  try {
-    parsed = JSON.parse(record.value) as RegistrationTokenValue;
-  } catch {
-    throw new Error("Invalid registration token payload.");
-  }
-
-  if (parsed.blob) {
-    throw new Error("Registration blob already uploaded.");
-  }
-
-  const updated: RegistrationTokenValue = {
-    ...parsed,
-    blob,
-  };
-
-  await db
-    .update(verifications)
-    .set({ value: JSON.stringify(updated), updatedAt: toIso(new Date()) })
-    .where(eq(verifications.id, record.id))
-    .run();
-}
-
-export async function consumeRegistrationBlob(
-  token: string
-): Promise<{ blob: RegistrationBlobMeta; contextToken: string }> {
-  const record = await getVerificationByIdentifier(
-    registrationIdentifier(token)
-  );
-  if (!record) {
-    throw new Error("Registration blob not found or expired.");
-  }
-
-  let parsed: RegistrationTokenValue;
-  try {
-    parsed = JSON.parse(record.value) as RegistrationTokenValue;
-  } catch {
-    throw new Error("Invalid registration token payload.");
-  }
-
-  if (!parsed.blob) {
-    throw new Error("Registration blob not found or expired.");
-  }
-
-  await db.delete(verifications).where(eq(verifications.id, record.id)).run();
-
-  return { blob: parsed.blob, contextToken: parsed.contextToken };
 }
 
 export async function consumeFheEnrollmentContext(contextToken: string) {

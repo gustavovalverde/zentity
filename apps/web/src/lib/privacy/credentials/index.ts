@@ -36,11 +36,7 @@ export {
   wrapDekWithOpaqueExport,
 } from "./opaque";
 // --- Passkey ---
-export {
-  createSecretEnvelope,
-  unwrapDekWithPrf,
-  wrapDekWithPrf,
-} from "./passkey";
+export { unwrapDekWithPrf, wrapDekWithPrf } from "./passkey";
 // --- Wallet ---
 export {
   buildKekSignatureTypedData,

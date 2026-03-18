@@ -31,16 +31,12 @@ export async function uploadSecretBlob(params: {
   secretId: string;
   secretType: string;
   payload: string | Uint8Array;
-  registrationToken?: string;
 }): Promise<{ blobRef: string; blobHash: string; blobSize: number }> {
   const headers = new Headers({
     "Content-Type": "application/octet-stream",
     "X-Secret-Id": params.secretId,
     "X-Secret-Type": params.secretType,
   });
-  if (params.registrationToken) {
-    headers.set("Authorization", `Bearer ${params.registrationToken}`);
-  }
 
   const payloadBytes =
     typeof params.payload === "string"

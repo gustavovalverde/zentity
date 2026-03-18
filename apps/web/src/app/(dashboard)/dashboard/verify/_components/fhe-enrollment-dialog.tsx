@@ -35,19 +35,15 @@ import {
 } from "@/lib/privacy/credentials";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { getPreGeneratedKeys } from "@/lib/privacy/fhe/background-keygen";
-import {
-  generateFheKeyMaterialForStorage,
-  prepareFheKeyEnrollment,
-  registerFheKeyForEnrollment,
-} from "@/lib/privacy/fhe/client";
+import { generateFheKeyMaterialForStorage } from "@/lib/privacy/fhe/client";
 import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import {
   getStoredFheKeys,
   persistFheKeyId,
   storeFheKeysWithCredential,
 } from "@/lib/privacy/fhe/store";
-import { uploadSecretBlob } from "@/lib/privacy/secrets/storage";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { fetchMsgpack } from "@/lib/privacy/utils/binary-transport";
 import {
   deriveBindingSecret,
   prepareBindingProofInputs,
@@ -363,69 +359,18 @@ export function FheEnrollmentDialog({
 
       advanceStage("generating");
       const preGenerated = await getPreGeneratedKeys();
-      const enrollmentCtx = { userId, credentialId, prfOutput, prfSalt };
-      const enrollment = preGenerated
-        ? await (async () => {
-            advanceStage("encrypting");
-            const { createFheKeyEnvelope } = await import(
-              "@/lib/privacy/fhe/store"
-            );
-            const envelope = await createFheKeyEnvelope({
-              keys: preGenerated.storedKeys,
-              enrollment: enrollmentCtx,
-            });
-            return {
-              ...envelope,
-              publicKeyBytes: preGenerated.storedKeys.publicKey,
-              serverKeyBytes: preGenerated.storedKeys.serverKey,
-              storedKeys: preGenerated.storedKeys,
-              preRegisteredKeyId: preGenerated.keyId,
-              publicKeyFingerprint: preGenerated.publicKeyFingerprint,
-            };
-          })()
-        : await prepareFheKeyEnrollment({
-            enrollment: enrollmentCtx,
-            onStage: (s) =>
-              advanceStage(s === "generate-keys" ? "generating" : "encrypting"),
-          });
-
-      const contextResponse = await fetch("/api/fhe/enrollment/context", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!contextResponse.ok) {
-        throw new Error("Failed to create enrollment context.");
+      let storedKeys: Awaited<
+        ReturnType<typeof generateFheKeyMaterialForStorage>
+      >["storedKeys"];
+      let fingerprint: string;
+      if (preGenerated) {
+        storedKeys = preGenerated.storedKeys;
+        fingerprint = preGenerated.publicKeyFingerprint;
+      } else {
+        const generated = await generateFheKeyMaterialForStorage();
+        storedKeys = generated.storedKeys;
+        fingerprint = generated.publicKeyFingerprint;
       }
-
-      const context = (await contextResponse.json()) as {
-        registrationToken?: string;
-      };
-      if (!context.registrationToken) {
-        throw new Error("Missing enrollment registration token.");
-      }
-
-      advanceStage("uploading");
-      const uploadResult = await uploadSecretBlob({
-        secretId: enrollment.secretId,
-        secretType: SECRET_TYPES.FHE_KEYS,
-        payload: enrollment.encryptedBlob,
-        registrationToken: context.registrationToken,
-      });
-
-      advanceStage("registering");
-      const keyId =
-        "preRegisteredKeyId" in enrollment && enrollment.preRegisteredKeyId
-          ? enrollment.preRegisteredKeyId
-          : (
-              await registerFheKeyForEnrollment({
-                registrationToken: context.registrationToken,
-                publicKeyBytes: enrollment.publicKeyBytes,
-                serverKeyBytes: enrollment.serverKeyBytes,
-              })
-            ).keyId;
-
-      advanceStage("finalizing");
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.PASSKEY,
@@ -439,29 +384,31 @@ export function FheEnrollmentDialog({
         proofInputs.userIdHashField
       );
 
-      const completeResponse = await fetch("/api/fhe/enrollment/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          registrationToken: context.registrationToken,
-          wrappedDek: enrollment.wrappedDek,
-          prfSalt: enrollment.prfSalt,
-          credentialId,
-          keyId,
-          envelopeFormat: enrollment.envelopeFormat,
-          baseCommitment,
-          blobHash: uploadResult.blobHash,
-          blobSize: uploadResult.blobSize,
-          publicKeyFingerprint: enrollment.publicKeyFingerprint,
-        }),
+      advanceStage("encrypting");
+      await storeFheKeysWithCredential({
+        keys: storedKeys,
+        credential: {
+          type: "passkey",
+          context: { userId, credentialId, prfOutput, prfSalt },
+        },
+        baseCommitment,
       });
-      if (!completeResponse.ok) {
-        const body = (await completeResponse.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error || "Failed to complete FHE enrollment.");
-      }
 
+      advanceStage("registering");
+      const keyId = preGenerated
+        ? preGenerated.keyId
+        : (
+            await fetchMsgpack<{ keyId: string }>(
+              "/api/fhe/keys/register",
+              {
+                serverKey: storedKeys.serverKey,
+                publicKey: storedKeys.publicKey,
+              },
+              { credentials: "include" }
+            )
+          ).keyId;
+
+      await persistFheKeyId(keyId, fingerprint);
       await updateIdentityStatus(keyId);
     },
     [hasPasskeys, prfSupported, updateIdentityStatus, advanceStage]

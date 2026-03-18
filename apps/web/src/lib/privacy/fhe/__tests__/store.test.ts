@@ -6,7 +6,6 @@ const SHA256_HEX_RE = /^[a-f0-9]{64}$/;
 const secretsMocks = vi.hoisted(() => ({
   storeSecretWithCredential: vi.fn(),
   loadSecret: vi.fn(),
-  PasskeyEnrollmentContext: {},
   EnrollmentCredential: {},
 }));
 
@@ -19,12 +18,6 @@ const trpcMocks = vi.hoisted(() => ({
 // Apply mocks before any imports
 vi.mock("@/lib/privacy/secrets", () => secretsMocks);
 vi.mock("@/lib/trpc/client", () => ({ trpc: trpcMocks }));
-vi.mock("@/lib/privacy/credentials/passkey", () => ({
-  createSecretEnvelope: vi.fn(),
-}));
-vi.mock("@/lib/privacy/secrets/storage", () => ({
-  uploadSecretBlob: vi.fn(),
-}));
 vi.mock("@/lib/privacy/secrets/types", () => ({
   SECRET_TYPES: { FHE_KEYS: "fhe_keys" },
 }));
@@ -32,24 +25,16 @@ vi.mock("@/lib/privacy/secrets/types", () => ({
 const makeBytes = (value: number, length: number) =>
   Uint8Array.from({ length }, () => value);
 
-const makeEnrollment = () => ({
-  credentialId: "cred-123",
-  userId: "test-user-123",
-  prfOutput: crypto.getRandomValues(new Uint8Array(32)),
-  prfSalt: crypto.getRandomValues(new Uint8Array(32)),
-});
-
 describe("fhe-key-store", () => {
-  let storeFheKeys: typeof import("../store").storeFheKeys;
+  let storeFheKeysWithCredential: typeof import("../store").storeFheKeysWithCredential;
   let getStoredFheKeys: typeof import("../store").getStoredFheKeys;
   let persistFheKeyId: typeof import("../store").persistFheKeyId;
   let resetFheKeyStoreCache: typeof import("../store").resetFheKeyStoreCache;
 
   beforeEach(async () => {
     vi.resetModules();
-    // Re-import after reset to get fresh module with mocks applied
     const storeModule = await import("../store");
-    storeFheKeys = storeModule.storeFheKeys;
+    storeFheKeysWithCredential = storeModule.storeFheKeysWithCredential;
     getStoredFheKeys = storeModule.getStoredFheKeys;
     persistFheKeyId = storeModule.persistFheKeyId;
     resetFheKeyStoreCache = storeModule.resetFheKeyStoreCache;
@@ -62,7 +47,7 @@ describe("fhe-key-store", () => {
     });
   });
 
-  it("stores FHE keys and returns cached copy", async () => {
+  it("stores FHE keys with credential and returns cached copy", async () => {
     const payload = {
       clientKey: makeBytes(1, 8),
       publicKey: makeBytes(2, 8),
@@ -70,7 +55,18 @@ describe("fhe-key-store", () => {
       createdAt: new Date().toISOString(),
     };
 
-    await storeFheKeys({ keys: payload, enrollment: makeEnrollment() });
+    await storeFheKeysWithCredential({
+      keys: payload,
+      credential: {
+        type: "passkey",
+        context: {
+          userId: "test-user",
+          credentialId: "cred-123",
+          prfOutput: crypto.getRandomValues(new Uint8Array(32)),
+          prfSalt: crypto.getRandomValues(new Uint8Array(32)),
+        },
+      },
+    });
 
     const stored = await getStoredFheKeys();
 
@@ -89,7 +85,16 @@ describe("fhe-key-store", () => {
       createdAt: new Date().toISOString(),
     };
 
-    await storeFheKeys({ keys: payload, enrollment: makeEnrollment() });
+    await storeFheKeysWithCredential({
+      keys: payload,
+      credential: {
+        type: "opaque",
+        context: {
+          userId: "test-user",
+          exportKey: crypto.getRandomValues(new Uint8Array(64)),
+        },
+      },
+    });
     await persistFheKeyId("key-123");
 
     expect(trpcMocks.secrets.updateSecretMetadata.mutate).toHaveBeenCalledWith({

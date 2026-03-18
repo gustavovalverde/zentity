@@ -10,11 +10,6 @@ import "client-only";
  * to HKDF for deriving the KEK.
  */
 
-import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
-
-import { encryptWithDek, generateDek } from "@/lib/privacy/secrets/envelope";
-import { bytesToBase64 } from "@/lib/utils/base64";
-
 import { deriveKekFromPrf } from "./derivation";
 import { unwrapDek, wrapDek } from "./wrap";
 
@@ -82,54 +77,4 @@ export async function unwrapDekWithPrf(params: {
     wrappedDek: params.wrappedDek,
     kek,
   });
-}
-
-/**
- * Create a complete secret envelope with passkey-wrapped DEK.
- * Combines envelope encryption with passkey PRF-based KEK derivation.
- */
-export async function createSecretEnvelope(params: {
-  secretType: string;
-  plaintext: Uint8Array;
-  prfOutput: Uint8Array;
-  credentialId: string;
-  userId: string;
-  prfSalt: Uint8Array;
-  secretId?: string;
-  envelopeFormat?: EnvelopeFormat;
-}): Promise<{
-  secretId: string;
-  encryptedBlob: Uint8Array;
-  wrappedDek: string;
-  prfSalt: string;
-  envelopeFormat: EnvelopeFormat;
-}> {
-  const secretId = params.secretId ?? crypto.randomUUID();
-  const dek = generateDek();
-  const envelopeFormat = params.envelopeFormat ?? "json";
-
-  const secretEnvelope = await encryptWithDek({
-    secretId,
-    secretType: params.secretType,
-    plaintext: params.plaintext,
-    dek,
-    envelopeFormat,
-  });
-
-  const wrapper = await wrapDekWithPrf({
-    secretId,
-    credentialId: params.credentialId,
-    userId: params.userId,
-    dek,
-    prfOutput: params.prfOutput,
-    prfSalt: params.prfSalt,
-  });
-
-  return {
-    secretId: secretEnvelope.secretId,
-    encryptedBlob: secretEnvelope.encryptedBlob,
-    wrappedDek: wrapper,
-    prfSalt: bytesToBase64(params.prfSalt),
-    envelopeFormat,
-  };
 }

@@ -1,16 +1,4 @@
-/**
- * FHE Client
- *
- * Client-side FHE key enrollment and homomorphic computation operations.
- */
-
 "use client";
-
-import type { StoredFheKeys } from "@/lib/privacy/fhe/store";
-import type {
-  EnvelopeFormat,
-  PasskeyEnrollmentContext,
-} from "@/lib/privacy/secrets/types";
 
 import { fetchMsgpack } from "@/lib/privacy/utils/binary-transport";
 
@@ -20,7 +8,6 @@ import {
   getOrCreateFheKeyRegistrationMaterial,
   persistFheKeyId,
 } from "./browser";
-import { createFheKeyEnvelope } from "./store";
 
 // Re-export for use in password sign-up flow
 export const generateFheKeyMaterialForStorage =
@@ -56,15 +43,12 @@ function cleanupStaleRegistrations(): void {
   }
 }
 
-export async function ensureFheKeyRegistration(params?: {
-  enrollment?: PasskeyEnrollmentContext;
-  registrationToken?: string;
-}): Promise<{
+export async function ensureFheKeyRegistration(): Promise<{
   keyId: string;
 }> {
   cleanupStaleRegistrations();
 
-  const inFlightKey = params?.enrollment?.credentialId ?? "default";
+  const inFlightKey = "default";
   const inFlight = registerFheKeyInFlight.get(inFlightKey);
   if (inFlight) {
     return await inFlight.promise;
@@ -86,9 +70,7 @@ export async function ensureFheKeyRegistration(params?: {
 
   const runRegistration = async () => {
     try {
-      const keyMaterial = await getOrCreateFheKeyRegistrationMaterial({
-        enrollment: params?.enrollment,
-      });
+      const keyMaterial = await getOrCreateFheKeyRegistrationMaterial();
       if (keyMaterial.keyId) {
         resolvePromise?.({ keyId: keyMaterial.keyId });
         return;
@@ -98,9 +80,6 @@ export async function ensureFheKeyRegistration(params?: {
         {
           serverKey: keyMaterial.serverKeyBytes,
           publicKey: keyMaterial.publicKeyBytes,
-          ...(params?.registrationToken
-            ? { registrationToken: params.registrationToken }
-            : {}),
         },
         { credentials: "include" }
       );
@@ -118,54 +97,6 @@ export async function ensureFheKeyRegistration(params?: {
   });
 
   return await registrationPromise;
-}
-
-export async function prepareFheKeyEnrollment(params: {
-  enrollment: PasskeyEnrollmentContext;
-  onStage?: (stage: "generate-keys" | "encrypt-keys") => void;
-}): Promise<{
-  secretId: string;
-  encryptedBlob: Uint8Array;
-  wrappedDek: string;
-  prfSalt: string;
-  envelopeFormat: EnvelopeFormat;
-  publicKeyBytes: Uint8Array;
-  serverKeyBytes: Uint8Array;
-  storedKeys: StoredFheKeys;
-  publicKeyFingerprint: string;
-}> {
-  params.onStage?.("generate-keys");
-  const { storedKeys, publicKeyFingerprint } =
-    await generateFheKeyMaterialForStorage();
-  params.onStage?.("encrypt-keys");
-  const envelope = await createFheKeyEnvelope({
-    keys: storedKeys,
-    enrollment: params.enrollment,
-  });
-
-  return {
-    ...envelope,
-    publicKeyBytes: storedKeys.publicKey,
-    serverKeyBytes: storedKeys.serverKey,
-    storedKeys,
-    publicKeyFingerprint,
-  };
-}
-
-export async function registerFheKeyForEnrollment(params: {
-  registrationToken: string;
-  publicKeyBytes: Uint8Array;
-  serverKeyBytes: Uint8Array;
-}): Promise<{ keyId: string }> {
-  return await fetchMsgpack<{ keyId: string }>(
-    "/api/fhe/keys/register",
-    {
-      registrationToken: params.registrationToken,
-      publicKey: params.publicKeyBytes,
-      serverKey: params.serverKeyBytes,
-    },
-    { credentials: "include" }
-  );
 }
 
 /**

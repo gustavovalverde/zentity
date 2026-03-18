@@ -1,7 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
 import { requireSession } from "@/lib/auth/api-auth";
-import { isRegistrationTokenValid } from "@/lib/auth/fhe-enrollment-tokens";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
@@ -16,7 +15,6 @@ export const runtime = "nodejs";
 
 interface RegisterFheKeyPayload {
   publicKey: Uint8Array;
-  registrationToken?: string;
   serverKey: Uint8Array;
 }
 
@@ -43,45 +41,29 @@ export async function POST(req: Request) {
     );
   }
 
-  const registrationToken =
-    typeof payload.registrationToken === "string" &&
-    payload.registrationToken.length > 0
-      ? payload.registrationToken
+  const authResult = await requireSession(req.headers);
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+
+  const userId = authResult.session.user.id;
+
+  const { limited, retryAfter } = fheLimiter.check(userId);
+  if (limited) {
+    return rateLimitResponse(retryAfter);
+  }
+
+  const existingSecret = await getEncryptedSecretByUserAndType(
+    userId,
+    "fhe_keys"
+  );
+  const existingKeyId =
+    existingSecret?.metadata &&
+    typeof existingSecret.metadata.keyId === "string"
+      ? existingSecret.metadata.keyId
       : null;
-
-  let userId: string | null = null;
-  if (registrationToken) {
-    if (!(await isRegistrationTokenValid(registrationToken))) {
-      return jsonError("Invalid or expired registration token.", 400);
-    }
-  } else {
-    const authResult = await requireSession(req.headers);
-    if (!authResult.ok) {
-      return authResult.response;
-    }
-
-    const { limited, retryAfter } = fheLimiter.check(
-      authResult.session.user.id
-    );
-    if (limited) {
-      return rateLimitResponse(retryAfter);
-    }
-
-    const sessionUserId = authResult.session.user.id;
-    userId = sessionUserId;
-
-    const existingSecret = await getEncryptedSecretByUserAndType(
-      sessionUserId,
-      "fhe_keys"
-    );
-    const existingKeyId =
-      existingSecret?.metadata &&
-      typeof existingSecret.metadata.keyId === "string"
-        ? existingSecret.metadata.keyId
-        : null;
-    if (existingKeyId) {
-      return msgpackResponse({ keyId: existingKeyId });
-    }
+  if (existingKeyId) {
+    return msgpackResponse({ keyId: existingKeyId });
   }
 
   try {
@@ -92,13 +74,11 @@ export async function POST(req: Request) {
       flowId: req.headers.get("x-zentity-flow-id") ?? undefined,
     });
 
-    if (userId) {
-      await updateEncryptedSecretMetadata({
-        userId,
-        secretType: "fhe_keys",
-        metadata: { keyId },
-      });
-    }
+    await updateEncryptedSecretMetadata({
+      userId,
+      secretType: "fhe_keys",
+      metadata: { keyId },
+    });
 
     return msgpackResponse({ keyId });
   } catch (error) {

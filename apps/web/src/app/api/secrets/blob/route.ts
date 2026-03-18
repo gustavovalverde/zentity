@@ -2,10 +2,6 @@ import { NextResponse } from "next/server";
 
 import { requireSession } from "@/lib/auth/api-auth";
 import {
-  isRegistrationTokenValid,
-  storeRegistrationBlob,
-} from "@/lib/auth/fhe-enrollment-tokens";
-import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/crypto";
@@ -28,48 +24,18 @@ function getHeaderValue(headers: Headers, key: string): string | null {
   return value?.trim() ? value.trim() : null;
 }
 
-function getRegistrationToken(headers: Headers): string | null {
-  const authHeader = headers.get("authorization");
-  if (!authHeader) {
-    return null;
-  }
-  const [scheme, token] = authHeader.split(" ");
-  if (!(scheme && token)) {
-    return null;
-  }
-  if (scheme.toLowerCase() !== "bearer") {
-    return null;
-  }
-  return token.trim() || null;
-}
-
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const registrationToken = getRegistrationToken(request.headers);
-    const authResult = registrationToken
-      ? null
-      : await requireSession(request.headers);
-    if (!registrationToken && authResult && !authResult.ok) {
+    const authResult = await requireSession(request.headers);
+    if (!authResult.ok) {
       return authResult.response;
     }
-    if (
-      registrationToken &&
-      !(await isRegistrationTokenValid(registrationToken))
-    ) {
-      return NextResponse.json(
-        { error: "Invalid or expired registration token." },
-        { status: 401 }
-      );
-    }
 
-    const rateLimitKey = authResult?.ok
-      ? authResult.session.user.id
-      : registrationToken;
-    if (rateLimitKey) {
-      const { limited, retryAfter } = secretsBlobLimiter.check(rateLimitKey);
-      if (limited) {
-        return rateLimitResponse(retryAfter) as NextResponse;
-      }
+    const { limited, retryAfter } = secretsBlobLimiter.check(
+      authResult.session.user.id
+    );
+    if (limited) {
+      return rateLimitResponse(retryAfter) as NextResponse;
     }
 
     const secretId = getHeaderValue(request.headers, "x-secret-id");
@@ -111,14 +77,6 @@ export async function POST(request: Request): Promise<NextResponse> {
           secretId,
           body,
         });
-
-        if (registrationToken) {
-          await storeRegistrationBlob(registrationToken, {
-            secretId,
-            secretType,
-            ...blobMeta,
-          });
-        }
 
         return NextResponse.json(blobMeta, { status: 201 });
       }

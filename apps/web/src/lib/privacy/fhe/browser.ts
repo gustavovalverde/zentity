@@ -8,8 +8,6 @@
  * the npm package by scripts/setup-coep-assets.ts.
  */
 
-import type { PasskeyEnrollmentContext } from "@/lib/privacy/secrets";
-
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 import { generateFheKeyMaterialInWorker } from "./keygen-client";
@@ -17,7 +15,6 @@ import {
   getStoredFheKeys,
   persistFheKeyId as persistFheKeyIdInStore,
   type StoredFheKeys,
-  storeFheKeys,
 } from "./store";
 
 // Runtime types (matching the tfhe package's exported shapes).
@@ -233,9 +230,7 @@ export async function generateFheKeyMaterialForStorage(): Promise<{
   }
 }
 
-export async function getOrCreateFheKeyRegistrationMaterial(params?: {
-  enrollment?: PasskeyEnrollmentContext | undefined;
-}): Promise<{
+export async function getOrCreateFheKeyRegistrationMaterial(): Promise<{
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
   keyId?: string | undefined;
@@ -251,20 +246,9 @@ export async function getOrCreateFheKeyRegistrationMaterial(params?: {
     };
   }
 
-  if (!params?.enrollment) {
-    throw new Error(
-      "FHE keys are not initialized. Secure your encryption keys with a passkey first."
-    );
-  }
-
-  const { storedKeys, publicKeyFingerprint } =
-    await generateFheKeyMaterialForStorage();
-  await storeFheKeys({ keys: storedKeys, enrollment: params.enrollment });
-  return {
-    publicKeyBytes: storedKeys.publicKey,
-    serverKeyBytes: storedKeys.serverKey,
-    publicKeyFingerprint,
-  };
+  throw new Error(
+    "FHE keys are not initialized. Secure your encryption keys first."
+  );
 }
 
 export async function persistFheKeyId(
