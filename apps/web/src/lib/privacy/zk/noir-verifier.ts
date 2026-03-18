@@ -122,20 +122,22 @@ function vkBytesToFields(vkBytes: Uint8Array): bigint[] {
   return fields;
 }
 
-function getPublicInputCountFromVkey(vkBytes: Uint8Array): number {
-  if (vkBytes.length < 64) {
-    throw new Error("Verification key too small to parse public input count");
+export function getPublicInputCountFromAbi(circuitType: ProofType): number {
+  const circuit = CIRCUITS[circuitType] as { abi?: CircuitAbi };
+  const abi = circuit?.abi;
+  if (!abi?.parameters) {
+    throw new Error(`Missing ABI for circuit ${circuitType}`);
   }
-  const countHex = toFieldHex(vkBytes.slice(32, 64));
-  const count = BigInt(`0x${countHex}`) - BigInt(16);
-  if (count < BigInt(0)) {
-    throw new Error("Invalid public input count in verification key");
-  }
-  const asNumber = Number(count);
-  if (!Number.isSafeInteger(asNumber)) {
-    throw new Error("Public input count exceeds safe integer range");
-  }
-  return asNumber;
+  const publicParams = abi.parameters.filter(
+    (p) => p.visibility === "public"
+  ).length;
+  const publicReturn = abi.return_type?.visibility === "public" ? 1 : 0;
+  return publicParams + publicReturn;
+}
+
+interface CircuitAbi {
+  parameters: Array<{ visibility: string }>;
+  return_type?: { visibility: string };
 }
 
 function normalizePublicInput(input: string): string {
@@ -294,7 +296,7 @@ export function getCircuitVerificationKey(
 
     const vkHash = sha256Hex(vkBytes);
     const vkeyPoseidonHash = await poseidon2Hash(vkBytesToFields(vkBytes));
-    const publicInputCount = getPublicInputCountFromVkey(vkBytes);
+    const publicInputCount = getPublicInputCountFromAbi(circuitType);
 
     return {
       verificationKey: Buffer.from(vkBytes).toString("base64"),

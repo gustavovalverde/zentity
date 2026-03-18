@@ -150,7 +150,7 @@ export const env = createEnv({
 
     // Storage & ZK
     BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
-    ZK_WARMUP_STRICT: booleanString.optional(),
+    ZK_WARMUP_STRICT: booleanStringWithDefault("true"),
 
     // Observability
     LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).optional(),
