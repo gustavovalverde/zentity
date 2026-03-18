@@ -15,7 +15,7 @@ import {
   jwtVerify,
 } from "jose";
 import { config } from "../config.js";
-import { getDiscoveredIssuer } from "./discovery.js";
+import { getDiscoveredIssuer, getDiscoveredJwksUri } from "./discovery.js";
 
 const AUTH_HEADER_RE = /^(Bearer|DPoP)\s+(.+)$/i;
 const DPOP_MAX_AGE_S = 300; // 5 minutes
@@ -24,11 +24,16 @@ const BASE64URL_SLASH = /\//g;
 const BASE64URL_PAD = /=+$/;
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
+let jwksUrl: string | undefined;
 
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
-  if (!jwks) {
-    const url = new URL("/api/auth/oauth2/jwks", config.zentityUrl);
-    jwks = createRemoteJWKSet(url);
+  const currentUrl =
+    getDiscoveredJwksUri() ??
+    `${config.zentityUrl}/api/auth/oauth2/jwks`;
+
+  if (!jwks || jwksUrl !== currentUrl) {
+    jwksUrl = currentUrl;
+    jwks = createRemoteJWKSet(new URL(currentUrl));
   }
   return jwks;
 }
@@ -36,6 +41,7 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
 /** Reset cached JWKS (for testing). */
 export function resetJwks(): void {
   jwks = undefined;
+  jwksUrl = undefined;
 }
 
 export interface TokenAuthResult {

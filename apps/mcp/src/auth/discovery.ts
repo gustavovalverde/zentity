@@ -54,6 +54,10 @@ export function getDiscoveredIssuer(): string | undefined {
   return cachedDiscovery?.issuer;
 }
 
+export function getDiscoveredJwksUri(): string | undefined {
+  return cachedDiscovery?.jwks_uri;
+}
+
 export function clearDiscoveryCache(): void {
   cachedDiscovery = undefined;
 }

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearDiscoveryCache, discover } from "../../src/auth/discovery.js";
+import {
+  clearDiscoveryCache,
+  discover,
+  getDiscoveredJwksUri,
+} from "../../src/auth/discovery.js";
 
 describe("OAuth Discovery", () => {
   afterEach(() => {
@@ -70,5 +74,21 @@ describe("OAuth Discovery", () => {
     );
 
     await expect(discover("http://localhost:3000")).rejects.toThrow();
+  });
+
+  it("exposes jwks_uri from discovery", async () => {
+    const metadata = {
+      issuer: "http://localhost:3000/api/auth",
+      token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
+      authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+      jwks_uri: "http://localhost:3000/api/auth/pq-jwks",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(metadata), { status: 200 })
+    );
+
+    await discover("http://localhost:3000");
+    expect(getDiscoveredJwksUri()).toBe(metadata.jwks_uri);
   });
 });
