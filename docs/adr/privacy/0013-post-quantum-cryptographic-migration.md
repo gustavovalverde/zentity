@@ -50,7 +50,7 @@ To:
 
 * **ML-KEM**: `encapsulate(publicKey) → {cipherText, sharedSecret}` then `AES-GCM(sharedSecret, plaintext)`
 
-The receiver calls `decapsulate(cipherText, secretKey) → sharedSecret` and decrypts with AES-GCM. Both recovery and compliance surfaces use identical `{alg, kemCipherText, iv, ciphertext}` JSON envelopes.
+The receiver calls `decapsulate(cipherText, secretKey) → sharedSecret` and decrypts with AES-GCM. Both recovery and compliance surfaces use `{alg, kemCipherText, iv, ciphertext}` JSON envelopes. Compliance bundles additionally carry `{clientId, userId}` and bind them via AES-GCM AAD to prevent cross-RP/cross-user ciphertext substitution.
 
 ### ML-KEM implicit reject
 

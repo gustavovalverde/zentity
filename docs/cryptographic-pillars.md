@@ -177,6 +177,14 @@ HMAC-SHA256 is used for three distinct server-side integrity purposes:
 | FHE ciphertext integrity | `BETTER_AUTH_SECRET` | `encodeAad([userId, attributeType]) \|\| ciphertext` | `ciphertext_hash` |
 | Consent scope integrity | `BETTER_AUTH_SECRET` | `encodeAad([context, userId, clientId, referenceId, sortedScopes])` | `scope_hmac` |
 
+A fourth integrity mechanism uses **SHA-256** (not HMAC) for client-side key verification:
+
+| Purpose | Computation | Input | Where stored |
+|---------|-------------|-------|--------------|
+| FHE public key fingerprint | `SHA-256` (client-side) | FHE public key bytes | `metadata.publicKeyFingerprint` |
+
+This is architecturally distinct from the server-keyed HMACs above — it is computed and verified client-side to detect server-side key substitution. See [Tamper Model](tamper-model.md#fhe-public-key-substitution).
+
 These are architecturally distinct from user-salted commitment hashes (e.g., `SHA256(dob + user_salt)`). HMAC tags are **server-keyed** and **server-verifiable** — they protect against DB-level tampering by an attacker with write access. Commitment hashes use a **user-held salt** and are **user-erasable** — deleting the profile vault breaks linkability. The two mechanisms serve complementary roles: commitments preserve user privacy and erasure rights; HMACs preserve system integrity.
 
 **Evidence pack hashes**

@@ -519,6 +519,8 @@ RP COMPLIANCE DATA RETRIEVAL
          "kem_ciphertext": "base64-kem-ciphertext",
          "iv": "base64-iv",
          "encrypted_content": "base64-ciphertext",
+         "client_id": "rp-client-id",
+         "user_id": "pairwise-sub",
          "content_hash": "sha256-of-plaintext",
          "uploaded_at": "2026-02-03T..."
        }
@@ -528,7 +530,8 @@ RP COMPLIANCE DATA RETRIEVAL
 4. RP decrypts with their ML-KEM-768 secret key:
 
    shared_secret = mlKemDecapsulate(kem_ciphertext, rp_secret_key)
-   plaintext = AES-GCM-Decrypt(encrypted_content, shared_secret, iv)
+   aad = encodeAad(["zentity-compliance-rp", client_id, user_id])
+   plaintext = AES-GCM-Decrypt(encrypted_content, shared_secret, iv, aad)
 ```
 
 ### 5.6 OIDC4VCI Integration
@@ -2166,6 +2169,7 @@ Compliance encryption uses **ML-KEM-768** (NIST FIPS 203) as the sole key encaps
 | **Public key size** | 1184 bytes |
 | **Ciphertext size** | 1088 bytes |
 | **Shared secret** | 32 bytes (used as AES-256-GCM key) |
+| **AAD** | `encodeAad(["zentity-compliance-rp", clientId, userId])` |
 | **Library** | `@noble/post-quantum/ml-kem` |
 
 **Implementation**: See `apps/web/src/lib/privacy/compliance/encrypt.ts` and `decrypt.ts`.

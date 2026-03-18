@@ -370,6 +370,12 @@ Recovery wrappers use additional AAD binding: `encodeAad([RECOVERY_AAD_CONTEXT, 
 
 Every FHE ciphertext stored in `encrypted_attributes` includes a `ciphertext_hash` — an HMAC-SHA256 tag binding the ciphertext to its owner and attribute type. The tag is verified with `crypto.timingSafeEqual` on every read, preventing ciphertext swap attacks where an attacker substitutes one user's encrypted data with another's.
 
+### FHE Public Key Fingerprint
+
+A SHA-256 fingerprint is computed at keygen time (`src/lib/privacy/fhe/fingerprint.ts`) and persisted in the secret's JSON metadata via `persistFheKeyId()`. On load, `getStoredFheKeys()` recomputes the fingerprint and rejects the key on mismatch. If the caller does not provide a fingerprint (e.g., recovery paths), `persistFheKeyId()` backfills it from the cached public key. Existing keys without a fingerprint are accepted (backward compatibility) — the fingerprint is added on the next `persistFheKeyId()` call.
+
+See [Tamper Model — FHE Public Key Substitution](tamper-model.md#fhe-public-key-substitution) for the threat model.
+
 ### Server-Side FHE Input Validation
 
 The server never accepts client-encrypted values as FHE truth. FHE inputs are derived server-side from verified data (signed OCR claims, liveness scores). This prevents a hostile browser from submitting pre-computed ciphertexts that encode false attributes.

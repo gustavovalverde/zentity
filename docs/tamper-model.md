@@ -131,6 +131,18 @@ The tag is stored in `encrypted_attributes.ciphertext_hash` and verified with `c
 
 The `encodeAad` function uses length-prefixed encoding to prevent concatenation collisions (e.g., `userId="ab" + type="cd"` produces a different encoding than `userId="abc" + type="d"`).
 
+### FHE Public Key Substitution
+
+**Threat:** A malicious server replaces the stored FHE public key with one it controls, so all subsequent FHE computations use the attacker's key.
+
+**Control:** A SHA-256 fingerprint of the public key is computed client-side at keygen time and stored in the secret's metadata. On every load, `getStoredFheKeys()` recomputes `SHA-256(publicKey)` and compares it against the stored fingerprint. A mismatch throws before the key can be used. The public key itself lives inside the AES-GCM encrypted blob (tamper-proof via AAD), so the fingerprint is a second-layer check that catches metadata-level substitution.
+
+### Secret Blob Integrity
+
+**Threat:** A malicious server replaces the encrypted secret blob and updates the server-computed hash in tandem, making the substitution undetectable.
+
+**Control:** The blob SHA-256 hash is computed client-side before upload and stored via a separate endpoint. On download, the client verifies the blob against this client-asserted hash. The enrollment/complete endpoint cross-validates the client hash against the server's upload record to catch buggy clients. AES-GCM authenticated encryption remains the primary integrity boundary; the client hash is defense-in-depth.
+
 ### Sybil / Duplicate Identity Prevention
 
 **Threat:** Same identity document registered under multiple accounts (Sybil attack).
