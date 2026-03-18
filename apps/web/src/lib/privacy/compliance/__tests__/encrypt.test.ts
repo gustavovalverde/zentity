@@ -6,6 +6,8 @@ import { bytesToBase64 } from "@/lib/utils/base64";
 import { decryptFromZentity } from "../decrypt";
 import { encryptForRp } from "../encrypt";
 
+const ctx = { clientId: "rp-bank-001", userId: "user-abc-123" };
+
 describe("compliance encryption ML-KEM-768", () => {
   const { publicKey, secretKey } = mlKemKeygen();
   const rpPublicKeyBase64 = bytesToBase64(publicKey);
@@ -13,7 +15,7 @@ describe("compliance encryption ML-KEM-768", () => {
   it("round-trips: encryptForRp then decryptFromZentity recovers original data", async () => {
     const data = new TextEncoder().encode("compliance-data-payload");
 
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
     const recovered = await decryptFromZentity(bundle, secretKey);
 
     expect(recovered).toEqual(data);
@@ -21,7 +23,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
   it("different RP secret key → AES-GCM failure (ML-KEM implicit reject)", async () => {
     const data = new TextEncoder().encode("secret");
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
     const eve = mlKemKeygen();
     await expect(decryptFromZentity(bundle, eve.secretKey)).rejects.toThrow();
@@ -29,7 +31,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
   it("tampered kemCipherText → failure", async () => {
     const data = new TextEncoder().encode("secret");
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
     const tampered = { ...bundle };
     const kemBytes = Buffer.from(tampered.kemCipherText, "base64");
@@ -45,7 +47,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
   it("tampered AES-GCM ciphertext → failure", async () => {
     const data = new TextEncoder().encode("secret");
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
     const tampered = { ...bundle };
     const ctBytes = Buffer.from(tampered.ciphertext, "base64");
@@ -62,8 +64,8 @@ describe("compliance encryption ML-KEM-768", () => {
   it("same data produces different ciphertext each time (fresh KEM + IV)", async () => {
     const data = new TextEncoder().encode("determinism-check");
 
-    const a = await encryptForRp(data, rpPublicKeyBase64);
-    const b = await encryptForRp(data, rpPublicKeyBase64);
+    const a = await encryptForRp(data, rpPublicKeyBase64, ctx);
+    const b = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
     expect(a.kemCipherText).not.toBe(b.kemCipherText);
     expect(a.iv).not.toBe(b.iv);
@@ -72,7 +74,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
   it("handles empty data", async () => {
     const data = new Uint8Array(0);
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
     const recovered = await decryptFromZentity(bundle, secretKey);
 
     expect(recovered).toEqual(data);
@@ -80,16 +82,58 @@ describe("compliance encryption ML-KEM-768", () => {
 
   it("handles large data (50KB)", async () => {
     const data = crypto.getRandomValues(new Uint8Array(1024 * 50));
-    const bundle = await encryptForRp(data, rpPublicKeyBase64);
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
     const recovered = await decryptFromZentity(bundle, secretKey);
 
     expect(recovered).toEqual(data);
   });
 
+  it("bundle includes clientId and userId", async () => {
+    const data = new TextEncoder().encode("context-check");
+    const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
+
+    expect(bundle.clientId).toBe(ctx.clientId);
+    expect(bundle.userId).toBe(ctx.userId);
+  });
+
+  describe("AAD binding", () => {
+    it("mismatched userId → AES-GCM failure (cross-user substitution blocked)", async () => {
+      const data = new TextEncoder().encode("user-bound");
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
+
+      const forged = { ...bundle, userId: "user-eve-999" };
+      await expect(decryptFromZentity(forged, secretKey)).rejects.toThrow();
+    });
+
+    it("mismatched clientId → AES-GCM failure (cross-RP substitution blocked)", async () => {
+      const data = new TextEncoder().encode("rp-bound");
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
+
+      const forged = { ...bundle, clientId: "rp-evil-exchange" };
+      await expect(decryptFromZentity(forged, secretKey)).rejects.toThrow();
+    });
+
+    it("both clientId and userId mismatched → failure", async () => {
+      const data = new TextEncoder().encode("double-mismatch");
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
+
+      const forged = { ...bundle, clientId: "rp-evil", userId: "user-eve" };
+      await expect(decryptFromZentity(forged, secretKey)).rejects.toThrow();
+    });
+
+    it("correct context → success", async () => {
+      const data = new TextEncoder().encode("correct-context");
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
+
+      const recovered = await decryptFromZentity(bundle, secretKey);
+      expect(recovered).toEqual(data);
+    });
+  });
+
   describe("attack vectors", () => {
     it("tampered IV → AES-GCM failure", async () => {
       const data = new TextEncoder().encode("secret");
-      const bundle = await encryptForRp(data, rpPublicKeyBase64);
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
       const tampered = { ...bundle };
       const ivBytes = Buffer.from(tampered.iv, "base64");
@@ -105,7 +149,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
     it("alg field tampering does not bypass decryption checks", async () => {
       const data = new TextEncoder().encode("secret");
-      const bundle = await encryptForRp(data, rpPublicKeyBase64);
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
       // Forge the alg field — cryptographic verification is key-based, not alg-based
       const forged = { ...bundle, alg: "RSA-OAEP" as "ML-KEM-768" };
@@ -138,6 +182,8 @@ describe("compliance encryption ML-KEM-768", () => {
         ciphertext: Buffer.from(Buffer.concat([encrypted, authTag])).toString(
           "base64"
         ),
+        clientId: ctx.clientId,
+        userId: ctx.userId,
       };
 
       // Attempt to decrypt recovery bundle with compliance RP key → must fail
@@ -146,7 +192,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
     it("truncated kemCipherText → size validation failure", async () => {
       const data = new TextEncoder().encode("secret");
-      const bundle = await encryptForRp(data, rpPublicKeyBase64);
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
       const tampered = { ...bundle };
       tampered.kemCipherText = Buffer.from(new Uint8Array(100)).toString(
@@ -158,7 +204,7 @@ describe("compliance encryption ML-KEM-768", () => {
 
     it("empty kemCipherText → rejection", async () => {
       const data = new TextEncoder().encode("secret");
-      const bundle = await encryptForRp(data, rpPublicKeyBase64);
+      const bundle = await encryptForRp(data, rpPublicKeyBase64, ctx);
 
       const tampered = { ...bundle };
       tampered.kemCipherText = "";

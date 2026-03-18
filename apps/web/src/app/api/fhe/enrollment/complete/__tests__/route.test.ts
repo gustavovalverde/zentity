@@ -48,6 +48,9 @@ const VALID_WRAPPED_DEK = JSON.stringify({
   iv: "dGVzdGl2MTIzNDU2",
   ciphertext: "ZW5jcnlwdGVk",
 });
+const VALID_BLOB_HASH =
+  "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
+const VALID_BLOB_SIZE = 123;
 
 const makeRequest = (payload: unknown) =>
   new Request("http://localhost/api/fhe/enrollment/complete", {
@@ -107,6 +110,8 @@ describe("fhe enrollment completion route", () => {
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
       })
     );
 
@@ -126,8 +131,8 @@ describe("fhe enrollment completion route", () => {
         secretId: "secret-1",
         secretType: "fhe_keys",
         blobRef: "blob-ref",
-        blobHash: "blob-hash",
-        blobSize: 123,
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
       },
     });
     enrollmentMocks.getFheEnrollmentContext.mockResolvedValue({
@@ -145,6 +150,8 @@ describe("fhe enrollment completion route", () => {
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
       })
     );
 
@@ -165,8 +172,8 @@ describe("fhe enrollment completion route", () => {
         secretId: "secret-1",
         secretType: "fhe_keys",
         blobRef: "blob-ref",
-        blobHash: "blob-hash",
-        blobSize: 123,
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
       },
     });
     enrollmentMocks.getFheEnrollmentContext.mockResolvedValue({
@@ -185,6 +192,8 @@ describe("fhe enrollment completion route", () => {
         credentialId: "cred",
         keyId: "key",
         envelopeFormat: "msgpack",
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
       })
     );
 
@@ -200,8 +209,8 @@ describe("fhe enrollment completion route", () => {
         userId: "user-1",
         secretType: "fhe_keys",
         blobRef: "blob-ref",
-        blobHash: "blob-hash",
-        blobSize: 123,
+        blobHash: VALID_BLOB_HASH,
+        blobSize: VALID_BLOB_SIZE,
         metadata: { envelopeFormat: "msgpack", keyId: "key" },
       })
     );

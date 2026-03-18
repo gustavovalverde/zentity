@@ -302,7 +302,7 @@ export function FheEnrollmentDialog({
               )
             ).keyId;
 
-          await persistFheKeyId(keyId);
+          await persistFheKeyId(keyId, existingKeys.publicKeyFingerprint);
           await updateIdentityStatus(keyId);
           return true;
         }
@@ -380,6 +380,7 @@ export function FheEnrollmentDialog({
               serverKeyBytes: preGenerated.storedKeys.serverKey,
               storedKeys: preGenerated.storedKeys,
               preRegisteredKeyId: preGenerated.keyId,
+              publicKeyFingerprint: preGenerated.publicKeyFingerprint,
             };
           })()
         : await prepareFheKeyEnrollment({
@@ -405,7 +406,7 @@ export function FheEnrollmentDialog({
       }
 
       advanceStage("uploading");
-      await uploadSecretBlob({
+      const uploadResult = await uploadSecretBlob({
         secretId: enrollment.secretId,
         secretType: SECRET_TYPES.FHE_KEYS,
         payload: enrollment.encryptedBlob,
@@ -449,6 +450,9 @@ export function FheEnrollmentDialog({
           keyId,
           envelopeFormat: enrollment.envelopeFormat,
           baseCommitment,
+          blobHash: uploadResult.blobHash,
+          blobSize: uploadResult.blobSize,
+          publicKeyFingerprint: enrollment.publicKeyFingerprint,
         }),
       });
       if (!completeResponse.ok) {
@@ -490,9 +494,18 @@ export function FheEnrollmentDialog({
 
       advanceStage("generating");
       const preGenerated = await getPreGeneratedKeys();
-      const storedKeys = preGenerated
-        ? preGenerated.storedKeys
-        : (await generateFheKeyMaterialForStorage()).storedKeys;
+      let storedKeys: Awaited<
+        ReturnType<typeof generateFheKeyMaterialForStorage>
+      >["storedKeys"];
+      let fingerprint: string;
+      if (preGenerated) {
+        storedKeys = preGenerated.storedKeys;
+        fingerprint = preGenerated.publicKeyFingerprint;
+      } else {
+        const generated = await generateFheKeyMaterialForStorage();
+        storedKeys = generated.storedKeys;
+        fingerprint = generated.publicKeyFingerprint;
+      }
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.OPAQUE,
@@ -535,7 +548,7 @@ export function FheEnrollmentDialog({
             ).keyId;
           })();
 
-      await persistFheKeyId(keyId);
+      await persistFheKeyId(keyId, fingerprint);
       await updateIdentityStatus(keyId);
     },
     [password, updateIdentityStatus, advanceStage]
@@ -566,9 +579,18 @@ export function FheEnrollmentDialog({
 
       advanceStage("generating");
       const preGeneratedNew = await getPreGeneratedKeys();
-      const storedKeys = preGeneratedNew
-        ? preGeneratedNew.storedKeys
-        : (await generateFheKeyMaterialForStorage()).storedKeys;
+      let storedKeysNew: Awaited<
+        ReturnType<typeof generateFheKeyMaterialForStorage>
+      >["storedKeys"];
+      let fingerprintNew: string;
+      if (preGeneratedNew) {
+        storedKeysNew = preGeneratedNew.storedKeys;
+        fingerprintNew = preGeneratedNew.publicKeyFingerprint;
+      } else {
+        const generated = await generateFheKeyMaterialForStorage();
+        storedKeysNew = generated.storedKeys;
+        fingerprintNew = generated.publicKeyFingerprint;
+      }
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.OPAQUE,
@@ -584,7 +606,7 @@ export function FheEnrollmentDialog({
 
       advanceStage("encrypting");
       await storeFheKeysWithCredential({
-        keys: storedKeys,
+        keys: storedKeysNew,
         credential: {
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
@@ -603,15 +625,15 @@ export function FheEnrollmentDialog({
               await fetchMsgpack<{ keyId: string }>(
                 "/api/fhe/keys/register",
                 {
-                  serverKey: storedKeys.serverKey,
-                  publicKey: storedKeys.publicKey,
+                  serverKey: storedKeysNew.serverKey,
+                  publicKey: storedKeysNew.publicKey,
                 },
                 { credentials: "include" }
               )
             ).keyId;
           })();
 
-      await persistFheKeyId(keyId);
+      await persistFheKeyId(keyId, fingerprintNew);
       await updateIdentityStatus(keyId);
     },
     [password, updateIdentityStatus, advanceStage]
@@ -664,9 +686,18 @@ export function FheEnrollmentDialog({
 
       advanceStage("generating");
       const preGeneratedWallet = await getPreGeneratedKeys();
-      const storedKeys = preGeneratedWallet
-        ? preGeneratedWallet.storedKeys
-        : (await generateFheKeyMaterialForStorage()).storedKeys;
+      let storedKeysWallet: Awaited<
+        ReturnType<typeof generateFheKeyMaterialForStorage>
+      >["storedKeys"];
+      let fingerprintWallet: string;
+      if (preGeneratedWallet) {
+        storedKeysWallet = preGeneratedWallet.storedKeys;
+        fingerprintWallet = preGeneratedWallet.publicKeyFingerprint;
+      } else {
+        const generated = await generateFheKeyMaterialForStorage();
+        storedKeysWallet = generated.storedKeys;
+        fingerprintWallet = generated.publicKeyFingerprint;
+      }
 
       const secretParams = await deriveBindingSecret({
         authMode: AuthMode.WALLET,
@@ -682,7 +713,7 @@ export function FheEnrollmentDialog({
 
       advanceStage("encrypting");
       await storeFheKeysWithCredential({
-        keys: storedKeys,
+        keys: storedKeysWallet,
         credential: {
           type: "wallet",
           context: {
@@ -708,15 +739,15 @@ export function FheEnrollmentDialog({
               await fetchMsgpack<{ keyId: string }>(
                 "/api/fhe/keys/register",
                 {
-                  serverKey: storedKeys.serverKey,
-                  publicKey: storedKeys.publicKey,
+                  serverKey: storedKeysWallet.serverKey,
+                  publicKey: storedKeysWallet.publicKey,
                 },
                 { credentials: "include" }
               )
             ).keyId;
           })();
 
-      await persistFheKeyId(keyId);
+      await persistFheKeyId(keyId, fingerprintWallet);
       await updateIdentityStatus(keyId);
     },
     [wallet, updateIdentityStatus, advanceStage]

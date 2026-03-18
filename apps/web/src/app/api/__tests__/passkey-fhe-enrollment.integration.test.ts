@@ -81,6 +81,11 @@ describe("passkey FHE enrollment integration", () => {
     );
 
     expect(blobResponse.status).toBe(201);
+    const blobMeta = (await blobResponse.json()) as {
+      blobRef: string;
+      blobHash: string;
+      blobSize: number;
+    };
 
     authMocks.requireSession.mockResolvedValue({
       ok: true,
@@ -102,6 +107,8 @@ describe("passkey FHE enrollment integration", () => {
           credentialId: "credential-1",
           keyId: "key-1",
           envelopeFormat: "msgpack",
+          blobHash: blobMeta.blobHash,
+          blobSize: blobMeta.blobSize,
         }),
       })
     );

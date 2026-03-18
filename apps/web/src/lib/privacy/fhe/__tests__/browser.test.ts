@@ -93,7 +93,10 @@ describe("crypto-client FHE", () => {
     expect(payload.serverKey).toEqual(new Uint8Array([8]));
     expect(payload.publicKey).toEqual(new Uint8Array([9]));
 
-    expect(tfheMocks.persistFheKeyId).toHaveBeenCalledWith("new-key");
+    expect(tfheMocks.persistFheKeyId).toHaveBeenCalledWith(
+      "new-key",
+      undefined
+    );
     expect(result).toEqual({ keyId: "new-key" });
   });
 

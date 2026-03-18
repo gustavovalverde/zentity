@@ -193,7 +193,6 @@ export async function GET(request: Request): Promise<Response> {
     headers: {
       "Content-Type": "application/octet-stream",
       "Cache-Control": "no-store",
-      ...(secret.blobHash ? { "X-Blob-Hash": secret.blobHash } : {}),
       ...(secret.blobSize ? { "Content-Length": String(secret.blobSize) } : {}),
     },
   });

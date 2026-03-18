@@ -19,6 +19,7 @@ export interface StoredFheKeys {
   createdAt: string;
   keyId?: string | undefined;
   publicKey: Uint8Array;
+  publicKeyFingerprint?: string | undefined;
   serverKey: Uint8Array;
 }
 
@@ -59,6 +60,10 @@ function deserializeKeys(
     serverKey: parsed.serverKey,
     createdAt: parsed.createdAt,
     keyId: typeof metadata?.keyId === "string" ? metadata.keyId : undefined,
+    publicKeyFingerprint:
+      typeof metadata?.publicKeyFingerprint === "string"
+        ? metadata.publicKeyFingerprint
+        : undefined,
   };
 }
 
@@ -156,18 +161,42 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
   }
 
   const keys = deserializeKeys(result.plaintext, result.metadata);
+
+  if (keys.publicKeyFingerprint) {
+    const { computePublicKeyFingerprint } = await import("./fingerprint");
+    const actual = await computePublicKeyFingerprint(keys.publicKey);
+    if (actual !== keys.publicKeyFingerprint) {
+      throw new Error("FHE public key fingerprint mismatch.");
+    }
+  }
+
   cacheKeys(result.secretId, keys);
   return keys;
 }
 
-export async function persistFheKeyId(keyId: string): Promise<void> {
+export async function persistFheKeyId(
+  keyId: string,
+  publicKeyFingerprint?: string
+): Promise<void> {
+  let fingerprint = publicKeyFingerprint;
+  if (!fingerprint && cached?.keys.publicKey) {
+    const { computePublicKeyFingerprint } = await import("./fingerprint");
+    fingerprint = await computePublicKeyFingerprint(cached.keys.publicKey);
+  }
+
   await trpc.secrets.updateSecretMetadata.mutate({
     secretType: SECRET_TYPE,
-    metadata: { keyId },
+    metadata: {
+      keyId,
+      ...(fingerprint ? { publicKeyFingerprint: fingerprint } : {}),
+    },
   });
 
   if (cached) {
     cached.keys.keyId = keyId;
+    if (fingerprint) {
+      cached.keys.publicKeyFingerprint = fingerprint;
+    }
   }
 }
 

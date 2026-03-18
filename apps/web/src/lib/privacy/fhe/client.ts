@@ -104,7 +104,7 @@ export async function ensureFheKeyRegistration(params?: {
         },
         { credentials: "include" }
       );
-      await persistFheKeyId(response.keyId);
+      await persistFheKeyId(response.keyId, keyMaterial.publicKeyFingerprint);
       resolvePromise?.({ keyId: response.keyId });
     } catch (error) {
       rejectPromise?.(error);
@@ -132,9 +132,11 @@ export async function prepareFheKeyEnrollment(params: {
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
   storedKeys: StoredFheKeys;
+  publicKeyFingerprint: string;
 }> {
   params.onStage?.("generate-keys");
-  const { storedKeys } = await generateFheKeyMaterialForStorage();
+  const { storedKeys, publicKeyFingerprint } =
+    await generateFheKeyMaterialForStorage();
   params.onStage?.("encrypt-keys");
   const envelope = await createFheKeyEnvelope({
     keys: storedKeys,
@@ -146,6 +148,7 @@ export async function prepareFheKeyEnrollment(params: {
     publicKeyBytes: storedKeys.publicKey,
     serverKeyBytes: storedKeys.serverKey,
     storedKeys,
+    publicKeyFingerprint,
   };
 }
 

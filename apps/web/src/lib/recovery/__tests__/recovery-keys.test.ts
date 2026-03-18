@@ -194,7 +194,8 @@ describe("recovery-keys ML-KEM round-trip", () => {
     const rpKeys = mlKemKeygen();
     const bundle = await encryptForRp(
       new TextEncoder().encode("compliance-data"),
-      bytesToBase64(rpKeys.publicKey)
+      bytesToBase64(rpKeys.publicKey),
+      { clientId: "rp-test", userId: "user-test" }
     );
 
     expect(() =>

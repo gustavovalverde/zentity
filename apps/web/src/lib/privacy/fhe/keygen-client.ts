@@ -2,6 +2,8 @@
 
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
+import { computePublicKeyFingerprint } from "./fingerprint";
+
 interface WorkerRequest {
   id: number;
   type: "generate_key_material";
@@ -34,7 +36,7 @@ interface WorkerError {
 
 type WorkerMessage = WorkerSuccess | WorkerInitComplete | WorkerError;
 
-export interface FheKeygenResult {
+interface RawKeygenResult {
   durationMs: number;
   storedKeys: {
     clientKey: Uint8Array;
@@ -44,12 +46,16 @@ export interface FheKeygenResult {
   };
 }
 
+export interface FheKeygenResult extends RawKeygenResult {
+  publicKeyFingerprint: string;
+}
+
 let workerInstance: Worker | null = null;
 let nextId = 1;
 let initSent = false;
 const pending = new Map<
   number,
-  { resolve: (value: FheKeygenResult) => void; reject: (error: Error) => void }
+  { resolve: (value: RawKeygenResult) => void; reject: (error: Error) => void }
 >();
 
 function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
@@ -115,15 +121,20 @@ function getWorker(): Worker {
   return workerInstance;
 }
 
-export function generateFheKeyMaterialInWorker(): Promise<FheKeygenResult> {
+export async function generateFheKeyMaterialInWorker(): Promise<FheKeygenResult> {
   const worker = getWorker();
   const id = nextId++;
   const payload: WorkerRequest = { id, type: "generate_key_material" };
 
-  return new Promise((resolve, reject) => {
+  const raw = await new Promise<RawKeygenResult>((resolve, reject) => {
     pending.set(id, { resolve, reject });
     worker.postMessage(payload);
   });
+
+  const publicKeyFingerprint = await computePublicKeyFingerprint(
+    raw.storedKeys.publicKey
+  );
+  return { ...raw, publicKeyFingerprint };
 }
 
 /**

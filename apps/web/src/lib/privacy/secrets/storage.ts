@@ -48,6 +48,9 @@ export async function uploadSecretBlob(params: {
       : params.payload;
   const body = new Uint8Array(payloadBytes.byteLength);
   body.set(payloadBytes);
+
+  const clientHash = await sha256Hex(body);
+
   const response = await fetchBinary("/api/secrets/blob", {
     method: "POST",
     headers,
@@ -64,15 +67,17 @@ export async function uploadSecretBlob(params: {
 
   const result = (await response.json()) as {
     blobRef: string;
-    blobHash: string;
-    blobSize: number;
   };
 
-  if (!(result?.blobRef && result?.blobHash)) {
+  if (!result?.blobRef) {
     throw new Error("Encrypted secret blob response missing metadata.");
   }
 
-  return result;
+  return {
+    blobRef: result.blobRef,
+    blobHash: clientHash,
+    blobSize: body.byteLength,
+  };
 }
 
 /**
@@ -101,11 +106,7 @@ export async function downloadSecretBlob(
 
   const bytes = new Uint8Array(await response.arrayBuffer());
 
-  const headerHash = response.headers.get("X-Blob-Hash")?.trim() || null;
-  const expectedHash =
-    options?.expectedHash?.trim().toLowerCase() ||
-    headerHash?.toLowerCase() ||
-    null;
+  const expectedHash = options?.expectedHash?.trim().toLowerCase() || null;
 
   if (expectedHash) {
     const actualHash = await sha256Hex(bytes);

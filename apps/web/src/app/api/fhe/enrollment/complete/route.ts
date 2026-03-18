@@ -30,6 +30,12 @@ const enrollmentSchema = z.object({
   keyId: z.string().min(1),
   envelopeFormat: z.enum(["json", "msgpack"]),
   baseCommitment: z.string().optional(),
+  blobHash: z.string().regex(/^[a-f0-9]{64}$/),
+  blobSize: z.number().int().nonnegative(),
+  publicKeyFingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 });
 
 export async function POST(request: Request) {
@@ -98,6 +104,16 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    enrollment.blobHash !== registration.blob.blobHash ||
+    enrollment.blobSize !== registration.blob.blobSize
+  ) {
+    return NextResponse.json(
+      { error: "Client blob metadata does not match server upload record." },
+      { status: 400 }
+    );
+  }
+
   return await withSpan(
     "fhe.enrollment.complete",
     { "fhe.key_id": enrollment.keyId },
@@ -120,11 +136,14 @@ export async function POST(request: Request) {
         secretType,
         encryptedBlob: "",
         blobRef: registration.blob.blobRef,
-        blobHash: registration.blob.blobHash,
-        blobSize: registration.blob.blobSize,
+        blobHash: enrollment.blobHash,
+        blobSize: enrollment.blobSize,
         metadata: {
           envelopeFormat: enrollment.envelopeFormat,
           keyId: enrollment.keyId,
+          ...(enrollment.publicKeyFingerprint
+            ? { publicKeyFingerprint: enrollment.publicKeyFingerprint }
+            : {}),
         },
       });
 

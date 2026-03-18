@@ -6,6 +6,7 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 interface BackgroundKeygenResult {
   keyId: string;
+  publicKeyFingerprint: string;
   storedKeys: FheKeygenResult["storedKeys"];
 }
 
@@ -40,6 +41,7 @@ async function runBackgroundKeygen(): Promise<BackgroundKeygenResult | null> {
     const result: BackgroundKeygenResult = {
       storedKeys: keygen.storedKeys,
       keyId: registration.keyId,
+      publicKeyFingerprint: keygen.publicKeyFingerprint,
     };
 
     bgResult = result;

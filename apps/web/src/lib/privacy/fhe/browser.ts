@@ -208,6 +208,7 @@ async function getOrCreateFheKeyMaterial(): Promise<FheKeyMaterial> {
 export async function generateFheKeyMaterialForStorage(): Promise<{
   storedKeys: StoredFheKeys;
   durationMs: number;
+  publicKeyFingerprint: string;
 }> {
   const start = performance.now();
   let result: "ok" | "error" = "ok";
@@ -238,6 +239,7 @@ export async function getOrCreateFheKeyRegistrationMaterial(params?: {
   publicKeyBytes: Uint8Array;
   serverKeyBytes: Uint8Array;
   keyId?: string | undefined;
+  publicKeyFingerprint?: string | undefined;
 }> {
   const existing = await getStoredFheKeys();
   if (existing) {
@@ -245,6 +247,7 @@ export async function getOrCreateFheKeyRegistrationMaterial(params?: {
       publicKeyBytes: existing.publicKey,
       serverKeyBytes: existing.serverKey,
       keyId: existing.keyId,
+      publicKeyFingerprint: existing.publicKeyFingerprint,
     };
   }
 
@@ -254,16 +257,21 @@ export async function getOrCreateFheKeyRegistrationMaterial(params?: {
     );
   }
 
-  const { storedKeys } = await generateFheKeyMaterialForStorage();
+  const { storedKeys, publicKeyFingerprint } =
+    await generateFheKeyMaterialForStorage();
   await storeFheKeys({ keys: storedKeys, enrollment: params.enrollment });
   return {
     publicKeyBytes: storedKeys.publicKey,
     serverKeyBytes: storedKeys.serverKey,
+    publicKeyFingerprint,
   };
 }
 
-export async function persistFheKeyId(keyId: string) {
-  await persistFheKeyIdInStore(keyId);
+export async function persistFheKeyId(
+  keyId: string,
+  publicKeyFingerprint?: string
+) {
+  await persistFheKeyIdInStore(keyId, publicKeyFingerprint);
 }
 
 export async function decryptFheBool(ciphertext: Uint8Array): Promise<boolean> {

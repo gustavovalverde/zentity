@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const SHA256_HEX_RE = /^[a-f0-9]{64}$/;
+
 // Hoist all mocks first
 const secretsMocks = vi.hoisted(() => ({
   storeSecretWithCredential: vi.fn(),
@@ -92,10 +94,14 @@ describe("fhe-key-store", () => {
 
     expect(trpcMocks.secrets.updateSecretMetadata.mutate).toHaveBeenCalledWith({
       secretType: "fhe_keys",
-      metadata: { keyId: "key-123" },
+      metadata: {
+        keyId: "key-123",
+        publicKeyFingerprint: expect.stringMatching(SHA256_HEX_RE),
+      },
     });
 
     const stored = await getStoredFheKeys();
     expect(stored?.keyId).toBe("key-123");
+    expect(stored?.publicKeyFingerprint).toMatch(SHA256_HEX_RE);
   });
 });

@@ -3,6 +3,7 @@ const textEncoder = new TextEncoder();
 export const SECRET_AAD_CONTEXT = "zentity-secret-aad";
 export const WRAP_AAD_CONTEXT = "zentity-wrap-aad";
 export const RECOVERY_AAD_CONTEXT = "zentity-recovery-dek";
+export const COMPLIANCE_AAD_CONTEXT = "zentity-compliance-rp";
 
 /**
  * Encode AAD parts with length-prefixing to prevent collision attacks.
