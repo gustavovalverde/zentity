@@ -493,6 +493,68 @@ erDiagram
     integer created_at
   }
 
+  %% ── FPA / CIBA auth challenge ──
+  OAUTH_CLIENT ||--o{ AUTH_CHALLENGE_SESSION : challenges
+  USERS ||--o{ AUTH_CHALLENGE_SESSION : authenticates
+
+  AUTH_CHALLENGE_SESSION {
+    text id PK
+    text auth_session UK
+    text client_id FK
+    text user_id FK
+    text state "pending | authenticated | code_issued"
+    text challenge_type "opaque | eip712 | redirect_to_web"
+  }
+
+  %% ── FROST recovery ──
+  USERS ||--o{ RECOVERY_CONFIGS : configures
+  RECOVERY_CONFIGS ||--o{ RECOVERY_CHALLENGES : triggers
+  RECOVERY_CONFIGS ||--o{ RECOVERY_GUARDIANS : enrolls
+  RECOVERY_CHALLENGES ||--o{ RECOVERY_GUARDIAN_APPROVALS : collects
+  RECOVERY_GUARDIANS ||--o{ RECOVERY_GUARDIAN_APPROVALS : approves
+  USERS ||--o{ RECOVERY_SECRET_WRAPPERS : wraps
+  USERS ||--o{ RECOVERY_IDENTIFIERS : identifies
+
+  RECOVERY_CONFIGS {
+    text id PK
+    text user_id FK
+    integer threshold
+    text frost_group_pubkey
+    text status "active | revoked"
+  }
+  RECOVERY_CHALLENGES {
+    text id PK
+    text user_id FK
+    text recovery_config_id FK
+    text status "pending | completed | applied"
+  }
+  RECOVERY_GUARDIANS {
+    text id PK
+    text recovery_config_id FK
+    text guardian_type "email | custodial"
+    integer participant_index
+  }
+  RECOVERY_GUARDIAN_APPROVALS {
+    text id PK
+    text challenge_id FK
+    text guardian_id FK
+  }
+  RECOVERY_SECRET_WRAPPERS {
+    text id PK
+    text user_id FK
+    text secret_id UK
+  }
+  RECOVERY_IDENTIFIERS {
+    text id PK
+    text user_id FK
+    text recovery_id UK
+  }
+  FROST_SIGNER_PINS {
+    text id PK
+    text signer_endpoint UK
+    text identity_pubkey
+  }
+
   %% ── Recovery key pinning ──
   USERS ||--o| RECOVERY_KEY_PINS : pins
 
