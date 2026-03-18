@@ -39,7 +39,8 @@
             "noNamespaceImport": "off"
           },
           "style": {
-            "useImportType": "off"
+            "useImportType": "off",
+            "noNestedTernary": "off"
           },
           "suspicious": {
             "noArrayIndexKey": "off"
@@ -51,7 +52,10 @@
       }
     },
     {
-      "includes": ["src/components/**/*.tsx"],
+      "includes": [
+        "src/components/exchange/**/*.tsx",
+        "src/components/wine/**/*.tsx"
+      ],
       "linter": {
         "rules": {
           "a11y": {

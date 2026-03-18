@@ -10,12 +10,12 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noEmit": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "erasableSyntaxOnly": true,
+    "noUncheckedSideEffectImports": true,
     "resolveJsonModule": true,
-    "outDir": "dist",
-    "rootDir": "src",
     "paths": {
       "@/*": ["./src/*"]
     }

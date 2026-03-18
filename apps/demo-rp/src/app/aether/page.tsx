@@ -61,9 +61,9 @@ export default function AetherPage() {
           amount: { currency: "USD", value: total.toFixed(2) },
         },
       ]),
-      ...(scenario.acrValues !== undefined
-        ? { acrValues: scenario.acrValues }
-        : {}),
+      ...(scenario.acrValues === undefined
+        ? {}
+        : { acrValues: scenario.acrValues }),
     });
   }, [userEmail, task, startFlow]);
 

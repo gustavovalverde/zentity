@@ -1,13 +1,16 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "exclude": ["types"],
+  "rules": {
+    "types": "warn"
+  },
+  "ignoreIssues": {
+    "src/components/ui/**": ["exports", "types"]
+  },
   "ignore": [
-    "src/components/ui/**",
     "scripts/**",
     "public/coi-serviceworker.js",
     "public/push-sw.js",
     "e2e/**",
-    "vitest.unit.config.mts",
     "src/test/client-only.ts",
     "src/test/server-only.ts"
   ],
@@ -22,11 +25,7 @@
     "buffer"
   ],
   "ignoreBinaries": ["nargo"],
-  "entry": [
-    "src/app/**/page.{ts,tsx}",
-    "src/app/**/layout.{ts,tsx}",
-    "src/app/**/route.{ts,tsx}",
-    "src/**/*.test.{ts,tsx}",
-    "src/**/*.integration.test.{ts,tsx}"
-  ]
+  "vitest": {
+    "config": ["vitest.config.mts", "vitest.unit.config.mts"]
+  }
 }

@@ -28,9 +28,9 @@ const dbSchema = {
 function createDb() {
   const client = createClient({
     url: env.DATABASE_URL,
-    ...(env.DATABASE_AUTH_TOKEN !== undefined
-      ? { authToken: env.DATABASE_AUTH_TOKEN }
-      : {}),
+    ...(env.DATABASE_AUTH_TOKEN === undefined
+      ? {}
+      : { authToken: env.DATABASE_AUTH_TOKEN }),
   });
   return drizzle(client, { schema: dbSchema });
 }

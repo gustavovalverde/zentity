@@ -24,11 +24,7 @@ export function VerifierScenarios({ onSelect }: VerifierScenariosProps) {
         Present to a Verifier
       </h3>
 
-      {vpFlow.state !== "idle" ? (
-        <div className="space-y-3">
-          <VpRequest flow={vpFlow} scenarioName={selectedScenario} />
-        </div>
-      ) : (
+      {vpFlow.state === "idle" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {VERIFIER_SCENARIOS.map((scenario) => (
             <Card
@@ -85,6 +81,10 @@ export function VerifierScenarios({ onSelect }: VerifierScenariosProps) {
               </CardContent>
             </Card>
           ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <VpRequest flow={vpFlow} scenarioName={selectedScenario} />
         </div>
       )}
     </div>

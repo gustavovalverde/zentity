@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
     "exactOptionalPropertyTypes": true,
@@ -11,11 +10,11 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
+    "module": "preserve",
     "resolveJsonModule": true,
-    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "erasableSyntaxOnly": true,
     "jsx": "react-jsx",
     "types": ["node"],
     "incremental": true,
@@ -28,7 +27,8 @@
       "@/*": ["./src/*"],
       "@/noir-circuits/*": ["./noir-circuits/*"],
       "@mattrglobal/pairing-crypto": ["./src/types/pairing-crypto.d.ts"]
-    }
+    },
+    "allowJs": true
   },
   "include": [
     "next-env.d.ts",

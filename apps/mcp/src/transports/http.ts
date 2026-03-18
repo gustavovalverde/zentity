@@ -13,6 +13,9 @@ import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
+const DPOP_PREFIX = /^DPoP\s+/i;
+const BEARER_PREFIX = /^Bearer\s+/i;
+
 let httpServerCredentials:
   | { clientId: string; dpopKey: DpopKeyPair }
   | undefined;
@@ -109,7 +112,7 @@ export function createApp(): Hono {
 
     const authCtx: AuthContext = {
       accessToken:
-        authHeader?.replace(/^DPoP\s+/i, "").replace(/^Bearer\s+/i, "") ?? "",
+        authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "",
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
       loginHint: (result.payload.sub as string) ?? "",

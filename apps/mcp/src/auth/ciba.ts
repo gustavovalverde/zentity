@@ -133,9 +133,9 @@ export async function requestCibaApproval(
     params.clientId,
     dpopKey,
     dpopNonce,
-    authResponse.interval != null
-      ? authResponse.interval * 1000
-      : DEFAULT_POLL_INTERVAL_MS,
+    authResponse.interval == null
+      ? DEFAULT_POLL_INTERVAL_MS
+      : authResponse.interval * 1000,
     authResponse.expires_in * 1000
   );
 }

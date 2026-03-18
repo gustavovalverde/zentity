@@ -19,7 +19,8 @@
     "lint:check": "biome check .",
     "lint:fix": "biome check --write --unsafe .",
     "type-check": "tsc -b",
-    "check-all": "pnpm run type-check && pnpm run lint:check",
+    "knip": "knip",
+    "check-all": "pnpm run type-check && pnpm run lint:check && pnpm run knip",
     "fix-all": "pnpm run type-check && pnpm run lint",
     "preview": "vite preview",
     "test": "vitest run"
