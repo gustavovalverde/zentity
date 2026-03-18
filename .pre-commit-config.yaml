@@ -104,6 +104,18 @@ repos:
         files: ^apps/landing/.*\.(ts|tsx|js|jsx|json|css)$
         pass_filenames: false
 
+  # ===========================================
+  # TypeScript/JavaScript (apps/mcp)
+  # ===========================================
+  - repo: local
+    hooks:
+      - id: mcp-test
+        name: MCP tests
+        entry: bash -c 'cd apps/mcp && pnpm test'
+        language: system
+        files: ^apps/mcp/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+
   # TypeScript type-checking (apps/web)
   - repo: local
     hooks:

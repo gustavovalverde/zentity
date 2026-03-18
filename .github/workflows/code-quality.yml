@@ -79,7 +79,7 @@ jobs:
             pre-commit-hygiene-${{ runner.os }}-
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         env:
-          SKIP: no-commit-to-branch,biome-check-web,biome-check-landing,tsc-check-web,tsc-check-landing,knip-check-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,cargo-fmt-signer,cargo-clippy-signer,commitlint
+          SKIP: no-commit-to-branch,biome-check-web,biome-check-landing,tsc-check-web,tsc-check-landing,knip-check-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,cargo-fmt-signer,cargo-clippy-signer,commitlint,lockfile-sync-web,lockfile-sync-demo-rp,lockfile-sync-landing,lockfile-sync-mcp,lockfile-sync-fhe,lockfile-sync-signer,mcp-test
 
   # ============================================
   # Commit & PR Quality

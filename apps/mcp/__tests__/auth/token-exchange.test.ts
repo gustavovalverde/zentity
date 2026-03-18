@@ -83,9 +83,7 @@ describe("Token Exchange", () => {
 
   it("retries with DPoP nonce on 400", async () => {
     const { extractDpopNonce } = await import("../../src/auth/dpop.js");
-    vi.mocked(extractDpopNonce)
-      .mockReturnValueOnce("nonce-1")
-      .mockReturnValueOnce("nonce-1");
+    vi.mocked(extractDpopNonce).mockReturnValueOnce("nonce-1");
 
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -210,9 +208,7 @@ describe("exchangeToken (RFC 8693)", () => {
 
   it("retries with DPoP nonce on 400", async () => {
     const { extractDpopNonce } = await import("../../src/auth/dpop.js");
-    vi.mocked(extractDpopNonce)
-      .mockReturnValueOnce("nonce-ex")
-      .mockReturnValueOnce("nonce-ex");
+    vi.mocked(extractDpopNonce).mockReturnValueOnce("nonce-ex");
 
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
