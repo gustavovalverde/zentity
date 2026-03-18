@@ -15,8 +15,8 @@ import crypto from "node:crypto";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { env } from "@/env";
 import { encodeAad } from "@/lib/privacy/primitives/aad";
+import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 
 import { db } from "../connection";
 import {
@@ -85,7 +85,7 @@ function computeCiphertextHash(
 ): string {
   const context = encodeAad([userId, attributeType]);
   return crypto
-    .createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .createHmac("sha256", getCiphertextHmacKey())
     .update(context)
     .update(ciphertext)
     .digest("hex");

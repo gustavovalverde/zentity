@@ -136,6 +136,7 @@ import {
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { computeRpNullifier } from "@/lib/identity/dedup";
+import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
 import { sendWebPush } from "@/lib/push/web-push";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
@@ -820,7 +821,7 @@ async function beforeAuthorizeVerifyConsentHmac(ctx: HookCtx) {
       : [];
 
   const expected = computeConsentHmac(
-    env.BETTER_AUTH_SECRET,
+    getConsentHmacKey(),
     userId,
     clientId,
     consent.referenceId,
@@ -926,7 +927,7 @@ async function afterConsentStoreHmac(ctx: HookCtx) {
       : [];
 
   const hmac = computeConsentHmac(
-    env.BETTER_AUTH_SECRET,
+    getConsentHmacKey(),
     userId,
     clientId,
     consent.referenceId,

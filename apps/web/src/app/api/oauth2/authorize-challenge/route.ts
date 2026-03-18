@@ -37,6 +37,7 @@ import {
 } from "@/lib/db/schema/auth-challenge";
 import { haipPushedRequests } from "@/lib/db/schema/haip";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { getOpaqueStateKey } from "@/lib/privacy/primitives/derived-keys";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
@@ -520,7 +521,7 @@ async function handleOpaqueStart(
   const encryptedState = await encryptServerLoginState({
     serverLoginState,
     userId: session.userId,
-    secret: env.BETTER_AUTH_SECRET,
+    secret: getOpaqueStateKey(),
   });
 
   await db
@@ -564,7 +565,7 @@ async function handleOpaqueFinish(
   try {
     const decrypted = await decryptServerLoginState({
       encryptedState: session.opaqueServerState,
-      secret: env.BETTER_AUTH_SECRET,
+      secret: getOpaqueStateKey(),
     });
 
     const { sessionKey } = server.finishLogin({

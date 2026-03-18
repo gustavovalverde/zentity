@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/env", () => ({
-  env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
+  env: { CLAIM_SIGNING_SECRET: "test-claim-signing-secret-at-least-32-chars" },
 }));
-
-// Mock server-only (no-op in test environment)
-vi.mock("server-only", () => ({}));
 
 import {
   type AttestationClaimPayload,

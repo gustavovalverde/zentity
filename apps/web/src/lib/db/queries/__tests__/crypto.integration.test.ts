@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { env } from "@/env";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
@@ -22,6 +21,7 @@ import {
 } from "@/lib/db/queries/crypto";
 import { encryptedAttributes } from "@/lib/db/schema/crypto";
 import { encodeAad } from "@/lib/privacy/primitives/aad";
+import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 function expectedHash(
@@ -31,7 +31,7 @@ function expectedHash(
 ): string {
   const context = encodeAad([userId, attributeType]);
   return crypto
-    .createHmac("sha256", env.BETTER_AUTH_SECRET)
+    .createHmac("sha256", getCiphertextHmacKey())
     .update(context)
     .update(ciphertext)
     .digest("hex");

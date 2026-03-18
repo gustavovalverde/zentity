@@ -4,7 +4,7 @@ import type { JWTPayload } from "jose";
 
 import { jwtVerify, SignJWT } from "jose";
 
-import { env } from "@/env";
+import { getClaimSigningKey } from "@/lib/privacy/primitives/derived-keys";
 
 const CLAIMS_ISSUER = "zentity-attestation";
 const CLAIMS_AUDIENCE = "zentity-claims";
@@ -68,8 +68,7 @@ export interface AttestationClaimPayload {
 }
 
 function getSigningKey(): Uint8Array {
-  const secret = env.BETTER_AUTH_SECRET;
-  return new TextEncoder().encode(secret);
+  return getClaimSigningKey();
 }
 
 export async function signAttestationClaim(

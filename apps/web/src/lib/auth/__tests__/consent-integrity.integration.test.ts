@@ -3,10 +3,10 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { env } from "@/env";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
 import { db } from "@/lib/db/connection";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
+import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 async function createTestClient(clientId: string) {
@@ -68,7 +68,7 @@ describe("consent scope HMAC integrity", () => {
 
     const scopes = ["openid", "profile"];
     const hmac = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       clientId,
       null,
@@ -85,7 +85,7 @@ describe("consent scope HMAC integrity", () => {
     // Recompute and verify
     const parsed = JSON.parse(consent.scopes) as string[];
     const recomputed = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       clientId,
       consent.referenceId,
@@ -101,7 +101,7 @@ describe("consent scope HMAC integrity", () => {
 
     const originalScopes = ["openid"];
     const hmac = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       clientId,
       null,
@@ -127,7 +127,7 @@ describe("consent scope HMAC integrity", () => {
     }
     const tamperedScopes = JSON.parse(consent.scopes) as string[];
     const recomputed = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       clientId,
       consent.referenceId,
@@ -148,7 +148,7 @@ describe("consent scope HMAC integrity", () => {
     expect(consent?.scopeHmac).toBeNull();
 
     const expected = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       clientId,
       null,
@@ -164,14 +164,14 @@ describe("consent scope HMAC integrity", () => {
 
     const scopes = ["openid"];
     const hmacA = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       "client-a",
       null,
       scopes
     );
     const hmacB = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       "client-b",
       null,
@@ -188,14 +188,14 @@ describe("consent scope HMAC integrity", () => {
 
     const scopes = ["openid"];
     const hmacA = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userA,
       "client-cross-user",
       null,
       scopes
     );
     const hmacB = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userB,
       "client-cross-user",
       null,
@@ -211,14 +211,14 @@ describe("consent scope HMAC integrity", () => {
 
     const scopes = ["openid"];
     const hmacOrg1 = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       "client-org",
       "org-1",
       scopes
     );
     const hmacOrg2 = computeConsentHmac(
-      env.BETTER_AUTH_SECRET,
+      getConsentHmacKey(),
       userId,
       "client-org",
       "org-2",

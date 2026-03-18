@@ -71,7 +71,9 @@ export const env = createEnv({
         "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production"
       ),
 
-    // Cryptographic secrets
+    // Cryptographic secrets (independent from BETTER_AUTH_SECRET)
+    CLAIM_SIGNING_SECRET: z.string().min(32),
+    CIPHERTEXT_HMAC_SECRET: z.string().min(32),
     KEY_ENCRYPTION_KEY: z
       .string()
       .optional()
@@ -207,6 +209,8 @@ export const env = createEnv({
     SIGNER_COORDINATOR_URL: process.env.SIGNER_COORDINATOR_URL,
     SIGNER_ENDPOINTS: process.env.SIGNER_ENDPOINTS,
     INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
+    CLAIM_SIGNING_SECRET: process.env.CLAIM_SIGNING_SECRET,
+    CIPHERTEXT_HMAC_SECRET: process.env.CIPHERTEXT_HMAC_SECRET,
     KEY_ENCRYPTION_KEY: process.env.KEY_ENCRYPTION_KEY,
     BBS_ISSUER_SECRET: process.env.BBS_ISSUER_SECRET,
     RECOVERY_ML_KEM_SECRET_KEY: process.env.RECOVERY_ML_KEM_SECRET_KEY,
