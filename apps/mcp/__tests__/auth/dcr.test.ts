@@ -64,6 +64,9 @@ describe("DCR", () => {
     expect(body.token_endpoint_auth_method).toBe("none");
     expect(body.grant_types).toContain("authorization_code");
     expect(body.grant_types).toContain("urn:openid:params:grant-type:ciba");
+    expect(body.grant_types).toContain(
+      "urn:ietf:params:oauth:grant-type:token-exchange"
+    );
   });
 
   it("reuses existing client_id", async () => {

@@ -21,5 +21,4 @@ export const config = {
   allowedOrigins: (
     process.env.MCP_ALLOWED_ORIGINS ?? "http://localhost:*,http://127.0.0.1:*"
   ).split(","),
-  internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN,
 };

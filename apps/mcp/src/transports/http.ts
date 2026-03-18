@@ -10,11 +10,13 @@ import type { DpopKeyPair } from "../auth/dpop.js";
 import { getOrCreateDpopKey } from "../auth/dpop.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
+import { exchangeToken } from "../auth/token-exchange.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
 const DPOP_PREFIX = /^DPoP\s+/i;
 const BEARER_PREFIX = /^Bearer\s+/i;
+const AUTH_ISSUER_SUFFIX = /\/api\/auth\/?$/;
 
 let httpServerCredentials:
   | { clientId: string; dpopKey: DpopKeyPair }
@@ -57,6 +59,24 @@ export function matchOrigin(
     }
   }
   return undefined;
+}
+
+/**
+ * Derive the canonical app audience from the discovered auth issuer.
+ * Zentity serves its issuer from `${appUrl}/api/auth`.
+ */
+export function resolveTokenExchangeAudience(issuer: string): string {
+  const normalizedIssuer = issuer.replace(/\/+$/, "");
+  if (!AUTH_ISSUER_SUFFIX.test(normalizedIssuer)) {
+    return normalizedIssuer;
+  }
+
+  const issuerUrl = new URL(normalizedIssuer);
+  const appPath = issuerUrl.pathname.replace(AUTH_ISSUER_SUFFIX, "");
+  issuerUrl.pathname = appPath || "/";
+  issuerUrl.search = "";
+  issuerUrl.hash = "";
+  return issuerUrl.toString().replace(/\/+$/, "");
 }
 
 /** Build the Hono app with all middleware and routes. Separated from `startHttp` for testability. */
@@ -110,12 +130,35 @@ export function createApp(): Hono {
       return c.json({ error: "Server not bootstrapped" }, 503);
     }
 
+    // RFC 8693 token exchange: exchange caller's token for an MCP-bound token
+    const callerToken =
+      authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "";
+    const callerSub = (result.payload.sub as string) ?? "";
+
+    let exchangedToken: string;
+    try {
+      const discovery = await discover(config.zentityUrl);
+      const exchangeResult = await exchangeToken({
+        tokenEndpoint: discovery.token_endpoint,
+        subjectToken: callerToken,
+        audience: resolveTokenExchangeAudience(discovery.issuer),
+        clientId: httpServerCredentials.clientId,
+        dpopKey: httpServerCredentials.dpopKey,
+      });
+      exchangedToken = exchangeResult.accessToken;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json(
+        { error: "token_exchange_failed", error_description: message },
+        502
+      );
+    }
+
     const authCtx: AuthContext = {
-      accessToken:
-        authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "",
+      accessToken: exchangedToken,
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
-      loginHint: (result.payload.sub as string) ?? "",
+      loginHint: callerSub,
     };
 
     // Store validated auth info for transport.handleRequest

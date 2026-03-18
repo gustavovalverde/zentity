@@ -34,6 +34,7 @@ export async function ensureClientRegistration(
       "authorization_code",
       "refresh_token",
       "urn:openid:params:grant-type:ciba",
+      "urn:ietf:params:oauth:grant-type:token-exchange",
     ],
     response_types: ["code"],
     subject_type: "public",

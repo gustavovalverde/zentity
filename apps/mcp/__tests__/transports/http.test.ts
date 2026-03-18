@@ -38,6 +38,22 @@ vi.mock("../../src/auth/token-auth.js", () => ({
   resetJwks: vi.fn(),
 }));
 
+vi.mock("../../src/auth/token-exchange.js", () => ({
+  exchangeToken: vi.fn().mockResolvedValue({
+    accessToken: "exchanged-token-123",
+    tokenType: "DPoP",
+    expiresIn: 3600,
+  }),
+}));
+
+vi.mock("../../src/auth/discovery.js", () => ({
+  discover: vi.fn().mockResolvedValue({
+    issuer: "http://localhost:3000/api/auth",
+    token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
+    authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+  }),
+}));
+
 vi.mock("../../src/server/index.js", () => ({
   createServer: vi.fn(() => ({
     server: { connect: vi.fn() },
@@ -45,9 +61,12 @@ vi.mock("../../src/server/index.js", () => ({
   })),
 }));
 
+import { discover } from "../../src/auth/discovery.js";
+import { exchangeToken } from "../../src/auth/token-exchange.js";
 import {
   createApp,
   matchOrigin,
+  resolveTokenExchangeAudience,
   setServerCredentials,
 } from "../../src/transports/http.js";
 
@@ -121,6 +140,16 @@ describe("HTTP transport middleware", () => {
 
   beforeEach(() => {
     mockValidateToken.mockReset();
+    vi.mocked(discover).mockResolvedValue({
+      issuer: "http://localhost:3000/api/auth",
+      token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
+      authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+    });
+    vi.mocked(exchangeToken).mockResolvedValue({
+      accessToken: "exchanged-token-123",
+      tokenType: "DPoP",
+      expiresIn: 3600,
+    });
     setServerCredentials({
       clientId: "test-client",
       dpopKey: {
@@ -131,14 +160,12 @@ describe("HTTP transport middleware", () => {
     app = createApp();
   });
 
-  // PRD case 8: Health endpoint accessible without auth
   it("serves /health without auth", async () => {
     const res = await app.request("/health");
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: "ok" });
   });
 
-  // PRD case 9: Metadata endpoint accessible without auth
   it("serves /.well-known/oauth-protected-resource without auth", async () => {
     const res = await app.request("/.well-known/oauth-protected-resource");
     expect(res.status).toBe(200);
@@ -148,7 +175,6 @@ describe("HTTP transport middleware", () => {
     expect(body.scopes_supported).toContain("openid");
   });
 
-  // PRD case 1: No Authorization header → 401 with resource_metadata
   it("returns 401 with resource_metadata when no auth header", async () => {
     mockValidateToken.mockResolvedValue(
       authError(401, "invalid_request", "Missing Authorization header")
@@ -165,7 +191,6 @@ describe("HTTP transport middleware", () => {
     expect(body.error).toBe("invalid_request");
   });
 
-  // PRD case 3: Expired JWT → 401 with error="invalid_token"
   it("returns 401 for expired token", async () => {
     mockValidateToken.mockResolvedValue(
       authError(401, "invalid_token", "Token has expired")
@@ -182,7 +207,6 @@ describe("HTTP transport middleware", () => {
     expect(body.error_description).toContain("expired");
   });
 
-  // PRD case 4: JWT with wrong issuer → 401
   it("returns 401 for token with wrong issuer", async () => {
     mockValidateToken.mockResolvedValue(
       authError(401, "invalid_token", "Unexpected issuer")
@@ -196,7 +220,6 @@ describe("HTTP transport middleware", () => {
     expect((await res.json()).error).toBe("invalid_token");
   });
 
-  // PRD case 5: Insufficient scopes → 403 with error="insufficient_scope"
   it("returns 403 for insufficient scopes", async () => {
     mockValidateToken.mockResolvedValue(
       authError(
@@ -219,8 +242,7 @@ describe("HTTP transport middleware", () => {
     expect(wwwAuth).not.toContain("resource_metadata");
   });
 
-  // PRD case 2: Valid JWT → MCP session created
-  it("creates MCP session with valid token", async () => {
+  it("creates MCP session with valid token after token exchange", async () => {
     mockValidateToken.mockResolvedValue(validPayload());
 
     const res = await app.request("/mcp", {
@@ -242,12 +264,68 @@ describe("HTTP transport middleware", () => {
       }),
     });
 
-    // MCP SDK returns 200 with session header on successful initialize
     expect(res.status).toBe(200);
     expect(res.headers.get("mcp-session-id")).toBeTruthy();
+    expect(exchangeToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjectToken: "valid-token",
+        audience: "http://localhost:3000",
+        clientId: "test-client",
+      })
+    );
   });
 
-  // PRD case 7: DPoP-bound token without proof → 401
+  it("derives token exchange audience from the discovered public issuer", async () => {
+    mockValidateToken.mockResolvedValue(validPayload());
+    vi.mocked(discover).mockResolvedValueOnce({
+      issuer: "https://public.example/base/api/auth",
+      token_endpoint: "http://internal-web:3000/api/auth/oauth2/token",
+      authorization_endpoint:
+        "https://public.example/base/api/auth/oauth2/authorize",
+    });
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token",
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "initialize",
+        id: 1,
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(exchangeToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audience: "https://public.example/base",
+      })
+    );
+  });
+
+  it("returns 502 when token exchange fails", async () => {
+    mockValidateToken.mockResolvedValue(validPayload());
+    vi.mocked(exchangeToken).mockRejectedValueOnce(
+      new Error("Token exchange failed: 400 invalid_grant")
+    );
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-token" },
+    });
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toBe("token_exchange_failed");
+  });
+
   it("returns 401 for DPoP token without proof", async () => {
     mockValidateToken.mockResolvedValue(
       authError(401, "invalid_token", "Missing DPoP proof header")
@@ -261,7 +339,6 @@ describe("HTTP transport middleware", () => {
     expect((await res.json()).error_description).toContain("DPoP");
   });
 
-  // PRD case 6: DPoP-bound token with valid proof → accepted
   it("accepts DPoP token with valid proof", async () => {
     mockValidateToken.mockResolvedValue({
       scheme: "DPoP",
@@ -297,7 +374,6 @@ describe("HTTP transport middleware", () => {
     expect(res.status).toBe(200);
   });
 
-  // PRD case 10: CORS — only localhost origins allowed
   it("sets CORS headers for allowed localhost origin", async () => {
     const res = await app.request("/health", {
       headers: { Origin: "http://localhost:3000" },
@@ -311,7 +387,6 @@ describe("HTTP transport middleware", () => {
     const res = await app.request("/health", {
       headers: { Origin: "https://evil.com" },
     });
-    // Hono CORS middleware returns empty string for disallowed origins
     const acao = res.headers.get("Access-Control-Allow-Origin");
     expect(acao === null || acao === "").toBe(true);
   });
@@ -334,6 +409,20 @@ describe("HTTP transport middleware", () => {
       "my-proof",
       "POST",
       expect.stringContaining("/mcp")
+    );
+  });
+});
+
+describe("resolveTokenExchangeAudience", () => {
+  it("strips the auth issuer suffix to recover the app audience", () => {
+    expect(
+      resolveTokenExchangeAudience("https://public.example/base/api/auth")
+    ).toBe("https://public.example/base");
+  });
+
+  it("falls back to the normalized issuer when the path is not an auth issuer", () => {
+    expect(resolveTokenExchangeAudience("https://public.example/custom/")).toBe(
+      "https://public.example/custom"
     );
   });
 });
