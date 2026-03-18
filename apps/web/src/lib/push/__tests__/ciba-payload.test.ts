@@ -89,13 +89,22 @@ describe("buildCibaPushPayload", () => {
     expect(payload.body).toBe("An application is requesting access");
   });
 
-  it("always sets title to 'Authorization Request'", () => {
+  it("defaults title to 'Authorization Request' when no agentName", () => {
     const payload = buildCibaPushPayload(
       { authReqId: "req-1", scope: "openid" },
       ORIGIN
     );
 
     expect(payload.title).toBe("Authorization Request");
+  });
+
+  it("uses agentName in title when provided", () => {
+    const payload = buildCibaPushPayload(
+      { authReqId: "req-1", scope: "openid", agentName: "Claude Code" },
+      ORIGIN
+    );
+
+    expect(payload.title).toBe("Claude Code requests approval");
   });
 });
 
