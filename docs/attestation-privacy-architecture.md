@@ -66,8 +66,8 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - **DPoP nonces**: server-issued single-use tokens prevent DPoP proof replay (RFC 9449).
 - **KB-JWT freshness**: verifiers enforce max age on Key Binding JWT timestamps.
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
-- **FHE ciphertext HMAC binding**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([userId, attributeType]) || ciphertext)` stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
-- **Consent scope HMAC**: `HMAC-SHA256(BETTER_AUTH_SECRET, encodeAad([context, userId, clientId, referenceId, sortedScopes]))` stored in `scope_hmac`. Detects DB-level scope escalation.
+- **FHE ciphertext HMAC binding**: HMAC-SHA256 keyed by `CIPHERTEXT_HMAC_SECRET` (HKDF-derived) over length-prefixed `[userId, attributeType, ciphertext]`, stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
+- **Consent scope HMAC**: HMAC-SHA256 keyed by an HKDF derivation of `BETTER_AUTH_SECRET` over length-prefixed `[context, userId, clientId, referenceId, sortedScopes]`, stored in `scope_hmac`. Detects DB-level scope escalation.
 - **JWKS private key encryption at rest**: AES-256-GCM envelope encryption via `KEY_ENCRYPTION_KEY` (required in production). Prevents token forgery from DB read access. Stored format: `{"v":1,"iv":"...","ct":"..."}`.
 - **JARM response encryption**: ECDH-ES P-256 key encrypts OID4VP presentation responses. Keys rotate every 90 days with grace period for in-flight decryption.
 

@@ -174,8 +174,8 @@ HMAC-SHA256 is used for three distinct server-side integrity purposes:
 | Purpose | Key | Input | Where stored |
 |---------|-----|-------|--------------|
 | Sybil deduplication | `DEDUP_HMAC_SECRET` | Identity attributes | `dedup_key` |
-| FHE ciphertext integrity | `BETTER_AUTH_SECRET` | `encodeAad([userId, attributeType]) \|\| ciphertext` | `ciphertext_hash` |
-| Consent scope integrity | `BETTER_AUTH_SECRET` | `encodeAad([context, userId, clientId, referenceId, sortedScopes])` | `scope_hmac` |
+| FHE ciphertext integrity | `CIPHERTEXT_HMAC_SECRET` (HKDF) | `encodeAad([userId, attributeType]) \|\| ciphertext` | `ciphertext_hash` |
+| Consent scope integrity | `BETTER_AUTH_SECRET` (HKDF) | `encodeAad([context, userId, clientId, referenceId, sortedScopes])` | `scope_hmac` |
 
 A fourth integrity mechanism uses **SHA-256** (not HMAC) for client-side key verification:
 

@@ -246,7 +246,7 @@ All credential types can support deferred preflight, but the UX differs:
 - **Wallet (EIP-712)**: request an EIP-712 signature during preflight; cache it for the session; store a wallet wrapper on `fhe_keys`.
 - **OPAQUE (password)**: preflight must include a password step-up. The export key only exists during the OPAQUE ceremony, so the user will need to enter their password at preflight time (or you must have captured it at sign-up time).
 
-This is the main reason teams sometimes choose a **custom flow** for OPAQUE (e.g., enroll at password sign-up / set-password time), while allowing passkey/wallet enrollment to be deferred.
+All three credential types use the same unified enrollment path (`storeFheKeysWithCredential`) during the deferred preflight. The OPAQUE path requires a password step-up at preflight time since the export key is ephemeral.
 
 #### What can go wrong (and how to mitigate it)
 
