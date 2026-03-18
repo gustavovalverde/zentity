@@ -1,6 +1,9 @@
 import "server-only";
 
+import crypto from "node:crypto";
+
 import { env } from "@/env";
+import { getSignerPin, pinSignerIdentity } from "@/lib/db/queries/recovery";
 
 type Ciphersuite = "secp256k1" | "ed25519";
 
@@ -9,6 +12,8 @@ interface SignerInfo {
   hpke_pubkey_signature: string | null;
   hpke_pubkey_verified: boolean;
   participant_id: number;
+  signer_id: string;
+  signer_identity_pubkey: string | null;
 }
 
 interface DkgInitResponse {
@@ -92,6 +97,78 @@ async function fetchSignerInfo(endpoint: string): Promise<SignerInfo> {
   return await fetchJson<SignerInfo>(`${endpoint}/signer/info`);
 }
 
+// DER-encoded SPKI prefix for Ed25519 public keys (12 bytes)
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+
+/**
+ * Verify an Ed25519 signature over the HPKE public key.
+ * Returns true if the signature is valid for the given identity pubkey.
+ */
+function verifyHpkeSignature(info: SignerInfo): boolean {
+  if (!(info.hpke_pubkey_signature && info.signer_identity_pubkey)) {
+    return false;
+  }
+
+  const message = Buffer.from(
+    `frost-signer-hpke|${info.signer_id}|${info.hpke_pubkey}`
+  );
+  const rawPubkey = Buffer.from(info.signer_identity_pubkey, "base64");
+  const derPubkey = Buffer.concat([ED25519_SPKI_PREFIX, rawPubkey]);
+  const keyObject = crypto.createPublicKey({
+    key: derPubkey,
+    format: "der",
+    type: "spki",
+  });
+  const signature = Buffer.from(info.hpke_pubkey_signature, "base64");
+
+  return crypto.verify(null, message, keyObject, signature);
+}
+
+/**
+ * Verify and pin HPKE key for a signer endpoint.
+ * - Pin exists → verify signature against pinned pubkey, throw on mismatch
+ * - No pin → verify signature, pin the identity pubkey on success
+ * - Missing signature when pin exists → throw
+ */
+async function verifyAndPinSignerKey(
+  endpoint: string,
+  info: SignerInfo
+): Promise<void> {
+  const existingPin = await getSignerPin(endpoint);
+
+  if (existingPin) {
+    if (!(info.hpke_pubkey_signature && info.signer_identity_pubkey)) {
+      throw new Error(
+        `Signer ${info.signer_id} at ${endpoint} returned no HPKE signature but has a pinned identity key`
+      );
+    }
+    if (existingPin.identityPubkey !== info.signer_identity_pubkey) {
+      throw new Error(
+        `Signer ${info.signer_id} at ${endpoint} identity key mismatch: expected ${existingPin.identityPubkey}, got ${info.signer_identity_pubkey}`
+      );
+    }
+    if (!verifyHpkeSignature(info)) {
+      throw new Error(
+        `Signer ${info.signer_id} at ${endpoint} HPKE pubkey signature verification failed`
+      );
+    }
+    return;
+  }
+
+  // First encounter — verify and pin
+  if (!(info.signer_identity_pubkey && verifyHpkeSignature(info))) {
+    throw new Error(
+      `Signer ${info.signer_id} at ${endpoint} HPKE pubkey signature verification failed on first contact`
+    );
+  }
+
+  await pinSignerIdentity({
+    id: crypto.randomUUID(),
+    signerEndpoint: endpoint,
+    identityPubkey: info.signer_identity_pubkey,
+  });
+}
+
 export async function createRecoveryKeySet(params: {
   threshold?: number | undefined;
   totalGuardians?: number | undefined;
@@ -114,14 +191,16 @@ export async function createRecoveryKeySet(params: {
     signerEndpoints.map((endpoint) => fetchSignerInfo(endpoint))
   );
 
-  // Log HPKE key verification status (TOFU: unverified on initial DKG)
-  for (const info of signerInfos) {
-    if (!info.hpke_pubkey_verified) {
-      console.warn(
-        `[FROST DKG] Signer ${info.participant_id} HPKE key unverified (TOFU bootstrap)`
-      );
-    }
-  }
+  // Verify HPKE key signatures and pin identity keys (TOFU on first DKG)
+  await Promise.all(
+    signerInfos.map((info, index) => {
+      const endpoint = signerEndpoints[index];
+      if (!endpoint) {
+        throw new Error(`Missing endpoint for signer index ${index}`);
+      }
+      return verifyAndPinSignerKey(endpoint, info);
+    })
+  );
 
   const participantHpke = toParticipantMap(
     signerInfos.map((info, index) => [

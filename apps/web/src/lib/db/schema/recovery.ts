@@ -170,5 +170,21 @@ export type NewRecoverySecretWrapper =
 export type RecoveryKeyPin = typeof recoveryKeyPins.$inferSelect;
 export type NewRecoveryKeyPin = typeof recoveryKeyPins.$inferInsert;
 
+export const frostSignerPins = sqliteTable(
+  "frost_signer_pins",
+  {
+    id: text("id").primaryKey(),
+    signerEndpoint: text("signer_endpoint").notNull(),
+    identityPubkey: text("identity_pubkey").notNull(),
+    pinnedAt: text("pinned_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("frost_signer_pins_endpoint_unique").on(table.signerEndpoint),
+  ]
+);
+
+export type FrostSignerPin = typeof frostSignerPins.$inferSelect;
+export type NewFrostSignerPin = typeof frostSignerPins.$inferInsert;
+
 export type RecoveryIdentifier = typeof recoveryIdentifiers.$inferSelect;
 export type NewRecoveryIdentifier = typeof recoveryIdentifiers.$inferInsert;

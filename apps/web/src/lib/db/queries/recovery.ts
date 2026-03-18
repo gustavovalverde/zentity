@@ -5,6 +5,8 @@ import { and, count, eq, gte } from "drizzle-orm";
 import { db } from "../connection";
 import { users } from "../schema/auth";
 import {
+  type FrostSignerPin,
+  frostSignerPins,
   type RecoveryChallenge,
   type RecoveryConfig,
   type RecoveryGuardian,
@@ -552,6 +554,48 @@ export async function pinRecoveryKey(params: {
     .get();
   if (!row) {
     throw new Error("Failed to pin recovery key.");
+  }
+  return row;
+}
+
+export async function getSignerPin(
+  endpoint: string
+): Promise<FrostSignerPin | null> {
+  const row = await db
+    .select()
+    .from(frostSignerPins)
+    .where(eq(frostSignerPins.signerEndpoint, endpoint))
+    .get();
+  return row ?? null;
+}
+
+export async function pinSignerIdentity(params: {
+  id: string;
+  signerEndpoint: string;
+  identityPubkey: string;
+}): Promise<FrostSignerPin> {
+  await db
+    .insert(frostSignerPins)
+    .values({
+      id: params.id,
+      signerEndpoint: params.signerEndpoint,
+      identityPubkey: params.identityPubkey,
+    })
+    .onConflictDoNothing()
+    .run();
+
+  const row = await db
+    .select()
+    .from(frostSignerPins)
+    .where(eq(frostSignerPins.signerEndpoint, params.signerEndpoint))
+    .get();
+  if (!row) {
+    throw new Error("Failed to pin signer identity.");
+  }
+  if (row.identityPubkey !== params.identityPubkey) {
+    throw new Error(
+      `Signer identity pin mismatch for ${params.signerEndpoint}.`
+    );
   }
   return row;
 }

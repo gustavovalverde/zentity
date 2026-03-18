@@ -220,22 +220,16 @@ pub async fn list_keys(signer: web::Data<SignerService>) -> HttpResponse {
 
 /// GET /signer/info
 ///
-/// Get signer information including HPKE public key.
-/// Returns `hpke_pubkey_signature` (null for initial DKG — TOFU bootstrap).
+/// Get signer information including HPKE public key and Ed25519 signature.
 #[tracing::instrument(skip(signer))]
 pub async fn info(signer: web::Data<SignerService>) -> HttpResponse {
-    let has_key_shares = signer.has_any_key_shares();
-    if !has_key_shares {
-        tracing::warn!(
-            participant_id = %signer.participant_id(),
-            "HPKE pubkey returned unsigned (TOFU: no existing FROST key shares)"
-        );
-    }
     HttpResponse::Ok().json(serde_json::json!({
         "participant_id": signer.participant_id(),
+        "signer_id": signer.signer_id(),
         "hpke_pubkey": signer.hpke_pubkey_base64(),
-        "hpke_pubkey_signature": serde_json::Value::Null,
-        "hpke_pubkey_verified": false
+        "hpke_pubkey_signature": signer.sign_hpke_pubkey(),
+        "signer_identity_pubkey": signer.identity_pubkey_base64(),
+        "hpke_pubkey_verified": true
     }))
 }
 

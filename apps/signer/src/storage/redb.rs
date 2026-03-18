@@ -24,6 +24,8 @@ const KEY_SHARES: TableDefinition<&str, &[u8]> = TableDefinition::new("key_share
 const SIGNING_NONCE_FINGERPRINTS: TableDefinition<&str, u8> =
     TableDefinition::new("signing_nonce_fingerprints");
 const HPKE_KEYS: TableDefinition<&str, &[u8]> = TableDefinition::new("hpke_keys");
+const SIGNER_IDENTITY_KEYS: TableDefinition<&str, &[u8]> =
+    TableDefinition::new("signer_identity_keys");
 const AUDIT_LOG: TableDefinition<u64, &[u8]> = TableDefinition::new("audit_log");
 
 /// Storage wrapper for ReDB.
@@ -56,6 +58,7 @@ impl Storage {
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
             let _ = write_txn.open_table(HPKE_KEYS)?;
+            let _ = write_txn.open_table(SIGNER_IDENTITY_KEYS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -80,6 +83,7 @@ impl Storage {
             let _ = write_txn.open_table(KEY_SHARES)?;
             let _ = write_txn.open_table(SIGNING_NONCE_FINGERPRINTS)?;
             let _ = write_txn.open_table(HPKE_KEYS)?;
+            let _ = write_txn.open_table(SIGNER_IDENTITY_KEYS)?;
             let _ = write_txn.open_table(AUDIT_LOG)?;
         }
         write_txn.commit()?;
@@ -335,6 +339,29 @@ impl Storage {
         Ok(table
             .get(signer_id)?
             .map(|v| String::from_utf8_lossy(v.value()).to_string()))
+    }
+
+    // =========================================================================
+    // Identity Keys (Signer — Ed25519 keypair for HPKE key authentication)
+    // =========================================================================
+
+    /// Store an Ed25519 identity secret key (raw 32 bytes).
+    pub fn put_identity_key(&self, signer_id: &str, secret_key_bytes: &[u8]) -> SignerResult<()> {
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut table = write_txn.open_table(SIGNER_IDENTITY_KEYS)?;
+            table.insert(signer_id, secret_key_bytes)?;
+        }
+        write_txn.commit()?;
+        tracing::info!(signer_id, "Persisted identity key");
+        Ok(())
+    }
+
+    /// Load a persisted Ed25519 identity secret key (raw 32 bytes).
+    pub fn get_identity_key(&self, signer_id: &str) -> SignerResult<Option<Vec<u8>>> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(SIGNER_IDENTITY_KEYS)?;
+        Ok(table.get(signer_id)?.map(|v| v.value().to_vec()))
     }
 
     // =========================================================================

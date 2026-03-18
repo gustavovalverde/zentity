@@ -11,10 +11,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Mutex;
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use ed25519_dalek::{Signer as _, SigningKey, VerifyingKey};
 use frost_ed25519 as frost_ed;
 use frost_secp256k1 as frost_secp;
 // Use frost's re-exported rand_core (0.6.4) for FROST operations
-use frost_secp::rand_core::OsRng;
+use frost_secp::rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
 use crate::config::Ciphersuite;
@@ -51,6 +52,8 @@ pub struct SignerService {
     ciphersuite: Ciphersuite,
     /// HPKE key pair for receiving encrypted DKG round-2 shares.
     hpke_keypair: HpkeKeyPair,
+    /// Ed25519 identity keypair for signing HPKE public keys.
+    identity_keypair: SigningKey,
     /// In-memory DKG state (cleared after finalization).
     /// Maps session_id -> DKG round 1 secret package.
     dkg_round1_secrets: Mutex<HashMap<String, StoredSecret>>,
@@ -65,6 +68,29 @@ pub struct SignerService {
 }
 
 impl SignerService {
+    /// Load a persisted Ed25519 identity keypair or generate and persist a new one.
+    fn load_or_create_identity_keypair(storage: &Storage, signer_id: &str) -> SigningKey {
+        if let Ok(Some(sk_bytes)) = storage.get_identity_key(signer_id) {
+            if let Ok(bytes) = <[u8; 32]>::try_from(sk_bytes.as_slice()) {
+                let key = SigningKey::from_bytes(&bytes);
+                tracing::info!(signer_id, "Loaded persisted identity key");
+                return key;
+            }
+            tracing::warn!(
+                signer_id,
+                "Persisted identity key is corrupt, generating new"
+            );
+        }
+
+        let mut secret = [0u8; 32];
+        OsRng.fill_bytes(&mut secret);
+        let key = SigningKey::from_bytes(&secret);
+        if let Err(e) = storage.put_identity_key(signer_id, key.as_bytes()) {
+            tracing::error!(signer_id, error = %e, "Failed to persist identity key");
+        }
+        key
+    }
+
     /// Load a persisted HPKE key pair or generate and persist a new one.
     fn load_or_create_hpke_keypair(storage: &Storage, signer_id: &str) -> HpkeKeyPair {
         if let Ok(Some(sk_base64)) = storage.get_hpke_key(signer_id) {
@@ -90,12 +116,14 @@ impl SignerService {
         ciphersuite: Ciphersuite,
     ) -> Self {
         let hpke_keypair = Self::load_or_create_hpke_keypair(&storage, &signer_id);
+        let identity_keypair = Self::load_or_create_identity_keypair(&storage, &signer_id);
         Self {
             storage,
             signer_id,
             participant_id,
             ciphersuite,
             hpke_keypair,
+            identity_keypair,
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
             used_nonce_fingerprints: Mutex::new(HashSet::new()),
@@ -112,12 +140,14 @@ impl SignerService {
         jwks_url: String,
     ) -> Self {
         let hpke_keypair = Self::load_or_create_hpke_keypair(&storage, &signer_id);
+        let identity_keypair = Self::load_or_create_identity_keypair(&storage, &signer_id);
         Self {
             storage,
             signer_id,
             participant_id,
             ciphersuite,
             hpke_keypair,
+            identity_keypair,
             dkg_round1_secrets: Mutex::new(HashMap::new()),
             signing_nonces: Mutex::new(HashMap::new()),
             used_nonce_fingerprints: Mutex::new(HashSet::new()),
@@ -141,7 +171,6 @@ impl SignerService {
     }
 
     /// Check if this signer has any stored FROST key shares from prior DKG sessions.
-    /// Used for HPKE key authentication: if no prior shares exist, TOFU model applies.
     pub fn has_any_key_shares(&self) -> bool {
         self.storage.has_any_shares(&self.signer_id)
     }
@@ -149,6 +178,26 @@ impl SignerService {
     /// Get this signer's configured ciphersuite.
     pub fn ciphersuite(&self) -> Ciphersuite {
         self.ciphersuite
+    }
+
+    /// Get this signer's ID.
+    pub fn signer_id(&self) -> &str {
+        &self.signer_id
+    }
+
+    /// Get this signer's Ed25519 identity public key (base64).
+    pub fn identity_pubkey_base64(&self) -> String {
+        let vk: VerifyingKey = self.identity_keypair.verifying_key();
+        BASE64.encode(vk.as_bytes())
+    }
+
+    /// Sign the HPKE public key with the Ed25519 identity key.
+    /// Message format: `frost-signer-hpke|{signer_id}|{hpke_pubkey_base64}`
+    pub fn sign_hpke_pubkey(&self) -> String {
+        let hpke_pubkey = self.hpke_pubkey_base64();
+        let message = format!("frost-signer-hpke|{}|{}", self.signer_id, hpke_pubkey);
+        let signature = self.identity_keypair.sign(message.as_bytes());
+        BASE64.encode(signature.to_bytes())
     }
 
     fn share_key(&self, group_pubkey: &str) -> String {
@@ -434,6 +483,7 @@ impl SignerService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::Verifier as _;
 
     fn create_test_signer(id: &str, participant_id: ParticipantId) -> SignerService {
         let storage = Storage::open_memory().expect("Failed to create test storage");
@@ -516,6 +566,62 @@ mod tests {
         assert!(second.is_err());
     }
 
-    // Full DKG flow test would require multiple signers - will be tested in integration tests
-    // Recovery message format tests are in frost::recovery_message::tests
+    #[test]
+    fn test_identity_key_persistence() {
+        let storage = Storage::open_memory().expect("Failed to create test storage");
+        let signer_a = SignerService::new(
+            storage.clone(),
+            "signer-1".to_string(),
+            ParticipantId::new_unwrap(1),
+            Ciphersuite::Secp256k1,
+        );
+        let pubkey_a = signer_a.identity_pubkey_base64();
+
+        // Same storage → same pubkey
+        let signer_b = SignerService::new(
+            storage,
+            "signer-1".to_string(),
+            ParticipantId::new_unwrap(1),
+            Ciphersuite::Secp256k1,
+        );
+        assert_eq!(signer_b.identity_pubkey_base64(), pubkey_a);
+    }
+
+    #[test]
+    fn test_hpke_pubkey_signature_roundtrip() {
+        let signer = create_test_signer("signer-1", ParticipantId::new_unwrap(1));
+        let sig_base64 = signer.sign_hpke_pubkey();
+        let sig_bytes = BASE64.decode(&sig_base64).expect("valid base64");
+        let sig =
+            ed25519_dalek::Signature::from_slice(&sig_bytes).expect("valid 64-byte signature");
+
+        let vk = signer.identity_keypair.verifying_key();
+        let message = format!(
+            "frost-signer-hpke|{}|{}",
+            signer.signer_id(),
+            signer.hpke_pubkey_base64()
+        );
+        vk.verify_strict(message.as_bytes(), &sig)
+            .expect("signature should verify");
+    }
+
+    #[test]
+    fn test_hpke_pubkey_signature_cross_signer_replay() {
+        let signer_a = create_test_signer("signer-a", ParticipantId::new_unwrap(1));
+        let signer_b = create_test_signer("signer-b", ParticipantId::new_unwrap(2));
+
+        // Signer A's signature with signer B's message must fail
+        let sig_a = BASE64
+            .decode(signer_a.sign_hpke_pubkey())
+            .expect("valid base64");
+        let sig = ed25519_dalek::Signature::from_slice(&sig_a).expect("valid signature");
+
+        let message_b = format!(
+            "frost-signer-hpke|{}|{}",
+            signer_b.signer_id(),
+            signer_b.hpke_pubkey_base64()
+        );
+        let vk_a = signer_a.identity_keypair.verifying_key();
+        assert!(vk_a.verify_strict(message_b.as_bytes(), &sig).is_err());
+    }
 }
