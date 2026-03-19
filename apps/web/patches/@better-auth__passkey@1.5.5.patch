@@ -1293,7 +1293,7 @@ index ac113814c396e7f3787a31b35ff61d0c106b6ec2..f98703ad7ca3f11591b9aabb4206beb1
 +	if (opts.registration?.requireSession ?? true) {
 +		const session = ctx.context?.session;
 +		if (!session?.user?.id) throw APIError.from("UNAUTHORIZED", PASSKEY_ERROR_CODES.SESSION_REQUIRED);
-+		const sessionName = session.user.email || session.user.id;
++		const sessionName = session.user.name || session.user.email || session.user.id;
 +		return {
 +			id: session.user.id,
 +			name: sessionName,
@@ -1302,7 +1302,7 @@ index ac113814c396e7f3787a31b35ff61d0c106b6ec2..f98703ad7ca3f11591b9aabb4206beb1
 +	}
 +	const session = await getSessionFromCtx(ctx);
 +	if (session?.user?.id) {
-+		const sessionName = session.user.email || session.user.id;
++		const sessionName = session.user.name || session.user.email || session.user.id;
 +		return {
 +			id: session.user.id,
 +			name: sessionName,
@@ -1534,7 +1534,7 @@ index ac113814c396e7f3787a31b35ff61d0c106b6ec2..f98703ad7ca3f11591b9aabb4206beb1
 +			rpName: opts.rpName || ctx.context.appName,
 +			rpID: getRpID(opts, baseURLString),
 +			userID,
-+			userName: ctx.query?.name || user.name || user.id,
++			userName: user.name || user.id,
 +			userDisplayName: user.displayName || user.name || user.id,
 +			attestationType: "none",
 +			excludeCredentials: userPasskeys.map((passkey) => ({

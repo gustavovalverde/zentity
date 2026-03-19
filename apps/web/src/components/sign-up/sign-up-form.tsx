@@ -9,6 +9,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ensureAuthSession } from "@/lib/auth/anonymous-session";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   isPasskeyAlreadyRegistered,
   registerPasskeyWithPrf,
@@ -90,6 +91,12 @@ export function SignUpForm() {
 
     try {
       await ensureAuthSession();
+
+      // Set the user's name to their email so the passkey prompt shows it
+      // instead of the anonymous session's internal identifier
+      if (email) {
+        await authClient.updateUser({ name: email });
+      }
 
       const prfSalt = crypto.getRandomValues(new Uint8Array(32));
 
