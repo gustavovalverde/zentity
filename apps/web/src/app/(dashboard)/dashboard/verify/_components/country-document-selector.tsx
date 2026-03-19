@@ -169,9 +169,9 @@ export function CountryDocumentSelector({
       </Popover>
 
       {selectedAlpha3 && (
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <Tabs
-            className="flex-1"
+            className="min-w-0 flex-1 basis-full sm:basis-0"
             onValueChange={handleDocTypeChange}
             value={selectedDocType}
           >
