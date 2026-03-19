@@ -65,7 +65,7 @@ export const secretsRouter = router({
         blobHash: sha256HexSchema,
         blobSize: z.number().int().nonnegative(),
         wrappedDek: wrappedDekSchema,
-        prfSalt: prfSaltSchema,
+        prfSalt: prfSaltSchema.optional(),
         credentialId: z.string().min(1),
         metadata: metadataSchema,
         kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),

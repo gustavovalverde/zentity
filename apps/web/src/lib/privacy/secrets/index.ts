@@ -202,7 +202,7 @@ export async function storeSecretWithCredential(params: {
 
   let wrappedDek: string;
   let credentialId: string;
-  let prfSalt: string;
+  let prfSalt: string | undefined;
   let kekSource: "prf" | "opaque" | "wallet" | "recovery";
 
   if (params.credential.type === "passkey") {
@@ -227,7 +227,7 @@ export async function storeSecretWithCredential(params: {
       exportKey: ctx.exportKey,
     });
     credentialId = OPAQUE_CREDENTIAL_ID;
-    prfSalt = "";
+    prfSalt = undefined;
     kekSource = "opaque";
   } else {
     const ctx = params.credential.context;
@@ -243,7 +243,7 @@ export async function storeSecretWithCredential(params: {
       address: ctx.address,
       chainId: ctx.chainId,
     });
-    prfSalt = "";
+    prfSalt = undefined;
     kekSource = "wallet";
   }
 
@@ -260,7 +260,7 @@ export async function storeSecretWithCredential(params: {
     blobHash: blobMetadata.blobHash,
     blobSize: blobMetadata.blobSize,
     wrappedDek,
-    prfSalt,
+    ...(prfSalt ? { prfSalt } : {}),
     credentialId,
     kekSource,
     metadata: mergeSecretMetadata({
