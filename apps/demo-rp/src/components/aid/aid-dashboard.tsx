@@ -5,6 +5,7 @@ import {
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { QRCodeSVG } from "qrcode.react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,14 +92,8 @@ export function AidDashboard({
         <CardContent className="relative z-10 flex flex-col items-center gap-4">
           {isSteppedUp ? (
             <>
-              <div className="size-40 rounded-lg bg-white p-2 shadow-sm">
-                {/* biome-ignore lint/performance/noImgElement: external QR service URL */}
-                {/* biome-ignore lint/correctness/useImageSize: dimensions set via CSS */}
-                <img
-                  alt="Collection pass QR code"
-                  className="rendering-pixelated size-full"
-                  src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=ZentityAidVerification"
-                />
+              <div className="flex size-40 items-center justify-center rounded-lg bg-white p-2 shadow-sm">
+                <QRCodeSVG level="M" size={140} value="ZentityAidVerification" />
               </div>
               {name && (
                 <p className="text-center font-medium text-sm">
