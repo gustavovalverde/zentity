@@ -137,6 +137,45 @@ export async function IdentityCard({
     );
   }
 
+  // Missing profile secret banner — user is verified but can't share identity data
+  if (tier >= 2 && details?.missingProfileSecret) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Identity Status</CardTitle>
+            {assuranceState && <TierBadge tier={tier} />}
+          </div>
+        </CardHeader>
+        <CardContent className="pt-2">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-amber-700 dark:text-amber-400">
+                  Identity Data Not Saved
+                </p>
+                <p className="text-muted-foreground text-sm">
+                  Your identity was verified, but your personal data could not
+                  be saved to your encrypted vault. Re-verify to enable identity
+                  sharing with applications.
+                </p>
+              </div>
+            </div>
+            <Button asChild className="w-full">
+              <Link href="/dashboard/verify">
+                Re-verify Identity
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Tier 3: Chip Verified display
   if (tier === 3 && userId) {
     const [verification, verificationStatus] = await Promise.all([

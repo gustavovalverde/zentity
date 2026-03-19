@@ -28,9 +28,12 @@ export default async function PassportChipPage() {
     getPrimaryWalletAddress(userId),
   ]);
 
-  // Already chip-verified → dashboard
+  // Already chip-verified → dashboard (unless profile secret missing)
   const alreadyChipVerified = isChipVerified(verification);
-  if (alreadyChipVerified || assuranceState.tier >= 3) {
+  if (
+    (alreadyChipVerified || assuranceState.tier >= 3) &&
+    !assuranceState.details.missingProfileSecret
+  ) {
     redirect("/dashboard");
   }
 

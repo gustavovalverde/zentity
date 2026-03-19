@@ -57,7 +57,8 @@ export default async function LivenessVerifyPage() {
     assuranceState.details.livenessVerified &&
     assuranceState.details.faceMatchVerified &&
     !needsProofRegeneration &&
-    !hasActiveVerification
+    !hasActiveVerification &&
+    !assuranceState.details.missingProfileSecret
   ) {
     redirect("/dashboard/verify");
   }

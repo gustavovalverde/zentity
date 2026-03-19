@@ -5,6 +5,7 @@ import type { FlowStage } from "./status-display";
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { env } from "@/env";
@@ -122,7 +123,9 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
           credential,
         });
       } catch {
-        // Non-fatal — vault can be populated at consent time
+        toast.warning(
+          "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
+        );
       }
       return true;
     },
@@ -158,7 +161,9 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
               credential,
             });
           } catch {
-            // Non-fatal
+            toast.warning(
+              "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
+            );
           }
         }
       }
@@ -169,21 +174,36 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   }, [session, wallet]);
 
   /**
-   * If user closes the dialog without authenticating, proceed anyway.
-   * Vault storage is best-effort; consent page has its own unlock.
+   * If user closes the dialog without authenticating, show vault_pending
+   * so they can retry. Preserve disclosedRef so PII isn't garbage-collected.
    */
   const handleBindingAuthOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
         setBindingAuthOpen(false);
-        disclosedRef.current = null;
-        if (stage === "verifying") {
-          setStage("finalizing");
+        if (stage === "verifying" && disclosedRef.current) {
+          setStage("vault_pending");
         }
       }
     },
     [stage]
   );
+
+  const handleRetryVault = useCallback(() => {
+    const disclosed = disclosedRef.current;
+    if (disclosed) {
+      storeVault(disclosed).then((stored) => {
+        if (stored) {
+          setStage("finalizing");
+        }
+      });
+    }
+  }, [storeVault]);
+
+  const handleSkipVault = useCallback(() => {
+    disclosedRef.current = null;
+    setStage("finalizing");
+  }, []);
 
   const submitResult = trpcReact.passportChip.submitResult.useMutation({
     onSuccess: (data) => {
@@ -402,6 +422,28 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
         onNavigate={() => router.push("/dashboard")}
         stage="success"
       />
+    );
+  }
+
+  if (stage === "vault_pending") {
+    return (
+      <div className="space-y-6">
+        <StatusDisplay
+          onRetryVault={handleRetryVault}
+          onSkipVault={handleSkipVault}
+          stage="vault_pending"
+        />
+        {userId && (
+          <BindingAuthDialog
+            authMode={bindingAuthMode}
+            onOpenChange={handleBindingAuthOpenChange}
+            onSuccess={handleBindingAuthSuccess}
+            open={bindingAuthOpen}
+            userId={userId}
+            wallet={wallet}
+          />
+        )}
+      </div>
     );
   }
 

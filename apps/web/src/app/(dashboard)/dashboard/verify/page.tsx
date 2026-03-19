@@ -65,7 +65,10 @@ export default async function VerifyPage() {
       buildCountryDocumentList(),
     ]);
 
-  if (assuranceState.tier >= 3) {
+  if (
+    assuranceState.tier >= 3 &&
+    !assuranceState.details.missingProfileSecret
+  ) {
     redirect("/dashboard");
   }
 
@@ -74,6 +77,28 @@ export default async function VerifyPage() {
   const progress = getTierProgress(assuranceState);
   const { details } = assuranceState;
   const zkPassportEnabled = env.NEXT_PUBLIC_ZKPASSPORT_ENABLED;
+
+  // Tier 2+ users with missing profile secret: allow re-verification
+  if (assuranceState.tier >= 2 && assuranceState.details.missingProfileSecret) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          description="Your identity data was not saved during verification. Re-verify to enable identity sharing with applications."
+          title="Re-verify Identity"
+        >
+          <TierBadge size="md" tier={assuranceState.tier} />
+        </PageHeader>
+        <Card>
+          <CardContent className="pt-6">
+            <VerificationMethodCards
+              countries={countries}
+              zkPassportEnabled={zkPassportEnabled}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Tier 2 users: show chip upgrade if enabled, otherwise redirect
   if (assuranceState.tier >= 2) {

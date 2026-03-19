@@ -48,6 +48,38 @@ export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
 }
 
+/**
+ * Check if user has a stored PROFILE encrypted secret with at least one wrapper.
+ * The profile secret is the sole bridge between verified identity and deliverable
+ * identity claims — without it, identity.* OAuth scopes cannot be fulfilled.
+ */
+export async function hasProfileSecret(userId: string): Promise<boolean> {
+  const secret = await db
+    .select({ id: encryptedSecrets.id })
+    .from(encryptedSecrets)
+    .where(
+      and(
+        eq(encryptedSecrets.userId, userId),
+        eq(encryptedSecrets.secretType, "profile")
+      )
+    )
+    .limit(1)
+    .get();
+
+  if (!secret) {
+    return false;
+  }
+
+  const wrapper = await db
+    .select({ id: secretWrappers.id })
+    .from(secretWrappers)
+    .where(eq(secretWrappers.secretId, secret.id))
+    .limit(1)
+    .get();
+
+  return !!wrapper;
+}
+
 export async function getVerificationById(
   id: string
 ): Promise<IdentityVerification | null> {

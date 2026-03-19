@@ -52,7 +52,8 @@ export default async function DocumentVerifyPage() {
     assuranceState.details.documentVerified &&
     !needsProofRegeneration &&
     !needsDocumentReprocessing &&
-    !hasActiveVerification
+    !hasActiveVerification &&
+    !assuranceState.details.missingProfileSecret
   ) {
     redirect("/dashboard/verify/liveness");
   }

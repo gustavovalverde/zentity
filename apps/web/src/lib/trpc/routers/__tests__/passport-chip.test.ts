@@ -10,6 +10,7 @@ const mockCreateVerification = vi.fn();
 const mockGetSelectedVerification = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
 const mockDedupKeyExistsForOtherUser = vi.fn();
+const mockHasProfileSecret = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 const mockInsertSignedClaim = vi.fn();
 const mockSignAttestationClaim = vi.fn();
@@ -40,6 +41,7 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
       mockIsNullifierUsedByOtherUser(...args),
     dedupKeyExistsForOtherUser: (...args: unknown[]) =>
       mockDedupKeyExistsForOtherUser(...args),
+    hasProfileSecret: (...args: unknown[]) => mockHasProfileSecret(...args),
   };
 });
 
@@ -148,6 +150,7 @@ describe("passportChip.submitResult", () => {
     mockSignAttestationClaim.mockResolvedValue("signed-chip-claim");
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
     mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
+    mockHasProfileSecret.mockResolvedValue(true);
     mockCreateVerification.mockImplementation((data) => data);
     mockScheduleFheEncryption.mockReturnValue(undefined);
   });
@@ -516,5 +519,27 @@ describe("passportChip.submitResult", () => {
     });
 
     expect(result.disclosed.dateOfBirth).toBe("1990-05-15");
+  });
+
+  // --- Re-verify for vault ---
+
+  it("allows re-submission when chip-verified but profile secret missing", async () => {
+    mockGetSelectedVerification.mockResolvedValue({
+      id: "existing-verification-id",
+      method: "nfc_chip",
+      status: "verified",
+      uniqueIdentifier: verifiedNullifier,
+    });
+    mockHasProfileSecret.mockResolvedValue(false);
+
+    const caller = await createCaller(authedSession);
+    const result = await caller.submitResult(validInput());
+
+    expect(result.chipVerified).toBe(true);
+    expect(result.verificationId).toBe("existing-verification-id");
+    // Should NOT create a new verification or signed claim
+    expect(mockCreateVerification).not.toHaveBeenCalled();
+    expect(mockInsertSignedClaim).not.toHaveBeenCalled();
+    expect(mockScheduleFheEncryption).not.toHaveBeenCalled();
   });
 });

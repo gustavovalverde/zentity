@@ -103,6 +103,7 @@ When using the NFC chip verification path:
 - **Nullifier uniqueness**: The `uniqueIdentifier` (nullifier) is checked for uniqueness across all accounts before accepting a verification. This prevents cross-account replay where the same physical passport is registered under multiple identities.
 - **Synthetic liveness**: `livenessScore: 1.0` is assigned server-side because NFC chip challenge-response proves physical possession of the document. No face match or gesture-based liveness is performed.
 - **Dev mode**: The `devMode` flag relaxes proof verification in `development`/`test` environments (accepts proofs without full cryptographic checks). Production enforces strict verification — this flag must never be enabled in production.
+- **Vault-only re-verification**: When a chip-verified user's profile secret storage failed (dialog dismissed, credential expired), they can re-submit the same passport to retrieve disclosed PII for vault storage. The re-verify path enforces: (1) proofs are re-verified via `zkpassport.verify()`, (2) the nullifier must match the existing verification's `uniqueIdentifier` (prevents different-passport substitution that would create vault/commitment inconsistency), (3) no new verification record, signed claim, or FHE encryption is created (existing artifacts are reused).
 
 ### Authentication integrity (DPoP-bound tokens)
 

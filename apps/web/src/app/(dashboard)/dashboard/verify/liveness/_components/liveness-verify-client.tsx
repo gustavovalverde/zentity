@@ -87,41 +87,41 @@ export function LivenessVerifyClient({
    */
   const runProofGeneration = useCallback(
     async (verificationId: string, bindingContext: BindingContext) => {
-      // Store profile secret before generating proofs (fire-and-forget)
+      // Store profile secret before generating proofs
       const cached = getCachedBindingMaterial();
       if (cached && userId) {
         const credential = buildEnrollmentCredential(cached, userId, wallet);
         if (credential) {
           const storeSnapshot = getStoreState();
-          import("@/lib/privacy/secrets/profile")
-            .then(({ storeProfileSecret }) =>
-              storeProfileSecret({
-                extractedData: {
-                  extractedFullName: storeSnapshot.extractedName,
-                  extractedFirstName: storeSnapshot.extractedFirstName,
-                  extractedLastName: storeSnapshot.extractedLastName,
-                  extractedDOB: storeSnapshot.extractedDOB,
-                  extractedDocumentNumber: storeSnapshot.extractedDocNumber,
-                  extractedNationality: storeSnapshot.extractedNationality,
-                  extractedNationalityCode:
-                    storeSnapshot.extractedNationalityCode,
-                  extractedExpirationDate: storeSnapshot.extractedExpirationDate
-                    ? Number.parseInt(
-                        storeSnapshot.extractedExpirationDate,
-                        10
-                      ) || null
-                    : null,
-                  userSalt: storeSnapshot.userSalt,
-                },
-                credential,
-              })
-            )
-            .catch((err) => {
-              console.error(
-                "[verification] Profile secret storage failed:",
-                err
-              );
+          try {
+            const { storeProfileSecret } = await import(
+              "@/lib/privacy/secrets/profile"
+            );
+            await storeProfileSecret({
+              extractedData: {
+                extractedFullName: storeSnapshot.extractedName,
+                extractedFirstName: storeSnapshot.extractedFirstName,
+                extractedLastName: storeSnapshot.extractedLastName,
+                extractedDOB: storeSnapshot.extractedDOB,
+                extractedDocumentNumber: storeSnapshot.extractedDocNumber,
+                extractedNationality: storeSnapshot.extractedNationality,
+                extractedNationalityCode:
+                  storeSnapshot.extractedNationalityCode,
+                extractedExpirationDate: storeSnapshot.extractedExpirationDate
+                  ? Number.parseInt(
+                      storeSnapshot.extractedExpirationDate,
+                      10
+                    ) || null
+                  : null,
+                userSalt: storeSnapshot.userSalt,
+              },
+              credential,
             });
+          } catch {
+            toast.warning(
+              "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
+            );
+          }
         }
       }
 
