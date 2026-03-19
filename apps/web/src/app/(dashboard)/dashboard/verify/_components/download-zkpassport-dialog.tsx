@@ -60,7 +60,7 @@ function StoreQrCode({ url }: Readonly<{ url: string }>) {
 
   if (!qrDataUrl) {
     return (
-      <div className="flex h-[220px] w-[220px] items-center justify-center rounded-lg bg-muted">
+      <div className="flex aspect-square w-full max-w-[220px] items-center justify-center rounded-lg bg-muted">
         <span className="text-muted-foreground text-sm">Loading...</span>
       </div>
     );
@@ -70,7 +70,7 @@ function StoreQrCode({ url }: Readonly<{ url: string }>) {
     <a href={url} rel="noopener noreferrer" target="_blank">
       <Image
         alt="Scan to download ZKPassport"
-        className="rounded-lg"
+        className="max-w-full rounded-lg"
         height={QR_SIZE}
         src={qrDataUrl}
         width={QR_SIZE}

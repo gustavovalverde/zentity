@@ -64,7 +64,7 @@ export async function IdentityCard({
       return (
         <Card>
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Identity Status</CardTitle>
               {assuranceState && <TierBadge tier={tier} />}
             </div>
@@ -106,7 +106,7 @@ export async function IdentityCard({
     return (
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
             {assuranceState && <TierBadge tier={tier} />}
           </div>
@@ -147,7 +147,7 @@ export async function IdentityCard({
     return (
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
             {assuranceState && <TierBadge tier={tier} />}
           </div>
@@ -250,7 +250,7 @@ export async function IdentityCard({
     <div className="space-y-6">
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
             {assuranceState && <TierBadge tier={tier} />}
           </div>
@@ -315,7 +315,7 @@ function IdentitySummary({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-medium text-sm">Identity Summary</h4>
         {isVerified && <Badge variant="success">Verified</Badge>}
       </div>
@@ -354,7 +354,7 @@ export function IdentityCardSkeleton() {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="h-6 w-32 animate-pulse rounded bg-muted" />
           <div className="h-6 w-24 animate-pulse rounded-full bg-muted" />
         </div>

@@ -402,7 +402,7 @@ export function LivenessVerifyClient({
 
       {livenessCompleted && (
         <Alert>
-          <AlertDescription className="flex items-center justify-between">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span>Want to try again with a better selfie?</span>
             <Button onClick={handleReset} size="sm" variant="outline">
               Retry Liveness

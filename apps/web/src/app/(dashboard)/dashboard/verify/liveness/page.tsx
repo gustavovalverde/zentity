@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
@@ -63,13 +64,10 @@ export default async function LivenessVerifyPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl">Liveness & Face Match</h1>
-        <p className="text-muted-foreground">
-          Complete gesture challenges to prove you&apos;re a real person, then
-          we&apos;ll match your face to your ID
-        </p>
-      </div>
+      <PageHeader
+        description="Complete gesture challenges to prove you're a real person, then we'll match your face to your ID"
+        title="Liveness & Face Match"
+      />
 
       <LivenessVerifyClient wallet={wallet} />
     </div>

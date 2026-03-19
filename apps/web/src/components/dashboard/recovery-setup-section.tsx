@@ -84,7 +84,7 @@ const RecoveryIdSection = memo(function RecoveryIdSection({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between font-medium text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 font-medium text-sm">
         <span>Recovery ID</span>
         <Badge variant="outline">{recoveryId ? "Saved" : "Generating"}</Badge>
       </div>
@@ -183,7 +183,7 @@ const GuardiansSection = memo(function GuardiansSection({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between font-medium text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 font-medium text-sm">
         <span>Guardians</span>
         <Badge variant="outline">
           {filledSlots}/{totalSlots}
@@ -203,7 +203,7 @@ const GuardiansSection = memo(function GuardiansSection({
 
       {guardians.map((guardian) => (
         <div
-          className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
           key={guardian.id}
         >
           <div>
@@ -313,7 +313,7 @@ const TwoFactorGuardianSection = memo(function TwoFactorGuardianSection({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between font-medium text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 font-medium text-sm">
         <span>Authenticator guardian</span>
         {hasTwoFactorGuardian ? <Badge variant="outline">Linked</Badge> : null}
       </div>
@@ -362,7 +362,7 @@ const RecoveryWrappersSection = memo(function RecoveryWrappersSection({
 }>) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between font-medium text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 font-medium text-sm">
         <span>Recovery wrappers</span>
         <Badge variant="outline">
           {wrappedCount}/{totalSecrets}

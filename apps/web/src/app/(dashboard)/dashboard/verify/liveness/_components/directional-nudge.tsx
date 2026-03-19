@@ -12,9 +12,7 @@ import { cn } from "@/lib/utils/classname";
 type NudgeDirection = "left" | "right" | "up" | "down" | null;
 
 interface DirectionalNudgeProps {
-  /** Optional className for container */
   readonly className?: string;
-  /** Direction to nudge the user */
   readonly direction: NudgeDirection;
 }
 
@@ -25,11 +23,6 @@ const ARROW_ICONS = {
   down: ArrowDownIcon,
 } as const;
 
-/**
- * Directional nudge arrows positioned OUTSIDE the video frame.
- * Provides visual guidance for turn_left/turn_right challenges
- * without overlaying content on the camera feed.
- */
 export function DirectionalNudge({
   direction,
   className,
@@ -44,36 +37,23 @@ export function DirectionalNudge({
     <div
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute flex items-center justify-center",
-        // Position arrows OUTSIDE the video frame
-        direction === "left" && "top-1/2 -left-14 -translate-y-1/2",
-        direction === "right" && "top-1/2 -right-14 -translate-y-1/2",
-        direction === "up" && "-top-14 left-1/2 -translate-x-1/2",
-        direction === "down" && "-bottom-14 left-1/2 -translate-x-1/2",
+        "pointer-events-none absolute flex items-center justify-center rounded-full bg-black/40 p-2",
+        direction === "left" && "top-1/2 left-2 -translate-y-1/2",
+        direction === "right" && "top-1/2 right-2 -translate-y-1/2",
+        direction === "up" && "top-2 left-1/2 -translate-x-1/2",
+        direction === "down" && "bottom-2 left-1/2 -translate-x-1/2",
         className
       )}
     >
-      {/* Animated arrow with glow effect */}
-      <div className="relative">
-        {/* Glow background */}
-        <div
-          className={cn(
-            "absolute inset-0 rounded-full blur-md",
-            "animate-pulse bg-amber-500/50"
-          )}
-        />
-        {/* Arrow icon */}
-        <Icon
-          className={cn(
-            "relative size-10 text-amber-500",
-            // Directional bounce animations
-            direction === "left" && "animate-bounce-left",
-            direction === "right" && "animate-bounce-right",
-            direction === "up" && "animate-bounce",
-            direction === "down" && "animate-bounce"
-          )}
-        />
-      </div>
+      <Icon
+        className={cn(
+          "size-8 text-amber-400",
+          direction === "left" && "animate-bounce-left",
+          direction === "right" && "animate-bounce-right",
+          direction === "up" && "animate-bounce",
+          direction === "down" && "animate-bounce"
+        )}
+      />
     </div>
   );
 }

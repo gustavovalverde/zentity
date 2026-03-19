@@ -11,6 +11,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
+import { PageHeader } from "@/components/layouts/page-header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -82,16 +83,12 @@ export default async function VerifyPage() {
 
     return (
       <div className="space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-bold text-2xl">Upgrade Verification</h1>
-            <p className="text-muted-foreground">
-              Some services require a higher level of assurance. Upgrade with
-              your document&apos;s NFC chip for the strongest verification.
-            </p>
-          </div>
+        <PageHeader
+          description="Some services require a higher level of assurance. Upgrade with your document's NFC chip for the strongest verification."
+          title="Upgrade Verification"
+        >
           <TierBadge size="md" tier={assuranceState.tier} />
-        </div>
+        </PageHeader>
         <Card>
           <CardContent className="pt-6">
             <VerificationMethodCards
@@ -112,16 +109,12 @@ export default async function VerifyPage() {
   if (!hasStartedOcrFlow) {
     return (
       <div className="space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="font-bold text-2xl">Verify Your Identity</h1>
-            <p className="text-muted-foreground">
-              Scan your document or use your document&apos;s NFC chip to verify
-              and unlock features
-            </p>
-          </div>
+        <PageHeader
+          description="Scan your document or use your document's NFC chip to verify and unlock features"
+          title="Verify Your Identity"
+        >
           <TierBadge size="md" tier={assuranceState.tier} />
-        </div>
+        </PageHeader>
 
         {hasEnrollment ? (
           <Card>
@@ -179,15 +172,12 @@ export default async function VerifyPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-bold text-2xl">Complete Verification</h1>
-          <p className="text-muted-foreground">
-            Verify your identity to unlock more features
-          </p>
-        </div>
+      <PageHeader
+        description="Verify your identity to unlock more features"
+        title="Complete Verification"
+      >
         <TierBadge size="md" tier={assuranceState.tier} />
-      </div>
+      </PageHeader>
 
       {hasFheError && bundle?.fheKeyId && (
         <FheErrorBanner fheKeyId={bundle.fheKeyId} />

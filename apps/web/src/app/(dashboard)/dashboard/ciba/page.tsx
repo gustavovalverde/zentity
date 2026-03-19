@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -65,13 +66,10 @@ export default async function CibaListPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl tracking-tight">Agent Requests</h1>
-        <p className="text-muted-foreground">
-          Applications requesting access to your account via backchannel
-          authentication (CIBA).
-        </p>
-      </div>
+      <PageHeader
+        description="Applications requesting access to your account via backchannel authentication (CIBA)."
+        title="Agent Requests"
+      />
 
       <PushNotificationBanner />
       <PwaInstallBanner />
@@ -96,7 +94,7 @@ export default async function CibaListPage() {
               >
                 <Card className="transition-colors hover:bg-muted/50">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <CardTitle className="text-base">
                         {req.clientName ?? "Unknown Application"}
                       </CardTitle>

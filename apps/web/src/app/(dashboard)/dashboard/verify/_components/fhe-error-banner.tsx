@@ -51,7 +51,7 @@ export function FheErrorBanner({ fheKeyId }: Readonly<FheErrorBannerProps>) {
     <Alert variant="warning">
       <AlertTriangle className="h-4 w-4" />
       <AlertTitle>Encryption needs attention</AlertTitle>
-      <AlertDescription className="flex items-center justify-between gap-4">
+      <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
         <span>
           Background encryption encountered an issue. This will retry
           automatically during your next verification step.

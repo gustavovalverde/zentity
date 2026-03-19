@@ -281,7 +281,7 @@ export function OnChainAttestation({
     <Card>
       <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>

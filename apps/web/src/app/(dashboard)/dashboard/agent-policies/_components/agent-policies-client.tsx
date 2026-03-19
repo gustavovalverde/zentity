@@ -160,7 +160,7 @@ export function AgentPoliciesClient({
               <CardContent className="space-y-2">
                 {items.map((boundary) => (
                   <div
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
                     key={boundary.id}
                   >
                     <div className="flex items-center gap-3">

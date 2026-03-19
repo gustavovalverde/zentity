@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
@@ -58,12 +59,10 @@ export default async function DocumentVerifyPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl">Verify Your Document</h1>
-        <p className="text-muted-foreground">
-          Upload a photo (JPEG, PNG, or WebP) of your government-issued ID
-        </p>
-      </div>
+      <PageHeader
+        description="Upload a photo (JPEG, PNG, or WebP) of your government-issued ID"
+        title="Verify Your Document"
+      />
 
       <DocumentUploadClient
         demoMode={env.DEMO_MODE === true}

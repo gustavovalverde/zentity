@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,7 +110,7 @@ function ClientCard({
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <div className="font-medium">{name || "Unnamed client"}</div>
           <div className="font-mono text-muted-foreground text-xs">
@@ -331,14 +332,10 @@ export default function ApplicationsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl">Applications</h1>
-        <p className="text-muted-foreground text-sm">
-          Manage OAuth clients registered via Dynamic Client Registration. The
-          user controls data access at consent time — organization assignment is
-          for operational management.
-        </p>
-      </div>
+      <PageHeader
+        description="Manage OAuth clients registered via Dynamic Client Registration. The user controls data access at consent time — organization assignment is for operational management."
+        title="Applications"
+      />
 
       {actionError ? (
         <Alert variant="destructive">
@@ -370,7 +367,7 @@ export default function ApplicationsPage() {
             </Alert>
           ) : null}
 
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm">
               <div className="text-muted-foreground">Active organization</div>
               <div className="font-mono text-xs">{activeOrgId ?? "none"}</div>
@@ -471,7 +468,7 @@ export default function ApplicationsPage() {
             </Alert>
           ) : null}
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-muted-foreground text-sm">
               {unownedQuery.isLoading
                 ? "Loading…"

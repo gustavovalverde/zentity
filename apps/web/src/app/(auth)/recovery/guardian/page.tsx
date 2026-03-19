@@ -655,7 +655,7 @@ export default function RecoverSocialPage() {
                     className="rounded-md border px-3 py-3"
                     key={approval.guardianId}
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <div className="font-medium text-sm">
                           {approval.email}
@@ -709,7 +709,7 @@ export default function RecoverSocialPage() {
               ) : null}
               {deviceApproval ? (
                 <div className="rounded-md border px-3 py-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <div className="font-medium text-sm">
                         Authenticator approval

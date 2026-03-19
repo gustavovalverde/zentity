@@ -425,14 +425,14 @@ export default function DevViewPage() {
               </div>
 
               <div className="rounded-lg border bg-muted/30 p-4 font-mono text-xs">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>Ciphertext size</span>
                   <span>
                     {formatBytes(ageProofData.birthYearOffsetCiphertextBytes)}
                   </span>
                 </div>
                 {ageProofData.birthYearOffsetCiphertextHash ? (
-                  <div className="mt-3 flex items-center justify-between gap-2">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <span className="break-all">
                       sha256: {ageProofData.birthYearOffsetCiphertextHash}
                     </span>

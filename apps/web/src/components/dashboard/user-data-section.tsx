@@ -235,7 +235,7 @@ export function UserDataSection() {
 
         {/* Verification Status */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-medium text-sm">Verification Status</p>
             <VerificationLevelBadge level={data.verification.level} />
           </div>

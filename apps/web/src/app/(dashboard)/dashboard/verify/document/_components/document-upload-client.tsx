@@ -73,7 +73,7 @@ const VerifiedDocumentCard = memo(function VerifiedDocumentCard({
           <Image
             alt="ID preview"
             className={cn(
-              "mx-auto max-h-48 rounded-lg object-contain",
+              "mx-auto max-h-48 max-w-full rounded-lg object-contain",
               demoMode && "blur-lg"
             )}
             height={192}

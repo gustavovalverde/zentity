@@ -177,7 +177,11 @@ export function CountryDocumentSelector({
           >
             <TabsList className="grid w-full grid-cols-3">
               {ALL_DOC_TYPES.map((type) => (
-                <TabsTrigger key={type} value={type}>
+                <TabsTrigger
+                  className="text-xs sm:text-sm"
+                  key={type}
+                  value={type}
+                >
                   {DOC_TYPE_LABELS[type]}
                 </TabsTrigger>
               ))}
