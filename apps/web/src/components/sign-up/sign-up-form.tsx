@@ -94,7 +94,7 @@ export function SignUpForm() {
       const prfSalt = crypto.getRandomValues(new Uint8Array(32));
 
       const registration = await registerPasskeyWithPrf({
-        name: "Primary Passkey",
+        name: email.trim() || "Primary Passkey",
         prfSalt,
       });
 
