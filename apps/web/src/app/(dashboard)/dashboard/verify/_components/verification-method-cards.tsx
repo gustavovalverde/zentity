@@ -97,9 +97,9 @@ function NfcMethodSection({
         partial && "border-warning/50 bg-warning/5"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
             <Nfc className="h-4 w-4 text-muted-foreground" />
           </div>
           <div>
@@ -168,9 +168,9 @@ function DocumentScanMethodSection({
         highlighted && "border-primary/50 bg-primary/5"
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
             <FileText className="h-4 w-4 text-muted-foreground" />
           </div>
           <div>

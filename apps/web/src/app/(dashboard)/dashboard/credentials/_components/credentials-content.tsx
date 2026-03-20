@@ -252,7 +252,7 @@ export function CredentialsContent() {
         <CardContent className="space-y-6">
           {/* Verified Claims */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium text-sm">Verified Claims</span>
               {status?.level && status.level !== "none" ? (
                 <Badge className="capitalize" variant="success">
@@ -316,11 +316,11 @@ export function CredentialsContent() {
 
           <div className="flex flex-col items-center gap-4 py-4">
             {/* QR Code */}
-            <div className="flex h-72 w-72 items-center justify-center rounded-lg border bg-white p-2">
+            <div className="flex aspect-square w-full max-w-72 items-center justify-center rounded-lg border bg-white p-2">
               {qrCodeDataUrl ? (
                 <Image
                   alt="Credential Offer QR Code"
-                  className="h-full w-full"
+                  className="max-w-full"
                   height={280}
                   src={qrCodeDataUrl}
                   unoptimized

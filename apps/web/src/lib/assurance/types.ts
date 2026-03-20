@@ -74,6 +74,7 @@ export interface VerificationDetails {
   hasSecuredKeys: boolean;
   isAuthenticated: boolean;
   livenessVerified: boolean;
+  missingProfileSecret: boolean;
   needsDocumentReprocessing: boolean;
   onChainAttested: boolean;
   zkProofsComplete: boolean;

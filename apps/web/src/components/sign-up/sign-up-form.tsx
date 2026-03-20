@@ -2,7 +2,7 @@
 
 import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -28,6 +28,7 @@ import { WalletSignUpForm } from "./wallet-signup-form";
 
 export function SignUpForm() {
   const emailId = useId();
+  const emailRef = useRef<HTMLInputElement>(null);
 
   const [email, setEmail] = useState("");
   const [credentialType, setCredentialType] = useState<CredentialType | null>(
@@ -93,8 +94,16 @@ export function SignUpForm() {
 
       const prfSalt = crypto.getRandomValues(new Uint8Array(32));
 
+      const resolvedEmail =
+        emailRef.current?.value.trim() || email.trim() || "";
+
+      // Sync React state in case browser autofill didn't fire onChange
+      if (resolvedEmail && resolvedEmail !== email.trim()) {
+        setEmail(resolvedEmail);
+      }
+
       const registration = await registerPasskeyWithPrf({
-        name: "Primary Passkey",
+        name: resolvedEmail || "Primary Passkey",
         prfSalt,
       });
 
@@ -240,6 +249,7 @@ export function SignUpForm() {
             inputMode="email"
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
+            ref={emailRef}
             spellCheck={false}
             type="email"
             value={email}

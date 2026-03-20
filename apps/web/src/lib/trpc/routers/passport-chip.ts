@@ -16,6 +16,7 @@ import {
   dedupKeyExistsForOtherUser,
   getIdentityBundleByUserId,
   getSelectedVerification,
+  hasProfileSecret,
   isChipVerified,
   isNullifierUsedByOtherUser,
 } from "@/lib/db/queries/identity";
@@ -116,7 +117,16 @@ export const passportChipRouter = router({
           message: "FHE enrollment required before passport verification",
         });
       }
-      if (isChipVerified(existingVerification)) {
+
+      // Allow re-submission when user is chip-verified but missing profile secret,
+      // only for the SAME passport (nullifier must match to prevent vault/commitment
+      // inconsistency — see tamper-model.md)
+      const isReVerifyForVault =
+        isChipVerified(existingVerification) &&
+        !(await hasProfileSecret(userId)) &&
+        existingVerification?.uniqueIdentifier === uniqueIdentifier;
+
+      if (isChipVerified(existingVerification) && !isReVerifyForVault) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "Passport chip already verified",
@@ -169,69 +179,78 @@ export const passportChipRouter = router({
         }
       }
 
-      const verificationId = crypto.randomUUID();
       const now = new Date().toISOString();
 
-      await createVerification({
-        id: verificationId,
-        userId,
-        method: "nfc_chip",
-        status: "verified",
-        documentType: documentType ?? null,
-        issuerCountry: issuingCountry ?? null,
-        nameCommitment,
-        dobCommitment,
-        nationalityCommitment,
-        livenessScore: 1.0,
-        birthYearOffset:
-          calculateBirthYearOffsetFromYear(parseBirthYearFromDob(birthdate)) ??
-          null,
-        dedupKey,
-        uniqueIdentifier,
-        verifiedAt: now,
-      });
+      // Re-verify for vault: reuse existing verification, skip creation
+      const verificationId = isReVerifyForVault
+        ? (existingVerification?.id ?? crypto.randomUUID())
+        : crypto.randomUUID();
 
-      // Store signed claim for chip verification results (tamper-evident)
-      const chipClaimPayload = {
-        type: "chip_verification" as const,
-        userId,
-        version: 1,
-        issuedAt: now,
-        policyVersion: POLICY_VERSION,
-        data: {
-          ageVerified,
-          sanctionsCleared,
-          faceMatchPassed: faceMatchPassed ?? false,
+      if (!isReVerifyForVault) {
+        await createVerification({
+          id: verificationId,
+          userId,
+          method: "nfc_chip",
+          status: "verified",
+          documentType: documentType ?? null,
+          issuerCountry: issuingCountry ?? null,
+          nameCommitment,
+          dobCommitment,
+          nationalityCommitment,
           livenessScore: 1.0,
-          hasNationality: Boolean(nationalityCommitment),
-          hasName: Boolean(nameCommitment),
-          hasDob: Boolean(dobCommitment),
-        },
-      };
-      const chipClaimSignature = await signAttestationClaim(chipClaimPayload);
-      await insertSignedClaim({
-        id: crypto.randomUUID(),
-        userId,
-        verificationId,
-        claimType: "chip_verification",
-        claimPayload: JSON.stringify(chipClaimPayload),
-        signature: chipClaimSignature,
-        issuedAt: now,
-      });
+          birthYearOffset:
+            calculateBirthYearOffsetFromYear(
+              parseBirthYearFromDob(birthdate)
+            ) ?? null,
+          dedupKey,
+          uniqueIdentifier,
+          verifiedAt: now,
+        });
+      }
 
-      // Convert DOB to dobDays for FHE encryption
-      const dobDays = dobToDaysSince1900(birthdate);
+      if (!isReVerifyForVault) {
+        // Store signed claim for chip verification results (tamper-evident)
+        const chipClaimPayload = {
+          type: "chip_verification" as const,
+          userId,
+          version: 1,
+          issuedAt: now,
+          policyVersion: POLICY_VERSION,
+          data: {
+            ageVerified,
+            sanctionsCleared,
+            faceMatchPassed: faceMatchPassed ?? false,
+            livenessScore: 1.0,
+            hasNationality: Boolean(nationalityCommitment),
+            hasName: Boolean(nameCommitment),
+            hasDob: Boolean(dobCommitment),
+          },
+        };
+        const chipClaimSignature = await signAttestationClaim(chipClaimPayload);
+        await insertSignedClaim({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          claimType: "chip_verification",
+          claimPayload: JSON.stringify(chipClaimPayload),
+          signature: chipClaimSignature,
+          issuedAt: now,
+        });
 
-      // Schedule FHE encryption (fire-and-forget)
-      // Chip NFC challenge-response proves physical possession → synthetic liveness 1.0
-      scheduleFheEncryption({
-        userId,
-        dobDays: dobDays ?? null,
-        livenessScore: 1.0,
-        requestId: ctx.requestId,
-        flowId: ctx.flowId ?? undefined,
-        reason: "passport_chip_verified",
-      });
+        // Convert DOB to dobDays for FHE encryption
+        const dobDays = dobToDaysSince1900(birthdate);
+
+        // Schedule FHE encryption (fire-and-forget)
+        // Chip NFC challenge-response proves physical possession → synthetic liveness 1.0
+        scheduleFheEncryption({
+          userId,
+          dobDays: dobDays ?? null,
+          livenessScore: 1.0,
+          requestId: ctx.requestId,
+          flowId: ctx.flowId ?? undefined,
+          reason: "passport_chip_verified",
+        });
+      }
 
       return {
         verificationId,

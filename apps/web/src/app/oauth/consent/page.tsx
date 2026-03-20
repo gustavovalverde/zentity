@@ -27,6 +27,8 @@ export default async function OAuthConsentPage({
     name: string;
     icon: string | null;
     uri: string | null;
+    metadataUrl: string | null;
+    redirectUris: string | null;
   } | null = null;
   let optionalScopes: string[] = [];
   let securityBadgeInput: SecurityBadgeInput | null = null;
@@ -39,6 +41,8 @@ export default async function OAuthConsentPage({
         uri: oauthClients.uri,
         metadata: oauthClients.metadata,
         subjectType: oauthClients.subjectType,
+        metadataUrl: oauthClients.metadataUrl,
+        redirectUris: oauthClients.redirectUris,
       })
       .from(oauthClients)
       .where(eq(oauthClients.clientId, clientId))
@@ -50,6 +54,8 @@ export default async function OAuthConsentPage({
         name: row.name,
         icon: row.icon,
         uri: row.uri,
+        metadataUrl: row.metadataUrl,
+        redirectUris: row.redirectUris,
       };
     }
 

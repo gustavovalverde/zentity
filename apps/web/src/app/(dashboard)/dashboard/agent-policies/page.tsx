@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { getCachedSession } from "@/lib/auth/cached-session";
 
 import { AgentPoliciesClient } from "./_components/agent-policies-client";
@@ -33,12 +34,10 @@ export default async function AgentPoliciesPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl tracking-tight">Agent Policies</h1>
-        <p className="text-muted-foreground">
-          Configure auto-approval rules for agent authorization requests.
-        </p>
-      </div>
+      <PageHeader
+        description="Configure auto-approval rules for agent authorization requests."
+        title="Agent Policies"
+      />
 
       <AgentPoliciesClient prefill={prefill} />
     </div>

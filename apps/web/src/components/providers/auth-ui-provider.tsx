@@ -107,7 +107,7 @@ export function BetterAuthUIProvider({
 
         const result = await authClient.opaque.requestPasswordReset({
           identifier: email,
-          redirectTo,
+          ...(redirectTo ? { redirectTo } : {}),
         });
 
         if (result.error) {

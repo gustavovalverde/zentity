@@ -1,123 +1,76 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import "server-only";
 
-import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
+import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 
-const KEY_PATH = ".data/attestation-key.json";
+import { env } from "./env";
 
-interface StoredKeyPair {
-  privateKey: Record<string, unknown>;
-  publicKey: Record<string, unknown>;
+const ATTESTER_NAME = "Aether Demo";
+
+interface AttestationKeyPair {
+  privateKey: CryptoKey;
+  publicJwk: JWK;
 }
 
-let cached: CryptoKeyPair | null = null;
+let cachedKeyPair: AttestationKeyPair | undefined;
 
-async function loadOrCreateKeyPair(): Promise<CryptoKeyPair> {
-  if (cached) {
-    return cached;
+async function getOrCreateKeyPair(): Promise<AttestationKeyPair> {
+  if (cachedKeyPair) {
+    return cachedKeyPair;
   }
 
-  if (existsSync(KEY_PATH)) {
-    const stored = JSON.parse(readFileSync(KEY_PATH, "utf-8")) as StoredKeyPair;
-    cached = {
-      privateKey: (await importJWK(stored.privateKey, "EdDSA")) as CryptoKey,
-      publicKey: (await importJWK(stored.publicKey, "EdDSA")) as CryptoKey,
-    };
-    return cached;
-  }
-
-  const keyPair = await generateKeyPair("EdDSA", { crv: "Ed25519" });
-  const privateJwk = await exportJWK(keyPair.privateKey);
-  const publicJwk = await exportJWK(keyPair.publicKey);
-
-  privateJwk.kid = "aether-agent-1";
-  privateJwk.alg = "EdDSA";
-  privateJwk.use = "sig";
-  publicJwk.kid = "aether-agent-1";
-  publicJwk.alg = "EdDSA";
+  const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
+    crv: "Ed25519",
+  });
+  const publicJwk = await exportJWK(publicKey);
+  publicJwk.kid = "aether-demo-1";
   publicJwk.use = "sig";
 
-  mkdirSync(dirname(KEY_PATH), { recursive: true });
-  writeFileSync(
-    KEY_PATH,
-    JSON.stringify({ privateKey: privateJwk, publicKey: publicJwk }, null, 2)
-  );
-
-  cached = keyPair;
-  return keyPair;
-}
-
-/** Returns the public key as a JWK for the JWKS endpoint. */
-export async function getPublicJwk(): Promise<
-  Record<string, unknown> & { alg: string; kid: string; use: string }
-> {
-  const { publicKey } = await loadOrCreateKeyPair();
-  const jwk = await exportJWK(publicKey);
-  return { ...jwk, kid: "aether-agent-1", alg: "EdDSA", use: "sig" };
+  cachedKeyPair = { privateKey, publicJwk };
+  return cachedKeyPair;
 }
 
 /**
- * Sign attestation headers for a CIBA request.
- *
- * Returns `OAuth-Client-Attestation` (agent identity JWT) and
- * `OAuth-Client-Attestation-PoP` (proof-of-possession JWT bound to it).
+ * Get the JWKS document for the demo attestation provider.
  */
-export async function signAttestationHeaders(
-  clientId: string,
-  issuer: string
-): Promise<{ attestation: string; pop: string }> {
-  const { privateKey } = await loadOrCreateKeyPair();
-  const now = Math.floor(Date.now() / 1000);
-
-  const attestation = await new SignJWT({
-    sub: clientId,
-    agent: {
-      name: "Aether AI",
-      model: "gpt-4",
-      runtime: "demo-rp",
-      version: "1.0",
-      capabilities: ["shopping", "comparison"],
-      oversight: "human-in-the-loop",
-    },
-  })
-    .setProtectedHeader({
-      alg: "EdDSA",
-      kid: "aether-agent-1",
-      typ: "oauth-client-attestation+jwt",
-    })
-    .setIssuer(issuer)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 300)
-    .sign(privateKey);
-
-  const pop = await new SignJWT({
-    jti: crypto.randomUUID(),
-    ath: await sha256base64url(attestation),
-  })
-    .setProtectedHeader({
-      alg: "EdDSA",
-      kid: "aether-agent-1",
-      typ: "oauth-client-attestation-pop+jwt",
-    })
-    .setIssuer(clientId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 60)
-    .sign(privateKey);
-
-  return { attestation, pop };
+export async function getAttestationJwks(): Promise<{ keys: JWK[] }> {
+  const kp = await getOrCreateKeyPair();
+  return { keys: [kp.publicJwk] };
 }
 
-const BASE64_PLUS = /\+/g;
-const BASE64_SLASH = /\//g;
-const BASE64_PAD = /=+$/;
+/**
+ * Sign attestation JWT + PoP JWT for a CIBA bc-authorize request.
+ * Returns the two header values per draft-ietf-oauth-attestation-based-client-auth-08.
+ */
+export async function signAttestationHeaders(audience: string): Promise<{
+  attestationJwt: string;
+  popJwt: string;
+}> {
+  const kp = await getOrCreateKeyPair();
 
-async function sha256base64url(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input)
-  );
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(BASE64_PLUS, "-")
-    .replace(BASE64_SLASH, "_")
-    .replace(BASE64_PAD, "");
+  // Generate an ephemeral instance key for PoP
+  const instanceKey = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  const instancePublicJwk = await exportJWK(instanceKey.publicKey);
+
+  // Attestation JWT — signed by the attester (demo-rp), includes cnf binding
+  const issuer = `${env.NEXT_PUBLIC_APP_URL}`;
+  const attestationJwt = await new SignJWT({
+    attester_name: ATTESTER_NAME,
+    cnf: { jwk: instancePublicJwk },
+  })
+    .setProtectedHeader({ alg: "EdDSA", kid: "aether-demo-1", typ: "jwt" })
+    .setIssuer(issuer)
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(kp.privateKey);
+
+  // PoP JWT — signed by the agent instance, proves possession of cnf key
+  const popJwt = await new SignJWT({})
+    .setProtectedHeader({ alg: "EdDSA", typ: "jwt" })
+    .setAudience(audience)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(instanceKey.privateKey);
+
+  return { attestationJwt, popJwt };
 }

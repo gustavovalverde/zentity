@@ -211,7 +211,7 @@ export function BoundaryFormDialog({
 
           {boundaryType === "purchase" && (
             <>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="maxAmount">Max per transaction</Label>
                   <Input
@@ -230,7 +230,7 @@ export function BoundaryFormDialog({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="dailyCap">Daily cap</Label>
                   <Input
@@ -269,7 +269,7 @@ export function BoundaryFormDialog({
           )}
 
           {boundaryType === "custom" && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="actionType">Action type</Label>
                 <Input

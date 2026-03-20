@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertDcrClientIdFormat,
   type CimdMetadata,
+  checkUrlQueryWarning,
   isPrivateHost,
   isUrlClientId,
   validateCimdMetadata,
@@ -169,13 +171,14 @@ describe("validateCimdMetadata", () => {
     expect(result.valid).toBe(false);
   });
 
-  it("rejects non-none token_endpoint_auth_method", () => {
+  it("rejects symmetric auth method client_secret_basic", () => {
     const result = validateCimdMetadata(
       FETCH_URL,
       validMetadata({ token_endpoint_auth_method: "client_secret_basic" })
     );
     expect(result.valid).toBe(false);
-    expect(result.error).toContain("token_endpoint_auth_method");
+    expect(result.error).toContain("symmetric auth method");
+    expect(result.error).toContain("client_secret_basic");
   });
 
   it("accepts token_endpoint_auth_method=none", () => {
@@ -192,6 +195,127 @@ describe("validateCimdMetadata", () => {
     expect(result.metadata?.grant_types).toBeUndefined();
     expect(result.metadata?.response_types).toBeUndefined();
     expect(result.metadata?.token_endpoint_auth_method).toBeUndefined();
+  });
+
+  // Phase 1: Grant type expansion
+  it("accepts refresh_token grant type", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({
+        grant_types: ["authorization_code", "refresh_token"],
+      })
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts CIBA grant type", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({
+        grant_types: [
+          "authorization_code",
+          "urn:openid:params:grant-type:ciba",
+        ],
+      })
+    );
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects implicit grant type", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({ grant_types: ["implicit"] })
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("grant_types");
+  });
+
+  // Phase 1: Prohibited fields (§4.1)
+  it("rejects metadata with client_secret", () => {
+    const meta = validMetadata();
+    (meta as Record<string, unknown>).client_secret = "secret123";
+    const result = validateCimdMetadata(FETCH_URL, meta);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("client_secret");
+    expect(result.error).toContain("MUST NOT");
+  });
+
+  it("rejects metadata with client_secret_expires_at", () => {
+    const meta = validMetadata();
+    (meta as Record<string, unknown>).client_secret_expires_at = 1_234_567_890;
+    const result = validateCimdMetadata(FETCH_URL, meta);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("client_secret_expires_at");
+  });
+
+  it("rejects symmetric auth method client_secret_post", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({ token_endpoint_auth_method: "client_secret_post" })
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("symmetric auth method");
+  });
+
+  it("rejects symmetric auth method client_secret_jwt", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({ token_endpoint_auth_method: "client_secret_jwt" })
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("symmetric auth method");
+  });
+
+  // Phase 1: Optional new fields
+  it("parses client_uri from metadata", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      {
+        ...validMetadata(),
+        client_uri: "https://mcp-client.example.com",
+      },
+      false
+    );
+    expect(result.valid).toBe(true);
+    expect(result.metadata?.client_uri).toBe("https://mcp-client.example.com");
+  });
+
+  it("rejects client_uri pointing to private IP", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      {
+        ...validMetadata(),
+        client_uri: "https://192.168.1.1/about",
+      },
+      false
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("client_uri");
+    expect(result.error).toContain("private");
+  });
+
+  it("parses logo_uri from metadata", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      {
+        ...validMetadata(),
+        logo_uri: "https://mcp-client.example.com/logo.png",
+      },
+      false
+    );
+    expect(result.valid).toBe(true);
+    expect(result.metadata?.logo_uri).toBe(
+      "https://mcp-client.example.com/logo.png"
+    );
+  });
+
+  it("parses scope from metadata", () => {
+    const result = validateCimdMetadata(FETCH_URL, {
+      ...validMetadata(),
+      scope: "openid email profile",
+    });
+    expect(result.valid).toBe(true);
+    expect(result.metadata?.scope).toBe("openid email profile");
   });
 });
 
@@ -230,5 +354,82 @@ describe("validateFetchUrl", () => {
     expect(validateFetchUrl("https://127.0.0.1/client", false)).toContain(
       "private"
     );
+  });
+
+  // Phase 1: §3 URL validation rules (requirePath = true for client_id URLs)
+  it("rejects URL with fragment", () => {
+    expect(
+      validateFetchUrl("https://example.com/client#section", false, true)
+    ).toContain("fragment");
+  });
+
+  it("rejects URL with dot segments (/../)", () => {
+    expect(
+      validateFetchUrl("https://example.com/../secret/client", false, true)
+    ).toContain("dot segments");
+  });
+
+  it("rejects URL with dot segments (/./)", () => {
+    expect(
+      validateFetchUrl("https://example.com/./client", false, true)
+    ).toContain("dot segments");
+  });
+
+  it("rejects URL with credentials", () => {
+    expect(
+      validateFetchUrl("https://user:pass@example.com/client", false, true)
+    ).toContain("credentials");
+  });
+
+  it("rejects URL without path (authority only)", () => {
+    expect(validateFetchUrl("https://example.com", false, true)).toContain(
+      "path"
+    );
+  });
+
+  it("rejects URL with bare slash path", () => {
+    expect(validateFetchUrl("https://example.com/", false, true)).toContain(
+      "path"
+    );
+  });
+
+  it("accepts URL with a path", () => {
+    expect(
+      validateFetchUrl(
+        "https://example.com/.well-known/oauth-client.json",
+        false,
+        true
+      )
+    ).toBeNull();
+  });
+});
+
+describe("checkUrlQueryWarning", () => {
+  it("returns warning for URL with query string", () => {
+    expect(checkUrlQueryWarning("https://example.com/client?v=1")).toContain(
+      "query string"
+    );
+  });
+
+  it("returns null for URL without query string", () => {
+    expect(checkUrlQueryWarning("https://example.com/client")).toBeNull();
+  });
+});
+
+describe("assertDcrClientIdFormat", () => {
+  it("does not throw for hex string client_id", () => {
+    expect(() => assertDcrClientIdFormat("a1b2c3d4e5f6")).not.toThrow();
+  });
+
+  it("throws for https:// client_id", () => {
+    expect(() => assertDcrClientIdFormat("https://example.com/client")).toThrow(
+      "URL-formatted"
+    );
+  });
+
+  it("throws for http:// client_id", () => {
+    expect(() =>
+      assertDcrClientIdFormat("http://localhost:3000/client")
+    ).toThrow("URL-formatted");
   });
 });

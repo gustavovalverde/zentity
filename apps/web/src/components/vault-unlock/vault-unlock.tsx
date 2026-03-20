@@ -50,8 +50,9 @@ export const VAULT_ERRORS: Record<
   { title: string; remedy: string }
 > = {
   not_enrolled: {
-    title: "Your identity vault hasn't been set up yet.",
-    remedy: "Complete identity verification on your Zentity dashboard first.",
+    title: "No identity data found in your vault.",
+    remedy:
+      "If you've already verified, your data may not have been saved. Re-verify from your dashboard to enable identity sharing.",
   },
   browser_unsupported: {
     title: "Your browser doesn't support secure vault unlock.",

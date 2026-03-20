@@ -70,13 +70,13 @@ export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
         {qrDataUrl ? (
           <Image
             alt="QR code to connect with ZKPassport app"
-            className="rounded-lg"
+            className="max-w-full rounded-lg"
             height={280}
             src={qrDataUrl}
             width={280}
           />
         ) : (
-          <div className="flex h-[280px] w-[280px] items-center justify-center rounded-lg bg-muted">
+          <div className="flex aspect-square w-full max-w-[280px] items-center justify-center rounded-lg bg-muted">
             <span className="text-muted-foreground text-sm">
               Generating QR code...
             </span>

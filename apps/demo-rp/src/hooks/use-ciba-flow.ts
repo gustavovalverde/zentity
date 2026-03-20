@@ -23,7 +23,6 @@ interface CibaFlowState {
     scope: string;
     bindingMessage?: string;
     authorizationDetails?: string;
-    trustMode?: "none" | "self-declared" | "attested";
   }) => Promise<void>;
   state: CibaState;
   tokens: Record<string, unknown> | null;
@@ -282,7 +281,6 @@ export function useCibaFlow(providerId: string): CibaFlowState {
       scope: string;
       bindingMessage?: string;
       authorizationDetails?: string;
-      trustMode?: "none" | "self-declared" | "attested";
     }) => {
       setState("requesting");
       setError(null);
@@ -300,7 +298,6 @@ export function useCibaFlow(providerId: string): CibaFlowState {
             authorizationDetails: params.authorizationDetails,
             acrValues: params.acrValues,
             agentClaims: params.agentClaims,
-            trustMode: params.trustMode,
           }),
         });
 

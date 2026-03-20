@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { PageHeader } from "@/components/layouts/page-header";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
@@ -27,9 +28,12 @@ export default async function PassportChipPage() {
     getPrimaryWalletAddress(userId),
   ]);
 
-  // Already chip-verified → dashboard
+  // Already chip-verified → dashboard (unless profile secret missing)
   const alreadyChipVerified = isChipVerified(verification);
-  if (alreadyChipVerified || assuranceState.tier >= 3) {
+  if (
+    (alreadyChipVerified || assuranceState.tier >= 3) &&
+    !assuranceState.details.missingProfileSecret
+  ) {
     redirect("/dashboard");
   }
 
@@ -41,15 +45,10 @@ export default async function PassportChipPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="font-semibold text-2xl tracking-tight">
-          NFC Chip Verification
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Verify your document&apos;s NFC chip for the highest level of identity
-          assurance.
-        </p>
-      </div>
+      <PageHeader
+        description="Verify your document's NFC chip for the highest level of identity assurance."
+        title="NFC Chip Verification"
+      />
       <ZkPassportFlow wallet={wallet} />
     </div>
   );

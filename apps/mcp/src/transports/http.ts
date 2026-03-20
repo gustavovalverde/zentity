@@ -6,11 +6,13 @@ import { cors } from "hono/cors";
 import { type AuthContext, runWithAuth } from "../auth/context.js";
 import { ensureClientRegistration } from "../auth/dcr.js";
 import { discover } from "../auth/discovery.js";
+import type { DiscoveryState } from "../auth/discovery.js";
 import type { DpopKeyPair } from "../auth/dpop.js";
 import { getOrCreateDpopKey } from "../auth/dpop.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { exchangeToken } from "../auth/token-exchange.js";
+import { loadCredentials, updateCredentials } from "../auth/credentials.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
@@ -104,6 +106,30 @@ export function createApp(): Hono {
   app.get("/.well-known/oauth-protected-resource", (c) =>
     c.json(getResourceMetadata())
   );
+
+  app.get("/.well-known/oauth-client.json", (c) => {
+    const clientId = `${config.mcpPublicUrl}/.well-known/oauth-client.json`;
+    return c.json(
+      {
+        client_id: clientId,
+        client_name: "@zentity/mcp-server",
+        redirect_uris: ["http://127.0.0.1/callback"],
+        grant_types: [
+          "authorization_code",
+          "refresh_token",
+          "urn:openid:params:grant-type:ciba",
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        ],
+        token_endpoint_auth_method: "none",
+        scope: "openid email proof:identity identity.name identity.address",
+      },
+      200,
+      {
+        "Cache-Control": "max-age=86400",
+        "Content-Type": "application/json",
+      }
+    );
+  });
 
   const transports = new Map<
     string,
@@ -219,10 +245,41 @@ export function createApp(): Hono {
   return app;
 }
 
-export async function startHttp(): Promise<void> {
-  // Bootstrap OAuth identity: DCR + DPoP keypair for downstream OAuth calls
-  const discovery = await discover(config.zentityUrl);
+/**
+ * CIMD-first client registration per MCP Authorization Spec priority order:
+ * 1. If HTTP transport AND AS supports CIMD → return computed CIMD URL (no network call)
+ * 2. Otherwise → fall back to DCR
+ */
+async function resolveClientId(discovery: DiscoveryState): Promise<string> {
+  // Check if the existing credentials already have a method
+  const existing = loadCredentials(config.zentityUrl);
+  if (existing?.clientId && existing.registrationMethod === "cimd") {
+    console.error(`[cimd] Reusing CIMD client_id: ${existing.clientId}`);
+    return existing.clientId;
+  }
+
+  // CIMD-first: if AS supports CIMD, use the deterministic URL
+  if (discovery.client_id_metadata_document_supported) {
+    const cimdClientId = `${config.mcpPublicUrl}/.well-known/oauth-client.json`;
+    console.error(`[cimd] Using CIMD client_id: ${cimdClientId}`);
+    updateCredentials(config.zentityUrl, {
+      clientId: cimdClientId,
+      registrationMethod: "cimd",
+    });
+    return cimdClientId;
+  }
+
+  // Fallback to DCR
+  console.error("[cimd] AS does not support CIMD, falling back to DCR");
   const clientId = await ensureClientRegistration(discovery);
+  updateCredentials(config.zentityUrl, { registrationMethod: "dcr" });
+  return clientId;
+}
+
+export async function startHttp(): Promise<void> {
+  // Bootstrap OAuth identity: CIMD-first + DPoP keypair for downstream OAuth calls
+  const discovery = await discover(config.zentityUrl);
+  const clientId = await resolveClientId(discovery);
   const dpopKey = await getOrCreateDpopKey(config.zentityUrl);
   httpServerCredentials = { clientId, dpopKey };
 

@@ -23,6 +23,7 @@ import {
 import {
   getIdentityBundleByUserId,
   getSelectedVerification,
+  hasProfileSecret,
   isChipVerified,
 } from "@/lib/db/queries/identity";
 import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
@@ -119,12 +120,14 @@ async function gatherVerificationData(
     fheAttributeTypes,
     hasAttestation,
     hasPasskeys,
+    profileExists,
   ] = await Promise.all([
     hasSecuredFheKeys(userId),
     getSelectedVerification(userId),
     getEncryptedAttributeTypesByUserId(userId),
     hasOnChainAttestation(userId),
     storedLoginMethod ? Promise.resolve(false) : hasPasskeyCredentials(userId),
+    hasProfileSecret(userId),
   ]);
 
   const lastLoginMethod = storedLoginMethod ?? (hasPasskeys ? "passkey" : null);
@@ -146,6 +149,9 @@ async function gatherVerificationData(
     zkProofTypes.includes("face_match");
   const needsDocumentReprocessing = documentVerified && !claimHashesValid;
 
+  const missingProfileSecret =
+    !profileExists && (documentVerified || chipVerified);
+
   return {
     lastLoginMethod,
     hasSecuredKeys,
@@ -156,6 +162,7 @@ async function gatherVerificationData(
     zkProofsComplete: areZkProofsComplete(zkProofTypes),
     fheComplete: isFheComplete(fheAttributeTypes),
     onChainAttested: hasAttestation,
+    missingProfileSecret,
     needsDocumentReprocessing,
   };
 }
@@ -243,6 +250,7 @@ export function getUnauthenticatedAssuranceState(): AssuranceState {
     zkProofsComplete: false,
     fheComplete: false,
     onChainAttested: false,
+    missingProfileSecret: false,
     needsDocumentReprocessing: false,
   });
 }

@@ -443,7 +443,7 @@ export function ViewIdentityData() {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <KeyRound className="h-5 w-5 text-info" />
             <CardTitle className="text-lg">Your On-Chain Identity</CardTitle>
@@ -468,7 +468,7 @@ export function ViewIdentityData() {
                 </span>
               )}
               {fhevmStatus === "error" && (
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     Decryption setup failed.{" "}
                     {fhevmError?.message || "Please try again."}
@@ -509,7 +509,7 @@ export function ViewIdentityData() {
         {/* Decrypt Error */}
         {decryptError ? (
           <Alert variant="destructive">
-            <AlertDescription className="flex items-center justify-between gap-2">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm">{decryptError}</span>
               <Button
                 className="shrink-0"
@@ -638,7 +638,7 @@ const IdentityField = memo(function IdentityField({
   variant?: "default" | "destructive" | "success";
 }>) {
   return (
-    <div className="flex items-center justify-between border-b py-2 last:border-0">
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
       <span className="flex items-center gap-2 text-muted-foreground text-sm">
         <span className="h-4 w-4 text-muted-foreground">
           {ICON_MAP[icon] ?? ""}

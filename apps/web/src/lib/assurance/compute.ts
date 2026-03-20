@@ -80,6 +80,7 @@ export interface AssuranceInput {
   hasSession: boolean;
   livenessVerified: boolean;
   loginMethod: string | null | undefined;
+  missingProfileSecret?: boolean;
   needsDocumentReprocessing?: boolean;
   onChainAttested: boolean;
   zkProofsComplete: boolean;
@@ -105,6 +106,7 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     zkProofsComplete,
     fheComplete,
     onChainAttested,
+    missingProfileSecret = false,
     needsDocumentReprocessing = false,
   } = input;
 
@@ -151,6 +153,7 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     zkProofsComplete,
     fheComplete,
     hasIncompleteProofs,
+    missingProfileSecret,
     needsDocumentReprocessing,
     onChainAttested,
   };

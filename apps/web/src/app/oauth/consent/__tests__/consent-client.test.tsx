@@ -123,7 +123,13 @@ describe("OAuthConsentClient identity hardening", () => {
       <OAuthConsentClient
         authMode="passkey"
         clientId="client-1"
-        clientMeta={{ name: "RP", icon: null, uri: null }}
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
         optionalScopes={[]}
         scopeParam="openid identity.name"
         securityBadgeInput={null}
@@ -167,7 +173,13 @@ describe("OAuthConsentClient identity hardening", () => {
       <OAuthConsentClient
         authMode="wallet"
         clientId="client-1"
-        clientMeta={{ name: "RP", icon: null, uri: null }}
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
         optionalScopes={[]}
         scopeParam="openid identity.name"
         securityBadgeInput={null}

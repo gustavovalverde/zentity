@@ -75,7 +75,7 @@ export function WalletSignUpForm({
       const result = await authClient.signUp.eip712({
         address,
         chainId,
-        email,
+        ...(email ? { email } : {}),
         signTypedData: async (typedData: Eip712TypedData) =>
           signTypedData({
             domain: typedData.domain as Record<string, unknown>,

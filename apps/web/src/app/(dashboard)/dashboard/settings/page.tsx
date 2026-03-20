@@ -21,6 +21,7 @@ import {
 import { TwoFactorCard } from "@/components/dashboard/two-factor-card";
 import { UserDataSection } from "@/components/dashboard/user-data-section";
 import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
+import { PageHeader } from "@/components/layouts/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/cached-session";
@@ -74,12 +75,10 @@ export default async function SettingsPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-bold text-2xl">Settings</h1>
-        <p className="text-muted-foreground text-sm">
-          Manage your account settings, security, and recovery options
-        </p>
-      </div>
+      <PageHeader
+        description="Manage your account settings, security, and recovery options"
+        title="Settings"
+      />
 
       {showWalletRiskNotice && (
         <Alert variant="warning">

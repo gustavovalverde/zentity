@@ -17,6 +17,7 @@ export type FlowStage =
   | "scanning"
   | "generating"
   | "verifying"
+  | "vault_pending"
   | "finalizing"
   | "success"
   | "error"
@@ -26,6 +27,8 @@ interface StatusDisplayProps {
   errorMessage?: string | null;
   onNavigate?: () => void;
   onRetry?: () => void;
+  onRetryVault?: () => void;
+  onSkipVault?: () => void;
   proofsGenerated?: number;
   proofsTotal?: number;
   stage: FlowStage;
@@ -37,6 +40,8 @@ export function StatusDisplay({
   proofsGenerated = 0,
   proofsTotal = 0,
   onRetry,
+  onRetryVault,
+  onSkipVault,
   onNavigate,
 }: Readonly<StatusDisplayProps>) {
   if (stage === "connecting") {
@@ -89,6 +94,36 @@ export function StatusDisplay({
         <AlertTitle>Verifying results</AlertTitle>
         <AlertDescription>
           Processing your verification results...
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (stage === "vault_pending") {
+    return (
+      <Alert className="border-amber-500/30 bg-amber-500/5">
+        <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <AlertTitle className="text-amber-700 dark:text-amber-400">
+          Save your identity data
+        </AlertTitle>
+        <AlertDescription className="space-y-3">
+          <p>
+            Your verified identity data needs to be secured in your encrypted
+            vault. Without this step, you won&apos;t be able to share identity
+            details with applications.
+          </p>
+          <div className="flex gap-2">
+            {onRetryVault && (
+              <Button onClick={onRetryVault} size="sm" variant="default">
+                Retry
+              </Button>
+            )}
+            {onSkipVault && (
+              <Button onClick={onSkipVault} size="sm" variant="ghost">
+                Skip for now
+              </Button>
+            )}
+          </div>
         </AlertDescription>
       </Alert>
     );

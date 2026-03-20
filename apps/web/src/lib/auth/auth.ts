@@ -32,14 +32,13 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq } from "drizzle-orm";
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import {
   computeAcr,
   computeAcrEidas,
-  computeAtHash,
   loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
@@ -97,7 +96,6 @@ import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { validateSafeUrl } from "@/lib/auth/url-safety";
-import { normalizeAgentClaims } from "@/lib/ciba/agent-attestation";
 import { tryAutoApprove } from "@/lib/ciba/auto-approve";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
@@ -136,6 +134,8 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { verifyAgentAttestation } from "@/lib/identity/agent-attestation";
+import { parseAgentClaims } from "@/lib/identity/agent-claims";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
@@ -1313,7 +1313,7 @@ export const auth = betterAuth({
 
         return claims;
       },
-      customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
+      customIdTokenClaims: async ({ user, scopes }) => {
         const scopeList = toScopeList(scopes);
 
         // Proof claims use the granted scopes directly — no vault unlock needed
@@ -1336,32 +1336,13 @@ export const auth = betterAuth({
           };
         }
 
-        // at_hash (OIDC Core §3.1.3.6) — hash alg matches id_token signing alg
-        let atHashClaim: Record<string, unknown> = {};
-        if (accessToken) {
-          const signingAlg =
-            (metadata?.id_token_signed_response_alg as string) || "RS256";
-          const atHash = computeAtHash(accessToken, signingAlg);
-          if (atHash) {
-            atHashClaim = { at_hash: atHash };
-          }
-        }
-
         const allClaims = {
           ...proofClaims,
           ...assuranceClaims,
-          ...atHashClaim,
         };
 
-        let clientId: string | undefined;
-        if (accessToken) {
-          try {
-            clientId = decodeJwt(accessToken).azp as string | undefined;
-          } catch {
-            // Opaque access token — prefix-scan fallback in consumeIdTokenClaims
-          }
-        }
-        const idTokenFilter = consumeIdTokenClaims(user.id, clientId);
+        // clientId=undefined triggers prefix-scan fallback in resolveKey
+        const idTokenFilter = consumeIdTokenClaims(user.id);
         if (!idTokenFilter) {
           return allClaims;
         }
@@ -1494,17 +1475,46 @@ export const auth = betterAuth({
       },
       sendNotification: async (data, request) => {
         // Normalize agent claims BEFORE auto-approve to prevent attestation spoofing.
-        // This strips any self-injected attestation field, verifies attestation
-        // headers against trusted JWKS, and updates the DB with normalized claims.
-        const normalizedAgentClaims = await normalizeAgentClaims(
-          data.agentClaims,
-          request
-        );
-        if (normalizedAgentClaims !== data.agentClaims) {
-          await db
-            .update(cibaRequests)
-            .set({ agentClaims: normalizedAgentClaims ?? null })
-            .where(eq(cibaRequests.authReqId, data.authReqId));
+        let normalizedClaims: string | undefined;
+        let agentName: string | undefined;
+        if (data.agentClaims) {
+          const parsed = parseAgentClaims(data.agentClaims);
+          if (parsed) {
+            // Strip any client-supplied attestation field
+            const { attestation: _strip, ...cleanClaims } = parsed as Record<
+              string,
+              unknown
+            >;
+
+            // Verify attestation headers from the request
+            const attestationJwt = request?.headers.get(
+              "OAuth-Client-Attestation"
+            );
+            const attestationPopJwt = request?.headers.get(
+              "OAuth-Client-Attestation-PoP"
+            );
+            if (attestationJwt) {
+              const issuer = getAuthIssuer();
+              const result = await verifyAgentAttestation(
+                attestationJwt,
+                attestationPopJwt ?? undefined,
+                issuer
+              );
+              (cleanClaims as Record<string, unknown>).attestation = result;
+            }
+
+            normalizedClaims = JSON.stringify(cleanClaims);
+            agentName = parsed.agent.name;
+            await db
+              .update(cibaRequests)
+              .set({ agentClaims: normalizedClaims })
+              .where(eq(cibaRequests.authReqId, data.authReqId));
+          } else {
+            await db
+              .update(cibaRequests)
+              .set({ agentClaims: null })
+              .where(eq(cibaRequests.authReqId, data.authReqId));
+          }
         }
 
         const autoApproveResult = await tryAutoApprove(data);
@@ -1523,22 +1533,6 @@ export const auth = betterAuth({
           return;
         }
 
-        let agentName: string | undefined;
-        if (normalizedAgentClaims) {
-          try {
-            const ac = JSON.parse(normalizedAgentClaims) as Record<
-              string,
-              unknown
-            >;
-            const agent = ac.agent as Record<string, unknown> | undefined;
-            if (typeof agent?.name === "string") {
-              agentName = agent.name;
-            }
-          } catch {
-            // Ignore malformed agent claims
-          }
-        }
-
         const origin = getAppOrigin();
         const pushPayload = buildCibaPushPayload(
           { ...data, agentName },
@@ -1553,7 +1547,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
-            agentClaims: normalizedAgentClaims,
+            agentClaims: normalizedClaims,
             approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);

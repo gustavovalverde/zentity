@@ -269,9 +269,46 @@ describe("computeAssuranceState", () => {
         zkProofsComplete: true,
         fheComplete: true,
         hasIncompleteProofs: false,
+        missingProfileSecret: false,
         needsDocumentReprocessing: false,
         onChainAttested: true,
       });
+    });
+
+    it("propagates missingProfileSecret into details", () => {
+      const state = computeAssuranceState({
+        hasSession: true,
+        loginMethod: "passkey",
+        hasSecuredKeys: true,
+        chipVerified: true,
+        documentVerified: false,
+        livenessVerified: false,
+        faceMatchVerified: false,
+        zkProofsComplete: false,
+        fheComplete: true,
+        onChainAttested: false,
+        missingProfileSecret: true,
+      });
+
+      expect(state.tier).toBe(3);
+      expect(state.details.missingProfileSecret).toBe(true);
+    });
+
+    it("defaults missingProfileSecret to false when omitted", () => {
+      const state = computeAssuranceState({
+        hasSession: true,
+        loginMethod: "passkey",
+        hasSecuredKeys: true,
+        chipVerified: false,
+        documentVerified: true,
+        livenessVerified: true,
+        faceMatchVerified: true,
+        zkProofsComplete: true,
+        fheComplete: true,
+        onChainAttested: false,
+      });
+
+      expect(state.details.missingProfileSecret).toBe(false);
     });
   });
 });
