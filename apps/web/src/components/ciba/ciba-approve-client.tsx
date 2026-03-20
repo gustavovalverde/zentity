@@ -3,7 +3,13 @@
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 import type { AgentClaims } from "@/lib/identity/agent-claims";
 
-import { Bot, ShieldCheck, ShieldPlus } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  ShieldPlus,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -93,14 +99,21 @@ type PageState =
   | "error";
 
 function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
+  const [showAudit, setShowAudit] = useState(false);
   const agent = claims.agent;
   if (!agent?.name) {
     return null;
   }
 
+  const capabilities =
+    agent.capabilities ?? claims.capabilities?.map((c) => c.action);
+  const oversightItems = claims.oversight?.requires_human_approval_for;
+  const delegationDepth = claims.delegation?.depth;
+  const traceId = claims.audit?.trace_id;
+
   return (
-    <div className="rounded-lg border bg-muted/50 p-4">
-      <div className="mb-2 flex items-center gap-2">
+    <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+      <div className="flex items-center gap-2">
         <Bot className="size-4 text-muted-foreground" />
         <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
           Agent
@@ -108,6 +121,11 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
         <Badge className="text-xs" variant="outline">
           Unverified
         </Badge>
+        {delegationDepth != null && delegationDepth > 0 && (
+          <Badge className="text-xs" variant="secondary">
+            Delegated (depth: {delegationDepth})
+          </Badge>
+        )}
       </div>
       <p className="font-medium">{agent.name}</p>
       {(agent.model || agent.runtime || agent.version) && (
@@ -118,9 +136,59 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
         </p>
       )}
       {claims.task?.description && (
-        <p className="mt-1 text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-sm">
           {claims.task.description}
         </p>
+      )}
+      {capabilities && capabilities.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {capabilities.map((cap) => (
+            <Badge className="text-xs" key={cap} variant="secondary">
+              {cap}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {oversightItems && oversightItems.length > 0 && (
+        <div>
+          <p className="text-muted-foreground text-xs">
+            Requires human approval for:
+          </p>
+          <ul className="mt-0.5 space-y-0.5 pl-4 text-muted-foreground text-xs">
+            {oversightItems.map((item) => (
+              <li className="list-disc" key={item}>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {traceId && (
+        <div>
+          <button
+            className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
+            onClick={() => setShowAudit((p) => !p)}
+            type="button"
+          >
+            Audit
+            {showAudit ? (
+              <ChevronUp className="size-3" />
+            ) : (
+              <ChevronDown className="size-3" />
+            )}
+          </button>
+          {showAudit && (
+            <p className="mt-1 break-all font-mono text-muted-foreground text-xs">
+              trace: {traceId}
+              {claims.audit?.session_id && (
+                <>
+                  <br />
+                  session: {claims.audit.session_id}
+                </>
+              )}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );

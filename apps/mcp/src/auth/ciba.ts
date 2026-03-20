@@ -5,7 +5,16 @@ const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
 
 export const DEFAULT_AGENT_CLAIMS = {
-  agent: { name: "Zentity MCP", runtime: "node" },
+  agent: {
+    name: "Zentity MCP",
+    model: "mcp-bridge",
+    runtime: "node",
+    version: "0.1.0",
+    capabilities: ["identity_lookup", "purchase", "approval"],
+  },
+  oversight: {
+    requires_human_approval_for: ["purchase", "identity_access"],
+  },
 } as const;
 
 interface CibaAuthResponse {

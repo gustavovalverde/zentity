@@ -81,7 +81,7 @@ interface AgentIdentity {
   version?: string | undefined;
 }
 
-function extractAgentIdentity(raw: unknown): AgentIdentity | null {
+export function extractAgentIdentity(raw: unknown): AgentIdentity | null {
   if (!raw) {
     return null;
   }
@@ -113,7 +113,7 @@ function extractAgentIdentity(raw: unknown): AgentIdentity | null {
   };
 }
 
-function formatAgentText(agent: AgentIdentity): string {
+export function formatAgentText(agent: AgentIdentity): string {
   const parts = [agent.name];
   if (agent.model) {
     parts.push(`Model: ${agent.model}`);
@@ -127,7 +127,7 @@ function formatAgentText(agent: AgentIdentity): string {
   return `Agent: ${parts.join(" | ")}\n(Unverified — self-declared by the requesting application)`;
 }
 
-function formatAgentHtml(agent: AgentIdentity): string {
+export function formatAgentHtml(agent: AgentIdentity): string {
   const fields = [`<strong>${agent.name}</strong>`];
   if (agent.model) {
     fields.push(`Model: ${agent.model}`);
