@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { signAttestationHeaders } from "@/lib/attestation";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
@@ -70,9 +71,17 @@ async function handleAuthorize(
   const notificationToken = crypto.randomUUID();
   const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
 
+  // Sign attestation headers (draft-ietf-oauth-attestation-based-client-auth-08)
+  const zentityIssuer = `${env.ZENTITY_URL}/api/auth`;
+  const attestation = await signAttestationHeaders(zentityIssuer);
+
   const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "OAuth-Client-Attestation": attestation.attestationJwt,
+      "OAuth-Client-Attestation-PoP": attestation.popJwt,
+    },
     body: JSON.stringify({
       client_id: client.clientId,
       ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
