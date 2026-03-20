@@ -40,11 +40,16 @@ import { ClientSecurityBadges } from "./_components/client-security-badges";
 
 interface ClientMeta {
   icon: string | null;
+  metadataUrl: string | null;
   name: string;
+  redirectUris: string | null;
   uri: string | null;
 }
 
-function isHttpsUrl(url: string): boolean {
+function isSafeImageSrc(url: string): boolean {
+  if (url.startsWith("data:image/")) {
+    return true;
+  }
   try {
     return new URL(url).protocol === "https:";
   } catch {
@@ -53,7 +58,7 @@ function isHttpsUrl(url: string): boolean {
 }
 
 function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
-  const safeIcon = meta?.icon && isHttpsUrl(meta.icon) ? meta.icon : null;
+  const safeIcon = meta?.icon && isSafeImageSrc(meta.icon) ? meta.icon : null;
 
   if (safeIcon && meta) {
     return (
@@ -73,6 +78,40 @@ function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
       {letter}
     </div>
   );
+}
+
+function extractHostname(metadataUrl: string): string | null {
+  try {
+    return new URL(metadataUrl).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function isLocalhostUri(uri: string): boolean {
+  try {
+    const host = new URL(uri).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function areAllRedirectUrisLocalhost(redirectUris: string | null): boolean {
+  if (!redirectUris) {
+    return false;
+  }
+  try {
+    const uris = JSON.parse(redirectUris) as unknown;
+    if (!Array.isArray(uris) || uris.length === 0) {
+      return false;
+    }
+    return uris.every(
+      (u: unknown) => typeof u === "string" && isLocalhostUri(u)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function OAuthConsentClient({
@@ -327,6 +366,11 @@ export function OAuthConsentClient({
             {clientName} wants to access your{" "}
             {hasApprovedIdentityScopes ? "personal information" : "account"}
           </CardTitle>
+          {clientMeta?.metadataUrl && (
+            <p className="text-muted-foreground text-xs">
+              {extractHostname(clientMeta.metadataUrl)}
+            </p>
+          )}
           <CardDescription>
             {hasOptional
               ? "Review required items and choose what else to share."
@@ -346,6 +390,11 @@ export function OAuthConsentClient({
               </>
             ) : null}
           </CardDescription>
+          {areAllRedirectUrisLocalhost(clientMeta?.redirectUris ?? null) && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 text-xs dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              Local app — authorization code delivered to a local application
+            </div>
+          )}
           <ClientSecurityBadges input={securityBadgeInput} />
         </CardHeader>
         <CardContent className="space-y-4">

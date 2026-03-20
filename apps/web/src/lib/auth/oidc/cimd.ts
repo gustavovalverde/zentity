@@ -147,6 +147,34 @@ function detectMetadataChanges(
   }
 }
 
+/**
+ * Prefetch logo_uri and convert to a data URI for safe rendering.
+ * Returns null on any failure (SSRF, size, fetch error).
+ */
+async function prefetchLogoAsDataUri(logoUri: string): Promise<string | null> {
+  try {
+    const response = await fetch(logoUri, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: "error",
+    });
+    if (response.status !== 200) {
+      return null;
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      return null;
+    }
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > MAX_RESPONSE_BYTES) {
+      return null;
+    }
+    const base64 = Buffer.from(buffer).toString("base64");
+    return `data:${contentType.split(";")[0]};base64,${base64}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveCimdClient(clientId: string): Promise<{
   resolved: boolean;
   error?: string | undefined;
@@ -176,6 +204,11 @@ export async function resolveCimdClient(clientId: string): Promise<{
   const meta = result.metadata;
   const now = new Date();
 
+  // Prefetch logo if present
+  const iconDataUri = meta.logo_uri
+    ? await prefetchLogoAsDataUri(meta.logo_uri)
+    : null;
+
   if (existing) {
     detectMetadataChanges(
       clientId,
@@ -195,6 +228,8 @@ export async function resolveCimdClient(clientId: string): Promise<{
         grantTypes: meta.grant_types
           ? JSON.stringify(meta.grant_types)
           : undefined,
+        icon: iconDataUri ?? undefined,
+        uri: meta.client_uri ?? undefined,
         trustLevel: 1,
         metadataFetchedAt: now,
         updatedAt: now,
@@ -210,6 +245,8 @@ export async function resolveCimdClient(clientId: string): Promise<{
         : JSON.stringify(["authorization_code"]),
       responseTypes: JSON.stringify(["code"]),
       tokenEndpointAuthMethod: meta.token_endpoint_auth_method ?? "none",
+      icon: iconDataUri,
+      uri: meta.client_uri,
       public: true,
       subjectType: "pairwise",
       trustLevel: 1,
