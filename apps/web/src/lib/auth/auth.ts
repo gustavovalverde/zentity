@@ -134,6 +134,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { verifyAgentAttestation } from "@/lib/identity/agent-attestation";
 import { parseAgentClaims } from "@/lib/identity/agent-claims";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
@@ -1494,7 +1495,24 @@ export const auth = betterAuth({
         if (data.agentClaims) {
           const parsed = parseAgentClaims(data.agentClaims);
           if (parsed) {
-            normalizedClaims = JSON.stringify(parsed);
+            // Strip any client-supplied attestation field
+            const { attestation: _strip, ...cleanClaims } = parsed as Record<
+              string,
+              unknown
+            >;
+
+            // Verify attestation if headers were sent
+            if (data.attestationJwt) {
+              const issuer = getAuthIssuer();
+              const result = await verifyAgentAttestation(
+                data.attestationJwt,
+                data.attestationPopJwt,
+                issuer
+              );
+              (cleanClaims as Record<string, unknown>).attestation = result;
+            }
+
+            normalizedClaims = JSON.stringify(cleanClaims);
             agentName = parsed.agent.name;
             await db
               .update(cibaRequests)

@@ -98,6 +98,7 @@ export const env = createEnv({
     OIDC4VP_JWKS_URL: z.string().optional(),
     DPOP_NONCE_TTL_SECONDS: z.coerce.number().default(30),
     TRUSTED_WALLET_ISSUERS: z.string().optional(),
+    TRUSTED_AGENT_ATTESTERS: z.string().optional(),
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS: z.string().optional(),
 
     // Blockchain (server-only secrets/overrides)
@@ -225,6 +226,7 @@ export const env = createEnv({
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
     DPOP_NONCE_TTL_SECONDS: process.env.DPOP_NONCE_TTL_SECONDS,
     TRUSTED_WALLET_ISSUERS: process.env.TRUSTED_WALLET_ISSUERS,
+    TRUSTED_AGENT_ATTESTERS: process.env.TRUSTED_AGENT_ATTESTERS,
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS:
       process.env.TRUSTED_SOFTWARE_STATEMENT_ISSUERS,
     REGISTRAR_PRIVATE_KEY: process.env.REGISTRAR_PRIVATE_KEY,

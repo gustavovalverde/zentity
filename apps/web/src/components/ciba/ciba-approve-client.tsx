@@ -98,12 +98,22 @@ type PageState =
   | "expired"
   | "error";
 
+interface AttestationInfo {
+  provider?: string;
+  verified?: boolean;
+}
+
 function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
   const [showAudit, setShowAudit] = useState(false);
   const agent = claims.agent;
   if (!agent?.name) {
     return null;
   }
+
+  const attestation = (claims as Record<string, unknown>).attestation as
+    | AttestationInfo
+    | undefined;
+  const isVerified = attestation?.verified === true;
 
   const capabilities =
     agent.capabilities ?? claims.capabilities?.map((c) => c.action);
@@ -118,9 +128,15 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
         <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
           Agent
         </p>
-        <Badge className="text-xs" variant="outline">
-          Unverified
-        </Badge>
+        {isVerified ? (
+          <Badge className="border-green-200 bg-green-50 text-green-700 text-xs dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            Verified by {attestation?.provider ?? "Provider"}
+          </Badge>
+        ) : (
+          <Badge className="text-xs" variant="outline">
+            Unverified
+          </Badge>
+        )}
         {delegationDepth != null && delegationDepth > 0 && (
           <Badge className="text-xs" variant="secondary">
             Delegated (depth: {delegationDepth})
