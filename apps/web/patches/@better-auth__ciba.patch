@@ -1,0 +1,20 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 0000000..1111111 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -195,6 +195,7 @@
+ 			if (cibaRequest.agentClaims) try {
+ 				const ac = JSON.parse(cibaRequest.agentClaims);
+ 				if (ac.agent) pushExtra.accessTokenClaims.agent = ac.agent;
++				if (ac.attestation) pushExtra.accessTokenClaims.agent_attestation = ac.attestation;
+ 			} catch {}
+ 			const tokenResult = await createUserTokens(tokenCtx, oauthOpts, client, scopes, session.user, authReqId, void 0, void 0, void 0, /* @__PURE__ */ new Date(), pushExtra);
+ 			await deleteCibaRequest(ctx, authReqId);
+@@ -566,6 +567,7 @@
+ 				if (cibaRequest.agentClaims) try {
+ 					const ac = JSON.parse(cibaRequest.agentClaims);
+ 					if (ac.agent) extra.accessTokenClaims.agent = ac.agent;
++					if (ac.attestation) extra.accessTokenClaims.agent_attestation = ac.attestation;
+ 				} catch {}
+ 				return createUserTokens(ctx, opts, client, scopes, user, authReqId, void 0, void 0, void 0, /* @__PURE__ */ new Date(), extra);
+ 			}

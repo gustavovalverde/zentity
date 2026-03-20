@@ -28,6 +28,9 @@ overrides:
 packageExtensionsChecksum: sha256-jKpE1aF3N5fCWI1FmAJ2k+7O9zpgj57IUnwjmMJ50uE=
 
 patchedDependencies:
+  '@better-auth/ciba@1.5.6':
+    hash: bef3063747a89fb9e7bdd88bfe8a69531ea110d2eff6e7474d57c6e20ee576f7
+    path: patches/@better-auth__ciba.patch
   '@daveyplate/better-auth-ui':
     hash: 00ddf4641526f1c9986b25aede4be3f06ae306b633fb40ebec4af24e005f11e9
     path: vendor/@daveyplate__better-auth-ui.patch
@@ -44,7 +47,7 @@ importers:
         version: 4.0.4
       '@better-auth/ciba':
         specifier: file:vendor/better-auth-ciba-1.5.6.tgz
-        version: file:vendor/better-auth-ciba-1.5.6.tgz(97fb506294d78450adb06fd6869c688c)
+        version: file:vendor/better-auth-ciba-1.5.6.tgz(patch_hash=bef3063747a89fb9e7bdd88bfe8a69531ea110d2eff6e7474d57c6e20ee576f7)(97fb506294d78450adb06fd6869c688c)
       '@better-auth/core':
         specifier: file:vendor/better-auth-core-1.5.6.tgz
         version: file:vendor/better-auth-core-1.5.6.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.0)(better-call@2.0.2(patch_hash=826a5b4756d6e865e51b82c2e64c2ef212d91047b691e6e394eee79883b79c77)(zod@4.3.6))(jose@6.2.1)(kysely@0.28.12)(nanostores@1.2.0)
@@ -9114,7 +9117,7 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
-  '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.6.tgz(97fb506294d78450adb06fd6869c688c)':
+  '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.6.tgz(patch_hash=bef3063747a89fb9e7bdd88bfe8a69531ea110d2eff6e7474d57c6e20ee576f7)(97fb506294d78450adb06fd6869c688c)':
     dependencies:
       '@better-auth/core': file:vendor/better-auth-core-1.5.6.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.0)(better-call@2.0.2(patch_hash=826a5b4756d6e865e51b82c2e64c2ef212d91047b691e6e394eee79883b79c77)(zod@4.3.6))(jose@6.2.1)(kysely@0.28.12)(nanostores@1.2.0)
       '@better-auth/oauth-provider': file:vendor/better-auth-oauth-provider-1.5.6.tgz(@better-auth/core@file:vendor/better-auth-core-1.5.6.tgz(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(@opentelemetry/api@1.9.0)(better-call@2.0.2(patch_hash=826a5b4756d6e865e51b82c2e64c2ef212d91047b691e6e394eee79883b79c77)(zod@4.3.6))(jose@6.2.1)(kysely@0.28.12)(nanostores@1.2.0))(@better-auth/utils@0.3.1)(@better-fetch/fetch@1.1.21)(better-auth@file:vendor/better-auth-1.5.6.tgz(4e74c4c1644bc90118640825f27f525d))(better-call@2.0.2(patch_hash=826a5b4756d6e865e51b82c2e64c2ef212d91047b691e6e394eee79883b79c77)(zod@4.3.6))

@@ -35,6 +35,7 @@ const bodySchema = z.discriminatedUnion("action", [
     authorizationDetails: z.string().optional(),
     acrValues: z.string().optional(),
     agentClaims: z.string().optional(),
+    trustMode: z.enum(["none", "self-declared", "attested"]).optional(),
   }),
   z.object({
     action: z.literal("token"),
@@ -65,23 +66,27 @@ async function handleAuthorize(
     authorizationDetails?: string | undefined;
     acrValues?: string | undefined;
     agentClaims?: string | undefined;
+    trustMode?: "none" | "self-declared" | "attested" | undefined;
   },
   client: DcrClient
 ) {
   const notificationToken = crypto.randomUUID();
   const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
 
-  // Sign attestation headers (draft-ietf-oauth-attestation-based-client-auth-08)
-  const zentityIssuer = `${env.ZENTITY_URL}/api/auth`;
-  const attestation = await signAttestationHeaders(zentityIssuer);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (data.trustMode === "attested") {
+    const zentityIssuer = `${env.ZENTITY_URL}/api/auth`;
+    const attestation = await signAttestationHeaders(zentityIssuer);
+    headers["OAuth-Client-Attestation"] = attestation.attestationJwt;
+    headers["OAuth-Client-Attestation-PoP"] = attestation.popJwt;
+  }
 
   const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "OAuth-Client-Attestation": attestation.attestationJwt,
-      "OAuth-Client-Attestation-PoP": attestation.popJwt,
-    },
+    headers,
     body: JSON.stringify({
       client_id: client.clientId,
       ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
