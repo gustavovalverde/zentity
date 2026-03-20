@@ -1,10 +1,13 @@
 import "server-only";
 
-import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 
 import { env } from "./env";
 
 const ATTESTER_NAME = "Aether Demo";
+const KEY_PATH = resolve(process.cwd(), ".data/attestation-key.json");
 
 interface AttestationKeyPair {
   privateKey: CryptoKey;
@@ -18,12 +21,31 @@ async function getOrCreateKeyPair(): Promise<AttestationKeyPair> {
     return cachedKeyPair;
   }
 
+  if (existsSync(KEY_PATH)) {
+    const stored = JSON.parse(readFileSync(KEY_PATH, "utf8"));
+    const privateKey = await importJWK(stored.privateJwk, "EdDSA");
+    cachedKeyPair = {
+      privateKey: privateKey as CryptoKey,
+      publicJwk: stored.publicJwk,
+    };
+    return cachedKeyPair;
+  }
+
   const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
     crv: "Ed25519",
   });
   const publicJwk = await exportJWK(publicKey);
   publicJwk.kid = "aether-demo-1";
   publicJwk.use = "sig";
+
+  const privateJwk = await exportJWK(privateKey);
+  privateJwk.kid = "aether-demo-1";
+
+  const dir = dirname(KEY_PATH);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  writeFileSync(KEY_PATH, JSON.stringify({ publicJwk, privateJwk }, null, 2));
 
   cachedKeyPair = { privateKey, publicJwk };
   return cachedKeyPair;

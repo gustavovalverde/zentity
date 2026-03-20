@@ -188,7 +188,8 @@
   "pnpm": {
     "patchedDependencies": {
       "@daveyplate/better-auth-ui": "vendor/@daveyplate__better-auth-ui.patch",
-      "better-call@2.0.2": "patches/better-call@2.0.2.patch"
+      "better-call@2.0.2": "patches/better-call@2.0.2.patch",
+      "@better-auth/ciba@1.5.6": "patches/@better-auth__ciba.patch"
     },
     "overrides": {
       "glob": "^13.0.5",
