@@ -16,6 +16,7 @@ export interface StoredCredentials {
   expiresAt?: number;
   loginHint?: string;
   refreshToken?: string;
+  registrationMethod?: "cimd" | "dcr";
   zentityUrl: string;
 }
 

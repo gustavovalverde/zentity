@@ -11,6 +11,7 @@ const discoverySchema = z.object({
   jwks_uri: z.string().optional(),
   dpop_signing_alg_values_supported: z.array(z.string()).optional(),
   require_pushed_authorization_requests: z.boolean().optional(),
+  client_id_metadata_document_supported: z.boolean().optional(),
 });
 
 export type DiscoveryState = z.infer<typeof discoverySchema>;
