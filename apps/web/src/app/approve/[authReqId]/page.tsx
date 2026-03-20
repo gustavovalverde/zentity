@@ -8,6 +8,7 @@ import { getCachedSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
+import { parseAgentClaims } from "@/lib/identity/agent-claims";
 
 export default async function ApprovePage({
   params,
@@ -53,14 +54,9 @@ export default async function ApprovePage({
     );
   }
 
-  let agentClaims: Record<string, unknown> | null = null;
-  if (cibaRow.agentClaims) {
-    try {
-      agentClaims = JSON.parse(cibaRow.agentClaims) as Record<string, unknown>;
-    } catch {
-      // Malformed — render page without agent context
-    }
-  }
+  const agentClaims = cibaRow.agentClaims
+    ? parseAgentClaims(cibaRow.agentClaims)
+    : null;
 
   return (
     <div className="w-full max-w-md">

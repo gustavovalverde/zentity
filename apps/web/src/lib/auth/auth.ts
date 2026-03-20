@@ -134,6 +134,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { parseAgentClaims } from "@/lib/identity/agent-claims";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
@@ -1488,16 +1489,22 @@ export const auth = betterAuth({
           return;
         }
 
+        let normalizedClaims: string | undefined;
         let agentName: string | undefined;
         if (data.agentClaims) {
-          try {
-            const ac = JSON.parse(data.agentClaims) as Record<string, unknown>;
-            const agent = ac.agent as Record<string, unknown> | undefined;
-            if (typeof agent?.name === "string") {
-              agentName = agent.name;
-            }
-          } catch {
-            // Ignore malformed agent claims
+          const parsed = parseAgentClaims(data.agentClaims);
+          if (parsed) {
+            normalizedClaims = JSON.stringify(parsed);
+            agentName = parsed.agent.name;
+            await db
+              .update(cibaRequests)
+              .set({ agentClaims: normalizedClaims })
+              .where(eq(cibaRequests.authReqId, data.authReqId));
+          } else {
+            await db
+              .update(cibaRequests)
+              .set({ agentClaims: null })
+              .where(eq(cibaRequests.authReqId, data.authReqId));
           }
         }
 
@@ -1515,7 +1522,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
-            agentClaims: data.agentClaims,
+            agentClaims: normalizedClaims,
             approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);

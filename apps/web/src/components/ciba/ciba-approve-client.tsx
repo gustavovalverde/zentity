@@ -1,6 +1,7 @@
 "use client";
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
+import type { AgentClaims } from "@/lib/identity/agent-claims";
 
 import { Bot, ShieldCheck, ShieldPlus } from "lucide-react";
 import Link from "next/link";
@@ -66,19 +67,6 @@ function buildPolicyLink(
     params.set("scopes", scopes);
   }
   return `/dashboard/agent-policies?create=true&${params.toString()}`;
-}
-
-interface AgentClaims {
-  agent?: {
-    model?: string;
-    name?: string;
-    runtime?: string;
-    version?: string;
-  };
-  task?: {
-    description?: string;
-    id?: string;
-  };
 }
 
 interface CibaRequestDetails {

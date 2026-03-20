@@ -61,6 +61,20 @@ export default function AetherPage() {
           amount: { currency: "USD", value: total.toFixed(2) },
         },
       ]),
+      agentClaims: JSON.stringify({
+        agent: {
+          name: "Aether AI",
+          model: "aether-shopping-v1",
+          runtime: "demo-rp",
+          capabilities: ["search", "compare", "purchase"],
+        },
+        task: {
+          description: `Purchase ${pick.brand} ${pick.name} for $${total.toFixed(2)}`,
+        },
+        oversight: {
+          requires_human_approval_for: ["purchase"],
+        },
+      }),
       ...(scenario.acrValues === undefined
         ? {}
         : { acrValues: scenario.acrValues }),

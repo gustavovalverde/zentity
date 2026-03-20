@@ -33,6 +33,7 @@ const bodySchema = z.discriminatedUnion("action", [
     bindingMessage: z.string().optional(),
     authorizationDetails: z.string().optional(),
     acrValues: z.string().optional(),
+    agentClaims: z.string().optional(),
   }),
   z.object({
     action: z.literal("token"),
@@ -62,6 +63,7 @@ async function handleAuthorize(
     bindingMessage?: string | undefined;
     authorizationDetails?: string | undefined;
     acrValues?: string | undefined;
+    agentClaims?: string | undefined;
   },
   client: DcrClient
 ) {
@@ -79,6 +81,7 @@ async function handleAuthorize(
       binding_message: data.bindingMessage,
       authorization_details: data.authorizationDetails,
       ...(data.acrValues ? { acr_values: data.acrValues } : {}),
+      ...(data.agentClaims ? { agent_claims: data.agentClaims } : {}),
       resource: env.ZENTITY_URL,
       client_notification_token: notificationToken,
       client_notification_uri: callbackUrl,

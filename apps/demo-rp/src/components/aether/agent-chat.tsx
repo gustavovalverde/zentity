@@ -441,6 +441,7 @@ function CibaResult({
       ? decodeJwtPayload(tokens.access_token)
       : null;
   const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
+  const agentClaim = jwtPayload?.agent as Record<string, unknown> | undefined;
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
     | undefined;
@@ -514,7 +515,7 @@ function CibaResult({
 
       <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
-      {(actClaim || authorizationDetails || exchangedPayload) && (
+      {(actClaim || agentClaim || authorizationDetails || exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <button
             className="flex w-full items-center justify-between text-left"
@@ -545,10 +546,20 @@ function CibaResult({
                   </pre>
                 </div>
               )}
+              {agentClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — agent claim (AAP identity)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-pink-300/80 text-xs">
+                    {JSON.stringify(agentClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
               {actClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — act claim (agent identity)
+                    CIBA token — act claim (delegation)
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
                     {JSON.stringify(actClaim, null, 2)}

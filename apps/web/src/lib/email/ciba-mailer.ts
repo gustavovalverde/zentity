@@ -69,6 +69,11 @@ function parseAuthorizationDetails(raw: unknown): AuthorizationDetail[] | null {
   return parsed as AuthorizationDetail[];
 }
 
+import {
+  type AgentClaims,
+  parseAgentClaims,
+} from "@/lib/identity/agent-claims";
+
 interface AgentIdentity {
   model?: string | undefined;
   name: string;
@@ -76,13 +81,15 @@ interface AgentIdentity {
   version?: string | undefined;
 }
 
-function parseAgentIdentity(raw: unknown): AgentIdentity | null {
+function extractAgentIdentity(raw: unknown): AgentIdentity | null {
   if (!raw) {
     return null;
   }
-  try {
-    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    const agent = (parsed as Record<string, unknown>).agent as
+  let claims: AgentClaims | null = null;
+  if (typeof raw === "string") {
+    claims = parseAgentClaims(raw);
+  } else {
+    const agent = (raw as Record<string, unknown>).agent as
       | Record<string, unknown>
       | undefined;
     if (typeof agent?.name !== "string") {
@@ -94,9 +101,16 @@ function parseAgentIdentity(raw: unknown): AgentIdentity | null {
       runtime: typeof agent.runtime === "string" ? agent.runtime : undefined,
       version: typeof agent.version === "string" ? agent.version : undefined,
     };
-  } catch {
+  }
+  if (!claims) {
     return null;
   }
+  return {
+    name: claims.agent.name,
+    model: claims.agent.model,
+    runtime: claims.agent.runtime,
+    version: claims.agent.version,
+  };
 }
 
 function formatAgentText(agent: AgentIdentity): string {
@@ -167,7 +181,7 @@ export async function sendCibaNotification(params: {
   const subject = `Authorization Request from ${clientLabel}`;
 
   const parsedDetails = parseAuthorizationDetails(params.authorizationDetails);
-  const agent = parseAgentIdentity(params.agentClaims);
+  const agent = extractAgentIdentity(params.agentClaims);
 
   const agentLine = agent ? `\n${formatAgentText(agent)}\n` : "";
   const bindingLine = params.bindingMessage
