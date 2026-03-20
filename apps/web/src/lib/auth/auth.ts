@@ -32,14 +32,13 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq } from "drizzle-orm";
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import {
   computeAcr,
   computeAcrEidas,
-  computeAtHash,
   loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
@@ -1312,7 +1311,7 @@ export const auth = betterAuth({
 
         return claims;
       },
-      customIdTokenClaims: async ({ user, scopes, metadata, accessToken }) => {
+      customIdTokenClaims: async ({ user, scopes }) => {
         const scopeList = toScopeList(scopes);
 
         // Proof claims use the granted scopes directly — no vault unlock needed
@@ -1335,32 +1334,13 @@ export const auth = betterAuth({
           };
         }
 
-        // at_hash (OIDC Core §3.1.3.6) — hash alg matches id_token signing alg
-        let atHashClaim: Record<string, unknown> = {};
-        if (accessToken) {
-          const signingAlg =
-            (metadata?.id_token_signed_response_alg as string) || "RS256";
-          const atHash = computeAtHash(accessToken, signingAlg);
-          if (atHash) {
-            atHashClaim = { at_hash: atHash };
-          }
-        }
-
         const allClaims = {
           ...proofClaims,
           ...assuranceClaims,
-          ...atHashClaim,
         };
 
-        let clientId: string | undefined;
-        if (accessToken) {
-          try {
-            clientId = decodeJwt(accessToken).azp as string | undefined;
-          } catch {
-            // Opaque access token — prefix-scan fallback in consumeIdTokenClaims
-          }
-        }
-        const idTokenFilter = consumeIdTokenClaims(user.id, clientId);
+        // clientId=undefined triggers prefix-scan fallback in resolveKey
+        const idTokenFilter = consumeIdTokenClaims(user.id);
         if (!idTokenFilter) {
           return allClaims;
         }

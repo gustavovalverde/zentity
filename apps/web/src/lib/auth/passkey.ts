@@ -7,7 +7,12 @@ import {
   extractPrfOutputFromClientResults,
 } from "@/lib/auth/webauthn-prf";
 
-export type PasskeyErrorLike = { code?: string; message?: string } | null;
+export type PasskeyErrorLike = {
+  code?: string | undefined;
+  message?: unknown;
+  status?: number;
+  statusText?: string;
+} | null;
 
 interface WebauthnResponse {
   clientExtensionResults?: unknown;
@@ -25,8 +30,9 @@ export function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {
   if (error.code === "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED") {
     return true;
   }
-  const message = error.message?.toLowerCase();
-  return Boolean(message?.includes("previously registered"));
+  const message =
+    typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return message.includes("previously registered");
 }
 
 function getWebauthnPayload(result: unknown): WebauthnResponse | null {
@@ -112,7 +118,9 @@ function resolveErrorMessage(
   error: PasskeyErrorLike,
   fallback: string
 ): string {
-  return error?.message || fallback;
+  return (
+    (typeof error?.message === "string" ? error.message : null) || fallback
+  );
 }
 
 export type PasskeyPrfResult =

@@ -93,7 +93,11 @@ export function AidDashboard({
           {isSteppedUp ? (
             <>
               <div className="flex size-40 items-center justify-center rounded-lg bg-white p-2 shadow-sm">
-                <QRCodeSVG level="M" size={140} value="ZentityAidVerification" />
+                <QRCodeSVG
+                  level="M"
+                  size={140}
+                  value="ZentityAidVerification"
+                />
               </div>
               {name && (
                 <p className="text-center font-medium text-sm">

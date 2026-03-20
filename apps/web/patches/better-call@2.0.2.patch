@@ -1,0 +1,33 @@
+diff --git a/dist/endpoint.d.mts b/dist/endpoint.d.mts
+index 5d6c9149ec0a0d63bb9183f81c05674ba0b35dfb..dd320ca7243e7be567af8b01d274dd8637888998 100644
+--- a/dist/endpoint.d.mts
++++ b/dist/endpoint.d.mts
+@@ -210,11 +210,11 @@ type Endpoint<Path extends string = string, Method = any, Body = any, Query = an
+     response: Awaited<R>;
+   }>;
+   (context?: InputContext<Path, Method, Body, Query, false, false>): Promise<Awaited<R>>;
+-  options: Omit<EndpointRuntimeOptions, "method" | "metadata"> & {
+-    method: Method;
+-    metadata?: Meta;
++  readonly options: Omit<EndpointRuntimeOptions, "method" | "metadata"> & {
++    readonly method: Method;
++    readonly metadata?: Meta;
+   };
+-  path: Path;
++  readonly path: Path;
+ };
+ declare function createEndpoint<Path extends string, Method extends HTTPMethod | HTTPMethod[] | "*", BodySchema extends object | undefined = undefined, QuerySchema extends object | undefined = undefined, Use extends Middleware[] = [], ReqHeaders extends boolean = false, ReqRequest extends boolean = false, R = unknown, Meta extends EndpointMetadata | undefined = undefined, ErrorSchema extends StandardSchemaV1 | undefined = undefined>(path: Path, options: {
+   method: Method;
+diff --git a/dist/openapi.d.mts b/dist/openapi.d.mts
+index d59e767e08603740345f88c1c1c708f5604864a0..72ef2297d44d189b12fdb7730dc1a442e68c1f63 100644
+--- a/dist/openapi.d.mts
++++ b/dist/openapi.d.mts
+@@ -9,7 +9,7 @@ interface OpenAPIParameter {
+   required?: boolean;
+   schema?: {
+     type: OpenAPISchemaType;
+-    format?: string;
++    format?: string | undefined;
+     items?: {
+       type: OpenAPISchemaType;
+     };
