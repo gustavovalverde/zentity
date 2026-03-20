@@ -294,6 +294,63 @@ describe("CIBA token endpoint", () => {
     expect(payload.agent).toBeUndefined();
   });
 
+  it("includes agent_attestation claim when agentClaims has attestation", async () => {
+    const agentClaims = JSON.stringify({
+      agent: { name: "Attested Agent", model: "v1", runtime: "demo" },
+      attestation: {
+        verified: true,
+        provider: "Aether Demo",
+        verifiedAt: 1_710_000_000,
+      },
+    });
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+      agentClaims,
+    });
+
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.agent).toEqual({
+      name: "Attested Agent",
+      model: "v1",
+      runtime: "demo",
+    });
+    expect(payload.agent_attestation).toEqual({
+      verified: true,
+      provider: "Aether Demo",
+      verifiedAt: 1_710_000_000,
+    });
+  });
+
+  it("omits agent_attestation when agentClaims has no attestation", async () => {
+    const agentClaims = JSON.stringify({
+      agent: { name: "Unattested Agent", model: "v1", runtime: "demo" },
+    });
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+      agentClaims,
+    });
+
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const payload = decodeJwt(json.access_token as string);
+    expect(payload.agent).toBeDefined();
+    expect(payload.agent_attestation).toBeUndefined();
+  });
+
   it("CIBA access token never contains release_handle", async () => {
     const authReqId = await insertCibaRequest({
       userId,
