@@ -3,24 +3,55 @@ import { eq } from "drizzle-orm";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { logger } from "@/lib/logging/logger";
 
 import {
   type CimdValidationResult,
+  checkUrlQueryWarning,
   validateCimdMetadata,
   validateFetchUrl,
 } from "./cimd-validation";
 
-const METADATA_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL_FLOOR_MS = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL_CEILING_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DEFAULT_TTL_MS = CACHE_TTL_CEILING_MS;
 const FETCH_TIMEOUT_MS = 5000;
-const MAX_RESPONSE_BYTES = 100 * 1024; // 100KB
+const MAX_RESPONSE_BYTES = 10 * 1024; // 10KB (IETF draft §6.6 recommends 5KB)
 
-async function fetchMetadataDocument(
-  url: string
-): Promise<CimdValidationResult> {
+const MAX_AGE_RE = /max-age=(\d+)/;
+
+/**
+ * Parse Cache-Control max-age from response headers.
+ * Clamps between floor (5min) and ceiling (24h).
+ */
+function parseCacheTtl(response: Response): number {
+  const cc = response.headers.get("cache-control");
+  if (!cc) {
+    return DEFAULT_TTL_MS;
+  }
+  const match = MAX_AGE_RE.exec(cc);
+  if (!match?.[1]) {
+    return DEFAULT_TTL_MS;
+  }
+  const maxAgeSec = Number.parseInt(match[1], 10);
+  const maxAgeMs = maxAgeSec * 1000;
+  return Math.max(CACHE_TTL_FLOOR_MS, Math.min(maxAgeMs, CACHE_TTL_CEILING_MS));
+}
+
+interface FetchResult extends CimdValidationResult {
+  cacheTtlMs?: number;
+}
+
+async function fetchMetadataDocument(url: string): Promise<FetchResult> {
   const isProduction = env.NODE_ENV === "production";
   const urlError = validateFetchUrl(url, isProduction, true);
   if (urlError) {
     return { valid: false, error: urlError };
+  }
+
+  const queryWarning = checkUrlQueryWarning(url);
+  if (queryWarning) {
+    logger.warn({ url }, queryWarning);
   }
 
   let response: Response;
@@ -34,10 +65,20 @@ async function fetchMetadataDocument(
     return { valid: false, error: "failed to fetch metadata document" };
   }
 
-  if (!response.ok) {
+  // §4: HTTP 200 only (not response.ok which accepts 200-299)
+  if (response.status !== 200) {
     return {
       valid: false,
       error: `metadata document returned HTTP ${response.status}`,
+    };
+  }
+
+  // Content-Type must be application/json
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    return {
+      valid: false,
+      error: `metadata document Content-Type is "${contentType}", expected application/json`,
     };
   }
 
@@ -46,21 +87,64 @@ async function fetchMetadataDocument(
     contentLength &&
     Number.parseInt(contentLength, 10) > MAX_RESPONSE_BYTES
   ) {
-    return { valid: false, error: "metadata document exceeds 100KB limit" };
+    return { valid: false, error: "metadata document exceeds 10KB limit" };
   }
 
   let body: unknown;
   try {
     const text = await response.text();
     if (text.length > MAX_RESPONSE_BYTES) {
-      return { valid: false, error: "metadata document exceeds 100KB limit" };
+      return { valid: false, error: "metadata document exceeds 10KB limit" };
     }
     body = JSON.parse(text);
   } catch {
     return { valid: false, error: "metadata document is not valid JSON" };
   }
 
-  return validateCimdMetadata(url, body);
+  const cacheTtlMs = parseCacheTtl(response);
+  const result = validateCimdMetadata(url, body, isProduction);
+
+  return { ...result, cacheTtlMs };
+}
+
+const SECURITY_FIELDS = [
+  "redirect_uris",
+  "grant_types",
+  "token_endpoint_auth_method",
+] as const;
+
+function detectMetadataChanges(
+  clientId: string,
+  oldValues: Record<string, unknown>,
+  newMeta: {
+    redirect_uris: string[];
+    grant_types?: string[] | undefined;
+    token_endpoint_auth_method?: string | undefined;
+  }
+): void {
+  for (const field of SECURITY_FIELDS) {
+    const oldVal = oldValues[field];
+    let newVal: string | undefined;
+    if (field === "redirect_uris") {
+      newVal = JSON.stringify(newMeta.redirect_uris);
+    } else if (field === "grant_types") {
+      newVal = newMeta.grant_types
+        ? JSON.stringify(newMeta.grant_types)
+        : undefined;
+    } else {
+      newVal = newMeta.token_endpoint_auth_method;
+    }
+
+    const oldStr = typeof oldVal === "string" ? oldVal : JSON.stringify(oldVal);
+    const newStr = typeof newVal === "string" ? newVal : JSON.stringify(newVal);
+
+    if (oldStr !== newStr) {
+      logger.warn(
+        { clientId, field, old: oldStr, new: newStr },
+        "CIMD metadata security-relevant field changed on refresh"
+      );
+    }
+  }
 }
 
 export async function resolveCimdClient(clientId: string): Promise<{
@@ -69,12 +153,17 @@ export async function resolveCimdClient(clientId: string): Promise<{
 }> {
   const existing = await db.query.oauthClients.findFirst({
     where: eq(oauthClients.clientId, clientId),
-    columns: { metadataFetchedAt: true },
+    columns: {
+      metadataFetchedAt: true,
+      redirectUris: true,
+      grantTypes: true,
+      tokenEndpointAuthMethod: true,
+    },
   });
 
   if (existing?.metadataFetchedAt) {
     const age = Date.now() - existing.metadataFetchedAt.getTime();
-    if (age < METADATA_TTL_MS) {
+    if (age < DEFAULT_TTL_MS) {
       return { resolved: true };
     }
   }
@@ -88,11 +177,24 @@ export async function resolveCimdClient(clientId: string): Promise<{
   const now = new Date();
 
   if (existing) {
+    detectMetadataChanges(
+      clientId,
+      {
+        redirect_uris: existing.redirectUris,
+        grant_types: existing.grantTypes,
+        token_endpoint_auth_method: existing.tokenEndpointAuthMethod,
+      },
+      meta
+    );
+
     await db
       .update(oauthClients)
       .set({
         name: meta.client_name,
         redirectUris: JSON.stringify(meta.redirect_uris),
+        grantTypes: meta.grant_types
+          ? JSON.stringify(meta.grant_types)
+          : undefined,
         trustLevel: 1,
         metadataFetchedAt: now,
         updatedAt: now,
@@ -103,9 +205,11 @@ export async function resolveCimdClient(clientId: string): Promise<{
       clientId,
       name: meta.client_name,
       redirectUris: JSON.stringify(meta.redirect_uris),
-      grantTypes: JSON.stringify(["authorization_code"]),
+      grantTypes: meta.grant_types
+        ? JSON.stringify(meta.grant_types)
+        : JSON.stringify(["authorization_code"]),
       responseTypes: JSON.stringify(["code"]),
-      tokenEndpointAuthMethod: "none",
+      tokenEndpointAuthMethod: meta.token_endpoint_auth_method ?? "none",
       public: true,
       subjectType: "pairwise",
       trustLevel: 1,
