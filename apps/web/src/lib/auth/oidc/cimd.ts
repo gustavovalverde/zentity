@@ -18,7 +18,7 @@ async function fetchMetadataDocument(
   url: string
 ): Promise<CimdValidationResult> {
   const isProduction = env.NODE_ENV === "production";
-  const urlError = validateFetchUrl(url, isProduction);
+  const urlError = validateFetchUrl(url, isProduction, true);
   if (urlError) {
     return { valid: false, error: urlError };
   }
