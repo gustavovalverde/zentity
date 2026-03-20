@@ -41,6 +41,8 @@ const webServerEnv = {
   BETTER_AUTH_SECRET:
     process.env.BETTER_AUTH_SECRET ?? "test-secret-32-chars-minimum........",
   BETTER_AUTH_URL: "http://localhost:3000",
+  TRUSTED_AGENT_ATTESTERS:
+    process.env.TRUSTED_AGENT_ATTESTERS ?? "http://localhost:4999/jwks",
   ...(process.env.E2E_OIDC_ONLY
     ? { E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY }
     : {}),
