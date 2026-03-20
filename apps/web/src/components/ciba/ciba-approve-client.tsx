@@ -2,7 +2,7 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { Bot, ShieldCheck, ShieldPlus } from "lucide-react";
+import { AlertTriangle, Bot, ShieldCheck, ShieldPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -75,6 +75,11 @@ interface AgentClaims {
     runtime?: string;
     version?: string;
   };
+  attestation?: {
+    issuer?: string;
+    verified?: boolean;
+    verifiedAt?: string;
+  };
   task?: {
     description?: string;
     id?: string;
@@ -110,16 +115,30 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
     return null;
   }
 
+  const isVerified = claims.attestation?.verified === true;
+
   return (
-    <div className="rounded-lg border bg-muted/50 p-4">
+    <div
+      className={`rounded-lg border p-4 ${isVerified ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950" : "bg-muted/50"}`}
+    >
       <div className="mb-2 flex items-center gap-2">
         <Bot className="size-4 text-muted-foreground" />
         <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
           Agent
         </p>
-        <Badge className="text-xs" variant="outline">
-          Unverified
-        </Badge>
+        {isVerified ? (
+          <Badge
+            className="border-green-300 bg-green-100 text-green-700 text-xs dark:border-green-700 dark:bg-green-900 dark:text-green-300"
+            variant="outline"
+          >
+            <ShieldCheck className="mr-1 size-3" />
+            Verified
+          </Badge>
+        ) : (
+          <Badge className="text-xs" variant="outline">
+            Unverified
+          </Badge>
+        )}
       </div>
       <p className="font-medium">{agent.name}</p>
       {(agent.model || agent.runtime || agent.version) && (
@@ -506,12 +525,22 @@ export function CibaApproveClient({
             </div>
           )}
 
-          {(serverAgentClaims || details?.agent_claims) && (
+          {serverAgentClaims || details?.agent_claims ? (
             <AgentIdentityCard
               claims={
                 (serverAgentClaims ?? details?.agent_claims) as AgentClaims
               }
             />
+          ) : (
+            details && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-sm">
+                  No agent identity provided — this application has not
+                  disclosed what AI agent is acting on its behalf.
+                </p>
+              </div>
+            )
           )}
 
           {details?.authorization_details &&

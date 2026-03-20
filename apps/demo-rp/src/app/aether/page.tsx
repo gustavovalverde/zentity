@@ -4,6 +4,7 @@ import {
   AiChat02Icon,
   ArrowLeft01Icon,
   Logout01Icon,
+  SecurityCheckIcon,
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -13,7 +14,11 @@ import { useCallback, useState } from "react";
 import { AgentChat } from "@/components/aether/agent-chat";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
-import { SHOPPING_TASKS, type ShoppingTask } from "@/data/aether";
+import {
+  SHOPPING_TASKS,
+  type ShoppingTask,
+  type TrustTier,
+} from "@/data/aether";
 import { useCibaFlow } from "@/hooks/use-ciba-flow";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
@@ -49,10 +54,36 @@ export default function AetherPage() {
     }
     const tax = pick.price * 0.0875;
     const total = pick.price + tax;
+
+    const bindingMessage =
+      task.trustTier === "attested"
+        ? `Verified Aether AI agent requests purchase: ${pick.brand} ${pick.name}`
+        : task.trustTier === "self-declared"
+          ? `Aether AI wants to purchase ${pick.brand} ${pick.name}`
+          : `Purchase: ${pick.brand} ${pick.name}`;
+
+    const agentClaims =
+      task.trustTier === "none"
+        ? undefined
+        : JSON.stringify({
+            agent: {
+              name: "Aether AI",
+              model: "gpt-4",
+              runtime: "demo-rp",
+              version: "1.0",
+              capabilities: ["shopping", "comparison"],
+              oversight: "human-in-the-loop",
+            },
+            task: {
+              id: task.id,
+              description: task.prompt,
+            },
+          });
+
     startFlow({
       loginHint: userEmail,
       scope: "openid",
-      bindingMessage: `Purchase: ${pick.brand} ${pick.name}`,
+      bindingMessage,
       authorizationDetails: JSON.stringify([
         {
           type: "purchase",
@@ -64,6 +95,8 @@ export default function AetherPage() {
       ...(scenario.acrValues === undefined
         ? {}
         : { acrValues: scenario.acrValues }),
+      ...(agentClaims ? { agentClaims } : {}),
+      trustMode: task.trustTier,
     });
   }, [userEmail, task, startFlow]);
 
@@ -262,7 +295,10 @@ function TaskPickerView({
               type="button"
             >
               <div className="flex-1">
-                <p className="font-medium">{t.label}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{t.label}</p>
+                  <TrustBadge tier={t.trustTier} />
+                </div>
                 <p className="text-sm text-white/40">{t.prompt}</p>
               </div>
               <span className="text-sm text-white/30 transition-colors group-hover:text-white/60">
@@ -273,5 +309,42 @@ function TaskPickerView({
         </div>
       </div>
     </div>
+  );
+}
+
+const TRUST_BADGE_CONFIG: Record<
+  TrustTier,
+  { label: string; color: string; iconColor: string }
+> = {
+  attested: {
+    label: "Verified agent",
+    color: "border-green-500/30 bg-green-500/10 text-green-400",
+    iconColor: "text-green-400",
+  },
+  "self-declared": {
+    label: "Self-declared identity",
+    color: "border-amber-500/30 bg-amber-500/10 text-amber-400",
+    iconColor: "text-amber-400",
+  },
+  none: {
+    label: "Anonymous agent",
+    color: "border-red-500/30 bg-red-500/10 text-red-400",
+    iconColor: "text-red-400",
+  },
+};
+
+function TrustBadge({ tier }: Readonly<{ tier: TrustTier }>) {
+  const config = TRUST_BADGE_CONFIG[tier];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium text-[10px] ${config.color}`}
+    >
+      <HugeiconsIcon
+        className={config.iconColor}
+        icon={SecurityCheckIcon}
+        size={10}
+      />
+      {config.label}
+    </span>
   );
 }

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { signAttestationHeaders } from "@/lib/attestation";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
@@ -33,6 +34,8 @@ const bodySchema = z.discriminatedUnion("action", [
     bindingMessage: z.string().optional(),
     authorizationDetails: z.string().optional(),
     acrValues: z.string().optional(),
+    agentClaims: z.string().optional(),
+    trustMode: z.enum(["none", "self-declared", "attested"]).optional(),
   }),
   z.object({
     action: z.literal("token"),
@@ -62,15 +65,30 @@ async function handleAuthorize(
     bindingMessage?: string | undefined;
     authorizationDetails?: string | undefined;
     acrValues?: string | undefined;
+    agentClaims?: string | undefined;
+    trustMode?: "none" | "self-declared" | "attested" | undefined;
   },
   client: DcrClient
 ) {
   const notificationToken = crypto.randomUUID();
   const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (data.trustMode === "attested") {
+    const signed = await signAttestationHeaders(
+      client.clientId,
+      env.NEXT_PUBLIC_APP_URL
+    );
+    headers["OAuth-Client-Attestation"] = signed.attestation;
+    headers["OAuth-Client-Attestation-PoP"] = signed.pop;
+  }
+
   const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       client_id: client.clientId,
       ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
@@ -79,6 +97,7 @@ async function handleAuthorize(
       binding_message: data.bindingMessage,
       authorization_details: data.authorizationDetails,
       ...(data.acrValues ? { acr_values: data.acrValues } : {}),
+      ...(data.agentClaims ? { agent_claims: data.agentClaims } : {}),
       resource: env.ZENTITY_URL,
       client_notification_token: notificationToken,
       client_notification_uri: callbackUrl,

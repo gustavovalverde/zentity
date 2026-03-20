@@ -328,10 +328,10 @@ importers:
         version: 1.58.2
       '@synthetixio/synpress':
         specifier: 4.1.2
-        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
+        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
       '@synthetixio/synpress-cache':
         specifier: 0.0.14
-        version: 0.0.14(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)
+        version: 0.0.14(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)
       '@tailwindcss/postcss':
         specifier: 4.2.1
         version: 4.2.1
@@ -478,7 +478,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-Dt2InK3BvU3+bZjiDBKa7LPXu8O0wuqqx22FXlaQ3NK0c6oyBenIK46r6d2WZ5WJYc4d/ZgJtyytdfLglfHHRg==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-WZOj1DMHwsuLRZ48IyrTgJAw8dYaU29Ky1FECz2jLobxlWKssZFOdqu1iCQfSwSVjKE8gMSw7XsglY4tED46+A==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.5
@@ -7495,6 +7495,11 @@ packages:
   pkg-types@2.3.0:
     resolution: {integrity: sha512-SIqCzDRg0s9npO5XQ3tNZioRY1uK06lA41ynBC1YmFTmnY6FjUjVt6s4LoADmwoig1qqD0oK8h1p/8mlMx8Oig==}
 
+  playwright-core@1.48.2:
+    resolution: {integrity: sha512-sjjw+qrLFlriJo64du+EK0kJgZzoQPsabGF4lBvsid+3CNIZIYLgnMj9V6JY5VhM2Peh20DJWIVpVljLLnlawA==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   playwright-core@1.58.2:
     resolution: {integrity: sha512-yZkEtftgwS8CsfYo7nm0KE8jsvm6i/PTgVtB8DL726wNf6H2IMsDuxCpJj59KDaxCtSnrWan2AeDqM7JBaultg==}
     engines: {node: '>=18'}
@@ -13398,7 +13403,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@synthetixio/synpress-cache@0.0.14(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)':
+  '@synthetixio/synpress-cache@0.0.14(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)':
     dependencies:
       axios: 1.13.6
       chalk: 5.3.0
@@ -13407,7 +13412,7 @@ snapshots:
       fs-extra: 11.2.0
       glob: 13.0.6
       gradient-string: 2.0.2
-      playwright-core: 1.58.2
+      playwright-core: 1.48.2
       progress: 2.0.3
       tsup: 8.0.2(postcss@8.5.8)(typescript@5.9.3)
       unzip-crx-3: 0.2.0
@@ -13426,10 +13431,10 @@ snapshots:
     dependencies:
       '@playwright/test': 1.58.2
 
-  '@synthetixio/synpress-metamask@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@synthetixio/synpress-metamask@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@playwright/test': 1.58.2
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)
       '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
       '@viem/anvil': 0.0.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       fs-extra: 11.2.0
@@ -13446,10 +13451,10 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@synthetixio/synpress-phantom@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@synthetixio/synpress-phantom@0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@playwright/test': 1.58.2
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)
       '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
       '@viem/anvil': 0.0.7(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       fs-extra: 11.2.0
@@ -13466,14 +13471,14 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
+  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)':
     dependencies:
       '@playwright/test': 1.58.2
       '@synthetixio/ethereum-wallet-mock': 0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.10)(@playwright/test@1.58.2)(bufferutil@4.1.0)(ethers@6.16.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.3.6)
-      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)
+      '@synthetixio/synpress-cache': 0.0.14(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)
       '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.58.2)
-      '@synthetixio/synpress-metamask': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@synthetixio/synpress-phantom': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.58.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@synthetixio/synpress-metamask': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@synthetixio/synpress-phantom': 0.0.14(@playwright/test@1.58.2)(bufferutil@4.1.0)(playwright-core@1.48.2)(postcss@8.5.8)(typescript@5.9.3)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - '@depay/solana-web3.js'
       - '@depay/web3-blockchains'
@@ -17620,6 +17625,8 @@ snapshots:
       exsolve: 1.0.8
       pathe: 2.0.3
     optional: true
+
+  playwright-core@1.48.2: {}
 
   playwright-core@1.58.2: {}
 

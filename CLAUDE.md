@@ -237,6 +237,7 @@ railway up apps/web --path-as-root --service web
 - `RECOVERY_ML_KEM_SECRET_KEY` (ML-KEM-768 base64, for recovery flow)
 - `DPOP_NONCE_TTL_SECONDS` (default: 30)
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
+- `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
 - `X5C_LEAF_PEM`, `X5C_CA_PEM` (or place certs in `.data/certs/`)
 
 ### Manual Setup (without Docker)
@@ -402,6 +403,8 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 **JWKS Key Rotation**: `rotateSigningKey(alg, overlapHours)` in `jwt-signer.ts` retires the active key with an `expiresAt` timestamp and creates a new one. During the overlap window, both keys are served by the JWKS endpoint. `cleanupExpiredKeys()` removes keys past the overlap window. Both operations are exposed via the `admin` tRPC router (admin-only). JWKS private keys are encrypted at rest with AES-256-GCM (`KEY_ENCRYPTION_KEY` env var).
 
 **Agent Boundaries**: Pre-authorized policies in `agent_boundaries` table allow auto-approval of CIBA requests within user-defined limits. Boundary types: `purchase` (amount/daily cap/cooldown), `scope` (allowlist), `custom` (action count). Identity-scoped requests (`identity.*`) always require manual approval regardless of boundaries. Auto-approved requests are logged with `approvalMethod: "boundary"`. Dashboard at `/dashboard/agent-policies`. "Always allow this" button on CIBA approval page creates policies from real request patterns.
+
+**Agent Attestation**: Three-tier trust model for CIBA agent identity: `none` (anonymous — no agent claims), `self-declared` (agent claims without cryptographic proof), `attested` (agent claims + verified `OAuth-Client-Attestation` JWT). Attestation normalization in `src/lib/ciba/agent-attestation.ts` strips self-injected attestation fields from `agent_claims` and verifies attestation headers against `TRUSTED_AGENT_ATTESTERS` JWKS URLs before `tryAutoApprove`. CIBA access tokens include `agent` (self-declared) and `agent_attestation` (server-verified) claims. Demo: `apps/demo-rp` Aether tasks use `trustTier` to select flow; persistent Ed25519 attestation keypair at `.data/attestation-key.json`, JWKS at `/api/jwks`.
 
 - [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 

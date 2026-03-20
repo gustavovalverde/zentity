@@ -1,3 +1,4 @@
+// @ts-nocheck — playwright-core version mismatch between synpress (1.48) and installed (1.58)
 import { defineWalletSetup } from "@synthetixio/synpress";
 import { MetaMask } from "@synthetixio/synpress/playwright";
 

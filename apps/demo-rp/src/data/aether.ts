@@ -7,6 +7,8 @@ export interface Product {
   snippet: string;
 }
 
+export type TrustTier = "none" | "self-declared" | "attested";
+
 export interface ShoppingTask {
   budget: number;
   id: string;
@@ -14,6 +16,7 @@ export interface ShoppingTask {
   pick: string;
   prompt: string;
   results: Product[];
+  trustTier: TrustTier;
 }
 
 export const SHOPPING_TASKS: ShoppingTask[] = [
@@ -22,6 +25,7 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Wireless headphones",
     prompt: "Find me the best wireless noise-cancelling headphones under $400",
     budget: 400,
+    trustTier: "self-declared",
     results: [
       {
         id: "p-1",
@@ -56,6 +60,7 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Espresso machine",
     prompt: "Find me a great espresso machine for home under $800",
     budget: 800,
+    trustTier: "attested",
     results: [
       {
         id: "p-4",
@@ -89,6 +94,7 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Running shoes",
     prompt: "Find me the best running shoes for daily training under $200",
     budget: 200,
+    trustTier: "none",
     results: [
       {
         id: "p-7",

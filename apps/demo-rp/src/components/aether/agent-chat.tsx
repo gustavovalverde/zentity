@@ -441,6 +441,10 @@ function CibaResult({
       ? decodeJwtPayload(tokens.access_token)
       : null;
   const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
+  const agentClaim = jwtPayload?.agent as Record<string, unknown> | undefined;
+  const agentAttestationClaim = jwtPayload?.agent_attestation as
+    | Record<string, unknown>
+    | undefined;
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
     | undefined;
@@ -514,7 +518,7 @@ function CibaResult({
 
       <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
-      {(actClaim || authorizationDetails || exchangedPayload) && (
+      {(actClaim || agentClaim || authorizationDetails || exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <button
             className="flex w-full items-center justify-between text-left"
@@ -548,10 +552,30 @@ function CibaResult({
               {actClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — act claim (agent identity)
+                    CIBA token — act claim (client identity)
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
                     {JSON.stringify(actClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {agentClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — agent claim (self-declared)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-emerald-300/80 text-xs">
+                    {JSON.stringify(agentClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {agentAttestationClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — agent_attestation (verified)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-teal-300/80 text-xs">
+                    {JSON.stringify(agentAttestationClaim, null, 2)}
                   </pre>
                 </div>
               )}

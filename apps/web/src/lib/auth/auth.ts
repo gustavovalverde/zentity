@@ -97,6 +97,7 @@ import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { validateSafeUrl } from "@/lib/auth/url-safety";
+import { normalizeAgentClaims } from "@/lib/ciba/agent-attestation";
 import { tryAutoApprove } from "@/lib/ciba/auto-approve";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
@@ -1491,7 +1492,21 @@ export const auth = betterAuth({
           (meta.backchannel_client_notification_endpoint as string) ?? undefined
         );
       },
-      sendNotification: async (data) => {
+      sendNotification: async (data, request) => {
+        // Normalize agent claims BEFORE auto-approve to prevent attestation spoofing.
+        // This strips any self-injected attestation field, verifies attestation
+        // headers against trusted JWKS, and updates the DB with normalized claims.
+        const normalizedAgentClaims = await normalizeAgentClaims(
+          data.agentClaims,
+          request
+        );
+        if (normalizedAgentClaims !== data.agentClaims) {
+          await db
+            .update(cibaRequests)
+            .set({ agentClaims: normalizedAgentClaims ?? null })
+            .where(eq(cibaRequests.authReqId, data.authReqId));
+        }
+
         const autoApproveResult = await tryAutoApprove(data);
         if (autoApproveResult.approved) {
           if (
@@ -1509,9 +1524,12 @@ export const auth = betterAuth({
         }
 
         let agentName: string | undefined;
-        if (data.agentClaims) {
+        if (normalizedAgentClaims) {
           try {
-            const ac = JSON.parse(data.agentClaims) as Record<string, unknown>;
+            const ac = JSON.parse(normalizedAgentClaims) as Record<
+              string,
+              unknown
+            >;
             const agent = ac.agent as Record<string, unknown> | undefined;
             if (typeof agent?.name === "string") {
               agentName = agent.name;
@@ -1535,7 +1553,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
-            agentClaims: data.agentClaims,
+            agentClaims: normalizedAgentClaims,
             approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);
