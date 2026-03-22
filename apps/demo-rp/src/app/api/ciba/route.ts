@@ -4,9 +4,8 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
-import { getAuth } from "@/lib/auth";
 import { prepareAgentAssertionForProvider } from "@/lib/agent-runtime";
+import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
@@ -36,6 +35,7 @@ const bodySchema = z.discriminatedUnion("action", [
     bindingMessage: z.string().optional(),
     authorizationDetails: z.string().optional(),
     acrValues: z.string().optional(),
+    trustTier: z.enum(["anonymous", "registered", "attested"]).optional(),
   }),
   z.object({
     action: z.literal("token"),
@@ -67,14 +67,14 @@ async function handleAuthorize(
     acrValues?: string | undefined;
   },
   client: DcrClient,
-  agentAssertion: string
+  agentAssertion: string | null
 ) {
   const notificationToken = crypto.randomUUID();
   const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "Agent-Assertion": agentAssertion,
+    ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
   };
 
   const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
@@ -177,6 +177,7 @@ export async function POST(request: Request) {
     const agentAssertion = await prepareAgentAssertionForProvider({
       bindingMessage,
       providerId: data.providerId,
+      ...(data.trustTier ? { trustTier: data.trustTier } : {}),
       userId: session.user.id,
     });
 

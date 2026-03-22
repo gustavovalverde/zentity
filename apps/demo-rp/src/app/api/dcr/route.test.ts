@@ -50,10 +50,7 @@ describe("/api/dcr POST", () => {
       redirect_uri:
         "http://localhost:3102/api/auth/oauth2/callback/zentity-bank",
     });
-    expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
-      "bank",
-      "client-123"
-    );
+    expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith("bank", "client-123");
   });
 
   it("returns JSON when local persistence fails after upstream registration", async () => {

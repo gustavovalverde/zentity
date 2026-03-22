@@ -164,12 +164,14 @@ export function CibaApproveClient({
   authMode,
   authReqId,
   registeredAgent,
+  userTier = 0,
   wallet,
 }: Readonly<{
   agentIdentity?: AgentIdentitySummary | null;
   authMode: AuthMode;
   authReqId: string | null;
   registeredAgent?: RegisteredAgentInfo | null;
+  userTier?: 0 | 1 | 2 | 3;
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
@@ -178,6 +180,7 @@ export function CibaApproveClient({
   const [details, setDetails] = useState<CibaRequestDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [assuranceTier, setAssuranceTier] = useState(userTier);
 
   useEffect(() => {
     if (!authReqId) {
@@ -241,6 +244,10 @@ export function CibaApproveClient({
     return () => clearInterval(timer);
   }, [state, timeLeft]);
 
+  useEffect(() => {
+    setAssuranceTier(userTier);
+  }, [userTier]);
+
   // ── Identity vault unlock ──────────────────────────────────
 
   const scopes = useMemo(
@@ -275,38 +282,60 @@ export function CibaApproveClient({
     active: vaultActive,
     fetchIntentToken,
   });
+  const vaultStatus = vault.vaultState.status;
 
-  // ── Verification check (proof scopes need completed verification) ──
-
-  const [verificationMissing, setVerificationMissing] = useState(false);
+  const refreshAssuranceTier = useCallback(async () => {
+    try {
+      const res = await fetch("/api/trpc/assurance.profile", {
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        result?: { data?: { json?: { tier?: number } } };
+      } | null;
+      const tier = data?.result?.data?.json?.tier;
+      if (tier === 0 || tier === 1 || tier === 2 || tier === 3) {
+        setAssuranceTier(tier);
+      }
+    } catch {
+      // Keep the last known tier if the refresh fails.
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (!(hasProofScopes && vault.vaultState.status === "loaded")) {
-      setVerificationMissing(false);
+    if (!(hasProofScopes && state === "ready")) {
       return;
     }
 
-    fetch("/api/trpc/assurance.profile", { credentials: "include" })
-      .then((res) => res.json())
-      .then((data: { result?: { data?: { json?: { tier?: number } } } }) => {
-        if (cancelled) {
-          return;
-        }
-        const tier = data?.result?.data?.json?.tier;
-        setVerificationMissing(typeof tier === "number" ? tier < 2 : false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setVerificationMissing(false);
-        }
-      });
+    if (vaultStatus !== "loaded") {
+      return;
+    }
+
+    refreshAssuranceTier().catch(() => undefined);
+  }, [hasProofScopes, state, vaultStatus, refreshAssuranceTier]);
+
+  useEffect(() => {
+    if (!(hasProofScopes && state === "ready")) {
+      return;
+    }
+
+    const handlePageResume = () => {
+      if (document.visibilityState !== "hidden") {
+        refreshAssuranceTier().catch(() => undefined);
+      }
+    };
+
+    window.addEventListener("focus", handlePageResume);
+    document.addEventListener("visibilitychange", handlePageResume);
 
     return () => {
-      cancelled = true;
+      window.removeEventListener("focus", handlePageResume);
+      document.removeEventListener("visibilitychange", handlePageResume);
     };
-  }, [hasProofScopes, vault.vaultState.status]);
+  }, [hasProofScopes, state, refreshAssuranceTier]);
+
+  // ── Verification check (proof scopes need completed verification) ──
+
+  const verificationMissing = hasProofScopes && assuranceTier < 2;
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -565,7 +594,7 @@ export function CibaApproveClient({
                 <span className="ml-1.5 text-muted-foreground">
                   {registeredAgent.attestationTier === "attested"
                     ? `Verified by ${registeredAgent.attestationProvider ?? "Provider"}`
-                    : "Unverified"}
+                    : "Registered"}
                 </span>
                 <p className="font-mono text-muted-foreground text-xs">
                   {registeredAgent.sessionId}

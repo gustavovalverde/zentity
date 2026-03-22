@@ -5,6 +5,12 @@ import crypto, { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
+import type { TrustTier } from "@/data/aether";
+import {
+  buildAgentRuntimePartitionKey,
+  type PersistedTrustTier,
+} from "@/lib/agent-runtime-storage";
+import { signAttestationHeaders } from "@/lib/attestation";
 import { getDb } from "@/lib/db/connection";
 import { account, agentRuntime, oauthDpopKey } from "@/lib/db/schema";
 import type { ProviderId } from "@/lib/dcr";
@@ -22,6 +28,16 @@ const DISPLAY = {
 const REQUESTED_CAPABILITIES = ["purchase", "request_approval"] as const;
 
 type AgentRuntimeRow = typeof agentRuntime.$inferSelect;
+type HostAttestationTier = "attested" | "self-declared" | "unverified";
+
+interface EnsureHostRegistrationOptions {
+  attestationHeaders?: Record<string, string>;
+  requiredAttestationTier?: HostAttestationTier;
+}
+
+interface RegisterAgentSessionOptions {
+  force?: boolean;
+}
 
 function hasRegisteredSession(
   runtime: AgentRuntimeRow
@@ -78,12 +94,14 @@ async function getDpopKey(providerId: ProviderId, accessToken: string) {
 
 async function getOrCreateAgentRuntime(
   userId: string,
-  providerId: ProviderId
+  providerId: ProviderId,
+  trustTier: PersistedTrustTier
 ): Promise<AgentRuntimeRow> {
+  const runtimeKey = buildAgentRuntimePartitionKey(providerId, trustTier);
   const existing = await getDb().query.agentRuntime.findFirst({
     where: and(
       eq(agentRuntime.userId, userId),
-      eq(agentRuntime.providerId, providerId)
+      eq(agentRuntime.providerId, runtimeKey)
     ),
   });
   if (existing) {
@@ -96,7 +114,7 @@ async function getOrCreateAgentRuntime(
     .values({
       id: randomUUID(),
       userId,
-      providerId,
+      providerId: runtimeKey,
       displayName: DISPLAY.name,
       runtime: DISPLAY.runtime,
       model: DISPLAY.model,
@@ -118,7 +136,8 @@ async function postJsonWithDpop(
   url: string,
   accessToken: string,
   providerId: ProviderId,
-  payload: unknown
+  payload: unknown,
+  extraHeaders?: Record<string, string>
 ): Promise<Response> {
   const dpopRow = await getDpopKey(providerId, accessToken);
   if (!dpopRow) {
@@ -139,6 +158,7 @@ async function postJsonWithDpop(
         "Content-Type": "application/json",
         Authorization: `DPoP ${accessToken}`,
         DPoP: proof,
+        ...extraHeaders,
       },
       body,
     });
@@ -152,7 +172,8 @@ async function postJsonWithDpop(
 async function ensureHostRegistered(
   runtime: AgentRuntimeRow,
   userId: string,
-  providerId: ProviderId
+  providerId: ProviderId,
+  options?: EnsureHostRegistrationOptions
 ): Promise<AgentRuntimeRow> {
   const authAccount = await getAccountForProvider(userId, providerId);
   if (!authAccount?.accessToken) {
@@ -179,7 +200,8 @@ async function ensureHostRegistered(
       publicKey: runtime.hostPublicJwk,
       name: HOST_NAME,
       clientId: client.clientId,
-    }
+    },
+    options?.attestationHeaders
   );
   if (!response.ok) {
     throw new Error(
@@ -187,7 +209,21 @@ async function ensureHostRegistered(
     );
   }
 
-  const body = (await response.json()) as { hostId: string };
+  const body = (await response.json()) as {
+    attestation_tier?: HostAttestationTier;
+    hostId: string;
+  };
+  const attestationTier = body.attestation_tier ?? "unverified";
+
+  if (
+    options?.requiredAttestationTier &&
+    attestationTier !== options.requiredAttestationTier
+  ) {
+    throw new Error(
+      `Host registration did not satisfy the required ${options.requiredAttestationTier} trust tier (got ${attestationTier}).`
+    );
+  }
+
   const [updated] = await getDb()
     .update(agentRuntime)
     .set({
@@ -208,7 +244,10 @@ async function signHostJwt(
   runtime: AgentRuntimeRow,
   hostId: string
 ): Promise<string> {
-  const privateKey = await importJWK(JSON.parse(runtime.hostPrivateJwk), "EdDSA");
+  const privateKey = await importJWK(
+    JSON.parse(runtime.hostPrivateJwk),
+    "EdDSA"
+  );
   return new SignJWT({})
     .setProtectedHeader({ alg: "EdDSA", typ: "host-attestation+jwt" })
     .setIssuer(hostId)
@@ -221,9 +260,10 @@ async function signHostJwt(
 async function registerAgentSession(
   runtime: AgentRuntimeRow,
   userId: string,
-  providerId: ProviderId
+  providerId: ProviderId,
+  options?: RegisterAgentSessionOptions
 ): Promise<AgentRuntimeRow> {
-  if (hasRegisteredSession(runtime)) {
+  if (hasRegisteredSession(runtime) && !options?.force) {
     return runtime;
   }
 
@@ -278,13 +318,73 @@ async function registerAgentSession(
 export async function prepareAgentAssertionForProvider(params: {
   bindingMessage: string;
   providerId: ProviderId;
+  trustTier?: TrustTier;
   userId: string;
-}): Promise<string> {
-  let runtime = await getOrCreateAgentRuntime(params.userId, params.providerId);
-  if (!runtime.hostId) {
-    runtime = await ensureHostRegistered(runtime, params.userId, params.providerId);
+}): Promise<string | null> {
+  const tier = params.trustTier ?? "registered";
+
+  if (tier === "anonymous") {
+    return null;
   }
-  runtime = await registerAgentSession(runtime, params.userId, params.providerId);
+
+  let runtime = await getOrCreateAgentRuntime(
+    params.userId,
+    params.providerId,
+    tier
+  );
+
+  if (tier === "attested") {
+    const hadRegisteredSession = hasRegisteredSession(runtime);
+    // Attested runtimes are partitioned from registered ones, so reusing this
+    // row is safe and won't downgrade the registered session.
+    const hostPublicJwk = JSON.parse(runtime.hostPublicJwk);
+    const hostPrivateJwk = JSON.parse(runtime.hostPrivateJwk);
+    const { attestation, attestationPop } = await signAttestationHeaders(
+      hostPublicJwk,
+      hostPrivateJwk,
+      env.NEXT_PUBLIC_APP_URL,
+      env.ZENTITY_URL
+    );
+    runtime = await ensureHostRegistered(
+      runtime,
+      params.userId,
+      params.providerId,
+      {
+        attestationHeaders: {
+          "OAuth-Client-Attestation": attestation,
+          "OAuth-Client-Attestation-PoP": attestationPop,
+        },
+        requiredAttestationTier: "attested",
+      }
+    );
+
+    // Agent sessions inherit host policies at registration time. Re-register
+    // attested runtimes so a session created before attestation succeeded
+    // cannot stay pinned to the weaker default policy set.
+    runtime = await registerAgentSession(
+      runtime,
+      params.userId,
+      params.providerId,
+      { force: hadRegisteredSession }
+    );
+  } else if (!runtime.hostId) {
+    runtime = await ensureHostRegistered(
+      runtime,
+      params.userId,
+      params.providerId
+    );
+    runtime = await registerAgentSession(
+      runtime,
+      params.userId,
+      params.providerId
+    );
+  } else {
+    runtime = await registerAgentSession(
+      runtime,
+      params.userId,
+      params.providerId
+    );
+  }
 
   if (!(runtime.sessionId && runtime.sessionPrivateJwk && runtime.hostId)) {
     throw new Error("Agent runtime is missing registered session state");

@@ -4,6 +4,7 @@ import {
   AiChat02Icon,
   ArrowLeft01Icon,
   Logout01Icon,
+  ShieldEnergyIcon,
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -13,7 +14,11 @@ import { useCallback, useState } from "react";
 import { AgentChat } from "@/components/aether/agent-chat";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
-import { SHOPPING_TASKS, type ShoppingTask } from "@/data/aether";
+import {
+  SHOPPING_TASKS,
+  type ShoppingTask,
+  type TrustTier,
+} from "@/data/aether";
 import { useCibaFlow } from "@/hooks/use-ciba-flow";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
@@ -49,12 +54,20 @@ export default function AetherPage() {
     }
     const tax = pick.price * 0.0875;
     const total = pick.price + tax;
-    const bindingMessage = `Aether AI requests purchase: ${pick.brand} ${pick.name}`;
+
+    const tierPrefixes: Record<string, string> = {
+      anonymous: "Purchase request:",
+      registered: "Aether AI requests purchase:",
+      attested: "Verified Aether AI requests purchase:",
+    };
+    const prefix = tierPrefixes[task.trustTier] ?? tierPrefixes.registered;
+    const bindingMessage = `${prefix} ${pick.brand} ${pick.name}`;
 
     startFlow({
       loginHint: userEmail,
       scope: task.scope ?? "openid",
       bindingMessage,
+      trustTier: task.trustTier,
       authorizationDetails: JSON.stringify([
         {
           type: "purchase",
@@ -231,6 +244,21 @@ function LandingView({
   );
 }
 
+const TIER_BADGE: Record<TrustTier, { label: string; className: string }> = {
+  anonymous: {
+    label: "Anonymous",
+    className: "border-white/10 text-white/30",
+  },
+  registered: {
+    label: "Registered",
+    className: "border-amber-500/30 text-amber-400",
+  },
+  attested: {
+    label: "Attested",
+    className: "border-green-500/30 text-green-400",
+  },
+};
+
 function TaskPickerView({
   userEmail,
   onSelectTask,
@@ -256,22 +284,33 @@ function TaskPickerView({
         </div>
 
         <div className="grid gap-3">
-          {SHOPPING_TASKS.map((t) => (
-            <button
-              className="group flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-left transition-all hover:border-white/20 hover:bg-white/5"
-              key={t.id}
-              onClick={() => onSelectTask(t)}
-              type="button"
-            >
-              <div className="flex-1">
-                <p className="font-medium">{t.label}</p>
-                <p className="text-sm text-white/40">{t.prompt}</p>
-              </div>
-              <span className="text-sm text-white/30 transition-colors group-hover:text-white/60">
-                Budget: ${t.budget}
-              </span>
-            </button>
-          ))}
+          {SHOPPING_TASKS.map((t) => {
+            const badge = TIER_BADGE[t.trustTier];
+            return (
+              <button
+                className="group flex items-center gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-left transition-all hover:border-white/20 hover:bg-white/5"
+                key={t.id}
+                onClick={() => onSelectTask(t)}
+                type="button"
+              >
+                <div className="flex-1">
+                  <div className="mb-1 flex items-center gap-2">
+                    <p className="font-medium">{t.label}</p>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${badge.className}`}
+                    >
+                      <HugeiconsIcon icon={ShieldEnergyIcon} size={10} />
+                      {badge.label}
+                    </span>
+                  </div>
+                  <p className="text-sm text-white/40">{t.prompt}</p>
+                </div>
+                <span className="text-sm text-white/30 transition-colors group-hover:text-white/60">
+                  Budget: ${t.budget}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -51,6 +51,7 @@ export default async function CibaListPage() {
       displayName: cibaRequests.displayName,
       model: cibaRequests.model,
       runtime: cibaRequests.runtime,
+      attestationTier: cibaRequests.attestationTier,
       authReqId: cibaRequests.authReqId,
       scope: cibaRequests.scope,
       bindingMessage: cibaRequests.bindingMessage,
@@ -93,7 +94,7 @@ export default async function CibaListPage() {
                 ? null
                 : {
                     name: req.displayName,
-                    trustTier: "registered",
+                    trustTier: req.attestationTier ?? "unverified",
                     model: req.model,
                     runtime: req.runtime,
                   };

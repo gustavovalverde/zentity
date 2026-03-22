@@ -22,6 +22,7 @@ interface CibaFlowState {
     scope: string;
     bindingMessage?: string;
     authorizationDetails?: string;
+    trustTier?: string;
   }) => Promise<void>;
   state: CibaState;
   tokens: Record<string, unknown> | null;
@@ -279,6 +280,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
       scope: string;
       bindingMessage?: string;
       authorizationDetails?: string;
+      trustTier?: string;
     }) => {
       setState("requesting");
       setError(null);
@@ -295,6 +297,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
             bindingMessage: params.bindingMessage,
             authorizationDetails: params.authorizationDetails,
             acrValues: params.acrValues,
+            trustTier: params.trustTier,
           }),
         });
 

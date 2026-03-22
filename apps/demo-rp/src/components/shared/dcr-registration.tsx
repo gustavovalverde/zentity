@@ -83,9 +83,10 @@ export function DcrRegistration({
           ...(grantTypes ? { grantTypes } : {}),
         }),
       });
-      const data = (await parseJsonResponse(res)) as
-        | { client_id?: string; error?: string }
-        | null;
+      const data = (await parseJsonResponse(res)) as {
+        client_id?: string;
+        error?: string;
+      } | null;
       if (!res.ok) {
         setError(data?.error || `Registration failed (${res.status})`);
         setState({ status: "idle" });

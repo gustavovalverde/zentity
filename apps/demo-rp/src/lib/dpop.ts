@@ -1,12 +1,6 @@
 import "server-only";
 
-import {
-  exportJWK,
-  generateKeyPair,
-  importJWK,
-  type JWK,
-  SignJWT,
-} from "jose";
+import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 
 const BASE64_PLUS = /\+/g;
 const BASE64_SLASH = /\//g;

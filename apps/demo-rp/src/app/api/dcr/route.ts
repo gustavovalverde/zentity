@@ -50,19 +50,22 @@ export async function POST(request: Request) {
   const redirectUri = `${env.NEXT_PUBLIC_APP_URL}/api/auth/oauth2/callback/zentity-${providerId}`;
 
   try {
-    const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_name: clientName,
-        redirect_uris: [redirectUri],
-        scope: scopes,
-        token_endpoint_auth_method: "none",
-        grant_types: grantTypes ?? ["authorization_code"],
-        response_types: ["code"],
-        backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
-      }),
-    });
+    const response = await fetch(
+      `${env.ZENTITY_URL}/api/auth/oauth2/register`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_name: clientName,
+          redirect_uris: [redirectUri],
+          scope: scopes,
+          token_endpoint_auth_method: "none",
+          grant_types: grantTypes ?? ["authorization_code"],
+          response_types: ["code"],
+          backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+        }),
+      }
+    );
 
     if (!response.ok) {
       const text = await response.text();

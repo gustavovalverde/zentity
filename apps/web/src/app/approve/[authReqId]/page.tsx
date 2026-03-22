@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
+import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
 import { buildStandaloneApprovalPath } from "@/lib/ciba/approval-path";
@@ -101,6 +102,8 @@ export default async function ApprovePage({
     }
   }
 
+  const assurance = await getAssuranceState(session.user.id, session);
+
   return (
     <div className="w-full max-w-md">
       <CibaApproveClient
@@ -108,6 +111,7 @@ export default async function ApprovePage({
         authMode={authMode}
         authReqId={authReqId}
         registeredAgent={registeredAgent}
+        userTier={assurance.tier}
         wallet={wallet}
       />
       <div className="mt-4 hidden text-center md:block">
