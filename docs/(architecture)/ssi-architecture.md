@@ -1,10 +1,13 @@
-# Self-Sovereign Identity Architecture
+---
+title: SSI Architecture
+description: Self-sovereign identity architecture, credential issuance, and selective disclosure
+---
 
-> **Purpose**: Define how Zentity implements Self-Sovereign Identity through verifiable credentials, selective disclosure, and non-custodial key custody.
+Zentity's SSI architecture makes verification artifacts portable: credentials issued from ZK proofs and signed claims can be held in external wallets and presented to third-party verifiers without Zentity involvement. This document maps the credential lifecycle from issuance through selective disclosure to revocation, with the holder's control surface as the axis of variation.
 
 ## Executive Summary
 
-Zentity issues **portable verifiable credentials** following OpenID standards while preserving the existing privacy model: **no server-decryptable PII**, **passkey-secured secrets**, and **ZK/FHE-derived claims**.
+Zentity issues **portable verifiable credentials** following OpenID standards while preserving the existing privacy model: no server-decryptable PII, passkey-secured secrets, and ZK/FHE-derived claims.
 
 - **OIDC4VCI**: Credential issuance with pre-authorized code flow; SD-JWT VC format.
 - **OIDC4VP**: Presentation requests from verifiers; Presentation Exchange (PEX) support.
@@ -43,7 +46,7 @@ flowchart TD
 - Verifies user identity through document OCR, liveness detection, and face matching
 - Issues SD-JWT verifiable credentials with derived claims only
 - Signs credentials with issuer keys
-- Never stores raw PII—only cryptographic artifacts
+- Never stores raw PII, only cryptographic artifacts
 
 ### Holder (User)
 
@@ -54,10 +57,10 @@ flowchart TD
 
 **Note on wallets**: The term "wallet" can refer to two distinct concepts:
 
-1. **Credential wallet** — stores and presents verifiable credentials (SSI context)
-2. **Web3 wallet** — signs transactions and can be used for authentication (EIP-712 signatures)
+1. **Credential wallet**: stores and presents verifiable credentials (SSI context)
+2. **Web3 wallet**: signs transactions and can be used for authentication (EIP-712 signatures)
 
-These are not mutually exclusive—a Web3 wallet user can also hold credentials in a credential wallet.
+These are not mutually exclusive; a Web3 wallet user can also hold credentials in a credential wallet.
 
 ### Verifier (Relying Party)
 
@@ -167,7 +170,7 @@ sequenceDiagram
 
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
 
-**Compliance derivation:** `verification_level` and all boolean check claims are derived at computation time by `deriveComplianceStatus()` (`apps/web/src/lib/identity/verification/compliance.ts`), a pure function with no DB access. It takes ZK proofs, signed claims, and flags as input and produces 7 boolean checks plus a compliance level (`none`=1, `basic`=2, `full`=3, `chip`=4). There are no mutable boolean columns. For the NFC chip path, checks derive from `chip_verification` signed claim **type presence** (boolean payloads are ignored). This makes compliance tamper-resistant: values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix.
+**Compliance derivation:** `verification_level` and all boolean check claims are computed at request time by a pure function with no DB access, taking ZK proofs, signed claims, and flags as input. There are no mutable boolean columns; values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix.
 
 ---
 
@@ -192,13 +195,9 @@ Credentials are cryptographically bound to the holder's key to prevent theft and
 
 ## Privacy Preservation
 
-### Pairwise subject identifiers
+### Pairwise Subject Identifiers
 
-To prevent cross-RP correlation, each relying party sees a different `sub`:
-
-```text
-sub = HMAC(user_id, client_id, issuer_secret)
-```
+Each relying party receives a unique opaque `sub` derived from the user ID, client ID, and a server secret, preventing cross-RP correlation. See [OAuth Integrations](oauth-integrations.md#pairwise-subject-identifiers) for the derivation mechanism and sector identifier rules.
 
 ### Selective disclosure (SD-JWT)
 
@@ -264,8 +263,6 @@ For binary eligibility checks, ZK proofs reveal nothing beyond the answer:
 
 ## Related Documentation
 
-- [Attestation & Privacy Architecture](attestation-privacy-architecture.md) — data classification and storage boundaries
-- [Cryptographic Pillars](cryptographic-pillars.md) — ZK, FHE, commitments, key custody
-- [OAuth Integrations](oauth-integrations.md) — OIDC4VCI/VP endpoint details
-- [RFC-0016](rfcs/0016-oidc-vc-issuance-and-presentation.md) — design decisions for VC issuance
-- [RFC-0018](rfcs/0018-pure-ssi-did-bbs-anoncreds.md) — DIDs, BBS+, AnonCreds roadmap
+- [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification and storage boundaries
+- [Cryptographic Pillars](cryptographic-pillars.md) for ZK, FHE, commitments, key custody
+- [OAuth Integrations](oauth-integrations.md) for OIDC4VCI/VP endpoint details

@@ -1,8 +1,11 @@
-# ZK Proof Architecture
+---
+title: ZK Architecture
+description: Noir circuits, zero-knowledge proof generation, and verification
+---
 
-This document describes Zentity’s zero‑knowledge proof system using **Noir** circuits with **UltraHonk** proofs. It focuses on **architecture and trust boundaries**, not implementation details.
+Zentity’s ZK system separates proving (browser) from verification (server) so that private inputs never leave the user’s device while the server obtains cryptographic assurance of each claim. This document maps the circuit architecture, trust boundaries, and field constraints, with the proving environment (browser Web Worker vs. mobile NFC app) as the axis of variation.
 
-## Overview
+## Proving Architecture
 
 Zentity generates proofs **client‑side** so private inputs stay in the browser. Proofs are verified **server‑side** and stored with metadata for auditability. Private inputs are derived from passkey‑sealed profile data (e.g., birth year, nationality) and server‑signed claim payloads (e.g., face match score). The server never sees plaintext values.
 
@@ -31,7 +34,7 @@ flowchart TD
 | `face_match` | Prove similarity >= threshold | Similarity score + document hash | Threshold, nonce, claim hash |
 | `identity_binding` | Bind proof to user identity | Binding secret, user ID hash, document hash | Nonce, msg_sender_hash, audience_hash, base_commitment, binding_commitment |
 
-**Importance:** The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
+The verifier learns only the boolean outcome (e.g., "over 18"), never the underlying PII.
 
 ### Identity Binding Circuit
 
@@ -44,7 +47,7 @@ The `identity_binding` circuit provides replay protection by cryptographically b
 | **Wallet** | EIP-712 signature (65 bytes) | Medium – wallet address stored for association |
 | **Wallet + BBS+** | BBS+ credential proof hash | Highest – unlinkable presentations, wallet address hidden |
 
-The circuit is **auth-mode agnostic**: it accepts a generic `binding_secret` as a private input. The TypeScript layer (`binding-secret.ts`) handles per-mode derivation using HKDF with domain separation strings (e.g., `zentity-binding-wallet-bbs-v1`) to prevent cross-use attacks. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for BBS+ wallet binding details.
+The circuit is auth-mode agnostic: it accepts a generic `binding_secret` as a private input. The application layer handles per-mode derivation using HKDF with domain separation strings (e.g., `zentity-binding-wallet-bbs-v1`) to prevent cross-use attacks.
 
 > **ZK vs FHE encoding:** Nationality codes in ZK circuits use weighted-sum encoding (`char1×65536 + char2×256 + char3`) via `getCountryWeightedSum()` from `@zkpassport/utils`. FHE encryption uses a separate encoding for homomorphic operations. See [Nationality Proofs](zk-nationality-proofs.md) for details.
 
@@ -57,10 +60,10 @@ base_commitment    = Poseidon2(binding_secret, user_id_hash)
 binding_commitment = Poseidon2(binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash)
 ```
 
-- `base_commitment` — binds the proof to the user's identity secret only, enabling linkage across sessions for the same user
-- `binding_commitment` — binds the full session context (document, caller, audience), preventing replay across different verification contexts
+- `base_commitment`: binds the proof to the user's identity secret only, enabling linkage across sessions for the same user
+- `binding_commitment`: binds the full session context (document, caller, audience), preventing replay across different verification contexts
 
-The circuit returns `pub bool` (`is_bound`) — `true` when both commitments match, otherwise the circuit panics via `assert`. This is a **return value**, not a public input.
+The circuit returns `pub bool` (`is_bound`), which is `true` when both commitments match; otherwise the circuit panics via `assert`. This is a return value, not a public input.
 
 This ensures that:
 
@@ -70,7 +73,7 @@ This ensures that:
 
 ### Mandatory Enforcement
 
-Identity binding is **mandatory** — `generateAllProofs` requires a `BindingContext` and will not generate any proofs without it. This applies to both on-chain attestation and off-chain verification:
+Identity binding is mandatory; the proof generation pipeline requires a binding context and will not generate any proofs without it. This applies to both on-chain attestation and off-chain verification:
 
 - **On-chain**: Prevents proof replay across wallets. Without binding, a malicious relayer could submit someone else's valid proofs under a different address.
 - **Off-chain**: Provides tamper-evidence. The cryptographic user↔proof link means shuffled DB records would fail verification.
@@ -79,10 +82,10 @@ Identity binding is **mandatory** — `generateAllProofs` requires a `BindingCon
 
 Binding requires the user's raw credential material (PRF output, OPAQUE export key, or wallet signature). This material follows a specific lifecycle:
 
-1. **Cached at FHE enrollment** — When the user enrolls FHE keys (verification preflight), the credential material is stored in an in-memory cache.
-2. **Consumed at proof generation** — The binding context resolver reads the cache to derive the binding secret via HKDF.
-3. **Cleared after proof storage** — The cache is cleared after all proofs are stored, regardless of success or failure.
-4. **TTL safety net** — If cleanup doesn't run (e.g., tab crash), the cache auto-expires.
+1. **Cached at FHE enrollment**: when the user enrolls FHE keys (verification preflight), the credential material is stored in an in-memory cache.
+2. **Consumed at proof generation**: the binding context resolver reads the cache to derive the binding secret via HKDF.
+3. **Cleared after proof storage**: the cache is cleared after all proofs are stored, regardless of success or failure.
+4. **TTL safety net**: if cleanup doesn't run (e.g., tab crash), the cache auto-expires.
 
 For the ZKPassport NFC flow, credential material is still required for identity binding but the WebAuthn prompt can be suppressed via the `promptPasskey` option when the cache is warm.
 
@@ -90,9 +93,9 @@ If the cache is expired when proofs are generated (user was idle, page refreshed
 
 | Auth Mode | Recovery | UX |
 |-----------|----------|-----|
-| **Passkey** | Automatic — WebAuthn PRF is re-prompted directly | User taps/scans biometric |
-| **OPAQUE** | Re-auth dialog — user enters password to re-derive export key | Modal with password input |
-| **Wallet** | Re-auth dialog — user signs EIP-712 typed data | Modal with "Sign with Wallet" button |
+| **Passkey** | Automatic; WebAuthn PRF is re-prompted directly | User taps/scans biometric |
+| **OPAQUE** | Re-auth dialog; user enters password to re-derive export key | Modal with password input |
+| **Wallet** | Re-auth dialog; user signs EIP-712 typed data | Modal with "Sign with Wallet" button |
 
 The re-auth dialog blocks proof generation until credential material is available. There is no fallback path that skips binding.
 
@@ -109,7 +112,6 @@ See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Priva
 
 - Proof generation runs in a **Web Worker** to avoid UI blocking.
 - Circuits are optimized for **Poseidon2** hashing (cheaper in ZK than SHA‑256).
-- Detailed profiling and timing guidance live in [Noir Profiling](noir-profiling.md).
 - Proof times are device- and circuit-dependent; treat any numbers as guidance.
 
 ## Security Notes
@@ -140,48 +142,15 @@ BN254_FR_MODULUS = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f00
 | SHA-256 hash | 32 bytes (256 bits) | ⚠️ Can exceed modulus |
 | Poseidon2 output | ~254 bits | ✓ Always valid |
 
-### Required: Hash-to-Field Mapping
+### Hash-to-Field Mapping
 
-Direct `value % BN254_FR_MODULUS` on 256-bit cryptographic outputs introduces
-small statistical bias. For cryptographic inputs (SHA-256 hashes, PRF outputs,
-wallet signatures), we now use **HKDF-based hash-to-field**:
+Direct modular reduction of 256-bit cryptographic outputs introduces small statistical bias. For cryptographic inputs (SHA-256 hashes, PRF outputs, wallet signatures), HKDF-based hash-to-field is used:
 
-1. HKDF-Extract+Expand (SHA-256) with domain-separated `info`
+1. HKDF-Extract+Expand (SHA-256) with domain-separated info string
 2. Expand to 512 bits
-3. Reduce modulo `BN254_FR_MODULUS`
+3. Reduce modulo the BN254 field modulus
 
-```typescript
-async function hashToField(hexValue: string, info: string): Promise<string> {
-  const input = hexToBytes(hexValue);
-  const key = await crypto.subtle.importKey("raw", input, "HKDF", false, [
-    "deriveBits",
-  ]);
-  const wideBits = await crypto.subtle.deriveBits(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: new Uint8Array(32), // zero salt
-      info: new TextEncoder().encode(info),
-    },
-    key,
-    512
-  );
-  const wide = bytesToBigInt(new Uint8Array(wideBits));
-  const reduced = wide % BN254_FR_MODULUS;
-  return `0x${reduced.toString(16).padStart(64, "0")}`;
-}
-```
-
-For values that are already field elements (e.g., previously normalized
-`documentHashField`), we only canonicalize formatting.
-
-### Where This Matters
-
-- **Identity binding**: `bindingSecretField`, `userIdHashField` from passkey/OPAQUE/wallet
-- **Document hashes**: SHA-256 outputs before circuit use
-- **Any 32-byte cryptographic output**
-
-See `src/lib/privacy/zk/noir-prover.worker.ts` for implementation and `src/lib/blockchain/attestation/claim-hash.ts` for server-side reduction.
+This technique applies to identity binding fields (binding secrets and user ID hashes from passkey, OPAQUE, or wallet credentials), document hashes (SHA-256 outputs before circuit use), and any 32-byte cryptographic output used as a circuit input. Values that are already valid field elements require only canonical formatting.
 
 ## ZKPassport NFC Chip Verification
 
@@ -205,7 +174,7 @@ Key differences from browser-based Noir proving:
 
 - **Proof generation**: ZKPassport's own circuit infrastructure on mobile, not Noir/Barretenberg in a Web Worker
 - **Verification**: Server-side via `zkpassport.verify()`, not `UltraHonkVerifierBackend`
-- **Liveness**: Synthetic score (1.0) — physical chip challenge-response proves possession
+- **Liveness**: Synthetic score (1.0), since NFC chip challenge-response proves physical possession
 - **Nullifier**: `uniqueIdentifier` prevents the same passport from being registered across multiple accounts
 - **Country/document pre-check**: `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support before showing the option
 - **Dev mode**: `devMode` flag relaxes proof verification in `development`/`test` environments; production enforces strict verification
@@ -220,7 +189,7 @@ Zentity prevents the same identity document from being registered under multiple
 
 **NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `uniqueIdentifier` (a nullifier from the NFC chip proof). Cross-method dedup (same passport via both OCR and NFC) is handled only by `uniqueIdentifier`.
 
-**Per-RP nullifier:** `computeRpNullifier(DEDUP_HMAC_SECRET, dedupKey, clientId)` → `HMAC-SHA256`. Delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Each RP receives a unique pseudonymous nullifier — the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
+**Per-RP nullifier:** An HMAC-SHA256 derived from the dedup key and client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Each RP receives a unique pseudonymous nullifier; the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
 
 ## Implementation Notes
 
@@ -260,7 +229,6 @@ Verification uses Barretenberg's `UltraHonkVerifierBackend` directly in the API 
 - `verificationKeyPoseidonHash`
 - `circuitId` (derived from the verification key hash)
 
-## Implementation References
+## Related Documentation
 
-- **ADR:** [Client‑side ZK proving](adr/zk/0001-client-side-zk-proving.md)
-- **Deep dive:** [Nationality proofs](zk-nationality-proofs.md)
+- [Nationality Proofs](zk-nationality-proofs.md) for Merkle membership proof design and country group structure

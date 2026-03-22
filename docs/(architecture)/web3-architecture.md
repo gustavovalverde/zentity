@@ -1,12 +1,13 @@
-# Web3 Architecture
+---
+title: Web3 Architecture
+description: FHEVM hooks, encryption/decryption flows, and on-chain compliance
+---
 
-This document provides a **high-level architecture overview** of Zentity's optional Web3 layer and explains the **Web2-to-Web3 transition** from verification to on-chain attestation.
+Zentity's Web3 layer keeps identity verification off-chain and uses the blockchain solely for encrypted attestation and compliance checks, so that on-chain contracts never see plaintext identity data. This document maps the Web2-to-Web3 transition from verification to on-chain attestation, with the trust boundary between the registrar (server) and the ACL (on-chain) as the axis of variation.
 
-## Overview
+## System Context
 
-Zentity keeps **identity verification off-chain** and uses the Web3 layer only for **encrypted attestation + compliance checks**. The server (registrar) encrypts identity attributes and submits attestations to fhEVM. Users authorize decryption and access via explicit grants.
-
-This doc moves from **high-level system context**, to **transition flow**, and then to **Web3-specific mechanics**.
+The registrar encrypts identity attributes and submits attestations to fhEVM. Users authorize decryption and access via explicit grants. The following sections move from system context through the transition flow to Web3-specific mechanics.
 
 ### Key technologies
 
@@ -29,7 +30,7 @@ This doc moves from **high-level system context**, to **transition flow**, and t
 
 - **Wallet connection ≠ session**: Reown AppKit connects a wallet, but it does not create a server session.
 - **SIWE bridge**: the UI performs Sign‑In With Ethereum via Better Auth (`/api/auth/siwe/*`) to mint a session and link the wallet address.
-- **Wallet-as-auth**: Wallet signatures (EIP-712) can also serve as the **primary authentication method** for account creation—distinct from wallet connection for on-chain operations.
+- **Wallet-as-auth**: Wallet signatures (EIP-712) can also serve as the primary authentication method for account creation, distinct from wallet connection for on-chain operations.
 - **Server gating**: Web3/FHE APIs require a Better Auth session and explicit credential unlock for encrypted payloads.
 
 ---
@@ -56,7 +57,7 @@ Zentity bridges traditional identity verification with privacy-preserving blockc
 | Rate limiting | In-memory (resets on restart) | Redis or DB-backed |
 | Liveness sessions | In-memory storage | Persistent storage (Redis/DB) |
 
-Note: The attestation flow supports a demo mode that simulates successful submissions without on-chain transactions. See [RFC: Feature flags](rfcs/0007-feature-flags.md) for details.
+Note: The attestation flow supports a demo mode that simulates successful submissions without on-chain transactions.
 
 ### Data flow
 
@@ -98,20 +99,20 @@ sequenceDiagram
 
 ### What stays in Web2
 
-- Document OCR and authenticity checks
-- Liveness and face match scoring
-- ZK proof generation (client-side)
-- Encryption of sensitive attributes
-- Storage of commitments, proofs, and evidence packs
-- Passkey-based key custody for encrypted attributes
+- **Document OCR** and authenticity checks
+- **Liveness and face match** scoring
+- **ZK proof generation** (client-side)
+- **Encryption** of sensitive attributes
+- **Storage** of commitments, proofs, and evidence packs
+- **Passkey-based key custody** for encrypted attributes
 
 ### What moves to Web3
 
-- Encrypted identity attributes stored in smart contracts
-- ACL-gated access to ciphertexts
-- Encrypted compliance checks (no plaintext)
-- Optional encrypted asset transfers (demo)
-- Typical encrypted fields: date of birth (dobDays), country code, compliance tier, and sanctions status
+- **Encrypted identity attributes** stored in smart contracts
+- **ACL-gated access** to ciphertexts
+- **Encrypted compliance checks** (no plaintext)
+- **Optional encrypted asset transfers** (demo)
+- **Typical encrypted fields**: date of birth (dobDays), country code, compliance tier, and sanctions status
 
 ### Encryption boundaries
 
@@ -192,13 +193,13 @@ UI implications:
 - Confirm ACL grants are issued for required contracts.
 - Validate disclosure flows against the evidence pack schema.
 
-Configuration details live in [Blockchain Setup](blockchain-setup.md).
+Configuration details (network endpoints, contract addresses, registrar keys) are environment-specific and managed through deployment configuration.
 
 ### Common failure modes
 
-- Transfers succeed but move zero because access was not granted.
-- Attestations fail because registrar configuration is missing.
-- Compliance checks fail due to incorrect attribute encoding.
+- **Transfers** succeed but move zero because access was not granted.
+- **Attestations** fail because registrar configuration is missing.
+- **Compliance checks** fail due to incorrect attribute encoding.
 
 ### Security model (public vs encrypted)
 
@@ -285,10 +286,10 @@ flowchart TD
 
 **Key points**:
 
-- Attestation encryption happens **server-side** (registrar + relayer SDK).
-- Wallet-initiated operations use **client-side** FHEVM SDK.
-- Contracts operate on **ciphertexts only**; no plaintext is revealed.
-- Access is **explicit**: users grant contract-level access to their ciphertexts.
+- **Attestation encryption** happens server-side (registrar + relayer SDK).
+- **Wallet-initiated operations** use client-side FHEVM SDK.
+- **Contracts operate on ciphertexts only**; no plaintext is revealed.
+- **Access is explicit**: users grant contract-level access to their ciphertexts.
 
 ---
 
@@ -400,7 +401,7 @@ When an identity verification is revoked (admin or self-service), the on-chain a
 4. Retry uses exponential backoff: 1s → 3s → 9s, max 3 attempts.
 5. If all retries fail, an admin tRPC procedure (`admin.retryOnChainRevocation`) allows manual retry.
 
-DB revocation is committed regardless of on-chain success — the server-side state is always authoritative.
+DB revocation is committed regardless of on-chain success; the server-side state is always authoritative.
 
 ---
 
@@ -434,11 +435,3 @@ Web2 performs **collection + verification**; Web3 performs **encrypted attestati
 - Web3 stores **encrypted attestation handles + public metadata**.
 
 The end-to-end transition is captured in the Web2 to Web3 Transition section above.
-
----
-
-## Implementation References
-
-- **ADR:** [fhEVM on-chain attestations](adr/fhe/0001-fhevm-onchain-attestations.md)
-- **ADR:** [Split encryption & computation](adr/fhe/0002-split-encryption-and-computation.md)
-- **Setup:** [Blockchain configuration](blockchain-setup.md)

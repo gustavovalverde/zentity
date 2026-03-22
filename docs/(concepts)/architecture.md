@@ -1,18 +1,9 @@
-# System Architecture & Data Flow
-
-This document describes **how Zentity's services connect**, **how data flows through the system**, and **what is (and isn't) persisted**. It stays high-level and points to deeper docs for cryptography, privacy boundaries, and integrity controls.
-
-## Scope & Non-Goals
-
-This is a **pre-audit beta**. Breaking changes are expected.
-
-Non-goals:
-
-- Cryptographically binding all claims to a signed passport/ID credential inside a single "identity commitment" circuit.
-- Production-grade liveness attestation (device attestation / anti-replay guarantees).
-- Production hardening (HSM/KMS, secret rotation, WAF/rate limiting, audit logging strategy).
-
 ---
+title: System Architecture
+description: Overview of how Zentity's services connect and how data flows through the system
+---
+
+Zentity's architecture separates proving (browser), verifying (server), and computing (FHE service) so that no single component handles both plaintext data and policy decisions. This document maps how services connect, how data flows between them, and what crosses each trust boundary, with the deployment context (Web2, Web3, agent) as the axis of variation.
 
 ## Architecture
 
@@ -87,36 +78,28 @@ flowchart LR
 
 ---
 
-## Cryptographic Pillars
+## Cryptographic Foundation
 
-Zentity combines **passkeys (auth + PRF key custody)**, **OPAQUE passwords**, **wallet signatures (EIP-712)**, **zero-knowledge proofs**, **FHE**, **post-quantum cryptography**, **commitments**, and **HAIP-compliant transport security** to minimize plaintext data handling. This document focuses on flow and system boundaries. For cryptographic details, see:
-
-- [Cryptographic Pillars](cryptographic-pillars.md)
-- [Attestation & Privacy Architecture](attestation-privacy-architecture.md)
-- [ZK Architecture](zk-architecture.md)
-- [Web3 Architecture](web3-architecture.md)
+Four cryptographic pillars (auth + key custody, ZK proofs, FHE, and commitments) interlock to eliminate plaintext data handling. This document focuses on flow and system boundaries; see [Cryptographic Pillars](cryptographic-pillars.md) for how the primitives bind together, [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification, [ZK Architecture](zk-architecture.md) for proof system design, and [Web3 Architecture](web3-architecture.md) for on-chain attestation.
 
 ---
 
 ## Data Handling
 
-We persist **only the minimum** required for verification and auditability:
+We persist only the minimum required for verification and auditability:
 
-- Commitments and hashes for integrity and deduplication
-- Encrypted attributes (FHE ciphertexts)
-- Proof payloads + public inputs
-- Passkey-sealed profile (encrypted blob; client-decrypt only)
-- OPAQUE registration records for password users (no plaintext or password hashes)
-- Verification status + non-sensitive metadata
+- **Commitments and hashes** for integrity and deduplication
+- **Encrypted attributes** (FHE ciphertexts)
+- **Proof payloads** + public inputs
+- **Passkey-sealed profile** (encrypted blob; client-decrypt only)
+- **OPAQUE registration records** for password users (no plaintext or password hashes)
+- **Verification status** + non-sensitive metadata
 
-### Key custody
+### Key Custody
 
-- The browser encrypts sensitive data with a random **data key (DEK)**.
-- That DEK is wrapped by a **key‑encryption key (KEK)** derived client‑side.
-- The server stores only encrypted blobs + wrapped DEKs, so it cannot decrypt user data.
-- Users decrypt locally after an explicit credential unlock.
+A two-layer encryption scheme (DEK wrapped by a credential-derived KEK) ensures the server stores only encrypted blobs it cannot decrypt. Users decrypt locally after an explicit credential unlock. See [FHE Key Lifecycle](fhe-key-lifecycle.md) for the full key hierarchy and credential-specific derivation paths.
 
-We **never store** raw document images, selfies, plaintext PII, or biometric templates. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
+Raw document images, selfies, plaintext PII, and biometric templates are never stored. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
 
 ---
 
@@ -124,9 +107,9 @@ We **never store** raw document images, selfies, plaintext PII, or biometric tem
 
 Zentity supports guardian-approved recovery for passkey loss. Recovery is initiated with email or a Recovery ID, guardians approve via email links or authenticator codes, and the signer services perform FROST threshold signing once the approval threshold is met. Recovery wrappers are stored in `recovery_secret_wrappers`, and the signer coordinator is contacted from the Next.js server (not the browser).
 
-The FROST aggregated signature is not just an authorization gate — it is cryptographically entangled with key custody. The signature is used as input key material for `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` to derive an AES-256-GCM key that unwraps the recovery DEKs. Without the real FROST signature, the DEKs cannot be recovered even with DB access.
+The FROST aggregated signature is not just an authorization gate; it is cryptographically entangled with key custody. The signature is used as input key material for `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` to derive an AES-256-GCM key that unwraps the recovery DEKs. Without the real FROST signature, the DEKs cannot be recovered even with DB access.
 
-Three guardian types are supported: `email` (approval link), `twoFactor` (authenticator code), and `custodialEmail` (Zentity-operated signer — max 1 per user, cannot be the sole guardian).
+Three guardian types are supported: `email` (approval link), `twoFactor` (authenticator code), and `custodialEmail` (Zentity-operated signer, limited to 1 per user, cannot be the sole guardian).
 
 ---
 
@@ -155,8 +138,6 @@ For DCR clients, Zentity defaults to pairwise subject identifiers (`subject_type
 - Session IP/UA metadata scrubbed
 - Opaque access tokens forced for pairwise clients (no JWT `sub` leakage)
 
-See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
-
 ---
 
 ## Data Flows
@@ -174,7 +155,7 @@ sequenceDiagram
   participant FHE as FHE Service
   participant OCR as OCR Service
 
-  Note over User,AUTH: Phase 1 — Sign-up (account creation)
+  Note over User,AUTH: Phase 1: Sign-up (account creation)
   User->>UI: Choose credential (passkey / password / wallet)
   alt Passkey or Password
     UI->>AUTH: ensureAuthSession() (lazy)
@@ -189,7 +170,7 @@ sequenceDiagram
   UI->>UI: Invalidate session cookie cache
   UI-->>UI: Redirect → /dashboard
 
-  Note over User,FHE: Phase 1.5 — FHE Enrollment Preflight
+  Note over User,FHE: Phase 1.5: FHE Enrollment Preflight
   User->>UI: Click "Start verification"
   UI->>UI: Confirm credential (PRF / wallet sig / password)
   UI->>UI: Generate FHE keys (TFHE WASM)
@@ -199,7 +180,7 @@ sequenceDiagram
   API->>DB: Update identity bundle with fheKeyId
   API-->>UI: Enrollment complete
 
-  Note over User,OCR: Phase 2 — Identity verification (OCR path)
+  Note over User,OCR: Phase 2: Identity verification (OCR path)
   User->>UI: Upload ID + selfie
   UI->>API: Submit document + liveness
   API->>OCR: OCR + parse (transient)
@@ -209,12 +190,12 @@ sequenceDiagram
   UI->>API: Store proofs
   API-->>UI: Verification complete (Tier progression)
 
-  Note over User,FHE: Phase 2 (alt) — NFC chip verification
+  Note over User,FHE: Phase 2 (alt): NFC chip verification
   User->>UI: Select NFC chip method (ZKPassport)
   UI->>UI: Deep-link to ZKPassport mobile app
   Note right of UI: ZKPassport reads NFC chip, generates proofs on device
   UI->>API: passportChip.submitResult (proofs + nullifier)
-  API->>API: zkpassport.verify() — server-side proof verification
+  API->>API: zkpassport.verify() (server-side)
   API->>DB: Store identity_verifications (method: nfc_chip)
   API->>FHE: Schedule FHE encryption (synthetic liveness 1.0)
   API-->>UI: Verification complete
@@ -245,8 +226,6 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 ### Disclosure
 
-Disclosure uses a two-tier scope system: **Proof scopes** (`proof:*`) return derived boolean verification flags (no PII), and **Identity scopes** (`identity.*`) return actual PII via the userinfo endpoint only (ephemeral, never persisted in id_tokens). Both support user-controlled selective disclosure at consent time.
-
 Wallets can receive credentials and respond to presentation requests directly via OID4VP, bypassing the OAuth consent UI. The verifier creates a VP session with a DCQL query, signs a JAR JWT with x5c chain, encodes it as an `openid4vp://` QR code URI. The wallet presents an SD-JWT VP with KB-JWT binding, encrypted via JARM.
 
 ```mermaid
@@ -267,10 +246,10 @@ sequenceDiagram
 
   Note over RP,API: Token exchange
   RP->>API: POST /oauth2/token
-  API->>API: Consume ephemeral claims → embed in id_token
-  API-->>RP: id_token (identity PII) + access_token
+  API-->>RP: id_token (proof + assurance only) + access_token
   RP->>API: GET /oauth2/userinfo
-  API-->>RP: Scope-filtered proof claims (non-PII flags)
+  API->>API: Consume ephemeral claims on first read
+  API-->>RP: Identity PII + scope-filtered proof claims
 ```
 
 All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](oauth-integrations.md) for protocol details.
@@ -305,8 +284,8 @@ The access token includes an `act` claim identifying both the human and the agen
 
 **Document OCR**
 
-- The **OCR service** extracts fields (name, DOB, document number, country) and validates formats.
-- Images are processed **transiently** and never stored.
+- The OCR service extracts fields (name, DOB, document number, country) and validates formats.
+- Images are processed transiently and never stored.
 - Only derived claims and commitments return to the web app.
 
 **Liveness + face match**
@@ -337,7 +316,7 @@ Zentity issues portable verifiable credentials following OpenID standards:
 
 External wallets can receive and hold credentials; third-party verifiers can request presentations without Zentity involvement.
 
-Credentials contain **derived claims only**—no raw PII. Claims like `verified`, `age_verified`, and `verification_level` indicate verification status without exposing underlying data.
+Credentials contain only derived claims, never raw PII. Claims like `verified`, `age_verified`, and `verification_level` indicate verification status without exposing underlying data.
 
 See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Identity model.
 
@@ -346,32 +325,30 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 ## State Durability & Shared Devices
 
 - **Sign-up state** is local React state only (no DB, no cookies). Refreshing the page restarts the sign-up form. An anonymous session is created on load for the credential flow.
-- **FHE enrollment state** is tracked server-side via `identity_bundles.fheKeyId`. Enrollment is resumable — if partial, the preflight re-checks completion criteria.
+- **FHE enrollment state** is tracked server-side via `identity_bundles.fheKeyId`. Enrollment is resumable; if partial, the preflight re-checks completion criteria.
 - **Verification progress** is stored in first-party DB tables keyed by user ID (drafts, signed claims, ZK proofs).
 - **Profile data** lives in a credential-encrypted vault (`encrypted_secrets` + `secret_wrappers`), only decryptable client-side after a credential unlock.
-- **Identity PII** is never stored server-side. At consent time, PII is staged ephemerally in memory (5min TTL) and consumed once when the id_token is issued. The user's profile vault is the only persistent PII source.
+- **Identity PII** is never stored server-side. At consent time, PII is staged ephemerally in memory (5min TTL) and consumed once through the userinfo delivery path. The user's profile vault is the only persistent PII source.
 
 ---
 
 ## Observability
 
-- Distributed tracing via OpenTelemetry across Web, FHE, and OCR
-- Sign-up and verification spans for step timing + duplicate-work signals
-- Privacy-safe telemetry (hashed IDs only; no PII)
-
-See [RFC: Observability](rfcs/0006-observability.md) for configuration details.
+- **Distributed tracing** via OpenTelemetry across Web, FHE, and OCR
+- **Sign-up and verification spans** for step timing + duplicate-work signals
+- **Privacy-safe telemetry** (hashed IDs only; no PII)
 
 ---
 
 ## Compliance Derivation Engine
 
-Compliance level is the sole output of `deriveComplianceStatus()`, a **pure function** in `src/lib/identity/verification/compliance.ts`. It takes ZK proofs, signed claims, encrypted attribute presence, and flags as input — no DB access, no mutable booleans, no side effects.
+Compliance level is computed by a pure function that takes ZK proofs, signed claims, encrypted attribute presence, and flags as input, with no DB access, no mutable booleans, and no side effects.
 
 ### Levels
 
 | Level | Numeric | Criteria |
 |---|---|---|
-| `none` | 1 | Default — fewer than half of the 7 checks pass |
+| `none` | 1 | Default; fewer than half of the 7 checks pass |
 | `basic` | 2 | At least half of the 7 checks pass |
 | `full` | 3 | All 7 checks pass |
 | `chip` | 4 | NFC chip verification + sybil resistance |
@@ -380,7 +357,7 @@ Compliance level is the sole output of `deriveComplianceStatus()`, a **pure func
 
 ### The 7 Boolean Checks
 
-Each check is derived from **proof/claim existence**, not stored boolean columns.
+Each check is derived from proof/claim existence, not stored boolean columns.
 
 | Check | OCR path source | NFC chip path source |
 |---|---|---|
@@ -392,7 +369,7 @@ Each check is derived from **proof/claim existence**, not stored boolean columns
 | `identityBound` | `identity_binding` ZK proof exists | `uniqueIdentifier` present |
 | `sybilResistant` | `dedupKey` / `uniqueIdentifier` present | `uniqueIdentifier` present |
 
-For NFC chip checks, only claim **type presence** matters — boolean payloads inside the claim are ignored. This prevents a malicious server from downgrading compliance by flipping a stored boolean.
+For NFC chip checks, only claim type presence matters; boolean payloads inside the claim are ignored. This prevents a malicious server from downgrading compliance by flipping a stored boolean.
 
 ### `birthYearOffset`
 
@@ -412,4 +389,4 @@ After revocation, the user's assurance tier drops to Tier 1 and their dedup key 
 
 ## Storage Model
 
-Database schema and table relationships are documented in [Attestation & Privacy Architecture](attestation-privacy-architecture.md) and the Drizzle schema under `apps/web/src/lib/db/schema/`.
+Database schema and table relationships are documented in [Attestation & Privacy Architecture](attestation-privacy-architecture.md). The Drizzle schema is the authoritative source for column-level detail.

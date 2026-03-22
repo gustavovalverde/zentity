@@ -1,0 +1,10 @@
+{
+	"title": "Protocols",
+	"pages": [
+		"oauth-integrations",
+		"zk-architecture",
+		"zk-nationality-proofs",
+		"password-security",
+		"fhe-key-lifecycle"
+	]
+}

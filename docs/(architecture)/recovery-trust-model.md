@@ -1,6 +1,9 @@
-# Recovery Trust Model (Server-Held Key vs Guardian-Controlled)
+---
+title: Recovery Trust Model
+description: Guardian-based key recovery architecture and trust assumptions
+---
 
-This document explains, in plain terms, what your current recovery implementation enables, why that differs from a "guardian-controlled threshold recovery" trust model, and what can be changed (with trade-offs) using your existing architecture.
+Key recovery in Zentity implements a guardian-mediated threshold model where cryptographic authorization (FROST signatures) is entangled with key custody (DEK unwrapping), so that no single party, including the server, can recover a user's keys without meeting the guardian threshold. This document maps the trust assumptions, the gap between server-mediated and guardian-controlled models, and the trade-offs involved in moving between them. The key hierarchy (DEK/KEK wrapping) is covered in [FHE Key Lifecycle](fhe-key-lifecycle.md); this document focuses on recovery-specific trust boundaries.
 
 ## Glossary
 
@@ -187,7 +190,7 @@ Security impact:
 
 #### 2B. Threshold signature or threshold decryption (closest to your provisional narrative)
 
-Your repo already has a FROST-related service layer (`docs` + `apps/web/src/lib/recovery/frost-service.ts`). The coordinator orchestrates DKG and signing rounds, but **HPKE encryption** (X25519-HKDF-SHA256 + ChaCha20Poly1305) now encrypts round-2 shares directly to each recipient signer's HPKE public key. The coordinator relays encrypted blobs but cannot see plaintext shares.
+The FROST service layer already supports this model. The coordinator orchestrates DKG and signing rounds, but HPKE encryption (X25519-HKDF-SHA256 + ChaCha20Poly1305) encrypts round-2 shares directly to each recipient signer's HPKE public key. The coordinator relays encrypted blobs but cannot see plaintext shares.
 
 To get "not the server" fully:
 
@@ -236,10 +239,10 @@ This improves "accidental leakage" risk and logging hygiene, but does not fix th
 The current implementation uses the FROST aggregated signature as **cryptographic authorization** that gates access to ML-KEM-768 recovery wrappers:
 
 1. **Authorization**: The FROST aggregate signature proves that a threshold of guardians approved recovery. The server verifies it against `frost_group_pubkey`.
-2. **Confidentiality**: Recovery wrappers use ML-KEM-768 encapsulation — the DEK is wrapped under the ML-KEM shared secret (AES-256-GCM). The server holds the ML-KEM secret key for decapsulation.
+2. **Confidentiality**: Recovery wrappers use ML-KEM-768 encapsulation, where the DEK is wrapped under the ML-KEM shared secret (AES-256-GCM). The server holds the ML-KEM secret key for decapsulation.
 3. **Key derivation for FROST-wrapped DEKs**: Additionally, the FROST signature is used as IKM for `HKDF-SHA256(ikm=frost_signature, salt=challengeId, info="zentity:frost-unwrap")` to derive a key that wraps DEKs on the challenge row (`frostWrappedDeks`). The client derives the same key from the returned signature and unwraps locally.
 
-DB status manipulation alone is insufficient — the real FROST signature is cryptographically required. The ML-KEM recovery wrapper adds a second layer: the server can only decapsulate when the FROST signature authorizes the recovery challenge.
+DB status manipulation alone is insufficient; the real FROST signature is cryptographically required. The ML-KEM recovery wrapper adds a second layer: the server can only decapsulate when the FROST signature authorizes the recovery challenge.
 
 ### Step 4: Operational hardening (both models)
 

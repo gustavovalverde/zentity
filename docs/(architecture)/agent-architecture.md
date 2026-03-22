@@ -1,19 +1,9 @@
-# Agent Architecture
+---
+title: Agent Architecture
+description: Durable host identity, ephemeral agent sessions, capability grants, CIBA approval, and purchase token exchange
+---
 
-Zentity gives agents enough identity to act on behalf of humans without turning the agent into a long-term container for human PII. That design problem has three moving parts at once: the caller has to authenticate as a machine, the human still has to approve sensitive actions, and the relying party has to learn who acted without getting a globally trackable agent identifier. This document explains the system end to end.
-
-1. [Principal Boundaries](#principal-boundaries)
-2. [Host and Session Hierarchy](#host-and-session-hierarchy)
-3. [Trust Tiers](#trust-tiers)
-4. [Capability Containment](#capability-containment)
-5. [Approval Routing](#approval-routing)
-6. [Lifecycle Boundaries](#lifecycle-boundaries)
-7. [Token Anatomy](#token-anatomy)
-8. [Pairwise Agent Identifiers](#pairwise-agent-identifiers)
-9. [Binding Chains](#binding-chains)
-10. [Discovery and Introspection](#discovery-and-introspection)
-11. [MCP Workflow](#mcp-workflow)
-12. [Protocol Architecture](#protocol-architecture)
+Zentity's agent architecture separates durable host identity from ephemeral session state so that agents can act on behalf of humans without accumulating long-term PII or globally trackable identifiers. This document maps the principal hierarchy, capability containment, approval routing, and token anatomy from registration through delegation, with the trust tier (unverified vs. attested) as the axis of variation.
 
 ---
 
@@ -39,9 +29,9 @@ That separation matters because the agent protocol is machine-facing even when a
 
 The model is:
 
-- Browsers are for user interaction.
-- OAuth user tokens are for delegated machine setup.
-- Machine tokens are for protocol operations between services.
+- **Browsers** are for user interaction.
+- **OAuth user tokens** are for delegated machine setup.
+- **Machine tokens** are for protocol operations between services.
 
 Once those boundaries are fixed, the rest of the architecture can be built around stable identities instead of accidental session state.
 
@@ -53,10 +43,10 @@ Agent identity in Zentity clusters into two layers because two different lifetim
 
 ### Durable host
 
-A host is the long-lived installation identity for an MCP server or similar agent runtime. In the MCP client, the host key is an Ed25519 keypair persisted under a namespace derived from `{zentityUrl, clientId}`:
+A host is the long-lived installation identity for an MCP server or similar agent runtime. In the MCP client, the host key is an Ed25519 keypair persisted under a namespace derived from `{zentityUrl, clientId, accountSub}`:
 
 ```text
-~/.zentity/hosts/<sha256(zentityUrl:clientId)>.json
+~/.zentity/hosts/<sha256(zentityUrl:clientId:accountSub)>.json
 ```
 
 On the server side, hosts are stored in `agent_host` with:
@@ -163,18 +153,14 @@ Attestation is not the same thing as runtime proof. Vendor attestation says some
 
 ### What attestation changes
 
-Attestation widens default host policy rather than minting a separate token class. Unverified hosts receive default durable policies for:
+Attestation does not widen the silent-approval set for identity-disclosing capabilities. Unverified hosts receive default durable policies for:
 
 - `check_compliance`
 - `request_approval`
 
-Attested hosts additionally receive:
-
-- `read_profile`
-
 `purchase` is not auto-granted because it requires biometric approval strength and therefore always routes through explicit human approval.
 
-This makes the trust model practical rather than ceremonial. Verification changes what can be approved silently, which is where trust becomes operational.
+This keeps the trust model practical rather than ceremonial. Verification changes how the runtime is presented and audited without bypassing vault unlock or other explicit approval boundaries.
 
 ---
 
@@ -189,7 +175,7 @@ Zentity seeds four capabilities:
 | Capability | Approval strength | Default host policy |
 | --- | --- | --- |
 | `purchase` | `biometric` | No |
-| `read_profile` | `session` | Attested hosts only |
+| `read_profile` | `session` | No |
 | `check_compliance` | `none` | Yes |
 | `request_approval` | `session` | Yes |
 
@@ -336,10 +322,10 @@ sequenceDiagram
 
 The difference between profile reads and purchases is structural rather than cosmetic:
 
-- `read_profile` can become a grant-matched session approval for attested hosts.
+- `read_profile` always remains an explicit approval because identity scopes require vault unlock in a full browser context.
 - `purchase` cannot because its approval strength is `biometric`.
 
-That means an agent can earn a smoother path for lower-risk reads, but not for purchase execution. The human stays on the approval boundary for the highest-liability action class.
+That means both profile disclosure and purchase execution stay on the human approval boundary, with purchase additionally requiring biometric-grade verification.
 
 ---
 
@@ -527,7 +513,7 @@ And the token response uses:
 }
 ```
 
-The artifact copies approved purchase details from the subject token and rebinds both `sub` and `act.sub` for the target audience client. Exchanged access tokens retain the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections and additionally emit `delegation`.
+The artifact copies approved purchase details from the subject token and rebinds both `sub` and `act.sub` for the target audience client. That exchange is also the reduction step: the artifact omits the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections, and its lifetime is capped by the subject token's remaining lifetime. Because the current deployment advertises `delegation_chains: false`, it omits `delegation` on purchase artifacts as well. A deployment that advertises `delegation_chains: true` would retain the projected `delegation` lineage on the artifact. Exchanged access tokens retain the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections and additionally emit `delegation`.
 
 ### Host and runtime proofs
 
@@ -549,15 +535,17 @@ Pairwise privacy matters because the same agent installation may interact with m
 Agent pairwise identifiers are derived from:
 
 - the `agent_session.id`
-- the target client's `redirect_uris`
+- the target client's sector identifier
 - the shared `PAIRWISE_SECRET`
 
-The server uses the same sector-identifier logic as human pairwise subject derivation. If the client is `subject_type = "public"`, the actor identifier falls back to the raw session ID. If the client is private or pairwise, the actor identifier becomes a pairwise pseudonym derived from the session ID and the client's sector.
+The server uses the same sector-identifier logic as human pairwise subject derivation. In the current deployment that sector is derived from the first registered `redirect_uri` host because registrations are constrained to a single host until `sector_identifier_uri` support exists.
 
-That gives the actor layer the same privacy model as the user layer:
+Actor publicity is controlled independently from the human `sub`. Client metadata may set `agent_subject_type` to `public` or `pairwise`; when absent, the deployment falls back to the client's user-facing `subject_type` for backward compatibility. Using a dedicated `agent_subject_type` avoids the earlier coupling where making `act.sub` public also made the human `sub` public. When the effective agent subject type is `public`, the actor identifier falls back to the raw session ID. Otherwise it becomes a pairwise pseudonym derived from the session ID and the client's sector.
 
-- public clients opt into stable identifiers
-- pairwise clients receive RP-scoped pseudonyms
+That gives the actor layer the same privacy model as the user layer without forcing both layers to share the same publicity setting:
+
+- `agent_subject_type: "public"` opts the actor layer into stable identifiers
+- `agent_subject_type: "pairwise"` yields RP-scoped pseudonyms even if the user `sub` is public
 
 ### Why session IDs are used
 
@@ -707,12 +695,13 @@ The route:
 The response includes:
 
 - `active`
+- caller-projected `sub` when the server can safely project the user identifier for the introspecting client
 - top-level `agent`, `task`, `capabilities`, `oversight`, `audit`
 - `delegation` when present on exchanged tokens
 - `zentity.attestation`
 - `zentity.lifecycle`
 
-A relying party can ask whether an agent session is still active without learning raw internal host identifiers.
+A relying party can ask whether an agent session is still active without learning raw internal host identifiers or another client's pairwise subject identifier.
 
 ### Agent JWKS
 
@@ -790,7 +779,7 @@ The introduction to this document identifies three moving parts: the caller auth
 ```mermaid
 flowchart TD
   subgraph T["Secure Transport"]
-    T1["OAuth 2.0 · PKCE · PAR · DPoP"]
+    T1["OAuth 2.1 · PKCE · PAR · DPoP"]
   end
 
   subgraph I["Structured Intent"]
@@ -818,7 +807,7 @@ flowchart TD
 
 ### Secure transport
 
-OAuth 2.0 (RFC 6749), PKCE (RFC 7636), PAR (RFC 9126), and DPoP (RFC 9449) form the transport layer. Zentity would use all four without agents; they are prerequisites for any modern OAuth deployment, not agent-specific architecture.
+OAuth 2.1, PKCE (RFC 7636), PAR (RFC 9126), and DPoP (RFC 9449) form the transport layer. Zentity would use all four without agents; they are prerequisites for any modern OAuth deployment, not agent-specific architecture.
 
 Removing any one of these specs does not change the agent model, only the security properties of the channel. PKCE prevents authorization code interception, PAR moves authorization parameters from the front channel to the back channel, and DPoP sender-constrains tokens so a stolen token is useless without the holder's proof-of-possession key.
 
@@ -838,7 +827,7 @@ RAR defines the shape of what needs approval; the control plane defines who is a
 
 The control plane does not define token claims, consent flows, or token exchange. What it produces is two things: the `Agent-Assertion` JWT that enters the consent channel as runtime proof, and the capability grants that determine whether the consent channel can short-circuit into an automatic approval. That boundary is deliberate; the control plane establishes identity and trust, then hands off to other concerns for consent and token shaping.
 
-Two orthogonal capabilities attach to the control plane without creating new protocol surfaces. OAuth Client Attestation (draft-ietf-oauth-attestation-based-client-auth-08) answers whether the agent software is genuine by letting a vendor attest that the installation is authentic. No other spec in the stack addresses software provenance. Attestation widens default host policy rather than creating a separate token class: an attested host receives `read_profile` by default alongside `check_compliance` and `request_approval`.
+Two orthogonal capabilities attach to the control plane without creating new protocol surfaces. OAuth Client Attestation (draft-ietf-oauth-attestation-based-client-auth-08) answers whether the agent software is genuine by letting a vendor attest that the installation is authentic. No other spec in the stack addresses software provenance. Attestation changes runtime trust presentation rather than creating a separate token class or silently widening identity-disclosure defaults.
 
 The A2A agent card (`/.well-known/agent-card.json`) publishes capabilities and security schemes for agent-to-agent discovery. It overlaps slightly with the Agent Auth Protocol's `/.well-known/agent-configuration`, but they serve different consumers: the protocol discovery document targets authorization servers and OAuth clients, while the A2A card targets inter-agent communication.
 
@@ -854,13 +843,13 @@ The runtime proof is bound to a specific consent request rather than floating as
 
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
-Token exchange (RFC 8693) repackages the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and artifact creation (`purchase-authorization+jwt` with the approved purchase details forward-copied from the subject token).
+**Token exchange** (RFC 8693) repackages the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and artifact creation (`purchase-authorization+jwt` with the approved purchase details forward-copied from the subject token). The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
 
-Token introspection (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
+**Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 
-Pairwise subject identifiers (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation. A merchant that receives a purchase artifact cannot correlate the acting agent with the same agent's activity at a different merchant.
+**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation. A merchant that receives a purchase artifact cannot correlate the acting agent with the same agent's activity at a different merchant.
 
-The Agent Authorization Profile (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. Exchanged access tokens additionally emit `delegation`. Discovery still advertises `delegation_chains: false`, so the current implementation supports single-server token lineage rather than general multi-hop delegation protocols.
+**The Agent Authorization Profile** (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. Exchanged access tokens additionally emit `delegation`. Discovery still advertises `delegation_chains: false`, so the current implementation supports single-server token lineage rather than general multi-hop delegation protocols.
 
 ### Where the specs meet
 
@@ -888,5 +877,5 @@ The `authorization_details` payload is the second. It enters at the structured i
 | Pairwise subject identifiers | Token semantics | [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html) | Privacy for both `sub` and `act.sub` across RPs |
 | Agent authorization claims | Token semantics | [AAP draft](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) | JWT claim vocabulary for delegation, task, and capabilities |
 | `Agent-Assertion` on CIBA | Zentity-specific | [Agent Architecture](agent-architecture.md) | Runtime proof through CIBA rather than the protocol's standard execution shape |
-| Host policy / session grant split | Zentity-specific | [Agent schema](../apps/web/src/lib/db/schema/agent.ts) | Durable host defaults and session-scoped grants as separate records |
-| `urn:zentity:token-type:purchase-authorization` | Zentity-specific | [Token exchange](../apps/web/src/lib/auth/oidc/token-exchange.ts) | Audience-bound purchase artifact via RFC 8693 extension |
+| Host policy / session grant split | Zentity-specific | Agent schema | Durable host defaults and session-scoped grants as separate records |
+| `urn:zentity:token-type:purchase-authorization` | Zentity-specific | Token exchange handler | Audience-bound purchase artifact via RFC 8693 extension |

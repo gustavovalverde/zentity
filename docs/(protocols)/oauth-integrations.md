@@ -1,19 +1,13 @@
-# OAuth Integrations
-
-Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying parties that need verified identity claims without receiving raw PII. This document covers the protocol surface area, authorization flows, token security, and privacy guarantees.
-
-1. [Endpoints](#endpoints)
-2. [Authorization Flows](#authorization-flows)
-3. [Token Security](#token-security)
-4. [Scopes and Selective Disclosure](#scopes-and-selective-disclosure)
-5. [Credential Issuance (OIDC4VCI)](#credential-issuance-oidc4vci)
-6. [Credential Presentation (OIDC4VP)](#credential-presentation-oidc4vp)
-7. [Discovery and Metadata](#discovery-and-metadata)
-8. [Privacy Guarantees](#privacy-guarantees)
-
+---
+title: OAuth Integrations
+description: OAuth and identity integration guidance for relying party applications
 ---
 
+Zentity's OAuth integration implements a zero-PII authorization model: relying parties receive cryptographically verified identity claims without the server ever storing or transmitting plaintext personal data. This document maps the protocol surface area from endpoints through token security to privacy guarantees, with the delivery mechanism (scope-based, credential-based, or backchannel) as the axis of variation.
+
 ## Endpoints
+
+The endpoints below cluster by lifecycle stage: discovery, authorization, token exchange, user data, client management, and CIBA.
 
 ### Discovery
 
@@ -41,7 +35,7 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
 | `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
 | `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
-| `GET /api/auth/pq-jwks` | — | Post-quantum signing keys (ML-DSA-65) |
+| `GET /api/auth/pq-jwks` | (custom) | Post-quantum signing keys (ML-DSA-65) |
 
 ### User data
 
@@ -55,9 +49,9 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
 | `POST /api/auth/oauth2/register` | RFC 7591 | Dynamic Client Registration |
-| `GET /api/auth/oauth2/get-consents` | — | List user's active consents |
-| `POST /api/auth/oauth2/delete-consent` | — | Revoke a consent grant |
-| `POST /api/auth/oauth2/update-consent` | — | Update consented scopes |
+| `GET /api/auth/oauth2/get-consents` | (custom) | List user's active consents |
+| `POST /api/auth/oauth2/delete-consent` | (custom) | Revoke a consent grant |
+| `POST /api/auth/oauth2/update-consent` | (custom) | Update consented scopes |
 
 ### CIBA lifecycle
 
@@ -73,9 +67,11 @@ Zentity acts as an OAuth 2.1 / OpenID Connect authorization server for relying p
 
 ---
 
+The endpoints above define the protocol surface. The next section traces the three authorization paths that traverse these endpoints, each optimized for a different client context.
+
 ## Authorization Flows
 
-Zentity supports three authorization paths. All require DPoP and produce the same token format.
+Zentity supports three authorization paths. All require DPoP and produce the same token format. They differ in where the user is present: in the RP's browser (interactive), at a CLI (first-party challenge), or on a separate device (CIBA).
 
 ### Interactive (browser redirect)
 
@@ -105,7 +101,7 @@ sequenceDiagram
 
 **Grant type**: `authorization_code`
 
-PAR is required — all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
+PAR is required: all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
 
 ### First-Party Challenge (headless, no redirect)
 
@@ -227,7 +223,7 @@ CIBA also supports **ping mode** for clients that can receive callbacks instead 
 
 Ping mode eliminates polling overhead and reduces latency between approval and token acquisition.
 
-**`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) approval time — the user cannot approve if their tier is insufficient, and (2) token exchange — a safety net if the tier decreased between approval and polling. For first-party clients, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Non-first-party clients receive 400 `interaction_required`.
+**`acr_values` enforcement**: CIBA requests can include `acr_values` to require a minimum assurance tier. Enforcement happens at two points: (1) at approval time, the user cannot approve if their tier is insufficient, and (2) at token exchange, as a safety net if the tier decreased between approval and polling. For first-party clients, the token exchange safety net returns HTTP 403 + `auth_session` (enabling step-up via the Authorization Challenge Endpoint). Non-first-party clients receive 400 `interaction_required`.
 
 ### Grant types
 
@@ -241,27 +237,29 @@ Ping mode eliminates polling overhead and reduces latency between approval and t
 
 ### Token Exchange (RFC 8693)
 
-Token Exchange enables audience narrowing and delegation chain construction at the standard token endpoint (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`).
+Token Exchange enables audience narrowing and token repackaging at the standard token endpoint (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`). The current deployment publishes `delegation_chains: false`, so general multi-hop delegation-chain portability is not part of the active contract.
 
 **Exchange modes:**
 
 | Source token | Target | Use case |
 | --- | --- | --- |
 | Access token | Access token | Narrow audience for a specific merchant/resource |
-| Access token | ID token | Obtain identity claims for a downstream service |
+| Access token | ID token | Obtain an OpenID assertion for a downstream service |
 | ID token | Access token | Convert identity assertion to an access credential |
 
 **Scope attenuation:** The requested scope must be a subset of the source token's scope. Requesting scopes beyond what the source token carries is rejected. The ID token branch defaults to `["openid"]` regardless of source token scopes.
 
 **DPoP passthrough:** If the source token is DPoP-bound, the exchanged token inherits the same sender constraint.
 
-**Delegation profile:** Exchanged agent-backed tokens keep the standard nested `act` chain for OAuth compatibility and add AAP `delegation` metadata. The first exchange emits `delegation.depth = 1`, `delegation.parent_jti = <source token jti>`, and a `delegation.chain` built from pairwise actor identifiers. Later exchanges increment `depth` and extend the chain.
+**Delegation profile:** Exchanged agent-backed access tokens keep the standard nested `act` chain for OAuth compatibility and add AAP `delegation` metadata. The current deployment supports single-server lineage on exchanged access tokens, with `delegation.depth = 1` and `delegation.parent_jti = <source token jti>` on the first exchange. Purchase authorization artifacts omit `delegation` because discovery advertises `delegation_chains: false`; a deployment that advertises `delegation_chains: true` would need to preserve the projected `delegation` lineage on those artifacts as well.
 
-**`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim (left half of SHA-256 of the access token, base64url-encoded). This follows the same algorithm as standard OIDC `at_hash` computation, using the signing algorithm's hash function.
+**`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim, computed as the left half of SHA-256 of the access token (base64url-encoded), following the same algorithm as standard OIDC at_hash computation and using the signing algorithm's hash function.
 
 **`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token. Precedence: `resource` > `audience` > issuer URI.
 
 ---
+
+The authorization flows above produce tokens. The next section describes how those tokens are secured against theft and replay.
 
 ## Token Security
 
@@ -318,11 +316,11 @@ The `ath` claim is only included when presenting the access token at a resource 
 
 | Token | Format | Signing |
 | --- | --- | --- |
-| Access token | Opaque (random string) | — |
+| Access token | Opaque (random string) | n/a |
 | ID token | JWT | RS256 (default), ES256, EdDSA, or ML-DSA-65 per client preference |
-| Token type | `"DPoP"` | — |
+| Token type | `"DPoP"` | n/a |
 
-Access tokens are opaque by design — they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
+Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
 
 ### JWT signing algorithms
 
@@ -333,11 +331,11 @@ Access tokens are opaque by design — they prevent `sub` leakage for pairwise c
 | EdDSA | Access token JWTs (internal) | Compact 64-byte signatures |
 | ML-DSA-65 | ID tokens (opt-in) | Post-quantum, requires compatible JWT library |
 
-Clients opt into non-default signing algorithms via `id_token_signed_response_alg` in DCR metadata. Keys are generated on first use and persisted in the database — standard OIDC provider pattern.
+Clients opt into non-default signing algorithms via `id_token_signed_response_alg` in DCR metadata. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
 
 ### Client registration
 
-All clients register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). The `subject_type` is forced to `"pairwise"` for all DCR clients.
+All clients register via RFC 7591 Dynamic Client Registration. CIBA clients register as public clients (`token_endpoint_auth_method: "none"`). The user-facing `subject_type` defaults to `"pairwise"` for DCR clients.
 
 ```json
 {
@@ -349,13 +347,17 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for DCR, `"public"` available). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint for headless authentication and receive step-up `auth_session` tokens instead of redirect errors.
+Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The signature is not verified (no trusted SSA issuers configured), but structural validation prevents garbage data from being accepted.
 
 ---
 
+Token security ensures tokens cannot be stolen or replayed. The next section describes what claims those tokens carry, and how the user controls disclosure.
+
 ## Scopes and Selective Disclosure
+
+The scopes cluster into two groups with fundamentally different privacy properties: proof scopes deliver non-PII boolean flags, while identity scopes deliver actual PII through an ephemeral pipeline.
 
 ### Proof scopes (`proof:*`)
 
@@ -363,7 +365,7 @@ Non-PII boolean verification flags, delivered via id_token and userinfo.
 
 | Scope | Claims |
 | --- | --- |
-| `proof:identity` | All verification claims (umbrella — expanded at consent) |
+| `proof:identity` | All verification claims (umbrella, expanded at consent) |
 | `proof:verification` | `verification_level`, `verified`, `identity_bound`, `sybil_resistant` |
 | `proof:age` | `age_verified` |
 | `proof:document` | `document_verified` |
@@ -371,7 +373,7 @@ Non-PII boolean verification flags, delivered via id_token and userinfo.
 | `proof:nationality` | `nationality_verified` |
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
-| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (delivered in access tokens via `customAccessTokenClaims`, NOT in id_tokens) |
+| `proof:sybil` | `sybil_nullifier`, a per-RP pseudonymous nullifier (delivered in access tokens, not in id_tokens) |
 | `compliance:key:read` | Read RP encryption keys for compliance data |
 | `compliance:key:write` | Register/rotate RP encryption keys |
 
@@ -392,7 +394,7 @@ Standard OIDC scopes (`openid`, `email`, `offline_access`) are auto-approved.
 
 ### Consent and selective disclosure
 
-When an RP requests `proof:identity`, the consent page expands it into individual sub-scope checkboxes. All start **unchecked** — the user actively opts into each claim.
+When an RP requests `proof:identity`, the consent page expands it into individual sub-scope checkboxes. All start unchecked; the user actively opts into each claim.
 
 ```text
 Consent page:
@@ -408,7 +410,7 @@ Consent page:
 
 ### Identity PII delivery pipeline
 
-Identity scopes require a special pipeline because the server stores no plaintext PII. During verification, the user's PII is encrypted with their credential (passkey PRF / OPAQUE export key / wallet signature) and stored as a **profile secret** — an opaque blob the server cannot decrypt.
+Identity scopes require a special pipeline because the server stores no plaintext PII. During verification, the user's PII is encrypted with their credential (passkey PRF, OPAQUE export key, or wallet signature) and stored as a profile secret, an opaque blob the server cannot decrypt.
 
 ```mermaid
 sequenceDiagram
@@ -429,11 +431,11 @@ sequenceDiagram
   Note over AS: Claims deleted after delivery
 ```
 
-PII is delivered exclusively via the **userinfo endpoint** — never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token contains only authentication claims (`sub`, `acr`, `amr`, `at_hash`, `sid`) and proof claims (`proof:*` scopes).
+PII is delivered exclusively via the userinfo endpoint and never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token contains only authentication claims (`sub`, `acr`, `amr`, `at_hash`, `sid`) and proof claims (`proof:*` scopes).
 
 For CIBA flows, the same mechanism applies with a 10-minute TTL: the agent calls the standard userinfo endpoint with the CIBA access token after approval.
 
-Identity scopes are **never persisted** in consent records. The consent page reappears each session, requiring a fresh credential unlock — the server cannot decrypt the profile secret itself.
+Identity scopes are never persisted in consent records. The consent page reappears each session, requiring a fresh credential unlock because the server cannot decrypt the profile secret itself.
 
 **Consent scope integrity:** Each consent record is HMAC-tagged (`scope_hmac` column). The HMAC covers userId, clientId, referenceId, and sorted scopes. On every authorize request, the before-hook verifies the HMAC before the plugin's auto-skip logic runs. Invalid or missing HMACs cause the consent to be deleted, forcing re-consent. This prevents DB-level scope escalation.
 
@@ -441,12 +443,14 @@ Identity scopes are **never persisted** in consent records. The consent page rea
 
 | Path | Standard | Delivery |
 | --- | --- | --- |
-| `proof:*` scopes | OAuth 2.0 custom scopes | id_token + userinfo |
-| `identity.*` scopes | OAuth 2.0 custom scopes | userinfo only (PII never in id_token) |
+| `proof:*` scopes | OAuth 2.1 custom scopes | id_token + userinfo |
+| `identity.*` scopes | OAuth 2.1 custom scopes | userinfo only (PII never in id_token) |
 | `verified_claims` parameter | OIDC for Identity Assurance | id_token + userinfo |
 | SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
 
 ---
+
+The previous sections addressed server-mediated disclosure. The next two sections address wallet-mediated disclosure, where the user holds and presents credentials directly.
 
 ## Credential Issuance (OIDC4VCI)
 
@@ -468,7 +472,7 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 
 **Deferred issuance**: When verification is pending, the issuer returns a `transaction_id`. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until ready.
 
-**Derived claims only** — credentials contain verification flags (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
+Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
 ---
 
@@ -478,9 +482,9 @@ Zentity can act as a verifier requesting presentations from wallets using DCQL (
 
 **Request**: `POST /api/auth/oidc4vp/verify` returns a `request_uri`
 
-**Response**: `response_mode: direct_post.jwt` — the wallet posts a JARM-encrypted response (ECDH-ES, P-256) to `/api/auth/oidc4vp/response`
+**Response**: `response_mode: direct_post.jwt`, where the wallet posts a JARM-encrypted response (ECDH-ES, P-256) to `/api/auth/oidc4vp/response`
 
-**Client identification**: `client_id_scheme: x509_hash` — the `client_id` is the SHA-256 thumbprint of the leaf certificate in the x5c chain.
+**Client identification**: `client_id_scheme: x509_hash`, where the `client_id` is the SHA-256 thumbprint of the leaf certificate in the x5c chain.
 
 **KB-JWT verification** order: issuer signature → disclosure decode → `cnf.jkt` match → KB-JWT signature → nonce/audience/freshness.
 
@@ -533,7 +537,11 @@ Clients follow `authorization_servers[0]` to the AS metadata, then proceed with 
 
 ---
 
+The previous sections described the protocol mechanics. This final section describes the privacy properties that emerge from those mechanics.
+
 ## Privacy Guarantees
+
+The privacy guarantees cluster by what they prevent: cross-RP user correlation (pairwise identifiers), server-side user tracking (double anonymity), and PII persistence (zero persistent PII).
 
 ### Pairwise subject identifiers
 
@@ -543,18 +551,16 @@ All DCR clients use `subject_type: "pairwise"`. Each (user, client) pair gets a 
 sub = Base64(HMAC-SHA256(PAIRWISE_SECRET, sectorId + "." + userId))
 ```
 
-The `sectorId` is derived from the host of the client's first `redirect_uri` (per OIDC Core §8.1). Related services under one domain share a sector; cross-domain tracking is prevented.
+Current implementation note: `sectorId` is derived from the host of the client's first registered `redirect_uri`, mirroring the provider library's current pairwise derivation. This is an implementation detail, not full `sector_identifier_uri` support, so registrations are constrained to redirect URIs that share the same host.
 
 ### Double anonymity (ARCOM)
 
 For pairwise proof-only flows, additional measures remove all server-side linkage:
 
-- **Opaque access tokens** — random strings prevent `sub` leakage (JWT access tokens would embed it)
-- **Consent record deletion** — consent rows deleted after authorization code issuance
-- **Token record deletion** — token DB records deleted after JWT issuance
-- **Session metadata scrubbing** — IP address and user-agent scrubbed from session records
-
-See [ADR-0001: ARCOM Double Anonymity](adr/0001-arcom-double-anonymity.md).
+- **Opaque access tokens**: random strings prevent `sub` leakage (JWT access tokens would embed it)
+- **Consent record deletion**: consent rows deleted after authorization code issuance
+- **Token record deletion**: token DB records deleted after JWT issuance
+- **Session metadata scrubbing**: IP address and user-agent scrubbed from session records
 
 ### Zero persistent PII
 
@@ -570,7 +576,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 **Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
 
-**Retry behavior:** 10-second timeout per RP. On 5xx responses, retries at 1s then 3s (exponential backoff). Fire-and-forget — the user's sign-out completes regardless of delivery success.
+**Retry behavior:** 10-second timeout per RP. On 5xx responses, retries at 1s then 3s (exponential backoff). The user's sign-out completes regardless of delivery success.
 
 **CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
 

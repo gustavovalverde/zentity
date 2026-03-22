@@ -62,7 +62,7 @@ This is intentional: verification is an atomic, single-session process. The flow
 ## Consequences
 
 - **Dashboard name display** works via the profile vault cache (populated after OCR); a short greeting name is cached in `sessionStorage` for post-verification refreshes
-- **OAuth identity claims** flow: profile vault → consent UI decryption → intent token → ephemeral staging → id_token delivery
+- **OAuth identity claims** flow: profile vault → consent UI decryption → intent token → ephemeral staging → userinfo delivery
 - **No plaintext PII at rest** — not in permanent identity tables, not in `sessionStorage`, not in `localStorage`
 - **FHE encryption is simpler** — only two core attributes (`dob_days`, `liveness_score`)
 - **Schema migration** — `identity_documents` loses two columns; existing data in drafts/signed claims is unaffected

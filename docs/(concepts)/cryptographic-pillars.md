@@ -1,6 +1,9 @@
-# Cryptographic Pillars
+---
+title: Cryptographic Pillars
+description: The four cryptographic pillars that eliminate the need to store personal data
+---
 
-Zentity relies on **four complementary cryptographic pillars**. Each solves a different privacy problem, and the system only works because they are designed to **interlock**, not compete.
+Zentity eliminates plaintext data handling through four interlocking cryptographic pillars, each addressing a different privacy threat boundary. This document explains why four primitives are needed (not three, not five), how they bind together, and where each appears in the verification lifecycle. The axis of variation is the threat each pillar addresses: custody, disclosure, computation, and integrity.
 
 ## The Four Pillars
 
@@ -27,7 +30,7 @@ Each pillar addresses a different threat boundary:
 - **FHE** enables computation on ciphertext when ZKPs are not practical for repeated policy checks.
 - **Commitments** give integrity and deduplication without storing plaintext.
 
-Removing any one creates a gap (e.g., ZK can prove eligibility but not enable encrypted re-checks; FHE can compute but doesn't prove origin; commitments allow integrity but not privacy-preserving verification).
+Removing any one creates a gap: ZK can prove eligibility but not enable encrypted re-checks; FHE can compute but does not prove origin; commitments ensure integrity but not privacy-preserving verification.
 
 ## How They Interlock
 
@@ -91,7 +94,7 @@ Passkeys, OPAQUE, and wallet signatures secure the keys used for encryption and 
 
 ### ZK Proofs
 
-ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") while the underlying data stays private in the browser.
+ZK proofs let a verifier learn only a boolean outcome (e.g., "over 18") while the underlying data stays private in the browser.
 
 ## Where Each Pillar Appears in the Flow
 
@@ -103,12 +106,12 @@ ZK proofs let a verifier learn **only** a boolean outcome (e.g., "over 18") whil
 
 ## Supporting Techniques
 
-- **JWT Signing (RS256 + EdDSA + ML-DSA-65)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) is the default for id_tokens per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size) and available as an opt-in for id_tokens. ML-DSA-65 (post-quantum, IANA-registered as `AKP` key type) is opt-in per client. Signing keys are generated on first use and persisted in the `jwks` database table — this is the standard OIDC provider pattern, distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](oauth-integrations.md#jwt-signing-and-jwks).
+- **JWT Signing (RS256 + EdDSA + ML-DSA-65)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) is the default for id_tokens per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size) and available as an opt-in for id_tokens. ML-DSA-65 (post-quantum, IANA-registered as `AKP` key type) is opt-in per client. Signing keys are generated on first use and persisted in the database (standard OIDC provider pattern), distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](oauth-integrations.md#jwt-signing-and-jwks).
 - **JWKS Private Key Encryption at Rest**: When `KEY_ENCRYPTION_KEY` is set (required in production, min 32 chars), JWKS private keys are encrypted with AES-256-GCM before storage. The KEK is derived via `SHA-256(KEY_ENCRYPTION_KEY)` to normalize any input to 32 bytes. Stored format: `{"v":1,"iv":"...","ct":"..."}` (version field enables future format changes). Plaintext detection: if stored value doesn't start with `{"v":`, it's treated as plaintext (backward-compatible migration). No KEK = no-op (keys stored as plaintext, for dev convenience).
 - **JARM Key Rotation**: ECDH-ES P-256 decryption keys for JARM responses are rotated every 90 days (`KEY_LIFETIME_MS`). On expiry, a new key is generated and the old key is retained in the `jwks` table for a grace period (in-flight VP responses can still be decrypted). The cache is invalidated on rotation so the new key is used immediately.
 - **Merkle Trees**: Enable group membership proofs (e.g., EU nationality) without revealing which country. Used inside ZK proofs.
 - **Hash Functions**: Poseidon2 for ZK efficiency, SHA-256 for commitments.
-- **BBS+ Signatures**: Enable selective disclosure credentials for wallet users. A wallet can prove identity without revealing the wallet address, and multiple presentations are unlinkable. Used internally for privacy-preserving wallet binding. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).
+- **BBS+ Signatures**: Enable selective disclosure credentials for wallet users. A wallet can prove identity without revealing the wallet address, and multiple presentations are unlinkable. Used internally for privacy-preserving wallet binding.
 
 ## Cryptographic Details
 
@@ -152,7 +155,7 @@ Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.
 - The server stores only the wallet address for account association.
 
-**Enhanced privacy mode (BBS+)**: Wallet users can optionally receive BBS+ credentials that enable unlinkable presentations. Multiple presentations to the same verifier cannot be correlated, and the wallet address is never revealed. See [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md).
+**Enhanced privacy mode (BBS+)**: Wallet users can optionally receive BBS+ credentials that enable unlinkable presentations. Multiple presentations to the same verifier cannot be correlated, and the wallet address is never revealed.
 
 ### 2) Commitments + Hashing
 
@@ -169,23 +172,7 @@ commitment = SHA256(normalized_value + user_salt)
 
 **HMAC-SHA256 integrity tags**
 
-HMAC-SHA256 is used for three distinct server-side integrity purposes:
-
-| Purpose | Key | Input | Where stored |
-|---------|-----|-------|--------------|
-| Sybil deduplication | `DEDUP_HMAC_SECRET` | Identity attributes | `dedup_key` |
-| FHE ciphertext integrity | `CIPHERTEXT_HMAC_SECRET` (HKDF) | `encodeAad([userId, attributeType]) \|\| ciphertext` | `ciphertext_hash` |
-| Consent scope integrity | `BETTER_AUTH_SECRET` (HKDF) | `encodeAad([context, userId, clientId, referenceId, sortedScopes])` | `scope_hmac` |
-
-A fourth integrity mechanism uses **SHA-256** (not HMAC) for client-side key verification:
-
-| Purpose | Computation | Input | Where stored |
-|---------|-------------|-------|--------------|
-| FHE public key fingerprint | `SHA-256` (client-side) | FHE public key bytes | `metadata.publicKeyFingerprint` |
-
-This is architecturally distinct from the server-keyed HMACs above — it is computed and verified client-side to detect server-side key substitution. See [Tamper Model](tamper-model.md#fhe-public-key-substitution).
-
-These are architecturally distinct from user-salted commitment hashes (e.g., `SHA256(dob + user_salt)`). HMAC tags are **server-keyed** and **server-verifiable** — they protect against DB-level tampering by an attacker with write access. Commitment hashes use a **user-held salt** and are **user-erasable** — deleting the profile vault breaks linkability. The two mechanisms serve complementary roles: commitments preserve user privacy and erasure rights; HMACs preserve system integrity.
+HMAC-SHA256 tags protect against DB-level tampering across three domains: sybil deduplication, FHE ciphertext integrity, and consent scope integrity. A fourth mechanism uses client-side SHA-256 fingerprinting to detect FHE public key substitution. These server-keyed integrity tags are architecturally distinct from user-salted commitment hashes: HMACs are server-verifiable and protect system integrity, while commitments use a user-held salt and are user-erasable, preserving privacy and the right to deletion. See [Tamper Model](tamper-model.md) for the full threat model and control details for each.
 
 **Evidence pack hashes**
 
@@ -197,8 +184,6 @@ ZK verification keys are stored with two hash formats:
 
 - SHA-256 for ops/audit identity
 - Poseidon2 (field-friendly) for registry/on-chain compatibility
-
-See ADR: `docs/adr/zk/0003-dual-vkey-hashes.md`.
 
 ### 3) ZK Proofs
 
@@ -221,11 +206,11 @@ UltraHonk relies on a universal structured reference string (SRS/CRS). The Barre
 
 Every circuit accepts a public nonce that is issued by the server and consumed on submission.
 
-**Identity binding** is mandatory for all proof sets. The `identity_binding` circuit computes a Poseidon2 commitment over auth-mode-specific secrets (passkey PRF, OPAQUE export key, or wallet signature), hashed user ID, document hash, and caller/audience context hashes (`msg_sender_hash`, `audience_hash`). This ensures proofs cannot be replayed across users, documents, or relying-party audiences, regardless of which authentication method was used. If the user's credential material cache has expired, a re-authentication dialog blocks proof generation until material is re-obtained. See [ZK Architecture — Identity Binding](zk-architecture.md#identity-binding-circuit) for details.
+**Identity binding** is mandatory for all proof sets. The `identity_binding` circuit computes a Poseidon2 commitment over auth-mode-specific secrets (passkey PRF, OPAQUE export key, or wallet signature), hashed user ID, document hash, and caller/audience context hashes (`msg_sender_hash`, `audience_hash`). This ensures proofs cannot be replayed across users, documents, or relying-party audiences, regardless of which authentication method was used. If the user's credential material cache has expired, a re-authentication dialog blocks proof generation until material is re-obtained. See [ZK Architecture: Identity Binding](zk-architecture.md#identity-binding-circuit) for details.
 
-**Field constraints**: All circuit inputs must fit within the BN254 scalar field (~254 bits). Cryptographic outputs (PRF, OPAQUE export keys, SHA-256 hashes) are mapped with HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture § BN254 Field Constraints](zk-architecture.md#bn254-field-constraints).
+**Field constraints**: All circuit inputs must fit within the BN254 scalar field (~254 bits), requiring HKDF-based hash-to-field mapping for cryptographic outputs. See [ZK Architecture](zk-architecture.md#bn254-field-constraints) for details.
 
-See [ZK Architecture](zk-architecture.md) for circuit flows and verifier isolation, and [RFC-0020](rfcs/0020-privacy-preserving-wallet-binding.md) for privacy-preserving wallet binding enhancements.
+See [ZK Architecture](zk-architecture.md) for circuit flows and verifier isolation.
 
 ### 4) FHE
 
@@ -253,17 +238,9 @@ The registrar uses the relayer SDK to encrypt and submit attestation inputs. Dec
 
 This combination yields privacy (no plaintext storage) and integrity (verifiable proofs + hashes) while keeping user key custody intact.
 
-### MCP Server Authentication
+### Agent and MCP Authentication
 
-The MCP identity server (`apps/mcp`) authenticates to Zentity's OAuth endpoints using a multi-step chain:
-
-1. **OAuth discovery**: Fetch `/.well-known/oauth-protected-resource` → follow to AS metadata
-2. **DCR**: Register as a public client (`token_endpoint_auth_method: "none"`)
-3. **Authentication**: PKCE+PAR for browser redirect, or OPAQUE 3-round FPA for headless login
-4. **DPoP-bound tokens**: All token requests include DPoP proofs; access tokens carry `cnf.jkt`
-5. **Proactive refresh**: `TokenManager` refreshes tokens before expiry
-
-**Key material**: Per-instance DPoP ES256 keypair persisted to `~/.zentity/<instance>/dpop-key.json`. PKCE code verifiers are ephemeral. OPAQUE export keys exist only in memory during the login ceremony.
+The MCP identity server authenticates to Zentity's OAuth endpoints using the same DPoP-bound token chain as any other client: OAuth discovery, DCR, PKCE+PAR or headless FPA, and DPoP proof binding. See [Agent Architecture](agent-architecture.md) for the host registration and session lifecycle model, and [OAuth Integrations](oauth-integrations.md) for protocol details.
 
 ## Deep Dives
 

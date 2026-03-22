@@ -70,7 +70,7 @@ Two scope families exist with fundamentally different security properties:
 | Scope family | Data type | Security | Delivery |
 |-------------|-----------|----------|----------|
 | `proof:*` | Derived booleans (non-PII) | No vault unlock needed | Userinfo endpoint |
-| `identity.*` | Actual PII | **Vault unlock required** | id_token only (ephemeral) |
+| `identity.*` | Actual PII | **Vault unlock required** | userinfo only (ephemeral) |
 
 When the user approves any `identity.*` scope, the consent page requires a **vault unlock** before the "Allow" button is enabled. The vault unlock uses the user's authentication credential:
 
@@ -88,14 +88,14 @@ Until the vault is unlocked, the "Allow" button remains disabled. This prevents 
 4. Server validates the intent token (signature, expiry, scope hash match) and stores the filtered claims in an in-memory ephemeral store (5min TTL, consumed on read)
 5. Consent UI filters out `identity.*` scopes and calls `consent()` with only `proof:*` and standard OIDC scopes
 
-When better-auth issues the id_token, the `customIdTokenClaims` hook consumes the ephemeral claims (keyed by userId, independent of auth code scopes) and includes the claims matching the scopes recorded in the ephemeral store. The claims are then gone — no persistent PII exists on the server.
+When the RP later calls the userinfo endpoint, the `customUserInfoClaims` hook consumes the ephemeral claims (scoped to the requesting client and matching granted identity scopes). The claims are then gone — no persistent PII exists on the server.
 
 This means identity PII is:
 
-* **Never written to the database** — only held in memory for the duration of the token exchange
-* Consumed once — the ephemeral entry is deleted after the id_token is issued
-* Only accessible during the brief window between consent and token exchange (~seconds)
-* Delivered via id_token, not userinfo — the RP receives PII in the token response, not via a separate API call
+* **Never written to the database** — only held in memory for the duration of the disclosure window
+* Consumed once — the ephemeral entry is deleted after the userinfo response is served
+* Only accessible during the brief window between consent and userinfo consumption (~seconds to minutes)
+* Delivered via userinfo, not id_token — the RP receives PII through the standard userinfo call
 
 **Never-persist consent:** Identity scopes are excluded from consent records via two layers: the server-side `before` hook in `auth.ts` strips `identity.*` scopes from the consent request body (defense-in-depth), and the consent UI also filters them before calling `consent()`. Only `proof:*` and standard OIDC scopes are persisted. This ensures the consent page reappears whenever identity scopes are requested — vault unlock is per-session.
 
@@ -103,9 +103,9 @@ This means identity PII is:
 
 Even after consent, claims are filtered again when the RP calls userinfo or receives tokens:
 
-* `customUserInfoClaims` checks the access token's scopes and returns only matching `proof:*` claims
+* `customUserInfoClaims` checks the access token's scopes and returns only matching `proof:*` claims plus any staged `identity.*` claims
 * `proof:*` claims: built from server-side attestation data, filtered by `filterProofClaimsByScopes`
-* `identity.*` claims: consumed from the ephemeral store by `customIdTokenClaims`, filtered by `filterIdentityByScopes`
+* `identity.*` claims: consumed from the ephemeral store by `customUserInfoClaims`, filtered by `filterIdentityByScopes`
 
 A scope that was consented but has no backing data (e.g., `identity.dob` when the user hasn't completed DOB verification) returns nothing — the filtering is additive, not permissive.
 

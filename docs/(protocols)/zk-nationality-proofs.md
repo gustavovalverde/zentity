@@ -1,4 +1,9 @@
-# ZK Nationality Membership Proofs
+---
+title: Nationality Proofs
+description: Zero-knowledge Merkle proofs for nationality group membership verification
+---
+
+Nationality verification in Zentity uses zero-knowledge Merkle membership proofs: the user proves their country belongs to a defined group (e.g., EU, SCHENGEN) without revealing which country it is. This document explains the Merkle tree construction, the proof mechanism, and the performance and security properties. The axis of variation is privacy versus verifiability: how much the verifier learns as a function of what the user reveals.
 
 ## The Problem
 
@@ -8,13 +13,13 @@ In traditional KYC/AML systems, when a service needs to verify that a user is fr
 2. Extract the nationality field (e.g., "Germany")
 3. Check if "Germany" is in the EU list
 
-**The privacy problem:** The service now knows the user is German. This information can be:
+The service now knows the user is German. This information can be:
 
 - Leaked in data breaches
 - Sold to third parties
 - Used for profiling or discrimination
 
-**What if we could prove "I'm from an EU country" without revealing which one?**
+What if we could prove "I'm from an EU country" without revealing which one?
 
 ---
 
@@ -71,7 +76,7 @@ flowchart TD
 2. Each code is hashed using **Poseidon2** (a ZK-friendly hash function)
 3. Hashes are paired and hashed together, building up to a single root
 
-> **ZK vs FHE encoding:** ZK circuits use the weighted-sum encoding described above. FHE encryption uses a separate encoding (`countryCodeToNumeric` in `compliance.ts`) for homomorphic operations on country codes. The two encodings serve different subsystems and are not interchangeable.
+> **ZK vs FHE encoding:** ZK circuits use the weighted-sum encoding described above. FHE encryption uses a separate numeric encoding for homomorphic operations on country codes. The two encodings serve different subsystems and are not interchangeable.
 
 ### The Merkle Root
 
@@ -81,7 +86,7 @@ The root hash uniquely identifies the set of countries:
 - SCHENGEN has a different root
 - LATAM has another different root
 
-**Key insight:** You can publish the root without revealing what's in the tree.
+You can publish the root without revealing what's in the tree.
 
 ### Proving Membership
 
@@ -108,7 +113,7 @@ If it matches → your country IS in the set (but verifier doesn't know which on
 - **Public inputs**: include the Merkle root, nonce, and claim hash; see [ZK Architecture](zk-architecture.md) for the proof structure.
 - **Merkle roots** are computed with Poseidon2 and cached client‑side for repeat proofs.
 
-## Why Poseidon Hash Instead of SHA256?
+## Poseidon2 vs SHA256 in ZK Circuits
 
 ### The Problem with SHA256 in ZK Circuits
 
@@ -135,7 +140,7 @@ Poseidon hash was specifically designed for ZK circuits:
 - A single Poseidon hash = ~200-300 constraints
 - 8-level Merkle tree = ~2,500 constraints total
 
-**Result:** 100x more efficient, faster proof generation, smaller proofs.
+100x more efficient, faster proof generation, smaller proofs.
 
 ---
 

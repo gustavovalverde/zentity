@@ -10,19 +10,19 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 
 **Understanding the privacy model (read these first):**
 
-- [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) — Attestation schema, data classification, privacy boundaries
-- [Tamper Model](docs/tamper-model.md) — Integrity controls and threat model
+- [Attestation & Privacy Architecture](docs/(understand)/attestation-privacy-architecture.md) — Attestation schema, data classification, privacy boundaries
+- [Tamper Model](docs/(understand)/tamper-model.md) — Integrity controls and threat model
 
 **For Web3/blockchain integration:**
 
-- [Web3 Architecture](docs/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
-- [Blockchain Setup](docs/blockchain-setup.md) — Network config, contract deployment
+- [Web3 Architecture](docs/(blockchain)/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
+- [Blockchain Setup](docs/(blockchain)/blockchain-setup.md) — Network config, contract deployment
 
 **For detailed system design:**
 
-- [Architecture](docs/architecture.md) — Components, data flow, storage model
-- [Agent Architecture](docs/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
-- [ZK Architecture](docs/zk-architecture.md) — Noir circuits and proving
+- [Architecture](docs/(understand)/architecture.md) — Components, data flow, storage model
+- [Agent Architecture](docs/(integration)/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
+- [ZK Architecture](docs/(cryptography)/zk-architecture.md) — Noir circuits and proving
 - [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
 ## Architecture
@@ -197,10 +197,10 @@ docker-compose up -d     # Detached mode
 
 ### Vercel (Landing Page)
 
-The landing page (`apps/landing`) deploys to Vercel. Configuration is in `vercel.json` at repo root.
+The landing page (`apps/landing`) deploys to Vercel. Configuration is in `apps/landing/vercel.json`. The Vercel project has `rootDirectory: apps/landing`, so **deploy from the monorepo root** (not from `apps/landing/`):
 
 ```bash
-vercel --prod            # Deploy to production
+vercel --prod            # Run from repo root
 ```
 
 ### Railway (Backend Services)
@@ -297,7 +297,7 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
 4. User lands on dashboard with **Tier 1** (account created, no FHE keys yet)
 
-FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/fhe-key-lifecycle.md).
+FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/(cryptography)/fhe-key-lifecycle.md).
 
 **Verification Flow** (from `/dashboard/verify/*`):
 
@@ -339,7 +339,7 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
 
-**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, or wallet signature via HKDF). The server cannot decrypt these keys—only the user with their passkey, password, or wallet can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
+**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, or wallet signature via HKDF). The server cannot decrypt these keys—only the user with their passkey, password, or wallet can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/(understand)/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
 
 ## Code Conventions
 
@@ -409,7 +409,7 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 
 **Agent Trust and Runtime Proof**: Host registration supports optional `OAuth-Client-Attestation` plus PoP verification against `TRUSTED_AGENT_ATTESTERS`, producing operational host tiers of `unverified` and `attested`. Attested hosts receive a wider default host policy (`read_profile` in addition to `check_compliance` and `request_approval`). Runtime proof on CIBA requests uses `Agent-Assertion`, a short-lived Ed25519 JWT signed by the registered session key and carrying `host_id`, `task_id`, and `task_hash`. On verification, the server snapshots `agent_session_id`, host/runtime metadata, and pairwise actor metadata onto `ciba_request`, then issues tokens with `act.sub` rather than legacy self-declared agent claims.
 
-- [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
+- [OAuth Integrations](docs/(integration)/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 
 ## ZK Circuit Development
 
@@ -428,7 +428,7 @@ Circuits available:
 - `face_match` — Prove face similarity above threshold
 - `identity_binding` — Bind proofs to user identity for replay protection (works with passkey, OPAQUE, and wallet auth)
 
-**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) must use HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture](docs/zk-architecture.md#bn254-field-constraints).
+**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) must use HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture](docs/(cryptography)/zk-architecture.md#bn254-field-constraints).
 
 ## Environment Variables
 
