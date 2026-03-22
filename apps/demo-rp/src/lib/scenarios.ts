@@ -273,7 +273,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     };
   })(),
   aether: (() => {
-    const signInScopes = ["openid", "email"];
+    const signInScopes = ["openid", "email", "agent:manage"];
     const stepUpScopes: string[] = [];
     return {
       acrValues: "urn:zentity:assurance:tier-2",

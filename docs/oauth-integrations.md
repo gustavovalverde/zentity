@@ -183,8 +183,9 @@ sequenceDiagram
   Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], token_endpoint_auth_method: "none" }
   AS-->>Agent: { client_id }
 
+  Note over Agent: Registered agent runtimes pre-establish a durable host and fresh agent session
   Note over Agent,AS: Backchannel Authorize
-  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message, agent_claims }
+  Agent->>AS: POST /oauth2/bc-authorize { client_id, login_hint, scope, binding_message, authorization_details } + Agent-Assertion
   AS->>Notify: Push notification + email with approval link
   AS-->>Agent: { auth_req_id, expires_in: 300, interval: 5 }
 
@@ -201,7 +202,7 @@ sequenceDiagram
 
   User->>AS: Approve via dashboard / push notification
   Agent->>AS: POST /oauth2/token + DPoP proof (with latest nonce)
-  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: client_id } }
+  AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: pairwise_agent_session_sub } }
 
   Note over Agent,RS: Use tokens
   Agent->>RS: Authorization: DPoP <token> + DPoP proof (with ath)
@@ -209,13 +210,11 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
-CIBA requests support `authorization_details` (RFC 9396) for structured action metadata (e.g., purchase amounts, merchant info) and `agent_claims` for self-declared agent identity metadata (name, version, provider). Both flow through to the approval UI, email notification, and token response. Agent claims are stored in `cibaRequests.agentClaims` and displayed via the `AgentIdentityCard` component on the approval page.
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. See [Agent Architecture](agent-architecture.md) for the host registration and session lifecycle model.
 
 The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`. Push notifications route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome). The dashboard-integrated page at `/dashboard/ciba/approve` is a secondary entry point.
 
 **`requiresVaultUnlock`**: When a CIBA request includes identity scopes, the push notification shows only a "Deny" inline action (vault unlock requires a full browser context). All clicks route the user to the approval page where they can unlock their vault and approve.
-
-The `act` claim in the token response identifies the agent acting on behalf of the user, per `draft-oauth-ai-agents-on-behalf-of-user-02`.
 
 #### Ping mode
 
@@ -256,7 +255,7 @@ Token Exchange enables audience narrowing and delegation chain construction at t
 
 **DPoP passthrough:** If the source token is DPoP-bound, the exchanged token inherits the same sender constraint.
 
-**`act` claim nesting:** Each exchange adds a delegation layer. A token exchanged once has `{ sub, act: { sub: agent } }`. Exchanged again, it becomes `{ sub, act: { sub: merchant, act: { sub: agent } } }`. Resource servers inspect the chain to determine the full delegation path.
+**Delegation profile:** Exchanged agent-backed tokens keep the standard nested `act` chain for OAuth compatibility and add AAP `delegation` metadata. The first exchange emits `delegation.depth = 1`, `delegation.parent_jti = <source token jti>`, and a `delegation.chain` built from pairwise actor identifiers. Later exchanges increment `depth` and extend the chain.
 
 **`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim (left half of SHA-256 of the access token, base64url-encoded). This follows the same algorithm as standard OIDC `at_hash` computation, using the signing algorithm's hash function.
 

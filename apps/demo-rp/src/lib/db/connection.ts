@@ -7,8 +7,10 @@ import { env } from "@/lib/env";
 
 import {
   account,
+  agentRuntime,
   cibaPings,
   dcrClient,
+  oauthDpopKey,
   session,
   user,
   verification,
@@ -17,8 +19,10 @@ import {
 
 const dbSchema = {
   account,
+  agentRuntime,
   cibaPings,
   dcrClient,
+  oauthDpopKey,
   session,
   user,
   verification,

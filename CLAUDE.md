@@ -21,6 +21,7 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 **For detailed system design:**
 
 - [Architecture](docs/architecture.md) — Components, data flow, storage model
+- [Agent Architecture](docs/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
 - [ZK Architecture](docs/zk-architecture.md) — Noir circuits and proving
 - [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
@@ -108,7 +109,7 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 
 - `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
 - Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
-- Uses the seeded E2E database: `apps/web/e2e/.data/e2e.db`.
+- Uses the seeded E2E database configured by the E2E runner.
 
 **Existing dev server:**
 
@@ -238,7 +239,7 @@ railway up apps/web --path-as-root --service web
 - `DPOP_NONCE_TTL_SECONDS` (default: 30)
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
 - `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
-- `X5C_LEAF_PEM`, `X5C_CA_PEM` (or place certs in `.data/certs/`)
+- `X5C_LEAF_PEM`, `X5C_CA_PEM`
 
 ### Manual Setup (without Docker)
 
@@ -348,7 +349,7 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 - **Forms**: TanStack Form with Zod validation
 - **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
 - **Database**: Drizzle ORM with SQLite local files or Turso in production. Schema source of truth: `apps/web/src/lib/db/schema/`. Apply schema with `pnpm db:push` (no runtime migrations)
-- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use `TURSO_DATABASE_URL=file:./.data/dev.db`
+- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use a `file:` SQLite URL pointing at your local database path
 - **SQLite driver**: uses `@libsql/client`
 
 ## tRPC API Structure
@@ -402,9 +403,11 @@ OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`
 
 **JWKS Key Rotation**: `rotateSigningKey(alg, overlapHours)` in `jwt-signer.ts` retires the active key with an `expiresAt` timestamp and creates a new one. During the overlap window, both keys are served by the JWKS endpoint. `cleanupExpiredKeys()` removes keys past the overlap window. Both operations are exposed via the `admin` tRPC router (admin-only). JWKS private keys are encrypted at rest with AES-256-GCM (`KEY_ENCRYPTION_KEY` env var).
 
-**Agent Boundaries**: Pre-authorized policies in `agent_boundaries` table allow auto-approval of CIBA requests within user-defined limits. Boundary types: `purchase` (amount/daily cap/cooldown), `scope` (allowlist), `custom` (action count). Identity-scoped requests (`identity.*`) always require manual approval regardless of boundaries. Auto-approved requests are logged with `approvalMethod: "boundary"`. Dashboard at `/dashboard/agent-policies`. "Always allow this" button on CIBA approval page creates policies from real request patterns.
+**Agent Registration**: Durable host plus ephemeral session identity model. `agent_host` stores the persistent MCP installation identity keyed by `public_key_thumbprint`; the MCP persists the host key outside the repository under a per-instance namespace. `agent_session` stores the live runtime identity for one process. Registration endpoints: `POST /api/auth/agent/register-host` and `POST /api/auth/agent/register`, both authenticated with a user-bound OAuth access token carrying `agent:manage`. Session registration requires a host-signed `host-attestation+jwt`, creates a fresh session, seeds active grants from host policy, and records requested extra capabilities as pending session grants.
 
-**Agent Attestation**: Three-tier trust model for CIBA agent identity: `none` (anonymous — no agent claims), `self-declared` (agent claims without cryptographic proof), `attested` (agent claims + verified `OAuth-Client-Attestation` JWT). Attestation normalization in `src/lib/ciba/agent-attestation.ts` strips self-injected attestation fields from `agent_claims` and verifies attestation headers against `TRUSTED_AGENT_ATTESTERS` JWKS URLs before `tryAutoApprove`. CIBA access tokens include `agent` (self-declared) and `agent_attestation` (server-verified) claims. Demo: `apps/demo-rp` Aether tasks use `trustTier` to select flow; persistent Ed25519 attestation keypair at `.data/attestation-key.json`, JWKS at `/api/jwks`.
+**Agent Capabilities**: Server-side capability model split into durable `agent_host_policy` and ephemeral `agent_session_grant`. Seeded capabilities: `purchase`/`biometric`, `read_profile`/`session`, `check_compliance`/`none`, `request_approval`/`session`. Discovery: `GET /api/auth/agent/capabilities`. Grant evaluation in `src/lib/ciba/grant-evaluation.ts` is the sole auto-approve path for CIBA. Constraint operators: `max`, `min`, `in`, `not_in`, `eq`. Usage limits are enforced through `capability_usage_ledger` using `daily_limit_count`, `daily_limit_amount`, and `cooldown_sec`. Successful automatic approvals set `approvalMethod: "capability_grant"`.
+
+**Agent Trust and Runtime Proof**: Host registration supports optional `OAuth-Client-Attestation` plus PoP verification against `TRUSTED_AGENT_ATTESTERS`, producing operational host tiers of `unverified` and `attested`. Attested hosts receive a wider default host policy (`read_profile` in addition to `check_compliance` and `request_approval`). Runtime proof on CIBA requests uses `Agent-Assertion`, a short-lived Ed25519 JWT signed by the registered session key and carrying `host_id`, `task_id`, and `task_hash`. On verification, the server snapshots `agent_session_id`, host/runtime metadata, and pairwise actor metadata onto `ciba_request`, then issues tokens with `act.sub` rather than legacy self-declared agent claims.
 
 - [OAuth Integrations](docs/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
 

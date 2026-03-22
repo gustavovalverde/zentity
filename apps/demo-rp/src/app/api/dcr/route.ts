@@ -33,7 +33,7 @@ const postSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = postSchema.safeParse(await request.json());
+  const parsed = postSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
       { error: "providerId, clientName, and scopes are required" },
@@ -49,34 +49,49 @@ export async function POST(request: Request) {
 
   const redirectUri = `${env.NEXT_PUBLIC_APP_URL}/api/auth/oauth2/callback/zentity-${providerId}`;
 
-  const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_name: clientName,
-      redirect_uris: [redirectUri],
-      scope: scopes,
-      token_endpoint_auth_method: "none",
-      grant_types: grantTypes ?? ["authorization_code"],
-      response_types: ["code"],
-      backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
-    }),
-  });
+  try {
+    const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_name: clientName,
+        redirect_uris: [redirectUri],
+        scope: scopes,
+        token_endpoint_auth_method: "none",
+        grant_types: grantTypes ?? ["authorization_code"],
+        response_types: ["code"],
+        backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+      }),
+    });
 
-  if (!response.ok) {
-    const text = await response.text();
+    if (!response.ok) {
+      const text = await response.text();
+      return NextResponse.json(
+        { error: `DCR failed: ${text}` },
+        { status: response.status }
+      );
+    }
+
+    const result = (await response.json()) as { client_id?: string };
+    if (!result.client_id) {
+      return NextResponse.json(
+        { error: "DCR failed: missing client_id in registration response" },
+        { status: 502 }
+      );
+    }
+
+    await saveDcrClientId(providerId, result.client_id);
+
+    return NextResponse.json({
+      client_id: result.client_id,
+      redirect_uri: redirectUri,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown DCR registration error";
     return NextResponse.json(
-      { error: `DCR failed: ${text}` },
-      { status: response.status }
+      { error: `Failed to persist DCR client: ${message}` },
+      { status: 500 }
     );
   }
-
-  const result = (await response.json()) as { client_id: string };
-
-  await saveDcrClientId(providerId, result.client_id);
-
-  return NextResponse.json({
-    client_id: result.client_id,
-    redirect_uri: redirectUri,
-  });
 }

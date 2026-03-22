@@ -19,6 +19,19 @@ type RegistrationState =
   | { status: "registering" }
   | { status: "done" };
 
+async function parseJsonResponse(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 export function DcrRegistration({
   providerId,
   clientName,
@@ -70,9 +83,16 @@ export function DcrRegistration({
           ...(grantTypes ? { grantTypes } : {}),
         }),
       });
-      const data = await res.json();
+      const data = (await parseJsonResponse(res)) as
+        | { client_id?: string; error?: string }
+        | null;
       if (!res.ok) {
-        setError(data.error || "Registration failed");
+        setError(data?.error || `Registration failed (${res.status})`);
+        setState({ status: "idle" });
+        return;
+      }
+      if (!data?.client_id) {
+        setError("Registration failed: missing client_id in response");
         setState({ status: "idle" });
         return;
       }

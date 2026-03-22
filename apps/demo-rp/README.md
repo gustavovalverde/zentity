@@ -42,7 +42,7 @@ This creates x509 certificates in `.data/certs/` for the OID4VP `x509_hash` clie
 ### 3. Initialize Database
 
 ```bash
-cd apps/demo-rp && pnpm setup  # creates .data/ + runs db:push
+cd apps/demo-rp && pnpm run db:setup  # creates .data/ + runs db:push
 ```
 
 ### 4. Start Demo RP

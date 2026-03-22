@@ -123,11 +123,13 @@ function CodeWindow() {
           </span>
           {"\n"}
           <span className={cm}>
-            {"// Step 3: Poll for DPoP-bound token with act claim"}
+            {"// Step 3: Poll for DPoP-bound token with delegation proof"}
           </span>
           {"\n"}
           <span className={cm}>
-            {"// Token: { sub: user, act: { sub: agent }, release_handle }"}
+            {
+              "// Token: { sub: user, act: { sub: agent }, authorization_details, release_handle }"
+            }
           </span>
           {"\n\n"}
           <span className={cm}>
@@ -252,8 +254,9 @@ export function AgentsPage() {
                       <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                         act
                       </code>{" "}
-                      claim identifying both the human and the agent. Resource
-                      servers can verify who sent the agent.
+                      claim binding the human's identity to the acting agent.
+                      Resource servers verify the delegation chain locally,
+                      without contacting the authorization server.
                     </span>
                   </li>
                   <li className="flex items-start gap-3">
@@ -358,12 +361,11 @@ export function AgentsPage() {
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                     act
                   </code>{" "}
-                  claim in every token names both the human and the agent.
-                  Resource servers verify the delegation chain
-                  cryptographically.
+                  claim in every token names both the human and the agent, with
+                  pairwise identifiers that prevent cross-service tracking.
                 </p>
                 <p className="landing-caption mt-2">
-                  draft-oauth-ai-agents-on-behalf-of-user
+                  RFC 8693 (Token Exchange)
                 </p>
               </CardContent>
             </Card>
@@ -456,7 +458,7 @@ export function AgentsPage() {
                       <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                         act
                       </code>{" "}
-                      claim, and DPoP binding.
+                      delegation claim, and DPoP binding.
                     </p>
                   </div>
                 </li>
@@ -499,15 +501,13 @@ export function AgentsPage() {
                 <IconFingerprint
                   className={cn("size-5", colorStyles.amber.iconText)}
                 />
-                <h3 className="mt-3 font-semibold">
-                  <code className="font-mono text-sm">act</code> claim
-                </h3>
+                <h3 className="mt-3 font-semibold">Delegation chain</h3>
                 <p className="landing-body mt-1">
-                  The token names both the human (
+                  The token names the human (
                   <code className="font-mono text-xs">sub</code>) and the agent
-                  (<code className="font-mono text-xs">act.sub</code>).
-                  Autonomous bots use client credentials with no{" "}
-                  <code className="font-mono text-xs">act</code>.
+                  (<code className="font-mono text-xs">act.sub</code>), with
+                  pairwise identifiers so the same agent appears different to
+                  each resource server.
                 </p>
               </CardContent>
             </Card>
@@ -543,7 +543,7 @@ export function AgentsPage() {
 
           <div className="mt-8">
             <Link
-              to="/docs/agentic-authorization"
+              to="/docs/agent-architecture"
               className={cn(
                 buttonVariants({ variant: "outline", size: "sm" }),
                 "h-9 rounded-sm px-4",

@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -65,6 +65,53 @@ export const cibaPings = sqliteTable("ciba_ping", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+export const oauthDpopKey = sqliteTable("oauth_dpop_key", {
+  id: text("id").primaryKey(),
+  providerId: text("providerId").notNull(),
+  accessToken: text("accessToken").notNull().unique(),
+  publicJwk: text("publicJwk").notNull(),
+  privateJwk: text("privateJwk").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const agentRuntime = sqliteTable(
+  "agent_runtime",
+  {
+    id: text("id").primaryKey(),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id),
+    providerId: text("providerId").notNull(),
+    hostId: text("hostId"),
+    hostPublicJwk: text("hostPublicJwk").notNull(),
+    hostPrivateJwk: text("hostPrivateJwk").notNull(),
+    sessionId: text("sessionId"),
+    sessionPublicJwk: text("sessionPublicJwk"),
+    sessionPrivateJwk: text("sessionPrivateJwk"),
+    displayName: text("displayName").notNull(),
+    runtime: text("runtime").notNull(),
+    model: text("model").notNull(),
+    version: text("version").notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("agent_runtime_user_provider_unique").on(
+      table.userId,
+      table.providerId
+    ),
+  ]
+);
 
 export const vpSessions = sqliteTable("vp_session", {
   id: text("id").primaryKey(),

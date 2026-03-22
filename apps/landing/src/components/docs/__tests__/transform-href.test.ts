@@ -13,9 +13,9 @@ describe("transformHref", () => {
   });
 
   it("preserves fragment on known .md file", () => {
-    const result = transformHref("agentic-authorization.md#binding-chains");
+    const result = transformHref("agent-architecture.md#binding-chains");
     expect(result).toEqual({
-      href: "/docs/agentic-authorization#binding-chains",
+      href: "/docs/agent-architecture#binding-chains",
       isInternal: true,
       isExternal: false,
     });

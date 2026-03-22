@@ -21,10 +21,12 @@ export async function readDcrClientId(
   providerId: ProviderId
 ): Promise<string | null> {
   try {
-    const row = await getDb().query.dcrClient.findFirst({
-      where: eq(dcrClient.providerId, providerId),
-      columns: { clientId: true },
-    });
+    const row = await getDb()
+      .select({ clientId: dcrClient.clientId })
+      .from(dcrClient)
+      .where(eq(dcrClient.providerId, providerId))
+      .limit(1)
+      .get();
     return row?.clientId ?? null;
   } catch {
     return null;
@@ -35,10 +37,15 @@ export async function readDcrClient(
   providerId: ProviderId
 ): Promise<{ clientId: string; clientSecret: string | null } | null> {
   try {
-    const row = await getDb().query.dcrClient.findFirst({
-      where: eq(dcrClient.providerId, providerId),
-      columns: { clientId: true, clientSecret: true },
-    });
+    const row = await getDb()
+      .select({
+        clientId: dcrClient.clientId,
+        clientSecret: dcrClient.clientSecret,
+      })
+      .from(dcrClient)
+      .where(eq(dcrClient.providerId, providerId))
+      .limit(1)
+      .get();
     return row ?? null;
   } catch {
     return null;
@@ -72,10 +79,12 @@ export async function currentClientIdKey(): Promise<string> {
 export async function findProviderByClientId(
   clientId: string
 ): Promise<ProviderId | null> {
-  const row = await getDb().query.dcrClient.findFirst({
-    where: eq(dcrClient.clientId, clientId),
-    columns: { providerId: true },
-  });
+  const row = await getDb()
+    .select({ providerId: dcrClient.providerId })
+    .from(dcrClient)
+    .where(eq(dcrClient.clientId, clientId))
+    .limit(1)
+    .get();
   return row?.providerId && isValidProviderId(row.providerId)
     ? row.providerId
     : null;

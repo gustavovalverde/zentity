@@ -78,11 +78,11 @@ const standardGroups: Array<{ label: string; items: string[] }> = [
   {
     label: "Agentic authorization",
     items: [
-      "OpenID Connect CIBA Core (backchannel auth)",
+      "Agent Auth Protocol v1.0-draft (agent identity and lifecycle)",
+      "OpenID Connect CIBA Core (backchannel consent)",
       "RFC 9396 Rich Authorization Requests (RAR)",
       "RFC 8693 Token Exchange (delegation chains)",
       "draft-ietf-oauth-first-party-apps (headless bootstrap)",
-      "draft-oauth-ai-agents-on-behalf-of-user (act claim)",
     ],
   },
   {
@@ -113,9 +113,9 @@ const deepDiveLinks = [
     href: "/docs/cryptographic-pillars",
   },
   {
-    title: "Agentic authorization",
-    body: "How AI agents prove delegation, receive identity, and stay bound to human consent.",
-    href: "/docs/agentic-authorization",
+    title: "Agent architecture",
+    body: "How agent identity, human consent, and pairwise delegation compose into a single binding chain.",
+    href: "/docs/agent-architecture",
   },
 ];
 

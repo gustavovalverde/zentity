@@ -297,7 +297,7 @@ sequenceDiagram
   Agent->>AS: Userinfo (identity PII if scoped)
 ```
 
-The access token includes an `act` claim identifying both the human and the agent. See [Agentic Authorization](agentic-authorization.md) for protocol composition and security properties. See [OAuth Integrations](oauth-integrations.md) for endpoints, scopes, and configuration.
+The access token includes an `act` claim identifying both the human and the agent. See [Agent Architecture](agent-architecture.md) for host registration, session lifecycle, protocol composition, and security properties. See [OAuth Integrations](oauth-integrations.md) for endpoints, scopes, and configuration.
 
 ---
 

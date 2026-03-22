@@ -10,7 +10,13 @@ import { eq } from "drizzle-orm";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { getDb } from "@/lib/db/connection";
-import { account, session, user, verification } from "@/lib/db/schema";
+import {
+  account,
+  oauthDpopKey,
+  session,
+  user,
+  verification,
+} from "@/lib/db/schema";
 import {
   currentClientIdKey,
   PROVIDER_IDS,
@@ -253,6 +259,25 @@ function makeProviderConfig(
       const accessToken = result.access_token as string | undefined;
       if (accessToken) {
         dpopClients.set(accessToken, dpop);
+        await getDb()
+          .insert(oauthDpopKey)
+          .values({
+            id: crypto.randomUUID(),
+            providerId,
+            accessToken,
+            publicJwk: JSON.stringify(dpop.publicJwk),
+            privateJwk: JSON.stringify(dpop.privateJwk),
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: oauthDpopKey.accessToken,
+            set: {
+              providerId,
+              publicJwk: JSON.stringify(dpop.publicJwk),
+              privateJwk: JSON.stringify(dpop.privateJwk),
+              updatedAt: new Date(),
+            },
+          });
       }
       return {
         accessToken,
@@ -320,7 +345,7 @@ const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   wine: ["openid", "proof:age"],
   aid: ["openid", "email", "proof:verification"],
   veripass: ["openid", "proof:verification"],
-  aether: ["openid", "email"],
+  aether: ["openid", "email", "agent:manage"],
 };
 
 function createAuth(clientIds: Partial<Record<ProviderId, string>>) {

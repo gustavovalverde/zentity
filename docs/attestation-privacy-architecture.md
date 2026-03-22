@@ -467,21 +467,67 @@ erDiagram
     text resource "RFC 8707 audience"
     text status "pending | approved | rejected | expired"
     text delivery_mode "poll | ping | push"
-    text agent_claims "JSON — self-declared agent identity metadata"
-    text approval_method "boundary | manual — how the request was approved"
+    text agent_session_id FK
+    text host_id FK
+    text display_name "Verified session display name"
+    text runtime "Verified runtime label"
+    text model "Verified model label"
+    text task_id "Runtime-scoped task identifier"
+    text task_hash "SHA-256 of binding message"
+    integer assertion_verified "Boolean"
+    text pairwise_act_sub "Actor identifier scoped to RP"
+    text approval_method "capability_grant | manual"
     integer expires_at
     integer last_polled_at
   }
 
-  AGENT_BOUNDARIES {
+  AGENT_HOSTS {
     text id PK
     text user_id FK
     text client_id FK
-    text boundary_type "purchase | scope | custom"
-    text config "JSON — limits, allowlists, cooldowns"
-    integer enabled "Boolean — active or disabled"
+    text public_key
+    text public_key_thumbprint UK
+    text status "active | revoked"
+    text attestation_tier "unverified | attested"
+  }
+
+  AGENT_SESSIONS {
+    text id PK
+    text host_id FK
+    text public_key
+    text public_key_thumbprint UK
+    text status "active | expired | revoked"
+    text display_name
+    integer idle_ttl_sec
+    integer max_lifetime_sec
+    integer last_seen_at
     integer created_at
-    integer updated_at
+  }
+
+  AGENT_HOST_POLICIES {
+    text id PK
+    text host_id FK
+    text capability_name FK
+    text constraints_json
+    integer daily_limit_count
+    real daily_limit_amount
+    integer cooldown_sec
+    text source "default | attestation_default | user_saved"
+    text status "active | revoked"
+  }
+
+  AGENT_SESSION_GRANTS {
+    text id PK
+    text session_id FK
+    text host_policy_id FK
+    text capability_name FK
+    text constraints_json
+    integer daily_limit_count
+    real daily_limit_amount
+    integer cooldown_sec
+    text source "host_policy | session_once | session_elevation"
+    text status "pending | active | denied | revoked"
+    integer created_at
   }
 
   PUSH_SUBSCRIPTIONS {
@@ -561,13 +607,18 @@ erDiagram
   %% ── CIBA requests ──
   USERS ||--o{ CIBA_REQUESTS : receives
   OAUTH_CLIENT ||--o{ CIBA_REQUESTS : initiates
+  AGENT_SESSIONS ||--o{ CIBA_REQUESTS : proves
 
   %% ── Push subscriptions ──
   USERS ||--o{ PUSH_SUBSCRIPTIONS : subscribes
 
-  %% ── Agent boundaries ──
-  USERS ||--o{ AGENT_BOUNDARIES : configures
-  OAUTH_CLIENT ||--o{ AGENT_BOUNDARIES : scoped_to
+  %% ── Agent hosts and sessions ──
+  USERS ||--o{ AGENT_HOSTS : owns
+  OAUTH_CLIENT ||--o{ AGENT_HOSTS : installs
+  AGENT_HOSTS ||--o{ AGENT_SESSIONS : runs
+  AGENT_HOSTS ||--o{ AGENT_HOST_POLICIES : defaults
+  AGENT_SESSIONS ||--o{ AGENT_SESSION_GRANTS : receives
+  AGENT_HOST_POLICIES ||--o{ AGENT_SESSION_GRANTS : seeds
 ```
 
 ### Core tables

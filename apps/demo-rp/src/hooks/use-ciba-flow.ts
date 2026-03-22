@@ -18,12 +18,10 @@ interface CibaFlowState {
   reset: () => void;
   startFlow: (params: {
     acrValues?: string;
-    agentClaims?: string;
     loginHint: string;
     scope: string;
     bindingMessage?: string;
     authorizationDetails?: string;
-    trustMode?: string;
   }) => Promise<void>;
   state: CibaState;
   tokens: Record<string, unknown> | null;
@@ -277,12 +275,10 @@ export function useCibaFlow(providerId: string): CibaFlowState {
   const startFlow = useCallback(
     async (params: {
       acrValues?: string;
-      agentClaims?: string;
       loginHint: string;
       scope: string;
       bindingMessage?: string;
       authorizationDetails?: string;
-      trustMode?: string;
     }) => {
       setState("requesting");
       setError(null);
@@ -299,8 +295,6 @@ export function useCibaFlow(providerId: string): CibaFlowState {
             bindingMessage: params.bindingMessage,
             authorizationDetails: params.authorizationDetails,
             acrValues: params.acrValues,
-            agentClaims: params.agentClaims,
-            trustMode: params.trustMode,
           }),
         });
 

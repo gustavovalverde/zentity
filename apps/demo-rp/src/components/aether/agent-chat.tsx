@@ -405,6 +405,36 @@ function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
   );
 }
 
+const PROOF_CLAIM_KEYS = new Set([
+  "age_verification",
+  "nationality_verified",
+  "nationality_group",
+  "document_verified",
+  "liveness_verified",
+  "face_match_verified",
+  "identity_bound",
+  "sybil_resistant",
+  "verification_level",
+  "verified",
+  "chip_verified",
+]);
+
+function hasProofClaims(userInfo: Record<string, unknown>): boolean {
+  return Object.keys(userInfo).some((k) => PROOF_CLAIM_KEYS.has(k));
+}
+
+function extractProofClaims(
+  userInfo: Record<string, unknown>
+): Record<string, unknown> {
+  const claims: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(userInfo)) {
+    if (PROOF_CLAIM_KEYS.has(k)) {
+      claims[k] = v;
+    }
+  }
+  return claims;
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split(".");
@@ -442,6 +472,12 @@ function CibaResult({
       : null;
   const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
   const agentClaim = jwtPayload?.agent as Record<string, unknown> | undefined;
+  const taskClaim = jwtPayload?.task as Record<string, unknown> | undefined;
+  const capabilitiesClaim = jwtPayload?.capabilities as unknown[] | undefined;
+  const oversightClaim = jwtPayload?.oversight as
+    | Record<string, unknown>
+    | undefined;
+  const auditClaim = jwtPayload?.audit as Record<string, unknown> | undefined;
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
     | undefined;
@@ -459,6 +495,9 @@ function CibaResult({
       ? decodeJwtPayload(exchangedTokens.access_token)
       : null;
   const exchangedAct = exchangedPayload?.act as
+    | Record<string, unknown>
+    | undefined;
+  const exchangedDelegation = exchangedPayload?.delegation as
     | Record<string, unknown>
     | undefined;
 
@@ -515,7 +554,14 @@ function CibaResult({
 
       <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
-      {(actClaim || agentClaim || authorizationDetails || exchangedPayload) && (
+      {(actClaim ||
+        agentClaim ||
+        taskClaim ||
+        capabilitiesClaim ||
+        oversightClaim ||
+        auditClaim ||
+        authorizationDetails ||
+        exchangedPayload) && (
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
           <button
             className="flex w-full items-center justify-between text-left"
@@ -549,17 +595,57 @@ function CibaResult({
               {agentClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — agent claim (AAP identity)
+                    CIBA token — AAP agent
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-pink-300/80 text-xs">
                     {JSON.stringify(agentClaim, null, 2)}
                   </pre>
                 </div>
               )}
+              {taskClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — AAP task
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-sky-300/80 text-xs">
+                    {JSON.stringify(taskClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {capabilitiesClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — AAP capabilities
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-teal-300/80 text-xs">
+                    {JSON.stringify(capabilitiesClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {oversightClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — AAP oversight
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-emerald-300/80 text-xs">
+                    {JSON.stringify(oversightClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {auditClaim && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    CIBA token — AAP audit
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-indigo-300/80 text-xs">
+                    {JSON.stringify(auditClaim, null, 2)}
+                  </pre>
+                </div>
+              )}
               {actClaim && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — act claim (delegation)
+                    CIBA token — act claim
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
                     {JSON.stringify(actClaim, null, 2)}
@@ -569,11 +655,21 @@ function CibaResult({
               {exchangedPayload && (
                 <div>
                   <p className="mb-1 text-white/50 text-xs">
-                    Exchanged token — act claim (delegation chain)
+                    Exchanged token — act claim
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
                     {JSON.stringify(exchangedAct, null, 2)}
                   </pre>
+                  {exchangedDelegation && (
+                    <>
+                      <p className="mt-1.5 mb-1 text-white/50 text-xs">
+                        Exchanged token — AAP delegation
+                      </p>
+                      <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-orange-300/80 text-xs">
+                        {JSON.stringify(exchangedDelegation, null, 2)}
+                      </pre>
+                    </>
+                  )}
                   <p className="mt-1.5 mb-1 text-white/50 text-xs">
                     Exchanged token — audience
                   </p>
@@ -598,13 +694,23 @@ function CibaResult({
                   </pre>
                 </div>
               )}
+              {userInfo && hasProofClaims(userInfo) && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    Privacy claims — privacy-preserving proofs (no PII in token)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-fuchsia-300/80 text-xs">
+                    {JSON.stringify(extractProofClaims(userInfo), null, 2)}
+                  </pre>
+                </div>
+              )}
               {userInfo &&
                 Object.keys(userInfo).some(
                   (k) => !["sub", "iss", "aud"].includes(k)
                 ) && (
                   <div>
                     <p className="mb-1 text-white/50 text-xs">
-                      Userinfo — identity claims (via GET /userinfo)
+                      Userinfo — full response (via GET /userinfo)
                     </p>
                     <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-purple-300/80 text-xs">
                       {JSON.stringify(userInfo, null, 2)}

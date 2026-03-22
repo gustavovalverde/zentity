@@ -7,8 +7,6 @@ export interface Product {
   snippet: string;
 }
 
-export type TrustTier = "none" | "self-declared" | "attested";
-
 export interface ShoppingTask {
   budget: number;
   id: string;
@@ -16,7 +14,7 @@ export interface ShoppingTask {
   pick: string;
   prompt: string;
   results: Product[];
-  trustTier: TrustTier;
+  scope?: string;
 }
 
 export const SHOPPING_TASKS: ShoppingTask[] = [
@@ -25,7 +23,6 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Wireless headphones",
     prompt: "Find me the best wireless noise-cancelling headphones under $400",
     budget: 400,
-    trustTier: "self-declared",
     results: [
       {
         id: "p-1",
@@ -56,35 +53,38 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     pick: "p-1",
   },
   {
-    id: "espresso",
-    label: "Espresso machine",
-    prompt: "Find me a great espresso machine for home under $800",
-    budget: 800,
-    trustTier: "attested",
+    id: "spirits",
+    label: "Premium spirits",
+    prompt: "Find me a premium whisky bottle as a gift, budget $150",
+    budget: 150,
+    scope: "openid proof:age proof:nationality identity.name identity.address",
     results: [
       {
         id: "p-4",
-        name: "Bambino Plus",
-        brand: "Breville",
-        price: 499,
-        rating: 4.7,
-        snippet: "Auto milk texturing, fast heat-up, compact footprint.",
+        name: "The Macallan 18 Double Cask",
+        brand: "Macallan",
+        price: 149,
+        rating: 4.9,
+        snippet:
+          "Sherry-seasoned oak, rich dried fruit, warm spice. Gift-box included.",
       },
       {
         id: "p-5",
-        name: "Specialista Arte",
-        brand: "De'Longhi",
-        price: 599,
-        rating: 4.5,
-        snippet: "Built-in grinder, smart tamping, sensor grinding tech.",
+        name: "Yamazaki 12 Year",
+        brand: "Suntory",
+        price: 129,
+        rating: 4.8,
+        snippet:
+          "Japanese single malt, peach and coconut notes, Mizunara oak finish.",
       },
       {
         id: "p-6",
-        name: "Classic Pro",
-        brand: "Gaggia",
-        price: 449,
-        rating: 4.6,
-        snippet: "Commercial steam wand, 58mm portafilter, prosumer build.",
+        name: "Lagavulin 16 Year",
+        brand: "Lagavulin",
+        price: 89,
+        rating: 4.7,
+        snippet:
+          "Islay classic, intense peat smoke, maritime salt, long dry finish.",
       },
     ],
     pick: "p-4",
@@ -94,7 +94,6 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Running shoes",
     prompt: "Find me the best running shoes for daily training under $200",
     budget: 200,
-    trustTier: "none",
     results: [
       {
         id: "p-7",

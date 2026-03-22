@@ -1,6 +1,12 @@
 import "server-only";
 
-import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
+import {
+  exportJWK,
+  generateKeyPair,
+  importJWK,
+  type JWK,
+  SignJWT,
+} from "jose";
 
 const BASE64_PLUS = /\+/g;
 const BASE64_SLASH = /\//g;
@@ -18,6 +24,7 @@ async function hashAccessToken(token: string): Promise<string> {
 }
 
 export interface DpopClient {
+  privateJwk: JWK;
   proofFor(
     method: string,
     url: string,
@@ -30,13 +37,16 @@ export interface DpopClient {
   ): Promise<{ response: Response; result: T }>;
 }
 
-/**
- * Creates an ephemeral DPoP client with an ES256 (P-256) keypair.
- * Each call generates a fresh keypair — intended for one-shot VCI flows.
- */
-export async function createDpopClient(): Promise<DpopClient> {
-  const { privateKey, publicKey } = await generateKeyPair("ES256");
-  const publicJwk = await exportJWK(publicKey);
+export interface SerializedDpopKeyPair {
+  privateJwk: JWK;
+  publicJwk: JWK;
+}
+
+async function createDpopClientFromKeyPair({
+  privateJwk,
+  publicJwk,
+}: SerializedDpopKeyPair): Promise<DpopClient> {
+  const privateKey = await importJWK(privateJwk, "ES256");
 
   async function proofFor(
     method: string,
@@ -86,5 +96,29 @@ export async function createDpopClient(): Promise<DpopClient> {
     return first;
   }
 
-  return { publicJwk, proofFor, withNonceRetry };
+  return { privateJwk, publicJwk, proofFor, withNonceRetry };
+}
+
+export async function generateSerializedDpopKeyPair(): Promise<SerializedDpopKeyPair> {
+  const { privateKey, publicKey } = await generateKeyPair("ES256", {
+    extractable: true,
+  });
+  return {
+    privateJwk: await exportJWK(privateKey),
+    publicJwk: await exportJWK(publicKey),
+  };
+}
+
+export async function createPersistentDpopClient(
+  keys: SerializedDpopKeyPair
+): Promise<DpopClient> {
+  return createDpopClientFromKeyPair(keys);
+}
+
+/**
+ * Creates an ephemeral DPoP client with an ES256 (P-256) keypair.
+ * Each call generates a fresh keypair — intended for one-shot VCI flows.
+ */
+export async function createDpopClient(): Promise<DpopClient> {
+  return createDpopClientFromKeyPair(await generateSerializedDpopKeyPair());
 }
