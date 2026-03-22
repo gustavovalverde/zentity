@@ -7,13 +7,24 @@ interface DcrResponse {
   client_secret?: string;
 }
 
+interface EnsureClientRegistrationOptions {
+  force?: boolean;
+}
+
 export async function ensureClientRegistration(
-  discovery: DiscoveryState
+  discovery: DiscoveryState,
+  options: EnsureClientRegistrationOptions = {}
 ): Promise<string> {
   const existing = loadCredentials(config.zentityUrl);
-  if (existing?.clientId) {
+  if (existing?.clientId && !options.force && existing.registrationMethod !== "cimd") {
     console.error(`[dcr] Reusing existing client_id: ${existing.clientId}`);
     return existing.clientId;
+  }
+
+  if (existing?.clientId && existing.registrationMethod === "cimd") {
+    console.error(
+      `[dcr] Ignoring cached CIMD client_id for stdio OAuth flow: ${existing.clientId}`
+    );
   }
 
   if (!discovery.registration_endpoint) {
@@ -27,9 +38,9 @@ export async function ensureClientRegistration(
   const body = {
     client_name: "@zentity/mcp-server",
     redirect_uris: [redirectUri],
-    scope: "openid email proof:identity identity.name identity.address",
+    scope:
+      "openid email proof:identity identity.name identity.address agent:manage",
     token_endpoint_auth_method: "none",
-    skip_consent: true,
     grant_types: [
       "authorization_code",
       "refresh_token",
@@ -56,6 +67,7 @@ export async function ensureClientRegistration(
   updateCredentials(config.zentityUrl, {
     clientId: data.client_id,
     ...(data.client_secret ? { clientSecret: data.client_secret } : {}),
+    registrationMethod: "dcr",
   });
 
   console.error(`[dcr] Registered as client_id: ${data.client_id}`);

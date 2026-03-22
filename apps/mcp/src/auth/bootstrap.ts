@@ -1,13 +1,79 @@
 import { config } from "../config.js";
 import { authenticateViaBrowser } from "./browser-redirect.js";
-import { setDefaultAuth } from "./context.js";
-import { loadCredentials } from "./credentials.js";
+import type { OAuthSessionContext } from "./context.js";
+import { clearClientRegistration, loadCredentials } from "./credentials.js";
 import { ensureClientRegistration } from "./dcr.js";
 import { discover } from "./discovery.js";
-import type { DpopKeyPair } from "./dpop.js";
-import { getOrCreateDpopKey } from "./dpop.js";
+import {
+  getOrCreateDpopKey,
+  type DpopKeyPair,
+} from "./dpop.js";
 import { generatePkce } from "./pkce.js";
 import { TokenManager } from "./token-manager.js";
+
+export interface AuthBootstrapResult {
+  oauth: OAuthSessionContext;
+  tokenManager: TokenManager;
+}
+
+function isInvalidClientError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("invalid_client") || message.includes("client not found")
+  );
+}
+
+async function authenticateFreshSession(
+  discovery: Awaited<ReturnType<typeof discover>>,
+  dpopKey: DpopKeyPair,
+  clientId: string,
+  forceClientRegistration = false
+): Promise<AuthBootstrapResult> {
+  const activeClientId = forceClientRegistration
+    ? await ensureClientRegistration(discovery, {
+        force: true,
+      })
+    : clientId;
+  const tokenManager = new TokenManager(
+    discovery.token_endpoint,
+    dpopKey,
+    activeClientId,
+    config.zentityUrl
+  );
+  const pkce = await generatePkce();
+  const parEndpoint = discovery.pushed_authorization_request_endpoint;
+
+  try {
+    const result = await authenticateViaBrowser({
+      authorizeEndpoint: discovery.authorization_endpoint,
+      ...(parEndpoint ? { parEndpoint } : {}),
+      tokenEndpoint: discovery.token_endpoint,
+      clientId: activeClientId,
+      dpopKey,
+      pkce,
+      resource: config.zentityUrl,
+    });
+
+    return {
+      oauth: {
+        accessToken: result.accessToken,
+        clientId: activeClientId,
+        dpopKey,
+        loginHint: result.loginHint ?? "",
+      },
+      tokenManager,
+    };
+  } catch (error) {
+    if (!forceClientRegistration && isInvalidClientError(error)) {
+      console.error(
+        "[dcr] Cached client registration is stale, re-registering OAuth client..."
+      );
+      clearClientRegistration(config.zentityUrl);
+      return authenticateFreshSession(discovery, dpopKey, clientId, true);
+    }
+    throw error;
+  }
+}
 
 /**
  * Ensure the MCP server is authenticated before serving tool calls.
@@ -16,10 +82,9 @@ import { TokenManager } from "./token-manager.js";
  * 2. Register as an OAuth client (DCR) if needed
  * 3. Check for stored credentials — use them if valid
  * 4. If no credentials, open browser for OAuth login
- * 5. Set up the default auth context so tool handlers work
- * 6. Return a TokenManager for proactive refresh
+ * 5. Return OAuth context plus a TokenManager for proactive refresh
  */
-export async function ensureAuthenticated(): Promise<TokenManager> {
+export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   const discovery = await discover(config.zentityUrl);
   const clientId = await ensureClientRegistration(discovery);
   const dpopKey = await getOrCreateDpopKey(config.zentityUrl);
@@ -36,57 +101,45 @@ export async function ensureAuthenticated(): Promise<TokenManager> {
   if (creds?.accessToken || creds?.refreshToken) {
     try {
       const accessToken = await tokenManager.getAccessToken();
-      setDefaultAuth({
+      const oauth: OAuthSessionContext = {
         accessToken,
         clientId,
         dpopKey,
         loginHint: creds.loginHint ?? "",
-      });
+      };
       console.error("[auth] Using stored credentials");
-      return tokenManager;
-    } catch {
+      return { oauth, tokenManager };
+    } catch (error) {
+      if (isInvalidClientError(error)) {
+        console.error(
+          "[dcr] Stored client registration is stale, re-registering OAuth client..."
+        );
+        clearClientRegistration(config.zentityUrl);
+      }
       console.error("[auth] Stored credentials expired, re-authenticating...");
     }
   }
 
   // No valid credentials — authenticate via browser
-  const pkce = await generatePkce();
-  const parEndpoint = discovery.pushed_authorization_request_endpoint;
-  const result = await authenticateViaBrowser({
-    authorizeEndpoint: discovery.authorization_endpoint,
-    ...(parEndpoint ? { parEndpoint } : {}),
-    tokenEndpoint: discovery.token_endpoint,
-    clientId,
-    dpopKey,
-    pkce,
-    resource: config.zentityUrl,
-  });
-
-  setDefaultAuth({
-    accessToken: result.accessToken,
-    clientId,
-    dpopKey,
-    loginHint: result.loginHint ?? "",
-  });
-
+  const { oauth, tokenManager: freshTokenManager } =
+    await authenticateFreshSession(discovery, dpopKey, clientId);
   console.error("[auth] Authentication complete");
-  return tokenManager;
+  return { oauth, tokenManager: freshTokenManager };
 }
 
 /**
- * Refresh the default auth context with a fresh access token.
+ * Refresh the OAuth session context with a fresh access token.
  */
 export async function refreshAuthContext(
   tokenManager: TokenManager,
-  clientId: string,
-  dpopKey: DpopKeyPair
-): Promise<void> {
+  oauth: Pick<OAuthSessionContext, "clientId" | "dpopKey" | "loginHint">
+): Promise<OAuthSessionContext> {
   const accessToken = await tokenManager.getAccessToken();
   const creds = loadCredentials(config.zentityUrl);
-  setDefaultAuth({
+  return {
     accessToken,
-    clientId,
-    dpopKey,
-    loginHint: creds?.loginHint ?? "",
-  });
+    clientId: oauth.clientId,
+    dpopKey: oauth.dpopKey,
+    loginHint: creds?.loginHint ?? oauth.loginHint,
+  };
 }

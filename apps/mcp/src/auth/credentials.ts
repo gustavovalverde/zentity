@@ -77,3 +77,20 @@ export function clearTokenCredentials(zentityUrl: string): void {
   } = existing;
   saveCredentials({ ...rest, zentityUrl, clientId: rest.clientId });
 }
+
+export function clearClientRegistration(zentityUrl: string): void {
+  const existing = loadCredentials(zentityUrl);
+  if (!existing) {
+    return;
+  }
+  const {
+    accessToken: _,
+    clientId: __,
+    clientSecret: ___,
+    expiresAt: ____,
+    refreshToken: _____,
+    registrationMethod: ______,
+    ...rest
+  } = existing;
+  saveCredentials({ ...rest, zentityUrl, clientId: "" });
+}

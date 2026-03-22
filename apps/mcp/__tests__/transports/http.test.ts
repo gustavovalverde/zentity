@@ -5,6 +5,16 @@ import type {
   TokenAuthResult,
 } from "../../src/auth/token-auth.js";
 
+const {
+  mockClearCachedHostId,
+  mockEnsureHostRegistered,
+  mockRegisterAgent,
+} = vi.hoisted(() => ({
+  mockClearCachedHostId: vi.fn(),
+  mockEnsureHostRegistered: vi.fn(),
+  mockRegisterAgent: vi.fn(),
+}));
+
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
@@ -46,6 +56,23 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
   }),
 }));
 
+vi.mock("../../src/auth/agent-registration.js", () => ({
+  AgentRegistrationError: class AgentRegistrationError extends Error {
+    responseBody: string;
+    status: number;
+
+    constructor(message: string, status: number, responseBody: string) {
+      super(message);
+      this.name = "AgentRegistrationError";
+      this.status = status;
+      this.responseBody = responseBody;
+    }
+  },
+  clearCachedHostId: mockClearCachedHostId,
+  ensureHostRegistered: mockEnsureHostRegistered,
+  registerAgent: mockRegisterAgent,
+}));
+
 vi.mock("../../src/auth/discovery.js", () => ({
   discover: vi.fn().mockResolvedValue({
     issuer: "http://localhost:3000/api/auth",
@@ -64,8 +91,11 @@ vi.mock("../../src/server/index.js", () => ({
 import { discover } from "../../src/auth/discovery.js";
 import { exchangeToken } from "../../src/auth/token-exchange.js";
 import {
+  buildHttpRuntimeKeyNamespace,
   createApp,
+  ensureSessionRuntime,
   matchOrigin,
+  registerHttpRuntime,
   resolveTokenExchangeAudience,
   setServerCredentials,
 } from "../../src/transports/http.js";
@@ -322,7 +352,7 @@ describe("HTTP transport middleware", () => {
       headers: { Authorization: "Bearer valid-token" },
     });
     expect(res.status).toBe(502);
-    const body = await res.json();
+const body = await res.json();
     expect(body.error).toBe("token_exchange_failed");
   });
 
@@ -410,6 +440,109 @@ describe("HTTP transport middleware", () => {
       "POST",
       expect.stringContaining("/mcp")
     );
+  });
+});
+
+describe("HTTP runtime registration", () => {
+  const oauth = {
+    accessToken: "exchanged-token-123",
+    clientId: "test-client",
+    dpopKey: {
+      privateJwk: { kty: "EC", crv: "P-256" },
+      publicJwk: { kty: "EC", crv: "P-256" },
+    },
+    loginHint: "user-123",
+  };
+
+  beforeEach(() => {
+    mockClearCachedHostId.mockReset();
+    mockEnsureHostRegistered.mockReset();
+    mockRegisterAgent.mockReset();
+  });
+
+  it("skips runtime registration when agent:manage is absent", async () => {
+    await expect(registerHttpRuntime(oauth, "openid")).resolves.toBeUndefined();
+    expect(mockEnsureHostRegistered).not.toHaveBeenCalled();
+    expect(mockRegisterAgent).not.toHaveBeenCalled();
+  });
+
+  it("registers a runtime with a user-scoped host namespace", async () => {
+    const runtime = {
+      display: {
+        model: "unknown",
+        name: "@zentity/mcp-server",
+        runtime: "node",
+        version: "unknown",
+      },
+      grants: [],
+      hostId: "host-123",
+      sessionId: "session-123",
+      sessionPrivateKey: { kty: "OKP", crv: "Ed25519", d: "priv", x: "pub" },
+      sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
+    };
+    mockEnsureHostRegistered.mockResolvedValue("host-123");
+    mockRegisterAgent.mockResolvedValue(runtime);
+
+    const result = await registerHttpRuntime(oauth, "openid agent:manage");
+
+    const namespace = buildHttpRuntimeKeyNamespace(oauth);
+    expect(mockEnsureHostRegistered).toHaveBeenCalledWith(
+      "http://localhost:3000",
+      oauth,
+      "@zentity/mcp-server",
+      namespace
+    );
+    expect(mockRegisterAgent).toHaveBeenCalledWith(
+      "http://localhost:3000",
+      oauth,
+      "host-123",
+      expect.objectContaining({
+        model: "unknown",
+        name: "@zentity/mcp-server",
+      }),
+      namespace
+    );
+    expect(result).toEqual(runtime);
+  });
+
+  it("reuses the cached runtime for repeat requests in the same MCP session", async () => {
+    const runtime = {
+      display: {
+        model: "unknown",
+        name: "@zentity/mcp-server",
+        runtime: "node",
+        version: "unknown",
+      },
+      grants: [],
+      hostId: "host-123",
+      sessionId: "session-123",
+      sessionPrivateKey: { kty: "OKP", crv: "Ed25519", d: "priv", x: "pub" },
+      sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
+    };
+    const runtimes = new Map<string, (typeof runtime)>();
+    mockEnsureHostRegistered.mockResolvedValue("host-123");
+    mockRegisterAgent.mockResolvedValue(runtime);
+
+    const first = await ensureSessionRuntime(
+      runtimes,
+      "mcp-session-1",
+      oauth,
+      "openid agent:manage"
+    );
+    const second = await ensureSessionRuntime(
+      runtimes,
+      "mcp-session-1",
+      {
+        ...oauth,
+        accessToken: "exchanged-token-456",
+      },
+      "openid agent:manage"
+    );
+
+    expect(first).toEqual(runtime);
+    expect(second).toBe(runtime);
+    expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAgent).toHaveBeenCalledTimes(1);
   });
 });
 

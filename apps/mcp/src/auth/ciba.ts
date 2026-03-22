@@ -4,19 +4,6 @@ import { createDpopProof, extractDpopNonce } from "./dpop.js";
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
 
-export const DEFAULT_AGENT_CLAIMS = {
-  agent: {
-    name: "Zentity MCP",
-    model: "mcp-bridge",
-    runtime: "node",
-    version: "0.1.0",
-    capabilities: ["identity_lookup", "purchase", "approval"],
-  },
-  oversight: {
-    requires_human_approval_for: ["purchase", "identity_access"],
-  },
-} as const;
-
 interface CibaAuthResponse {
   auth_req_id: string;
   expires_in: number;
@@ -36,23 +23,31 @@ interface CibaErrorResponse {
   error_description?: string;
 }
 
+export interface CibaPendingAuthorization {
+  authReqId: string;
+  dpopNonce?: string | undefined;
+  expiresIn: number;
+  intervalSeconds: number;
+}
+
+export interface CibaPendingApproval {
+  approvalUrl: string;
+  authReqId: string;
+  expiresIn: number;
+  intervalSeconds: number;
+}
+
 export interface CibaRequest {
-  agentClaims?:
-    | {
-        agent: {
-          name: string;
-          model?: string | undefined;
-          runtime?: string | undefined;
-          version?: string | undefined;
-        };
-      }
-    | undefined;
+  agentAssertion?: string | undefined;
   authorizationDetails?: unknown[];
   bindingMessage: string;
   cibaEndpoint: string;
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
+  onPendingApproval?:
+    | ((pending: CibaPendingApproval) => Promise<void> | void)
+    | undefined;
   resource?: string | undefined;
   scope: string;
   tokenEndpoint: string;
@@ -63,6 +58,15 @@ export interface CibaResult {
   authorizationDetails?: unknown[];
   idToken?: string;
 }
+
+export type CibaPollResult =
+  | { status: "approved"; result: CibaResult }
+  | { status: "denied"; message: string }
+  | {
+      status: "pending";
+      pendingAuthorization: CibaPendingAuthorization;
+    }
+  | { status: "timed_out" };
 
 export class CibaDeniedError extends Error {
   constructor(description?: string) {
@@ -81,9 +85,26 @@ export class CibaTimeoutError extends Error {
 export async function requestCibaApproval(
   params: CibaRequest
 ): Promise<CibaResult> {
-  const { cibaEndpoint, tokenEndpoint, dpopKey } = params;
+  const pendingAuthorization = await beginCibaApproval(params);
+  await params.onPendingApproval?.(
+    createPendingApproval(params, pendingAuthorization)
+  );
+
+  return pollCibaToken(params, pendingAuthorization);
+}
+
+export async function beginCibaApproval(
+  params: CibaRequest
+): Promise<CibaPendingAuthorization> {
+  const { cibaEndpoint, dpopKey } = params;
 
   const body = buildCibaBody(params);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+  if (params.agentAssertion) {
+    headers["Agent-Assertion"] = params.agentAssertion;
+  }
 
   let dpopNonce: string | undefined;
   let dpopProof = await createDpopProof(
@@ -96,10 +117,7 @@ export async function requestCibaApproval(
 
   let response = await fetch(cibaEndpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      DPoP: dpopProof,
-    },
+    headers: { ...headers, DPoP: dpopProof },
     body,
   });
 
@@ -120,10 +138,7 @@ export async function requestCibaApproval(
     );
     response = await fetch(cibaEndpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: dpopProof,
-      },
+      headers: { ...headers, DPoP: dpopProof },
       body,
     });
   }
@@ -136,17 +151,107 @@ export async function requestCibaApproval(
 
   const authResponse = (await response.json()) as CibaAuthResponse;
 
-  return pollForTokenDpop(
-    tokenEndpoint,
-    authResponse.auth_req_id,
-    params.clientId,
-    dpopKey,
+  return {
+    authReqId: authResponse.auth_req_id,
     dpopNonce,
-    authResponse.interval == null
-      ? DEFAULT_POLL_INTERVAL_MS
-      : authResponse.interval * 1000,
-    authResponse.expires_in * 1000
+    expiresIn: authResponse.expires_in,
+    intervalSeconds: authResponse.interval ?? DEFAULT_POLL_INTERVAL_MS / 1000,
+  };
+}
+
+export async function pollCibaToken(
+  params: Pick<CibaRequest, "clientId" | "dpopKey" | "tokenEndpoint">,
+  pendingAuthorization: CibaPendingAuthorization
+): Promise<CibaResult> {
+  return pollForTokenDpop(
+    params.tokenEndpoint,
+    pendingAuthorization.authReqId,
+    params.clientId,
+    params.dpopKey,
+    pendingAuthorization.dpopNonce,
+    pendingAuthorization.intervalSeconds * 1000,
+    pendingAuthorization.expiresIn * 1000
   );
+}
+
+export async function pollCibaTokenOnce(
+  params: Pick<CibaRequest, "clientId" | "dpopKey" | "tokenEndpoint">,
+  pendingAuthorization: CibaPendingAuthorization
+): Promise<CibaPollResult> {
+  const dpopProof = await createDpopProof(
+    params.dpopKey,
+    "POST",
+    params.tokenEndpoint,
+    undefined,
+    pendingAuthorization.dpopNonce
+  );
+
+  const response = await fetch(params.tokenEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      DPoP: dpopProof,
+    },
+    body: new URLSearchParams({
+      grant_type: "urn:openid:params:grant-type:ciba",
+      auth_req_id: pendingAuthorization.authReqId,
+      client_id: params.clientId,
+    }),
+  });
+
+  const nextNonce = extractDpopNonce(response) ?? pendingAuthorization.dpopNonce;
+
+  try {
+    const result = await handlePollResponse(
+      response,
+      pendingAuthorization.intervalSeconds * 1000
+    );
+
+    if (result.done) {
+      return { status: "approved", result: result.value };
+    }
+
+    return {
+      status: "pending",
+      pendingAuthorization: {
+        ...pendingAuthorization,
+        dpopNonce: nextNonce,
+        intervalSeconds: result.nextInterval / 1000,
+      },
+    };
+  } catch (error) {
+    if (error instanceof CibaDeniedError) {
+      return { status: "denied", message: error.message };
+    }
+    if (error instanceof CibaTimeoutError) {
+      return { status: "timed_out" };
+    }
+    throw error;
+  }
+}
+
+export function logPendingApprovalHandoff(
+  pending: CibaPendingApproval
+): void {
+  console.error(`[ciba] Approval required: ${pending.approvalUrl}`);
+  console.error(
+    `[ciba] Expires in ${pending.expiresIn}s; polling every ${pending.intervalSeconds}s`
+  );
+}
+
+export function createPendingApproval(
+  params: Pick<CibaRequest, "cibaEndpoint" | "resource">,
+  pendingAuthorization: CibaPendingAuthorization
+): CibaPendingApproval {
+  return {
+    approvalUrl: buildCliHandoffApprovalUrl(
+      resolveApprovalBaseUrl(params),
+      pendingAuthorization.authReqId
+    ),
+    authReqId: pendingAuthorization.authReqId,
+    expiresIn: pendingAuthorization.expiresIn,
+    intervalSeconds: pendingAuthorization.intervalSeconds,
+  };
 }
 
 async function pollForTokenDpop(
@@ -220,10 +325,25 @@ function buildCibaBody(params: CibaRequest): URLSearchParams {
       JSON.stringify(params.authorizationDetails)
     );
   }
-  if (params.agentClaims) {
-    body.set("agent_claims", JSON.stringify(params.agentClaims));
-  }
   return body;
+}
+
+function buildCliHandoffApprovalUrl(
+  baseUrl: string,
+  authReqId: string
+): string {
+  const approvalUrl = new URL(
+    `/approve/${encodeURIComponent(authReqId)}`,
+    baseUrl
+  );
+  approvalUrl.searchParams.set("source", "cli_handoff");
+  return approvalUrl.toString();
+}
+
+function resolveApprovalBaseUrl(
+  params: Pick<CibaRequest, "cibaEndpoint" | "resource">
+): string {
+  return params.resource ?? new URL(params.cibaEndpoint).origin;
 }
 
 type PollOutcome =

@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { zentityFetch } from "../auth/api-client.js";
 import { requireAuth } from "../auth/context.js";
-import { getCachedIdentity, getIdentity } from "../auth/identity.js";
+import { getIdentityResolution } from "../auth/identity.js";
 import { config } from "../config.js";
 
 interface AssuranceProfile {
@@ -34,7 +34,7 @@ interface AccountData {
 export function registerWhoamiTool(server: McpServer): void {
   server.tool(
     "whoami",
-    "Get the user's identity: name, email, verification tier, and completed checks. On first use, sends a push notification to unlock the identity vault. Use when the user asks who they are, what their name is, what their account status is, or whether they are verified.",
+    "Get the user's identity: name, email, verification tier, and completed checks. On first use, this may return account status plus an approval URL to unlock the identity vault instead of blocking. Use when the user asks who they are, what their name is, what their account status is, or whether they are verified.",
     {},
     async () => {
       try {
@@ -70,7 +70,10 @@ async function fetchWhoamiData() {
   const [profileRes, accountRes, identity] = await Promise.all([
     zentityFetch(`${config.zentityUrl}/api/trpc/assurance.profile`),
     zentityFetch(`${config.zentityUrl}/api/trpc/account.getData`),
-    Promise.resolve(getCachedIdentity() ?? getIdentity()).catch(() => null),
+    getIdentityResolution().catch(() => ({
+      status: "ready" as const,
+      claims: null,
+    })),
   ]);
 
   const profile = profileRes.ok
@@ -83,14 +86,30 @@ async function fetchWhoamiData() {
         .data
     : null;
 
+  const claims = identity.status === "ready" ? identity.claims : null;
+  const identityApproval =
+    identity.status === "approval_required"
+      ? {
+          approvalUrl: identity.approval.approvalUrl,
+          authReqId: identity.approval.authReqId,
+          expiresIn: identity.approval.expiresIn,
+          intervalSeconds: identity.approval.intervalSeconds,
+          message: "Approve the identity unlock and call whoami again.",
+        }
+      : null;
+  const identityMessage =
+    identity.status === "denied" || identity.status === "timed_out"
+      ? identity.message
+      : null;
+
   return {
     first_name:
-      identity?.given_name?.split(" ")[0] ??
-      identity?.name?.split(" ")[0] ??
+      claims?.given_name?.split(" ")[0] ??
+      claims?.name?.split(" ")[0] ??
       null,
-    name: identity?.name ?? null,
-    given_name: identity?.given_name ?? null,
-    family_name: identity?.family_name ?? null,
+    name: claims?.name ?? null,
+    given_name: claims?.given_name ?? null,
+    family_name: claims?.family_name ?? null,
     email: account?.email ?? null,
     memberSince: account?.createdAt ?? null,
     tier: profile?.tier ?? null,
@@ -99,5 +118,8 @@ async function fetchWhoamiData() {
     authStrength: profile?.authStrength ?? null,
     loginMethod: profile?.loginMethod ?? null,
     checks: account?.verification?.checks ?? profile?.details ?? null,
+    identityApproval,
+    identityMessage,
+    identityStatus: identity.status,
   };
 }

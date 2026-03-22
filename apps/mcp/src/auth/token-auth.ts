@@ -28,8 +28,7 @@ let jwksUrl: string | undefined;
 
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   const currentUrl =
-    getDiscoveredJwksUri() ??
-    `${config.zentityUrl}/api/auth/oauth2/jwks`;
+    getDiscoveredJwksUri() ?? `${config.zentityUrl}/api/auth/oauth2/jwks`;
 
   if (!jwks || jwksUrl !== currentUrl) {
     jwksUrl = currentUrl;

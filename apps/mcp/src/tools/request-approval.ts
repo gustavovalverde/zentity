@@ -1,12 +1,19 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { prefixBindingMessage } from "../agent.js";
+import { signAgentAssertion } from "../auth/agent-registration.js";
 import {
   CibaDeniedError,
   CibaTimeoutError,
-  DEFAULT_AGENT_CLAIMS,
+  logPendingApprovalHandoff,
   requestCibaApproval,
 } from "../auth/ciba.js";
-import { type AuthContext, requireAuth } from "../auth/context.js";
+import {
+  type AuthContext,
+  getOAuthContext,
+  requireAuth,
+  requireRuntimeState,
+} from "../auth/context.js";
 import { config } from "../config.js";
 
 export function registerRequestApprovalTool(server: McpServer): void {
@@ -37,20 +44,26 @@ export function registerRequestApprovalTool(server: McpServer): void {
         };
       }
 
-      const bindingMessage = details ? `${action}: ${details}` : action;
+      const runtime = requireRuntimeState(auth);
+      const oauth = getOAuthContext(auth);
+      const rawMessage = details ? `${action}: ${details}` : action;
+      const bindingMessage = prefixBindingMessage(runtime.display.name, rawMessage);
       console.error(`[ciba] Requesting approval: "${bindingMessage}"`);
 
       try {
+        const agentAssertion = await signAgentAssertion(runtime, bindingMessage);
+
         const result = await requestCibaApproval({
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
           tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
-          clientId: auth.clientId,
-          dpopKey: auth.dpopKey,
-          loginHint: auth.loginHint,
+          clientId: oauth.clientId,
+          dpopKey: oauth.dpopKey,
+          loginHint: oauth.loginHint,
           scope: "openid",
           bindingMessage,
           resource: config.zentityUrl,
-          agentClaims: DEFAULT_AGENT_CLAIMS,
+          agentAssertion,
+          onPendingApproval: logPendingApprovalHandoff,
         });
 
         return {

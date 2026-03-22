@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockAuthContext = {
+const mockOAuthContext = {
   accessToken: "test-token",
   clientId: "test-client",
   dpopKey: {
@@ -8,6 +8,10 @@ const mockAuthContext = {
     publicJwk: { kty: "EC", crv: "P-256" },
   },
   loginHint: "user-sub",
+};
+
+const mockAuthContext = {
+  oauth: mockOAuthContext,
 };
 
 vi.mock("../../src/config.js", () => ({
@@ -26,23 +30,23 @@ vi.mock("../../src/auth/dpop.js", () => ({
 
 vi.mock("../../src/auth/context.js", () => ({
   getAuthContext: () => mockAuthContext,
+  getOAuthContext: () => mockOAuthContext,
   requireAuth: () => Promise.resolve(mockAuthContext),
 }));
 
 vi.mock("../../src/auth/ciba.js", () => ({
   CibaDeniedError: class extends Error {},
   CibaTimeoutError: class extends Error {},
+  logPendingApprovalHandoff: vi.fn(),
   requestCibaApproval: vi.fn(),
 }));
 
-const { mockGetCachedIdentity, mockGetIdentity } = vi.hoisted(() => ({
-  mockGetCachedIdentity: vi.fn(),
-  mockGetIdentity: vi.fn(),
+const { mockGetIdentityResolution } = vi.hoisted(() => ({
+  mockGetIdentityResolution: vi.fn(),
 }));
 
 vi.mock("../../src/auth/identity.js", () => ({
-  getCachedIdentity: mockGetCachedIdentity,
-  getIdentity: mockGetIdentity,
+  getIdentityResolution: mockGetIdentityResolution,
 }));
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -51,8 +55,7 @@ import { createServer } from "../../src/server/index.js";
 
 describe("whoami", () => {
   beforeEach(() => {
-    mockGetCachedIdentity.mockReset();
-    mockGetIdentity.mockReset();
+    mockGetIdentityResolution.mockReset();
   });
 
   afterEach(() => {
@@ -72,10 +75,13 @@ describe("whoami", () => {
   }
 
   it("returns identity with name when cached", async () => {
-    mockGetCachedIdentity.mockReturnValue({
-      name: "Gustavo Alberto Valverde",
-      given_name: "Gustavo Alberto",
-      family_name: "Valverde",
+    mockGetIdentityResolution.mockResolvedValue({
+      status: "ready",
+      claims: {
+        name: "Gustavo Alberto Valverde",
+        given_name: "Gustavo Alberto",
+        family_name: "Valverde",
+      },
     });
 
     const profileData = {
@@ -114,13 +120,15 @@ describe("whoami", () => {
     expect(parsed.family_name).toBe("Valverde");
     expect(parsed.email).toBe("user@example.com");
     expect(parsed.tier).toBe(3);
-    // Should not trigger CIBA when cached
-    expect(mockGetIdentity).not.toHaveBeenCalled();
+    expect(parsed.identityStatus).toBe("ready");
   });
 
   it("derives first_name from name when given_name is absent (ZKPassport)", async () => {
-    mockGetCachedIdentity.mockReturnValue({
-      name: "Gustavo A Jr Valverde De Soto",
+    mockGetIdentityResolution.mockResolvedValue({
+      status: "ready",
+      claims: {
+        name: "Gustavo A Jr Valverde De Soto",
+      },
     });
 
     vi.spyOn(globalThis, "fetch")
@@ -140,10 +148,12 @@ describe("whoami", () => {
   });
 
   it("triggers CIBA when identity not cached", async () => {
-    mockGetCachedIdentity.mockReturnValue(null);
-    mockGetIdentity.mockResolvedValue({
-      name: "Jane Doe",
-      given_name: "Jane",
+    mockGetIdentityResolution.mockResolvedValue({
+      status: "ready",
+      claims: {
+        name: "Jane Doe",
+        given_name: "Jane",
+      },
     });
 
     const profileData = {
@@ -170,12 +180,14 @@ describe("whoami", () => {
     );
     expect(parsed.given_name).toBe("Jane");
     expect(parsed.tier).toBe(2);
-    expect(mockGetIdentity).toHaveBeenCalled();
+    expect(parsed.identityStatus).toBe("ready");
   });
 
   it("continues without name when CIBA is denied", async () => {
-    mockGetCachedIdentity.mockReturnValue(null);
-    mockGetIdentity.mockRejectedValue(new Error("User denied"));
+    mockGetIdentityResolution.mockResolvedValue({
+      status: "denied",
+      message: "Identity unlock was denied: User denied",
+    });
 
     const profileData = {
       tier: 1,
@@ -211,6 +223,39 @@ describe("whoami", () => {
     expect(parsed.name).toBeNull();
     expect(parsed.email).toBe("user@example.com");
     expect(parsed.tier).toBe(1);
+    expect(parsed.identityStatus).toBe("denied");
     expect(result.isError).toBeUndefined();
+  });
+
+  it("returns approval metadata instead of hanging when identity unlock is pending", async () => {
+    mockGetIdentityResolution.mockResolvedValue({
+      status: "approval_required",
+      approval: {
+        approvalUrl: "http://localhost:3000/approve/req-abc?source=cli_handoff",
+        authReqId: "req-abc",
+        expiresIn: 300,
+        intervalSeconds: 5,
+      },
+    });
+
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("Error", { status: 500 }))
+      .mockResolvedValueOnce(new Response("Error", { status: 500 }));
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({ name: "whoami", arguments: {} });
+
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+    expect(parsed.name).toBeNull();
+    expect(parsed.identityStatus).toBe("approval_required");
+    expect(parsed.identityApproval).toEqual({
+      approvalUrl: "http://localhost:3000/approve/req-abc?source=cli_handoff",
+      authReqId: "req-abc",
+      expiresIn: 300,
+      intervalSeconds: 5,
+      message: "Approve the identity unlock and call whoami again.",
+    });
   });
 });

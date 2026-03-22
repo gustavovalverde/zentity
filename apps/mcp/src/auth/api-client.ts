@@ -1,4 +1,4 @@
-import { getAuthContext } from "./context.js";
+import { getAuthContext, getOAuthContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 
 const dpopNonces = new Map<string, string>();
@@ -9,20 +9,21 @@ export async function zentityFetch(
 ): Promise<Response> {
   const method = options?.method ?? "GET";
   const auth = getAuthContext();
+  const oauth = getOAuthContext(auth);
 
-  const nonceKey = auth.loginHint;
+  const nonceKey = oauth.loginHint;
   const dpopNonce = dpopNonces.get(nonceKey);
 
   let proof = await createDpopProof(
-    auth.dpopKey,
+    oauth.dpopKey,
     method,
     url,
-    auth.accessToken,
+    oauth.accessToken,
     dpopNonce
   );
 
   const headers: Record<string, string> = {
-    Authorization: `DPoP ${auth.accessToken}`,
+    Authorization: `DPoP ${oauth.accessToken}`,
     DPoP: proof,
   };
   if (options?.body) {
@@ -45,10 +46,10 @@ export async function zentityFetch(
   ) {
     dpopNonces.set(nonceKey, newNonce);
     proof = await createDpopProof(
-      auth.dpopKey,
+      oauth.dpopKey,
       method,
       url,
-      auth.accessToken,
+      oauth.accessToken,
       newNonce
     );
     headers.DPoP = proof;

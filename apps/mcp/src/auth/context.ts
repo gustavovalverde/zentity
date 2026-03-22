@@ -1,11 +1,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DpopKeyPair } from "./dpop.js";
+import {
+  agentRuntimeManager,
+  type AgentRuntimeState,
+} from "./runtime-manager.js";
 
-export interface AuthContext {
+export interface OAuthSessionContext {
   accessToken: string;
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
+}
+
+export interface AuthContext {
+  oauth: OAuthSessionContext;
+  runtime?: AgentRuntimeState;
 }
 
 const authStorage = new AsyncLocalStorage<AuthContext>();
@@ -35,7 +44,11 @@ export function setAuthFactory(factory: () => Promise<void>): void {
  */
 export async function requireAuth(): Promise<AuthContext> {
   if (authPromise) {
-    await authPromise;
+    try {
+      await authPromise;
+    } catch {
+      // Fall through to the retry path below.
+    }
   }
 
   // If auth succeeded, return the context
@@ -64,5 +77,20 @@ export function getAuthContext(): AuthContext {
       "Not authenticated — run ensureAuthenticated() first or check server logs"
     );
   }
-  return ctx;
+  const runtime = ctx.runtime ?? agentRuntimeManager.getState();
+  return runtime ? { ...ctx, runtime } : ctx;
+}
+
+export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
+  return (ctx ?? getAuthContext()).oauth;
+}
+
+export function requireRuntimeState(ctx?: AuthContext): AgentRuntimeState {
+  const runtime = (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
+  if (!runtime) {
+    throw new Error(
+      "Agent runtime is not initialized — complete host and session registration first"
+    );
+  }
+  return runtime;
 }

@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import {
+  clearClientRegistration,
   clearTokenCredentials,
   loadCredentials,
   updateCredentials,
@@ -113,6 +114,10 @@ export class TokenManager {
 
     if (!response.ok) {
       const text = await response.text();
+      if (text.includes("invalid_client") || text.includes("client not found")) {
+        clearClientRegistration(config.zentityUrl);
+        throw new TokenExpiredError();
+      }
       if (text.includes("invalid_grant")) {
         clearTokenCredentials(config.zentityUrl);
         throw new TokenExpiredError();

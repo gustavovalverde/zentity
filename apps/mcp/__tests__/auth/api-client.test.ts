@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mockAuthContext = {
+const mockOAuthContext = {
   accessToken: "test-access-token",
   clientId: "test-client",
   dpopKey: {
@@ -10,6 +10,10 @@ const mockAuthContext = {
   loginHint: "user-sub",
 };
 
+const mockAuthContext = {
+  oauth: mockOAuthContext,
+};
+
 vi.mock("../../src/auth/dpop.js", () => ({
   createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
@@ -17,6 +21,7 @@ vi.mock("../../src/auth/dpop.js", () => ({
 
 vi.mock("../../src/auth/context.js", () => ({
   getAuthContext: () => mockAuthContext,
+  getOAuthContext: () => mockOAuthContext,
 }));
 
 import { zentityFetch } from "../../src/auth/api-client.js";

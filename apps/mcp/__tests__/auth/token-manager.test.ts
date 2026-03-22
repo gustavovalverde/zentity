@@ -20,6 +20,20 @@ vi.mock("../../src/auth/credentials.js", () => ({
     credentialsMock.stored = { ...credentialsMock.stored, ...updates };
     return credentialsMock.stored;
   }),
+  clearClientRegistration: vi.fn(() => {
+    if (credentialsMock.stored) {
+      const {
+        accessToken: _,
+        clientId: __,
+        clientSecret: ___,
+        expiresAt: ____,
+        refreshToken: _____,
+        registrationMethod: ______,
+        ...rest
+      } = credentialsMock.stored as Record<string, unknown>;
+      credentialsMock.stored = { ...rest, clientId: "" };
+    }
+  }),
   clearTokenCredentials: vi.fn(() => {
     if (credentialsMock.stored) {
       const {
@@ -39,6 +53,7 @@ vi.mock("../../src/auth/dpop.js", () => ({
 }));
 
 import {
+  clearClientRegistration,
   clearTokenCredentials,
   updateCredentials,
 } from "../../src/auth/credentials.js";
@@ -187,6 +202,27 @@ describe("TokenManager", () => {
 
     await expect(manager.getAccessToken()).rejects.toThrow(TokenExpiredError);
     expect(clearTokenCredentials).toHaveBeenCalledWith("http://localhost:3000");
+  });
+
+  it("clears client registration and throws on invalid_client", async () => {
+    credentialsMock.stored = {
+      accessToken: "old-token",
+      expiresAt: Date.now() - 1000,
+      refreshToken: "stale-refresh",
+      zentityUrl: "http://localhost:3000",
+      mcpPublicUrl: "http://localhost:3200",
+      clientId: "stale-client",
+      registrationMethod: "dcr",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_client" }), { status: 400 })
+    );
+
+    await expect(manager.getAccessToken()).rejects.toThrow(TokenExpiredError);
+    expect(clearClientRegistration).toHaveBeenCalledWith(
+      "http://localhost:3000"
+    );
   });
 
   it("throws TokenExpiredError when no credentials exist", () => {

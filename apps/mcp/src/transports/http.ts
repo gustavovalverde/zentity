@@ -3,16 +3,27 @@ import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { type AuthContext, runWithAuth } from "../auth/context.js";
+import {
+  AgentRegistrationError,
+  clearCachedHostId,
+  ensureHostRegistered,
+  registerAgent,
+} from "../auth/agent-registration.js";
+import {
+  type AuthContext,
+  type OAuthSessionContext,
+  runWithAuth,
+} from "../auth/context.js";
+import { loadCredentials, updateCredentials } from "../auth/credentials.js";
 import { ensureClientRegistration } from "../auth/dcr.js";
-import { discover } from "../auth/discovery.js";
 import type { DiscoveryState } from "../auth/discovery.js";
+import { discover } from "../auth/discovery.js";
 import type { DpopKeyPair } from "../auth/dpop.js";
 import { getOrCreateDpopKey } from "../auth/dpop.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
+import type { AgentRuntimeState } from "../auth/runtime-manager.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
 import { exchangeToken } from "../auth/token-exchange.js";
-import { loadCredentials, updateCredentials } from "../auth/credentials.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
@@ -24,12 +35,84 @@ let httpServerCredentials:
   | { clientId: string; dpopKey: DpopKeyPair }
   | undefined;
 
+const HTTP_RUNTIME_DISPLAY = {
+  model: "unknown",
+  name: process.env.ZENTITY_AGENT_NAME ?? "@zentity/mcp-server",
+  runtime: "node",
+  version: process.env.ZENTITY_AGENT_VERSION ?? "unknown",
+} as const;
+
 /** Set server-level OAuth credentials (used by startHttp and tests). */
 export function setServerCredentials(creds: {
   clientId: string;
   dpopKey: DpopKeyPair;
 }): void {
   httpServerCredentials = creds;
+}
+
+function hasRuntimeRegistrationScope(scope: unknown): boolean {
+  return typeof scope === "string" && scope.split(" ").includes("agent:manage");
+}
+
+export function buildHttpRuntimeKeyNamespace(
+  oauth: Pick<OAuthSessionContext, "clientId" | "loginHint">
+): string {
+  return `${oauth.clientId}:${oauth.loginHint}`;
+}
+
+export async function registerHttpRuntime(
+  oauth: OAuthSessionContext,
+  scope: unknown
+): Promise<AgentRuntimeState | undefined> {
+  if (!hasRuntimeRegistrationScope(scope)) {
+    return undefined;
+  }
+
+  const keyNamespace = buildHttpRuntimeKeyNamespace(oauth);
+
+  const registerRuntime = async () => {
+    const hostId = await ensureHostRegistered(
+      config.zentityUrl,
+      oauth,
+      HTTP_RUNTIME_DISPLAY.name,
+      keyNamespace
+    );
+    return registerAgent(
+      config.zentityUrl,
+      oauth,
+      hostId,
+      HTTP_RUNTIME_DISPLAY,
+      keyNamespace
+    );
+  };
+
+  try {
+    return await registerRuntime();
+  } catch (error) {
+    if (error instanceof AgentRegistrationError && error.status === 404) {
+      clearCachedHostId(config.zentityUrl, keyNamespace);
+      return registerRuntime();
+    }
+    throw error;
+  }
+}
+
+export async function ensureSessionRuntime(
+  runtimes: Map<string, AgentRuntimeState>,
+  sessionId: string,
+  oauth: OAuthSessionContext,
+  scope: unknown
+): Promise<AgentRuntimeState | undefined> {
+  const existing = runtimes.get(sessionId);
+  if (existing) {
+    return existing;
+  }
+
+  const runtime = await registerHttpRuntime(oauth, scope);
+  if (runtime) {
+    runtimes.set(sessionId, runtime);
+  }
+  return runtime;
 }
 
 function getTransport(
@@ -121,7 +204,8 @@ export function createApp(): Hono {
           "urn:ietf:params:oauth:grant-type:token-exchange",
         ],
         token_endpoint_auth_method: "none",
-        scope: "openid email proof:identity identity.name identity.address",
+        scope:
+          "openid email proof:identity identity.name identity.address agent:manage",
       },
       200,
       {
@@ -135,6 +219,7 @@ export function createApp(): Hono {
     string,
     WebStandardStreamableHTTPServerTransport
   >();
+  const runtimes = new Map<string, AgentRuntimeState>();
 
   // Auth middleware for /mcp routes
   app.use("/mcp", async (c, next) => {
@@ -180,7 +265,7 @@ export function createApp(): Hono {
       );
     }
 
-    const authCtx: AuthContext = {
+    const oauth: OAuthSessionContext = {
       accessToken: exchangedToken,
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
@@ -189,17 +274,32 @@ export function createApp(): Hono {
 
     // Store validated auth info for transport.handleRequest
     c.set("authInfo" as never, result);
-    c.set("authCtx" as never, authCtx);
+    c.set("oauthCtx" as never, oauth);
+    c.set("validatedScope" as never, result.payload.scope);
 
     return next();
   });
 
   app.post("/mcp", async (c) => {
-    const authCtx = c.get("authCtx" as never) as AuthContext;
+    const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
+    const scope = c.get("validatedScope" as never) as unknown;
     const sessionId = c.req.header("mcp-session-id");
     const existing = getTransport(transports, sessionId);
 
     if (existing) {
+      let runtime: AgentRuntimeState | undefined;
+      try {
+        runtime = sessionId
+          ? await ensureSessionRuntime(runtimes, sessionId, oauth, scope)
+          : undefined;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return c.json(
+          { error: "runtime_registration_failed", error_description: message },
+          502
+        );
+      }
+      const authCtx: AuthContext = runtime ? { oauth, runtime } : { oauth };
       return runWithAuth(authCtx, () => existing.handleRequest(c.req.raw));
     }
 
@@ -212,20 +312,48 @@ export function createApp(): Hono {
     const { server, cleanup } = createServer();
     transport.onclose = async () => {
       transports.delete(newSessionId);
+      runtimes.delete(newSessionId);
       await cleanup();
     };
     await server.connect(transport);
 
+    let runtime: AgentRuntimeState | undefined;
+    try {
+      runtime = await ensureSessionRuntime(runtimes, newSessionId, oauth, scope);
+    } catch (err) {
+      transports.delete(newSessionId);
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json(
+        { error: "runtime_registration_failed", error_description: message },
+        502
+      );
+    }
+
+    const authCtx: AuthContext = runtime ? { oauth, runtime } : { oauth };
     return runWithAuth(authCtx, () => transport.handleRequest(c.req.raw));
   });
 
-  app.get("/mcp", (c) => {
-    const authCtx = c.get("authCtx" as never) as AuthContext;
+  app.get("/mcp", async (c) => {
+    const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
+    const scope = c.get("validatedScope" as never) as unknown;
     const sessionId = c.req.header("mcp-session-id");
     const transport = getTransport(transports, sessionId);
     if (!transport) {
       return c.json({ error: "No active session" }, 400);
     }
+    let runtime: AgentRuntimeState | undefined;
+    try {
+      runtime = sessionId
+        ? await ensureSessionRuntime(runtimes, sessionId, oauth, scope)
+        : undefined;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return c.json(
+        { error: "runtime_registration_failed", error_description: message },
+        502
+      );
+    }
+    const authCtx: AuthContext = runtime ? { oauth, runtime } : { oauth };
     return runWithAuth(authCtx, () => transport.handleRequest(c.req.raw));
   });
 
@@ -238,6 +366,7 @@ export function createApp(): Hono {
     await transport.close();
     if (sessionId) {
       transports.delete(sessionId);
+      runtimes.delete(sessionId);
     }
     return c.body(null, 204);
   });

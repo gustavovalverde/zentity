@@ -7,8 +7,11 @@ vi.mock("../../src/auth/dpop.js", () => ({
 }));
 
 import {
+  beginCibaApproval,
   CibaDeniedError,
   CibaTimeoutError,
+  pollCibaToken,
+  pollCibaTokenOnce,
   requestCibaApproval,
 } from "../../src/auth/ciba.js";
 
@@ -37,7 +40,92 @@ describe("CIBA", () => {
     vi.restoreAllMocks();
   });
 
-  it("completes approval flow with immediate token response", async () => {
+  it("beginCibaApproval returns pending approval metadata", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          auth_req_id: "req-abc",
+          expires_in: 300,
+          interval: 7,
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await beginCibaApproval(BASE_PARAMS);
+
+    expect(result).toEqual({
+      authReqId: "req-abc",
+      dpopNonce: undefined,
+      expiresIn: 300,
+      intervalSeconds: 7,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("pollCibaToken completes approval flow with immediate token response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: "ciba-token",
+          token_type: "DPoP",
+          expires_in: 3600,
+        }),
+        { status: 200 }
+      )
+    );
+
+    const promise = pollCibaToken(
+      {
+        clientId: BASE_PARAMS.clientId,
+        dpopKey: BASE_PARAMS.dpopKey,
+        tokenEndpoint: BASE_PARAMS.tokenEndpoint,
+      },
+      {
+        authReqId: "req-abc",
+        expiresIn: 300,
+        intervalSeconds: 0,
+      }
+    );
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result.accessToken).toBe("ciba-token");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("pollCibaTokenOnce returns pending metadata without blocking", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "authorization_pending" }), {
+        status: 400,
+      })
+    );
+
+    const result = await pollCibaTokenOnce(
+      {
+        clientId: BASE_PARAMS.clientId,
+        dpopKey: BASE_PARAMS.dpopKey,
+        tokenEndpoint: BASE_PARAMS.tokenEndpoint,
+      },
+      {
+        authReqId: "req-pending",
+        expiresIn: 300,
+        intervalSeconds: 5,
+      }
+    );
+
+    expect(result).toEqual({
+      status: "pending",
+      pendingAuthorization: {
+        authReqId: "req-pending",
+        dpopNonce: undefined,
+        expiresIn: 300,
+        intervalSeconds: 5,
+      },
+    });
+  });
+
+  it("requestCibaApproval emits the CLI handoff before polling", async () => {
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(
@@ -60,11 +148,26 @@ describe("CIBA", () => {
         )
       );
 
-    const promise = requestCibaApproval(BASE_PARAMS);
+    const onPendingApproval = vi.fn().mockImplementation(async (pending) => {
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(pending).toEqual({
+        approvalUrl:
+          "http://localhost:3000/approve/req-abc?source=cli_handoff",
+        authReqId: "req-abc",
+        expiresIn: 300,
+        intervalSeconds: 0,
+      });
+    });
+
+    const promise = requestCibaApproval({
+      ...BASE_PARAMS,
+      onPendingApproval,
+    });
     await vi.runAllTimersAsync();
     const result = await promise;
 
     expect(result.accessToken).toBe("ciba-token");
+    expect(onPendingApproval).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 

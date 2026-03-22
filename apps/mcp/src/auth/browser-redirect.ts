@@ -42,7 +42,7 @@ export async function authenticateViaBrowser(
       url.searchParams.set("client_id", params.clientId);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("scope", "openid email");
+      url.searchParams.set("scope", "openid email agent:manage");
       url.searchParams.set("code_challenge", params.pkce.codeChallenge);
       url.searchParams.set("code_challenge_method", "S256");
       if (params.resource) {
@@ -81,7 +81,7 @@ async function pushAuthorizationRequest(
     client_id: params.clientId,
     response_type: "code",
     redirect_uri: redirectUri,
-    scope: "openid email",
+    scope: "openid email agent:manage",
     code_challenge: params.pkce.codeChallenge,
     code_challenge_method: "S256",
   });

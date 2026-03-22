@@ -62,6 +62,7 @@ describe("DCR", () => {
     const body = JSON.parse((fetchCall[1] as RequestInit).body as string);
     expect(body.client_name).toBe("@zentity/mcp-server");
     expect(body.token_endpoint_auth_method).toBe("none");
+    expect(body.skip_consent).toBeUndefined();
     expect(body.grant_types).toContain("authorization_code");
     expect(body.grant_types).toContain("urn:openid:params:grant-type:ciba");
     expect(body.grant_types).toContain(
@@ -80,6 +81,44 @@ describe("DCR", () => {
     const clientId = await ensureClientRegistration(discoveryWithRegistration);
     expect(clientId).toBe("existing-client");
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse a cached CIMD client_id for stdio DCR", async () => {
+    credentialsMock.stored = {
+      zentityUrl: "http://localhost:3000",
+      mcpPublicUrl: "http://localhost:3200",
+      clientId: "http://localhost:3200/.well-known/oauth-client.json",
+      registrationMethod: "cimd",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ client_id: "new-dcr-client" }), {
+        status: 200,
+      })
+    );
+
+    const clientId = await ensureClientRegistration(discoveryWithRegistration);
+    expect(clientId).toBe("new-dcr-client");
+  });
+
+  it("re-registers when forced", async () => {
+    credentialsMock.stored = {
+      zentityUrl: "http://localhost:3000",
+      mcpPublicUrl: "http://localhost:3200",
+      clientId: "stale-client",
+      registrationMethod: "dcr",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ client_id: "fresh-client" }), {
+        status: 200,
+      })
+    );
+
+    const clientId = await ensureClientRegistration(discoveryWithRegistration, {
+      force: true,
+    });
+    expect(clientId).toBe("fresh-client");
   });
 
   it("throws when no registration_endpoint in discovery", async () => {

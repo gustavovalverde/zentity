@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mockAuthContext = {
+const mockOAuthContext = {
   accessToken: "test-token",
   clientId: "test-client",
   dpopKey: {
@@ -8,6 +8,10 @@ const mockAuthContext = {
     publicJwk: { kty: "EC", crv: "P-256" },
   },
   loginHint: "user-sub",
+};
+
+const mockAuthContext = {
+  oauth: mockOAuthContext,
 };
 
 vi.mock("../../src/config.js", () => ({
@@ -26,12 +30,14 @@ vi.mock("../../src/auth/dpop.js", () => ({
 
 vi.mock("../../src/auth/context.js", () => ({
   getAuthContext: () => mockAuthContext,
+  getOAuthContext: () => mockOAuthContext,
   requireAuth: () => Promise.resolve(mockAuthContext),
 }));
 
 vi.mock("../../src/auth/ciba.js", () => ({
   CibaDeniedError: class extends Error {},
   CibaTimeoutError: class extends Error {},
+  logPendingApprovalHandoff: vi.fn(),
   requestCibaApproval: vi.fn(),
 }));
 
