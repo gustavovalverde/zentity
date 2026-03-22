@@ -12,7 +12,7 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
  * Extract the sector identifier (hostname) from redirect URIs.
  * Mirrors the oauth-provider's internal `getSectorIdentifier`.
  */
-export function getSectorIdentifier(redirectUris: string | string[]): string {
+function getSectorIdentifier(redirectUris: string | string[]): string {
   const uris: string[] =
     typeof redirectUris === "string" ? JSON.parse(redirectUris) : redirectUris;
   const first = uris[0];

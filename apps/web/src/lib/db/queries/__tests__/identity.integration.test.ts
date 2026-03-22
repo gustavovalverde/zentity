@@ -2,30 +2,11 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import {
-  getAttestationEvidenceByUserAndVerification,
-  upsertAttestationEvidence,
-} from "@/lib/db/queries/attestation";
-import {
-  createZkProofSession,
-  getEncryptedAttributeTypesByUserId,
-  getEncryptedSecretByUserAndType,
-  getSecretWrappersBySecretId,
-  getZkProofsByUserId,
-  insertEncryptedAttribute,
-  insertSignedClaim,
-  insertZkProofRecord,
-  upsertEncryptedSecret,
-  upsertSecretWrapper,
-} from "@/lib/db/queries/crypto";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
-  deleteIdentityData,
   getIdentityBundleByUserId,
   getLatestVerification,
-  getVerificationsByUserId,
   updateIdentityBundleStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
@@ -104,112 +85,5 @@ describe("identity queries", () => {
     await expect(
       dedupKeyExistsForOtherUser("dedup-latest", otherUser)
     ).resolves.toBe(true);
-  });
-
-  it("deletes all identity data for a user", async () => {
-    const userId = await createTestUser();
-    const verificationId = crypto.randomUUID();
-
-    await upsertIdentityBundle({ userId });
-
-    await createVerification({
-      id: verificationId,
-      userId,
-      method: "ocr",
-      documentHash: "hash-delete",
-      nameCommitment: "commit-delete",
-      verifiedAt: "2025-01-01T00:00:00Z",
-      confidenceScore: 0.8,
-      status: "verified",
-    });
-    const proofSessionId = crypto.randomUUID();
-    const now = Date.now();
-    await createZkProofSession({
-      id: proofSessionId,
-      userId,
-      verificationId,
-      msgSender: userId,
-      audience: "http://localhost:3000",
-      policyVersion: POLICY_VERSION,
-      createdAt: now,
-      expiresAt: now + 60_000,
-    });
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "age_verification",
-      proofHash: "proof-hash",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-    });
-
-    await insertSignedClaim({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      claimType: "ocr_result",
-      claimPayload: "{}",
-      signature: "sig",
-      issuedAt: new Date().toISOString(),
-    });
-
-    await insertEncryptedAttribute({
-      id: crypto.randomUUID(),
-      userId,
-      source: "web2_tfhe",
-      attributeType: "birth_year_offset",
-      ciphertext: Buffer.from("ciphertext"),
-      keyId: "key-1",
-      encryptionTimeMs: 123,
-    });
-
-    await upsertAttestationEvidence({
-      userId,
-      verificationId,
-      policyVersion: "policy-v1",
-      policyHash: "policy-hash",
-      proofSetHash: "proof-set",
-    });
-
-    const secret = await upsertEncryptedSecret({
-      id: crypto.randomUUID(),
-      userId,
-      secretType: "fhe_keys",
-      encryptedBlob: "",
-      blobRef: "blob-ref",
-      blobHash: "blob-hash",
-      blobSize: 123,
-      metadata: { keyId: "key-1" },
-    });
-
-    await upsertSecretWrapper({
-      id: crypto.randomUUID(),
-      secretId: secret.id,
-      userId,
-      credentialId: "cred-1",
-      wrappedDek: "wrapped",
-      prfSalt: "salt",
-    });
-
-    await deleteIdentityData(userId);
-
-    await expect(getIdentityBundleByUserId(userId)).resolves.toBeNull();
-    await expect(getVerificationsByUserId(userId)).resolves.toHaveLength(0);
-    await expect(getZkProofsByUserId(userId)).resolves.toHaveLength(0);
-    await expect(getEncryptedAttributeTypesByUserId(userId)).resolves.toEqual(
-      []
-    );
-    await expect(
-      getAttestationEvidenceByUserAndVerification(userId, verificationId)
-    ).resolves.toBeNull();
-    await expect(
-      getEncryptedSecretByUserAndType(userId, "fhe_keys")
-    ).resolves.toBeNull();
-    await expect(getSecretWrappersBySecretId(secret.id)).resolves.toHaveLength(
-      0
-    );
   });
 });

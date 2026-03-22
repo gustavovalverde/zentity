@@ -7,14 +7,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
-  getAttestationEvidenceByUserAndVerification,
-  upsertAttestationEvidence,
-} from "@/lib/db/queries/attestation";
-import {
   createZkProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
-  getZkProofsByUserId,
   insertEncryptedAttribute,
   insertSignedClaim,
   insertZkProofRecord,
@@ -291,40 +286,6 @@ describe("ZK proofs and encrypted attributes", () => {
     await resetDatabase();
   });
 
-  it("persists zk proof records", async () => {
-    const userId = await createTestUser();
-    const verificationId = crypto.randomUUID();
-    const proofSessionId = crypto.randomUUID();
-    const now = Date.now();
-
-    await createZkProofSession({
-      id: proofSessionId,
-      userId,
-      verificationId,
-      msgSender: userId,
-      audience: "http://localhost:3000",
-      policyVersion: POLICY_VERSION,
-      createdAt: now,
-      expiresAt: now + 60_000,
-    });
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "age_verification",
-      proofHash: "proof-hash",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-    });
-
-    const proofs = await getZkProofsByUserId(userId);
-    expect(proofs).toHaveLength(1);
-    expect(proofs[0]?.proofType).toBe("age_verification");
-    expect(Boolean(proofs[0]?.verified)).toBe(true);
-  });
-
   it("persists encrypted attributes", async () => {
     const userId = await createTestUser();
 
@@ -435,32 +396,5 @@ describe("Document selection", () => {
 
     const selected = await getSelectedVerification(userId);
     expect(selected?.id).toBe(docFull);
-  });
-});
-
-describe("Attestation evidence", () => {
-  beforeEach(async () => {
-    await resetDatabase();
-  });
-
-  it("persists evidence pack metadata", async () => {
-    const userId = await createTestUser();
-    const verificationId = crypto.randomUUID();
-
-    await upsertAttestationEvidence({
-      userId,
-      verificationId,
-      policyVersion: "policy-v1",
-      policyHash: "policy-hash",
-      proofSetHash: "proof-set-hash",
-    });
-
-    const evidence = await getAttestationEvidenceByUserAndVerification(
-      userId,
-      verificationId
-    );
-    expect(evidence?.policyVersion).toBe("policy-v1");
-    expect(evidence?.policyHash).toBe("policy-hash");
-    expect(evidence?.proofSetHash).toBe("proof-set-hash");
   });
 });

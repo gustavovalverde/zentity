@@ -7,7 +7,7 @@
 
 // ─── Input / Output types ───────────────────────────────────────────
 
-export interface ComplianceInput {
+interface ComplianceInput {
   birthYearOffset: number | null;
   encryptedAttributes: ReadonlyArray<{ attributeType: string }>;
   hasNationalityCommitment: boolean;

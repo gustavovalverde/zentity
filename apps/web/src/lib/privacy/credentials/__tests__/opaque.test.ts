@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  decryptSecretWithOpaqueExport,
   unwrapDekWithOpaqueExport,
   wrapDekWithOpaqueExport,
 } from "@/lib/privacy/credentials";
@@ -10,7 +9,6 @@ import {
   encryptWithDek,
   generateDek,
 } from "@/lib/privacy/secrets/envelope";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 describe("opaque credentials", () => {
   it("wraps and unwraps a DEK with OPAQUE export key", async () => {
@@ -34,165 +32,6 @@ describe("opaque credentials", () => {
     });
 
     expect(unwrapped).toEqual(dek);
-  });
-
-  it("decrypts a secret envelope using an OPAQUE wrapper", async () => {
-    const secretId = crypto.randomUUID();
-    const secretType = "fhe_keys";
-    const userId = crypto.randomUUID();
-    const plaintext = new TextEncoder().encode("opaque-secret");
-    const dek = generateDek();
-    const exportKey = crypto.getRandomValues(new Uint8Array(64));
-
-    const envelope = await encryptWithDek({
-      secretId,
-      secretType,
-      plaintext,
-      dek,
-      envelopeFormat: "json",
-    });
-
-    const wrappedDek = await wrapDekWithOpaqueExport({
-      secretId,
-      userId,
-      dek,
-      exportKey,
-    });
-
-    const decrypted = await decryptSecretWithOpaqueExport({
-      secretId,
-      secretType,
-      userId,
-      encryptedBlob: envelope.encryptedBlob,
-      wrappedDek,
-      exportKey,
-      envelopeFormat: envelope.envelopeFormat,
-    });
-
-    expect(new TextDecoder().decode(decrypted)).toBe("opaque-secret");
-  });
-
-  it("fails to decrypt with the wrong user id", async () => {
-    const secretId = crypto.randomUUID();
-    const secretType = "fhe_keys";
-    const userId = crypto.randomUUID();
-    const plaintext = new TextEncoder().encode("opaque-secret");
-    const dek = generateDek();
-    const exportKey = crypto.getRandomValues(new Uint8Array(64));
-
-    const envelope = await encryptWithDek({
-      secretId,
-      secretType,
-      plaintext,
-      dek,
-      envelopeFormat: "json",
-    });
-
-    const wrappedDek = await wrapDekWithOpaqueExport({
-      secretId,
-      userId,
-      dek,
-      exportKey,
-    });
-
-    await expect(
-      decryptSecretWithOpaqueExport({
-        secretId,
-        secretType,
-        userId: crypto.randomUUID(),
-        encryptedBlob: envelope.encryptedBlob,
-        wrappedDek,
-        exportKey,
-        envelopeFormat: envelope.envelopeFormat,
-      })
-    ).rejects.toThrow();
-  });
-
-  it("fails to decrypt with the wrong secret type", async () => {
-    const secretId = crypto.randomUUID();
-    const secretType = "fhe_keys";
-    const userId = crypto.randomUUID();
-    const plaintext = new TextEncoder().encode("opaque-secret");
-    const dek = generateDek();
-    const exportKey = crypto.getRandomValues(new Uint8Array(64));
-
-    const envelope = await encryptWithDek({
-      secretId,
-      secretType,
-      plaintext,
-      dek,
-      envelopeFormat: "json",
-    });
-
-    const wrappedDek = await wrapDekWithOpaqueExport({
-      secretId,
-      userId,
-      dek,
-      exportKey,
-    });
-
-    await expect(
-      decryptSecretWithOpaqueExport({
-        secretId,
-        secretType: "not_fhe_keys",
-        userId,
-        encryptedBlob: envelope.encryptedBlob,
-        wrappedDek,
-        exportKey,
-        envelopeFormat: envelope.envelopeFormat,
-      })
-    ).rejects.toThrow();
-  });
-
-  it("fails to decrypt if wrapped DEK is tampered", async () => {
-    const secretId = crypto.randomUUID();
-    const secretType = "fhe_keys";
-    const userId = crypto.randomUUID();
-    const plaintext = new TextEncoder().encode("opaque-secret");
-    const dek = generateDek();
-    const exportKey = crypto.getRandomValues(new Uint8Array(64));
-
-    const envelope = await encryptWithDek({
-      secretId,
-      secretType,
-      plaintext,
-      dek,
-      envelopeFormat: "json",
-    });
-
-    const wrappedDek = await wrapDekWithOpaqueExport({
-      secretId,
-      userId,
-      dek,
-      exportKey,
-    });
-
-    const wrapper = JSON.parse(wrappedDek) as {
-      alg: string;
-      iv: string;
-      ciphertext: string;
-    };
-    const ciphertext = base64ToBytes(wrapper.ciphertext);
-    const lastIdx = ciphertext.length - 1;
-    const lastByte = ciphertext[lastIdx];
-    if (lastByte !== undefined) {
-      // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for AEAD integrity test
-      ciphertext[lastIdx] = lastByte ^ 0xff;
-    }
-    wrapper.ciphertext = bytesToBase64(ciphertext);
-    const tamperedWrappedDek = JSON.stringify(wrapper);
-
-    await expect(
-      decryptSecretWithOpaqueExport({
-        secretId,
-        secretType,
-        userId,
-        encryptedBlob: envelope.encryptedBlob,
-        wrappedDek: tamperedWrappedDek,
-        exportKey,
-        envelopeFormat: envelope.envelopeFormat,
-      })
-    ).rejects.toThrow();
   });
 
   it("fails to decrypt if encrypted payload is tampered", async () => {

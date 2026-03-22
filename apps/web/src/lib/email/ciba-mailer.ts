@@ -78,7 +78,7 @@ interface AgentIdentity {
   version?: string | null | undefined;
 }
 
-export function formatAgentText(agent: AgentIdentity): string {
+function formatAgentText(agent: AgentIdentity): string {
   const parts = [agent.name];
   if (agent.model) {
     parts.push(`Model: ${agent.model}`);
@@ -96,7 +96,7 @@ export function formatAgentText(agent: AgentIdentity): string {
   return `Agent: ${parts.join(" | ")}\n(${trustLabel})`;
 }
 
-export function formatAgentHtml(agent: AgentIdentity): string {
+function formatAgentHtml(agent: AgentIdentity): string {
   const fields = [`<strong>${agent.name}</strong>`];
   if (agent.model) {
     fields.push(`Model: ${agent.model}`);

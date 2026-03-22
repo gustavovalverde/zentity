@@ -1,7 +1,4 @@
-import type {
-  AttestationEvidenceRecord,
-  BlockchainAttestation,
-} from "../schema/attestation";
+import type { BlockchainAttestation } from "../schema/attestation";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
@@ -43,25 +40,6 @@ export async function upsertAttestationEvidence(args: {
       },
     })
     .run();
-}
-
-export async function getAttestationEvidenceByUserAndVerification(
-  userId: string,
-  verificationId: string
-): Promise<AttestationEvidenceRecord | null> {
-  const row = await db
-    .select()
-    .from(attestationEvidence)
-    .where(
-      and(
-        eq(attestationEvidence.userId, userId),
-        eq(attestationEvidence.verificationId, verificationId)
-      )
-    )
-    .limit(1)
-    .get();
-
-  return row ?? null;
 }
 
 export async function createBlockchainAttestation(data: {

@@ -11,16 +11,11 @@ import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_valid
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
 
-import {
-  getBbJsVersion,
-  getCircuitMetadata,
-  getPublicInputCountFromAbi,
-} from "../noir-verifier";
+import { getBbJsVersion, getCircuitMetadata } from "../noir-verifier";
 import {
   isProofType,
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
-  type ProofType,
 } from "../proof-types";
 
 describe("noir-verifier", () => {
@@ -63,17 +58,6 @@ describe("noir-verifier", () => {
       const version2 = getBbJsVersion();
 
       expect(version1).toBe(version2);
-    });
-  });
-
-  describe("getPublicInputCountFromAbi", () => {
-    it.each(
-      Object.entries(PROOF_TYPE_SPECS).map(
-        ([type, spec]) => [type, spec] as const
-      )
-    )("%s ABI count matches PROOF_TYPE_SPECS.minPublicInputs", (circuitType, spec) => {
-      const abiCount = getPublicInputCountFromAbi(circuitType as ProofType);
-      expect(abiCount).toBe(spec.minPublicInputs);
     });
   });
 });

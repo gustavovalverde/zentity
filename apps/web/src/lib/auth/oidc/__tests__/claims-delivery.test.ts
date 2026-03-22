@@ -2,13 +2,18 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   consumeEphemeralClaimsByUser,
-  resetEphemeralIdentityClaimsStore,
   storeEphemeralClaims,
 } from "../ephemeral-identity-claims";
 
+function resetEphemeralStore() {
+  const key = Symbol.for("zentity.ephemeral-identity-claims");
+  const g = globalThis as Record<symbol, Map<string, unknown> | undefined>;
+  g[key]?.clear();
+}
+
 describe("ephemeral claims delivery (userinfo-only)", () => {
-  beforeEach(async () => {
-    await resetEphemeralIdentityClaimsStore();
+  beforeEach(() => {
+    resetEphemeralStore();
   });
 
   it("consumeEphemeralClaimsByUser returns and removes entry", async () => {

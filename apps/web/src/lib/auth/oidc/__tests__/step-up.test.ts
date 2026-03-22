@@ -4,11 +4,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildOAuthErrorUrl,
-  extractTierFromAcr,
   findSatisfiedAcr,
   isMaxAgeExceeded,
-  parseAcrValues,
 } from "@/lib/auth/oidc/step-up";
+
+const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
+const WHITESPACE = /\s+/;
+
+function parseAcrValues(raw: string): string[] {
+  return raw.split(WHITESPACE).filter(Boolean);
+}
+
+function extractTierFromAcr(acr: string): number | null {
+  const match = ACR_TIER_PATTERN.exec(acr);
+  return match?.[1] ? Number.parseInt(match[1], 10) : null;
+}
 
 describe("parseAcrValues", () => {
   it("splits space-separated values", () => {

@@ -4,7 +4,7 @@
 
 import { isPrivateHost as _isPrivateHost } from "@/lib/auth/url-safety";
 
-export const isPrivateHost = _isPrivateHost;
+const isPrivateHost = _isPrivateHost;
 
 /**
  * Detect URL-formatted client_id (MCP CIMD pattern).
@@ -286,16 +286,4 @@ export function checkUrlQueryWarning(url: string): string | null {
     // Already handled by validateFetchUrl
   }
   return null;
-}
-
-/**
- * Assert that a DCR-generated client_id is not URL-formatted.
- * Current hex generation already satisfies this — this makes it explicit.
- */
-export function assertDcrClientIdFormat(clientId: string): void {
-  if (clientId.startsWith("https://") || clientId.startsWith("http://")) {
-    throw new Error(
-      `DCR client_id "${clientId}" looks URL-formatted — this would be ambiguous with CIMD client IDs`
-    );
-  }
 }

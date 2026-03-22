@@ -2,15 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   isValidMlKemPublicKey,
-  ML_KEM_CIPHERTEXT_BYTES,
-  ML_KEM_PUBLIC_KEY_BYTES,
   ML_KEM_SECRET_KEY_BYTES,
-  ML_KEM_SHARED_SECRET_BYTES,
   mlKemDecapsulate,
   mlKemEncapsulate,
   mlKemGetPublicKey,
   mlKemKeygen,
 } from "@/lib/privacy/primitives/ml-kem";
+
+const ML_KEM_PUBLIC_KEY_BYTES = 1184;
+const ML_KEM_CIPHERTEXT_BYTES = 1088;
+const ML_KEM_SHARED_SECRET_BYTES = 32;
 
 describe("ml-kem-768", () => {
   describe("keygen", () => {

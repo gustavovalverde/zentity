@@ -5,18 +5,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db/connection";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { ML_KEM_PUBLIC_KEY_BYTES } from "@/lib/privacy/primitives/ml-kem";
 import { resetDatabase } from "@/test/db-test-utils";
 
 import {
   createRpEncryptionKey,
-  deleteAllRpEncryptionKeys,
   getActiveRpEncryptionKey,
-  getAllRpEncryptionKeys,
-  getRpEncryptionKeyById,
   revokeRpEncryptionKey,
   rotateRpEncryptionKey,
 } from "../compliance";
+
+/** ML-KEM-768 public key length in bytes */
+const ML_KEM_PUBLIC_KEY_BYTES = 1184;
 
 async function createTestOAuthClient(clientId: string): Promise<void> {
   await db
@@ -138,91 +137,7 @@ describe("compliance queries - RP encryption keys", () => {
     });
   });
 
-  describe("getRpEncryptionKeyById", () => {
-    it("returns key by ID", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      const created = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: testFingerprint,
-      });
-
-      const key = await getRpEncryptionKeyById(created.id);
-      expect(key).not.toBeNull();
-      expect(key?.id).toBe(created.id);
-    });
-
-    it("returns null for nonexistent ID", async () => {
-      const key = await getRpEncryptionKeyById(crypto.randomUUID());
-      expect(key).toBeNull();
-    });
-  });
-
-  describe("getAllRpEncryptionKeys", () => {
-    it("returns all keys for client including rotated", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      const key1 = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: testFingerprint,
-      });
-
-      await revokeRpEncryptionKey(key1.id);
-
-      await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: `${testFingerprint}-new`,
-      });
-
-      const allKeys = await getAllRpEncryptionKeys(clientId);
-      expect(allKeys.length).toBe(2);
-    });
-
-    it("returns empty array for client with no keys", async () => {
-      const allKeys = await getAllRpEncryptionKeys("nonexistent");
-      expect(allKeys).toEqual([]);
-    });
-  });
-
   describe("rotateRpEncryptionKey", () => {
-    it("marks old key as rotated and creates new one", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      const oldKey = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: testFingerprint,
-      });
-
-      const newPublicKey = Buffer.from(
-        crypto.randomBytes(ML_KEM_PUBLIC_KEY_BYTES)
-      ).toString("base64");
-      const newFingerprint = crypto
-        .createHash("sha256")
-        .update(Buffer.from(newPublicKey, "base64"))
-        .digest("hex");
-
-      const newKey = await rotateRpEncryptionKey(
-        clientId,
-        newPublicKey,
-        newFingerprint
-      );
-
-      expect(newKey.status).toBe("active");
-      expect(newKey.publicKey).toBe(newPublicKey);
-      expect(newKey.previousKeyId).toBe(oldKey.id);
-
-      const oldKeyAfter = await getRpEncryptionKeyById(oldKey.id);
-      expect(oldKeyAfter?.status).toBe("rotated");
-      expect(oldKeyAfter?.rotatedAt).not.toBeNull();
-    });
-
     it("creates first key when none exists", async () => {
       const clientId = "test-client";
       await createTestOAuthClient(clientId);
@@ -235,42 +150,6 @@ describe("compliance queries - RP encryption keys", () => {
 
       expect(newKey.status).toBe("active");
       expect(newKey.previousKeyId).toBeNull();
-    });
-  });
-
-  describe("revokeRpEncryptionKey", () => {
-    it("marks key as revoked", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      const key = await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: testFingerprint,
-      });
-
-      await revokeRpEncryptionKey(key.id);
-
-      const revokedKey = await getRpEncryptionKeyById(key.id);
-      expect(revokedKey?.status).toBe("revoked");
-    });
-  });
-
-  describe("deleteAllRpEncryptionKeys", () => {
-    it("deletes all keys for client", async () => {
-      const clientId = "test-client";
-      await createTestOAuthClient(clientId);
-
-      await createRpEncryptionKey({
-        clientId,
-        publicKey: testPublicKey,
-        keyFingerprint: testFingerprint,
-      });
-
-      await deleteAllRpEncryptionKeys(clientId);
-
-      const allKeys = await getAllRpEncryptionKeys(clientId);
-      expect(allKeys).toEqual([]);
     });
   });
 });

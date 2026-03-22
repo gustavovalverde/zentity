@@ -4,7 +4,7 @@ import { createHmac } from "node:crypto";
  * Canonical normalization for document numbers.
  * Strips all non-alphanumeric characters and uppercases.
  */
-export function canonicalizeDocumentNumber(docNumber: string): string {
+function canonicalizeDocumentNumber(docNumber: string): string {
   return docNumber.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 

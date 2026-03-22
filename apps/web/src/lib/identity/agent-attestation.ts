@@ -26,7 +26,7 @@ interface TrustedAttester {
   jwksUrl: string;
 }
 
-export function parseTrustedAttesters(): TrustedAttester[] {
+function parseTrustedAttesters(): TrustedAttester[] {
   const raw = env.TRUSTED_AGENT_ATTESTERS;
   if (!raw) {
     return [];

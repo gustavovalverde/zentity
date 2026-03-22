@@ -122,7 +122,7 @@ function vkBytesToFields(vkBytes: Uint8Array): bigint[] {
   return fields;
 }
 
-export function getPublicInputCountFromAbi(circuitType: ProofType): number {
+function getPublicInputCountFromAbi(circuitType: ProofType): number {
   const circuit = CIRCUITS[circuitType] as { abi?: CircuitAbi };
   const abi = circuit?.abi;
   if (!abi?.parameters) {

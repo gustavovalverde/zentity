@@ -10,11 +10,11 @@ import type { AccountTier } from "@/lib/assurance/types";
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
 
-export function parseAcrValues(raw: string): string[] {
+function parseAcrValues(raw: string): string[] {
   return raw.split(WHITESPACE).filter(Boolean);
 }
 
-export function extractTierFromAcr(acr: string): number | null {
+function extractTierFromAcr(acr: string): number | null {
   const match = ACR_TIER_PATTERN.exec(acr);
   return match?.[1] ? Number.parseInt(match[1], 10) : null;
 }

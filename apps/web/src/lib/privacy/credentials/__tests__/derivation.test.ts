@@ -5,7 +5,7 @@ import {
   deriveKekFromPrf,
   deriveKekFromWalletSignature,
   generatePrfSalt,
-} from "@/lib/privacy/credentials";
+} from "@/lib/privacy/credentials/derivation";
 import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
 
 describe("key-derivation", () => {

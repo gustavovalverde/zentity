@@ -61,9 +61,15 @@ import {
   clearEphemeralClaims,
   consumeEphemeralClaims,
   consumeEphemeralClaimsByUser,
-  resetEphemeralIdentityClaimsStore,
   storeEphemeralClaims,
 } from "../ephemeral-identity-claims";
+
+function resetEphemeralStore() {
+  const key = Symbol.for("zentity.ephemeral-identity-claims");
+  const g = globalThis as Record<symbol, Map<string, unknown> | undefined>;
+  g[key]?.clear();
+}
+
 import { createScopeHash } from "../identity-intent";
 
 function makeMeta(intentJti: string, scopes: string[]) {
@@ -75,10 +81,10 @@ function makeMeta(intentJti: string, scopes: string[]) {
 }
 
 describe("ephemeral identity claims store", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.useRealTimers();
     usedJtis.clear();
-    await resetEphemeralIdentityClaimsStore();
+    resetEphemeralStore();
   });
 
   it("stores and consumes claims by userId:clientId", async () => {

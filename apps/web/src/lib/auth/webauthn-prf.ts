@@ -12,19 +12,6 @@ export interface PrfSupportStatus {
   supported: boolean;
 }
 
-/**
- * Extracted credential data for storage after registration.
- * This data is needed for server-side verification during authentication.
- */
-interface CredentialRegistrationData {
-  backedUp: boolean;
-  counter: number;
-  credentialId: string;
-  deviceType: "platform" | "cross-platform" | null;
-  publicKey: string; // Base64URL-encoded COSE public key
-  transports: AuthenticatorTransport[];
-}
-
 const PRF_OUTPUT_LENGTH = 32;
 
 interface PrfExtensionResults {
@@ -185,94 +172,6 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
   }
 
   return { supported: true };
-}
-
-/**
- * Extract registration data from a credential for server-side storage.
- */
-export function extractCredentialRegistrationData(
-  credential: PublicKeyCredential
-): CredentialRegistrationData {
-  const response = credential.response as AuthenticatorAttestationResponse;
-
-  // Parse authenticator data to extract COSE public key
-  const authData = new Uint8Array(response.getAuthenticatorData());
-
-  // Flags byte is at offset 32 (after rpIdHash)
-  const flags = authData[32];
-  if (flags === undefined) {
-    throw new Error("Authenticator data too short: missing flags byte.");
-  }
-  // Bit 0 = User Present, Bit 2 = User Verified, Bit 3 = Backup Eligibility, Bit 4 = Backed Up
-  // Bit 6 = Attested credential data included
-  // biome-ignore lint/suspicious/noBitwiseOperators: WebAuthn spec requires bit flag extraction
-  const backedUp = (flags & 0x10) !== 0;
-  // biome-ignore lint/suspicious/noBitwiseOperators: WebAuthn spec requires bit flag extraction
-  const hasAttestedCredentialData = (flags & 0x40) !== 0;
-
-  // Get counter (bytes 33-36, big-endian)
-  const counterView = new DataView(
-    authData.buffer,
-    authData.byteOffset + 33,
-    4
-  );
-  const counter = counterView.getUint32(0, false);
-
-  // Extract COSE public key from attested credential data
-  // Structure: rpIdHash(32) + flags(1) + counter(4) + aaguid(16) + credIdLen(2) + credId(n) + coseKey(rest)
-  if (!hasAttestedCredentialData) {
-    throw new Error(
-      "Authenticator data does not contain attested credential data."
-    );
-  }
-
-  // Skip to attested credential data (after rpIdHash + flags + counter = 37 bytes)
-  let offset = 37;
-
-  // Skip aaguid (16 bytes)
-  offset += 16;
-
-  // Read credential ID length (2 bytes, big-endian)
-  const credIdLenView = new DataView(
-    authData.buffer,
-    authData.byteOffset + offset,
-    2
-  );
-  const credIdLen = credIdLenView.getUint16(0, false);
-  offset += 2;
-
-  // Skip credential ID
-  offset += credIdLen;
-
-  // Remaining bytes are the COSE public key
-  const cosePublicKey = authData.slice(offset);
-  if (cosePublicKey.length === 0) {
-    throw new Error(
-      "Unable to extract COSE public key from authenticator data."
-    );
-  }
-
-  // Determine device type from authenticator attachment
-  const attachment = credential.authenticatorAttachment;
-  let deviceType: "platform" | "cross-platform" | null = null;
-  if (attachment === "platform") {
-    deviceType = "platform";
-  } else if (attachment === "cross-platform") {
-    deviceType = "cross-platform";
-  }
-
-  // Get transports
-  const transports =
-    (response.getTransports?.() as AuthenticatorTransport[]) ?? [];
-
-  return {
-    credentialId: bytesToBase64Url(new Uint8Array(credential.rawId)),
-    publicKey: bytesToBase64Url(cosePublicKey),
-    counter,
-    deviceType,
-    backedUp,
-    transports,
-  };
 }
 
 export async function evaluatePrf(params: {

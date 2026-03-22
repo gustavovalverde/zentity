@@ -180,7 +180,7 @@ function isAlphaNumeric(char: string): boolean {
  *
  * Use this for logging arbitrary input objects when needed.
  */
-export function sanitizeForLog(
+function sanitizeForLog(
   value: unknown,
   depth = 0,
   seen?: WeakSet<object>

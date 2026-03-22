@@ -1,5 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["server.mjs!"],
   "rules": {
     "types": "warn"
   },
@@ -12,18 +13,19 @@
     "public/coi-serviceworker.js",
     "public/push-sw.js",
     "e2e/**",
-    "src/test/client-only.ts",
-    "src/test/server-only.ts"
+    "src/test/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "vitest.global-setup.ts",
+    "vitest.setup.mts"
   ],
   "ignoreDependencies": [
     "@vladmandic/human-models",
     "tfhe",
-    "pino-pretty",
-    "lint-staged",
-    "@synthetixio/synpress-cache",
-    "fs-extra",
-    "@types/fs-extra",
-    "buffer"
+    "buffer",
+    "tailwindcss",
+    "tw-animate-css"
   ],
   "ignoreBinaries": ["nargo"],
   "vitest": {

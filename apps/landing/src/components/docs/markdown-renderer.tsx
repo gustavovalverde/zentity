@@ -41,7 +41,7 @@ function slugify(children: React.ReactNode): string {
 }
 
 // Transform markdown links to work with our docs routing
-export function transformHref(href: string | undefined): {
+function transformHref(href: string | undefined): {
   href: string;
   isInternal: boolean;
   isExternal: boolean;

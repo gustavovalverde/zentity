@@ -85,7 +85,7 @@ export function extractIdentityScopes(scopes: string[]): IdentityScope[] {
  * Check if the "identity" convenience scope is present and expand it.
  * Returns deduplicated list of specific identity scopes.
  */
-export function expandIdentityScopes(scopes: string[]): IdentityScope[] {
+function expandIdentityScopes(scopes: string[]): IdentityScope[] {
   const identityScopes = extractIdentityScopes(scopes);
 
   return identityScopes;
@@ -94,7 +94,7 @@ export function expandIdentityScopes(scopes: string[]): IdentityScope[] {
 /**
  * Get all claim keys that should be included based on consented scopes.
  */
-export function getConsentedClaimKeys(
+function getConsentedClaimKeys(
   consentedScopes: string[]
 ): (keyof IdentityFields)[] {
   const expandedScopes = expandIdentityScopes(consentedScopes);

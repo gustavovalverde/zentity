@@ -18,21 +18,12 @@ import type {
 /**
  * Required ZK proof types for full verification (Tier 2)
  */
-export const REQUIRED_ZK_PROOF_TYPES = [
+const REQUIRED_ZK_PROOF_TYPES = [
   "age_verification",
   "doc_validity",
   "nationality_membership",
   "face_match",
   "identity_binding",
-] as const;
-
-/**
- * Required signed claim types for identity verification
- */
-export const REQUIRED_SIGNED_CLAIM_TYPES = [
-  "ocr_result",
-  "liveness_score",
-  "face_match_score",
 ] as const;
 
 /**
@@ -62,7 +53,7 @@ function isValidLoginMethod(method: unknown): method is LoginMethod {
  * Passkey = strong (phishing-resistant)
  * Everything else = basic
  */
-export function deriveAuthStrength(
+function deriveAuthStrength(
   loginMethod: string | null | undefined
 ): AuthStrength {
   return loginMethod === "passkey" ? "strong" : "basic";
@@ -172,13 +163,6 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
  */
 export function areZkProofsComplete(proofTypes: string[]): boolean {
   return REQUIRED_ZK_PROOF_TYPES.every((type) => proofTypes.includes(type));
-}
-
-/**
- * Check if signed claims are complete based on claim types
- */
-export function areSignedClaimsComplete(claimTypes: string[]): boolean {
-  return REQUIRED_SIGNED_CLAIM_TYPES.every((type) => claimTypes.includes(type));
 }
 
 /**

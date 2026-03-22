@@ -8,28 +8,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  areSignedClaimsComplete,
   areZkProofsComplete,
   computeAssuranceState,
-  deriveAuthStrength,
   isFheComplete,
-  REQUIRED_SIGNED_CLAIM_TYPES,
-  REQUIRED_ZK_PROOF_TYPES,
 } from "../compute";
 
-describe("deriveAuthStrength", () => {
-  it("returns 'strong' for passkey authentication", () => {
-    expect(deriveAuthStrength("passkey")).toBe("strong");
-  });
-
-  it("returns 'basic' for other authenticated methods", () => {
-    expect(deriveAuthStrength("opaque")).toBe("basic");
-    expect(deriveAuthStrength("magic-link")).toBe("basic");
-    expect(deriveAuthStrength("eip712")).toBe("basic");
-    expect(deriveAuthStrength(null)).toBe("basic");
-    expect(deriveAuthStrength(undefined)).toBe("basic");
-  });
-});
+const REQUIRED_ZK_PROOF_TYPES = [
+  "age_verification",
+  "doc_validity",
+  "nationality_membership",
+  "face_match",
+  "identity_binding",
+] as const;
 
 describe("computeAssuranceState", () => {
   describe("Tier 0 - Anonymous", () => {
@@ -330,22 +320,6 @@ describe("areZkProofsComplete", () => {
     expect(
       areZkProofsComplete([...REQUIRED_ZK_PROOF_TYPES, "experimental_proof"])
     ).toBe(true);
-  });
-});
-
-describe("areSignedClaimsComplete", () => {
-  it("returns false when no claims", () => {
-    expect(areSignedClaimsComplete([])).toBe(false);
-  });
-
-  it("returns false when missing claims", () => {
-    expect(areSignedClaimsComplete(["ocr_result"])).toBe(false);
-  });
-
-  it("returns true when all required claims present", () => {
-    expect(areSignedClaimsComplete([...REQUIRED_SIGNED_CLAIM_TYPES])).toBe(
-      true
-    );
   });
 });
 

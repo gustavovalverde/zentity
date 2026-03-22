@@ -18,7 +18,7 @@ import { getClaimOrder } from "./types";
  * @param header - Original credential header
  * @returns Verification result
  */
-export async function verifyProof(
+async function verifyProof(
   proof: BbsProof,
   publicKey: Uint8Array,
   header?: Uint8Array
@@ -85,15 +85,4 @@ export async function verifyPresentation(
     presentation.issuerPublicKey,
     presentation.header
   );
-}
-
-/**
- * Get the value of a revealed claim from a presentation.
- * Returns undefined if claim is not revealed.
- */
-export function getRevealedClaim(
-  presentation: BbsPresentation,
-  claim: string
-): unknown {
-  return (presentation.revealedClaims as Record<string, unknown>)[claim];
 }

@@ -5,12 +5,19 @@ vi.mock("@/env", () => ({
 }));
 
 import {
-  type AttestationClaimPayload,
   type FaceMatchClaimData,
-  type LivenessClaimData,
   signAttestationClaim,
   verifyAttestationClaim,
 } from "../claims";
+
+type AttestationClaimPayload = Parameters<typeof signAttestationClaim>[0];
+interface LivenessClaimData {
+  antispoofScore: number;
+  antispoofScoreFixed: number;
+  liveScore: number;
+  liveScoreFixed: number;
+  passed: boolean;
+}
 
 describe("signed-claims", () => {
   const policyVersion = "test-policy-v1";

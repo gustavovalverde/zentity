@@ -10,10 +10,6 @@ import "client-only";
  * and provides equivalent security to passkey PRF output.
  */
 
-import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
-
-import { decryptWithDek } from "@/lib/privacy/secrets/envelope";
-
 import { deriveKekFromOpaqueExport, KEK_SOURCE } from "./derivation";
 import { unwrapDek, wrapDek } from "./wrap";
 
@@ -86,33 +82,4 @@ export async function createOpaqueWrapper(params: {
     credentialId: OPAQUE_CREDENTIAL_ID,
     kekSource: KEK_SOURCE.OPAQUE,
   };
-}
-
-/**
- * Decrypt a secret envelope using OPAQUE export key.
- * Combines DEK unwrapping with envelope decryption.
- */
-export async function decryptSecretWithOpaqueExport(params: {
-  secretId: string;
-  secretType: string;
-  userId: string;
-  encryptedBlob: Uint8Array;
-  wrappedDek: string;
-  exportKey: Uint8Array;
-  envelopeFormat: EnvelopeFormat;
-}): Promise<Uint8Array> {
-  const dek = await unwrapDekWithOpaqueExport({
-    secretId: params.secretId,
-    userId: params.userId,
-    wrappedDek: params.wrappedDek,
-    exportKey: params.exportKey,
-  });
-
-  return decryptWithDek({
-    secretId: params.secretId,
-    secretType: params.secretType,
-    encryptedBlob: params.encryptedBlob,
-    dek,
-    envelopeFormat: params.envelopeFormat,
-  });
 }

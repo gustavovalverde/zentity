@@ -26,9 +26,6 @@ importers:
       '@tabler/icons-react':
         specifier: ^3.40.0
         version: 3.40.0(react@19.2.4)
-      '@tailwindcss/vite':
-        specifier: ^4.2.1
-        version: 4.2.1(vite@8.0.0(@types/node@25.5.0)(esbuild@0.27.3)(jiti@2.6.1)(yaml@2.8.2))
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -72,6 +69,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.4.7
         version: 2.4.7
+      '@tailwindcss/vite':
+        specifier: ^4.2.1
+        version: 4.2.1(vite@8.0.0(@types/node@25.5.0)(esbuild@0.27.3)(jiti@2.6.1)(yaml@2.8.2))
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0

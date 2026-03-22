@@ -7,8 +7,6 @@ import { logger } from "@/lib/logging/logger";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const FETCH_TIMEOUT_MS = 5000;
-const MAX_RESPONSE_BYTES = 1_048_576; // 1 MB
-
 const PRIVATE_IP_RE =
   /^(127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|0\.|::1|fc|fd|fe80)/;
 
@@ -62,73 +60,4 @@ export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
 
   cache.set(jwksUrl, { fetchedAt: Date.now(), jwks });
   return jwks;
-}
-
-/**
- * Validates that a raw fetch to the JWKS URL respects size and redirect limits.
- */
-export async function validateJwksEndpoint(jwksUrl: string): Promise<boolean> {
-  let url: URL;
-  try {
-    url = new URL(jwksUrl);
-  } catch {
-    return false;
-  }
-
-  if (!isDevMode()) {
-    if (isPrivateUrl(url)) {
-      return false;
-    }
-    if (url.protocol !== "https:") {
-      return false;
-    }
-  }
-
-  try {
-    const response = await fetch(jwksUrl, {
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "follow",
-      headers: { Accept: "application/json" },
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const contentLength = response.headers.get("content-length");
-    if (
-      contentLength &&
-      Number.parseInt(contentLength, 10) > MAX_RESPONSE_BYTES
-    ) {
-      logger.warn(
-        { jwksUrl, contentLength },
-        "JWKS response exceeds size limit"
-      );
-      return false;
-    }
-
-    // Verify redirect destination isn't private
-    const finalUrl = new URL(response.url);
-    if (
-      finalUrl.origin !== url.origin &&
-      !isDevMode() &&
-      isPrivateUrl(finalUrl)
-    ) {
-      logger.warn(
-        { jwksUrl, finalUrl: response.url },
-        "JWKS redirected to private address"
-      );
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    logger.warn({ err, jwksUrl }, "JWKS endpoint validation failed");
-    return false;
-  }
-}
-
-/** Clear the JWKS cache (for testing). */
-export function clearJwksCache(): void {
-  cache.clear();
 }

@@ -129,7 +129,7 @@ export async function createWalletCredential(
  * @param publicKey - Issuer's public key
  * @returns True if signature is valid
  */
-export async function verifySignature(
+async function verifySignature(
   signature: BbsSignature,
   messages: BbsMessage[],
   publicKey: Uint8Array

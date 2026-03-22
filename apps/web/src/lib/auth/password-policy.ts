@@ -29,42 +29,6 @@ export function getPasswordLengthError(password: string): string | undefined {
   return undefined;
 }
 
-export function getPasswordSimilarityError(
-  password: string,
-  opts: {
-    email?: string | null;
-    documentNumber?: string | null;
-  }
-): string | undefined {
-  if (!password) {
-    return;
-  }
-
-  const normalizedPassword = normalizeForComparison(password);
-
-  const emailLocalPart = opts.email?.split("@")[0];
-  const normalizedEmail = emailLocalPart
-    ? normalizeForComparison(emailLocalPart)
-    : "";
-  if (
-    normalizedEmail.length >= 3 &&
-    normalizedPassword.includes(normalizedEmail)
-  ) {
-    return "Password can't contain your email";
-  }
-
-  const normalizedDocNumber = opts.documentNumber
-    ? normalizeForComparison(opts.documentNumber)
-    : "";
-  if (
-    normalizedDocNumber.length >= 4 &&
-    normalizedPassword.includes(normalizedDocNumber)
-  ) {
-    return "Password can't contain your document number";
-  }
-  return undefined;
-}
-
 export function getPasswordRequirementStatus(
   password: string,
   opts: {

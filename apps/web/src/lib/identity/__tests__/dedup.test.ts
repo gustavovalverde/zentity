@@ -1,31 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  canonicalizeDocumentNumber,
-  computeDedupKey,
-  computeRpNullifier,
-} from "../dedup";
+import { computeDedupKey, computeRpNullifier } from "../dedup";
 
 const SECRET = "test-dedup-secret-at-least-32-chars-long";
 const HEX_64 = /^[0-9a-f]{64}$/;
-
-describe("canonicalizeDocumentNumber", () => {
-  it("uppercases and strips non-alphanumeric characters", () => {
-    expect(canonicalizeDocumentNumber("AB-123.456")).toBe("AB123456");
-  });
-
-  it("handles already-clean input", () => {
-    expect(canonicalizeDocumentNumber("X12345")).toBe("X12345");
-  });
-
-  it("strips spaces, dashes, dots, slashes", () => {
-    expect(canonicalizeDocumentNumber("a b/c-d.e")).toBe("ABCDE");
-  });
-
-  it("handles empty string", () => {
-    expect(canonicalizeDocumentNumber("")).toBe("");
-  });
-});
 
 describe("computeDedupKey", () => {
   it("produces deterministic output for the same inputs", () => {

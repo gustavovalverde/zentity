@@ -1,8 +1,8 @@
-import type { ComplianceInput } from "../compliance";
-
 import { describe, expect, it } from "vitest";
 
 import { deriveComplianceStatus } from "../compliance";
+
+type ComplianceInput = Parameters<typeof deriveComplianceStatus>[0];
 
 function makeInput(overrides: Partial<ComplianceInput> = {}): ComplianceInput {
   return {

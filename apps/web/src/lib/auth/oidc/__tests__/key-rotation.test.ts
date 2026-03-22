@@ -9,7 +9,6 @@ import { jwks } from "@/lib/db/schema/jwks";
 import {
   cleanupExpiredKeys,
   getOrCreateSigningKey,
-  resetSigningKeyCache,
   rotateSigningKey,
 } from "../jwt-signer";
 
@@ -86,7 +85,6 @@ async function createUserCaller() {
 
 describe("JWKS signing key rotation", () => {
   beforeEach(async () => {
-    resetSigningKeyCache();
     await db.delete(jwks).run();
   });
 
@@ -127,7 +125,6 @@ describe("JWKS signing key rotation", () => {
       await getOrCreateSigningKey("EdDSA");
       const { newKid } = await rotateSigningKey("EdDSA");
 
-      resetSigningKeyCache();
       const current = await getOrCreateSigningKey("EdDSA");
 
       expect(current.kid).toBe(newKid);
@@ -192,7 +189,6 @@ describe("JWKS signing key rotation", () => {
   describe("admin tRPC procedure", () => {
     it("allows admin to rotate a key", async () => {
       await getOrCreateSigningKey("EdDSA");
-      resetSigningKeyCache();
 
       const caller = await createAdminCaller();
       const result = await caller.rotateSigningKey({

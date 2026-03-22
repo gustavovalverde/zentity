@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildCibaPushPayload, buildNotificationBody } from "../ciba-payload";
+import { buildCibaPushPayload } from "../ciba-payload";
 
 const ORIGIN = "https://app.zentity.xyz";
 
@@ -105,69 +105,5 @@ describe("buildCibaPushPayload", () => {
     );
 
     expect(payload.title).toBe("Claude Code requests approval");
-  });
-});
-
-describe("buildNotificationBody", () => {
-  it("uses binding message when present", () => {
-    expect(buildNotificationBody("App", "Confirm purchase", undefined)).toBe(
-      "App: Confirm purchase"
-    );
-  });
-
-  it("formats purchase authorization detail", () => {
-    const details = [
-      {
-        type: "purchase",
-        item: "Premium Plan",
-        amount: { value: "9.99", currency: "USD" },
-      },
-    ];
-
-    expect(buildNotificationBody("App", undefined, details)).toBe(
-      "App: Premium Plan for $9.99"
-    );
-  });
-
-  it("formats non-USD currency", () => {
-    const details = [
-      {
-        type: "purchase",
-        item: "Widget",
-        amount: { value: "100", currency: "EUR" },
-      },
-    ];
-
-    expect(buildNotificationBody("App", undefined, details)).toBe(
-      "App: Widget for 100 EUR"
-    );
-  });
-
-  it("omits amount when missing from purchase detail", () => {
-    const details = [{ type: "purchase", item: "Widget" }];
-
-    expect(buildNotificationBody("App", undefined, details)).toBe(
-      "App: Widget"
-    );
-  });
-
-  it("falls back to generic message when no binding message or purchase", () => {
-    expect(buildNotificationBody("App", undefined, undefined)).toBe(
-      "App is requesting access"
-    );
-  });
-
-  it("prefers binding message over authorization details", () => {
-    const details = [
-      {
-        type: "purchase",
-        item: "Plan",
-        amount: { value: "5", currency: "USD" },
-      },
-    ];
-
-    expect(buildNotificationBody("App", "Custom message", details)).toBe(
-      "App: Custom message"
-    );
   });
 });

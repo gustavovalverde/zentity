@@ -1,7 +1,6 @@
 import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resetEphemeralIdentityClaimsStore } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-intent";
 
 const TEST_SECRET = "test-secret-at-least-32-characters-long";
@@ -92,14 +91,13 @@ function makeRequest(body: unknown) {
 }
 
 describe("oauth2 identity stage route", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
     insertedJtis.clear();
     vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);
-    await resetEphemeralIdentityClaimsStore();
   });
 
   it("requires intent_token when identity scopes are requested", async () => {

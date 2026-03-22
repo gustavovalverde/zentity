@@ -51,9 +51,7 @@ const SHIELD_ICONS: Record<ShieldColor, typeof Shield> = {
   gray: ShieldAlert,
 };
 
-export function deriveSecurityBadges(
-  input: SecurityBadgeInput
-): SecurityBadge[] {
+function deriveSecurityBadges(input: SecurityBadgeInput): SecurityBadge[] {
   const badges: SecurityBadge[] = [];
 
   if (input.signingAlg !== "RS256") {

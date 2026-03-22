@@ -34,7 +34,7 @@ const registry = new Map<FhevmProviderId, FhevmProviderFactory>([
   ["mock", createMockInstance],
 ]);
 
-export function registerFhevmProvider(
+function registerFhevmProvider(
   id: FhevmProviderId,
   factory: FhevmProviderFactory
 ): void {

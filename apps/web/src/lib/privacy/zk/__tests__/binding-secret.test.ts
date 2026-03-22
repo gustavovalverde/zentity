@@ -4,29 +4,15 @@ import { AuthMode } from "@/lib/privacy/zk/proof-types";
 
 import {
   type BindingSecretResult,
-  bytesToFieldHex,
   deriveBindingSecret,
   prepareBindingProofInputs,
 } from "../binding-secret";
 
+function bytesToFieldHex(bytes: Uint8Array): string {
+  return `0x${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
 describe("binding-secret", () => {
-  describe("bytesToFieldHex", () => {
-    it("converts bytes to 0x-prefixed hex", () => {
-      const bytes = new Uint8Array([0x12, 0x34, 0xab, 0xcd]);
-      expect(bytesToFieldHex(bytes)).toBe("0x1234abcd");
-    });
-
-    it("pads single-digit hex values", () => {
-      const bytes = new Uint8Array([0x01, 0x02, 0x03]);
-      expect(bytesToFieldHex(bytes)).toBe("0x010203");
-    });
-
-    it("handles empty array", () => {
-      const bytes = new Uint8Array([]);
-      expect(bytesToFieldHex(bytes)).toBe("0x");
-    });
-  });
-
   describe("deriveBindingSecret", () => {
     const mockUserId = "user-123";
     const mockDocumentHash = "0xdeadbeef1234567890abcdef";

@@ -1,10 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import {
-  decryptPrivateKey,
-  encryptPrivateKey,
-  resetKekCache,
-} from "../key-vault";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TEST_KEK = "a-test-key-encryption-key-that-is-at-least-32-chars";
 const SAMPLE_PRIVATE_KEY = JSON.stringify({
@@ -15,15 +9,20 @@ const SAMPLE_PRIVATE_KEY = JSON.stringify({
 });
 
 describe("key-vault", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
   afterEach(() => {
     vi.unstubAllEnvs();
-    resetKekCache();
   });
 
   describe("with KEY_ENCRYPTION_KEY set", () => {
-    it("encrypt/decrypt round-trip preserves plaintext", () => {
+    it("encrypt/decrypt round-trip preserves plaintext", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
+      const { encryptPrivateKey, decryptPrivateKey } = await import(
+        "../key-vault"
+      );
 
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(encrypted).not.toBe(SAMPLE_PRIVATE_KEY);
@@ -33,9 +32,9 @@ describe("key-vault", () => {
       expect(decrypted).toBe(SAMPLE_PRIVATE_KEY);
     });
 
-    it("encrypted output is valid JSON envelope", () => {
+    it("encrypted output is valid JSON envelope", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
+      const { encryptPrivateKey } = await import("../key-vault");
 
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       const envelope = JSON.parse(encrypted);
@@ -44,32 +43,33 @@ describe("key-vault", () => {
       expect(typeof envelope.ct).toBe("string");
     });
 
-    it("different encryptions produce different ciphertexts (random IV)", () => {
+    it("different encryptions produce different ciphertexts (random IV)", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
+      const { encryptPrivateKey } = await import("../key-vault");
 
       const a = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       const b = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(a).not.toBe(b);
     });
 
-    it("wrong KEK fails decryption", () => {
+    it("wrong KEK fails decryption", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
+      const { encryptPrivateKey } = await import("../key-vault");
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
 
       vi.stubEnv(
         "KEY_ENCRYPTION_KEY",
         "a-different-key-that-is-also-32-chars-long"
       );
-      resetKekCache();
+      vi.resetModules();
+      const { decryptPrivateKey } = await import("../key-vault");
 
       expect(() => decryptPrivateKey(encrypted)).toThrow();
     });
 
-    it("plaintext keys are returned as-is by decrypt (migration support)", () => {
+    it("plaintext keys are returned as-is by decrypt (migration support)", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
+      const { decryptPrivateKey } = await import("../key-vault");
 
       const result = decryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
@@ -77,29 +77,30 @@ describe("key-vault", () => {
   });
 
   describe("without KEY_ENCRYPTION_KEY", () => {
-    it("encrypt returns plaintext unchanged", () => {
+    it("encrypt returns plaintext unchanged", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
-      resetKekCache();
+      const { encryptPrivateKey } = await import("../key-vault");
 
       const result = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
     });
 
-    it("decrypt returns plaintext unchanged", () => {
+    it("decrypt returns plaintext unchanged", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
-      resetKekCache();
+      const { decryptPrivateKey } = await import("../key-vault");
 
       const result = decryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
     });
 
-    it("decrypt throws if key is encrypted but no KEK is set", () => {
+    it("decrypt throws if key is encrypted but no KEK is set", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      resetKekCache();
-      const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
+      const mod1 = await import("../key-vault");
+      const encrypted = mod1.encryptPrivateKey(SAMPLE_PRIVATE_KEY);
 
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
-      resetKekCache();
+      vi.resetModules();
+      const { decryptPrivateKey } = await import("../key-vault");
 
       expect(() => decryptPrivateKey(encrypted)).toThrow(
         "KEY_ENCRYPTION_KEY is required"

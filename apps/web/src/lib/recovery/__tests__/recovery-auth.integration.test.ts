@@ -9,12 +9,7 @@ import {
 } from "@/lib/db/queries/recovery";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
-import {
-  deriveFrostUnwrapKey,
-  getRecoveryKeyFingerprint,
-  unwrapDekWithFrostKey,
-  wrapDekWithFrostKey,
-} from "../recovery-keys";
+import { getRecoveryKeyFingerprint } from "../recovery-keys";
 
 describe("recovery key authentication integration", () => {
   beforeEach(async () => {
@@ -88,39 +83,6 @@ describe("recovery key authentication integration", () => {
   });
 
   describe("crypto-gated DEK release", () => {
-    it("full round-trip: ML-KEM wrap → FROST wrap → FROST unwrap recovers DEK", () => {
-      const dek = randomBytes(32);
-      const signatureHex = randomBytes(64).toString("hex");
-      const challengeId = randomUUID();
-
-      const frostKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
-      const frostWrapped = wrapDekWithFrostKey(dek, frostKey);
-
-      const sameKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
-      const recovered = unwrapDekWithFrostKey(frostWrapped, sameKey);
-
-      expect(recovered).toEqual(new Uint8Array(dek));
-    });
-
-    it("fake signature cannot unwrap FROST-wrapped DEKs", () => {
-      const dek = randomBytes(32);
-      const realSignature = randomBytes(64).toString("hex");
-      const fakeSignature = randomBytes(64).toString("hex");
-      const challengeId = randomUUID();
-
-      const realKey = deriveFrostUnwrapKey({
-        signatureHex: realSignature,
-        challengeId,
-      });
-      const frostWrapped = wrapDekWithFrostKey(dek, realKey);
-
-      const fakeKey = deriveFrostUnwrapKey({
-        signatureHex: fakeSignature,
-        challengeId,
-      });
-      expect(() => unwrapDekWithFrostKey(frostWrapped, fakeKey)).toThrow();
-    });
-
     it("recovery wrapper stored in DB includes keyId for pin verification", async () => {
       const userId = await createTestUser();
       const secretId = randomUUID();

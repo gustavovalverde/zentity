@@ -3,41 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   computePairwiseSub,
-  getSectorIdentifier,
   resolveSubForClient,
 } from "@/lib/auth/oidc/pairwise";
 
 const TEST_SECRET = "test-secret-at-least-32-characters-long";
-
-describe("getSectorIdentifier", () => {
-  it("extracts host from a JSON-encoded redirect URI array", () => {
-    const uris = JSON.stringify(["https://example.com/callback"]);
-    expect(getSectorIdentifier(uris)).toBe("example.com");
-  });
-
-  it("extracts host from a string array", () => {
-    expect(getSectorIdentifier(["https://app.example.org:8443/cb"])).toBe(
-      "app.example.org:8443"
-    );
-  });
-
-  it("uses the first URI when multiple are present", () => {
-    const uris = [
-      "https://first.example.com/cb",
-      "https://second.example.com/cb",
-    ];
-    expect(getSectorIdentifier(uris)).toBe("first.example.com");
-  });
-
-  it("throws when redirect URIs are empty", () => {
-    expect(() => getSectorIdentifier([])).toThrow(
-      "Client has no redirect URIs"
-    );
-    expect(() => getSectorIdentifier("[]")).toThrow(
-      "Client has no redirect URIs"
-    );
-  });
-});
 
 describe("computePairwiseSub", () => {
   it("is deterministic — same inputs produce same output", async () => {

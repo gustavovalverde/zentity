@@ -6,27 +6,9 @@ import {
   dobToDaysSince1900,
   minAgeYearsToDays,
   parseBirthYearFromDob,
-  parseDob,
 } from "../birth-year";
 
 describe("birth-year", () => {
-  describe("parseDob", () => {
-    it("parses YYYY-MM-DD", () => {
-      const date = parseDob("1990-05-15");
-      expect(date?.toISOString().slice(0, 10)).toBe("1990-05-15");
-    });
-
-    it("parses DD/MM/YYYY", () => {
-      const date = parseDob("15/05/1990");
-      expect(date?.toISOString().slice(0, 10)).toBe("1990-05-15");
-    });
-
-    it("rejects invalid calendar dates", () => {
-      expect(parseDob("1990-02-30")).toBeUndefined();
-      expect(parseDob("1990-13-01")).toBeUndefined();
-    });
-  });
-
   describe("dobToDaysSince1900", () => {
     it("encodes 1900-01-01 as day 0", () => {
       expect(dobToDaysSince1900("1900-01-01")).toBe(0);

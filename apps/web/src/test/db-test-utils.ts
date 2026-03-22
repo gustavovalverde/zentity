@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 
-import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -66,7 +65,6 @@ interface CreateUserInput {
 }
 
 export async function resetDatabase(): Promise<void> {
-  resetSigningKeyCache();
   await db.transaction(async (tx) => {
     await tx.delete(attestationEvidence).run();
     await tx.delete(blockchainAttestations).run();
@@ -111,6 +109,12 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(passkeys).run();
     await tx.delete(users).run();
   });
+
+  // Clear in-memory caches that reference DB-persisted keys
+  const signingKeyCache = (globalThis as Record<symbol, unknown>)[
+    Symbol.for("zentity.jwt-signer-key-cache")
+  ] as Map<unknown, unknown> | undefined;
+  signingKeyCache?.clear();
 }
 
 export async function createTestUser(

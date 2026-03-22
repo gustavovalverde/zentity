@@ -8,13 +8,9 @@ import {
 } from "@/lib/auth/oidc/key-vault";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
-import {
-  mlDsaKeygen,
-  mlDsaSign,
-  mlDsaVerify,
-} from "@/lib/privacy/primitives/ml-dsa";
+import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/ml-dsa";
 import { bytesToBase64 } from "@/lib/utils/base64";
-import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64url";
+import { bytesToBase64Url } from "@/lib/utils/base64url";
 
 const ML_DSA_ALG = "ML-DSA-65" as const;
 
@@ -98,44 +94,4 @@ export async function signJwtWithMlDsa(
   const signature = mlDsaSign(signingInput, secretKey);
 
   return `${encodedHeader}.${encodedPayload}.${bytesToBase64Url(signature)}`;
-}
-
-/**
- * Verify a JWT signed with ML-DSA-65.
- * Used in tests and by verification endpoints.
- */
-export function verifyMlDsaJwt(
-  jwt: string,
-  publicKey: Uint8Array
-): {
-  header: Record<string, unknown>;
-  payload: Record<string, unknown>;
-} | null {
-  const parts = jwt.split(".");
-  if (parts.length !== 3) {
-    return null;
-  }
-
-  const encodedHeader = parts[0];
-  const encodedPayload = parts[1];
-  const encodedSignature = parts[2];
-  if (!(encodedHeader && encodedPayload && encodedSignature)) {
-    return null;
-  }
-
-  const signingInput = new TextEncoder().encode(
-    `${encodedHeader}.${encodedPayload}`
-  );
-
-  const signature = base64UrlToBytes(encodedSignature);
-
-  if (!mlDsaVerify(signature, signingInput, publicKey)) {
-    return null;
-  }
-
-  const decoder = new TextDecoder();
-  const header = JSON.parse(decoder.decode(base64UrlToBytes(encodedHeader)));
-  const payload = JSON.parse(decoder.decode(base64UrlToBytes(encodedPayload)));
-
-  return { header, payload };
 }

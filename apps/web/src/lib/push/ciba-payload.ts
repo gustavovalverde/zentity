@@ -21,7 +21,7 @@ interface CibaPushPayload {
   title: string;
 }
 
-export function buildNotificationBody(
+function buildNotificationBody(
   clientLabel: string,
   bindingMessage: string | undefined,
   authorizationDetails: unknown

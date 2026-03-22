@@ -21,16 +21,10 @@ export {
   setPendingUnlock,
 } from "./cache";
 // --- KEK Derivation ---
-export {
-  deriveKekFromOpaqueExport,
-  deriveKekFromPrf,
-  deriveKekFromWalletSignature,
-  generatePrfSalt,
-} from "./derivation";
+export { generatePrfSalt } from "./derivation";
 // --- OPAQUE ---
 export {
   createOpaqueWrapper,
-  decryptSecretWithOpaqueExport,
   OPAQUE_CREDENTIAL_ID,
   unwrapDekWithOpaqueExport,
   wrapDekWithOpaqueExport,
@@ -40,7 +34,6 @@ export { unwrapDekWithPrf, wrapDekWithPrf } from "./passkey";
 // --- Wallet ---
 export {
   buildKekSignatureTypedData,
-  decryptSecretWithWalletSignature,
   getWalletCredentialId,
   signatureToBytes,
   unwrapDekWithWalletSignature,

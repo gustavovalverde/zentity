@@ -188,8 +188,3 @@ export function clearEphemeralClaims(
   const key = storeKey(userId, clientId);
   return s.delete(key);
 }
-
-export async function resetEphemeralIdentityClaimsStore(): Promise<void> {
-  getStore().clear();
-  await db.delete(usedIntentJtis).run();
-}

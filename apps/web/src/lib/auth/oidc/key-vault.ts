@@ -36,11 +36,6 @@ function getKek(): Buffer | null {
   return cachedKek;
 }
 
-/** Reset cached KEK (for test isolation). */
-export function resetKekCache(): void {
-  cachedKek = null;
-}
-
 export function encryptPrivateKey(plaintext: string): string {
   const kek = getKek();
   if (!kek) {

@@ -10,10 +10,6 @@ import "client-only";
  * to ensure reproducible KEK derivation across sessions.
  */
 
-import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
-
-import { decryptWithDek } from "@/lib/privacy/secrets/envelope";
-
 import { deriveKekFromWalletSignature } from "./derivation";
 import { unwrapDek, wrapDek } from "./wrap";
 
@@ -165,38 +161,5 @@ export async function unwrapDekWithWalletSignature(params: {
     userId: params.userId,
     wrappedDek: params.wrappedDek,
     kek,
-  });
-}
-
-/**
- * Decrypt a secret envelope using wallet signature-derived KEK.
- * Combines DEK unwrapping with envelope decryption.
- */
-export async function decryptSecretWithWalletSignature(params: {
-  secretId: string;
-  secretType: string;
-  userId: string;
-  address: string;
-  chainId: number;
-  encryptedBlob: Uint8Array;
-  wrappedDek: string;
-  signatureBytes: Uint8Array;
-  envelopeFormat: EnvelopeFormat;
-}): Promise<Uint8Array> {
-  const dek = await unwrapDekWithWalletSignature({
-    secretId: params.secretId,
-    userId: params.userId,
-    address: params.address,
-    chainId: params.chainId,
-    wrappedDek: params.wrappedDek,
-    signatureBytes: params.signatureBytes,
-  });
-
-  return decryptWithDek({
-    secretId: params.secretId,
-    secretType: params.secretType,
-    encryptedBlob: params.encryptedBlob,
-    dek,
-    envelopeFormat: params.envelopeFormat,
   });
 }

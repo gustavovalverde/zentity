@@ -13,7 +13,7 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
  * Generate a cryptographically secure IV for AES-GCM.
  * AES-GCM requires a unique IV per encryption with the same key.
  */
-export function generateIv(): Uint8Array {
+function generateIv(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(AES_GCM_IV_BYTES));
 }
 

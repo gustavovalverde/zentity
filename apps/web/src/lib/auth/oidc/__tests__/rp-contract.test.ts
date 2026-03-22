@@ -18,8 +18,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 
-import { ID_TOKEN_SIGNING_ALGS } from "../../well-known-utils";
 import { PROOF_DISCLOSURE_KEYS } from "../claims";
+
+const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
+
 import { IDENTITY_SCOPE_CLAIMS, IDENTITY_SCOPES } from "../identity-scopes";
 import {
   extractProofScopes,

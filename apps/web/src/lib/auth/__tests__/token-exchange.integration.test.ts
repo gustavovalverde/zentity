@@ -5,12 +5,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer } from "@/lib/auth/issuer";
-import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
-import {
-  PURCHASE_AUTHORIZATION_TOKEN_TYPE,
-  TOKEN_EXCHANGE_GRANT_TYPE,
-} from "@/lib/auth/oidc/token-exchange";
+import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
+
+const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
+  "urn:zentity:token-type:purchase-authorization";
+
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -116,7 +116,6 @@ describe("Token Exchange (RFC 8693)", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    resetSigningKeyCache();
     userId = await createTestUser();
     await ensureSigningKey();
     await createTestClient();

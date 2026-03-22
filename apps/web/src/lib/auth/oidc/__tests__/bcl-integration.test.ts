@@ -4,7 +4,6 @@ import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
@@ -56,7 +55,6 @@ describe("back-channel logout", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    resetSigningKeyCache();
     userId = await createTestUser();
     await seedSigningKey();
 

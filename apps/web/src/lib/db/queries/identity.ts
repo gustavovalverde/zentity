@@ -327,7 +327,7 @@ export const getLatestVerification = cache(async function getLatestVerification(
   return row ?? null;
 });
 
-export async function getVerificationsByUserId(
+async function getVerificationsByUserId(
   userId: string
 ): Promise<IdentityVerification[]> {
   return await db

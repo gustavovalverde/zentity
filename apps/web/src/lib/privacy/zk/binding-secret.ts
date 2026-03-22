@@ -311,7 +311,7 @@ export async function deriveBindingSecret(
  * Convert Uint8Array to Field-compatible hex string for Noir circuit.
  * Noir expects Field values as 0x-prefixed hex strings.
  */
-export function bytesToFieldHex(bytes: Uint8Array): string {
+function bytesToFieldHex(bytes: Uint8Array): string {
   let hex = "";
   for (const byte of bytes) {
     hex += byte.toString(16).padStart(2, "0");

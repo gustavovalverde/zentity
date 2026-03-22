@@ -7,7 +7,6 @@ import type {
   NewEncryptedAttribute,
   SecretWrapperRecord,
   SignedClaimRecord,
-  ZkProofRecord,
   ZkProofSessionRecord,
 } from "../schema/crypto";
 
@@ -337,54 +336,6 @@ export async function getSecretWrappersBySecretId(
     .all();
 }
 
-export async function upsertEncryptedSecret(data: {
-  id: string;
-  userId: string;
-  secretType: string;
-  encryptedBlob?: string | null;
-  blobRef?: string | null;
-  blobHash?: string | null;
-  blobSize?: number | null;
-  metadata: Record<string, unknown> | null;
-}): Promise<EncryptedSecret> {
-  const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
-  const encryptedBlob = data.encryptedBlob ?? "";
-
-  await db
-    .insert(encryptedSecrets)
-    .values({
-      id: data.id,
-      userId: data.userId,
-      secretType: data.secretType,
-      encryptedBlob,
-      blobRef: data.blobRef ?? null,
-      blobHash: data.blobHash ?? null,
-      blobSize: data.blobSize ?? null,
-      metadata,
-    })
-    .onConflictDoUpdate({
-      target: [encryptedSecrets.userId, encryptedSecrets.secretType],
-      set: {
-        encryptedBlob,
-        blobRef: data.blobRef ?? null,
-        blobHash: data.blobHash ?? null,
-        blobSize: data.blobSize ?? null,
-        metadata,
-        updatedAt: sql`datetime('now')`,
-      },
-    })
-    .run();
-
-  const updated = await getEncryptedSecretByUserAndType(
-    data.userId,
-    data.secretType
-  );
-  if (!updated) {
-    throw new Error("Failed to upsert encrypted secret");
-  }
-  return updated;
-}
-
 export async function updateEncryptedSecretMetadata(data: {
   userId: string;
   secretType: string;
@@ -468,60 +419,6 @@ export async function deleteSecretWrapper(
       )
     )
     .run();
-}
-
-export async function getLatestZkProofPayloadByUserAndType(
-  userId: string,
-  proofType: string,
-  verificationId?: string
-): Promise<{ proof: string; publicSignals: string[] } | null> {
-  const baseConditions = [
-    eq(zkProofs.userId, userId),
-    eq(zkProofs.proofType, proofType),
-  ];
-
-  if (verificationId) {
-    baseConditions.push(eq(zkProofs.verificationId, verificationId));
-  }
-
-  const row = await db
-    .select({
-      proofPayload: zkProofs.proofPayload,
-      publicInputs: zkProofs.publicInputs,
-    })
-    .from(zkProofs)
-    .where(and(...baseConditions))
-    .orderBy(desc(zkProofs.createdAt))
-    .limit(1)
-    .get();
-
-  if (!(row?.proofPayload && row.publicInputs)) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(row.publicInputs) as unknown;
-    if (!Array.isArray(parsed)) {
-      return null;
-    }
-    return {
-      proof: row.proofPayload,
-      publicSignals: parsed.map(String),
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function getZkProofsByUserId(
-  userId: string
-): Promise<ZkProofRecord[]> {
-  return await db
-    .select()
-    .from(zkProofs)
-    .where(eq(zkProofs.userId, userId))
-    .orderBy(desc(zkProofs.createdAt))
-    .all();
 }
 
 /**
@@ -774,26 +671,6 @@ export async function getSignedClaimTypesByUserAndVerification(
     .all();
 
   return rows.map((row) => row.claimType);
-}
-
-export async function getProofHashesByUserAndVerification(
-  userId: string,
-  verificationId: string
-): Promise<string[]> {
-  const rows = await db
-    .select({ proofHash: zkProofs.proofHash })
-    .from(zkProofs)
-    .where(
-      and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.verificationId, verificationId),
-        eq(zkProofs.verified, true)
-      )
-    )
-    .orderBy(zkProofs.proofHash)
-    .all();
-
-  return rows.map((row) => row.proofHash);
 }
 
 export async function getProofHashesByUserVerificationAndSession(

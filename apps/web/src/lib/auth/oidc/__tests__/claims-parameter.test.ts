@@ -4,7 +4,6 @@ import {
   consumeIdTokenClaims,
   consumeUserinfoClaims,
   filterClaimsByRequest,
-  findUnsatisfiableEssentialClaim,
   parseClaimsParameter,
   stageClaimsParameter,
 } from "../claims-parameter";
@@ -94,34 +93,6 @@ describe("filterClaimsByRequest", () => {
       acr: { values: ["urn:zentity:assurance:tier3"] },
     });
     expect(noMatch).toEqual({});
-  });
-});
-
-describe("findUnsatisfiableEssentialClaim", () => {
-  const supported = new Set(["acr", "amr", "email", "name"]);
-
-  it("returns null when all essential claims are supported", () => {
-    const result = findUnsatisfiableEssentialClaim(
-      { id_token: { acr: { essential: true } } },
-      supported
-    );
-    expect(result).toBeNull();
-  });
-
-  it("returns unsatisfiable claim name", () => {
-    const result = findUnsatisfiableEssentialClaim(
-      { id_token: { unknown_claim: { essential: true } } },
-      supported
-    );
-    expect(result).toBe("unknown_claim");
-  });
-
-  it("ignores non-essential claims", () => {
-    const result = findUnsatisfiableEssentialClaim(
-      { id_token: { unknown_claim: null } },
-      supported
-    );
-    expect(result).toBeNull();
   });
 });
 

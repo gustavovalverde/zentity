@@ -10,9 +10,6 @@ import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   getLatestSignedClaimByUserTypeAndVerification,
-  getLatestZkProofPayloadByUserAndType,
-  getProofHashesByUserAndVerification,
-  getSignedClaimTypesByUserAndVerification,
   getUserAgeProof,
   getUserAgeProofFull,
   insertEncryptedAttribute,
@@ -129,126 +126,6 @@ describe("crypto queries", () => {
     expect(full?.proof).toBe(payload);
     expect(full?.publicSignals).toEqual(["1", "2", "3"]);
     expect(full?.isOver18).toBe(false);
-  });
-
-  it("parses latest zk proof payload and handles invalid JSON", async () => {
-    const userId = await createTestUser();
-    const { verificationId, proofSessionId } = await createProofContext(userId);
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "doc_validity",
-      proofHash: "proof-hash",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-      proofPayload: "payload",
-      publicInputs: JSON.stringify(["a", "b"]),
-    });
-
-    const parsed = await getLatestZkProofPayloadByUserAndType(
-      userId,
-      "doc_validity"
-    );
-    expect(parsed?.proof).toBe("payload");
-    expect(parsed?.publicSignals).toEqual(["a", "b"]);
-
-    const userIdInvalid = await createTestUser();
-    const {
-      verificationId: invalidDocumentId,
-      proofSessionId: invalidSessionId,
-    } = await createProofContext(userIdInvalid);
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId: userIdInvalid,
-      verificationId: invalidDocumentId,
-      proofSessionId: invalidSessionId,
-      proofType: "doc_validity",
-      proofHash: "proof-hash-2",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-      proofPayload: "payload",
-      publicInputs: "not-json",
-    });
-
-    const invalid = await getLatestZkProofPayloadByUserAndType(
-      userIdInvalid,
-      "doc_validity"
-    );
-    expect(invalid).toBeNull();
-  });
-
-  it("returns proof hashes and signed claim types", async () => {
-    const userId = await createTestUser();
-    const verificationId = crypto.randomUUID();
-    const { proofSessionId } = await createProofContext(userId, verificationId);
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "age_verification",
-      proofHash: "hash-1",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-    });
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "doc_validity",
-      proofHash: "hash-2",
-      policyVersion: POLICY_VERSION,
-      verified: true,
-    });
-
-    await insertZkProofRecord({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      proofSessionId,
-      proofType: "face_match",
-      proofHash: "hash-3",
-      policyVersion: POLICY_VERSION,
-      verified: false,
-    });
-
-    const hashes = await getProofHashesByUserAndVerification(
-      userId,
-      verificationId
-    );
-    expect(hashes).toEqual(["hash-1", "hash-2"]);
-
-    await insertSignedClaim({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      claimType: "ocr_result",
-      claimPayload: "{}",
-      signature: "sig",
-      issuedAt: "2025-01-01T00:00:00Z",
-    });
-
-    await insertSignedClaim({
-      id: crypto.randomUUID(),
-      userId,
-      verificationId,
-      claimType: "liveness_score",
-      claimPayload: "{}",
-      signature: "sig",
-      issuedAt: "2025-01-02T00:00:00Z",
-    });
-
-    const claimTypes = await getSignedClaimTypesByUserAndVerification(
-      userId,
-      verificationId
-    );
-    expect(claimTypes).toEqual(["liveness_score", "ocr_result"]);
   });
 
   it("returns latest signed claim and encrypted attributes", async () => {

@@ -41,9 +41,9 @@ vi.mock("@/lib/logging/error-logger", () => ({
   logWarn: vi.fn(),
 }));
 
-import type { PushTransport } from "../web-push";
-
 import { sendWebPush } from "../web-push";
+
+type PushTransport = Parameters<typeof sendWebPush>[2];
 
 const TEST_VAPID = {
   publicKey: "test-public-key",

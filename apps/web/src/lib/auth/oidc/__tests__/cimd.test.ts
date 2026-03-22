@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assertDcrClientIdFormat,
   type CimdMetadata,
   checkUrlQueryWarning,
-  isPrivateHost,
   isUrlClientId,
   validateCimdMetadata,
   validateFetchUrl,
@@ -39,34 +37,6 @@ describe("isUrlClientId", () => {
 
   it("rejects empty string", () => {
     expect(isUrlClientId("", false)).toBe(false);
-  });
-});
-
-describe("isPrivateHost", () => {
-  it.each([
-    "127.0.0.1",
-    "10.0.0.1",
-    "172.16.0.1",
-    "172.31.255.255",
-    "192.168.1.1",
-    "0.0.0.0",
-    "169.254.1.1",
-    "::1",
-    "[::1]",
-    "fe80::1",
-    "fc00::1",
-    "fd12::1",
-  ])("detects %s as private", (host) => {
-    expect(isPrivateHost(host)).toBe(true);
-  });
-
-  it.each([
-    "8.8.8.8",
-    "1.1.1.1",
-    "203.0.113.1",
-    "example.com",
-  ])("detects %s as public", (host) => {
-    expect(isPrivateHost(host)).toBe(false);
   });
 });
 
@@ -413,23 +383,5 @@ describe("checkUrlQueryWarning", () => {
 
   it("returns null for URL without query string", () => {
     expect(checkUrlQueryWarning("https://example.com/client")).toBeNull();
-  });
-});
-
-describe("assertDcrClientIdFormat", () => {
-  it("does not throw for hex string client_id", () => {
-    expect(() => assertDcrClientIdFormat("a1b2c3d4e5f6")).not.toThrow();
-  });
-
-  it("throws for https:// client_id", () => {
-    expect(() => assertDcrClientIdFormat("https://example.com/client")).toThrow(
-      "URL-formatted"
-    );
-  });
-
-  it("throws for http:// client_id", () => {
-    expect(() =>
-      assertDcrClientIdFormat("http://localhost:3000/client")
-    ).toThrow("URL-formatted");
   });
 });

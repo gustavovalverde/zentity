@@ -7,7 +7,7 @@
 
 import type { BbsKeyPair } from "./types";
 
-import { BBS_PUBLIC_KEY_LENGTH, BBS_SECRET_KEY_LENGTH, bbs } from "./crypto";
+import { bbs } from "./crypto";
 
 /**
  * Generate a new BBS+ keypair for signing credentials.
@@ -16,7 +16,7 @@ import { BBS_PUBLIC_KEY_LENGTH, BBS_SECRET_KEY_LENGTH, bbs } from "./crypto";
  * @param keyInfo - Optional key info for domain separation.
  * @returns BBS+ keypair with 32-byte secret key and 96-byte public key.
  */
-export async function generateBbsKeyPair(
+async function generateBbsKeyPair(
   ikm?: Uint8Array,
   keyInfo?: Uint8Array
 ): Promise<BbsKeyPair> {
@@ -51,42 +51,4 @@ export async function deriveBbsKeyPair(
   const keyInfo = encoder.encode(context);
 
   return await generateBbsKeyPair(seed.slice(0, 32), keyInfo);
-}
-
-/**
- * Validate a BBS+ public key has correct length.
- */
-export function isValidBbsPublicKey(publicKey: Uint8Array): boolean {
-  return publicKey.length === BBS_PUBLIC_KEY_LENGTH;
-}
-
-/**
- * Validate a BBS+ secret key has correct length.
- */
-export function isValidBbsSecretKey(secretKey: Uint8Array): boolean {
-  return secretKey.length === BBS_SECRET_KEY_LENGTH;
-}
-
-/**
- * Serialize keypair to base64-encoded JSON for storage.
- */
-export function serializeBbsKeyPair(keyPair: BbsKeyPair): string {
-  return JSON.stringify({
-    secretKey: Buffer.from(keyPair.secretKey).toString("base64"),
-    publicKey: Buffer.from(keyPair.publicKey).toString("base64"),
-  });
-}
-
-/**
- * Deserialize keypair from base64-encoded JSON.
- */
-export function deserializeBbsKeyPair(serialized: string): BbsKeyPair {
-  const parsed = JSON.parse(serialized) as {
-    secretKey: string;
-    publicKey: string;
-  };
-  return {
-    secretKey: Buffer.from(parsed.secretKey, "base64"),
-    publicKey: Buffer.from(parsed.publicKey, "base64"),
-  };
 }

@@ -10,7 +10,6 @@ vi.mock("@/lib/auth/auth", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
 
-import { resetEphemeralIdentityClaimsStore } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -71,7 +70,6 @@ describe("CIBA intent token authReqId binding", () => {
 
   beforeEach(async () => {
     await resetDatabase();
-    await resetEphemeralIdentityClaimsStore();
     vi.clearAllMocks();
     userId = await createTestUser();
     await createTestClient();

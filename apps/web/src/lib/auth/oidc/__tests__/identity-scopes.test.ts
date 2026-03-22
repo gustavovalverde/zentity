@@ -3,10 +3,8 @@ import type { IdentityFields } from "@/lib/auth/oidc/identity-scopes";
 import { describe, expect, it } from "vitest";
 
 import {
-  expandIdentityScopes,
   extractIdentityScopes,
   filterIdentityByScopes,
-  getConsentedClaimKeys,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPE_DESCRIPTIONS,
   IDENTITY_SCOPES,
@@ -50,61 +48,6 @@ describe("identity scopes", () => {
       const scopes = ["openid", "profile", "email", "identity"];
       const result = extractIdentityScopes(scopes);
       expect(result).toEqual([]);
-    });
-  });
-
-  describe("expandIdentityScopes", () => {
-    it("returns specific scopes as-is", () => {
-      const scopes = ["openid", "identity.name", "identity.dob"];
-      const result = expandIdentityScopes(scopes);
-      expect(result).toEqual(["identity.name", "identity.dob"]);
-    });
-
-    it("returns empty array when no identity scopes", () => {
-      const scopes = ["openid", "profile"];
-      const result = expandIdentityScopes(scopes);
-      expect(result).toEqual([]);
-    });
-  });
-
-  describe("getConsentedClaimKeys", () => {
-    it("returns name claims for identity.name scope", () => {
-      const keys = getConsentedClaimKeys(["identity.name"]);
-      expect(keys).toContain("given_name");
-      expect(keys).toContain("family_name");
-      expect(keys).toContain("name");
-      expect(keys).not.toContain("birthdate");
-    });
-
-    it("returns dob claims for identity.dob scope", () => {
-      const keys = getConsentedClaimKeys(["identity.dob"]);
-      expect(keys).toEqual(["birthdate"]);
-    });
-
-    it("returns address claims for identity.address scope", () => {
-      const keys = getConsentedClaimKeys(["identity.address"]);
-      expect(keys).toEqual(["address"]);
-    });
-
-    it("returns document claims for identity.document scope", () => {
-      const keys = getConsentedClaimKeys(["identity.document"]);
-      expect(keys).toContain("document_number");
-      expect(keys).toContain("document_type");
-      expect(keys).toContain("issuing_country");
-    });
-
-    it("returns nationality claims for identity.nationality scope", () => {
-      const keys = getConsentedClaimKeys(["identity.nationality"]);
-      expect(keys).toContain("nationality");
-      expect(keys).toContain("nationalities");
-    });
-
-    it("combines claims from multiple scopes", () => {
-      const keys = getConsentedClaimKeys(["identity.name", "identity.dob"]);
-      expect(keys).toContain("given_name");
-      expect(keys).toContain("family_name");
-      expect(keys).toContain("name");
-      expect(keys).toContain("birthdate");
     });
   });
 

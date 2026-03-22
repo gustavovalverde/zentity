@@ -2,17 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { parseTrustedAttesters, verifyAgentAttestation } = await import(
-  "../agent-attestation"
-);
-
-describe("parseTrustedAttesters", () => {
-  it("returns empty array when env var is not set", () => {
-    const result = parseTrustedAttesters();
-    // In test env, TRUSTED_AGENT_ATTESTERS is typically undefined
-    expect(Array.isArray(result)).toBe(true);
-  });
-});
+const { verifyAgentAttestation } = await import("../agent-attestation");
 
 describe("verifyAgentAttestation", () => {
   it("returns unverified when no attesters configured", async () => {

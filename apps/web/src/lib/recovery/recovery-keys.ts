@@ -105,7 +105,7 @@ export function getRecoveryKeyFingerprint(): string {
   return createHash("sha256").update(keys.publicKey).digest("hex");
 }
 
-export interface RecoveryEnvelope {
+interface RecoveryEnvelope {
   alg: "ML-KEM-768";
   ciphertext: string;
   iv: string;
@@ -180,24 +180,4 @@ export function wrapDekWithFrostKey(dek: Uint8Array, frostKey: Buffer): string {
   const encrypted = Buffer.concat([cipher.update(dek), cipher.final()]);
   const tag = cipher.getAuthTag();
   return bytesToBase64(new Uint8Array(Buffer.concat([iv, encrypted, tag])));
-}
-
-/**
- * Decrypt a FROST-wrapped DEK using the FROST-derived unwrap key.
- * Input: base64(iv || ciphertext || authTag).
- */
-export function unwrapDekWithFrostKey(
-  wrappedBase64: string,
-  frostKey: Buffer
-): Uint8Array {
-  const raw = Buffer.from(wrappedBase64, "base64");
-  const iv = raw.subarray(0, 12);
-  const tag = raw.subarray(raw.length - 16);
-  const encrypted = raw.subarray(12, raw.length - 16);
-
-  const decipher = createDecipheriv("aes-256-gcm", frostKey, iv);
-  decipher.setAuthTag(tag);
-  return new Uint8Array(
-    Buffer.concat([decipher.update(encrypted), decipher.final()])
-  );
 }

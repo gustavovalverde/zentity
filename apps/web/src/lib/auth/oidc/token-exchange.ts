@@ -53,7 +53,7 @@ export const TOKEN_EXCHANGE_GRANT_TYPE =
 
 const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const TOKEN_TYPE_ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token";
-export const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
+const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
   "urn:zentity:token-type:purchase-authorization";
 
 const SUPPORTED_SUBJECT_TYPES = new Set([

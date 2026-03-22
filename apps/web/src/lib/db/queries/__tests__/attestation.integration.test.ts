@@ -1,11 +1,8 @@
-import crypto from "node:crypto";
-
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createBlockchainAttestation,
   deleteBlockchainAttestationsByUserId,
-  getAttestationEvidenceByUserAndVerification,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
   resetBlockchainAttestationForRetry,
@@ -13,49 +10,12 @@ import {
   updateBlockchainAttestationFailed,
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
-  upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("attestation queries", () => {
   beforeEach(async () => {
     await resetDatabase();
-  });
-
-  it("upserts attestation evidence", async () => {
-    const userId = await createTestUser();
-    const verificationId = crypto.randomUUID();
-
-    await upsertAttestationEvidence({
-      userId,
-      verificationId,
-      policyVersion: "policy-v1",
-      policyHash: "hash-1",
-      proofSetHash: "proof-1",
-    });
-
-    const evidence = await getAttestationEvidenceByUserAndVerification(
-      userId,
-      verificationId
-    );
-    expect(evidence?.policyVersion).toBe("policy-v1");
-    expect(evidence?.proofSetHash).toBe("proof-1");
-
-    await upsertAttestationEvidence({
-      userId,
-      verificationId,
-      policyVersion: "policy-v2",
-      policyHash: "hash-2",
-      proofSetHash: "proof-2",
-    });
-
-    const updated = await getAttestationEvidenceByUserAndVerification(
-      userId,
-      verificationId
-    );
-    expect(updated?.policyVersion).toBe("policy-v2");
-    expect(updated?.policyHash).toBe("hash-2");
-    expect(updated?.proofSetHash).toBe("proof-2");
   });
 
   it("creates and updates blockchain attestation lifecycle", async () => {

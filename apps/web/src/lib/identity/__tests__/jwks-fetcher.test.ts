@@ -1,15 +1,10 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { clearJwksCache, getHardenedJWKSet, validateJwksEndpoint } =
-  await import("../jwks-fetcher");
+const { getHardenedJWKSet } = await import("../jwks-fetcher");
 
 describe("getHardenedJWKSet", () => {
-  afterEach(() => {
-    clearJwksCache();
-  });
-
   it("returns a function for a valid HTTPS URL", () => {
     const result = getHardenedJWKSet(
       "https://attestation.example.com/.well-known/jwks.json"
@@ -38,19 +33,5 @@ describe("getHardenedJWKSet", () => {
     const first = getHardenedJWKSet("https://a.example.com/jwks");
     const second = getHardenedJWKSet("https://b.example.com/jwks");
     expect(first).not.toBe(second);
-  });
-});
-
-describe("validateJwksEndpoint", () => {
-  it("returns false for invalid URL", async () => {
-    const result = await validateJwksEndpoint("not-a-url");
-    expect(result).toBe(false);
-  });
-
-  it("returns false for unreachable URL", async () => {
-    const result = await validateJwksEndpoint(
-      "http://localhost:19999/nonexistent"
-    );
-    expect(result).toBe(false);
   });
 });

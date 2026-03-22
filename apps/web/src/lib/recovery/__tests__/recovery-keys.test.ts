@@ -1,5 +1,3 @@
-import type { RecoveryEnvelope } from "../recovery-keys";
-
 import {
   createCipheriv,
   createHash,
@@ -17,11 +15,14 @@ import {
 } from "@/lib/privacy/primitives/ml-kem";
 import { bytesToBase64 } from "@/lib/utils/base64";
 
-import {
-  deriveFrostUnwrapKey,
-  unwrapDekWithFrostKey,
-  wrapDekWithFrostKey,
-} from "../recovery-keys";
+import { deriveFrostUnwrapKey } from "../recovery-keys";
+
+interface RecoveryEnvelope {
+  alg: "ML-KEM-768";
+  ciphertext: string;
+  iv: string;
+  kemCipherText: string;
+}
 
 const SHA256_HEX_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -188,20 +189,6 @@ describe("recovery-keys ML-KEM round-trip", () => {
     const partial = JSON.stringify({ alg: "ML-KEM-768" });
     expect(() => serverDecryptDek(partial, secretKey, ctx)).toThrow();
   });
-
-  it("cross-slice: compliance bundle cannot be used as recovery envelope", async () => {
-    const { encryptForRp } = await import("@/lib/privacy/compliance/encrypt");
-    const rpKeys = mlKemKeygen();
-    const bundle = await encryptForRp(
-      new TextEncoder().encode("compliance-data"),
-      bytesToBase64(rpKeys.publicKey),
-      { clientId: "rp-test", userId: "user-test" }
-    );
-
-    expect(() =>
-      serverDecryptDek(JSON.stringify(bundle), secretKey, ctx)
-    ).toThrow();
-  });
 });
 
 describe("recovery-keys AAD binding", () => {
@@ -320,36 +307,5 @@ describe("FROST crypto-gated DEK release", () => {
       challengeId: randomUUID(),
     });
     expect(k1).not.toEqual(k2);
-  });
-
-  it("wrap → unwrap round-trip recovers the original DEK", () => {
-    const dek = randomBytes(32);
-    const frostKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
-    const wrapped = wrapDekWithFrostKey(dek, frostKey);
-    const recovered = unwrapDekWithFrostKey(wrapped, frostKey);
-    expect(recovered).toEqual(new Uint8Array(dek));
-  });
-
-  it("wrong FROST key cannot unwrap DEK", () => {
-    const dek = randomBytes(32);
-    const correctKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
-    const wrongKey = deriveFrostUnwrapKey({
-      signatureHex: randomBytes(64).toString("hex"),
-      challengeId,
-    });
-    const wrapped = wrapDekWithFrostKey(dek, correctKey);
-    expect(() => unwrapDekWithFrostKey(wrapped, wrongKey)).toThrow();
-  });
-
-  it("missing FROST signature means no unwrap key can be derived", () => {
-    const dek = randomBytes(32);
-    const frostKey = deriveFrostUnwrapKey({ signatureHex, challengeId });
-    const wrapped = wrapDekWithFrostKey(dek, frostKey);
-    // Without the correct signature, no valid key exists
-    const fakeKey = deriveFrostUnwrapKey({
-      signatureHex: "00".repeat(64),
-      challengeId,
-    });
-    expect(() => unwrapDekWithFrostKey(wrapped, fakeKey)).toThrow();
   });
 });

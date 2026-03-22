@@ -1,9 +1,8 @@
 import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
 
-export const ML_KEM_PUBLIC_KEY_BYTES = 1184;
+const ML_KEM_PUBLIC_KEY_BYTES = 1184;
 export const ML_KEM_SECRET_KEY_BYTES = 2400;
-export const ML_KEM_CIPHERTEXT_BYTES = 1088;
-export const ML_KEM_SHARED_SECRET_BYTES = 32;
+const ML_KEM_CIPHERTEXT_BYTES = 1088;
 
 export function mlKemKeygen(seed?: Uint8Array): {
   publicKey: Uint8Array;

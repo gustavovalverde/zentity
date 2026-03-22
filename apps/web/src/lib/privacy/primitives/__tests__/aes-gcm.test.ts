@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  decryptAesGcm,
-  encryptAesGcm,
-  generateIv,
-} from "@/lib/privacy/primitives/aes-gcm";
+import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
+
+function generateIv(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(12));
+}
 
 function generateKey(): Promise<CryptoKey> {
   const keyMaterial = crypto.getRandomValues(new Uint8Array(32));

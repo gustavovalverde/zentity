@@ -26,7 +26,7 @@ const DAYS_PER_YEAR = 365.25;
  * - YYYY/MM/DD
  * - DD-MM-YYYY
  */
-export function parseDob(dateOfBirth: string | undefined): Date | undefined {
+function parseDob(dateOfBirth: string | undefined): Date | undefined {
   if (!dateOfBirth) {
     return;
   }

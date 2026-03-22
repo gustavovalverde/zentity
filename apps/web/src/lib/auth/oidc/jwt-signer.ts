@@ -21,10 +21,10 @@ interface CachedSigningKey {
 
 const keyCache = new Map<StandardAlg, CachedSigningKey>();
 
-/** Clear the module-level signing key cache (for test isolation and rotation). */
-export function resetSigningKeyCache(): void {
-  keyCache.clear();
-  algCache.clear();
+// Expose cache for test-environment reset (Symbol avoids polluting the public API)
+if (process.env.NODE_ENV === "test") {
+  const sym = Symbol.for("zentity.jwt-signer-key-cache");
+  (globalThis as Record<symbol, unknown>)[sym] = keyCache;
 }
 
 const KEY_GEN_OPTIONS: Record<

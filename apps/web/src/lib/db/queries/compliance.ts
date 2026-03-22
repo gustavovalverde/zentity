@@ -31,7 +31,7 @@ export async function getActiveRpEncryptionKey(
 /**
  * Get an encryption key by its ID.
  */
-export async function getRpEncryptionKeyById(
+async function getRpEncryptionKeyById(
   id: string
 ): Promise<RpEncryptionKey | null> {
   const row = await db
@@ -42,19 +42,6 @@ export async function getRpEncryptionKeyById(
     .get();
 
   return row ?? null;
-}
-
-/**
- * Get all encryption keys for an RP client (including rotated/revoked).
- */
-export function getAllRpEncryptionKeys(
-  clientId: string
-): Promise<RpEncryptionKey[]> {
-  return db
-    .select()
-    .from(rpEncryptionKeys)
-    .where(eq(rpEncryptionKeys.clientId, clientId))
-    .all();
 }
 
 /**
@@ -128,17 +115,5 @@ export async function revokeRpEncryptionKey(keyId: string): Promise<void> {
       updatedAt: new Date().toISOString(),
     })
     .where(eq(rpEncryptionKeys.id, keyId))
-    .run();
-}
-
-/**
- * Delete all encryption keys for an RP.
- */
-export async function deleteAllRpEncryptionKeys(
-  clientId: string
-): Promise<void> {
-  await db
-    .delete(rpEncryptionKeys)
-    .where(eq(rpEncryptionKeys.clientId, clientId))
     .run();
 }

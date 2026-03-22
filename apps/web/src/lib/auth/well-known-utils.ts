@@ -19,12 +19,7 @@ const LEADING_SLASHES_REGEX = /^\/+/;
 export const DEFAULT_AUTH_BASE_PATH = "/api/auth";
 
 /** Algorithms advertised in id_token_signing_alg_values_supported. */
-export const ID_TOKEN_SIGNING_ALGS = [
-  "RS256",
-  "ES256",
-  "EdDSA",
-  "ML-DSA-65",
-] as const;
+const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
 
 /**
  * Enrich raw discovery metadata with signing algorithms and HAIP fields.

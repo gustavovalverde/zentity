@@ -41,9 +41,8 @@ const nodeWasm = require("@mattrglobal/pairing-crypto/lib/node") as {
   }) => Promise<{ verified: boolean }>;
 };
 
-/** Key length constants from BLS12-381 curve */
-export const BBS_SECRET_KEY_LENGTH = 32;
-export const BBS_PUBLIC_KEY_LENGTH = 96;
+const BBS_SECRET_KEY_LENGTH = 32;
+const BBS_PUBLIC_KEY_LENGTH = 96;
 
 /**
  * BBS+ BLS12-381 SHAKE-256 ciphersuite.

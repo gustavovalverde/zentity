@@ -9,13 +9,13 @@ import { getClaimSigningKey } from "@/lib/privacy/primitives/derived-keys";
 const CLAIMS_ISSUER = "zentity-attestation";
 const CLAIMS_AUDIENCE = "zentity-claims";
 
-export type AttestationClaimType =
+type AttestationClaimType =
   | "liveness_score"
   | "face_match_score"
   | "ocr_result"
   | "chip_verification";
 
-export interface LivenessClaimData {
+interface LivenessClaimData {
   antispoofScore: number;
   antispoofScoreFixed: number;
   liveScore: number;
@@ -42,7 +42,7 @@ export interface OcrClaimData {
   issuerCountry?: string | null;
 }
 
-export interface ChipVerificationClaimData {
+interface ChipVerificationClaimData {
   ageVerified: boolean;
   faceMatchPassed: boolean;
   hasDob: boolean;
@@ -52,7 +52,7 @@ export interface ChipVerificationClaimData {
   sanctionsCleared: boolean;
 }
 
-export interface AttestationClaimPayload {
+interface AttestationClaimPayload {
   data:
     | LivenessClaimData
     | FaceMatchClaimData

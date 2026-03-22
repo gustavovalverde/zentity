@@ -14,7 +14,7 @@ interface PushPayload {
   title: string;
 }
 
-export interface PushTransport {
+interface PushTransport {
   isGoneError(error: unknown): boolean;
   sendNotification(
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } },

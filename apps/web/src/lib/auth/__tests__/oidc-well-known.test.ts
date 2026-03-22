@@ -8,9 +8,10 @@ import {
   buildWellKnownResponse,
   callAuthApi,
   enrichDiscoveryMetadata,
-  ID_TOKEN_SIGNING_ALGS,
   unwrapMetadata,
 } from "@/lib/auth/well-known-utils";
+
+const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
 
 function parseOpenIdConfig(metadata: unknown) {
   if (metadata instanceof Response) {

@@ -210,28 +210,3 @@ export function filterClaimsByRequest(
 
   return filtered;
 }
-
-/**
- * Check if any essential claims cannot be satisfied.
- * Returns the name of the first unsatisfiable essential claim, or null.
- */
-export function findUnsatisfiableEssentialClaim(
-  claims: ParsedClaimsParameter,
-  supportedClaimNames: Set<string>
-): string | null {
-  for (const endpoint of [claims.id_token, claims.userinfo]) {
-    if (!endpoint) {
-      continue;
-    }
-    for (const [claimName, constraint] of Object.entries(endpoint)) {
-      if (
-        constraint !== null &&
-        constraint.essential === true &&
-        !supportedClaimNames.has(claimName)
-      ) {
-        return claimName;
-      }
-    }
-  }
-  return null;
-}

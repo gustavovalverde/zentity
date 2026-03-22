@@ -22,21 +22,6 @@ describe("fhevm provider registry", () => {
     expect(unknown).toBeUndefined();
   });
 
-  it("registers custom providers", async () => {
-    const { registerFhevmProvider, resolveFhevmProviderFactory } = await import(
-      ".."
-    );
-
-    const factory: FhevmProviderFactory = () => {
-      throw new Error("test provider should not be invoked");
-    };
-
-    registerFhevmProvider("test-provider", factory);
-
-    const resolved = resolveFhevmProviderFactory("test-provider");
-    expect(resolved).toBe(factory);
-  });
-
   it("registers providers from window.__FHEVM_PROVIDER_FACTORIES__", async () => {
     const factory: FhevmProviderFactory = () => {
       throw new Error("test provider should not be invoked");
