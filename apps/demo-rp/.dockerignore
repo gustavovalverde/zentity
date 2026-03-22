@@ -5,6 +5,9 @@
 !package.json
 !pnpm-lock.yaml
 
+# Include vendor tarballs (better-auth file: deps)
+!vendor/
+
 # Include source code
 !src/
 
