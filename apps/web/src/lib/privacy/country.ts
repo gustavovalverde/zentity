@@ -20,7 +20,7 @@ import {
 } from "@zkpassport/utils";
 import countries from "i18n-iso-countries";
 
-export type HashFn = (values: bigint[]) => Promise<bigint>;
+type HashFn = (values: bigint[]) => Promise<bigint>;
 
 export const TREE_DEPTH = 8;
 

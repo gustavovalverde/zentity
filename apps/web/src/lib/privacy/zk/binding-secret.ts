@@ -72,7 +72,7 @@ interface WalletBbsBindingParams {
   userId: string;
 }
 
-export type BindingParams =
+type BindingParams =
   | PasskeyBindingParams
   | OpaqueBindingParams
   | WalletBindingParams

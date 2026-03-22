@@ -356,7 +356,7 @@ async function step2BcAuthorize(
   ok(`auth_req_id: ${authReqId}`);
   info(`expires_in: ${expiresIn}s, poll interval: ${interval}s`);
 
-  const approvalUrl = `${base}/dashboard/ciba/approve?auth_req_id=${authReqId}`;
+  const approvalUrl = `${base}/approve/${encodeURIComponent(authReqId)}?source=cli_handoff`;
   console.log();
   box([
     `${c.bold}Open this URL to approve the request:${c.reset}`,

@@ -2,11 +2,11 @@ import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  requireSession: vi.fn(),
+  requireBrowserSession: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireSession: authMocks.requireSession,
+  requireBrowserSession: authMocks.requireBrowserSession,
 }));
 
 const fheMocks = vi.hoisted(() => ({
@@ -33,7 +33,7 @@ const makeRequest = (payload?: unknown) =>
 describe("fhe verify-age route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    authMocks.requireSession.mockResolvedValue({
+    authMocks.requireBrowserSession.mockResolvedValue({
       ok: false,
       response: new Response(
         JSON.stringify({ error: "Authentication required" }),
@@ -52,7 +52,7 @@ describe("fhe verify-age route", () => {
   });
 
   it("rejects invalid msgpack", async () => {
-    authMocks.requireSession.mockResolvedValue({
+    authMocks.requireBrowserSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     });
@@ -69,7 +69,7 @@ describe("fhe verify-age route", () => {
   });
 
   it("returns 404 when ciphertext is missing", async () => {
-    authMocks.requireSession.mockResolvedValue({
+    authMocks.requireBrowserSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     });
@@ -82,7 +82,7 @@ describe("fhe verify-age route", () => {
   });
 
   it("rejects mismatched key id", async () => {
-    authMocks.requireSession.mockResolvedValue({
+    authMocks.requireBrowserSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     });
@@ -99,7 +99,7 @@ describe("fhe verify-age route", () => {
   });
 
   it("verifies age with stored ciphertext", async () => {
-    authMocks.requireSession.mockResolvedValue({
+    authMocks.requireBrowserSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     });

@@ -2,7 +2,7 @@ import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireSession: vi.fn(),
+  requireBrowserSession: vi.fn(),
 }));
 
 const fheMocks = vi.hoisted(() => ({
@@ -18,7 +18,7 @@ const dbMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/queries/crypto", () => dbMocks);
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
@@ -31,7 +31,7 @@ const makeRequest = (payload: unknown) =>
 describe("fhe keys/register route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireSession).mockResolvedValue({
+    vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: false,
       response: new Response(
         JSON.stringify({ error: "Authentication required" }),
@@ -82,7 +82,7 @@ describe("fhe keys/register route", () => {
   });
 
   it("reuses existing key id for authenticated users", async () => {
-    vi.mocked(requireSession).mockResolvedValue({
+    vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);
@@ -106,7 +106,7 @@ describe("fhe keys/register route", () => {
   });
 
   it("registers key and updates metadata for authenticated users", async () => {
-    vi.mocked(requireSession).mockResolvedValue({
+    vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-2" } },
     } as never);

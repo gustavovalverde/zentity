@@ -37,10 +37,10 @@ const PROOF_SCOPE_CLAIMS: Record<ProofScope, ProofClaimKey[]> = {
     "identity_bound",
     "sybil_resistant",
   ],
-  "proof:age": ["age_verified"],
+  "proof:age": ["age_verification"],
   "proof:document": ["document_verified"],
   "proof:liveness": ["liveness_verified", "face_match_verified"],
-  "proof:nationality": ["nationality_verified"],
+  "proof:nationality": ["nationality_verified", "nationality_group"],
   "proof:compliance": [
     "policy_version",
     "verification_time",

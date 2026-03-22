@@ -17,14 +17,56 @@ const ENABLE_TWO_FACTOR_RE = /Enable Two-Factor/i;
 const TWO_FACTOR_DIALOG_RE = /Two-Factor/i;
 const BACKUP_CODES_DIALOG_RE = /Backup Codes/i;
 const VERIFY_2FA_URL_RE = /\/verify-2fa/;
+const TRAILING_SLASH_RE = /\/$/;
 const MAILPIT_BASE_URL = (
   process.env.MAILPIT_BASE_URL || "http://localhost:8025"
-).replace(/\/$/, "");
+).replace(TRAILING_SLASH_RE, "");
+const SIGNER_COORDINATOR_URL = (
+  process.env.SIGNER_COORDINATOR_URL || "http://localhost:5002"
+).replace(TRAILING_SLASH_RE, "");
+const SIGNER_ENDPOINTS = (
+  process.env.SIGNER_ENDPOINTS ||
+  "http://localhost:5101,http://localhost:5102,http://localhost:5103"
+)
+  .split(",")
+  .map((endpoint) => endpoint.trim().replace(TRAILING_SLASH_RE, ""))
+  .filter(Boolean);
+
+let recoveryInfraAvailablePromise: Promise<boolean> | null = null;
 
 const sleep = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+
+async function checkServiceHealth(baseUrl: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function isRecoveryInfraAvailable(): Promise<boolean> {
+  const services = [SIGNER_COORDINATOR_URL, ...SIGNER_ENDPOINTS.slice(0, 3)];
+  const statuses = await Promise.all(
+    services.map((serviceUrl) => checkServiceHealth(serviceUrl))
+  );
+  return statuses.every(Boolean);
+}
+
+async function getRecoveryInfraAvailable(): Promise<boolean> {
+  recoveryInfraAvailablePromise ??= isRecoveryInfraAvailable();
+  return await recoveryInfraAvailablePromise;
+}
 
 function _getSeedPassword(): string {
   if (process.env.E2E_PASSWORD) {
@@ -351,6 +393,13 @@ test.describe
     let backupCodes: string[] = [];
     let usedBackupCode = "";
     let totpUri: string | null = null;
+
+    test.beforeEach(async () => {
+      test.skip(
+        !(await getRecoveryInfraAvailable()),
+        "Recovery signer services are not available for E2E."
+      );
+    });
 
     test("setup recovery ID + authenticator guardian + backup codes", async ({
       page,

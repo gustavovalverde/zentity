@@ -7,7 +7,7 @@
 
 const STORAGE_KEY = "zentity-liveness-camera-device";
 
-export interface StoredCameraPreference {
+interface StoredCameraPreference {
   /** Device ID of the preferred camera */
   deviceId: string;
   /** Human-readable label of the camera */

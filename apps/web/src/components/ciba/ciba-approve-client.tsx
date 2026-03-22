@@ -1,17 +1,8 @@
 "use client";
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
-import type { AgentClaims } from "@/lib/identity/agent-claims";
 
-import {
-  AlertTriangle,
-  Bot,
-  ChevronDown,
-  ChevronUp,
-  ShieldCheck,
-  ShieldPlus,
-} from "lucide-react";
-import Link from "next/link";
+import { AlertTriangle, Bot, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -36,7 +27,16 @@ import {
   buildScopeKey,
 } from "@/components/vault-unlock/vault-unlock";
 import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
-import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
+import {
+  IDENTITY_SCOPE_DESCRIPTIONS,
+  type IdentityScope,
+  isIdentityScope,
+} from "@/lib/auth/oidc/identity-scopes";
+import {
+  isProofScope,
+  PROOF_SCOPE_DESCRIPTIONS,
+  type ProofScope,
+} from "@/lib/auth/oidc/proof-scopes";
 
 interface AuthorizationDetail {
   amount?: { currency?: string; value?: string };
@@ -46,39 +46,8 @@ interface AuthorizationDetail {
   [key: string]: unknown;
 }
 
-function buildPolicyLink(
-  details: CibaRequestDetails,
-  clientId: string | undefined
-): string {
-  const params = new URLSearchParams();
-  if (clientId) {
-    params.set("clientId", clientId);
-  }
-  if (details.authorization_details?.some((d) => d.type === "purchase")) {
-    params.set("type", "purchase");
-    const purchase = details.authorization_details.find(
-      (d) => d.type === "purchase"
-    );
-    if (purchase?.amount?.value) {
-      params.set("maxAmount", purchase.amount.value);
-    }
-    if (purchase?.amount?.currency) {
-      params.set("currency", purchase.amount.currency);
-    }
-  } else {
-    params.set("type", "scope");
-    const scopes = details.scope
-      .split(" ")
-      .filter((s) => s !== "openid")
-      .join(",");
-    params.set("scopes", scopes);
-  }
-  return `/dashboard/agent-policies?create=true&${params.toString()}`;
-}
-
 interface CibaRequestDetails {
   acr_values?: string;
-  agent_claims?: AgentClaims;
   auth_req_id: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
@@ -99,28 +68,57 @@ type PageState =
   | "expired"
   | "error";
 
-interface AttestationInfo {
-  provider?: string;
-  verified?: boolean;
-}
+function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
+  const proofScopes = scopes.filter(isProofScope) as ProofScope[];
+  const identityScopes = scopes.filter(isIdentityScope) as IdentityScope[];
 
-function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
-  const [showAudit, setShowAudit] = useState(false);
-  const agent = claims.agent;
-  if (!agent?.name) {
+  if (proofScopes.length === 0 && identityScopes.length === 0) {
     return null;
   }
 
-  const attestation = (claims as Record<string, unknown>).attestation as
-    | AttestationInfo
-    | undefined;
-  const isVerified = attestation?.verified === true;
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <p className="font-medium text-sm">Identity claims requested</p>
+      <ul className="space-y-1.5 text-sm">
+        {proofScopes.map((scope) => (
+          <li className="flex items-start gap-2" key={scope}>
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green-600 dark:text-green-400" />
+            <span>
+              {PROOF_SCOPE_DESCRIPTIONS[scope]}
+              <span className="ml-1 text-muted-foreground text-xs">
+                — no PII shared
+              </span>
+            </span>
+          </li>
+        ))}
+        {identityScopes.map((scope) => (
+          <li className="flex items-start gap-2" key={scope}>
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+            <span>
+              {IDENTITY_SCOPE_DESCRIPTIONS[scope]}
+              <span className="ml-1 text-muted-foreground text-xs">
+                — requires vault unlock
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
-  const capabilities =
-    agent.capabilities ?? claims.capabilities?.map((c) => c.action);
-  const oversightItems = claims.oversight?.requires_human_approval_for;
-  const delegationDepth = claims.delegation?.depth;
-  const traceId = claims.audit?.trace_id;
+interface AgentIdentitySummary {
+  model?: string;
+  name: string;
+  runtime?: string;
+}
+
+function AgentIdentityCard({
+  identity,
+}: Readonly<{ identity: AgentIdentitySummary }>) {
+  if (!identity.name) {
+    return null;
+  }
 
   return (
     <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
@@ -129,83 +127,12 @@ function AgentIdentityCard({ claims }: Readonly<{ claims: AgentClaims }>) {
         <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
           Agent
         </p>
-        {isVerified ? (
-          <Badge className="border-green-200 bg-green-50 text-green-700 text-xs dark:border-green-800 dark:bg-green-950 dark:text-green-300">
-            Verified by {attestation?.provider ?? "Provider"}
-          </Badge>
-        ) : (
-          <Badge className="text-xs" variant="outline">
-            Unverified
-          </Badge>
-        )}
-        {delegationDepth != null && delegationDepth > 0 && (
-          <Badge className="text-xs" variant="secondary">
-            Delegated (depth: {delegationDepth})
-          </Badge>
-        )}
       </div>
-      <p className="font-medium">{agent.name}</p>
-      {(agent.model || agent.runtime || agent.version) && (
+      <p className="font-medium">{identity.name}</p>
+      {(identity.model || identity.runtime) && (
         <p className="text-muted-foreground text-sm">
-          {[agent.model, agent.runtime, agent.version]
-            .filter(Boolean)
-            .join(" / ")}
+          {[identity.model, identity.runtime].filter(Boolean).join(" / ")}
         </p>
-      )}
-      {claims.task?.description && (
-        <p className="text-muted-foreground text-sm">
-          {claims.task.description}
-        </p>
-      )}
-      {capabilities && capabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {capabilities.map((cap) => (
-            <Badge className="text-xs" key={cap} variant="secondary">
-              {cap}
-            </Badge>
-          ))}
-        </div>
-      )}
-      {oversightItems && oversightItems.length > 0 && (
-        <div>
-          <p className="text-muted-foreground text-xs">
-            Requires human approval for:
-          </p>
-          <ul className="mt-0.5 space-y-0.5 pl-4 text-muted-foreground text-xs">
-            {oversightItems.map((item) => (
-              <li className="list-disc" key={item}>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {traceId && (
-        <div>
-          <button
-            className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
-            onClick={() => setShowAudit((p) => !p)}
-            type="button"
-          >
-            Audit
-            {showAudit ? (
-              <ChevronUp className="size-3" />
-            ) : (
-              <ChevronDown className="size-3" />
-            )}
-          </button>
-          {showAudit && (
-            <p className="mt-1 break-all font-mono text-muted-foreground text-xs">
-              trace: {traceId}
-              {claims.audit?.session_id && (
-                <>
-                  <br />
-                  session: {claims.audit.session_id}
-                </>
-              )}
-            </p>
-          )}
-        </div>
       )}
     </div>
   );
@@ -225,17 +152,24 @@ function resolveTerminalState(message: string): PageState | null {
   return null;
 }
 
+interface RegisteredAgentInfo {
+  attestationProvider: string | null;
+  attestationTier: string;
+  hostName: string;
+  sessionId: string;
+}
+
 export function CibaApproveClient({
-  agentClaims: serverAgentClaims,
+  agentIdentity,
   authMode,
   authReqId,
-  clientId: serverClientId,
+  registeredAgent,
   wallet,
 }: Readonly<{
-  agentClaims?: AgentClaims | null;
+  agentIdentity?: AgentIdentitySummary | null;
   authMode: AuthMode;
   authReqId: string | null;
-  clientId?: string;
+  registeredAgent?: RegisteredAgentInfo | null;
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
@@ -333,12 +267,46 @@ export function CibaApproveClient({
     });
   }, [authReqId, scopes]);
 
+  const hasProofScopes = useMemo(() => scopes.some(isProofScope), [scopes]);
+
   const vault = useVaultUnlock({
     logTag: "ciba-approve",
     scopeKey,
     active: vaultActive,
     fetchIntentToken,
   });
+
+  // ── Verification check (proof scopes need completed verification) ──
+
+  const [verificationMissing, setVerificationMissing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!(hasProofScopes && vault.vaultState.status === "loaded")) {
+      setVerificationMissing(false);
+      return;
+    }
+
+    fetch("/api/trpc/assurance.profile", { credentials: "include" })
+      .then((res) => res.json())
+      .then((data: { result?: { data?: { json?: { tier?: number } } } }) => {
+        if (cancelled) {
+          return;
+        }
+        const tier = data?.result?.data?.json?.tier;
+        setVerificationMissing(typeof tier === "number" ? tier < 2 : false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVerificationMissing(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasProofScopes, vault.vaultState.status]);
 
   // ── Actions ──────────────────────────────────────────────
 
@@ -579,13 +547,37 @@ export function CibaApproveClient({
             </div>
           )}
 
-          {serverAgentClaims || details?.agent_claims ? (
-            <AgentIdentityCard
-              claims={
-                (serverAgentClaims ?? details?.agent_claims) as AgentClaims
-              }
-            />
+          {registeredAgent && (
+            <div
+              className={`flex items-center gap-2 rounded-md border p-3 ${
+                registeredAgent.attestationTier === "attested"
+                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950"
+                  : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
+              }`}
+            >
+              {registeredAgent.attestationTier === "attested" ? (
+                <ShieldCheck className="size-4 shrink-0 text-green-600 dark:text-green-400" />
+              ) : (
+                <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              )}
+              <div className="text-sm">
+                <span className="font-medium">{registeredAgent.hostName}</span>
+                <span className="ml-1.5 text-muted-foreground">
+                  {registeredAgent.attestationTier === "attested"
+                    ? `Verified by ${registeredAgent.attestationProvider ?? "Provider"}`
+                    : "Unverified"}
+                </span>
+                <p className="font-mono text-muted-foreground text-xs">
+                  {registeredAgent.sessionId}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {agentIdentity ? (
+            <AgentIdentityCard identity={agentIdentity} />
           ) : (
+            !registeredAgent &&
             details && (
               <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -668,6 +660,8 @@ export function CibaApproveClient({
             </div>
           )}
 
+          <RequestedClaimsSection scopes={scopes} />
+
           <VaultUnlockPanel
             active={vaultActive}
             authMode={authMode}
@@ -675,6 +669,17 @@ export function CibaApproveClient({
             vault={vault}
             wallet={wallet}
           />
+
+          {verificationMissing && (
+            <Alert>
+              <AlertTriangle className="size-4" />
+              <AlertDescription>
+                Complete identity verification to enable privacy-preserving
+                disclosure. The agent will be notified that verification is
+                required.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {error ? (
             <Alert variant="destructive">
@@ -701,6 +706,7 @@ export function CibaApproveClient({
               className="flex-1"
               disabled={
                 isActing ||
+                verificationMissing ||
                 (hasIdentityScopes &&
                   (vault.vaultState.status !== "loaded" ||
                     !vault.hasValidIdentityIntent ||
@@ -711,19 +717,6 @@ export function CibaApproveClient({
               {state === "approving" ? "Approving..." : "Approve"}
             </Button>
           </div>
-          {!hasIdentityScopes && details && (
-            <Button asChild size="sm" variant="outline">
-              <Link
-                href={buildPolicyLink(
-                  details,
-                  serverClientId ?? details.client_id
-                )}
-              >
-                <ShieldPlus className="mr-2 size-4" />
-                Always allow this
-              </Link>
-            </Button>
-          )}
         </CardFooter>
       </Card>
     </div>

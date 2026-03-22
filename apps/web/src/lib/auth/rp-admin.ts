@@ -3,7 +3,7 @@ import type { Session } from "@/lib/auth/auth";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { db } from "@/lib/db/connection";
 import { members } from "@/lib/db/schema/organization";
 
@@ -15,7 +15,7 @@ export async function requireRpAdmin(
   | { ok: true; session: Session; organizationId: string }
   | { ok: false; response: NextResponse<{ error: string }> }
 > {
-  const sessionResult = await requireSession(requestHeaders);
+  const sessionResult = await requireBrowserSession(requestHeaders);
   if (!sessionResult.ok) {
     return sessionResult;
   }

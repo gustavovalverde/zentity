@@ -12,7 +12,7 @@ import { signJwtWithMlDsa } from "./ml-dsa-signer";
 
 type SigningAlg = "RS256" | "ES256" | "EdDSA" | "ML-DSA-65";
 
-export type StandardAlg = "RS256" | "ES256" | "EdDSA";
+type StandardAlg = "RS256" | "ES256" | "EdDSA";
 
 interface CachedSigningKey {
   kid: string;
@@ -24,6 +24,7 @@ const keyCache = new Map<StandardAlg, CachedSigningKey>();
 /** Clear the module-level signing key cache (for test isolation and rotation). */
 export function resetSigningKeyCache(): void {
   keyCache.clear();
+  algCache.clear();
 }
 
 const KEY_GEN_OPTIONS: Record<

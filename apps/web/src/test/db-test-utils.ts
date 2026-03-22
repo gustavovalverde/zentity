@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 
+import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { db } from "@/lib/db/connection";
+import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -54,7 +56,7 @@ import {
   recoverySecretWrappers,
 } from "@/lib/db/schema/recovery";
 
-export interface CreateUserInput {
+interface CreateUserInput {
   createdAt?: string;
   email?: string;
   emailVerified?: boolean;
@@ -64,6 +66,7 @@ export interface CreateUserInput {
 }
 
 export async function resetDatabase(): Promise<void> {
+  resetSigningKeyCache();
   await db.transaction(async (tx) => {
     await tx.delete(attestationEvidence).run();
     await tx.delete(blockchainAttestations).run();
@@ -97,6 +100,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(haipVpSessions).run();
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();
+    await tx.delete(agentTokenSnapshots).run();
     await tx.delete(oauthAccessTokens).run();
     await tx.delete(oauthRefreshTokens).run();
     await tx.delete(oauthConsents).run();

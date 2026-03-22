@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  Bot,
   BotMessageSquare,
   Code,
   Coins,
@@ -10,7 +11,6 @@ import {
   LogOut,
   Settings,
   Shield,
-  ShieldPlus,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -92,9 +92,9 @@ const developerNavItems: NavItem[] = [
     icon: BotMessageSquare,
   },
   {
-    title: "Agent Policies",
-    url: "/dashboard/agent-policies",
-    icon: ShieldPlus,
+    title: "Agents",
+    url: "/dashboard/agents",
+    icon: Bot,
   },
   {
     title: "Debug Tools",

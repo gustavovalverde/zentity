@@ -6,7 +6,6 @@
  *
  * Routers:
  * - account: Account management and GDPR deletion
- * - agentBoundaries: Per-user, per-agent auto-approval policies
  * - assurance: Tier profile and feature gating
  * - attestation: On-chain identity attestation (multi-network)
  * - credentials: Verifiable credential issuance (OIDC4VCI)
@@ -22,7 +21,7 @@ import "server-only";
 import { router } from "../server";
 import { accountRouter } from "./account";
 import { adminRouter } from "./admin";
-import { agentBoundariesRouter } from "./agent-boundaries";
+import { agentRouter } from "./agent";
 import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
 import { compliantTokenRouter } from "./compliant-token";
@@ -38,7 +37,7 @@ import { zkRouter } from "./zk/router";
 export const appRouter = router({
   account: accountRouter,
   admin: adminRouter,
-  agentBoundaries: agentBoundariesRouter,
+  agent: agentRouter,
   assurance: assuranceRouter,
   attestation: attestationRouter,
   credentials: credentialsRouter,

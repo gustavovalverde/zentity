@@ -131,9 +131,13 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
         client_id: clientId,
         resource: BASE_URL,
       },
-      headers: { DPoP: dpop.proof },
+      headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });
-    expect(tokenRes.ok()).toBeTruthy();
+    if (!tokenRes.ok()) {
+      throw new Error(
+        `token exchange failed (${tokenRes.status()} ${tokenRes.statusText()}): ${await tokenRes.text()}`
+      );
+    }
     const tokenBody = (await tokenRes.json()) as {
       access_token: string;
       id_token?: string;
@@ -228,9 +232,13 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
         client_id: clientId,
         resource: BASE_URL,
       },
-      headers: { DPoP: dpop.proof },
+      headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });
-    expect(tokenRes.ok()).toBeTruthy();
+    if (!tokenRes.ok()) {
+      throw new Error(
+        `token exchange failed (${tokenRes.status()} ${tokenRes.statusText()}): ${await tokenRes.text()}`
+      );
+    }
     const tokenBody = (await tokenRes.json()) as {
       access_token: string;
       id_token?: string;

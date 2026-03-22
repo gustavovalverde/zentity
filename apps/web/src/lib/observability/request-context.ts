@@ -13,7 +13,7 @@ type FlowIdSource = "header" | "cookie" | "query" | "none";
 type SpanAttributeValue = string | number | boolean | undefined;
 type SpanAttributes = Record<string, SpanAttributeValue>;
 
-export interface RequestContext {
+interface RequestContext {
   flowId: string | null;
   flowIdSource: FlowIdSource;
   requestId: string;

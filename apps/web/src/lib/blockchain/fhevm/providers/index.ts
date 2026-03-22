@@ -14,7 +14,7 @@ import { createZamaRelayerInstance } from "./zama/relayer";
 
 // --- Types ---
 
-export type FhevmProviderId = "zama" | "mock" | (string & Record<never, never>);
+type FhevmProviderId = "zama" | "mock" | (string & Record<never, never>);
 
 interface FhevmProviderInitParams {
   chainId: number;

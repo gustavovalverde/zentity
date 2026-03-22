@@ -11,7 +11,7 @@ const defaultFromName = env.MAIL_FROM_NAME;
 
 let resendClient: Resend | null = null;
 
-export interface ResendMessage {
+interface ResendMessage {
   html?: string;
   subject: string;
   tags?: string[];

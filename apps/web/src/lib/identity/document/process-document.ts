@@ -37,7 +37,7 @@ interface ParsedDateValues {
 /**
  * Computed claim hashes for attestation.
  */
-export interface ComputedClaimHashes {
+interface ComputedClaimHashes {
   ageClaimHash: string | null;
   docValidityClaimHash: string | null;
   nationalityClaimHash: string | null;
@@ -46,7 +46,7 @@ export interface ComputedClaimHashes {
 /**
  * Document processing result from shared OCR + validation logic.
  */
-export interface DocumentProcessingResult {
+interface DocumentProcessingResult {
   claimHashes: ComputedClaimHashes;
   dedupKey: string | null;
   documentHash: string | null;
@@ -65,7 +65,7 @@ export interface DocumentProcessingResult {
 /**
  * Input parameters for document processing.
  */
-export interface ProcessDocumentParams {
+interface ProcessDocumentParams {
   dedupSecret: string;
   existingDraftId?: string | null | undefined;
   existingVerificationId?: string | null | undefined;

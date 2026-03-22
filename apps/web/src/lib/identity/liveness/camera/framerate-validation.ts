@@ -8,7 +8,7 @@
 /** Minimum frame rate required for reliable liveness detection */
 export const MIN_FRAMERATE = 15;
 
-export interface FrameRateValidation {
+interface FrameRateValidation {
   /** Actual frame rate reported by the camera */
   actualFrameRate: number;
   /** Raw capabilities from the track, if available */

@@ -112,7 +112,7 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
       null
     );
 
-    expect(result).toHaveProperty("age_verified", true);
+    expect(result).toHaveProperty("age_verification", true);
     expect(Object.keys(result)).toHaveLength(1);
   });
 
@@ -128,7 +128,7 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
 
     expect(result).toEqual({ given_name: "Jane", family_name: "Doe" });
     expect(result).not.toHaveProperty("verified");
-    expect(result).not.toHaveProperty("age_verified");
+    expect(result).not.toHaveProperty("age_verification");
   });
 
   it("merges proof claims when proof:verification scope is present (bank scenario)", async () => {
@@ -145,7 +145,7 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
     expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("identity_bound", true);
     // proof:verification should NOT include age/doc/liveness claims
-    expect(result).not.toHaveProperty("age_verified");
+    expect(result).not.toHaveProperty("age_verification");
     expect(result).not.toHaveProperty("document_verified");
   });
 
@@ -156,7 +156,7 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
       null
     );
 
-    expect(result).toHaveProperty("age_verified", true);
+    expect(result).toHaveProperty("age_verification", true);
     expect(Object.keys(result)).toHaveLength(1);
   });
 
@@ -185,11 +185,12 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
 
     expect(result).toHaveProperty("verification_level");
     expect(result).toHaveProperty("verified");
-    expect(result).toHaveProperty("age_verified");
+    expect(result).toHaveProperty("age_verification");
     expect(result).toHaveProperty("document_verified");
     expect(result).toHaveProperty("liveness_verified");
     expect(result).toHaveProperty("face_match_verified");
     expect(result).toHaveProperty("nationality_verified");
+    expect(result).toHaveProperty("nationality_group", "GLOBAL");
     expect(result).toHaveProperty("identity_bound");
     expect(result).toHaveProperty("sybil_resistant");
     expect(result).toHaveProperty("policy_version");
@@ -251,9 +252,39 @@ describe("customIdTokenClaims — proof claims in id_token", () => {
     expect(result).toHaveProperty("given_name", "Alice");
     expect(result).toHaveProperty("address");
     // Proof from ZK verification
-    expect(result).toHaveProperty("age_verified", true);
+    expect(result).toHaveProperty("age_verification", true);
     // Should NOT have claims outside requested scopes
     expect(result).not.toHaveProperty("nationality_verified");
     expect(result).not.toHaveProperty("document_verified");
+  });
+
+  it("spirits CIBA scenario: proof:age + proof:nationality + identity scopes", async () => {
+    const scopes = [
+      "openid",
+      "proof:age",
+      "proof:nationality",
+      "identity.name",
+      "identity.address",
+    ];
+    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
+      claims: {
+        given_name: "Jane",
+        family_name: "Doe",
+        address: { formatted: "456 Oak Ave" },
+      },
+      scopes,
+    });
+
+    // Proof claims (no PII)
+    expect(result).toHaveProperty("age_verification", true);
+    expect(result).toHaveProperty("nationality_verified", true);
+    expect(result).toHaveProperty("nationality_group", "GLOBAL");
+    // Identity claims (from vault unlock)
+    expect(result).toHaveProperty("given_name", "Jane");
+    expect(result).toHaveProperty("address");
+    // Should NOT have claims outside requested scopes
+    expect(result).not.toHaveProperty("document_verified");
+    expect(result).not.toHaveProperty("liveness_verified");
+    expect(result).not.toHaveProperty("verification_level");
   });
 });

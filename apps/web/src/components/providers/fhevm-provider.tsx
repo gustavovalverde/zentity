@@ -22,7 +22,7 @@ import { useChainId } from "wagmi";
 import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { useIsMounted } from "@/hooks/use-is-mounted";
 
-export interface FhevmContextValue {
+interface FhevmContextValue {
   /** Error if initialization failed */
   error: Error | undefined;
   /** The FHEVM SDK instance for encryption/decryption operations */

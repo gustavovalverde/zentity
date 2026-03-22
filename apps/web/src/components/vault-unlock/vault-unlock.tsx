@@ -22,7 +22,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────
 
-export type VaultErrorCategory =
+type VaultErrorCategory =
   | "not_enrolled"
   | "browser_unsupported"
   | "cancelled"

@@ -5,7 +5,7 @@
  * without a fragment component (RFC 8707 §2).
  */
 
-export interface ResourceValidationResult {
+interface ResourceValidationResult {
   error?: string;
   valid: boolean;
 }

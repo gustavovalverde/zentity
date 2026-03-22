@@ -14,12 +14,12 @@ import {
 const normalizeIdentifier = (identifier: string) =>
   identifier.trim().toLowerCase();
 
-export interface ResolvedUser {
+interface ResolvedUser {
   accounts: Account[];
   user: { id: string };
 }
 
-export interface StartOpaqueLoginParams {
+interface StartOpaqueLoginParams {
   identifier: string;
   loginRequest: string;
   resolveUser: (identifier: string) => Promise<ResolvedUser | null>;
@@ -27,7 +27,7 @@ export interface StartOpaqueLoginParams {
   serverSetup: string;
 }
 
-export interface StartOpaqueLoginResult {
+interface StartOpaqueLoginResult {
   challenge: string;
   serverPublicKey: string;
   state: string;
@@ -92,7 +92,7 @@ export async function startOpaqueLogin(
   };
 }
 
-export interface FinishOpaqueLoginParams {
+interface FinishOpaqueLoginParams {
   encryptedServerState: string;
   loginResult: string;
   secret: string;

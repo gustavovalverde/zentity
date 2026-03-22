@@ -41,7 +41,7 @@ interface ChallengeState {
   type: ChallengeType;
 }
 
-export interface FaceBox {
+interface FaceBox {
   height: number;
   width: number;
   x: number;
@@ -158,7 +158,7 @@ function useLivenessContext(): LivenessStateContextValue &
 // Provider Props
 // ============================================================================
 
-export interface LivenessProviderProps {
+interface LivenessProviderProps {
   children: ReactNode;
   /** Enable debug logging */
   debug?: boolean | undefined;

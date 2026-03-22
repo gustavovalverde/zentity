@@ -7,7 +7,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
-    const authResult = await requireSession(request.headers);
+    const authResult = await requireBrowserSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
   try {
-    const authResult = await requireSession(request.headers);
+    const authResult = await requireBrowserSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }

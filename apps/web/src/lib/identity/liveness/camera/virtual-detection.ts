@@ -108,7 +108,7 @@ export function filterPhysicalCameras(
   });
 }
 
-export interface VirtualCameraCheckResult {
+interface VirtualCameraCheckResult {
   deviceLabel?: string;
   isVirtual: boolean;
   reason?: "virtual_camera" | "screen_capture";

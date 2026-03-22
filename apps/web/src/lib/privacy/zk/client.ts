@@ -34,13 +34,13 @@ import {
 type ZkOutputs = RouterOutputs["zk"];
 
 // Types for ZK proof operations
-export interface ProofResult {
+interface ProofResult {
   generationTimeMs: number;
   proof: string; // Base64 encoded UltraHonk ZK proof
   publicSignals: string[];
 }
 
-export type ClientProofType =
+type ClientProofType =
   | "age_verification"
   | "doc_validity"
   | "face_match"

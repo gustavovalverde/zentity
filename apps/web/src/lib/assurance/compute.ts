@@ -71,7 +71,7 @@ export function deriveAuthStrength(
 /**
  * Input data for computing assurance state
  */
-export interface AssuranceInput {
+interface AssuranceInput {
   chipVerified: boolean;
   documentVerified: boolean;
   faceMatchVerified: boolean;

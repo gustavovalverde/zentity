@@ -126,6 +126,16 @@ describe("A2A Agent Card — security schemes", () => {
     expect(oidc?.openIdConnectUrl as string).toContain("openid-configuration");
   });
 
+  it("agent-auth scheme references agent-configuration discovery", async () => {
+    const card = await parseCard(await getAgentCard());
+    const agentAuth = card.securitySchemes["agent-auth"];
+
+    expect(agentAuth?.type).toBe("agent-auth");
+    expect(agentAuth?.discoveryUrl as string).toContain(
+      ".well-known/agent-configuration"
+    );
+  });
+
   it("security array references both defined schemes", async () => {
     const card = await parseCard(await getAgentCard());
 

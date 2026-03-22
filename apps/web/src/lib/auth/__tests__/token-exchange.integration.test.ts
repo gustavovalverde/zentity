@@ -7,8 +7,13 @@ import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer } from "@/lib/auth/issuer";
 import { resetSigningKeyCache } from "@/lib/auth/oidc/jwt-signer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
-import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
+import {
+  PURCHASE_AUTHORIZATION_TOKEN_TYPE,
+  TOKEN_EXCHANGE_GRANT_TYPE,
+} from "@/lib/auth/oidc/token-exchange";
+import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
@@ -60,18 +65,30 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
 
 function mintAccessToken(
   sub: string,
-  opts: { scope?: string; act?: Record<string, unknown> } = {}
+  opts: {
+    aap?: Record<string, unknown>;
+    scope?: string;
+    act?: Record<string, unknown>;
+    authorizationDetails?: unknown;
+    azp?: string;
+  } = {}
 ): Promise<string> {
   const payload: Record<string, unknown> = {
     iss: authIssuer,
     sub,
     aud: authIssuer,
+    jti: crypto.randomUUID(),
     scope: opts.scope ?? "openid",
+    azp: opts.azp ?? TEST_CLIENT_ID,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
+    ...(opts.aap ?? {}),
   };
   if (opts.act) {
     payload.act = opts.act;
+  }
+  if (opts.authorizationDetails) {
+    payload.authorization_details = opts.authorizationDetails;
   }
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
@@ -194,6 +211,138 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(200);
       expect(json.scope).toBe("openid identity.name");
+    });
+
+    it("preserves AAP claims and adds delegation on exchanged tokens", async () => {
+      const subjectToken = await mintAccessToken(userId, {
+        scope: "openid",
+        aap: {
+          agent: {
+            id: "pairwise-agent-subject",
+            type: "mcp-agent",
+            model: { id: "gpt-4", version: "1.0.0" },
+            runtime: { environment: "demo-rp", attested: true },
+          },
+          task: {
+            id: "task-123",
+            purpose: "purchase",
+          },
+          capabilities: [
+            {
+              action: "purchase",
+              constraints: [{ field: "merchant", op: "eq", value: "Wine.com" }],
+            },
+          ],
+          oversight: {
+            approval_reference: "grant-123",
+            requires_human_approval_for: ["purchase"],
+          },
+          audit: {
+            trace_id: "trace-123",
+            session_id: "pairwise-agent-subject",
+          },
+        },
+      });
+
+      const parentPayload = decodeJwt(subjectToken);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+
+      expect(payload.agent).toEqual(parentPayload.agent);
+      expect(payload.task).toEqual(parentPayload.task);
+      expect(payload.capabilities).toEqual(parentPayload.capabilities);
+      expect(payload.oversight).toEqual(parentPayload.oversight);
+      expect(payload.audit).toEqual(parentPayload.audit);
+      expect(payload.delegation).toEqual({
+        depth: 1,
+        chain: ["pairwise-agent-subject"],
+        parent_jti: parentPayload.jti,
+      });
+    });
+  });
+
+  describe("access token → purchase authorization artifact", () => {
+    it("issues a purchase-authorization+jwt for the requested audience client", async () => {
+      const facilitatorClientId = "merchant-facilitator";
+      await createTestClient(facilitatorClientId);
+
+      const [host] = await db
+        .insert(agentHosts)
+        .values({
+          userId,
+          clientId: TEST_CLIENT_ID,
+          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+          publicKeyThumbprint: "host-thumbprint",
+          name: "Test Host",
+        })
+        .returning({ id: agentHosts.id });
+      expect(host).toBeDefined();
+      if (!host) {
+        throw new Error("Expected host registration fixture to be created");
+      }
+      const [session] = await db
+        .insert(agentSessions)
+        .values({
+          hostId: host.id,
+          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+          publicKeyThumbprint: "agent-thumbprint",
+          displayName: "Test Agent",
+        })
+        .returning({ id: agentSessions.id });
+      expect(session).toBeDefined();
+      if (!session) {
+        throw new Error("Expected agent session fixture to be created");
+      }
+
+      const subjectToken = await mintAccessToken(userId, {
+        azp: TEST_CLIENT_ID,
+        act: {
+          sub: await resolveAgentSubForClient(session.id, TEST_CLIENT_ID),
+        },
+        authorizationDetails: [
+          {
+            type: "purchase",
+            amount: { value: "48.50", currency: "USD" },
+            merchant: "Wine.com",
+            item: "Merlot",
+          },
+        ],
+      });
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        requested_token_type: PURCHASE_AUTHORIZATION_TOKEN_TYPE,
+        audience: facilitatorClientId,
+      });
+
+      expect(status).toBe(200);
+      expect(json.issued_token_type).toBe(PURCHASE_AUTHORIZATION_TOKEN_TYPE);
+      expect(json.token_type).toBe("N_A");
+
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.aud).toBe(facilitatorClientId);
+      expect(payload.authorization_details).toEqual([
+        {
+          type: "purchase",
+          amount: { value: "48.50", currency: "USD" },
+          merchant: "Wine.com",
+          item: "Merlot",
+        },
+      ]);
+      expect(payload.act).toEqual({
+        sub: await resolveAgentSubForClient(session.id, facilitatorClientId),
+      });
     });
   });
 

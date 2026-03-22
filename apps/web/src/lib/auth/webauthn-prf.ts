@@ -16,7 +16,7 @@ export interface PrfSupportStatus {
  * Extracted credential data for storage after registration.
  * This data is needed for server-side verification during authentication.
  */
-export interface CredentialRegistrationData {
+interface CredentialRegistrationData {
   backedUp: boolean;
   counter: number;
   credentialId: string;

@@ -34,7 +34,7 @@ function getInternalServiceAuthHeaders(
   return headers;
 }
 
-export type FheOperation =
+type FheOperation =
   | "register_key"
   | "encrypt_batch"
   | "encrypt_dob_days"

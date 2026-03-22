@@ -65,6 +65,10 @@ function buildAgentCard() {
         type: "openIdConnect",
         openIdConnectUrl: `${baseUrl}/.well-known/openid-configuration`,
       },
+      "agent-auth": {
+        type: "agent-auth",
+        discoveryUrl: `${baseUrl}/.well-known/agent-configuration`,
+      },
     },
 
     security: [

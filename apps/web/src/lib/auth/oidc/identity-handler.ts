@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { clearEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { normalizeIdentityFields } from "@/lib/auth/oidc/identity-fields-schema";
 import {
@@ -17,14 +17,14 @@ import { oauth2IdentityLimiter } from "@/lib/utils/rate-limiters";
 
 // ── Types ──────────────────────────────────────────────────
 
-export interface IdentityIntentInput {
+interface IdentityIntentInput {
   authorizedScopes: string[];
   authReqId?: string;
   clientId: string;
   scopes: string[];
 }
 
-export interface IdentityStageInput {
+interface IdentityStageInput {
   authorizedScopes: string[];
   authReqId?: string;
   clientId: string;
@@ -33,7 +33,7 @@ export interface IdentityStageInput {
   scopes: string[];
 }
 
-export interface ValidatedIdentityStage {
+interface ValidatedIdentityStage {
   clientId: string;
   filteredIdentity: Record<string, unknown>;
   identityScopes: string[];
@@ -65,7 +65,7 @@ function validateScopeSubset(
 async function resolveSessionAndBody(
   request: Request
 ): Promise<{ userId: string; body: unknown } | Response> {
-  const authResult = await requireSession(request.headers);
+  const authResult = await requireBrowserSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

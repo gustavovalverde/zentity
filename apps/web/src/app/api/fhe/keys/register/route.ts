@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const authResult = await requireSession(req.headers);
+  const authResult = await requireBrowserSession(req.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

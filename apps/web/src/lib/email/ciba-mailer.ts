@@ -69,48 +69,13 @@ function parseAuthorizationDetails(raw: unknown): AuthorizationDetail[] | null {
   return parsed as AuthorizationDetail[];
 }
 
-import {
-  type AgentClaims,
-  parseAgentClaims,
-} from "@/lib/identity/agent-claims";
-
 interface AgentIdentity {
-  model?: string | undefined;
+  attestationProvider?: string | null;
+  attestationTier?: string | null;
+  model?: string | null | undefined;
   name: string;
-  runtime?: string | undefined;
-  version?: string | undefined;
-}
-
-export function extractAgentIdentity(raw: unknown): AgentIdentity | null {
-  if (!raw) {
-    return null;
-  }
-  let claims: AgentClaims | null = null;
-  if (typeof raw === "string") {
-    claims = parseAgentClaims(raw);
-  } else {
-    const agent = (raw as Record<string, unknown>).agent as
-      | Record<string, unknown>
-      | undefined;
-    if (typeof agent?.name !== "string") {
-      return null;
-    }
-    return {
-      name: agent.name,
-      model: typeof agent.model === "string" ? agent.model : undefined,
-      runtime: typeof agent.runtime === "string" ? agent.runtime : undefined,
-      version: typeof agent.version === "string" ? agent.version : undefined,
-    };
-  }
-  if (!claims) {
-    return null;
-  }
-  return {
-    name: claims.agent.name,
-    model: claims.agent.model,
-    runtime: claims.agent.runtime,
-    version: claims.agent.version,
-  };
+  runtime?: string | null | undefined;
+  version?: string | null | undefined;
 }
 
 export function formatAgentText(agent: AgentIdentity): string {
@@ -124,7 +89,11 @@ export function formatAgentText(agent: AgentIdentity): string {
   if (agent.version) {
     parts.push(`Version: ${agent.version}`);
   }
-  return `Agent: ${parts.join(" | ")}\n(Unverified — self-declared by the requesting application)`;
+  const trustLabel =
+    agent.attestationTier === "attested"
+      ? `Attested${agent.attestationProvider ? ` by ${agent.attestationProvider}` : ""}`
+      : "Registered runtime";
+  return `Agent: ${parts.join(" | ")}\n(${trustLabel})`;
 }
 
 export function formatAgentHtml(agent: AgentIdentity): string {
@@ -138,9 +107,13 @@ export function formatAgentHtml(agent: AgentIdentity): string {
   if (agent.version) {
     fields.push(`v${agent.version}`);
   }
+  const trustLabel =
+    agent.attestationTier === "attested"
+      ? `Attested${agent.attestationProvider ? ` by ${agent.attestationProvider}` : ""}`
+      : "Registered runtime";
   return `<div style="background:#eff6ff;border:1px solid #bfdbfe;padding:12px 16px;border-radius:8px;margin:12px 0;">
 <p style="margin:0 0 4px;font-weight:600;">${fields.join(" &middot; ")}</p>
-<p style="margin:0;color:#6b7280;font-size:12px;">Unverified — self-declared by the requesting application</p>
+<p style="margin:0;color:#6b7280;font-size:12px;">${trustLabel}</p>
 </div>`;
 }
 
@@ -151,7 +124,7 @@ export async function sendCibaNotification(params: {
   scope: string;
   bindingMessage?: string | undefined;
   authorizationDetails?: unknown;
-  agentClaims?: string | undefined;
+  registeredAgent?: AgentIdentity | undefined;
   approvalUrl: string;
 }): Promise<void> {
   const user = await db
@@ -181,7 +154,7 @@ export async function sendCibaNotification(params: {
   const subject = `Authorization Request from ${clientLabel}`;
 
   const parsedDetails = parseAuthorizationDetails(params.authorizationDetails);
-  const agent = extractAgentIdentity(params.agentClaims);
+  const agent = params.registeredAgent ?? null;
 
   const agentLine = agent ? `\n${formatAgentText(agent)}\n` : "";
   const bindingLine = params.bindingMessage

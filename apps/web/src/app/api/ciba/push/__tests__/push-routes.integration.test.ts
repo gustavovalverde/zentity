@@ -2,11 +2,11 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
-  requireSession: vi.fn(),
+  requireBrowserSession: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireSession: authMocks.requireSession,
+  requireBrowserSession: authMocks.requireBrowserSession,
 }));
 
 import { db } from "@/lib/db/connection";
@@ -17,7 +17,7 @@ import { POST as subscribe } from "../subscribe/route";
 import { POST as unsubscribe } from "../unsubscribe/route";
 
 function mockSession(userId: string) {
-  authMocks.requireSession.mockResolvedValue({
+  authMocks.requireBrowserSession.mockResolvedValue({
     ok: true,
     session: { user: { id: userId } },
   });
@@ -26,7 +26,7 @@ function mockSession(userId: string) {
 function mockUnauthorized() {
   const { NextResponse } =
     require("next/server") as typeof import("next/server");
-  authMocks.requireSession.mockResolvedValue({
+  authMocks.requireBrowserSession.mockResolvedValue({
     ok: false,
     response: NextResponse.json(
       { error: "Authentication required" },
@@ -63,7 +63,7 @@ const validSubscription = {
 describe("POST /api/ciba/push/subscribe", () => {
   beforeEach(async () => {
     await resetDatabase();
-    authMocks.requireSession.mockReset();
+    authMocks.requireBrowserSession.mockReset();
   });
 
   it("returns 401 when no session", async () => {
@@ -162,7 +162,7 @@ describe("POST /api/ciba/push/subscribe", () => {
 describe("POST /api/ciba/push/unsubscribe", () => {
   beforeEach(async () => {
     await resetDatabase();
-    authMocks.requireSession.mockReset();
+    authMocks.requireBrowserSession.mockReset();
   });
 
   it("returns 401 when no session", async () => {

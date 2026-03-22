@@ -306,7 +306,9 @@ export function OAuthConsentClient({
       const oauthQuery = getSignedOAuthQuery();
       const response = await authClient.oauth2.consent({
         accept,
-        ...(accept ? { scope: consentScopes.join(" ") } : {}),
+        ...(accept && consentScopes.length > 0
+          ? { scope: consentScopes.join(" ") }
+          : {}),
         ...(oauthQuery ? { oauth_query: oauthQuery } : {}),
       });
 

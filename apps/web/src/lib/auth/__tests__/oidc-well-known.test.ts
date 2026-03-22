@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { auth } from "@/lib/auth/auth";
 import { IDENTITY_SCOPES } from "@/lib/auth/oidc/identity-scopes";
 import { PROOF_SCOPES } from "@/lib/auth/oidc/proof-scopes";
@@ -20,12 +21,9 @@ function parseOpenIdConfig(metadata: unknown) {
 
 describe("oidc well-known metadata", () => {
   it("serves credential issuer metadata from the public handler", async () => {
-    if (!auth.publicHandler) {
-      throw new Error("publicHandler is not configured");
-    }
-
-    const response = await auth.publicHandler(
-      new Request("http://localhost/.well-known/openid-credential-issuer")
+    const response = await getCredentialIssuerMetadata(
+      new Request("http://localhost/.well-known/openid-credential-issuer"),
+      { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(200);

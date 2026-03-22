@@ -6,22 +6,27 @@ import { redirect } from "next/navigation";
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { buildStandaloneApprovalPath } from "@/lib/ciba/approval-path";
 import { db } from "@/lib/db/connection";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { parseAgentClaims } from "@/lib/identity/agent-claims";
 
 export default async function ApprovePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ authReqId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { authReqId } = await params;
+  const callbackPath = buildStandaloneApprovalPath(
+    authReqId,
+    await searchParams
+  );
   const session = await getCachedSession(await headers());
 
   if (!session?.user?.id) {
-    redirect(
-      `/sign-in?callbackURL=${encodeURIComponent(`/approve/${authReqId}`)}`
-    );
+    redirect(`/sign-in?callbackURL=${encodeURIComponent(callbackPath)}`);
   }
 
   const detected = await detectAuthMode(session.user.id);
@@ -31,8 +36,10 @@ export default async function ApprovePage({
   // Fetch agent claims — scoped to the current user to prevent cross-user leakage
   const cibaRow = await db
     .select({
-      agentClaims: cibaRequests.agentClaims,
-      clientId: cibaRequests.clientId,
+      agentSessionId: cibaRequests.agentSessionId,
+      displayName: cibaRequests.displayName,
+      model: cibaRequests.model,
+      runtime: cibaRequests.runtime,
     })
     .from(cibaRequests)
     .where(
@@ -54,17 +61,53 @@ export default async function ApprovePage({
     );
   }
 
-  const agentClaims = cibaRow.agentClaims
-    ? parseAgentClaims(cibaRow.agentClaims)
-    : null;
+  const agentIdentity =
+    cibaRow.displayName == null
+      ? null
+      : {
+          name: cibaRow.displayName,
+          ...(cibaRow.model ? { model: cibaRow.model } : {}),
+          ...(cibaRow.runtime ? { runtime: cibaRow.runtime } : {}),
+        };
+
+  // Resolve registered agent identity if present
+  let registeredAgent: {
+    hostName: string;
+    attestationProvider: string | null;
+    attestationTier: string;
+    sessionId: string;
+  } | null = null;
+  if (cibaRow.agentSessionId) {
+    const agentRow = await db
+      .select({
+        sessionId: agentSessions.id,
+        hostName: agentHosts.name,
+        attestationProvider: agentHosts.attestationProvider,
+        attestationTier: agentHosts.attestationTier,
+      })
+      .from(agentSessions)
+      .innerJoin(agentHosts, eq(agentSessions.hostId, agentHosts.id))
+      .where(eq(agentSessions.id, cibaRow.agentSessionId))
+      .limit(1)
+      .get();
+
+    if (agentRow) {
+      registeredAgent = {
+        hostName: agentRow.hostName,
+        attestationProvider: agentRow.attestationProvider,
+        attestationTier: agentRow.attestationTier,
+        sessionId: agentRow.sessionId,
+      };
+    }
+  }
 
   return (
     <div className="w-full max-w-md">
       <CibaApproveClient
-        agentClaims={agentClaims}
+        agentIdentity={agentIdentity}
         authMode={authMode}
         authReqId={authReqId}
-        clientId={cibaRow.clientId}
+        registeredAgent={registeredAgent}
         wallet={wallet}
       />
       <div className="mt-4 hidden text-center md:block">

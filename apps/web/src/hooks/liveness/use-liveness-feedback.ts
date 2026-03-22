@@ -32,7 +32,7 @@ import {
 } from "@/lib/identity/liveness/haptics/patterns";
 import { speechEngine } from "@/lib/identity/liveness/speech/engine";
 
-export type FeedbackType = EarconType;
+type FeedbackType = EarconType;
 
 interface FeedbackOptions {
   /** Enable/disable earcon audio. Default: true */

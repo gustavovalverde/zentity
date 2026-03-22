@@ -20,7 +20,7 @@ export function isPrivateHost(hostname: string): boolean {
   return PRIVATE_RANGES.some((re) => re.test(hostname));
 }
 
-export interface SafeUrlOptions {
+interface SafeUrlOptions {
   /** Allow http://localhost in non-production (default: true). */
   allowLocalhostInDev?: boolean;
   /** Require HTTPS (default: true). */

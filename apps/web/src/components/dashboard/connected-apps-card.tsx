@@ -47,7 +47,7 @@ import {
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/scope-display";
 
-export interface ConsentRow {
+interface ConsentRow {
   clientIcon: string | null;
   clientId: string;
   clientName: string | null;

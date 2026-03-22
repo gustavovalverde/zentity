@@ -34,7 +34,7 @@ import { AuthMode } from "./proof-types";
 /**
  * Auth mode detection result.
  */
-export interface AuthModeInfo {
+interface AuthModeInfo {
   mode: "passkey" | "opaque" | "wallet";
   passkeyCreds?: { credentialId: string; prfSalt: Uint8Array }[];
 }
@@ -42,7 +42,7 @@ export interface AuthModeInfo {
 /**
  * Result of binding context retrieval attempt.
  */
-export type BindingContextResult =
+type BindingContextResult =
   | { success: true; context: BindingContext }
   | {
       success: false;

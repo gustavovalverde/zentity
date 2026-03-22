@@ -28,7 +28,7 @@ import {
   zkProofs,
 } from "../schema/crypto";
 
-export interface ZkProofInsert {
+interface ZkProofInsert {
   bbVersion?: string | null | undefined;
   circuitHash?: string | null | undefined;
   circuitType?: string | null | undefined;
@@ -50,7 +50,7 @@ export interface ZkProofInsert {
   verified?: boolean | undefined;
 }
 
-export interface ZkProofSessionInsert {
+interface ZkProofSessionInsert {
   audience: string;
   createdAt: number;
   expiresAt: number;
@@ -61,7 +61,7 @@ export interface ZkProofSessionInsert {
   verificationId: string;
 }
 
-export type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
+type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
   metadata: Record<string, unknown> | null;
 };
 

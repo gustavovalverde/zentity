@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 
 import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
@@ -11,10 +12,52 @@ const repoRoot = path.resolve(webRoot, "..", "..");
 const contractsPath =
   process.env.E2E_CONTRACTS_PATH ||
   path.resolve(repoRoot, "..", "zama", "zentity-fhevm-contracts");
+const contractsPackageManager = (() => {
+  try {
+    const packageJson = JSON.parse(
+      readFileSync(path.join(contractsPath, "package.json"), "utf8")
+    ) as { packageManager?: string };
+    return packageJson.packageManager;
+  } catch {
+    return undefined;
+  }
+})();
+const contractsScriptRunner = contractsPackageManager?.startsWith("bun@")
+  ? "bun"
+  : "pnpm";
 
 const hardhatPort = Number(process.env.E2E_HARDHAT_PORT || 8545);
 const hardhatUrl = `http://127.0.0.1:${hardhatPort}`;
 let hardhatProcess: ChildProcess | null = null;
+
+function toFilePath(dbUrlOrPath: string | undefined): string | null {
+  if (!dbUrlOrPath) {
+    return null;
+  }
+  if (dbUrlOrPath.startsWith("libsql:")) {
+    return null;
+  }
+  if (dbUrlOrPath.startsWith("file:")) {
+    const raw = dbUrlOrPath.slice("file:".length);
+    if (raw === ":memory:" || raw === "::memory:") {
+      return null;
+    }
+    return raw;
+  }
+  return dbUrlOrPath;
+}
+
+function resetSqliteFile(dbFile: string) {
+  const extraFiles = [`${dbFile}-wal`, `${dbFile}-shm`, `${dbFile}-journal`];
+  if (existsSync(dbFile)) {
+    rmSync(dbFile, { force: true });
+  }
+  for (const extra of extraFiles) {
+    if (existsSync(extra)) {
+      rmSync(extra, { force: true });
+    }
+  }
+}
 
 async function waitForRpc(url: string): Promise<boolean> {
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -69,17 +112,21 @@ interface ContractsEnv {
 }
 
 function deployContracts(): ContractsEnv {
-  const deploy = spawnSync("pnpm", ["run", "deploy:local", "--", "--reset"], {
-    cwd: contractsPath,
-    stdio: "inherit",
-    env: process.env,
-  });
+  const deploy = spawnSync(
+    contractsScriptRunner,
+    ["run", "deploy:local", "--", "--reset"],
+    {
+      cwd: contractsPath,
+      stdio: "inherit",
+      env: process.env,
+    }
+  );
   if (deploy.status !== 0) {
     process.exit(deploy.status ?? 1);
   }
 
   const printed = spawnSync(
-    "pnpm",
+    contractsScriptRunner,
     ["run", "print:deployments", "localhost", "--env"],
     {
       cwd: contractsPath,
@@ -131,6 +178,23 @@ function startDevServer(contracts: ContractsEnv) {
     FHEVM_PROVIDER_ID: "mock",
     NEXT_PUBLIC_FHEVM_PROVIDER_ID: "mock",
   };
+
+  const dbFile =
+    toFilePath(process.env.E2E_TURSO_DATABASE_URL) ??
+    toFilePath(process.env.TURSO_DATABASE_URL) ??
+    toFilePath(process.env.E2E_DATABASE_PATH);
+  if (dbFile) {
+    resetSqliteFile(dbFile);
+  }
+
+  const pushResult = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
+    cwd: webRoot,
+    stdio: "inherit",
+    env,
+  });
+  if (pushResult.status !== 0) {
+    process.exit(pushResult.status ?? 1);
+  }
 
   console.log("[start-web3-dev] using database:", dbUrl || "default");
 

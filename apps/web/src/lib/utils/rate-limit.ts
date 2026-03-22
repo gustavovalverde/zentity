@@ -6,12 +6,12 @@
  * A periodic cleanup interval prunes stale entries.
  */
 
-export interface RateLimitResult {
+interface RateLimitResult {
   limited: boolean;
   retryAfter?: number;
 }
 
-export interface RateLimiterOptions {
+interface RateLimiterOptions {
   /** Maximum requests allowed per window. */
   max: number;
   /** Window size in milliseconds. */
@@ -22,7 +22,7 @@ interface WindowEntry {
   timestamps: number[];
 }
 
-export interface RateLimiter {
+interface RateLimiter {
   /** Check if a key is rate-limited. Records the request timestamp. */
   check(key: string): RateLimitResult;
   /** Stop the cleanup interval. */

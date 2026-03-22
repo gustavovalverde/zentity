@@ -8,6 +8,7 @@
   },
   "ignore": [
     "scripts/**",
+    "playwright.config.mts",
     "public/coi-serviceworker.js",
     "public/push-sw.js",
     "e2e/**",

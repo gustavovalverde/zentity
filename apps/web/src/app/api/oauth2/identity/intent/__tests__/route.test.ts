@@ -12,14 +12,14 @@ vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
-// Mock requireSession directly instead of @/lib/auth/auth.
+// Mock requireBrowserSession directly instead of @/lib/auth/auth.
 // This avoids vmThreads mock factory leaking from other test files
 // that also mock @/lib/auth/auth.
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireSession: vi.fn(),
+  requireBrowserSession: vi.fn(),
 }));
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
@@ -42,14 +42,14 @@ function makeRequest(body: unknown) {
 describe("oauth2 identity intent route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireSession).mockResolvedValue({
+    vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);
   });
 
   it("rejects unauthenticated requests", async () => {
-    vi.mocked(requireSession).mockResolvedValueOnce({
+    vi.mocked(requireBrowserSession).mockResolvedValueOnce({
       ok: false,
       response: new Response(
         JSON.stringify({ error: "Authentication required" }),

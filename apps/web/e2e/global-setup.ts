@@ -108,7 +108,7 @@ const DEFAULT_APP_DB_URL =
   process.env.TURSO_DATABASE_URL ?? toFileUrl(DEFAULT_APP_DB_PATH);
 
 function runDrizzlePush(dbUrl: string) {
-  const result = spawnSync("pnpm", ["run", "db:push"], {
+  const result = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
     cwd: join(currentDir, ".."),
     env: {
       ...process.env,

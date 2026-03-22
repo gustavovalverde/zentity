@@ -33,10 +33,10 @@ async function registerCibaClient(
   return body.client_id;
 }
 
-test.describe("Agent claims and attestation in CIBA flow", () => {
+test.describe("Registered agent assertion in CIBA flow", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("CIBA with agent_claims: access token contains agent claim", async ({
+  test("ignores self-declared agent_claims in CIBA requests", async ({
     request,
   }) => {
     const session = await createIssuerSession(request);
@@ -53,7 +53,7 @@ test.describe("Agent claims and attestation in CIBA flow", () => {
       oversight: { requires_human_approval_for: ["purchase"] },
     });
 
-    // Initiate CIBA with agent claims
+    // Self-declared agent_claims are no longer part of the trusted protocol flow.
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       data: {
         client_id: clientId,
@@ -85,26 +85,20 @@ test.describe("Agent claims and attestation in CIBA flow", () => {
         client_id: clientId,
         resource: BASE_URL,
       },
-      headers: { DPoP: dpop.proof },
+      headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });
     expect(tokenRes.ok()).toBeTruthy();
 
     const tokenBody = (await tokenRes.json()) as { access_token: string };
     expect(tokenBody.access_token).toBeTruthy();
 
-    // Decode and verify agent claim in access token
+    // Self-declared claims are ignored unless a registered Agent-Assertion is verified.
     const payload = decodeJwt(tokenBody.access_token);
-    expect(payload.agent).toBeDefined();
-    const agent = payload.agent as Record<string, unknown>;
-    expect(agent.name).toBe("E2E Test Agent");
-    expect(agent.model).toBe("test-model");
-    expect(agent.runtime).toBe("playwright");
-
-    // No attestation headers sent → no agent_attestation claim
+    expect(payload.agent).toBeUndefined();
     expect(payload.agent_attestation).toBeUndefined();
   });
 
-  test("CIBA without agent_claims: access token has no agent claim", async ({
+  test("CIBA without Agent-Assertion keeps tokens free of agent metadata", async ({
     request,
   }) => {
     const session = await createIssuerSession(request);
@@ -137,14 +131,14 @@ test.describe("Agent claims and attestation in CIBA flow", () => {
         client_id: clientId,
         resource: BASE_URL,
       },
-      headers: { DPoP: dpop.proof },
+      headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });
     expect(tokenRes.ok()).toBeTruthy();
 
     const tokenBody = (await tokenRes.json()) as { access_token: string };
     const payload = decodeJwt(tokenBody.access_token);
 
-    // No agent claims sent → no agent claim in token
+    // Without a verified Agent-Assertion there is no agent metadata in the token.
     expect(payload.agent).toBeUndefined();
     expect(payload.agent_attestation).toBeUndefined();
   });

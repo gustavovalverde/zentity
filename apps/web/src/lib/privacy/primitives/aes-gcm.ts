@@ -1,4 +1,4 @@
-export interface EncryptedBlob {
+interface EncryptedBlob {
   ciphertext: Uint8Array;
   iv: Uint8Array;
 }

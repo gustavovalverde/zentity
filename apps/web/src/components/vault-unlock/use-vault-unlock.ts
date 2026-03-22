@@ -21,7 +21,7 @@ export interface IdentityIntentState {
   token: string;
 }
 
-export interface UseVaultUnlockOptions {
+interface UseVaultUnlockOptions {
   active: boolean;
   fetchIntentToken: () => Promise<{
     intent_token: string;

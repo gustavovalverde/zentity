@@ -24,7 +24,7 @@ const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 /**
  * Encrypted payload structure (binary form for msgpack).
  */
-export interface EncryptedSecretPayload {
+interface EncryptedSecretPayload {
   alg: "AES-GCM";
   ciphertext: Uint8Array;
   iv: Uint8Array;
@@ -42,7 +42,7 @@ interface EncryptedSecretPayloadJson {
 /**
  * Complete secret envelope ready for storage.
  */
-export interface SecretEnvelope {
+interface SecretEnvelope {
   encryptedBlob: Uint8Array;
   envelopeFormat: EnvelopeFormat;
   secretId: string;

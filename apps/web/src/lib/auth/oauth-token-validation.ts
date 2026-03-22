@@ -14,12 +14,13 @@ import "server-only";
  * Unlike user session auth, this validates tokens from client_credentials grants.
  */
 
-import { verifyAccessToken } from "better-auth/oauth2";
 import { eq } from "drizzle-orm";
+import { calculateJwkThumbprint } from "jose";
 
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import { getAuthIssuer } from "@/lib/auth/issuer";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 
 export interface OAuthTokenValidationResult {
   clientId?: string;
@@ -30,7 +31,14 @@ export interface OAuthTokenValidationResult {
 
 const authIssuer = getAuthIssuer();
 const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
-const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
+
+function audienceIncludes(audience: unknown, expected: string): boolean {
+  if (typeof audience === "string") {
+    return audience === expected;
+  }
+
+  return Array.isArray(audience) && audience.includes(expected);
+}
 
 /**
  * Extract access token from Authorization header (Bearer or DPoP scheme).
@@ -60,16 +68,25 @@ export async function validateOAuthAccessToken(
   options?: { requiredScopes?: string[] }
 ): Promise<OAuthTokenValidationResult> {
   try {
-    const payload = await verifyAccessToken(token, {
-      verifyOptions: {
-        issuer: authIssuer,
-        audience: RP_API_AUDIENCE,
-      },
-      jwksUrl,
-      ...(options?.requiredScopes === undefined
-        ? {}
-        : { scopes: options.requiredScopes }),
-    });
+    if (!token.startsWith("eyJ")) {
+      return {
+        valid: false,
+        error: "Opaque client credentials tokens are not supported",
+      };
+    }
+
+    const payload = await verifyAuthIssuedJwt(token);
+    if (!payload) {
+      return { valid: false, error: "Invalid access token" };
+    }
+
+    if (!audienceIncludes(payload.aud, RP_API_AUDIENCE)) {
+      return { valid: false, error: "Invalid access token" };
+    }
+
+    if (payload.sub) {
+      return { valid: false, error: "Not a client credentials token" };
+    }
 
     const clientId =
       (payload.client_id as string | undefined) ??
@@ -78,13 +95,17 @@ export async function validateOAuthAccessToken(
       return { valid: false, error: "Missing client_id" };
     }
 
-    // Client credentials tokens should not have a subject
-    if (payload.sub) {
-      return { valid: false, error: "Not a client credentials token" };
-    }
+    const scopes =
+      typeof payload.scope === "string"
+        ? payload.scope.split(" ").filter(Boolean)
+        : [];
 
-    const scopeString = typeof payload.scope === "string" ? payload.scope : "";
-    const scopes = scopeString.split(" ").filter(Boolean);
+    if (
+      options?.requiredScopes &&
+      !options.requiredScopes.every((scope) => scopes.includes(scope))
+    ) {
+      return { valid: false, error: "Missing required scope" };
+    }
 
     const client = await db
       .select({ disabled: oauthClients.disabled })
@@ -120,4 +141,9 @@ export async function computeKeyFingerprint(
   const keyBytes = Buffer.from(publicKeyBase64, "base64");
   const hashBuffer = await crypto.subtle.digest("SHA-256", keyBytes);
   return Buffer.from(hashBuffer).toString("hex");
+}
+
+export function computeJwkThumbprint(rawJwk: string): Promise<string> {
+  const jwk = JSON.parse(rawJwk) as Record<string, unknown>;
+  return calculateJwkThumbprint(jwk);
 }

@@ -209,6 +209,33 @@ describe("step-up authentication: acr_values", () => {
     }
   });
 
+  it("preserves resolved PAR scope and redirect params on consent redirect", async () => {
+    const requestId = crypto.randomUUID();
+    await insertParRequest(
+      requestId,
+      baseParParams({
+        scope: "openid email agent:manage",
+        state: "consent-state",
+      })
+    );
+
+    const response = await auth.handler(
+      buildAuthorizeRequest(requestId, sessionToken)
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.pathname).toBe("/oauth/consent");
+    expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
+    expect(location?.searchParams.get("scope")).toBe(
+      "openid email agent:manage"
+    );
+    expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
+    expect(location?.searchParams.get("state")).toBe("consent-state");
+    expect(location?.searchParams.get("request_uri")).toBeNull();
+    expect(location?.searchParams.get("sig")).toBeTruthy();
+  });
+
   it("preference order: first satisfiable ACR wins", async () => {
     await seedTier1User(userId);
     const requestId = crypto.randomUUID();

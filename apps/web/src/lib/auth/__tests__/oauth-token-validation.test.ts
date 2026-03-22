@@ -2,12 +2,10 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getAuthIssuer } from "@/lib/auth/issuer";
+
 // Mock server-only
 vi.mock("server-only", () => ({}));
-
-vi.mock("better-auth/oauth2", () => ({
-  verifyAccessToken: vi.fn(),
-}));
 
 // Mock database
 vi.mock("@/lib/db/connection", () => ({
@@ -24,7 +22,11 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-import { verifyAccessToken } from "better-auth/oauth2";
+vi.mock("@/lib/trpc/jwt-session", () => ({
+  verifyAuthIssuedJwt: vi.fn(),
+}));
+
+import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 
 import {
   computeKeyFingerprint,
@@ -34,6 +36,8 @@ import {
 
 // Regex for validating SHA-256 hex fingerprint (64 hex characters)
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;
+const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
+const JWT_TOKEN = "eyJ.test-token";
 
 describe("oauth token validation", () => {
   describe("extractAccessToken", () => {
@@ -113,40 +117,41 @@ describe("oauth token validation", () => {
     });
 
     it("returns invalid for invalid token", async () => {
-      vi.mocked(verifyAccessToken).mockRejectedValueOnce(
-        new Error("Invalid access token")
-      );
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce(null);
 
-      const result = await validateOAuthAccessToken("invalid-token");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Invalid access token");
     });
 
     it("returns invalid for user token (not client credentials)", async () => {
-      vi.mocked(verifyAccessToken).mockResolvedValueOnce({
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+        aud: RP_API_AUDIENCE,
         sub: "user-123",
         azp: "test-client",
         scope: "compliance:key:read",
       });
 
-      const result = await validateOAuthAccessToken("user-token");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Not a client credentials token");
     });
 
     it("returns invalid when client_id is missing", async () => {
-      vi.mocked(verifyAccessToken).mockResolvedValueOnce({
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+        aud: RP_API_AUDIENCE,
         scope: "compliance:key:read",
       });
 
-      const result = await validateOAuthAccessToken("missing-client");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Missing client_id");
     });
 
     it("returns invalid when client is disabled", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAccessToken).mockResolvedValueOnce({
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+        aud: RP_API_AUDIENCE,
         azp: "test-client",
         scope: "compliance:key:read",
       });
@@ -161,14 +166,15 @@ describe("oauth token validation", () => {
         }),
       } as unknown as ReturnType<typeof db.select>);
 
-      const result = await validateOAuthAccessToken("disabled-client");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Client disabled");
     });
 
     it("returns invalid when client not found", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAccessToken).mockResolvedValueOnce({
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+        aud: RP_API_AUDIENCE,
         azp: "missing-client",
         scope: "compliance:key:read",
       });
@@ -183,14 +189,15 @@ describe("oauth token validation", () => {
         }),
       } as unknown as ReturnType<typeof db.select>);
 
-      const result = await validateOAuthAccessToken("missing-client");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
       expect(result.error).toBe("Client not found");
     });
 
     it("returns valid with client info for valid client credentials token", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAccessToken).mockResolvedValueOnce({
+      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+        aud: RP_API_AUDIENCE,
         azp: "test-client",
         scope: "compliance:key:read compliance:key:write",
       });
@@ -205,13 +212,23 @@ describe("oauth token validation", () => {
         }),
       } as unknown as ReturnType<typeof db.select>);
 
-      const result = await validateOAuthAccessToken("valid-token");
+      const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(true);
       expect(result.clientId).toBe("test-client");
       expect(result.scopes).toEqual([
         "compliance:key:read",
         "compliance:key:write",
       ]);
+    });
+
+    it("rejects opaque client credentials tokens", async () => {
+      const result = await validateOAuthAccessToken("opaque-token", {
+        requiredScopes: ["agent:introspect"],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe(
+        "Opaque client credentials tokens are not supported"
+      );
     });
   });
 });

@@ -13,7 +13,7 @@ import {
 
 import { cn } from "@/lib/utils/classname";
 
-export type QualityIssue =
+type QualityIssue =
   | "low_light"
   | "multiple_faces"
   | "face_too_close"

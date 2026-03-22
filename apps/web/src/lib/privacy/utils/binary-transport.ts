@@ -2,7 +2,7 @@
 
 import { decode, encode } from "@msgpack/msgpack";
 
-export interface BinaryRequestOptions extends RequestInit {
+interface BinaryRequestOptions extends RequestInit {
   timeoutMs?: number;
 }
 

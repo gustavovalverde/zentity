@@ -1,3 +1,4 @@
+import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import {
   getIdentityBundleByUserId,
   getLatestVerification,
@@ -9,9 +10,10 @@ export const PROOF_DISCLOSURE_KEYS = [
   "verified",
   "document_verified",
   "liveness_verified",
-  "age_verified",
+  "age_verification",
   "face_match_verified",
   "nationality_verified",
+  "nationality_group",
   "identity_bound",
   "sybil_resistant",
   "policy_version",
@@ -24,7 +26,7 @@ export const PROOF_DISCLOSURE_KEYS = [
 type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
 
 interface VerificationClaims extends Record<string, unknown> {
-  age_verified: boolean;
+  age_verification: boolean;
   attestation_expires_at?: string | undefined;
   chip_verification_method?: "nfc" | undefined;
   chip_verified: boolean;
@@ -32,6 +34,7 @@ interface VerificationClaims extends Record<string, unknown> {
   face_match_verified: boolean;
   identity_bound: boolean;
   liveness_verified: boolean;
+  nationality_group?: string | undefined;
   nationality_verified: boolean;
   policy_version?: string | undefined;
   sybil_resistant: boolean;
@@ -47,9 +50,12 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
     verified: status.verified,
     document_verified: status.checks.documentVerified,
     liveness_verified: status.checks.livenessVerified,
-    age_verified: status.checks.ageVerified,
+    age_verification: status.checks.ageVerified,
     face_match_verified: status.checks.faceMatchVerified,
     nationality_verified: status.checks.nationalityVerified,
+    nationality_group: status.checks.nationalityVerified
+      ? NATIONALITY_GROUP
+      : undefined,
     identity_bound: status.checks.identityBound,
     sybil_resistant: status.checks.sybilResistant,
     chip_verified: isChip,

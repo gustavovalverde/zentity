@@ -39,7 +39,7 @@ import { decryptWithDek, encryptWithDek, generateDek } from "./envelope";
 import { downloadSecretBlob, uploadSecretBlob } from "./storage";
 
 // Re-export types
-export type { EnrollmentCredential, PasskeyEnrollmentContext } from "./types";
+export type { EnrollmentCredential } from "./types";
 
 const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 

@@ -19,16 +19,37 @@ async function getLocalJwks() {
   return createLocalJWKSet({ keys });
 }
 
-export async function verifyAccessToken(
+export async function verifyAuthIssuedJwt(
   token: string
 ): Promise<JWTPayload | null> {
   try {
     const jwks = await getLocalJwks();
     const { payload } = await jwtVerify(token, jwks, {
       issuer: authIssuer,
-      audience: [appUrl, authIssuer],
     });
-    return payload.sub ? payload : null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+export async function verifyAccessToken(
+  token: string
+): Promise<JWTPayload | null> {
+  try {
+    const payload = await verifyAuthIssuedJwt(token);
+    if (!payload) {
+      return null;
+    }
+    if (payload.sub) {
+      const jwks = await getLocalJwks();
+      await jwtVerify(token, jwks, {
+        issuer: authIssuer,
+        audience: [appUrl, authIssuer],
+      });
+      return payload;
+    }
+    return null;
   } catch {
     return null;
   }

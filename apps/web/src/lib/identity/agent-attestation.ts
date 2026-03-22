@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  createRemoteJWKSet,
   decodeProtectedHeader,
   importJWK,
   type JWTPayload,
@@ -11,8 +10,13 @@ import {
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 
-export interface AttestationResult {
+import { getHardenedJWKSet } from "./jwks-fetcher";
+
+type AttestationTier = "attested" | "self-declared" | "unverified";
+
+interface AttestationResult {
   provider?: string | undefined;
+  tier: AttestationTier;
   verified: boolean;
   verifiedAt?: number | undefined;
 }
@@ -22,7 +26,7 @@ interface TrustedAttester {
   jwksUrl: string;
 }
 
-function parseTrustedAttesters(): TrustedAttester[] {
+export function parseTrustedAttesters(): TrustedAttester[] {
   const raw = env.TRUSTED_AGENT_ATTESTERS;
   if (!raw) {
     return [];
@@ -37,11 +41,14 @@ function parseTrustedAttesters(): TrustedAttester[] {
     });
 }
 
-const FAILED: AttestationResult = { verified: false };
+const FAILED: AttestationResult = {
+  verified: false,
+  tier: "unverified",
+};
 
 /**
  * Verify agent attestation per draft-ietf-oauth-attestation-based-client-auth-08.
- * Returns { verified: true, provider, verifiedAt } on success, { verified: false } on failure.
+ * Uses the hardened JWKS fetcher for all remote key resolution.
  */
 export async function verifyAgentAttestation(
   attestationJwt: string,
@@ -63,7 +70,6 @@ export async function verifyAgentAttestation(
     const iss = header.iss as string | undefined;
 
     if (!iss) {
-      // Try extracting from payload
       const [, payloadB64] = attestationJwt.split(".");
       if (!payloadB64) {
         return FAILED;
@@ -111,21 +117,26 @@ async function verifyWithIssuer(
     return FAILED;
   }
 
-  // Verify attestation JWT signature
-  const jwks = createRemoteJWKSet(new URL(attester.jwksUrl));
+  const jwks = getHardenedJWKSet(attester.jwksUrl);
+  if (!jwks) {
+    logger.warn(
+      { jwksUrl: attester.jwksUrl },
+      "JWKS endpoint rejected by hardening rules"
+    );
+    return FAILED;
+  }
+
   const { payload } = await jwtVerify(attestationJwt, jwks, {
     audience,
     issuer,
   });
 
-  // Extract cnf claim for PoP verification
   const cnf = payload.cnf as { jwk?: Record<string, unknown> } | undefined;
   if (!cnf?.jwk) {
     logger.warn("Agent attestation JWT missing cnf.jwk claim");
     return FAILED;
   }
 
-  // Verify PoP JWT against cnf key
   const popKey = await importJWK(cnf.jwk);
   await jwtVerify(popJwt, popKey, { audience });
 
@@ -133,6 +144,7 @@ async function verifyWithIssuer(
 
   return {
     verified: true,
+    tier: "attested",
     provider,
     verifiedAt: Math.floor(Date.now() / 1000),
   };

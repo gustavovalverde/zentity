@@ -23,7 +23,7 @@ import {
   type ShieldColor,
 } from "./security-badges";
 
-export interface SecurityBadge {
+interface SecurityBadge {
   icon: typeof Shield;
   label: string;
   tooltip: string;

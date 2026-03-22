@@ -20,7 +20,7 @@ import {
 /**
  * State for the useBbsCredentials hook.
  */
-export interface BbsCredentialsState {
+interface BbsCredentialsState {
   /** List of stored wallet credentials */
   credentials: BbsCredential[];
   /** Delete a specific credential */

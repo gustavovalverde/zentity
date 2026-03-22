@@ -127,7 +127,7 @@ describe("RP contract — scope alignment", () => {
     expect(filtered).toHaveProperty("sybil_resistant");
   });
 
-  it("proof:age scope produces age_verified (wine scenario)", () => {
+  it("proof:age scope produces age_verification (wine scenario)", () => {
     const mockProofClaims: Record<string, unknown> = {};
     for (const key of PROOF_DISCLOSURE_KEYS) {
       mockProofClaims[key] = true;
@@ -135,7 +135,7 @@ describe("RP contract — scope alignment", () => {
 
     const filtered = filterProofClaimsByScopes(mockProofClaims, ["proof:age"]);
 
-    expect(filtered).toHaveProperty("age_verified");
+    expect(filtered).toHaveProperty("age_verification");
     expect(Object.keys(filtered)).toHaveLength(1);
   });
 

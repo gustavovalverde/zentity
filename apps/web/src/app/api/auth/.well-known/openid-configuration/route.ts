@@ -1,5 +1,4 @@
 import { env } from "@/env";
-import { auth } from "@/lib/auth/auth";
 
 function getBaseUrl(): string {
   return env.NEXT_PUBLIC_APP_URL;
@@ -17,10 +16,6 @@ function getBaseUrl(): string {
  * @see https://openid.net/specs/openid-connect-discovery-1_0.html
  */
 export async function GET(_request: Request) {
-  if (!auth.publicHandler) {
-    return new Response("Not Found", { status: 404 });
-  }
-
   // Use environment-configured base URL (SSRF-safe: no request data flows to fetch)
   const baseUrl = getBaseUrl();
 

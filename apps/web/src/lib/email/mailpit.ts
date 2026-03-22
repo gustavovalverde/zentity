@@ -15,7 +15,7 @@ const sendPassword = env.MAILPIT_SEND_API_PASSWORD ?? "";
 const defaultFromEmail = env.MAIL_FROM_EMAIL;
 const defaultFromName = env.MAIL_FROM_NAME;
 
-export interface MailpitMessage {
+interface MailpitMessage {
   html?: string;
   subject: string;
   tags?: string[];

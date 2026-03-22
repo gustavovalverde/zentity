@@ -6,7 +6,7 @@ import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/crypto";
 
 export type AuthMode = "passkey" | "opaque" | "wallet" | null;
 
-export interface DetectedAuth {
+interface DetectedAuth {
   authMode: AuthMode;
   wallet: { address: string; chainId: number } | null;
 }

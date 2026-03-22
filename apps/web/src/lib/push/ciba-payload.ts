@@ -6,6 +6,7 @@ interface CibaNotificationData {
   authReqId: string;
   bindingMessage?: string | undefined;
   clientName?: string | undefined;
+  requiresBiometric?: boolean | undefined;
   scope: string;
 }
 
@@ -14,6 +15,7 @@ interface CibaPushPayload {
   data: {
     approvalUrl: string;
     authReqId: string;
+    requiresBiometric: boolean;
     requiresVaultUnlock: boolean;
   };
   title: string;
@@ -66,6 +68,7 @@ export function buildCibaPushPayload(
     data: {
       authReqId: data.authReqId,
       approvalUrl,
+      requiresBiometric: data.requiresBiometric ?? false,
       requiresVaultUnlock,
     },
   };

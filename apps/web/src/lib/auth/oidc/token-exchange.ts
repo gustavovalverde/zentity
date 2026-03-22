@@ -1,15 +1,19 @@
 import "server-only";
 
+import crypto from "node:crypto";
+
 import {
   basicToClientCredentials,
   validateClientCredentials,
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth";
+import { eq } from "drizzle-orm";
 import {
   calculateJwkThumbprint,
   createLocalJWKSet,
   decodeProtectedHeader,
   jwtVerify,
+  SignJWT,
 } from "jose";
 
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
@@ -20,19 +24,37 @@ import {
   loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
-import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  getClientSigningAlg,
+  getOrCreateSigningKey,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
+import {
+  buildAapProfile,
+  buildDelegationClaim,
+  loadStoredAapSnapshotForTokenJti,
+  persistAapSnapshotForToken,
+  readAapProfileFromPayload,
+} from "@/lib/ciba/aap-profile";
+import {
+  resolveAgentSessionIdFromPairwiseSub,
+  resolveAgentSubForClient,
+} from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
 
 const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const TOKEN_TYPE_ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token";
+export const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
+  "urn:zentity:token-type:purchase-authorization";
 
 const SUPPORTED_SUBJECT_TYPES = new Set([
   TOKEN_TYPE_ACCESS_TOKEN,
@@ -42,6 +64,7 @@ const SUPPORTED_SUBJECT_TYPES = new Set([
 const SUPPORTED_OUTPUT_TYPES = new Set([
   TOKEN_TYPE_ACCESS_TOKEN,
   TOKEN_TYPE_ID_TOKEN,
+  PURCHASE_AUTHORIZATION_TOKEN_TYPE,
 ]);
 
 const authIssuer = getAuthIssuer();
@@ -78,6 +101,19 @@ async function verifySubjectToken(
   const jwks = await buildLocalJwks(header.kid);
   const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
   return payload as Record<string, unknown>;
+}
+
+function getAudienceClient(clientId: string) {
+  return db
+    .select({
+      clientId: oauthClients.clientId,
+      redirectUris: oauthClients.redirectUris,
+      subjectType: oauthClients.subjectType,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
 }
 
 /**
@@ -260,9 +296,31 @@ function createTokenExchangeHandler(): (
       actClaim.act = subjectPayload.act;
     }
 
+    const sourceClientId =
+      (subjectPayload.azp as string | undefined) ??
+      (subjectPayload.client_id as string | undefined);
+    const actorSub = (subjectPayload.act as { sub?: string } | undefined)?.sub;
+    const actorSessionId =
+      actorSub && sourceClientId
+        ? await resolveAgentSessionIdFromPairwiseSub(actorSub, sourceClientId)
+        : null;
+
+    const parentAapProfile = readAapProfileFromPayload(subjectPayload);
+    const parentSnapshot =
+      typeof subjectPayload.jti === "string"
+        ? await loadStoredAapSnapshotForTokenJti(subjectPayload.jti)
+        : null;
+    const delegation = buildDelegationClaim({
+      baseProfile: parentAapProfile,
+      ...(typeof subjectPayload.jti === "string"
+        ? { parentJti: subjectPayload.jti }
+        : {}),
+    });
+
     const now = Math.floor(Date.now() / 1000);
     const expiresIn = 3600;
     const exp = now + expiresIn;
+    const jti = crypto.randomUUID();
 
     // Resolve target audience: resource (RFC 8707) > audience (RFC 8693) > issuer
     const targetAudience =
@@ -278,6 +336,130 @@ function createTokenExchangeHandler(): (
         })
       : rawUserId;
 
+    const outputActorId = actorSessionId
+      ? await resolveAgentSubForClient(actorSessionId, client.clientId)
+      : parentAapProfile.agent?.id;
+    const exchangedAapProfile = buildAapProfile({
+      actorId: outputActorId,
+      approvalReference: parentAapProfile.oversight?.approval_reference,
+      attestationTier: parentAapProfile.agent?.runtime?.attested
+        ? "attested"
+        : undefined,
+      capabilities: parentAapProfile.capabilities,
+      delegation,
+      model: parentAapProfile.agent?.model?.id,
+      requiresHumanApprovalFor:
+        parentAapProfile.oversight?.requires_human_approval_for,
+      runtime: parentAapProfile.agent?.runtime?.environment,
+      sessionVersion: parentAapProfile.agent?.model?.version,
+      taskId: parentAapProfile.task?.id,
+      taskPurpose: parentAapProfile.task?.purpose,
+      traceId: parentAapProfile.audit?.trace_id,
+    });
+
+    if (outputType === PURCHASE_AUTHORIZATION_TOKEN_TYPE) {
+      if (subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_request",
+          error_description:
+            "Purchase authorization artifacts require an access token subject",
+        });
+      }
+
+      const audienceClientId = audienceParam as string | undefined;
+      if (!audienceClientId) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_request",
+          error_description:
+            "audience is required for purchase authorization artifacts",
+        });
+      }
+
+      const audienceClient = await getAudienceClient(audienceClientId);
+      if (!audienceClient) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_target",
+          error_description: "Unknown purchase artifact audience",
+        });
+      }
+
+      if (!(actorSub && sourceClientId && actorSessionId)) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_grant",
+          error_description: "Subject token is missing actor context",
+        });
+      }
+
+      const audienceSub = await resolveSubForClient(rawUserId, {
+        subjectType: audienceClient.subjectType ?? null,
+        redirectUris: audienceClient.redirectUris,
+      });
+      const audienceActSub = await resolveAgentSubForClient(
+        actorSessionId,
+        audienceClient.clientId
+      );
+
+      const rawAuthorizationDetails = subjectPayload.authorization_details;
+      let authorizationDetails: unknown[];
+      if (Array.isArray(rawAuthorizationDetails)) {
+        authorizationDetails = rawAuthorizationDetails;
+      } else if (rawAuthorizationDetails == null) {
+        authorizationDetails = [];
+      } else {
+        authorizationDetails = [rawAuthorizationDetails];
+      }
+      const purchaseDetails = authorizationDetails.filter((detail) => {
+        return (
+          typeof detail === "object" &&
+          detail !== null &&
+          (detail as { type?: string }).type === "purchase"
+        );
+      });
+
+      if (purchaseDetails.length === 0) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_grant",
+          error_description:
+            "Subject token does not contain an approved purchase authorization detail",
+        });
+      }
+
+      const { kid, privateKey } = await getOrCreateSigningKey("EdDSA");
+      const artifactPayload: Record<string, unknown> = {
+        iss: authIssuer,
+        sub: audienceSub,
+        aud: audienceClient.clientId,
+        jti,
+        act: { sub: audienceActSub },
+        authorization_details: purchaseDetails,
+        iat: now,
+        exp,
+      };
+
+      const artifact = await new SignJWT(artifactPayload)
+        .setProtectedHeader({
+          alg: "EdDSA",
+          kid,
+          typ: "purchase-authorization+jwt",
+        })
+        .sign(privateKey);
+
+      return ctx.json(
+        {
+          access_token: artifact,
+          issued_token_type: PURCHASE_AUTHORIZATION_TOKEN_TYPE,
+          token_type: "N_A",
+          expires_in: expiresIn,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            Pragma: "no-cache",
+          },
+        }
+      );
+    }
+
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
       const assurance = await getAssuranceForOAuth(rawUserId);
@@ -287,6 +469,7 @@ function createTokenExchangeHandler(): (
         sub: outputSub,
         aud: client.clientId,
         azp: client.clientId,
+        jti,
         iat: now,
         exp,
         act: actClaim,
@@ -324,14 +507,23 @@ function createTokenExchangeHandler(): (
       sub: outputSub,
       aud: targetAudience,
       azp: client.clientId,
+      jti,
       scope: targetScopes.join(" "),
       iat: now,
       exp,
       act: actClaim,
+      ...exchangedAapProfile,
       ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
     };
 
     const accessToken = await signJwt(accessTokenPayload);
+    if (parentSnapshot) {
+      await persistAapSnapshotForToken({
+        tokenJti: jti,
+        audienceClientId: client.clientId,
+        snapshot: parentSnapshot,
+      });
+    }
     return ctx.json(
       {
         access_token: accessToken,
@@ -357,16 +549,13 @@ export function tokenExchangePlugin() {
   const handler = createTokenExchangeHandler();
   return {
     id: "token-exchange" as const,
-    // biome-ignore lint/suspicious/noExplicitAny: better-auth plugin init context is loosely typed
-    init(ctx: any) {
-      return {
-        context: {
-          customGrantTypeHandlers: {
-            ...ctx.customGrantTypeHandlers,
-            [TOKEN_EXCHANGE_GRANT_TYPE]: handler,
-          },
+    extensions: {
+      "oauth-provider": {
+        grantTypes: {
+          [TOKEN_EXCHANGE_GRANT_TYPE]: handler,
         },
-      };
+        grantTypeURIs: [TOKEN_EXCHANGE_GRANT_TYPE],
+      },
     },
   };
 }

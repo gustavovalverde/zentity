@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
-export interface ValidatedCibaRequest {
+interface ValidatedCibaRequest {
   authorizationDetails: string | null | undefined;
   clientId: string;
   scope: string;

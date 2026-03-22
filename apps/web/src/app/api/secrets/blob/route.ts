@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
@@ -26,7 +26,7 @@ function getHeaderValue(headers: Headers, key: string): string | null {
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
-    const authResult = await requireSession(request.headers);
+    const authResult = await requireBrowserSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }
@@ -99,7 +99,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const authResult = await requireSession(request.headers);
+  const authResult = await requireBrowserSession(request.headers);
   if (!authResult.ok) {
     return authResult.response;
   }

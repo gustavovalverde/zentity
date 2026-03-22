@@ -1,5 +1,12 @@
 import { auth } from "@/lib/auth/auth";
 import { getAuthIssuer } from "@/lib/auth/issuer";
+import {
+  buildWellKnownResponse,
+  callAuthApi,
+  DEFAULT_AUTH_BASE_PATH,
+  issuerPathMatches,
+  unwrapMetadata,
+} from "@/lib/auth/well-known-utils";
 
 /**
  * OIDC4VCI credential issuer metadata endpoint.
@@ -9,13 +16,20 @@ import { getAuthIssuer } from "@/lib/auth/issuer";
  * - nonce_endpoint per HAIP §4.1 (required when key binding is supported)
  * - scope per credential configuration per HAIP §4.1
  */
-export async function GET(request: Request) {
-  if (!auth.publicHandler) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ issuer?: string[] }> }
+) {
+  const { issuer: issuerSegments } = await params;
+  const requestedPath = issuerSegments?.join("/") ?? "";
+
+  if (!issuerPathMatches(requestedPath, DEFAULT_AUTH_BASE_PATH)) {
     return new Response("Not Found", { status: 404 });
   }
 
-  const response = await auth.publicHandler(request);
-  const metadata = (await response.json()) as Record<string, unknown>;
+  const metadata = unwrapMetadata(
+    await callAuthApi(auth.api, "getCredentialIssuerMetadata")
+  ) as Record<string, unknown>;
 
   const authServer =
     (metadata.authorization_servers as string[] | undefined)?.[0] ??
@@ -41,10 +55,5 @@ export async function GET(request: Request) {
     ...(configs ? { credential_configurations_supported: configs } : {}),
   };
 
-  return new Response(JSON.stringify(enhancedMetadata), {
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "public, max-age=3600",
-    },
-  });
+  return buildWellKnownResponse(enhancedMetadata);
 }

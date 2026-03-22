@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { ShieldCheck } from "lucide-react";
+import { Bot, ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
@@ -48,6 +48,9 @@ export default async function CibaListPage() {
 
   const requests = await db
     .select({
+      displayName: cibaRequests.displayName,
+      model: cibaRequests.model,
+      runtime: cibaRequests.runtime,
       authReqId: cibaRequests.authReqId,
       scope: cibaRequests.scope,
       bindingMessage: cibaRequests.bindingMessage,
@@ -85,6 +88,15 @@ export default async function CibaListPage() {
           {requests.map((req) => {
             const expired = isExpired(req.expiresAt, req.status);
             const displayStatus = expired ? "expired" : req.status;
+            const agentInfo =
+              req.displayName == null
+                ? null
+                : {
+                    name: req.displayName,
+                    trustTier: "registered",
+                    model: req.model,
+                    runtime: req.runtime,
+                  };
 
             return (
               <Link
@@ -95,11 +107,25 @@ export default async function CibaListPage() {
                 <Card className="transition-colors hover:bg-muted/50">
                   <CardHeader className="pb-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <CardTitle className="text-base">
-                        {req.clientName ?? "Unknown Application"}
-                      </CardTitle>
                       <div className="flex items-center gap-2">
-                        {req.approvalMethod === "boundary" && (
+                        <CardTitle className="text-base">
+                          {req.clientName ?? "Unknown Application"}
+                        </CardTitle>
+                        {agentInfo && (
+                          <span className="flex items-center gap-1 text-muted-foreground text-sm">
+                            <Bot className="size-3" />
+                            {agentInfo.name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {agentInfo && agentInfo.trustTier === "attested" && (
+                          <Badge className="border-green-200 bg-green-50 text-green-700 text-xs dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                            Attested
+                          </Badge>
+                        )}
+                        {(req.approvalMethod === "capability_grant" ||
+                          req.approvalMethod === "boundary") && (
                           <Badge className="gap-1" variant="secondary">
                             <ShieldCheck className="size-3" />
                             Auto-approved

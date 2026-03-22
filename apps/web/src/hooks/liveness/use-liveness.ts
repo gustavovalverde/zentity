@@ -68,7 +68,7 @@ interface FailedResult {
   message: string;
 }
 
-export interface UseLivenessArgs {
+interface UseLivenessArgs {
   /** Enable debug logging */
   debugEnabled?: boolean | undefined;
   /** Identity draft ID for dashboard flow - enables server-side result persistence */
@@ -86,7 +86,7 @@ export interface UseLivenessArgs {
   videoRef: React.RefObject<HTMLVideoElement | null>;
 }
 
-export interface UseLivenessResult {
+interface UseLivenessResult {
   /** Start the liveness session */
   beginCamera: () => Promise<void>;
   /** Cancel and reset to initial state (without restarting) */

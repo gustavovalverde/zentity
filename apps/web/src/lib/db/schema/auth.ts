@@ -22,6 +22,7 @@ export const users = sqliteTable("user", {
   twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
+  lastLoginMethod: text("lastLoginMethod"),
   role: text("role"),
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("banReason"),

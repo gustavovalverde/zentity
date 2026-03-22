@@ -6,7 +6,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getZkProofSessionById } from "@/lib/db/queries/crypto";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
@@ -37,7 +37,7 @@ const UUID_REGEX =
  */
 export async function POST(request: NextRequest) {
   try {
-    const authResult = await requireSession(request.headers);
+    const authResult = await requireBrowserSession(request.headers);
     if (!authResult.ok) {
       return authResult.response;
     }

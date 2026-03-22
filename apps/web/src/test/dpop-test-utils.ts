@@ -46,7 +46,7 @@ function parseResponseJson(text: string): Record<string, unknown> {
     : parsed;
 }
 
-export interface TokenResult {
+interface TokenResult {
   dpopKeyPair: DpopKeyPair;
   json: Record<string, unknown>;
   status: number;

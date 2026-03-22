@@ -21,7 +21,7 @@ import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
 import { encryptBatchFhe, FheServiceError } from "./service";
 
-export interface FheEncryptionSchedule {
+interface FheEncryptionSchedule {
   /** Full DOB as days since 1900-01-01 (UTC) */
   dobDays?: number | null | undefined;
   flowId?: string | undefined;

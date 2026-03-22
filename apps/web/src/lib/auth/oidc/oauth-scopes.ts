@@ -12,6 +12,8 @@ export const OAUTH_SCOPES = [
   "proof:identity",
   ...PROOF_SCOPES,
   "proof:sybil",
+  "agent:manage",
+  "agent:introspect",
   "compliance:key:read",
   "compliance:key:write",
   ...IDENTITY_SCOPES,

@@ -3,7 +3,9 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
@@ -26,6 +28,43 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       public: true,
     })
     .run();
+}
+
+async function createRegisteredAgent(userId: string) {
+  const [host] = await db
+    .insert(agentHosts)
+    .values({
+      userId,
+      clientId: TEST_CLIENT_ID,
+      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+      publicKeyThumbprint: `host-thumbprint-${crypto.randomUUID()}`,
+      name: "Test Host",
+      attestationProvider: "AgentPass",
+      attestationTier: "attested",
+    })
+    .returning({ id: agentHosts.id });
+  if (!host) {
+    throw new Error("Expected registered host fixture to be created");
+  }
+
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      hostId: host.id,
+      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+      publicKeyThumbprint: `agent-thumbprint-${crypto.randomUUID()}`,
+      displayName: "Test Agent",
+      runtime: "test-runner",
+      model: "gpt-4",
+      version: "1.0.0",
+    })
+    .returning({ id: agentSessions.id });
+
+  if (!session) {
+    throw new Error("Expected registered session fixture to be created");
+  }
+
+  return { hostId: host.id, sessionId: session.id };
 }
 
 async function insertCibaRequest(
@@ -252,15 +291,28 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("invalid_grant");
   });
 
-  it("includes agent claim in access token when agent_claims provided", async () => {
-    const agentClaims = JSON.stringify({
-      agent: { name: "Test Agent", model: "gpt-4", runtime: "test-runner" },
-    });
+  it("emits AAP claims for verified registered agent sessions", async () => {
+    const { hostId, sessionId } = await createRegisteredAgent(userId);
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
       resource: TEST_RESOURCE,
-      agentClaims,
+      hostId,
+      agentSessionId: sessionId,
+      displayName: "Test Agent",
+      model: "gpt-4",
+      runtime: "test-runner",
+      version: "1.0.0",
+      taskId: "task-123",
+      assertionVerified: true,
+      approvedCapabilityName: "purchase",
+      approvedConstraints: JSON.stringify([
+        { field: "merchant", op: "eq", value: "Test Store" },
+      ]),
+      approvedGrantId: "grant-123",
+      approvalStrength: "session",
+      attestationProvider: "AgentPass",
+      attestationTier: "attested",
     });
 
     const { json } = await postTokenWithDpop({
@@ -270,14 +322,36 @@ describe("CIBA token endpoint", () => {
     });
 
     const payload = decodeJwt(json.access_token as string);
+    const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
+
     expect(payload.agent).toEqual({
-      name: "Test Agent",
-      model: "gpt-4",
-      runtime: "test-runner",
+      id: actorId,
+      type: "mcp-agent",
+      model: { id: "gpt-4", version: "1.0.0" },
+      runtime: { environment: "test-runner", attested: true },
+    });
+    expect(payload.act).toEqual({ sub: actorId });
+    expect(payload.task).toEqual({
+      id: "task-123",
+      purpose: "purchase",
+    });
+    expect(payload.capabilities).toEqual([
+      {
+        action: "purchase",
+        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+      },
+    ]);
+    expect(payload.oversight).toEqual({
+      approval_reference: "grant-123",
+      requires_human_approval_for: ["purchase"],
+    });
+    expect(payload.audit).toEqual({
+      trace_id: authReqId,
+      session_id: actorId,
     });
   });
 
-  it("omits agent claim when no agent_claims provided", async () => {
+  it("does not emit AAP claims for plain CIBA requests", async () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
@@ -292,63 +366,10 @@ describe("CIBA token endpoint", () => {
 
     const payload = decodeJwt(json.access_token as string);
     expect(payload.agent).toBeUndefined();
-  });
-
-  it("includes agent_attestation claim when agentClaims has attestation", async () => {
-    const agentClaims = JSON.stringify({
-      agent: { name: "Attested Agent", model: "v1", runtime: "demo" },
-      attestation: {
-        verified: true,
-        provider: "Aether Demo",
-        verifiedAt: 1_710_000_000,
-      },
-    });
-    const authReqId = await insertCibaRequest({
-      userId,
-      status: "approved",
-      resource: TEST_RESOURCE,
-      agentClaims,
-    });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.agent).toEqual({
-      name: "Attested Agent",
-      model: "v1",
-      runtime: "demo",
-    });
-    expect(payload.agent_attestation).toEqual({
-      verified: true,
-      provider: "Aether Demo",
-      verifiedAt: 1_710_000_000,
-    });
-  });
-
-  it("omits agent_attestation when agentClaims has no attestation", async () => {
-    const agentClaims = JSON.stringify({
-      agent: { name: "Unattested Agent", model: "v1", runtime: "demo" },
-    });
-    const authReqId = await insertCibaRequest({
-      userId,
-      status: "approved",
-      resource: TEST_RESOURCE,
-      agentClaims,
-    });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.agent).toBeDefined();
-    expect(payload.agent_attestation).toBeUndefined();
+    expect(payload.task).toBeUndefined();
+    expect(payload.capabilities).toBeUndefined();
+    expect(payload.oversight).toBeUndefined();
+    expect(payload.audit).toBeUndefined();
   });
 
   it("CIBA access token never contains release_handle", async () => {

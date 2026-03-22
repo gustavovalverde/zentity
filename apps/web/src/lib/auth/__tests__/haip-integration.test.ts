@@ -12,6 +12,7 @@
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 
@@ -133,12 +134,9 @@ describe("HAIP — discovery metadata", () => {
 
 describe("HAIP — credential issuer metadata", () => {
   it("credential issuer includes identity_verification configuration", async () => {
-    if (!auth.publicHandler) {
-      throw new Error("publicHandler is not configured");
-    }
-
-    const response = await auth.publicHandler(
-      new Request("http://localhost/.well-known/openid-credential-issuer")
+    const response = await getCredentialIssuerMetadata(
+      new Request("http://localhost/.well-known/openid-credential-issuer"),
+      { params: Promise.resolve({}) }
     );
     const body = (await response.json()) as Record<string, unknown>;
     const configs = body.credential_configurations_supported as Record<

@@ -11,7 +11,7 @@
  */
 
 /** Parsed claims request for a single endpoint (id_token or userinfo). */
-export type ClaimsRequest = Record<
+type ClaimsRequest = Record<
   string,
   null | {
     essential?: boolean;
@@ -20,7 +20,7 @@ export type ClaimsRequest = Record<
   }
 >;
 
-export interface ParsedClaimsParameter {
+interface ParsedClaimsParameter {
   id_token?: ClaimsRequest | undefined;
   userinfo?: ClaimsRequest | undefined;
 }

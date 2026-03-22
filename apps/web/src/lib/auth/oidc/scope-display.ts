@@ -23,7 +23,7 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
 
 export const HIDDEN_SCOPES = new Set(["openid", "profile"]);
 
-export interface ScopeGroup {
+interface ScopeGroup {
   icon: LucideIcon;
   label: string;
   scopes: string[];

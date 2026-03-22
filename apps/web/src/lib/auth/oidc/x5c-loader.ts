@@ -8,6 +8,8 @@ const CERT_DIR = resolve(process.cwd(), ".data", "certs");
 /**
  * Loads the x5c certificate chain (leaf first, CA last).
  * Tries env vars first (X5C_LEAF_PEM, X5C_CA_PEM), falls back to filesystem.
+ * JWT x5c headers require base64-encoded DER certificates, so PEM inputs are
+ * normalized to their DER body before being returned.
  * Returns null if certificates aren't available.
  */
 export function loadX5cChain(): string[] | null {
@@ -16,8 +18,8 @@ export function loadX5cChain(): string[] | null {
 
   if (leafEnv && caEnv) {
     return [
-      Buffer.from(leafEnv, "base64").toString("utf8"),
-      Buffer.from(caEnv, "base64").toString("utf8"),
+      normalizeX5cEntry(Buffer.from(leafEnv, "base64").toString("utf8")),
+      normalizeX5cEntry(Buffer.from(caEnv, "base64").toString("utf8")),
     ];
   }
 
@@ -28,5 +30,18 @@ export function loadX5cChain(): string[] | null {
     return null;
   }
 
-  return [readFileSync(leafPath, "utf8"), readFileSync(caPath, "utf8")];
+  return [
+    normalizeX5cEntry(readFileSync(leafPath, "utf8")),
+    normalizeX5cEntry(readFileSync(caPath, "utf8")),
+  ];
+}
+
+function normalizeX5cEntry(cert: string): string {
+  if (cert.includes("-----BEGIN")) {
+    return cert
+      .replace(/-----BEGIN CERTIFICATE-----/g, "")
+      .replace(/-----END CERTIFICATE-----/g, "")
+      .replace(/\s+/g, "");
+  }
+  return cert.replace(/\s+/g, "");
 }

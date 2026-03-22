@@ -2,6 +2,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth";
 import { rewriteDpopForUserinfo } from "@/lib/auth/oidc/dpop-userinfo";
+import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-client";
 import { getProtectedResourceMetadataUrl } from "@/lib/auth/oidc/www-authenticate";
 import {
   attachRequestContextToSpan,
@@ -15,6 +16,13 @@ const UNWRAP_PATHS = [
   "/oidc4vci/credential",
   "/oauth2/userinfo",
 ];
+
+async function ensureOidc4vciWalletClientIfNeeded(request: Request) {
+  const url = new URL(request.url);
+  if (url.pathname.endsWith("/oidc4vci/credential-offer")) {
+    await ensureWalletClientExists();
+  }
+}
 
 async function unwrapIfNeeded(request: Request, response: Response) {
   const url = new URL(request.url);
@@ -79,6 +87,7 @@ function addWwwAuthenticate(response: Response): Response {
 export async function GET(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
+  await ensureOidc4vciWalletClientIfNeeded(request);
 
   let effectiveRequest = request;
   const url = new URL(request.url);
@@ -104,6 +113,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const requestContext = resolveRequestContext(request.headers);
   attachRequestContextToSpan(requestContext);
+  await ensureOidc4vciWalletClientIfNeeded(request);
   const response = await authPOST(request);
   return addWwwAuthenticate(await unwrapIfNeeded(request, response));
 }

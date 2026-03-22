@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
+  base64url,
   calculateJwkThumbprint,
   createLocalJWKSet,
   exportJWK,
@@ -19,6 +20,14 @@ import {
   jwtVerify,
   SignJWT,
 } from "jose";
+
+type DpopKeyPair = Awaited<ReturnType<typeof generateKeyPair>>;
+
+export interface DpopBinding {
+  dpopJwk: JWK;
+  dpopKey: DpopKeyPair;
+  jkt: string;
+}
 
 // Minimal schema for E2E credential lookup (Playwright can't resolve @/ imports)
 const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
@@ -39,6 +48,12 @@ const ORIGIN_HEADERS = {
   Origin: BASE_URL,
   "Content-Type": "application/json",
 };
+const OIDC4VCI_IDENTITY_CREDENTIAL_CONFIGURATION_ID = "identity_verification";
+const OIDC4VCI_DEFERRED_CREDENTIAL_CONFIGURATION_ID =
+  "identity_verification_deferred";
+const OIDC4VCI_IDENTITY_VCT = "urn:credential:identity-verification:v1";
+const OIDC4VCI_DEFERRED_VCT =
+  "urn:credential:identity-verification:v1:deferred";
 
 // --- Cookie Utilities ---
 
@@ -311,7 +326,12 @@ export async function createCredentialOffer(
       ...ORIGIN_HEADERS,
     },
   });
-  expect(res.ok()).toBeTruthy();
+  if (!res.ok()) {
+    const body = await res.text();
+    throw new Error(
+      `Credential offer request failed (${res.status()} ${res.statusText()}): ${body}`
+    );
+  }
   const body = (await res.json()) as {
     credential_offer?: {
       grants?: {
@@ -333,7 +353,11 @@ export async function createCredentialOffer(
 
 export async function exchangePreAuthorizedCode(
   request: APIRequestContext,
-  input: { preAuthorizedCode: string; clientId?: string }
+  input: {
+    preAuthorizedCode: string;
+    clientId?: string;
+    dpopBinding?: DpopBinding;
+  }
 ) {
   const form = new URLSearchParams();
   form.set(
@@ -345,11 +369,18 @@ export async function exchangePreAuthorizedCode(
     form.set("client_id", input.clientId);
   }
 
+  const dpop = await createDpopProof({
+    method: "POST",
+    url: `${AUTH_BASE_URL}/oauth2/token`,
+    ...(input.dpopBinding ? { binding: input.dpopBinding } : {}),
+  });
+
   const res = await request.post(`${AUTH_BASE_URL}/oauth2/token`, {
     data: form.toString(),
     headers: {
       Origin: BASE_URL,
       "Content-Type": "application/x-www-form-urlencoded",
+      DPoP: dpop.proof,
     },
   });
 
@@ -369,13 +400,37 @@ export async function createProofJwt(cNonce: string) {
     .setAudience(ISSUER)
     .sign(holder.privateKey);
 
-  return { proofJwt, holderJwk };
+  return { proofJwt, holderJwk, holderKeyPair: holder };
+}
+
+export async function createKbJwt(input: {
+  credential: string;
+  nonce: string;
+  aud: string;
+  holderKeyPair: CryptoKeyPair;
+}) {
+  const sdHash = base64url.encode(
+    new Uint8Array(
+      await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(input.credential)
+      )
+    )
+  );
+  const holderJwk = await exportJWK(input.holderKeyPair.publicKey);
+
+  return await new SignJWT({ nonce: input.nonce, sd_hash: sdHash })
+    .setProtectedHeader({ alg: "EdDSA", typ: "kb+jwt", jwk: holderJwk })
+    .setIssuedAt()
+    .setAudience(input.aud)
+    .sign(input.holderKeyPair.privateKey);
 }
 
 export async function issueCredential(
   request: APIRequestContext,
   input: {
     accessToken: string;
+    dpopBinding?: DpopBinding | undefined;
     credentialConfigurationId?: string | undefined;
     credentialIdentifier?: string | undefined;
     format?: string | undefined;
@@ -401,10 +456,18 @@ export async function issueCredential(
     data.vct = input.vct;
   }
 
+  const dpop = await createDpopProof({
+    method: "POST",
+    url: `${AUTH_BASE_URL}/oidc4vci/credential`,
+    accessToken: input.accessToken,
+    ...(input.dpopBinding ? { binding: input.dpopBinding } : {}),
+  });
+
   const res = await request.post(`${AUTH_BASE_URL}/oidc4vci/credential`, {
     data,
     headers: {
-      Authorization: `Bearer ${input.accessToken}`,
+      Authorization: `DPoP ${input.accessToken}`,
+      DPoP: dpop.proof,
       ...ORIGIN_HEADERS,
     },
   });
@@ -412,8 +475,19 @@ export async function issueCredential(
   return res;
 }
 
+export interface IssuedCredentialBody {
+  credential?: string;
+  credentials?: Array<{ credential?: string }>;
+}
+
+export function extractIssuedCredential(
+  body: IssuedCredentialBody
+): string | undefined {
+  return body.credential ?? body.credentials?.[0]?.credential;
+}
+
 export async function fetchIssuerJwks(request: APIRequestContext) {
-  const res = await request.get(`${AUTH_BASE_URL}/jwks`);
+  const res = await request.get(`${AUTH_BASE_URL}/oauth2/jwks`);
   expect(res.ok()).toBeTruthy();
   const jwks = (await res.json()) as { keys?: JWK[] };
   if (!jwks.keys?.length) {
@@ -496,14 +570,21 @@ export async function findIssuedCredentialRecord(credential: string) {
  * Generate a DPoP proof JWT (RFC 9449).
  * Uses ES256 (P-256) as required by HAIP §7.
  */
+export async function createDpopBinding(): Promise<DpopBinding> {
+  const dpopKey = await generateKeyPair("ES256");
+  const dpopJwk = await exportJWK(dpopKey.publicKey);
+  const jkt = await calculateJwkThumbprint(dpopJwk);
+
+  return { dpopKey, dpopJwk, jkt };
+}
+
 export async function createDpopProof(input: {
   method: string;
   url: string;
   accessToken?: string;
+  binding?: DpopBinding;
 }) {
-  const dpopKey = await generateKeyPair("ES256");
-  const dpopJwk = await exportJWK(dpopKey.publicKey);
-  const jkt = await calculateJwkThumbprint(dpopJwk);
+  const binding = input.binding ?? (await createDpopBinding());
 
   const builder = new SignJWT({
     htm: input.method,
@@ -521,12 +602,12 @@ export async function createDpopProof(input: {
     .setProtectedHeader({
       alg: "ES256",
       typ: "dpop+jwt",
-      jwk: dpopJwk,
+      jwk: binding.dpopJwk,
     })
     .setIssuedAt();
 
-  const proof = await builder.sign(dpopKey.privateKey);
-  return { proof, jkt, dpopKey, dpopJwk };
+  const proof = await builder.sign(binding.dpopKey.privateKey);
+  return { proof, ...binding };
 }
 
 /**
@@ -572,6 +653,12 @@ export const oidcConfig = {
   baseUrl: BASE_URL,
   authBaseUrl: AUTH_BASE_URL,
   issuer: ISSUER,
+  identityCredentialConfigurationId:
+    OIDC4VCI_IDENTITY_CREDENTIAL_CONFIGURATION_ID,
+  deferredCredentialConfigurationId:
+    OIDC4VCI_DEFERRED_CREDENTIAL_CONFIGURATION_ID,
+  identityVct: OIDC4VCI_IDENTITY_VCT,
+  deferredVct: OIDC4VCI_DEFERRED_VCT,
 };
 
 export const originHeaders = ORIGIN_HEADERS;

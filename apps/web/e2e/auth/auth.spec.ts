@@ -4,10 +4,13 @@ import { expect, test } from "@playwright/test";
 const WELCOME_BACK_PATTERN = /welcome back/i;
 const SIGN_UP_LINK_PATTERN = /sign up/i;
 const SIGN_UP_URL_PATTERN = /sign-up/;
-const SIGN_IN_URL_PATTERN = /sign-in/;
-const EMAIL_PLACEHOLDER_PATTERN = /email|you@example/i;
-const PASSWORD_PLACEHOLDER_PATTERN = /password/i;
-const SIGN_IN_WITH_PASSWORD_PATTERN = /sign in with password/i;
+const CREATE_ACCOUNT_PATTERN = /create account/i;
+const EMAIL_ADDRESS_PATTERN = /Email Address/i;
+const EMAIL_OR_RECOVERY_ID_PATTERN = /Email or Recovery ID/i;
+const PASSWORD_LABEL_PATTERN = /^Password$/i;
+const CONFIRM_PASSWORD_PATTERN = /Confirm Password/i;
+const SIGN_IN_BUTTON_PATTERN = /^sign in$/i;
+const PASSWORD_OPTION_PATTERN = /Password Use a secure password/i;
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -19,17 +22,21 @@ test.describe("Authentication Flow", () => {
   });
 
   test("should show sign-up page", async ({ page }) => {
-    // Use fresh=1 to start a clean wizard without session hydration delay
     await page.goto("/sign-up?fresh=1", {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    // Sign-up starts with step 1 (email only)
-    await expect(page.locator('input[type="email"]')).toBeVisible({
+
+    await expect(page.getByText(CREATE_ACCOUNT_PATTERN).first()).toBeVisible({
       timeout: 30_000,
     });
     await expect(
-      page.locator('button[type="submit"], button:has-text("Continue")').first()
+      page.getByRole("textbox", { name: EMAIL_ADDRESS_PATTERN })
+    ).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(
+      page.getByRole("button", { name: PASSWORD_OPTION_PATTERN })
     ).toBeVisible();
   });
 
@@ -50,25 +57,19 @@ test.describe("Authentication Flow", () => {
     await expect(page).toHaveURL(SIGN_UP_URL_PATTERN, { timeout: 30_000 });
   });
 
-  test("should show validation error for invalid email", async ({ page }) => {
+  test("should show password sign-in controls", async ({ page }) => {
     await page.goto("/sign-in");
 
-    // The field accepts "Email or Recovery ID" - fill with invalid format
-    const emailField = page.getByPlaceholder(EMAIL_PLACEHOLDER_PATTERN);
-    await emailField.waitFor({ timeout: 10_000 });
-    await emailField.fill("invalid-email");
-    await page
-      .getByPlaceholder(PASSWORD_PLACEHOLDER_PATTERN)
-      .fill("password123");
-    await page
-      .getByRole("button", { name: SIGN_IN_WITH_PASSWORD_PATTERN })
-      .click();
-
-    // Should show validation error or stay on page
-    await expect(page).toHaveURL(SIGN_IN_URL_PATTERN);
+    await expect(
+      page.getByRole("textbox", { name: EMAIL_OR_RECOVERY_ID_PATTERN })
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByLabel(PASSWORD_LABEL_PATTERN)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: SIGN_IN_BUTTON_PATTERN })
+    ).toBeVisible();
   });
 
-  test("should accept email and proceed to account step (RFC-0017)", async ({
+  test("should accept email and open the inline password form", async ({
     page,
   }) => {
     const testEmail = `e2e-auth-${Date.now()}@example.com`;
@@ -78,13 +79,9 @@ test.describe("Authentication Flow", () => {
       timeout: 60_000,
     });
 
-    await page.waitForSelector('input[type="email"], input[name="email"]', {
-      timeout: 30_000,
+    const emailInput = page.getByRole("textbox", {
+      name: EMAIL_ADDRESS_PATTERN,
     });
-
-    const emailInput = page
-      .locator('input[type="email"], input[name="email"]')
-      .first();
     await emailInput.fill(testEmail);
     await emailInput.blur();
 
@@ -92,15 +89,14 @@ test.describe("Authentication Flow", () => {
       page.locator("text=Please enter a valid email address")
     ).toHaveCount(0);
 
-    // Use requestSubmit to avoid flaky click events on some headless runs.
-    await page
-      .locator("form")
-      .first()
-      .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await page.getByRole("button", { name: PASSWORD_OPTION_PATTERN }).click();
 
-    // RFC-0017: 2-step flow goes directly to account creation (no document upload)
-    await expect(
-      page.getByRole("heading", { name: "Create Your Account" })
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByLabel(PASSWORD_LABEL_PATTERN)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByLabel(CONFIRM_PASSWORD_PATTERN)).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(emailInput).toHaveValue(testEmail);
   });
 });

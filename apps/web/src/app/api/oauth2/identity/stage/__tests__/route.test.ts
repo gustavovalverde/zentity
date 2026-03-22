@@ -68,10 +68,10 @@ vi.mock("@/lib/auth/auth", () => ({
 // Without this, the real api-auth module (loaded transitively through the route)
 // persists in the VM cache and can't be overridden by subsequent test files.
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireSession: vi.fn(),
+  requireBrowserSession: vi.fn(),
 }));
 
-import { requireSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
@@ -95,7 +95,7 @@ describe("oauth2 identity stage route", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     insertedJtis.clear();
-    vi.mocked(requireSession).mockResolvedValue({
+    vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);

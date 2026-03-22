@@ -4,10 +4,13 @@ const TRAILING_SLASHES_REGEX = /\/+$/;
 
 import {
   createCredentialOffer,
+  createDpopBinding,
+  createDpopProof,
   createIssuerSession,
   createProofJwt,
   createWalletClient,
   exchangePreAuthorizedCode,
+  extractIssuedCredential,
   fetchIssuerJwks,
   findIssuedCredentialRecord,
   issueCredential,
@@ -53,16 +56,18 @@ test.describe("OIDC4VCI issuer", () => {
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
       clientId,
       userId,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
     });
 
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode,
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
@@ -81,15 +86,16 @@ test.describe("OIDC4VCI issuer", () => {
       accessToken: tokens.access_token,
       credentialConfigurationId: credentialIdentifier
         ? undefined
-        : "zentity_identity",
+        : oidcConfig.identityCredentialConfigurationId,
       credentialIdentifier,
       proofJwt,
+      dpopBinding,
     });
     expect(credentialRes.status()).toBe(200);
-    const payload = (await credentialRes.json()) as {
-      credentials?: Array<{ credential?: string }>;
-    };
-    const credential = payload.credentials?.[0]?.credential;
+    const payload = (await credentialRes.json()) as Parameters<
+      typeof extractIssuedCredential
+    >[0];
+    const credential = extractIssuedCredential(payload);
     expect(credential).toBeTruthy();
 
     const jwks = await fetchIssuerJwks(request);
@@ -98,7 +104,7 @@ test.describe("OIDC4VCI issuer", () => {
       userId,
       holderJwk,
       jwks,
-      expectedVct: `${oidcConfig.issuer}/vct/zentity_identity`,
+      expectedVct: oidcConfig.identityVct,
     });
   });
 
@@ -111,16 +117,18 @@ test.describe("OIDC4VCI issuer", () => {
     // OIDC4VCI 1.0 requires: credential_identifier OR credential_configuration_id
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
       clientId,
       userId,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
     });
 
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode,
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
@@ -137,15 +145,16 @@ test.describe("OIDC4VCI issuer", () => {
     const credentialRes = await issueCredential(request, {
       accessToken: tokens.access_token,
       format: "dc+sd-jwt",
-      vct: `${oidcConfig.issuer}/vct/zentity_identity`,
+      vct: oidcConfig.identityVct,
       proofJwt,
+      dpopBinding,
     });
     expect(credentialRes.status()).toBe(200);
 
-    const credentialBody = (await credentialRes.json()) as {
-      credentials?: Array<{ credential?: string }>;
-    };
-    const credential = credentialBody.credentials?.[0]?.credential;
+    const credentialBody = (await credentialRes.json()) as Parameters<
+      typeof extractIssuedCredential
+    >[0];
+    const credential = extractIssuedCredential(credentialBody);
     expect(credential).toBeTruthy();
 
     // Verify the credential is valid and properly bound
@@ -155,23 +164,25 @@ test.describe("OIDC4VCI issuer", () => {
       userId,
       holderJwk,
       jwks,
-      expectedVct: `${oidcConfig.issuer}/vct/zentity_identity`,
+      expectedVct: oidcConfig.identityVct,
     });
   });
 
   test("rejects reuse of a c_nonce", async ({ request }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
       clientId,
       userId,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
     });
 
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode,
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
@@ -183,15 +194,17 @@ test.describe("OIDC4VCI issuer", () => {
 
     const first = await issueCredential(request, {
       accessToken: tokens.access_token,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
       proofJwt,
+      dpopBinding,
     });
     expect(first.status()).toBe(200);
 
     const second = await issueCredential(request, {
       accessToken: tokens.access_token,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
       proofJwt,
+      dpopBinding,
     });
     expect(second.status()).toBe(400);
     const errorBody = (await second.json()) as { error?: string };
@@ -201,9 +214,11 @@ test.describe("OIDC4VCI issuer", () => {
   test("rejects invalid pre-authorized codes", async ({ request }) => {
     const { cookieHeader } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode: "not-a-real-code",
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(401);
     const body = (await tokenRes.json()) as { error?: string };
@@ -215,16 +230,18 @@ test.describe("OIDC4VCI issuer", () => {
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
       clientId,
       userId,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
     });
 
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode,
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
@@ -235,14 +252,15 @@ test.describe("OIDC4VCI issuer", () => {
     const { proofJwt } = await createProofJwt(tokens.c_nonce);
     const credentialRes = await issueCredential(request, {
       accessToken: tokens.access_token,
-      credentialConfigurationId: "zentity_identity",
+      credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
       proofJwt,
+      dpopBinding,
     });
     expect(credentialRes.status()).toBe(200);
-    const issued = (await credentialRes.json()) as {
-      credentials?: Array<{ credential?: string }>;
-    };
-    const credential = issued.credentials?.[0]?.credential;
+    const issued = (await credentialRes.json()) as Parameters<
+      typeof extractIssuedCredential
+    >[0];
+    const credential = extractIssuedCredential(issued);
     if (!credential) {
       throw new Error("missing credential in issuance response");
     }
@@ -275,16 +293,18 @@ test.describe("OIDC4VCI issuer", () => {
   }) => {
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
+    const dpopBinding = await createDpopBinding();
     const { preAuthorizedCode } = await createCredentialOffer(request, {
       cookieHeader,
       clientId,
       userId,
-      credentialConfigurationId: "zentity_identity_deferred",
+      credentialConfigurationId: oidcConfig.deferredCredentialConfigurationId,
     });
 
     const tokenRes = await exchangePreAuthorizedCode(request, {
       preAuthorizedCode,
       clientId,
+      dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
@@ -295,8 +315,9 @@ test.describe("OIDC4VCI issuer", () => {
     const { proofJwt } = await createProofJwt(tokens.c_nonce);
     const deferredRes = await issueCredential(request, {
       accessToken: tokens.access_token,
-      credentialConfigurationId: "zentity_identity_deferred",
+      credentialConfigurationId: oidcConfig.deferredCredentialConfigurationId,
       proofJwt,
+      dpopBinding,
     });
     expect(deferredRes.status()).toBe(202);
     const deferredBody = (await deferredRes.json()) as {
@@ -312,16 +333,24 @@ test.describe("OIDC4VCI issuer", () => {
           transaction_id: deferredBody.transaction_id,
         },
         headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
+          Authorization: `DPoP ${tokens.access_token}`,
+          DPoP: (
+            await createDpopProof({
+              method: "POST",
+              url: `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
+              accessToken: tokens.access_token,
+              binding: dpopBinding,
+            })
+          ).proof,
           ...originHeaders,
         },
       }
     );
     expect(fulfillmentRes.status()).toBe(200);
-    const fulfillmentBody = (await fulfillmentRes.json()) as {
-      credentials?: Array<{ credential?: string }>;
-    };
-    expect(fulfillmentBody.credentials?.[0]?.credential).toBeTruthy();
+    const fulfillmentBody = (await fulfillmentRes.json()) as Parameters<
+      typeof extractIssuedCredential
+    >[0];
+    expect(extractIssuedCredential(fulfillmentBody)).toBeTruthy();
 
     const secondRes = await request.post(
       `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
@@ -330,7 +359,15 @@ test.describe("OIDC4VCI issuer", () => {
           transaction_id: deferredBody.transaction_id,
         },
         headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
+          Authorization: `DPoP ${tokens.access_token}`,
+          DPoP: (
+            await createDpopProof({
+              method: "POST",
+              url: `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
+              accessToken: tokens.access_token,
+              binding: dpopBinding,
+            })
+          ).proof,
           ...originHeaders,
         },
       }

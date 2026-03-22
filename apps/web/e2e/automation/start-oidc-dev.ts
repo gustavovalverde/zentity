@@ -70,7 +70,7 @@ function startDevServer() {
   };
 
   if (shouldResetDb) {
-    const result = spawnSync("pnpm", ["run", "db:push"], {
+    const result = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
       cwd: webRoot,
       stdio: "inherit",
       env,

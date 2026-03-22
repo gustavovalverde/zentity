@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
+import { agentHosts, agentSessions } from "./agent";
 import { users } from "./auth";
 import { oauthClients } from "./oauth-provider";
 import { defaultId } from "./utils";
@@ -26,8 +27,32 @@ export const cibaRequests = sqliteTable(
     clientNotificationToken: text("client_notification_token"),
     clientNotificationEndpoint: text("client_notification_endpoint"),
     pollingInterval: integer("polling_interval").notNull().default(5),
+    agentSessionId: text("agent_session_id").references(
+      () => agentSessions.id,
+      {
+        onDelete: "set null",
+      }
+    ),
+    hostId: text("host_id").references(() => agentHosts.id, {
+      onDelete: "set null",
+    }),
+    displayName: text("display_name"),
+    runtime: text("runtime"),
+    model: text("model"),
+    version: text("version"),
+    taskId: text("task_id"),
+    taskHash: text("task_hash"),
     agentClaims: text("agent_claims"),
+    assertionVerified: integer("assertion_verified", { mode: "boolean" }),
+    pairwiseActSub: text("pairwise_act_sub"),
+    approvedCapabilityName: text("approved_capability_name"),
+    approvedConstraints: text("approved_constraints"),
+    approvedGrantId: text("approved_grant_id"),
+    approvedHostPolicyId: text("approved_host_policy_id"),
+    approvalStrength: text("approval_strength"),
     approvalMethod: text("approval_method"),
+    attestationProvider: text("attestation_provider"),
+    attestationTier: text("attestation_tier"),
     lastPolledAt: integer("last_polled_at"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -37,6 +62,7 @@ export const cibaRequests = sqliteTable(
   (table) => [
     index("ciba_request_client_id_idx").on(table.clientId),
     index("ciba_request_user_id_idx").on(table.userId),
+    index("ciba_request_session_id_idx").on(table.agentSessionId),
     index("ciba_request_expires_at_idx").on(table.expiresAt),
   ]
 );

@@ -167,7 +167,7 @@ export interface CredentialMetadata {
 /**
  * Combined result type for credentials and metadata.
  */
-export interface BbsCredentialsWithMetadata {
+interface BbsCredentialsWithMetadata {
   credentials: BbsCredential[];
   metadata: CredentialMetadata[];
 }

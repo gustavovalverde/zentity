@@ -39,7 +39,7 @@ export function getWalletCredentialId(params: {
  * IMPORTANT: This message must be DETERMINISTIC to ensure the user can
  * regenerate the same KEK after cache expiration.
  */
-export interface WalletKekEIP712TypedData {
+interface WalletKekEIP712TypedData {
   domain: {
     name: string;
     version: string;

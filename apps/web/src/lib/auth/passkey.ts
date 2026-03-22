@@ -7,7 +7,7 @@ import {
   extractPrfOutputFromClientResults,
 } from "@/lib/auth/webauthn-prf";
 
-export type PasskeyErrorLike = {
+type PasskeyErrorLike = {
   code?: string | undefined;
   message?: unknown;
   status?: number;
@@ -123,7 +123,7 @@ function resolveErrorMessage(
   );
 }
 
-export type PasskeyPrfResult =
+type PasskeyPrfResult =
   | {
       ok: true;
       credentialId: string;
@@ -202,7 +202,7 @@ export async function registerPasskeyWithPrf(params: {
   };
 }
 
-export type PasskeySignInResult =
+type PasskeySignInResult =
   | {
       ok: true;
       data?: unknown;

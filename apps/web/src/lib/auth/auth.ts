@@ -31,7 +31,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
@@ -96,7 +96,16 @@ import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { validateSafeUrl } from "@/lib/auth/url-safety";
-import { tryAutoApprove } from "@/lib/ciba/auto-approve";
+import {
+  loadAapProfileForCibaRequest,
+  persistAapSnapshotForCibaToken,
+} from "@/lib/ciba/aap-profile";
+import { bindAgentAssertionToCibaRequest } from "@/lib/ciba/agent-binding";
+import {
+  deriveCapabilityName,
+  evaluateSessionGrants,
+  normalizeAuthorizationDetails,
+} from "@/lib/ciba/grant-evaluation";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
 import {
@@ -134,8 +143,6 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
-import { verifyAgentAttestation } from "@/lib/identity/agent-attestation";
-import { parseAgentClaims } from "@/lib/identity/agent-claims";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
@@ -165,6 +172,22 @@ const betterAuthSchema = {
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
 };
+
+async function getJwtSigningKeys() {
+  // Better Auth's generic JWKS adapter path can drop optional columns like
+  // `alg`/`crv`, which breaks OIDC4VCI when multiple signing key algorithms
+  // share the same table. Read the rows directly from our typed schema instead.
+  const rows = await db.select().from(jwks);
+  return rows.map((row) => ({
+    id: row.id,
+    publicKey: row.publicKey,
+    privateKey: row.privateKey,
+    createdAt: row.createdAt,
+    ...(row.alg ? { alg: row.alg } : {}),
+    ...(row.crv ? { crv: row.crv } : {}),
+    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+  }));
+}
 
 function toScopeList(scopes: unknown): string[] {
   return Array.isArray(scopes) ? [...scopes] : [];
@@ -301,7 +324,7 @@ const defaultClientScopes = [
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
-const allowedClientScopes = [...defaultClientScopes, "email"];
+const allowedClientScopes = [...defaultClientScopes, "email", "agent:manage"];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -322,6 +345,10 @@ const advertisedClaims = Array.from(
   ])
 );
 const isOidcE2e = env.E2E_OIDC_ONLY === true;
+const isPlaywrightE2e =
+  typeof process.env.E2E_DATABASE_PATH === "string" ||
+  typeof process.env.E2E_TURSO_DATABASE_URL === "string";
+const enableEmailAndPassword = isOidcE2e || isPlaywrightE2e;
 // scope field added for HAIP §4.1; the oidc4vci plugin type doesn't include it yet,
 // but it passes through to credential issuer metadata where the route handler picks it up
 const oidc4vciCredentialConfigurations: Oidc4vciOptions["credentialConfigurations"] =
@@ -619,6 +646,8 @@ async function validateDcrRegistration(
 // ── Before-hook handlers ──────────────────────────────────
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
+const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 
 async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
@@ -943,17 +972,80 @@ async function afterConsentStoreHmac(ctx: HookCtx) {
 }
 
 async function afterParPersistResource(ctx: HookCtx) {
-  if (!ctx.body?.resource) {
+  const resource =
+    typeof ctx.body?.resource === "string" ? ctx.body.resource : undefined;
+  const clientId =
+    typeof ctx.body?.client_id === "string" ? ctx.body.client_id : undefined;
+  if (!(resource && clientId)) {
     return;
   }
-  const requestId = (ctx.context as Record<string, unknown>).__parRequestId;
-  if (typeof requestId !== "string") {
+  const returned = (ctx as HookCtx & { returned?: unknown }).returned as
+    | { request_uri?: unknown }
+    | undefined;
+  const requestUri = returned?.request_uri;
+  if (typeof requestUri === "string" && requestUri.startsWith(PAR_URI_PREFIX)) {
+    const requestId = requestUri.slice(PAR_URI_PREFIX.length);
+    const result = await db
+      .update(haipPushedRequests)
+      .set({ resource })
+      .where(eq(haipPushedRequests.requestId, requestId))
+      .run();
+    if (result.rowsAffected > 0) {
+      return;
+    }
+  }
+
+  // Better Auth's PAR endpoint persists the full request body in `requestParams`
+  // but does not always expose the created `request_uri` through `ctx.returned`.
+  // Fall back to the latest unresolved PAR row for this client with a matching
+  // serialized request payload so the dedicated `resource` column stays in sync.
+  const normalizedBody = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(ctx.body as Record<string, unknown>)
+        .filter(([, value]) => typeof value === "string")
+        .sort(([left], [right]) => left.localeCompare(right))
+    )
+  );
+  const candidates = await db
+    .select({
+      id: haipPushedRequests.id,
+      requestParams: haipPushedRequests.requestParams,
+    })
+    .from(haipPushedRequests)
+    .where(
+      and(
+        eq(haipPushedRequests.clientId, clientId),
+        isNull(haipPushedRequests.resource)
+      )
+    )
+    .orderBy(desc(haipPushedRequests.createdAt))
+    .limit(10)
+    .all();
+  const matchingRequest = candidates.find((candidate) => {
+    try {
+      const parsed = JSON.parse(candidate.requestParams) as Record<
+        string,
+        unknown
+      >;
+      const normalizedCandidate = JSON.stringify(
+        Object.fromEntries(
+          Object.entries(parsed)
+            .filter(([, value]) => typeof value === "string")
+            .sort(([left], [right]) => left.localeCompare(right))
+        )
+      );
+      return normalizedCandidate === normalizedBody;
+    } catch {
+      return false;
+    }
+  });
+  if (!matchingRequest) {
     return;
   }
   await db
     .update(haipPushedRequests)
-    .set({ resource: ctx.body.resource as string })
-    .where(eq(haipPushedRequests.requestId, requestId))
+    .set({ resource })
+    .where(eq(haipPushedRequests.id, matchingRequest.id))
     .run();
 }
 
@@ -1053,7 +1145,7 @@ export const auth = betterAuth({
             },
           },
         },
-  disabledPaths: isOidcE2e
+  disabledPaths: enableEmailAndPassword
     ? []
     : [
         "/sign-in/email",
@@ -1064,7 +1156,9 @@ export const auth = betterAuth({
         "/set-password",
         "/verify-password",
       ],
-  emailAndPassword: isOidcE2e ? { enabled: true } : { enabled: false },
+  emailAndPassword: enableEmailAndPassword
+    ? { enabled: true }
+    : { enabled: false },
   user: {
     deleteUser: {
       enabled: true,
@@ -1243,8 +1337,17 @@ export const auth = betterAuth({
     }),
     jwt({
       jwks: {
-        keyPairConfig: { alg: "EdDSA" },
+        // Keep framework defaults aligned with OIDC's RS256 id_token default.
+        // Access tokens still use EdDSA via the custom signJwt dispatcher below.
+        keyPairConfig: { alg: "RS256" },
+        // Better Auth's OIDC4VCI signer reads JWKS rows directly from the
+        // adapter. In this app those rows are stored as plain JWK JSON, so the
+        // issuer must not attempt Better Auth envelope decryption here.
+        disablePrivateKeyEncryption: true,
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
+      },
+      adapter: {
+        getJwks: getJwtSigningKeys,
       },
       jwt: {
         issuer: authIssuer,
@@ -1293,6 +1396,7 @@ export const auth = betterAuth({
       customAccessTokenClaims: async (info) => {
         const { user, scopes } = info;
         const clientId = (info as { clientId?: string }).clientId;
+        const referenceId = (info as { referenceId?: string }).referenceId;
         if (!user?.id) {
           return {};
         }
@@ -1307,6 +1411,23 @@ export const auth = betterAuth({
               env.DEDUP_HMAC_SECRET,
               verification.dedupKey,
               clientId
+            );
+          }
+        }
+
+        if (referenceId && clientId) {
+          const aapSnapshot = await loadAapProfileForCibaRequest(
+            referenceId,
+            clientId
+          );
+          if (aapSnapshot) {
+            Object.assign(
+              claims,
+              { jti: referenceId },
+              aapSnapshot.aap.agent?.id
+                ? { act: { sub: aapSnapshot.aap.agent.id } }
+                : {},
+              aapSnapshot.aap
             );
           }
         }
@@ -1392,6 +1513,7 @@ export const auth = betterAuth({
       credentialIssuer: authIssuer,
       issuerBaseURL: authIssuer,
       credentialAudience: oidc4vciCredentialAudience,
+      accessTokenJwksUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
       accessTokenValidator: dpopAccessTokenValidator,
@@ -1473,69 +1595,128 @@ export const auth = betterAuth({
           (meta.backchannel_client_notification_endpoint as string) ?? undefined
         );
       },
+      buildAccessTokenClaims: async (cibaRequest) => {
+        const accessTokenClaims = await persistAapSnapshotForCibaToken(
+          cibaRequest.authReqId,
+          cibaRequest.clientId
+        );
+        if (!accessTokenClaims) {
+          return {};
+        }
+
+        return {
+          ...(accessTokenClaims.agent?.id
+            ? { act: { sub: accessTokenClaims.agent.id } }
+            : {}),
+          ...(accessTokenClaims as unknown as Record<string, unknown>),
+        };
+      },
       sendNotification: async (data, request) => {
-        // Normalize agent claims BEFORE auto-approve to prevent attestation spoofing.
-        let normalizedClaims: string | undefined;
         let agentName: string | undefined;
-        if (data.agentClaims) {
-          const parsed = parseAgentClaims(data.agentClaims);
-          if (parsed) {
-            // Strip any client-supplied attestation field
-            const { attestation: _strip, ...cleanClaims } = parsed as Record<
-              string,
-              unknown
-            >;
-
-            // Verify attestation headers from the request
-            const attestationJwt = request?.headers.get(
-              "OAuth-Client-Attestation"
-            );
-            const attestationPopJwt = request?.headers.get(
-              "OAuth-Client-Attestation-PoP"
-            );
-            if (attestationJwt) {
-              const issuer = getAuthIssuer();
-              const result = await verifyAgentAttestation(
-                attestationJwt,
-                attestationPopJwt ?? undefined,
-                issuer
-              );
-              (cleanClaims as Record<string, unknown>).attestation = result;
+        let registeredAgent:
+          | {
+              attestationProvider?: string | null;
+              attestationTier?: string | null;
+              model?: string | null;
+              name: string;
+              runtime?: string | null;
+              version?: string | null;
             }
-
-            normalizedClaims = JSON.stringify(cleanClaims);
-            agentName = parsed.agent.name;
-            await db
-              .update(cibaRequests)
-              .set({ agentClaims: normalizedClaims })
-              .where(eq(cibaRequests.authReqId, data.authReqId));
-          } else {
-            await db
-              .update(cibaRequests)
-              .set({ agentClaims: null })
-              .where(eq(cibaRequests.authReqId, data.authReqId));
+          | undefined;
+        let verifiedSessionId: string | undefined;
+        const authDetails = normalizeAuthorizationDetails(
+          data.authorizationDetails
+        );
+        const assertionHeader = request?.headers.get("Agent-Assertion");
+        if (assertionHeader) {
+          const boundAssertion = await bindAgentAssertionToCibaRequest({
+            assertionJwt: assertionHeader,
+            authReqId: data.authReqId,
+            authorizationDetails: authDetails,
+            scope: data.scope,
+          });
+          if (boundAssertion) {
+            verifiedSessionId = boundAssertion.sessionId;
+            agentName = boundAssertion.agentName;
+            registeredAgent = boundAssertion.registeredAgent;
           }
         }
 
-        const autoApproveResult = await tryAutoApprove(data);
-        if (autoApproveResult.approved) {
-          if (
-            autoApproveResult.deliveryMode === "ping" &&
-            autoApproveResult.clientNotificationEndpoint &&
-            autoApproveResult.clientNotificationToken
-          ) {
-            deliverPing(
-              autoApproveResult.clientNotificationEndpoint,
-              autoApproveResult.clientNotificationToken,
-              data.authReqId
-            ).catch(() => undefined);
+        // Self-declared agent_claims are never trusted for token claims.
+        // Keep agent metadata sourced only from a verified Agent-Assertion / AAP snapshot.
+        if (!verifiedSessionId) {
+          await db
+            .update(cibaRequests)
+            .set({ agentClaims: null })
+            .where(eq(cibaRequests.authReqId, data.authReqId))
+            .run();
+        }
+
+        // Capability grant evaluation for registered agents
+        let requiresBiometric = false;
+        if (verifiedSessionId) {
+          const grantResult = await evaluateSessionGrants(
+            verifiedSessionId,
+            data.scope,
+            authDetails
+          );
+          if (grantResult.approvalStrength === "biometric") {
+            requiresBiometric = true;
           }
-          return;
+          if (grantResult.approved) {
+            const updated = await db
+              .update(cibaRequests)
+              .set({
+                status: "approved",
+                approvalMethod: "capability_grant",
+                approvedCapabilityName:
+                  grantResult.capabilityName ??
+                  deriveCapabilityName(authDetails, data.scope),
+                approvedConstraints: grantResult.constraintsJson,
+                approvedGrantId: grantResult.grantId,
+                approvedHostPolicyId: grantResult.hostPolicyId,
+                approvalStrength: grantResult.approvalStrength,
+              })
+              .where(
+                and(
+                  eq(cibaRequests.authReqId, data.authReqId),
+                  eq(cibaRequests.status, "pending")
+                )
+              )
+              .returning({ id: cibaRequests.id });
+
+            if (updated.length > 0) {
+              const cibaRow = await db
+                .select({
+                  deliveryMode: cibaRequests.deliveryMode,
+                  clientNotificationEndpoint:
+                    cibaRequests.clientNotificationEndpoint,
+                  clientNotificationToken: cibaRequests.clientNotificationToken,
+                })
+                .from(cibaRequests)
+                .where(eq(cibaRequests.authReqId, data.authReqId))
+                .limit(1)
+                .get();
+
+              if (
+                cibaRow?.deliveryMode === "ping" &&
+                cibaRow.clientNotificationEndpoint &&
+                cibaRow.clientNotificationToken
+              ) {
+                deliverPing(
+                  cibaRow.clientNotificationEndpoint,
+                  cibaRow.clientNotificationToken,
+                  data.authReqId
+                ).catch(() => undefined);
+              }
+              return;
+            }
+          }
         }
 
         const origin = getAppOrigin();
         const pushPayload = buildCibaPushPayload(
-          { ...data, agentName },
+          { ...data, agentName, requiresBiometric },
           origin
         );
         await Promise.allSettled([
@@ -1547,7 +1728,7 @@ export const auth = betterAuth({
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
-            agentClaims: normalizedClaims,
+            registeredAgent,
             approvalUrl: pushPayload.data.approvalUrl,
           }),
         ]);

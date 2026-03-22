@@ -7,7 +7,7 @@ import { eq, lt } from "drizzle-orm";
 import { db } from "@/lib/db/connection";
 import { usedIntentJtis } from "@/lib/db/schema/crypto";
 
-export interface EphemeralClaimsMeta {
+interface EphemeralClaimsMeta {
   clientId: string;
   intentJti: string;
   scopeHash: string;

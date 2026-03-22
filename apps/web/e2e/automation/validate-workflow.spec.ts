@@ -45,7 +45,7 @@ test.describe("Workflow automation", () => {
     await page.goto("/");
     await expect(
       page.getByRole("heading", {
-        name: "Privacy-First Identity Verification",
+        name: "Privacy-First Verification Layer",
       })
     ).toBeVisible();
   });

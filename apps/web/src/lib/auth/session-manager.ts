@@ -62,7 +62,7 @@ function clearQueryCache(queryClient: QueryClient): void {
   queryClient.clear();
 }
 
-export interface CompleteSignOutOptions {
+interface CompleteSignOutOptions {
   /** Callback to clear PRF output from PasskeyAuthContext */
   onClearPrf?: () => void;
   /** React Query client to clear cached queries */
