@@ -8,8 +8,27 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 interface ClientPairwiseConfig {
   clientId: string;
+  metadata: string | null;
   redirectUris: string | string[];
   subjectType: string | null;
+}
+
+type AgentSubjectType = "pairwise" | "public";
+
+function getAgentSubjectType(client: ClientPairwiseConfig): AgentSubjectType {
+  if (client.metadata) {
+    try {
+      const metadata = JSON.parse(client.metadata) as Record<string, unknown>;
+      const configured = metadata.agent_subject_type;
+      if (configured === "pairwise" || configured === "public") {
+        return configured;
+      }
+    } catch {
+      // Fall through to the user subject setting when metadata is malformed.
+    }
+  }
+
+  return client.subjectType === "public" ? "public" : "pairwise";
 }
 
 async function getClientPairwiseConfig(
@@ -18,6 +37,7 @@ async function getClientPairwiseConfig(
   const client = await db
     .select({
       clientId: oauthClients.clientId,
+      metadata: oauthClients.metadata,
       redirectUris: oauthClients.redirectUris,
       subjectType: oauthClients.subjectType,
     })
@@ -38,7 +58,7 @@ export async function resolveAgentSubForClient(
     return sessionId;
   }
 
-  if (client.subjectType === "public") {
+  if (getAgentSubjectType(client) === "public") {
     return sessionId;
   }
 
@@ -58,7 +78,7 @@ export async function resolveAgentSessionIdFromPairwiseSub(
     return null;
   }
 
-  if (client.subjectType === "public") {
+  if (getAgentSubjectType(client) === "public") {
     const session = await db
       .select({ id: agentSessions.id })
       .from(agentSessions)

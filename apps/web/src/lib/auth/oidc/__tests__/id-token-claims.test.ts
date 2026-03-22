@@ -1,18 +1,12 @@
 /**
- * Tests for the customIdTokenClaims logic in auth.ts.
+ * Tests for the ID token proof-claim projection used by auth.ts.
  *
- * Validates that proof claims are merged into id_tokens when proof scopes
- * are present in the granted scopes, matching what demo-RPs expect.
- *
- * This tests the composite behavior of:
- * - consumeEphemeralClaimsByUser (identity PII from vault unlock)
- * - filterIdentityByScopes (PII filtering)
- * - buildProofClaims + filterProofClaimsByScopes (proof flags)
+ * Identity PII is delivered through userinfo, not customIdTokenClaims.
+ * These tests verify that the ID token path only emits proof claims.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Reset module cache to get clean mocks
 vi.resetModules();
 
 const mockGetVerificationStatus = vi.fn();
@@ -26,42 +20,23 @@ vi.doMock("@/lib/db/queries/identity", () => ({
 }));
 
 const { buildProofClaims } = await import("../claims");
-const { filterProofClaimsByScopes, extractProofScopes } = await import(
+const { extractProofScopes, filterProofClaimsByScopes } = await import(
   "../proof-scopes"
 );
-const { filterIdentityByScopes } = await import("../identity-scopes");
 
-/**
- * Reproduces the customIdTokenClaims logic from auth.ts.
- * Kept in sync so that if the real logic changes, this test breaks.
- *
- * @param grantedScopes - The scopes from better-auth's token context
- * @param ephemeral - Ephemeral claims from vault unlock (null for proof-only flows)
- */
-async function simulateCustomIdTokenClaims(
+async function simulateIdTokenProofClaims(
   userId: string,
-  grantedScopes: string[],
-  ephemeral: {
-    claims: Record<string, unknown>;
-    scopes: string[];
-  } | null
+  grantedScopes: string[]
 ): Promise<Record<string, unknown>> {
-  // Identity claims require ephemeral staging (vault unlock)
-  const identityClaims = ephemeral
-    ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
-    : {};
-
-  // Proof claims use the granted scopes directly
   const hasProofScopes =
     grantedScopes.includes("proof:identity") ||
     extractProofScopes(grantedScopes).length > 0;
   if (!hasProofScopes) {
-    return identityClaims;
+    return {};
   }
 
   const allProofClaims = await buildProofClaims(userId);
-  const proofClaims = filterProofClaimsByScopes(allProofClaims, grantedScopes);
-  return { ...identityClaims, ...proofClaims };
+  return filterProofClaimsByScopes(allProofClaims, grantedScopes);
 }
 
 function setVerifiedUser() {
@@ -91,200 +66,69 @@ function setVerifiedUser() {
   });
 }
 
-describe("customIdTokenClaims — proof claims in id_token", () => {
+describe("customIdTokenClaims", () => {
   beforeEach(() => {
     setVerifiedUser();
   });
 
-  it("returns empty when no ephemeral entry and no proof scopes", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid"],
-      null
-    );
+  it("returns no custom claims for openid-only requests", async () => {
+    const result = await simulateIdTokenProofClaims("user-1", ["openid"]);
     expect(result).toEqual({});
   });
 
-  it("returns proof claims even without ephemeral entry (proof-only flow)", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid", "proof:age"],
-      null
-    );
+  it("keeps identity scopes out of the id_token projection", async () => {
+    const result = await simulateIdTokenProofClaims("user-1", [
+      "openid",
+      "identity.name",
+      "identity.address",
+    ]);
 
-    expect(result).toHaveProperty("age_verification", true);
-    expect(Object.keys(result)).toHaveLength(1);
+    expect(result).toEqual({});
+    expect(result).not.toHaveProperty("given_name");
+    expect(result).not.toHaveProperty("address");
   });
 
-  it("returns only identity claims when no proof scopes", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid", "email", "identity.name"],
-      {
-        claims: { given_name: "Jane", family_name: "Doe" },
-        scopes: ["openid", "email", "identity.name"],
-      }
-    );
+  it("returns proof claims for proof-only requests", async () => {
+    const result = await simulateIdTokenProofClaims("user-1", [
+      "openid",
+      "proof:age",
+    ]);
 
-    expect(result).toEqual({ given_name: "Jane", family_name: "Doe" });
-    expect(result).not.toHaveProperty("verified");
-    expect(result).not.toHaveProperty("age_verification");
+    expect(result).toEqual({ age_verification: true });
   });
 
-  it("merges proof claims when proof:verification scope is present (bank scenario)", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid", "email", "proof:verification"],
-      {
-        claims: {},
-        scopes: ["openid", "email", "proof:verification"],
-      }
-    );
+  it("ignores identity scopes when proof scopes are also present", async () => {
+    const result = await simulateIdTokenProofClaims("user-1", [
+      "openid",
+      "identity.name",
+      "proof:verification",
+    ]);
 
     expect(result).toHaveProperty("verification_level", "full");
     expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("identity_bound", true);
-    // proof:verification should NOT include age/doc/liveness claims
-    expect(result).not.toHaveProperty("age_verification");
-    expect(result).not.toHaveProperty("document_verified");
+    expect(result).not.toHaveProperty("given_name");
   });
 
-  it("merges proof claims when proof:age scope is present (wine scenario)", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid", "proof:age"],
-      null
-    );
+  it("expands proof:identity to the full proof claim set", async () => {
+    const result = await simulateIdTokenProofClaims("user-1", [
+      "openid",
+      "proof:identity",
+    ]);
 
-    expect(result).toHaveProperty("age_verification", true);
-    expect(Object.keys(result)).toHaveLength(1);
-  });
-
-  it("merges both identity and proof claims (bank step-up with proof)", async () => {
-    const scopes = ["openid", "email", "identity.name", "proof:verification"];
-    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
-      claims: { given_name: "Jane", family_name: "Doe" },
-      scopes,
-    });
-
-    // Identity claims
-    expect(result).toHaveProperty("given_name", "Jane");
-    expect(result).toHaveProperty("family_name", "Doe");
-    // Proof claims
-    expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("verification_level", "full");
-    expect(result).toHaveProperty("identity_bound", true);
-  });
-
-  it("proof:identity umbrella scope returns all proof claims", async () => {
-    const result = await simulateCustomIdTokenClaims(
-      "user-1",
-      ["openid", "proof:identity"],
-      null
-    );
-
-    expect(result).toHaveProperty("verification_level");
-    expect(result).toHaveProperty("verified");
-    expect(result).toHaveProperty("age_verification");
-    expect(result).toHaveProperty("document_verified");
-    expect(result).toHaveProperty("liveness_verified");
-    expect(result).toHaveProperty("face_match_verified");
-    expect(result).toHaveProperty("nationality_verified");
-    expect(result).toHaveProperty("nationality_group", "GLOBAL");
-    expect(result).toHaveProperty("identity_bound");
-    expect(result).toHaveProperty("sybil_resistant");
-    expect(result).toHaveProperty("policy_version");
-    expect(result).not.toHaveProperty("issuer_id");
-    expect(result).toHaveProperty("verification_time");
-    expect(result).toHaveProperty("attestation_expires_at");
-  });
-
-  it("unverified user gets empty proof claims but still has identity claims", async () => {
-    mockGetVerificationStatus.mockResolvedValueOnce({
-      verified: false,
-      level: "none",
-      numericLevel: 0,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: false,
-        livenessVerified: false,
-        ageVerified: false,
-        nationalityVerified: false,
-        faceMatchVerified: false,
-        identityBound: false,
-        sybilResistant: false,
-      },
-    });
-    mockGetIdentityBundleByUserId.mockResolvedValueOnce(null);
-    mockGetLatestIdentityDocumentByUserId.mockResolvedValueOnce(null);
-
-    const scopes = ["openid", "identity.name", "proof:verification"];
-    const result = await simulateCustomIdTokenClaims("user-2", scopes, {
-      claims: { given_name: "Bob" },
-      scopes,
-    });
-
-    // Identity claims still present
-    expect(result).toHaveProperty("given_name", "Bob");
-    // Proof claims present but with falsy values
-    expect(result).toHaveProperty("verified", false);
-    expect(result).toHaveProperty("verification_level", "none");
-  });
-
-  it("wine scenario full flow: proof:age + identity.name + identity.address", async () => {
-    const scopes = [
-      "openid",
-      "email",
-      "proof:age",
-      "identity.name",
-      "identity.address",
-    ];
-    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
-      claims: {
-        given_name: "Alice",
-        family_name: "Smith",
-        address: { formatted: "123 Main St" },
-      },
-      scopes,
-    });
-
-    // Identity from vault unlock
-    expect(result).toHaveProperty("given_name", "Alice");
-    expect(result).toHaveProperty("address");
-    // Proof from ZK verification
+    expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("age_verification", true);
-    // Should NOT have claims outside requested scopes
-    expect(result).not.toHaveProperty("nationality_verified");
-    expect(result).not.toHaveProperty("document_verified");
-  });
-
-  it("spirits CIBA scenario: proof:age + proof:nationality + identity scopes", async () => {
-    const scopes = [
-      "openid",
-      "proof:age",
-      "proof:nationality",
-      "identity.name",
-      "identity.address",
-    ];
-    const result = await simulateCustomIdTokenClaims("user-1", scopes, {
-      claims: {
-        given_name: "Jane",
-        family_name: "Doe",
-        address: { formatted: "456 Oak Ave" },
-      },
-      scopes,
-    });
-
-    // Proof claims (no PII)
-    expect(result).toHaveProperty("age_verification", true);
+    expect(result).toHaveProperty("document_verified", true);
+    expect(result).toHaveProperty("liveness_verified", true);
+    expect(result).toHaveProperty("face_match_verified", true);
     expect(result).toHaveProperty("nationality_verified", true);
     expect(result).toHaveProperty("nationality_group", "GLOBAL");
-    // Identity claims (from vault unlock)
-    expect(result).toHaveProperty("given_name", "Jane");
-    expect(result).toHaveProperty("address");
-    // Should NOT have claims outside requested scopes
-    expect(result).not.toHaveProperty("document_verified");
-    expect(result).not.toHaveProperty("liveness_verified");
-    expect(result).not.toHaveProperty("verification_level");
+    expect(result).toHaveProperty("identity_bound", true);
+    expect(result).toHaveProperty("sybil_resistant", true);
+    expect(result).toHaveProperty("policy_version", "policy-1");
+    expect(result).toHaveProperty("verification_time");
+    expect(result).toHaveProperty("attestation_expires_at");
+    expect(result).not.toHaveProperty("issuer_id");
   });
 });

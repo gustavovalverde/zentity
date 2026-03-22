@@ -1,6 +1,11 @@
 import { eq } from "drizzle-orm";
 
-import { sha256Hex, verifyAgentAssertion } from "@/lib/ciba/agent-jwt";
+import {
+  buildAgentAssertionReplayKey,
+  cleanupExpiredAgentAssertionJtis,
+  sha256Hex,
+  verifyAgentAssertion,
+} from "@/lib/ciba/agent-jwt";
 import {
   type AuthorizationDetail,
   deriveCapabilityName,
@@ -8,7 +13,11 @@ import {
 } from "@/lib/ciba/grant-evaluation";
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
-import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
+import {
+  agentHosts,
+  agentSessions,
+  usedAgentAssertionJtis,
+} from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
 interface BoundAgentAssertion {
@@ -109,7 +118,24 @@ export async function bindAgentAssertionToCibaRequest(
     cibaRow.clientId
   );
 
+  await cleanupExpiredAgentAssertionJtis();
+
+  let bound = false;
   await db.transaction(async (tx) => {
+    const replayInsert = await tx
+      .insert(usedAgentAssertionJtis)
+      .values({
+        id: buildAgentAssertionReplayKey(assertion.sessionId, assertion.jti),
+        sessionId: assertion.sessionId,
+        jti: assertion.jti,
+        expiresAt: new Date(assertion.exp * 1000),
+      })
+      .onConflictDoNothing()
+      .run();
+    if (replayInsert.rowsAffected === 0) {
+      return;
+    }
+
     await tx
       .update(cibaRequests)
       .set({
@@ -134,7 +160,13 @@ export async function bindAgentAssertionToCibaRequest(
       .update(agentSessions)
       .set({ lastActiveAt: new Date() })
       .where(eq(agentSessions.id, session.id));
+
+    bound = true;
   });
+
+  if (!bound) {
+    return null;
+  }
 
   return {
     sessionId: session.id,

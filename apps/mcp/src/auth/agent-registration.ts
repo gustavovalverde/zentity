@@ -30,6 +30,12 @@ export class AgentRegistrationError extends Error {
   }
 }
 
+export function buildHostKeyNamespace(
+  auth: Pick<OAuthSessionContext, "clientId" | "loginHint">
+): string {
+  return auth.loginHint ? `${auth.clientId}:${auth.loginHint}` : auth.clientId;
+}
+
 async function postJsonWithDpopRetry(
   url: string,
   auth: OAuthSessionContext,
@@ -86,7 +92,7 @@ export async function ensureHostRegistered(
   zentityUrl: string,
   auth: OAuthSessionContext,
   hostName: string,
-  keyNamespace = auth.clientId
+  keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<string> {
   const hostKey = await getOrCreateHostKey(zentityUrl, keyNamespace);
 
@@ -118,8 +124,11 @@ export async function ensureHostRegistered(
   return data.hostId;
 }
 
-export function clearCachedHostId(zentityUrl: string, clientId: string): void {
-  clearHostId(zentityUrl, clientId);
+export function clearCachedHostId(
+  zentityUrl: string,
+  keyNamespace: string
+): void {
+  clearHostId(zentityUrl, keyNamespace);
 }
 
 /**
@@ -149,7 +158,7 @@ export async function registerAgent(
   auth: OAuthSessionContext,
   hostId: string,
   display: AgentInfo,
-  keyNamespace = auth.clientId
+  keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<AgentRuntimeState> {
   const hostKey = loadHostKey(zentityUrl, keyNamespace);
   if (!hostKey) {

@@ -136,6 +136,25 @@ export function validateCimdMetadata(
     };
   }
 
+  const redirectHosts = new Set<string>();
+  for (const uri of doc.redirect_uris) {
+    try {
+      redirectHosts.add(new URL(uri as string).host);
+    } catch {
+      return {
+        valid: false,
+        error: "redirect_uris must be a non-empty array of absolute URIs",
+      };
+    }
+  }
+  if (redirectHosts.size > 1) {
+    return {
+      valid: false,
+      error:
+        "redirect_uris must share the same host until sector_identifier_uri is supported",
+    };
+  }
+
   if (
     doc.grant_types !== undefined &&
     !(

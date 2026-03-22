@@ -56,22 +56,17 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
   }),
 }));
 
-vi.mock("../../src/auth/agent-registration.js", () => ({
-  AgentRegistrationError: class AgentRegistrationError extends Error {
-    responseBody: string;
-    status: number;
-
-    constructor(message: string, status: number, responseBody: string) {
-      super(message);
-      this.name = "AgentRegistrationError";
-      this.status = status;
-      this.responseBody = responseBody;
-    }
-  },
-  clearCachedHostId: mockClearCachedHostId,
-  ensureHostRegistered: mockEnsureHostRegistered,
-  registerAgent: mockRegisterAgent,
-}));
+vi.mock("../../src/auth/agent-registration.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/auth/agent-registration.js")
+  >("../../src/auth/agent-registration.js");
+  return {
+    ...actual,
+    clearCachedHostId: mockClearCachedHostId,
+    ensureHostRegistered: mockEnsureHostRegistered,
+    registerAgent: mockRegisterAgent,
+  };
+});
 
 vi.mock("../../src/auth/discovery.js", () => ({
   discover: vi.fn().mockResolvedValue({
@@ -90,8 +85,8 @@ vi.mock("../../src/server/index.js", () => ({
 
 import { discover } from "../../src/auth/discovery.js";
 import { exchangeToken } from "../../src/auth/token-exchange.js";
+import { buildHostKeyNamespace } from "../../src/auth/agent-registration.js";
 import {
-  buildHttpRuntimeKeyNamespace,
   createApp,
   ensureSessionRuntime,
   matchOrigin,
@@ -485,7 +480,7 @@ describe("HTTP runtime registration", () => {
 
     const result = await registerHttpRuntime(oauth, "openid agent:manage");
 
-    const namespace = buildHttpRuntimeKeyNamespace(oauth);
+    const namespace = buildHostKeyNamespace(oauth);
     expect(mockEnsureHostRegistered).toHaveBeenCalledWith(
       "http://localhost:3000",
       oauth,

@@ -79,7 +79,7 @@ describe("evaluateSessionGrants", () => {
     sessionId = created.sessionId;
   });
 
-  it("approves read_profile when identity scopes map to an active grant", async () => {
+  it("keeps identity-scoped read_profile manual even with an active grant", async () => {
     await db
       .insert(agentSessionGrants)
       .values({
@@ -99,24 +99,34 @@ describe("evaluateSessionGrants", () => {
 
     expect(result).toEqual(
       expect.objectContaining({
-        approved: true,
+        approved: false,
         approvalStrength: "session",
         capabilityName: "read_profile",
+        reason: "identity scopes require explicit approval",
       })
     );
   });
 
-  it("keeps identity scopes manual when there is no active read_profile grant", async () => {
+  it("prioritizes purchase details over identity scopes", async () => {
     const result = await evaluateSessionGrants(
       sessionId,
-      "openid identity.name identity.address",
-      []
+      "openid identity.name",
+      [
+        {
+          type: "purchase",
+          merchant: "Acme",
+          item: "Widget",
+          amount: { value: "9.99", currency: "USD" },
+        },
+      ]
     );
 
     expect(result).toEqual(
       expect.objectContaining({
         approved: false,
-        reason: "no active grant for capability",
+        approvalStrength: "biometric",
+        capabilityName: "purchase",
+        reason: "biometric approval required",
       })
     );
   });
@@ -151,6 +161,33 @@ describe("evaluateSessionGrants", () => {
     );
   });
 
+  it("approves proof-only requests when they map to an active check_compliance grant", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "check_compliance",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const result = await evaluateSessionGrants(
+      sessionId,
+      "openid proof:age",
+      []
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        approved: true,
+        approvalStrength: "none",
+        capabilityName: "check_compliance",
+      })
+    );
+  });
+
   it("keeps request_approval manual even when an active grant exists", async () => {
     await db
       .insert(agentSessionGrants)
@@ -175,7 +212,7 @@ describe("evaluateSessionGrants", () => {
     );
   });
 
-  it("does not duplicate default capabilities when a host later becomes attested", async () => {
+  it("does not widen silent defaults when a host later becomes attested", async () => {
     await ensureDefaultHostPolicies(
       hostId,
       ["check_compliance", "request_approval"],
@@ -183,7 +220,7 @@ describe("evaluateSessionGrants", () => {
     );
     await ensureDefaultHostPolicies(
       hostId,
-      ["check_compliance", "request_approval", "read_profile"],
+      ["check_compliance", "request_approval"],
       "attestation_default"
     );
 
@@ -204,11 +241,6 @@ describe("evaluateSessionGrants", () => {
       {
         capabilityName: "check_compliance",
         source: "default",
-        status: "active",
-      },
-      {
-        capabilityName: "read_profile",
-        source: "attestation_default",
         status: "active",
       },
       {

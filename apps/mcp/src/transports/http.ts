@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   AgentRegistrationError,
+  buildHostKeyNamespace,
   clearCachedHostId,
   ensureHostRegistered,
   registerAgent,
@@ -54,12 +55,6 @@ function hasRuntimeRegistrationScope(scope: unknown): boolean {
   return typeof scope === "string" && scope.split(" ").includes("agent:manage");
 }
 
-export function buildHttpRuntimeKeyNamespace(
-  oauth: Pick<OAuthSessionContext, "clientId" | "loginHint">
-): string {
-  return `${oauth.clientId}:${oauth.loginHint}`;
-}
-
 export async function registerHttpRuntime(
   oauth: OAuthSessionContext,
   scope: unknown
@@ -68,7 +63,7 @@ export async function registerHttpRuntime(
     return undefined;
   }
 
-  const keyNamespace = buildHttpRuntimeKeyNamespace(oauth);
+  const keyNamespace = buildHostKeyNamespace(oauth);
 
   const registerRuntime = async () => {
     const hostId = await ensureHostRegistered(

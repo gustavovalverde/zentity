@@ -24,10 +24,9 @@ interface EphemeralEntry {
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-// During this window a concurrent stage for the same user+client is rejected
-// to prevent PII misdelivery between parallel authorization sessions.
-// After this window the entry is considered abandoned and can be replaced.
-const STAGE_LOCK_MS = 2 * 60 * 1000; // 2 minutes (matches intent token TTL)
+// Only one live stage is permitted per user+client pair. Userinfo resolves
+// staged PII by that pair, so allowing a later same-client stage to replace an
+// earlier live entry would break the binding between user action and delivery.
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
 
@@ -104,13 +103,13 @@ export async function storeEphemeralClaims(
 
   const s = getStore();
   const key = storeKey(userId, meta.clientId);
-  const now = Date.now();
 
   const existing = s.get(key);
-  if (existing && now - existing.createdAt < STAGE_LOCK_MS) {
+  if (existing) {
     return { ok: false, reason: "concurrent_stage" };
   }
 
+  const now = Date.now();
   const expiresAt = now + ttlMs;
   s.set(key, {
     claims,
@@ -145,7 +144,7 @@ export function consumeEphemeralClaims(
 
 /**
  * Consume ephemeral claims for a user when clientId is not directly available
- * (e.g. in customIdTokenClaims hook where only user/scopes/metadata are passed).
+ * (for example, as a fallback in the userinfo claims path).
  * Scans entries with the userId prefix. If exactly one entry exists, consumes it.
  * If multiple exist (rare: concurrent flows for different clients), returns null
  * to avoid cross-client leakage.

@@ -116,6 +116,20 @@ describe("validateCimdMetadata", () => {
     expect(result.valid).toBe(false);
   });
 
+  it("rejects redirect_uris with mixed hosts", () => {
+    const result = validateCimdMetadata(
+      FETCH_URL,
+      validMetadata({
+        redirect_uris: [
+          "https://alpha.example.com/callback",
+          "https://beta.example.com/callback",
+        ],
+      })
+    );
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("share the same host");
+  });
+
   it("rejects disallowed grant_types", () => {
     const result = validateCimdMetadata(
       FETCH_URL,

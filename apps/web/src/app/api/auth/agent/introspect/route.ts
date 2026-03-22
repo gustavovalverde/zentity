@@ -5,12 +5,19 @@ import { NextResponse } from "next/server";
 
 import { requireClientCredentials } from "@/lib/auth/api-auth";
 import {
+  resolveSubForClient,
+  resolveUserIdFromSubForClient,
+} from "@/lib/auth/oidc/pairwise";
+import {
   loadAapProfileForTokenJti,
   readAapProfileFromPayload,
 } from "@/lib/ciba/aap-profile";
 import { observeSessionLifecycle } from "@/lib/ciba/agent-lifecycle";
 import { db } from "@/lib/db/connection";
-import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
+import {
+  oauthAccessTokens,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 
 export const runtime = "nodejs";
@@ -60,6 +67,18 @@ function findAccessToken(token: string) {
     .get();
 }
 
+function findClient(clientId: string) {
+  return db
+    .select({
+      redirectUris: oauthClients.redirectUris,
+      subjectType: oauthClients.subjectType,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+}
+
 export async function POST(request: Request) {
   const authResult = await requireClientCredentials(request, [
     "agent:introspect",
@@ -95,8 +114,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ active: false });
   }
 
+  const [tokenClient, callerClient] = await Promise.all([
+    findClient(tokenClientId),
+    findClient(authResult.principal.clientId),
+  ]);
+
   const tokenScopes =
     typeof payload?.scope === "string" ? payload.scope : opaqueToken?.scopes;
+
+  let rawUserId = opaqueToken?.userId ?? null;
+  if (!rawUserId && typeof payload?.sub === "string") {
+    rawUserId = tokenClient
+      ? ((await resolveUserIdFromSubForClient(payload.sub, tokenClient)) ??
+        payload.sub)
+      : payload.sub;
+  }
+
+  let projectedSub: string | undefined;
+  if (rawUserId) {
+    projectedSub = callerClient
+      ? await resolveSubForClient(rawUserId, callerClient)
+      : rawUserId;
+  }
 
   let snapshot: Awaited<ReturnType<typeof loadAapProfileForTokenJti>> = null;
   if (typeof payload?.jti === "string") {
@@ -140,7 +179,7 @@ export async function POST(request: Request) {
     active: true,
     client_id: tokenClientId,
     ...(tokenScopes ? { scope: tokenScopes } : {}),
-    ...(typeof payload?.sub === "string" ? { sub: payload.sub } : {}),
+    ...(projectedSub ? { sub: projectedSub } : {}),
     ...(payload?.aud ? { aud: payload.aud } : {}),
     ...snapshot.aap,
     ...(payloadAap.delegation ? { delegation: payloadAap.delegation } : {}),

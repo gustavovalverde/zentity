@@ -44,6 +44,7 @@ vi.mock("../../src/auth/agent-registration.js", async () => {
 });
 
 import { AgentRegistrationError } from "../../src/auth/agent-registration.js";
+import { buildHostKeyNamespace } from "../../src/auth/agent-registration.js";
 import { bootstrapRegisteredRuntime } from "../../src/transports/stdio.js";
 
 const baseOauth = {
@@ -69,6 +70,8 @@ const runtime = {
   sessionPrivateKey: { crv: "Ed25519", d: "priv", kty: "OKP", x: "pub" },
   sessionPublicKey: { crv: "Ed25519", kty: "OKP", x: "pub" },
 };
+
+const hostKeyNamespace = buildHostKeyNamespace(baseOauth);
 
 function createServerMock(clientInfo?: { name: string; version: string }) {
   return {
@@ -131,7 +134,8 @@ describe("bootstrapRegisteredRuntime", () => {
         model: "claude",
         name: "Claude Code",
         version: "1.2.3",
-      })
+      }),
+      hostKeyNamespace
     );
   });
 
@@ -150,7 +154,8 @@ describe("bootstrapRegisteredRuntime", () => {
       expect.objectContaining({
         model: "unknown",
         name: "Custom Agent",
-      })
+      }),
+      hostKeyNamespace
     );
   });
 
@@ -224,7 +229,7 @@ describe("bootstrapRegisteredRuntime", () => {
 
     expect(mockClearCachedHostId).toHaveBeenCalledWith(
       "http://localhost:3000",
-      "test-client"
+      hostKeyNamespace
     );
     expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(2);
     expect(mockRegisterAgent).toHaveBeenCalledTimes(2);

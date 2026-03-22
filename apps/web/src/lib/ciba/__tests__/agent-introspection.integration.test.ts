@@ -28,6 +28,8 @@ async function createOAuthClient(
   options?: {
     clientSecret?: string;
     public?: boolean;
+    redirectUris?: string[];
+    subjectType?: "pairwise" | "public";
     tokenEndpointAuthMethod?: "client_secret_post" | "none";
   }
 ) {
@@ -36,10 +38,13 @@ async function createOAuthClient(
     .values({
       clientId,
       name: clientId,
-      redirectUris: JSON.stringify(["http://localhost/callback"]),
+      redirectUris: JSON.stringify(
+        options?.redirectUris ?? ["http://localhost/callback"]
+      ),
       grantTypes: JSON.stringify(grantTypes),
       tokenEndpointAuthMethod: options?.tokenEndpointAuthMethod ?? "none",
       public: options?.public ?? true,
+      subjectType: options?.subjectType,
       ...(options?.clientSecret
         ? {
             clientSecret: crypto
@@ -205,7 +210,10 @@ describe("Agent Introspection", () => {
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
-    await createOAuthClient(TEST_CLIENT_ID, [CIBA_GRANT_TYPE], ["openid"]);
+    await createOAuthClient(TEST_CLIENT_ID, [CIBA_GRANT_TYPE], ["openid"], {
+      redirectUris: ["https://agent-client.example.com/callback"],
+      subjectType: "pairwise",
+    });
     await createOAuthClient(
       INTROSPECTOR_CLIENT_ID,
       ["client_credentials"],
@@ -246,6 +254,7 @@ describe("Agent Introspection", () => {
       INTROSPECTOR_CLIENT_ID
     );
 
+    expect(result.body.sub).toBe(userId);
     expect(result.body.agent).toEqual({
       id: expectedActorId,
       type: "mcp-agent",

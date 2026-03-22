@@ -80,7 +80,7 @@ async function createRegisteredAgent(
 
 async function insertCibaRequest(params: {
   authReqId?: string;
-  bindingMessage: string;
+  bindingMessage?: string;
   clientId?: string;
   scope: string;
   userId: string;
@@ -94,7 +94,7 @@ async function insertCibaRequest(params: {
       userId: params.userId,
       scope: params.scope,
       status: "pending",
-      bindingMessage: params.bindingMessage,
+      bindingMessage: params.bindingMessage ?? null,
       expiresAt: new Date(Date.now() + 300_000),
     })
     .run();
@@ -262,6 +262,83 @@ describe("bindAgentAssertionToCibaRequest", () => {
     expect(updated).toEqual({
       assertionVerified: null,
       taskHash: null,
+    });
+  });
+
+  it("requires binding_message on the CIBA request to verify Agent-Assertion", async () => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await signAssertion({
+      bindingMessage,
+      hostId: agent.hostId,
+      privateKey: agent.privateKey,
+      sessionId: agent.sessionId,
+    });
+    const authReqId = await insertCibaRequest({
+      scope: "openid identity.name",
+      userId,
+    });
+
+    const result = await bindAgentAssertionToCibaRequest({
+      assertionJwt,
+      authReqId,
+      authorizationDetails: [],
+      scope: "openid identity.name",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it("rejects replay of the same assertion jti across CIBA requests", async () => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await signAssertion({
+      bindingMessage,
+      hostId: agent.hostId,
+      privateKey: agent.privateKey,
+      sessionId: agent.sessionId,
+    });
+
+    const firstAuthReqId = await insertCibaRequest({
+      bindingMessage,
+      scope: "openid identity.name",
+      userId,
+    });
+    const secondAuthReqId = await insertCibaRequest({
+      bindingMessage,
+      scope: "openid identity.name",
+      userId,
+    });
+
+    const firstResult = await bindAgentAssertionToCibaRequest({
+      assertionJwt,
+      authReqId: firstAuthReqId,
+      authorizationDetails: [],
+      scope: "openid identity.name",
+    });
+    expect(firstResult?.sessionId).toBe(agent.sessionId);
+
+    const replayResult = await bindAgentAssertionToCibaRequest({
+      assertionJwt,
+      authReqId: secondAuthReqId,
+      authorizationDetails: [],
+      scope: "openid identity.name",
+    });
+    expect(replayResult).toBeNull();
+
+    const secondRequest = await db
+      .select({
+        agentSessionId: cibaRequests.agentSessionId,
+        assertionVerified: cibaRequests.assertionVerified,
+      })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, secondAuthReqId))
+      .limit(1)
+      .get();
+
+    expect(secondRequest).toEqual({
+      agentSessionId: null,
+      assertionVerified: null,
     });
   });
 });

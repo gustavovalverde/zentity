@@ -289,8 +289,8 @@ export function OAuthConsentClient({
         }
 
         // Stage identity claims in the ephemeral store BEFORE creating the
-        // consent record. The server's customIdTokenClaims hook will consume
-        // them during token exchange. Identity scopes are never persisted in
+        // consent record. The server's userinfo path consumes them on first
+        // read after token issuance. Identity scopes are never persisted in
         // the consent DB — the ephemeral store is the sole authority.
         await captureIdentityIfNeeded();
         didStage = true;

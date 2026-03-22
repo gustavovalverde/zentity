@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { detectAgent } from "../agent.js";
 import {
   AgentRegistrationError,
+  buildHostKeyNamespace,
   clearCachedHostId,
   ensureHostRegistered,
   registerAgent,
@@ -57,12 +58,20 @@ export async function bootstrapRegisteredRuntime(
   const registerRuntime = async (
     oauth: (typeof auth)["oauth"]
   ): Promise<Awaited<ReturnType<typeof registerAgent>>> => {
+    const keyNamespace = buildHostKeyNamespace(oauth);
     const hostId = await ensureHostRegistered(
       config.zentityUrl,
       oauth,
-      "@zentity/mcp-server"
+      "@zentity/mcp-server",
+      keyNamespace
     );
-    return registerAgent(config.zentityUrl, oauth, hostId, display);
+    return registerAgent(
+      config.zentityUrl,
+      oauth,
+      hostId,
+      display,
+      keyNamespace
+    );
   };
 
   try {
@@ -73,7 +82,10 @@ export async function bootstrapRegisteredRuntime(
       console.error(
         "[auth] Cached host registration is stale, re-registering the durable host..."
       );
-      clearCachedHostId(config.zentityUrl, auth.oauth.clientId);
+      clearCachedHostId(
+        config.zentityUrl,
+        buildHostKeyNamespace(auth.oauth)
+      );
       const runtime = await registerRuntime(auth.oauth);
       return { ...auth, runtime };
     }

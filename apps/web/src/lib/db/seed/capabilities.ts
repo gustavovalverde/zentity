@@ -109,8 +109,11 @@ export const DEFAULT_HOST_POLICY_CAPABILITIES = [
   "request_approval",
 ];
 
-/** Additional capabilities auto-granted for vendor-attested hosts. */
+/**
+ * Attested hosts currently keep the same silent-approval defaults. Attestation
+ * is surfaced in UI, tokens, and introspection instead of silently widening
+ * identity-disclosure capabilities.
+ */
 export const ATTESTED_HOST_POLICY_CAPABILITIES = [
   ...DEFAULT_HOST_POLICY_CAPABILITIES,
-  "read_profile",
 ];

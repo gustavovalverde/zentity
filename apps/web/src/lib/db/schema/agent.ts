@@ -205,6 +205,25 @@ export const agentTokenSnapshots = sqliteTable(
   ]
 );
 
+export const usedAgentAssertionJtis = sqliteTable(
+  "used_agent_assertion_jti",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => agentSessions.id, { onDelete: "cascade" }),
+    jti: text("jti").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("used_agent_assertion_jti_session_idx").on(table.sessionId),
+    index("used_agent_assertion_jti_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
 export type AgentHost = typeof agentHosts.$inferSelect;
 export type NewAgentHost = typeof agentHosts.$inferInsert;
 export type AgentSession = typeof agentSessions.$inferSelect;

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
+import { extractProofScopes } from "@/lib/auth/oidc/proof-scopes";
 import { computeSessionState } from "@/lib/ciba/agent-lifecycle";
 import { recordUsageIfAllowed } from "@/lib/ciba/usage-ledger";
 import { db } from "@/lib/db/connection";
@@ -67,6 +68,9 @@ export function deriveCapabilityName(
   details: AuthorizationDetail[],
   scope: string
 ): string | null {
+  // Precedence is strict so a mixed request produces one deterministic
+  // capability: purchase details outrank identity scopes, which outrank proof
+  // scopes, which outrank openid-only requests.
   if (details.some((detail) => detail.type === "purchase")) {
     return "purchase";
   }
@@ -74,6 +78,13 @@ export function deriveCapabilityName(
   const scopes = scope.split(" ").filter((item) => item !== "openid");
   if (scopes.some(isIdentityScope)) {
     return "read_profile";
+  }
+
+  if (
+    scopes.includes("proof:identity") ||
+    extractProofScopes(scopes).length > 0
+  ) {
+    return "check_compliance";
   }
 
   if (scopes.length === 0) {
@@ -335,6 +346,9 @@ export async function evaluateSessionGrants(
     .get();
 
   const approvalStrength = capability?.approvalStrength ?? "session";
+  const scopes = scope.split(" ").filter((item) => item !== "openid");
+  const containsIdentityScope = scopes.some(isIdentityScope);
+
   if (capabilityName === "request_approval") {
     return {
       approved: false,
@@ -343,11 +357,31 @@ export async function evaluateSessionGrants(
       reason: "explicit approval required",
     };
   }
+
   if (approvalStrength === "biometric") {
     return {
       approved: false,
+      capabilityName,
       approvalStrength: "biometric",
       reason: "biometric approval required",
+    };
+  }
+
+  if (containsIdentityScope) {
+    return {
+      approved: false,
+      approvalStrength,
+      capabilityName,
+      reason: "identity scopes require explicit approval",
+    };
+  }
+
+  if (approvalStrength === "session") {
+    return {
+      approved: false,
+      approvalStrength,
+      capabilityName,
+      reason: "session approval required",
     };
   }
 

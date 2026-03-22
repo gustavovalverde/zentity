@@ -318,9 +318,24 @@ function createTokenExchangeHandler(): (
     });
 
     const now = Math.floor(Date.now() / 1000);
-    const expiresIn = 3600;
-    const exp = now + expiresIn;
+    const subjectExp =
+      typeof subjectPayload.exp === "number" ? subjectPayload.exp : null;
+    const defaultExpiresIn = 3600;
+    const exp =
+      subjectExp === null
+        ? now + defaultExpiresIn
+        : Math.min(now + defaultExpiresIn, subjectExp);
+    const expiresIn = Math.max(exp - now, 0);
+
+    if (expiresIn === 0) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_grant",
+        error_description:
+          "Exchanged token lifetime cannot exceed the subject token lifetime",
+      });
+    }
     const jti = crypto.randomUUID();
+    const dpopJkt = await extractDpopThumbprint(ctx.request);
 
     // Resolve target audience: resource (RFC 8707) > audience (RFC 8693) > issuer
     const targetAudience =
@@ -363,6 +378,14 @@ function createTokenExchangeHandler(): (
           error: "invalid_request",
           error_description:
             "Purchase authorization artifacts require an access token subject",
+        });
+      }
+
+      if (!dpopJkt) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_request",
+          error_description:
+            "Purchase authorization artifacts require a DPoP-bound token exchange request",
         });
       }
 
@@ -434,6 +457,7 @@ function createTokenExchangeHandler(): (
         authorization_details: purchaseDetails,
         iat: now,
         exp,
+        ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
       };
 
       const artifact = await new SignJWT(artifactPayload)
@@ -498,9 +522,6 @@ function createTokenExchangeHandler(): (
         }
       );
     }
-
-    // Access Token output — DPoP sender-constraining when proof is present
-    const dpopJkt = await extractDpopThumbprint(ctx.request);
 
     const accessTokenPayload: Record<string, unknown> = {
       iss: authIssuer,

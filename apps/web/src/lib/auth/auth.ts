@@ -523,6 +523,7 @@ async function validateDcrRegistration(
     ? body.redirect_uris
     : undefined;
   if (redirectUris) {
+    let pairwiseHost: string | null = null;
     for (const uri of redirectUris) {
       if (typeof uri !== "string") {
         continue;
@@ -542,6 +543,14 @@ async function validateDcrRegistration(
         if (!(isLocalhost || isLoopback) && parsed.protocol !== "https:") {
           throw new APIError("BAD_REQUEST", {
             error_description: `redirect_uri must use HTTPS: ${uri}`,
+          });
+        }
+        if (!pairwiseHost) {
+          pairwiseHost = parsed.host;
+        } else if (pairwiseHost !== parsed.host) {
+          throw new APIError("BAD_REQUEST", {
+            error_description:
+              "redirect_uris must share the same host until sector_identifier_uri is supported",
           });
         }
       } catch (e) {
