@@ -3,13 +3,13 @@ import {
   IconBell,
   IconCheck,
   IconCode,
-  IconFingerprint,
   IconKey,
   IconLock,
   IconPlugConnected,
   IconRobot,
   IconShieldCheck,
-  IconX,
+  IconShieldHalf,
+  IconUserShield,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { MetaFunction } from "react-router";
@@ -17,8 +17,10 @@ import { Link } from "react-router";
 
 import { Footer } from "@/components/landing/footer";
 import { Nav } from "@/components/landing/nav";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import type { SemanticColor } from "@/lib/colors";
 import { colorStyles } from "@/lib/colors";
 import { iconSemanticColors } from "@/lib/icon-semantics";
 import { cn } from "@/lib/utils";
@@ -32,13 +34,17 @@ export const meta: MetaFunction = () => [
   },
 ];
 
-interface PageLayoutProps {
+/* ─── Layout ─────────────────────────────────────────────── */
+
+function PageLayout({
+  title,
+  description,
+  children,
+}: {
   title: string;
   description: string;
   children: ReactNode;
-}
-
-function PageLayout({ title, description, children }: PageLayoutProps) {
+}) {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <a
@@ -66,7 +72,8 @@ function PageLayout({ title, description, children }: PageLayoutProps) {
   );
 }
 
-// Syntax token classes
+/* ─── MCP Code Window ────────────────────────────────────── */
+
 const cm = "text-zinc-500";
 const kw = "text-purple-400";
 const fn = "text-blue-400";
@@ -81,92 +88,395 @@ function CodeWindow() {
         <div className="size-2.5 rounded-full bg-yellow-500/80" />
         <div className="size-2.5 rounded-full bg-green-500/80" />
         <div className="ml-2 font-mono text-[11px] text-muted-foreground">
-          agent-ciba-flow.ts
+          mcp-purchase.ts
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-zinc-950 p-4 text-[13px] leading-relaxed font-mono dark:bg-zinc-900">
+      <div className="overflow-x-auto bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed dark:bg-zinc-900">
         <pre className="text-zinc-300">
           <span className={cm}>
-            {"// Step 1: Agent requests human approval via CIBA"}
+            {"// MCP tool: purchase() — human-in-the-loop approval"}
           </span>
           {"\n"}
-          <span className={kw}>const</span> ciba ={" "}
-          <span className={kw}>await</span> <span className={fn}>fetch</span>(
+          <span className={kw}>const</span> result ={" "}
+          <span className={kw}>await</span> <span className={fn}>mcp</span>.
+          <span className={fn}>callTool</span>(
+          <span className={str}>{'"purchase"'}</span>, {"{"}
           {"\n"}
           {"  "}
-          <span className={str}>
-            {'"https://app.zentity.xyz/api/auth/oauth2/bc-authorize"'}
-          </span>
-          ,{"\n"}
+          <span className={prop}>item</span>:{" "}
+          <span className={str}>{'"Macallan 18 Double Cask"'}</span>,{"\n"}
           {"  "}
-          {"{ "}
-          <span className={prop}>method</span>:{" "}
-          <span className={str}>{'"POST"'}</span>,{" "}
-          <span className={prop}>headers</span>: {"{ "}
-          <span className={prop}>DPoP</span>: proof {"}"},{"\n"}
-          {"    "}
-          <span className={prop}>body</span>: <span className={kw}>new</span>{" "}
-          URLSearchParams({"{"} {"\n"}
-          {"      "}
-          <span className={prop}>login_hint</span>: userId,{"\n"}
-          {"      "}
-          <span className={prop}>scope</span>:{" "}
-          <span className={str}>
-            {'"openid identity.name identity.address"'}
-          </span>
-          ,{"\n"}
-          {"      "}
-          <span className={prop}>binding_message</span>:{" "}
-          <span className={str}>{'"Purchase Widget for $29.99"'}</span>,{"\n"}
-          {"    "}
-          {"})"}
-          {" }"}){"\n\n"}
+          <span className={prop}>amount</span>: {"{ "}
+          <span className={prop}>value</span>:{" "}
+          <span className={str}>{'"161.94"'}</span>,{" "}
+          <span className={prop}>currency</span>:{" "}
+          <span className={str}>{'"USD"'}</span>
+          {" },"}
+          {"\n"}
+          {"  "}
+          <span className={prop}>merchant</span>:{" "}
+          <span className={str}>{'"Spirits & Co."'}</span>
+          {"\n"}
+          {"}"});{"\n\n"}
           <span className={cm}>
-            {"// Step 2: Human receives push notification, approves"}
+            {"// → Push notification sent to user's device"}
           </span>
           {"\n"}
           <span className={cm}>
-            {"// Step 3: Poll for DPoP-bound token with delegation proof"}
+            {'// → User reviews: "Purchase Macallan 18 for $161.94"'}
           </span>
           {"\n"}
           <span className={cm}>
-            {
-              "// Token: { sub: user, act: { sub: agent }, authorization_details, release_handle }"
-            }
+            {"// → User taps Approve (or unlocks vault for identity scopes)"}
           </span>
           {"\n\n"}
+          <span className={cm}>{"// Result includes delegated token"}</span>
+          {"\n"}
+          result.
+          <span className={prop}>content</span>{" "}
           <span className={cm}>
-            {"// Step 4: Redeem release handle for one-time PII"}
+            {"// { approved: true, token: { sub, act: { sub: agent } } }"}
           </span>
-          {"\n"}
-          <span className={kw}>const</span> release ={" "}
-          <span className={kw}>await</span> <span className={fn}>fetch</span>(
-          {"\n"}
-          {"  "}
-          <span className={str}>
-            {'"https://app.zentity.xyz/api/oauth2/release"'}
-          </span>
-          ,{"\n"}
-          {"  "}
-          {"{ "}
-          <span className={prop}>method</span>:{" "}
-          <span className={str}>{'"POST"'}</span>,{" "}
-          <span className={prop}>headers</span>: {"{"}
-          {"\n"}
-          {"    "}
-          <span className={prop}>Authorization</span>:{" "}
-          {/* biome-ignore lint/suspicious/noTemplateCurlyInString: syntax-highlighted code display */}
-          <span className={str}>{"`DPoP ${cibaToken}`"}</span>,{"\n"}
-          {"    "}
-          <span className={prop}>DPoP</span>: proof,{"\n"}
-          {"  "}
-          {"}}"})
         </pre>
       </div>
     </div>
   );
 }
+
+/* ─── Comparison Visual ──────────────────────────────────── */
+
+function ComparisonVisual() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card>
+        <CardContent className="pt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <IconRobot className={cn("size-5", colorStyles.red.iconText)} />
+            <h3 className="font-semibold">What agents get today</h3>
+          </div>
+          <div className="overflow-x-auto rounded-lg bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed dark:bg-zinc-900">
+            <pre className="text-zinc-300">
+              {"{\n"}
+              {"  "}
+              <span className={str}>{'"name"'}</span>:{" "}
+              <span className={str}>{'"Alice Johnson"'}</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"birthdate"'}</span>:{" "}
+              <span className={str}>{'"1990-03-15"'}</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"address"'}</span>:{" "}
+              <span className={str}>{'"123 Main St, NYC"'}</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"passport_number"'}</span>:{" "}
+              <span className={str}>{'"AB1234567"'}</span>
+              {"\n}"}
+            </pre>
+          </div>
+          <p className="landing-caption mt-3">
+            Full PII — stored, forwarded, breachable.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <IconShieldCheck
+              className={cn("size-5", iconSemanticColors.shield)}
+            />
+            <h3 className="font-semibold">What agents get with Zentity</h3>
+          </div>
+          <div className="overflow-x-auto rounded-lg bg-zinc-950 p-4 font-mono text-[13px] leading-relaxed dark:bg-zinc-900">
+            <pre className="text-zinc-300">
+              {"{\n"}
+              {"  "}
+              <span className={str}>{'"age_verification"'}</span>:{" "}
+              <span className={kw}>true</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"nationality_verified"'}</span>:{" "}
+              <span className={kw}>true</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"document_verified"'}</span>:{" "}
+              <span className={kw}>true</span>,{"\n"}
+              {"  "}
+              <span className={str}>{'"verification_level"'}</span>:{" "}
+              <span className={str}>{'"full"'}</span>
+              {"\n}"}
+            </pre>
+          </div>
+          <p className="landing-caption mt-3">
+            Zero-knowledge proofs — nothing to store, nothing to breach.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ─── Scenario Cards ─────────────────────────────────────── */
+
+const SCENARIOS = [
+  {
+    title: "Compliance check",
+    tier: "Anonymous",
+    tierColor: "purple" as SemanticColor,
+    icon: IconShieldCheck,
+    agentAction: "Agent checks if user meets KYC requirements",
+    humanExperience: "Silent — no notification, no approval needed",
+    rsPayload: '{ verified: true, level: "full" }',
+  },
+  {
+    title: "Profile read",
+    tier: "Registered",
+    tierColor: "amber" as SemanticColor,
+    icon: IconUserShield,
+    agentAction: "Agent requests user's name and address",
+    humanExperience: "Push notification — tap to approve, unlock vault",
+    rsPayload: "{ name, address } (single-use, ephemeral)",
+  },
+  {
+    title: "Age-restricted purchase",
+    tier: "Attested",
+    tierColor: "emerald" as SemanticColor,
+    icon: IconLock,
+    agentAction: "Agent buys spirits — needs age proof + identity",
+    humanExperience: "Push + vault unlock — review purchase, prove age",
+    rsPayload: "{ age_verification: true, act: { sub: agent } }",
+  },
+] as const;
+
+function ScenarioCards() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {SCENARIOS.map((s) => (
+        <Card key={s.title}>
+          <CardContent className="pt-6">
+            <div className="mb-4 flex items-center justify-between">
+              <s.icon
+                className={cn("size-5", colorStyles[s.tierColor].iconText)}
+              />
+              <Badge variant="outline">{s.tier}</Badge>
+            </div>
+            <h3 className="font-semibold">{s.title}</h3>
+            <dl className="mt-3 space-y-2">
+              <div>
+                <dt className="landing-caption font-medium">Agent action</dt>
+                <dd className="landing-body">{s.agentAction}</dd>
+              </div>
+              <div>
+                <dt className="landing-caption font-medium">
+                  Human experience
+                </dt>
+                <dd className="landing-body">{s.humanExperience}</dd>
+              </div>
+              <div>
+                <dt className="landing-caption font-medium">
+                  Resource server receives
+                </dt>
+                <dd className="font-mono text-xs text-muted-foreground">
+                  {s.rsPayload}
+                </dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Trust Tiers ────────────────────────────────────────── */
+
+const TIERS = [
+  {
+    name: "Anonymous",
+    color: "purple" as SemanticColor,
+    icon: IconRobot,
+    description:
+      "No agent identity disclosed. The CIBA request has no Agent-Assertion.",
+    autoActivates: "Compliance checks, read-only proof queries",
+    howToGet: "No registration — any OAuth client",
+  },
+  {
+    name: "Registered",
+    color: "amber" as SemanticColor,
+    icon: IconShieldHalf,
+    description:
+      "Agent host and session registered with Ed25519 keys. Amber trust badge.",
+    autoActivates: "Purchase up to $100, profile read (with grant)",
+    howToGet: "Register host + session via /api/auth/agent/*",
+  },
+  {
+    name: "Attested",
+    color: "emerald" as SemanticColor,
+    icon: IconShieldCheck,
+    description:
+      "Host verified via OAuth-Client-Attestation from a trusted provider. Green trust badge.",
+    autoActivates: "All registered capabilities + attestation-gated actions",
+    howToGet: "Register with OAuth-Client-Attestation + PoP headers",
+  },
+] as const;
+
+function TrustTiersSection() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {TIERS.map((t) => (
+        <Card key={t.name}>
+          <CardContent className="pt-6">
+            <t.icon className={cn("size-5", colorStyles[t.color].iconText)} />
+            <h3 className="mt-3 font-semibold">{t.name}</h3>
+            <p className="landing-body mt-1">{t.description}</p>
+            <dl className="mt-4 space-y-2 border-border border-t pt-3">
+              <div>
+                <dt className="landing-caption font-medium">Auto-activates</dt>
+                <dd className="landing-body">{t.autoActivates}</dd>
+              </div>
+              <div>
+                <dt className="landing-caption font-medium">How to get</dt>
+                <dd className="landing-body">{t.howToGet}</dd>
+              </div>
+            </dl>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/* ─── MCP + A2A Integration ──────────────────────────────── */
+
+const MCP_TOOLS = [
+  { name: "whoami", desc: "Get the authenticated user's identity claims" },
+  { name: "my_proofs", desc: "List all proof claims for the current user" },
+  {
+    name: "check_compliance",
+    desc: "Check if user meets compliance requirements",
+  },
+  { name: "purchase", desc: "Request CIBA approval for a purchase action" },
+  {
+    name: "request_approval",
+    desc: "Request CIBA approval for a custom action",
+  },
+] as const;
+
+function McpSection() {
+  return (
+    <div className="grid gap-6 md:grid-cols-2">
+      <div>
+        <h3 className="font-semibold">MCP Tools</h3>
+        <p className="landing-body mt-1">
+          Five identity tools, available over HTTP (SSE) and stdio transports.
+        </p>
+        <ul className="mt-4 space-y-2">
+          {MCP_TOOLS.map((tool) => (
+            <li className="flex items-start gap-2" key={tool.name}>
+              <code className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+                {tool.name}
+              </code>
+              <span className="landing-body">{tool.desc}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <h3 className="font-semibold">Discovery endpoints</h3>
+        <p className="landing-body mt-1">
+          Standard discovery for both MCP and A2A protocols.
+        </p>
+        <ul className="mt-4 space-y-3">
+          <li>
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              /.well-known/oauth-authorization-server
+            </code>
+            <p className="landing-caption mt-0.5">
+              OAuth 2.1 metadata (PAR, DPoP, CIBA grant types)
+            </p>
+          </li>
+          <li>
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              /.well-known/agent-configuration
+            </code>
+            <p className="landing-caption mt-0.5">
+              Agent capabilities, approval URLs, trust tiers
+            </p>
+          </li>
+          <li>
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              /.well-known/agent.json
+            </code>
+            <p className="landing-caption mt-0.5">
+              A2A agent card — security scheme, supported protocols
+            </p>
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Protocol Composition (condensed) ───────────────────── */
+
+const SPECS = [
+  {
+    icon: IconCode,
+    color: iconSemanticColors.developer,
+    name: "First-Party Apps",
+    spec: "draft-ietf-oauth-first-party-apps",
+  },
+  {
+    icon: IconKey,
+    color: iconSemanticColors.key,
+    name: "DPoP sender binding",
+    spec: "RFC 9449",
+  },
+  {
+    icon: IconBell,
+    color: iconSemanticColors.compliance,
+    name: "CIBA per-action consent",
+    spec: "OIDC CIBA Core",
+  },
+  {
+    icon: IconPlugConnected,
+    color: iconSemanticColors.oauth,
+    name: "Rich Authorization Requests",
+    spec: "RFC 9396",
+  },
+  {
+    icon: IconCheck,
+    color: colorStyles.amber.iconText,
+    name: "Delegation proof (act claim)",
+    spec: "RFC 8693",
+  },
+  {
+    icon: IconLock,
+    color: iconSemanticColors.lock,
+    name: "Ephemeral identity delivery",
+    spec: "Zentity userinfo",
+  },
+] as const;
+
+function ProtocolComposition() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {SPECS.map((s) => (
+        <div
+          className="flex items-start gap-3 rounded-lg border border-border p-3"
+          key={s.name}
+        >
+          <s.icon className={cn("mt-0.5 size-4 shrink-0", s.color)} />
+          <div>
+            <p className="font-medium text-sm">{s.name}</p>
+            <p className="landing-caption">{s.spec}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── Page ───────────────────────────────────────────────── */
 
 export default function AgentsPage() {
   return (
@@ -174,312 +484,67 @@ export default function AgentsPage() {
       title="Agentic Authorization"
       description="AI agents need human identity to complete tasks, but storing that identity creates liability. Zentity lets agents prove who they represent and what the human approved, without holding any personal data."
     >
-      <div className="space-y-12">
-        {/* The Delegation Gap */}
-        <section>
-          <div className="mb-6">
-            <h2 className="font-display text-2xl font-semibold">
-              Why standard OAuth breaks for agents
-            </h2>
-            <p className="landing-body mt-2 max-w-2xl">
-              OAuth assumes the party receiving the token is the party who
-              authenticated. When agent and human are different entities, the
-              protocol must bind them together while keeping secrets out of the
-              agent's reach.
-            </p>
-          </div>
-
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="mb-4 flex items-center gap-2 font-semibold">
-                  <IconRobot
-                    className={cn("size-5", colorStyles.red.iconText)}
-                  />
-                  <h3>Standard agent tokens</h3>
-                </div>
-                <p className="landing-caption mb-4 uppercase tracking-[0.16em]">
-                  The impersonation problem
-                </p>
-                <ul className="space-y-3">
-                  <li className="flex items-start gap-3">
-                    <IconX
-                      className={cn(
-                        "mt-1 size-4 shrink-0",
-                        colorStyles.red.iconText,
-                      )}
-                    />
-                    <span className="landing-body">
-                      <strong>No delegation proof:</strong> The token identifies
-                      the user but not which agent is acting. A stolen token
-                      works for any client.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <IconX
-                      className={cn(
-                        "mt-1 size-4 shrink-0",
-                        colorStyles.red.iconText,
-                      )}
-                    />
-                    <span className="landing-body">
-                      <strong>Blanket access:</strong> The agent receives all
-                      consented scopes upfront. There is no per-action approval,
-                      and no way to prove the human approved a specific
-                      transaction.
-                    </span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <div className="mb-4 flex items-center gap-2 font-semibold">
-                  <IconShieldCheck
-                    className={cn("size-5", iconSemanticColors.shield)}
-                  />
-                  <h3>Zentity agentic auth</h3>
-                </div>
-                <p className="landing-caption mb-4 uppercase tracking-[0.16em]">
-                  Bound delegation
-                </p>
-                <ul className="space-y-3">
-                  <li className="flex items-start gap-3">
-                    <IconCheck
-                      className={cn(
-                        "mt-1 size-4 shrink-0",
-                        colorStyles.emerald.iconText,
-                      )}
-                    />
-                    <span className="landing-body">
-                      <strong>Provable delegation:</strong> Every token carries
-                      an{" "}
-                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                        act
-                      </code>{" "}
-                      claim binding the human's identity to the acting agent.
-                      Resource servers verify the delegation chain locally,
-                      without contacting the authorization server.
-                    </span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <IconCheck
-                      className={cn(
-                        "mt-1 size-4 shrink-0",
-                        colorStyles.emerald.iconText,
-                      )}
-                    />
-                    <span className="landing-body">
-                      <strong>Per-action consent:</strong> Each sensitive action
-                      triggers a push notification. The human reviews the
-                      specific request and approves from their device.
-                    </span>
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        {/* Protocol Composition */}
+      <div className="space-y-14">
+        {/* Comparison Visual */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            Five specs, one binding chain
+            Identity without exposure
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Each mechanism solves one dimension of the delegation problem. The
-            composition, not any individual spec, is what makes agent-human
-            identity work.
+            Today, agents receive raw personal data. With Zentity, they receive
+            cryptographic proofs that answer the question without revealing the
+            answer.
           </p>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <IconCode
-                  className={cn("size-5", iconSemanticColors.developer)}
-                />
-                <h3 className="mt-3 font-semibold">Headless bootstrap</h3>
-                <p className="landing-body mt-1">
-                  The agent authenticates without a browser using the
-                  First-Party App Challenge endpoint. No redirect flow, no
-                  embedded browser.
-                </p>
-                <p className="landing-caption mt-2">
-                  draft-ietf-oauth-first-party-apps
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <IconKey className={cn("size-5", iconSemanticColors.key)} />
-                <h3 className="mt-3 font-semibold">Sender binding</h3>
-                <p className="landing-body mt-1">
-                  A DPoP keypair generated at startup threads through every
-                  request. Stolen tokens are useless without the matching
-                  private key.
-                </p>
-                <p className="landing-caption mt-2">RFC 9449 (DPoP)</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <IconBell
-                  className={cn("size-5", iconSemanticColors.compliance)}
-                />
-                <h3 className="mt-3 font-semibold">Per-action consent</h3>
-                <p className="landing-body mt-1">
-                  CIBA sends a push notification for each sensitive action. The
-                  human reviews and approves from their device, not from the
-                  agent's interface.
-                </p>
-                <p className="landing-caption mt-2">OpenID Connect CIBA Core</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <IconPlugConnected
-                  className={cn("size-5", iconSemanticColors.oauth)}
-                />
-                <h3 className="mt-3 font-semibold">Structured intent</h3>
-                <p className="landing-body mt-1">
-                  Rich Authorization Requests attach structured metadata (item,
-                  amount, merchant) so the human approves the specific
-                  transaction, not a generic capability.
-                </p>
-                <p className="landing-caption mt-2">RFC 9396 (RAR)</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <IconFingerprint
-                  className={cn("size-5", colorStyles.amber.iconText)}
-                />
-                <h3 className="mt-3 font-semibold">Delegation proof</h3>
-                <p className="landing-body mt-1">
-                  The{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                    act
-                  </code>{" "}
-                  claim in every token names both the human and the agent, with
-                  pairwise identifiers that prevent cross-service tracking.
-                </p>
-                <p className="landing-caption mt-2">
-                  RFC 8693 (Token Exchange)
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="pt-6">
-                <IconLock className={cn("size-5", iconSemanticColors.lock)} />
-                <h3 className="mt-3 font-semibold">One-time PII release</h3>
-                <p className="landing-body mt-1">
-                  Identity is sealed with a release handle at approval time. The
-                  agent redeems it once, the server marks it consumed. PII is
-                  never stored in plaintext.
-                </p>
-                <p className="landing-caption mt-2">Zentity release handle</p>
-              </CardContent>
-            </Card>
+          <div className="mt-6">
+            <ComparisonVisual />
           </div>
         </section>
 
-        {/* How It Works */}
+        {/* How it works — MCP code + steps */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            From push notification to identity delivery
+            From tool call to human approval
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            When an agent needs the human's name to complete a purchase, the
-            entire flow takes three participants and five steps. The human's
-            vault is unlocked client-side; the server never sees the decrypted
-            profile.
+            An MCP tool call triggers the human-in-the-loop flow. The agent
+            never touches credentials — the human approves from their own
+            device.
           </p>
 
           <div className="mt-6 grid items-start gap-6 md:grid-cols-2">
             <div>
-              <ul className="space-y-6">
-                <li className="flex items-start gap-3">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm">
-                    1
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">Agent requests approval</h3>
-                    <p className="landing-body mt-1">
-                      The agent sends a CIBA backchannel request with the action
-                      details, requested scopes, and a DPoP proof. The server
-                      returns an{" "}
-                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                        auth_req_id
-                      </code>{" "}
-                      and starts polling.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm">
-                    2
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">
-                      Human receives notification
-                    </h3>
-                    <p className="landing-body mt-1">
-                      A push notification arrives on the human's device showing
-                      the binding message and structured action details (e.g.,
-                      "Purchase Widget from Acme for $29.99").
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm">
-                    3
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">Vault unlock and staging</h3>
-                    <p className="landing-body mt-1">
-                      If identity scopes are requested, the human unlocks their
-                      vault with their passkey, password, or wallet. The
-                      decrypted PII is sealed with a random release handle and
-                      stored as ciphertext.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm">
-                    4
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">Token with release handle</h3>
-                    <p className="landing-body mt-1">
-                      The agent's next poll succeeds. The access token carries
-                      the release handle (the decryption key), the{" "}
-                      <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                        act
-                      </code>{" "}
-                      delegation claim, and DPoP binding.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-sm">
-                    5
-                  </span>
-                  <div>
-                    <h3 className="font-semibold">One-time redemption</h3>
-                    <p className="landing-body mt-1">
-                      The agent calls the release endpoint with its DPoP-bound
-                      token. The server decrypts the PII, returns a fresh
-                      id_token with name and address, and marks the approval as
-                      redeemed.
-                    </p>
-                  </div>
-                </li>
+              <ul className="space-y-5">
+                {[
+                  {
+                    title: "Agent calls MCP tool",
+                    body: "The agent invokes purchase() with item, amount, and merchant. The MCP server translates this into a CIBA backchannel request.",
+                  },
+                  {
+                    title: "Human receives notification",
+                    body: "A push notification arrives showing the binding message and structured action details.",
+                  },
+                  {
+                    title: "Review and approve",
+                    body: "If identity scopes are requested, the human unlocks their vault with passkey, password, or wallet. PII is sealed client-side.",
+                  },
+                  {
+                    title: "Agent receives delegated token",
+                    body: "The token carries the act claim binding human to agent, DPoP sender constraint, and authorization_details.",
+                  },
+                ].map((step, i) => (
+                  <li className="flex items-start gap-3" key={step.title}>
+                    <Badge
+                      variant="outline"
+                      className="z-10 flex size-8 shrink-0 items-center justify-center rounded-full bg-card p-0 text-sm text-foreground"
+                    >
+                      {i + 1}
+                    </Badge>
+                    <div>
+                      <h3 className="font-semibold">{step.title}</h3>
+                      <p className="landing-body mt-1">{step.body}</p>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
 
@@ -487,62 +552,61 @@ export default function AgentsPage() {
           </div>
         </section>
 
-        {/* What resource servers see */}
+        {/* Scenario Cards */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            What resource servers see
+            Three scenarios, three trust levels
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            A resource server receiving a Zentity agent token can verify the
-            delegation chain locally, without contacting the authorization
-            server. Three properties distinguish a human-backed agent from a bot
-            farm.
+            The human experience differs based on what the agent needs and how
+            much it's trusted. Higher trust means more capabilities activate
+            automatically.
           </p>
+          <div className="mt-6">
+            <ScenarioCards />
+          </div>
+        </section>
 
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <IconFingerprint
-                  className={cn("size-5", colorStyles.amber.iconText)}
-                />
-                <h3 className="mt-3 font-semibold">Delegation chain</h3>
-                <p className="landing-body mt-1">
-                  The token names the human (
-                  <code className="font-mono text-xs">sub</code>) and the agent
-                  (<code className="font-mono text-xs">act.sub</code>), with
-                  pairwise identifiers so the same agent appears different to
-                  each resource server.
-                </p>
-              </CardContent>
-            </Card>
+        {/* Trust Tiers */}
+        <section>
+          <h2 className="font-display text-2xl font-semibold">
+            Agent trust tiers
+          </h2>
+          <p className="landing-body mt-2 max-w-2xl">
+            Trust is earned, not assumed. Each tier unlocks progressively more
+            autonomous capabilities.
+          </p>
+          <div className="mt-6">
+            <TrustTiersSection />
+          </div>
+        </section>
 
-            <Card>
-              <CardContent className="pt-6">
-                <IconKey className={cn("size-5", iconSemanticColors.key)} />
-                <h3 className="mt-3 font-semibold">DPoP sender constraint</h3>
-                <p className="landing-body mt-1">
-                  The token's <code className="font-mono text-xs">cnf.jkt</code>{" "}
-                  binds it to a specific key. Stolen tokens are useless. Bot
-                  farms would need unique key management per instance.
-                </p>
-              </CardContent>
-            </Card>
+        {/* MCP + A2A Integration */}
+        <section>
+          <h2 className="font-display text-2xl font-semibold">
+            MCP + A2A integration
+          </h2>
+          <p className="landing-body mt-2 max-w-2xl">
+            Identity as a tool, not a data dump. Agents discover capabilities
+            through standard protocols.
+          </p>
+          <div className="mt-6">
+            <McpSection />
+          </div>
+        </section>
 
-            <Card>
-              <CardContent className="pt-6">
-                <IconShieldCheck
-                  className={cn("size-5", iconSemanticColors.shield)}
-                />
-                <h3 className="mt-3 font-semibold">Action specificity</h3>
-                <p className="landing-body mt-1">
-                  <code className="font-mono text-xs">
-                    authorization_details
-                  </code>{" "}
-                  carries exactly what the human approved. A blanket-scope token
-                  without action metadata signals weaker authorization.
-                </p>
-              </CardContent>
-            </Card>
+        {/* Protocol Composition */}
+        <section>
+          <h2 className="font-display text-2xl font-semibold">
+            Six specs, one binding chain
+          </h2>
+          <p className="landing-body mt-2 max-w-2xl">
+            Each mechanism solves one dimension of the delegation problem. The
+            composition, not any individual spec, is what makes agent-human
+            identity work.
+          </p>
+          <div className="mt-6">
+            <ProtocolComposition />
           </div>
 
           <div className="mt-8">
