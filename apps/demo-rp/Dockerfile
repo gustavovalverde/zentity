@@ -17,6 +17,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR ${APP_HOME}
 
 COPY --link package.json pnpm-lock.yaml ./
+COPY --link vendor/ ./vendor/
 
 RUN --mount=type=cache,id=demo-rp-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile

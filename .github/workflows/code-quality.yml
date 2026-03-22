@@ -119,7 +119,7 @@ jobs:
         working-directory: apps/web
       - run: pnpm run type-check
         working-directory: apps/web
-      - run: pnpm run knip -- --reporter github-actions
+      - run: pnpm run knip
         working-directory: apps/web
 
   web-security:
