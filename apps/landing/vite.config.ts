@@ -1,8 +1,9 @@
 import path from "node:path";
-
+import { reactRouter } from "@react-router/dev/vite";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import mdx from "fumadocs-mdx/vite";
 import { defineConfig, type Plugin } from "vite";
+import * as MdxConfig from "./source.config";
 
 const docsDir = path.resolve(__dirname, "../../docs");
 
@@ -17,12 +18,12 @@ function watchDocs(): Plugin {
   };
 }
 
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), tailwindcss(), watchDocs()],
+export default defineConfig(async () => ({
+  plugins: [tailwindcss(), await mdx(MdxConfig), reactRouter(), watchDocs()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(__dirname, "./app"),
+      collections: path.resolve(__dirname, "./.source"),
     },
   },
-});
+}));

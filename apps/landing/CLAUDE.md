@@ -4,7 +4,7 @@ This document defines the visual conventions for `apps/landing`. Every component
 
 ## Color System
 
-All colors flow from `src/lib/colors.ts`:
+All colors flow from `app/lib/colors.ts`:
 
 - `colorStyles` — Record of `SemanticColor` → `{ bg, border, iconText, text }` classes
 - `SemanticColor` — `"purple" | "blue" | "emerald" | "amber" | "orange" | "pink" | "red" | "yellow"`
@@ -27,7 +27,7 @@ Icons are always **bare** — just the icon element with a semantic color class.
 
 ### Concept-to-Color Mapping
 
-`src/lib/icon-semantics.ts` maps **concepts** to `colorStyles.X.iconText` values:
+`app/lib/icon-semantics.ts` maps **concepts** to `colorStyles.X.iconText` values:
 
 ```ts
 iconSemanticColors.shield    // purple — ZK/proofs
@@ -45,7 +45,7 @@ Use `iconSemanticColors.X` when the icon maps to a known concept. Use `colorStyl
 
 ## Components — When to Use What
 
-### `Badge` (`src/components/ui/badge.tsx`)
+### `Badge` (`app/components/ui/badge.tsx`)
 
 Use for numbered step indicators:
 
@@ -61,7 +61,7 @@ Never use colored numbered circles with `colorStyles.X.iconText` for step number
 
 Always use shadcn `Card`, `CardHeader`, `CardContent`, `Table`, `TableHeader`, `TableBody`, `TableRow`, `TableHead`, `TableCell` — never raw HTML `<table>`, `<section>` with card-like styling, etc.
 
-## CSS Utilities (defined in `src/index.css`)
+## CSS Utilities (defined in `app/app.css`)
 
 ### Layout
 

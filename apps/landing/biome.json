@@ -2,14 +2,15 @@
   "$schema": "https://biomejs.dev/schemas/2.4.7/schema.json",
   "files": {
     "includes": [
-      "src/**",
+      "app/**",
       "*.ts",
       "*.tsx",
       "*.js",
       "*.json",
       "!!node_modules",
       "!!dist",
-      "!!public"
+      "!!public",
+      "!!.react-router"
     ]
   },
   "formatter": {
@@ -42,7 +43,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/components/ui/**"],
+      "includes": ["app/components/ui/**"],
       "linter": {
         "rules": {
           "a11y": {
@@ -57,16 +58,6 @@
           },
           "correctness": {
             "useExhaustiveDependencies": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["src/main.tsx"],
-      "linter": {
-        "rules": {
-          "style": {
-            "noNonNullAssertion": "off"
           }
         }
       }

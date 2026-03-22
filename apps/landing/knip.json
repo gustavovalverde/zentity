@@ -4,7 +4,7 @@
     "types": "warn"
   },
   "ignoreIssues": {
-    "src/components/ui/**": ["exports", "types"],
-    "src/pages/whitepaper-page.tsx": ["unresolved"]
+    "app/components/ui/**": ["exports", "types"],
+    "app/routes/whitepaper.tsx": ["unresolved"]
   }
 }

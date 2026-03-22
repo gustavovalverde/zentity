@@ -6,8 +6,10 @@
   ],
   "compilerOptions": {
     "baseUrl": ".",
+    "rootDirs": [".", "./.react-router/types"],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./app/*"],
+      "collections/*": ["./.source/*"]
     }
   }
 }
