@@ -94,3 +94,50 @@ export async function sendMagicLinkEmail(params: {
     tags: ["auth", "magic-link"],
   });
 }
+
+export async function sendEmailVerification(params: {
+  user: { email: string; name?: string };
+  url: string;
+}): Promise<void> {
+  const name = params.user.name || "there";
+
+  await send({
+    to: [params.user.email],
+    subject: "Verify your email — Zentity",
+    text: `Hi ${name},\n\nPlease verify your email address to complete your Zentity account setup.\n\nVerify your email: ${params.url}\n\nThis link expires in 1 hour. If you didn't create an account, you can safely ignore this email.\n\nZentity`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
+<h2 style="margin-bottom:4px;">Verify your email</h2>
+<p>Hi ${name},</p>
+<p>Please verify your email address to complete your Zentity account setup.</p>
+<p style="margin:24px 0;">
+<a href="${params.url}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Verify Email</a>
+</p>
+<p style="color:#9ca3af;font-size:13px;">This link expires in 1 hour. If you didn't create an account, you can safely ignore this email.</p>
+</div>`,
+    tags: ["auth", "email-verification"],
+  });
+}
+
+export async function sendChangeEmailConfirmation(params: {
+  user: { email: string; name?: string };
+  newEmail: string;
+  url: string;
+}): Promise<void> {
+  const name = params.user.name || "there";
+
+  await send({
+    to: [params.user.email],
+    subject: "Confirm your email change — Zentity",
+    text: `Hi ${name},\n\nWe received a request to change your email to ${params.newEmail}.\n\nConfirm this change: ${params.url}\n\nIf you didn't request this, you can safely ignore this email. Your current email will remain unchanged.\n\nZentity`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
+<h2 style="margin-bottom:4px;">Confirm email change</h2>
+<p>Hi ${name},</p>
+<p>We received a request to change your Zentity email to <strong>${params.newEmail}</strong>.</p>
+<p style="margin:24px 0;">
+<a href="${params.url}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Confirm Change</a>
+</p>
+<p style="color:#9ca3af;font-size:13px;">If you didn't request this, you can safely ignore this email. Your current email will remain unchanged.</p>
+</div>`,
+    tags: ["auth", "change-email-confirmation"],
+  });
+}

@@ -25,9 +25,13 @@ import {
 
 export async function getUserByEmail(
   email: string
-): Promise<{ id: string; email: string } | null> {
+): Promise<{ id: string; email: string; emailVerified: boolean } | null> {
   const row = await db
-    .select({ id: users.id, email: users.email })
+    .select({
+      id: users.id,
+      email: users.email,
+      emailVerified: users.emailVerified,
+    })
     .from(users)
     .where(eq(users.email, email))
     .get();
@@ -36,9 +40,13 @@ export async function getUserByEmail(
 
 export async function getUserByRecoveryId(
   recoveryId: string
-): Promise<{ id: string; email: string } | null> {
+): Promise<{ id: string; email: string; emailVerified: boolean } | null> {
   const row = await db
-    .select({ id: users.id, email: users.email })
+    .select({
+      id: users.id,
+      email: users.email,
+      emailVerified: users.emailVerified,
+    })
     .from(recoveryIdentifiers)
     .innerJoin(users, eq(users.id, recoveryIdentifiers.userId))
     .where(eq(recoveryIdentifiers.recoveryId, recoveryId))

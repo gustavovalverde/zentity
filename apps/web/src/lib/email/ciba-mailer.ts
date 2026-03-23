@@ -128,13 +128,13 @@ export async function sendCibaNotification(params: {
   approvalUrl: string;
 }): Promise<void> {
   const user = await db
-    .select({ email: users.email })
+    .select({ email: users.email, emailVerified: users.emailVerified })
     .from(users)
     .where(eq(users.id, params.userId))
     .limit(1)
     .get();
 
-  if (!user?.email) {
+  if (!(user?.email && user.emailVerified)) {
     return;
   }
 

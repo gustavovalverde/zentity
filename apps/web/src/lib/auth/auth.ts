@@ -1161,9 +1161,26 @@ export const auth = betterAuth({
   emailAndPassword: enableEmailAndPassword
     ? { enabled: true }
     : { enabled: false },
+  emailVerification: {
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      const { sendEmailVerification } = await import("@/lib/email/auth-mailer");
+      await sendEmailVerification({ user, url });
+    },
+  },
   user: {
     deleteUser: {
       enabled: true,
+    },
+    changeEmail: {
+      enabled: true,
+      updateEmailWithoutVerification: true,
+      sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
+        const { sendChangeEmailConfirmation } = await import(
+          "@/lib/email/auth-mailer"
+        );
+        await sendChangeEmailConfirmation({ user, newEmail, url });
+      },
     },
   },
   account: {

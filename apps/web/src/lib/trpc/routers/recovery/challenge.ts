@@ -171,7 +171,7 @@ export const startProcedure = publicProcedure
           token: approval.token,
         })),
       }),
-      custodialApproval
+      custodialApproval && user.emailVerified
         ? sendCustodialRecoveryEmail({
             email: custodialApproval.email,
             token: custodialApproval.token,

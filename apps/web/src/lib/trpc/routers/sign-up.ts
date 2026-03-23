@@ -3,6 +3,7 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
+import { auth } from "@/lib/auth/auth";
 import {
   clearAnonymousFlag,
   deleteStaleAnonymousUserByEmail,
@@ -93,6 +94,14 @@ export const signUpRouter = router({
           });
         }
         throw error;
+      }
+
+      if (email) {
+        auth.api
+          .sendVerificationEmail({
+            body: { email, callbackURL: "/dashboard" },
+          })
+          .catch(() => undefined);
       }
 
       return { success: true };

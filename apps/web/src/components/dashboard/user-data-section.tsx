@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, CheckCircle2, Mail, User, XCircle } from "lucide-react";
+import { Calendar, CheckCircle2, User, XCircle } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -203,19 +203,6 @@ export function UserDataSection() {
                   ) : null}
                 </div>
               )}
-            </ItemContent>
-          </Item>
-
-          <ItemSeparator />
-
-          {/* Email */}
-          <Item>
-            <ItemMedia variant="icon">
-              <Mail className="h-5 w-5" />
-            </ItemMedia>
-            <ItemContent>
-              <ItemDescription>Email</ItemDescription>
-              <ItemTitle>{data.email}</ItemTitle>
             </ItemContent>
           </Item>
 

@@ -30,12 +30,16 @@ export function AssuranceBadges({
 
   const acr = claims.acr as string | undefined;
   const amr = claims.amr as string[] | undefined;
+  const emailVerified =
+    typeof claims.email_verified === "boolean"
+      ? claims.email_verified
+      : undefined;
 
   const tierMatch = acr?.match(TIER_RE);
   const tierLabel = tierMatch ? `Tier ${tierMatch[1]}` : undefined;
   const amrLabel = amr?.length ? formatAmr(amr) : undefined;
 
-  if (!(tierLabel || amrLabel)) {
+  if (!(tierLabel || amrLabel || emailVerified !== undefined)) {
     return null;
   }
 
@@ -55,6 +59,18 @@ export function AssuranceBadges({
           variant="secondary"
         >
           Auth: {amrLabel}
+        </Badge>
+      )}
+      {emailVerified !== undefined && (
+        <Badge
+          className={
+            emailVerified
+              ? "border-green-500/30 text-green-600 hover:bg-green-500/10"
+              : "border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+          }
+          variant="outline"
+        >
+          {emailVerified ? "Email Verified" : "Email Unverified"}
         </Badge>
       )}
     </div>

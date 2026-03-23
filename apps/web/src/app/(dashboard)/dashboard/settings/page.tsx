@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 
 import { ConnectedAppsCard } from "@/components/dashboard/connected-apps-card";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
+import { EmailSection } from "@/components/dashboard/email-section";
 import { PasskeyManagementSection } from "@/components/dashboard/passkey-management-section";
 import { PasswordSection } from "@/components/dashboard/password-section";
 import { RecoverySetupSection } from "@/components/dashboard/recovery-setup-section";
@@ -138,6 +139,7 @@ export default async function SettingsPage({
             description="View your verified identity information"
             title="Your Information"
           />
+          <EmailSection />
           <UserDataSection />
         </TabsContent>
 

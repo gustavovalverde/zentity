@@ -17,6 +17,7 @@ import {
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 
+import { EmailVerificationBanner } from "./_components/email-verification-banner";
 import { FheBackgroundKeygen } from "./_components/fhe-background-keygen";
 
 export default async function DashboardLayout({
@@ -49,7 +50,13 @@ export default async function DashboardLayout({
                 <HeaderActions />
               </header>
               <main className="flex-1 p-4 md:p-6" id="main-content">
-                <div className="mx-auto max-w-6xl">{children}</div>
+                <div className="mx-auto max-w-6xl">
+                  <EmailVerificationBanner
+                    email={session.user.email}
+                    emailVerified={session.user.emailVerified}
+                  />
+                  {children}
+                </div>
               </main>
               <footer className="border-t px-4 py-4">
                 <div className="mx-auto max-w-6xl text-center text-muted-foreground text-xs">
