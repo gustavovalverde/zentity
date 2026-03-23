@@ -61,15 +61,18 @@ describe("computePairwiseSub", () => {
     expect(ours).toBe(theirs);
   });
 
-  it("handles JSON-encoded redirect URIs", async () => {
-    const json = JSON.stringify(["https://example.com/cb"]);
-    const fromJson = await computePairwiseSub("user-1", json, TEST_SECRET);
-    const fromArray = await computePairwiseSub(
+  it("produces consistent results for same input", async () => {
+    const a = await computePairwiseSub(
       "user-1",
       ["https://example.com/cb"],
       TEST_SECRET
     );
-    expect(fromJson).toBe(fromArray);
+    const b = await computePairwiseSub(
+      "user-1",
+      ["https://example.com/cb"],
+      TEST_SECRET
+    );
+    expect(a).toBe(b);
   });
 });
 
@@ -77,7 +80,7 @@ describe("resolveSubForClient", () => {
   it("returns raw userId for non-pairwise clients", async () => {
     const result = await resolveSubForClient("user-1", {
       subjectType: null,
-      redirectUris: JSON.stringify(["https://example.com/cb"]),
+      redirectUris: ["https://example.com/cb"],
     });
     expect(result).toBe("user-1");
   });
@@ -85,7 +88,7 @@ describe("resolveSubForClient", () => {
   it("returns raw userId for public clients", async () => {
     const result = await resolveSubForClient("user-1", {
       subjectType: "public",
-      redirectUris: JSON.stringify(["https://example.com/cb"]),
+      redirectUris: ["https://example.com/cb"],
     });
     expect(result).toBe("user-1");
   });
@@ -93,7 +96,7 @@ describe("resolveSubForClient", () => {
   it("returns pairwise sub for pairwise clients", async () => {
     const result = await resolveSubForClient("user-1", {
       subjectType: "pairwise",
-      redirectUris: JSON.stringify(["https://example.com/cb"]),
+      redirectUris: ["https://example.com/cb"],
     });
     expect(result).not.toBe("user-1");
     // Should match the direct computation

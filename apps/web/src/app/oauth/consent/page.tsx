@@ -9,6 +9,7 @@ import { headers } from "next/headers";
 import { env } from "@/env";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -28,7 +29,7 @@ export default async function OAuthConsentPage({
     icon: string | null;
     uri: string | null;
     metadataUrl: string | null;
-    redirectUris: string | null;
+    redirectUris: string[] | null;
   } | null = null;
   let optionalScopes: string[] = [];
   let securityBadgeInput: SecurityBadgeInput | null = null;
@@ -55,7 +56,7 @@ export default async function OAuthConsentPage({
         icon: row.icon,
         uri: row.uri,
         metadataUrl: row.metadataUrl,
-        redirectUris: row.redirectUris,
+        redirectUris: parseStoredStringArray(row.redirectUris),
       };
     }
 

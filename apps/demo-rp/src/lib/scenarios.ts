@@ -274,7 +274,12 @@ export const SCENARIOS: Record<string, Scenario> = {
   })(),
   aether: (() => {
     const signInScopes = ["openid", "email", "agent:manage"];
-    const stepUpScopes: string[] = [];
+    const stepUpScopes = [
+      "proof:age",
+      "proof:nationality",
+      "identity.name",
+      "identity.address",
+    ];
     return {
       acrValues: "urn:zentity:assurance:tier-2",
       id: "aether",
@@ -285,7 +290,12 @@ export const SCENARIOS: Record<string, Scenario> = {
       providerId: "zentity-aether",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: [],
+      stepUpClaimKeys: [
+        "age_verification",
+        "nationality_verified",
+        "name",
+        "address",
+      ],
       dcr: {
         clientName: "Aether AI",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),

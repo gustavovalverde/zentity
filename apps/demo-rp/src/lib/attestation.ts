@@ -30,6 +30,7 @@ async function getOrCreateKeyPair(): Promise<AttestationKeyPair> {
 
   const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
     crv: "Ed25519",
+    extractable: true,
   });
   const publicJwk = await exportJWK(publicKey);
   publicJwk.kid = "aether-demo-1";

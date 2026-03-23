@@ -106,6 +106,7 @@ import {
   evaluateSessionGrants,
   normalizeAuthorizationDetails,
 } from "@/lib/ciba/grant-evaluation";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
 import {
@@ -847,17 +848,7 @@ async function beforeAuthorizeVerifyConsentHmac(ctx: HookCtx) {
     return;
   }
 
-  // Parse scopes — the plugin adapter stores string[] as JSON
-  const scopes: string[] =
-    typeof consent.scopes === "string"
-      ? (() => {
-          try {
-            return JSON.parse(consent.scopes) as string[];
-          } catch {
-            return consent.scopes.split(" ");
-          }
-        })()
-      : [];
+  const scopes = parseStoredStringArray(consent.scopes);
 
   const expected = computeConsentHmac(
     getConsentHmacKey(),
@@ -954,16 +945,7 @@ async function afterConsentStoreHmac(ctx: HookCtx) {
     return;
   }
 
-  const scopes: string[] =
-    typeof consent.scopes === "string"
-      ? (() => {
-          try {
-            return JSON.parse(consent.scopes) as string[];
-          } catch {
-            return consent.scopes.split(" ");
-          }
-        })()
-      : [];
+  const scopes = parseStoredStringArray(consent.scopes);
 
   const hmac = computeConsentHmac(
     getConsentHmacKey(),

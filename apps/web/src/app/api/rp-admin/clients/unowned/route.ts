@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { requireRpAdmin } from "@/lib/auth/rp-admin";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
@@ -28,5 +29,11 @@ export async function GET(request: Request): Promise<Response> {
     .orderBy(sql`${oauthClients.createdAt} desc`)
     .all();
 
-  return NextResponse.json({ clients }, { status: 200 });
+  const normalized = clients.map((c) => ({
+    ...c,
+    redirectUris: parseStoredStringArray(c.redirectUris),
+    scopes: parseStoredStringArray(c.scopes),
+  }));
+
+  return NextResponse.json({ clients: normalized }, { status: 200 });
 }

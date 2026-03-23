@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, isNotNull } from "drizzle-orm";
 
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -17,7 +18,7 @@ interface BclClient {
   backchannelLogoutSessionRequired: boolean;
   backchannelLogoutUri: string;
   clientId: string;
-  redirectUris: string;
+  redirectUris: string[];
   subjectType: string | null;
 }
 
@@ -50,7 +51,7 @@ async function getBclClients(): Promise<BclClient[]> {
           backchannelLogoutUri: uri,
           backchannelLogoutSessionRequired:
             meta.backchannel_logout_session_required === true,
-          redirectUris: c.redirectUris,
+          redirectUris: parseStoredStringArray(c.redirectUris),
           subjectType: c.subjectType,
         });
       }

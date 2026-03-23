@@ -10,6 +10,7 @@ import {
   type OAuthTokenValidationResult,
   validateOAuthAccessToken,
 } from "@/lib/auth/oauth-token-validation";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
@@ -92,7 +93,7 @@ async function resolveOpaqueUserAccessToken(
     kind: "user_access_token",
     userId: accessToken.userId,
     clientId: accessToken.clientId,
-    scopes: accessToken.scopes.split(" ").filter(Boolean),
+    scopes: parseStoredStringArray(accessToken.scopes),
     token,
   };
 }

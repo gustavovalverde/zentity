@@ -42,7 +42,7 @@ interface ClientMeta {
   icon: string | null;
   metadataUrl: string | null;
   name: string;
-  redirectUris: string | null;
+  redirectUris: string[] | null;
   uri: string | null;
 }
 
@@ -97,21 +97,11 @@ function isLocalhostUri(uri: string): boolean {
   }
 }
 
-function areAllRedirectUrisLocalhost(redirectUris: string | null): boolean {
-  if (!redirectUris) {
+function areAllRedirectUrisLocalhost(redirectUris: string[] | null): boolean {
+  if (!redirectUris || redirectUris.length === 0) {
     return false;
   }
-  try {
-    const uris = JSON.parse(redirectUris) as unknown;
-    if (!Array.isArray(uris) || uris.length === 0) {
-      return false;
-    }
-    return uris.every(
-      (u: unknown) => typeof u === "string" && isLocalhostUri(u)
-    );
-  } catch {
-    return false;
-  }
+  return redirectUris.every(isLocalhostUri);
 }
 
 export function OAuthConsentClient({

@@ -8,6 +8,7 @@ import {
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
 import { resolveUserIdFromSubForClient } from "@/lib/auth/oidc/pairwise";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { jwks } from "@/lib/db/schema/jwks";
@@ -117,7 +118,9 @@ export async function GET(request: Request): Promise<Response> {
         { status: 400 }
       );
     }
-    const registeredUris: string[] = JSON.parse(client.postLogoutRedirectUris);
+    const registeredUris = parseStoredStringArray(
+      client.postLogoutRedirectUris
+    );
     if (!registeredUris.includes(postLogoutRedirectUri)) {
       return NextResponse.json(
         { error: "post_logout_redirect_uri not registered" },
@@ -129,7 +132,10 @@ export async function GET(request: Request): Promise<Response> {
   // Resolve pairwise sub → raw userId for session/BCL/CIBA operations
   let userId: string | null;
   if (client) {
-    userId = await resolveUserIdFromSubForClient(sub, client);
+    userId = await resolveUserIdFromSubForClient(sub, {
+      subjectType: client.subjectType,
+      redirectUris: parseStoredStringArray(client.redirectUris),
+    });
   } else if (effectiveClientId) {
     // Token references a client that no longer exists
     userId = null;

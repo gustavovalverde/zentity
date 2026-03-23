@@ -86,7 +86,7 @@ async function getAccountForProvider(userId: string, providerId: ProviderId) {
 async function getDpopKey(providerId: ProviderId, accessToken: string) {
   return getDb().query.oauthDpopKey.findFirst({
     where: and(
-      eq(oauthDpopKey.providerId, providerId),
+      eq(oauthDpopKey.providerId, `zentity-${providerId}`),
       eq(oauthDpopKey.accessToken, accessToken)
     ),
   });

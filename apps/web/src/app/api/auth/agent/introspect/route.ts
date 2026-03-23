@@ -13,6 +13,7 @@ import {
   readAapProfileFromPayload,
 } from "@/lib/ciba/aap-profile";
 import { observeSessionLifecycle } from "@/lib/ciba/agent-lifecycle";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
   oauthAccessTokens,
@@ -67,8 +68,8 @@ function findAccessToken(token: string) {
     .get();
 }
 
-function findClient(clientId: string) {
-  return db
+async function findClient(clientId: string) {
+  const row = await db
     .select({
       redirectUris: oauthClients.redirectUris,
       subjectType: oauthClients.subjectType,
@@ -77,6 +78,12 @@ function findClient(clientId: string) {
     .where(eq(oauthClients.clientId, clientId))
     .limit(1)
     .get();
+  return row
+    ? {
+        subjectType: row.subjectType,
+        redirectUris: parseStoredStringArray(row.redirectUris),
+      }
+    : undefined;
 }
 
 export async function POST(request: Request) {
@@ -119,8 +126,12 @@ export async function POST(request: Request) {
     findClient(authResult.principal.clientId),
   ]);
 
-  const tokenScopes =
-    typeof payload?.scope === "string" ? payload.scope : opaqueToken?.scopes;
+  let tokenScopes: string | undefined;
+  if (typeof payload?.scope === "string") {
+    tokenScopes = payload.scope;
+  } else if (typeof opaqueToken?.scopes === "string") {
+    tokenScopes = parseStoredStringArray(opaqueToken.scopes).join(" ");
+  }
 
   let rawUserId = opaqueToken?.userId ?? null;
   if (!rawUserId && typeof payload?.sub === "string") {

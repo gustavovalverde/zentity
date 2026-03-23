@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -9,7 +10,7 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 interface ClientPairwiseConfig {
   clientId: string;
   metadata: string | null;
-  redirectUris: string | string[];
+  redirectUris: string[];
   subjectType: string | null;
 }
 
@@ -46,7 +47,12 @@ async function getClientPairwiseConfig(
     .limit(1)
     .get();
 
-  return client ?? null;
+  return client
+    ? {
+        ...client,
+        redirectUris: parseStoredStringArray(client.redirectUris),
+      }
+    : null;
 }
 
 export async function resolveAgentSubForClient(

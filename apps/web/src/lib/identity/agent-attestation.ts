@@ -57,6 +57,7 @@ export async function verifyAgentAttestation(
 ): Promise<AttestationResult> {
   const attesters = parseTrustedAttesters();
   if (attesters.length === 0) {
+    logger.warn("No trusted attesters configured");
     return FAILED;
   }
 
@@ -94,7 +95,10 @@ export async function verifyAgentAttestation(
       attesters
     );
   } catch (err) {
-    logger.warn({ err }, "Agent attestation verification failed");
+    logger.warn(
+      { err: err instanceof Error ? err.message : err },
+      "Agent attestation verification failed"
+    );
     return FAILED;
   }
 }
@@ -137,7 +141,10 @@ async function verifyWithIssuer(
     return FAILED;
   }
 
-  const popKey = await importJWK(cnf.jwk);
+  const popAlg =
+    (cnf.jwk.alg as string | undefined) ??
+    (cnf.jwk.kty === "OKP" ? "EdDSA" : undefined);
+  const popKey = await importJWK(cnf.jwk, popAlg);
   await jwtVerify(popJwt, popKey, { audience });
 
   const provider = (payload.attester_name as string) ?? attester.issuer;

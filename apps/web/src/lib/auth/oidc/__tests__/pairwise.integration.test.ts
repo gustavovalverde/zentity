@@ -132,7 +132,7 @@ describe("pairwise subject resolution (integration)", () => {
 
       const ourSub = await resolveSubForClient(userId, {
         subjectType: "pairwise",
-        redirectUris: JSON.stringify([TEST_REDIRECT_URI]),
+        redirectUris: [TEST_REDIRECT_URI],
       });
 
       expect(ourSub).toBe(betterAuthSub);

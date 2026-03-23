@@ -44,6 +44,7 @@ import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
 } from "@/lib/ciba/pairwise-agent";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -347,7 +348,7 @@ function createTokenExchangeHandler(): (
     const outputSub = client.redirectUris
       ? await resolveSubForClient(rawUserId, {
           subjectType: client.subjectType ?? null,
-          redirectUris: client.redirectUris,
+          redirectUris: parseStoredStringArray(client.redirectUris),
         })
       : rawUserId;
 
@@ -415,7 +416,7 @@ function createTokenExchangeHandler(): (
 
       const audienceSub = await resolveSubForClient(rawUserId, {
         subjectType: audienceClient.subjectType ?? null,
-        redirectUris: audienceClient.redirectUris,
+        redirectUris: parseStoredStringArray(audienceClient.redirectUris),
       });
       const audienceActSub = await resolveAgentSubForClient(
         actorSessionId,

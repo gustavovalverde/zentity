@@ -174,12 +174,23 @@ export async function POST(request: Request) {
       data.bindingMessage ??
       "Aether AI requests approval for a delegated action";
 
-    const agentAssertion = await prepareAgentAssertionForProvider({
-      bindingMessage,
-      providerId: data.providerId,
-      ...(data.trustTier ? { trustTier: data.trustTier } : {}),
-      userId: session.user.id,
-    });
+    let agentAssertion: string | null = null;
+    try {
+      agentAssertion = await prepareAgentAssertionForProvider({
+        bindingMessage,
+        providerId: data.providerId,
+        ...(data.trustTier ? { trustTier: data.trustTier } : {}),
+        userId: session.user.id,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Agent assertion failed";
+      console.error("[CIBA] Agent assertion failed:", message);
+      return NextResponse.json(
+        { error: "agent_assertion_error", error_description: message },
+        { status: 500 }
+      );
+    }
 
     return handleAuthorize({ ...data, bindingMessage }, client, agentAssertion);
   }

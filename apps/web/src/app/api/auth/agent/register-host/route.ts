@@ -140,7 +140,11 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(
-    { hostId: host.id, created: true, attestation_tier: attestationTier },
+    {
+      hostId: host.id,
+      created: true,
+      attestation_tier: attestationTier,
+    },
     { status: 201 }
   );
 }

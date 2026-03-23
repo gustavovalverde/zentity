@@ -46,6 +46,7 @@ import {
   HIDDEN_SCOPES,
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/scope-display";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 
 interface ConsentRow {
   clientIcon: string | null;
@@ -67,21 +68,6 @@ function formatDate(date: Date | null): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function parseScopes(scopes: string | null): string[] {
-  if (!scopes) {
-    return [];
-  }
-  try {
-    const parsed: unknown = JSON.parse(scopes);
-    if (Array.isArray(parsed)) {
-      return parsed.filter((s) => typeof s === "string");
-    }
-  } catch {
-    // Invalid JSON — fall through to space-delimited parse
-  }
-  return scopes.split(" ").filter(Boolean);
 }
 
 function AppLetter({ name }: { name: string }) {
@@ -155,7 +141,7 @@ export function ConnectedAppsCard({
           <ItemGroup>
             {visible.map((consent) => {
               const name = consent.clientName ?? consent.clientId;
-              const scopes = parseScopes(consent.scopes);
+              const scopes = parseStoredStringArray(consent.scopes);
               const visibleScopes = scopes.filter((s) => !HIDDEN_SCOPES.has(s));
               const groups = groupScopes(visibleScopes);
               const isRevoking = revoking === consent.consentId;
