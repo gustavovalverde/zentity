@@ -25,6 +25,10 @@ import {
 } from "@/lib/dcr";
 import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
+import {
+  describeOAuthErrorResponse,
+  parseOAuthJsonResponse,
+} from "@/lib/oauth-response";
 
 const AETHER_BOOTSTRAP_SCOPES = [
   "agent:host.register",
@@ -126,7 +130,7 @@ async function fetchUserInfo(tokens: {
 
     const response = await fetch(url, { headers });
     if (response.ok) {
-      body = (await response.json()) as Record<string, unknown>;
+      body = await parseOAuthJsonResponse(response, "OAuth userinfo request");
     }
   }
 
@@ -241,7 +245,7 @@ function makeProviderConfig(
     }) {
       const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
       const dpop = await createDpopClient();
-      const { result } = await dpop.withNonceRetry(async (nonce) => {
+      const { response, result } = await dpop.withNonceRetry(async (nonce) => {
         const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
         const params: Record<string, string> = {
           grant_type: "authorization_code",
@@ -260,11 +264,21 @@ function makeProviderConfig(
           },
           body: new URLSearchParams(params),
         });
+        const needsNonceRetry =
+          (response.status === 400 || response.status === 401) &&
+          Boolean(response.headers.get("DPoP-Nonce"));
         return {
           response,
-          result: (await response.json()) as Record<string, unknown>,
+          result: needsNonceRetry
+            ? {}
+            : await parseOAuthJsonResponse(response, "OAuth token exchange"),
         };
       });
+      if (!response.ok) {
+        throw new Error(
+          describeOAuthErrorResponse(response, result, "OAuth token exchange")
+        );
+      }
       const accessToken = result.access_token as string | undefined;
       if (accessToken) {
         dpopClients.set(accessToken, dpop);

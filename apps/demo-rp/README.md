@@ -172,14 +172,14 @@ Demo RP                              Zentity
 
 ## OID4VP Verifier (VeriPass)
 
-The `/veripass` page implements a digital credential wallet with an OID4VP verifier. Users receive an SD-JWT VC from Zentity via OID4VCI, then selectively disclose claims to four verifier scenarios:
+The `/veripass` page implements a digital credential wallet with an OID4VP verifier. Users receive an SD-JWT VC from Zentity via OID4VCI, then selectively disclose verification claims to four verifier scenarios:
 
 | Verifier | Required Claims | Use Case |
 |----------|----------------|----------|
-| Border Control | `given_name`, `family_name`, `nationality` | International travel identity check |
-| Background Check | `given_name`, `family_name`, `verification_level` | Employment verification screening |
-| Age-Restricted Venue | `age_over_18` | Minimal disclosure age proof |
-| Financial Institution | `given_name`, `family_name`, `nationality`, `verification_level`, `email` | Full KYC |
+| Border Control | `verified`, `verification_level`, `nationality_verified` | Travel eligibility check with nationality attestation |
+| Background Check | `verified`, `verification_level`, `document_verified` | Employment-grade identity assurance screening |
+| Age-Restricted Venue | `age_verification` | Minimal disclosure age proof |
+| Financial Institution | `verified`, `verification_level`, `document_verified`, `liveness_verified`, `nationality_verified` | KYC-grade assurance without raw identity disclosure |
 
 **Presentation flow:**
 

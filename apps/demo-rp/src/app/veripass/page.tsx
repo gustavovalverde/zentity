@@ -363,7 +363,10 @@ export default function VeriPassPage() {
                   selectedClaims={new Set(walletState.presentableKeys)}
                 />
               </div>
-              <VerifierScenarios onSelect={handleSelectVerifier} />
+              <VerifierScenarios
+                onSelect={handleSelectVerifier}
+                presentableKeys={walletState.presentableKeys}
+              />
             </>
           )}
 
