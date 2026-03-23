@@ -107,6 +107,7 @@ export const oauthAccessTokens = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
     ),
+    dpopJkt: text("dpop_jkt"),
     scopes: text("scopes").notNull(),
   },
   (table) => [

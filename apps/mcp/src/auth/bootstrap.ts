@@ -9,6 +9,7 @@ import {
   type DpopKeyPair,
 } from "./dpop.js";
 import { generatePkce } from "./pkce.js";
+import { exchangeToken } from "./token-exchange.js";
 import { TokenManager } from "./token-manager.js";
 
 export interface AuthBootstrapResult {
@@ -21,6 +22,23 @@ function isInvalidClientError(error: unknown): boolean {
   return (
     message.includes("invalid_client") || message.includes("client not found")
   );
+}
+
+async function exchangeAppAccessToken(
+  discovery: Awaited<ReturnType<typeof discover>>,
+  subjectToken: string,
+  clientId: string,
+  dpopKey: DpopKeyPair
+): Promise<string> {
+  const { accessToken } = await exchangeToken({
+    tokenEndpoint: discovery.token_endpoint,
+    subjectToken,
+    audience: config.zentityUrl,
+    clientId,
+    dpopKey,
+  });
+
+  return accessToken;
 }
 
 async function authenticateFreshSession(
@@ -37,8 +55,7 @@ async function authenticateFreshSession(
   const tokenManager = new TokenManager(
     discovery.token_endpoint,
     dpopKey,
-    activeClientId,
-    config.zentityUrl
+    activeClientId
   );
   const pkce = await generatePkce();
   const parEndpoint = discovery.pushed_authorization_request_endpoint;
@@ -51,12 +68,17 @@ async function authenticateFreshSession(
       clientId: activeClientId,
       dpopKey,
       pkce,
-      resource: config.zentityUrl,
     });
+    const appAccessToken = await exchangeAppAccessToken(
+      discovery,
+      result.accessToken,
+      activeClientId,
+      dpopKey
+    );
 
     return {
       oauth: {
-        accessToken: result.accessToken,
+        accessToken: appAccessToken,
         clientId: activeClientId,
         dpopKey,
         loginHint: result.loginHint ?? "",
@@ -92,15 +114,20 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   const tokenManager = new TokenManager(
     discovery.token_endpoint,
     dpopKey,
-    clientId,
-    config.zentityUrl
+    clientId
   );
 
   // Check if we already have valid credentials
   const creds = loadCredentials(config.zentityUrl);
   if (creds?.accessToken || creds?.refreshToken) {
     try {
-      const accessToken = await tokenManager.getAccessToken();
+      const loginAccessToken = await tokenManager.getAccessToken();
+      const accessToken = await exchangeAppAccessToken(
+        discovery,
+        loginAccessToken,
+        clientId,
+        dpopKey
+      );
       const oauth: OAuthSessionContext = {
         accessToken,
         clientId,
@@ -134,7 +161,14 @@ export async function refreshAuthContext(
   tokenManager: TokenManager,
   oauth: Pick<OAuthSessionContext, "clientId" | "dpopKey" | "loginHint">
 ): Promise<OAuthSessionContext> {
-  const accessToken = await tokenManager.getAccessToken();
+  const discovery = await discover(config.zentityUrl);
+  const loginAccessToken = await tokenManager.getAccessToken();
+  const accessToken = await exchangeAppAccessToken(
+    discovery,
+    loginAccessToken,
+    oauth.clientId,
+    oauth.dpopKey
+  );
   const creds = loadCredentials(config.zentityUrl);
   return {
     accessToken,

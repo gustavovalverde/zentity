@@ -34,20 +34,30 @@ describe("Token Exchange", () => {
   });
 
   it("exchanges auth code for tokens", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          access_token: "at_123",
-          token_type: "DPoP",
-          expires_in: 3600,
-          refresh_token: "rt_456",
-          id_token:
-            // Minimal JWT: header.payload.signature
-            `${btoa(JSON.stringify({ alg: "none" }))}.${btoa(JSON.stringify({ sub: "user-1" }))}.`,
-        }),
-        { status: 200 }
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "at_123",
+            token_type: "DPoP",
+            expires_in: 3600,
+            refresh_token: "rt_456",
+            id_token:
+              // Minimal JWT: header.payload.signature
+              `${btoa(JSON.stringify({ alg: "none" }))}.${btoa(JSON.stringify({ sub: "user-1" }))}.`,
+          }),
+          { status: 200 }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user-1@example.com",
+            sub: "pairwise-subject",
+          }),
+          { status: 200 }
+        )
+      );
 
     const result = await exchangeAuthCode(
       "http://localhost:3000/api/auth/oauth2/token",
@@ -60,13 +70,16 @@ describe("Token Exchange", () => {
 
     expect(result.accessToken).toBe("at_123");
     expect(result.refreshToken).toBe("rt_456");
-    expect(result.loginHint).toBe("user-1");
+    expect(result.loginHint).toBe("user-1@example.com");
     expect(result.expiresAt).toBeGreaterThan(Date.now());
   });
 
   it("throws on failed token exchange", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("invalid_grant", { status: 400 })
+      new Response(
+        "invalid_grant",
+        { status: 400 }
+      )
     );
 
     await expect(
@@ -101,6 +114,15 @@ describe("Token Exchange", () => {
           }),
           { status: 200 }
         )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user-1@example.com",
+            sub: "pairwise-subject",
+          }),
+          { status: 200 }
+        )
       );
 
     const result = await exchangeAuthCode(
@@ -113,7 +135,7 @@ describe("Token Exchange", () => {
     );
 
     expect(result.accessToken).toBe("at_retry");
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 });
 

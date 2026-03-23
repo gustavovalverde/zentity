@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 import type { AgentInfo } from "../agent.js";
+import { config } from "../config.js";
 import type { OAuthSessionContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 import {
@@ -9,6 +10,7 @@ import {
   loadHostKey,
   saveHostKey,
 } from "./host-key.js";
+import { exchangeToken } from "./token-exchange.js";
 import type { AgentRuntimeState } from "./runtime-manager.js";
 
 const REQUESTED_CAPABILITIES = [
@@ -17,6 +19,7 @@ const REQUESTED_CAPABILITIES = [
   "check_compliance",
   "request_approval",
 ];
+const BOOTSTRAP_SCOPES = "agent:host.register agent:session.register";
 
 export class AgentRegistrationError extends Error {
   readonly responseBody: string;
@@ -34,6 +37,28 @@ export function buildHostKeyNamespace(
   auth: Pick<OAuthSessionContext, "clientId" | "loginHint">
 ): string {
   return auth.loginHint ? `${auth.clientId}:${auth.loginHint}` : auth.clientId;
+}
+
+export async function prepareBootstrapRegistrationAuth(
+  auth: OAuthSessionContext
+): Promise<OAuthSessionContext> {
+  const tokenEndpoint = new URL(
+    "/api/auth/oauth2/token",
+    config.zentityUrl
+  ).toString();
+  const { accessToken } = await exchangeToken({
+    tokenEndpoint,
+    subjectToken: auth.accessToken,
+    audience: config.zentityUrl,
+    clientId: auth.clientId,
+    dpopKey: auth.dpopKey,
+    scope: BOOTSTRAP_SCOPES,
+  });
+
+  return {
+    ...auth,
+    accessToken,
+  };
 }
 
 async function postJsonWithDpopRetry(

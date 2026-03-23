@@ -9,13 +9,13 @@ import {
 import { APIError } from "better-auth";
 import { eq } from "drizzle-orm";
 import {
-  calculateJwkThumbprint,
   createLocalJWKSet,
   decodeProtectedHeader,
   jwtVerify,
   SignJWT,
 } from "jose";
 
+import { env } from "@/env";
 import { getAssuranceForOAuth } from "@/lib/assurance/data";
 import {
   computeAcr,
@@ -25,10 +25,19 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
+  AGENT_BOOTSTRAP_SCOPE_SET,
+  AGENT_BOOTSTRAP_TOKEN_USE,
+} from "@/lib/auth/oidc/agent-scopes";
+import {
   getClientSigningAlg,
   getOrCreateSigningKey,
   signJwt,
 } from "@/lib/auth/oidc/jwt-signer";
+import {
+  extractDpopThumbprint,
+  loadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop,
+} from "@/lib/auth/oidc/opaque-access-token";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
@@ -36,6 +45,7 @@ import {
 import {
   buildAapProfile,
   buildDelegationClaim,
+  loadAapProfileForTokenJti,
   loadStoredAapSnapshotForTokenJti,
   persistAapSnapshotForToken,
   readAapProfileFromPayload,
@@ -69,6 +79,7 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 ]);
 
 const authIssuer = getAuthIssuer();
+const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 
 async function buildLocalJwks(kid: string) {
@@ -115,30 +126,6 @@ function getAudienceClient(clientId: string) {
     .where(eq(oauthClients.clientId, clientId))
     .limit(1)
     .get();
-}
-
-/**
- * Extract the DPoP JWK thumbprint from the request's DPoP proof header.
- * Returns the thumbprint if a valid DPoP proof is present, undefined otherwise.
- */
-async function extractDpopThumbprint(
-  request: Request | undefined
-): Promise<string | undefined> {
-  const proof = request?.headers?.get("DPoP");
-  if (!proof) {
-    return undefined;
-  }
-  try {
-    const header = decodeProtectedHeader(proof);
-    if (header.jwk) {
-      return await calculateJwkThumbprint(
-        header.jwk as Record<string, unknown>
-      );
-    }
-  } catch {
-    // DPoP proof parsing failed — let the binding layer handle rejection
-  }
-  return undefined;
 }
 
 /**
@@ -218,7 +205,49 @@ function createTokenExchangeHandler(): (
     // Verify the subject token JWT (must be issued by this AS)
     let subjectPayload: Record<string, unknown>;
     try {
-      subjectPayload = await verifySubjectToken(subjectToken);
+      if (
+        subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
+        !subjectToken.startsWith("eyJ")
+      ) {
+        const opaqueSubject = await loadOpaqueAccessToken(subjectToken);
+        if (!opaqueSubject?.userId || opaqueSubject.expiresAt < new Date()) {
+          throw new Error("Opaque subject token not found");
+        }
+
+        if (opaqueSubject.dpopJkt) {
+          const validDpop = await validateOpaqueAccessTokenDpop(
+            ctx.request,
+            opaqueSubject.dpopJkt
+          );
+          if (!validDpop) {
+            throw new Error("Opaque subject token DPoP validation failed");
+          }
+        }
+
+        const aapSnapshot = opaqueSubject.referenceId
+          ? await loadAapProfileForTokenJti(
+              opaqueSubject.referenceId,
+              opaqueSubject.clientId
+            )
+          : null;
+
+        subjectPayload = {
+          sub: opaqueSubject.userId,
+          azp: opaqueSubject.clientId,
+          client_id: opaqueSubject.clientId,
+          scope: opaqueSubject.scopes.join(" "),
+          exp: Math.floor(opaqueSubject.expiresAt.getTime() / 1000),
+          ...(opaqueSubject.referenceId
+            ? { jti: opaqueSubject.referenceId }
+            : {}),
+          ...(aapSnapshot?.aap ?? {}),
+          ...(aapSnapshot?.aap.agent?.id
+            ? { act: { sub: aapSnapshot.aap.agent.id } }
+            : {}),
+        };
+      } else {
+        subjectPayload = await verifySubjectToken(subjectToken);
+      }
     } catch {
       throw new APIError("BAD_REQUEST", {
         error: "invalid_grant",
@@ -235,13 +264,13 @@ function createTokenExchangeHandler(): (
     }
 
     // Resolve pairwise sub → raw userId for id_token subjects
+    const sourceClientId =
+      (subjectPayload.azp as string | undefined) ??
+      (subjectPayload.client_id as string | undefined) ??
+      (typeof subjectPayload.aud === "string" ? subjectPayload.aud : undefined);
     let rawUserId = sub;
-    if (subjectTokenType === TOKEN_TYPE_ID_TOKEN) {
-      const sourceClientId = (subjectPayload.azp ??
-        subjectPayload.aud) as string;
-      if (sourceClientId) {
-        rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
-      }
+    if (sourceClientId) {
+      rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
     }
 
     const user = await ctx.context.internalAdapter.findUserById(rawUserId);
@@ -297,9 +326,6 @@ function createTokenExchangeHandler(): (
       actClaim.act = subjectPayload.act;
     }
 
-    const sourceClientId =
-      (subjectPayload.azp as string | undefined) ??
-      (subjectPayload.client_id as string | undefined);
     const actorSub = (subjectPayload.act as { sub?: string } | undefined)?.sub;
     const actorSessionId =
       actorSub && sourceClientId
@@ -343,6 +369,34 @@ function createTokenExchangeHandler(): (
       (resource as string | undefined) ??
       (audienceParam as string | undefined) ??
       authIssuer;
+    const includesBootstrapScope = targetScopes.some((scope) =>
+      AGENT_BOOTSTRAP_SCOPE_SET.has(scope)
+    );
+    if (includesBootstrapScope) {
+      if (targetScopes.some((scope) => !AGENT_BOOTSTRAP_SCOPE_SET.has(scope))) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_scope",
+          error_description:
+            "Bootstrap token exchanges may only request agent bootstrap scopes",
+        });
+      }
+
+      if (targetAudience !== appUrl) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_target",
+          error_description:
+            "Bootstrap token exchanges must target the app audience",
+        });
+      }
+
+      if (!dpopJkt) {
+        throw new APIError("BAD_REQUEST", {
+          error: "invalid_request",
+          error_description:
+            "Bootstrap token exchanges require a DPoP-bound token exchange request",
+        });
+      }
+    }
 
     // Resolve pairwise subject for the requesting client (used by both output paths)
     const outputSub = client.redirectUris
@@ -533,6 +587,9 @@ function createTokenExchangeHandler(): (
       scope: targetScopes.join(" "),
       iat: now,
       exp,
+      ...(includesBootstrapScope
+        ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
+        : {}),
       act: actClaim,
       ...exchangedAapProfile,
       ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),

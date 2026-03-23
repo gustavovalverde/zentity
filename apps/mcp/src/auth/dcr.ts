@@ -39,7 +39,7 @@ export async function ensureClientRegistration(
     client_name: "@zentity/mcp-server",
     redirect_uris: [redirectUri],
     scope:
-      "openid email proof:identity identity.name identity.address agent:manage",
+      "openid email proof:identity identity.name identity.address agent:host.register agent:session.register agent:session.revoke",
     token_endpoint_auth_method: "none",
     grant_types: [
       "authorization_code",
@@ -48,7 +48,6 @@ export async function ensureClientRegistration(
       "urn:ietf:params:oauth:grant-type:token-exchange",
     ],
     response_types: ["code"],
-    subject_type: "public",
   };
 
   const response = await fetch(discovery.registration_endpoint, {

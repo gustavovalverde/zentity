@@ -5,7 +5,8 @@ import {
   AgentManagementError,
   revokeSessionForActor,
 } from "@/lib/agents/management";
-import { requireUserAccessToken } from "@/lib/auth/api-auth";
+import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
+import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/auth/oidc/agent-scopes";
 
 export const runtime = "nodejs";
 
@@ -14,7 +15,9 @@ const revokeSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const authResult = await requireUserAccessToken(request, ["agent:manage"]);
+  const authResult = await requireBootstrapAccessToken(request, [
+    AGENT_SESSION_REVOKE_SCOPE,
+  ]);
   if (!authResult.ok) {
     return authResult.response;
   }

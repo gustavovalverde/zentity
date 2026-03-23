@@ -37,6 +37,98 @@ export interface ExchangeTokenParams {
   tokenEndpoint: string;
 }
 
+async function fetchUserInfo(
+  accessToken: string,
+  dpopKey: DpopKeyPair
+): Promise<Record<string, unknown> | null> {
+  const userinfoUrl = new URL(
+    "/api/auth/oauth2/userinfo",
+    config.zentityUrl
+  ).toString();
+
+  let dpopNonce: string | undefined;
+  let dpopProof = await createDpopProof(
+    dpopKey,
+    "GET",
+    userinfoUrl,
+    accessToken,
+    dpopNonce
+  );
+
+  let response = await fetch(userinfoUrl, {
+    headers: {
+      Authorization: `DPoP ${accessToken}`,
+      DPoP: dpopProof,
+    },
+  });
+
+  const newNonce = extractDpopNonce(response);
+  if (
+    newNonce &&
+    dpopNonce !== newNonce &&
+    (response.status === 400 || response.status === 401)
+  ) {
+    dpopNonce = newNonce;
+    dpopProof = await createDpopProof(
+      dpopKey,
+      "GET",
+      userinfoUrl,
+      accessToken,
+      dpopNonce
+    );
+    response = await fetch(userinfoUrl, {
+      headers: {
+        Authorization: `DPoP ${accessToken}`,
+        DPoP: dpopProof,
+      },
+    });
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as Record<string, unknown>;
+  if (
+    data &&
+    typeof data === "object" &&
+    "response" in data &&
+    data.response &&
+    typeof data.response === "object"
+  ) {
+    return data.response as Record<string, unknown>;
+  }
+
+  return data;
+}
+
+export async function resolveLoginHint(
+  accessToken: string,
+  dpopKey: DpopKeyPair
+): Promise<string | undefined> {
+  const userinfo = await fetchUserInfo(accessToken, dpopKey);
+  if (!userinfo) {
+    return undefined;
+  }
+
+  if (typeof userinfo.email === "string" && userinfo.email) {
+    return userinfo.email;
+  }
+  if (
+    typeof userinfo.preferred_username === "string" &&
+    userinfo.preferred_username
+  ) {
+    return userinfo.preferred_username;
+  }
+  if (typeof userinfo.sub === "string" && userinfo.sub) {
+    return userinfo.sub;
+  }
+  if (typeof userinfo.id === "string" && userinfo.id) {
+    return userinfo.id;
+  }
+  return undefined;
+}
+
 export async function exchangeAuthCode(
   tokenEndpoint: string,
   code: string,
@@ -110,12 +202,13 @@ export async function exchangeAuthCode(
 
   const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
 
-  // Extract sub from id_token for CIBA login_hint
-  let loginHint: string | undefined;
-  if (data.id_token) {
+  let loginHint = await resolveLoginHint(data.access_token, dpopKey);
+  if (!loginHint && data.id_token) {
     try {
       const claims = decodeJwt(data.id_token);
-      loginHint = claims.sub;
+      if (typeof claims.sub === "string") {
+        loginHint = claims.sub;
+      }
     } catch {
       // id_token decode is best-effort
     }

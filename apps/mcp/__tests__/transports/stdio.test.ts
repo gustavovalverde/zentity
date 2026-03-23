@@ -5,6 +5,7 @@ const {
   mockClearTokenCredentials,
   mockEnsureAuthenticated,
   mockEnsureHostRegistered,
+  mockPrepareBootstrapRegistrationAuth,
   mockRefreshAuthContext,
   mockRegisterAgent,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   mockRefreshAuthContext: vi.fn(),
   mockClearTokenCredentials: vi.fn(),
   mockEnsureHostRegistered: vi.fn(),
+  mockPrepareBootstrapRegistrationAuth: vi.fn(),
   mockRegisterAgent: vi.fn(),
 }));
 
@@ -39,6 +41,7 @@ vi.mock("../../src/auth/agent-registration.js", async () => {
     ...actual,
     clearCachedHostId: mockClearCachedHostId,
     ensureHostRegistered: mockEnsureHostRegistered,
+    prepareBootstrapRegistrationAuth: mockPrepareBootstrapRegistrationAuth,
     registerAgent: mockRegisterAgent,
   };
 });
@@ -72,6 +75,10 @@ const runtime = {
 };
 
 const hostKeyNamespace = buildHostKeyNamespace(baseOauth);
+const bootstrapOauth = {
+  ...baseOauth,
+  accessToken: "bootstrap-token",
+};
 
 function createServerMock(clientInfo?: { name: string; version: string }) {
   return {
@@ -96,12 +103,14 @@ describe("bootstrapRegisteredRuntime", () => {
     mockClearCachedHostId.mockReset();
     mockClearTokenCredentials.mockReset();
     mockEnsureHostRegistered.mockReset();
+    mockPrepareBootstrapRegistrationAuth.mockReset();
     mockRegisterAgent.mockReset();
 
     mockEnsureAuthenticated.mockResolvedValue({
       oauth: baseOauth,
       tokenManager: { getAccessToken: vi.fn() },
     });
+    mockPrepareBootstrapRegistrationAuth.mockResolvedValue(bootstrapOauth);
     mockEnsureHostRegistered.mockResolvedValue("host-123");
     mockRegisterAgent.mockResolvedValue(runtime);
   });
@@ -126,9 +135,10 @@ describe("bootstrapRegisteredRuntime", () => {
     await bootstrapPromise;
 
     expect(mockEnsureAuthenticated).toHaveBeenCalledTimes(1);
+    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(baseOauth);
     expect(mockRegisterAgent).toHaveBeenCalledWith(
       "http://localhost:3000",
-      baseOauth,
+      bootstrapOauth,
       "host-123",
       expect.objectContaining({
         model: "claude",
@@ -149,7 +159,7 @@ describe("bootstrapRegisteredRuntime", () => {
 
     expect(mockRegisterAgent).toHaveBeenCalledWith(
       "http://localhost:3000",
-      baseOauth,
+      bootstrapOauth,
       "host-123",
       expect.objectContaining({
         model: "unknown",
@@ -231,6 +241,7 @@ describe("bootstrapRegisteredRuntime", () => {
       "http://localhost:3000",
       hostKeyNamespace
     );
+    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalled();
     expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(2);
     expect(mockRegisterAgent).toHaveBeenCalledTimes(2);
     expect(result.runtime.sessionId).toBe("session-456");

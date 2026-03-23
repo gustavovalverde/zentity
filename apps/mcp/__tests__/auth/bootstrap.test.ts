@@ -6,6 +6,7 @@ const {
   mockClearClientRegistration,
   mockDiscover,
   mockEnsureClientRegistration,
+  mockExchangeToken,
   mockGeneratePkce,
   mockGetAccessToken,
   mockGetOrCreateDpopKey,
@@ -15,6 +16,7 @@ const {
   mockClearClientRegistration: vi.fn(),
   mockDiscover: vi.fn(),
   mockEnsureClientRegistration: vi.fn(),
+  mockExchangeToken: vi.fn(),
   mockGeneratePkce: vi.fn(),
   mockGetAccessToken: vi.fn(),
   mockGetOrCreateDpopKey: vi.fn(),
@@ -52,6 +54,10 @@ vi.mock("../../src/auth/pkce.js", () => ({
   generatePkce: mockGeneratePkce,
 }));
 
+vi.mock("../../src/auth/token-exchange.js", () => ({
+  exchangeToken: mockExchangeToken,
+}));
+
 vi.mock("../../src/auth/token-manager.js", () => ({
   TokenManager: class MockTokenManager {
     getAccessToken = mockGetAccessToken;
@@ -86,6 +92,11 @@ describe("ensureAuthenticated", () => {
     mockLoadCredentials.mockReset();
 
     mockDiscover.mockResolvedValue(discovery);
+    mockExchangeToken.mockResolvedValue({
+      accessToken: "app-access-token",
+      expiresIn: 3600,
+      tokenType: "DPoP",
+    });
     mockGetOrCreateDpopKey.mockResolvedValue(dpopKey);
     mockGeneratePkce.mockResolvedValue({
       codeVerifier: "verifier",
@@ -136,8 +147,15 @@ describe("ensureAuthenticated", () => {
         clientId: "fresh-client",
       })
     );
+    expect(mockExchangeToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audience: "http://localhost:3000",
+        clientId: "fresh-client",
+        subjectToken: "fresh-access-token",
+      })
+    );
     expect(result.oauth.clientId).toBe("fresh-client");
-    expect(result.oauth.accessToken).toBe("fresh-access-token");
+    expect(result.oauth.accessToken).toBe("app-access-token");
     expect(result.oauth.loginHint).toBe("user-123");
   });
 });

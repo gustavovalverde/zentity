@@ -233,7 +233,22 @@ describe("prepareAgentAssertionForProvider", () => {
   });
 
   it("rejects attested flows when host registration falls back to unverified", async () => {
-    testState.fetchMock.mockResolvedValueOnce(
+    testState.fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "bootstrap-token",
+            expires_in: 300,
+            scope: "agent:host.register agent:session.register",
+            token_type: "DPoP",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }
+        )
+      )
+      .mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           attestation_tier: "unverified",
@@ -243,8 +258,8 @@ describe("prepareAgentAssertionForProvider", () => {
           headers: { "Content-Type": "application/json" },
           status: 200,
         }
-      )
-    );
+        )
+      );
 
     await expect(
       prepareAgentAssertionForProvider({
@@ -257,23 +272,48 @@ describe("prepareAgentAssertionForProvider", () => {
       "Host registration did not satisfy the required attested trust tier"
     );
 
-    expect(testState.fetchMock).toHaveBeenCalledTimes(1);
+    expect(testState.fetchMock).toHaveBeenCalledTimes(2);
     expect(testState.fetchMock).toHaveBeenNthCalledWith(
       1,
+      "http://localhost:3000/api/auth/oauth2/token",
+      expect.objectContaining({
+        method: "POST",
+      })
+    );
+    expect(testState.fetchMock).toHaveBeenNthCalledWith(
+      2,
       "http://localhost:3000/api/auth/agent/register-host",
       expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "DPoP bootstrap-token",
+        }),
         method: "POST",
       })
     );
   });
 
   it("asks for re-authentication when the saved OAuth token is rejected", async () => {
-    testState.fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "User access token required" }), {
-        headers: { "Content-Type": "application/json" },
-        status: 401,
-      })
-    );
+    testState.fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "bootstrap-token",
+            expires_in: 300,
+            scope: "agent:host.register agent:session.register",
+            token_type: "DPoP",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "Bootstrap access token required" }), {
+          headers: { "Content-Type": "application/json" },
+          status: 401,
+        })
+      );
 
     await expect(
       prepareAgentAssertionForProvider({
@@ -293,6 +333,20 @@ describe("prepareAgentAssertionForProvider", () => {
     testState.db = createDbMock(dbState);
 
     testState.fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "bootstrap-token",
+            expires_in: 300,
+            scope: "agent:host.register agent:session.register",
+            token_type: "DPoP",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }
+        )
+      )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
@@ -320,12 +374,15 @@ describe("prepareAgentAssertionForProvider", () => {
     });
 
     expect(assertion).toEqual(expect.any(String));
-    expect(testState.fetchMock).toHaveBeenCalledTimes(2);
+    expect(testState.fetchMock).toHaveBeenCalledTimes(3);
     expect(dbState.runtimeRow.sessionId).toBe("session-new");
     expect(testState.fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       "http://localhost:3000/api/auth/agent/register",
       expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "DPoP bootstrap-token",
+        }),
         method: "POST",
       })
     );

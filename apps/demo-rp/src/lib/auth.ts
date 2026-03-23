@@ -26,6 +26,11 @@ import {
 import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
+const AETHER_BOOTSTRAP_SCOPES = [
+  "agent:host.register",
+  "agent:session.register",
+];
+
 function zentityUserInfoUrl() {
   return new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString();
 }
@@ -228,10 +233,7 @@ function makeProviderConfig(
     scopes,
     pkce: true,
     overrideUserInfo: true,
-    authorizationUrlParams: {
-      resource: env.ZENTITY_URL,
-      ...authorizationUrlParams,
-    },
+    authorizationUrlParams,
     async getToken(data: {
       code: string;
       redirectURI: string;
@@ -246,7 +248,6 @@ function makeProviderConfig(
           code: data.code,
           redirect_uri: data.redirectURI,
           client_id: clientId,
-          resource: env.ZENTITY_URL,
         };
         if (data.codeVerifier) {
           params.code_verifier = data.codeVerifier;
@@ -355,7 +356,7 @@ const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   wine: ["openid", "proof:age"],
   aid: ["openid", "email", "proof:verification"],
   veripass: ["openid", "proof:verification"],
-  aether: ["openid", "email", "agent:manage"],
+  aether: ["openid", "email", ...AETHER_BOOTSTRAP_SCOPES],
 };
 
 function createAuth(clientIds: Partial<Record<ProviderId, string>>) {

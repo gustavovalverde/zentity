@@ -3,8 +3,9 @@ import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireUserAccessToken } from "@/lib/auth/api-auth";
+import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
+import { AGENT_SESSION_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
 import {
   createPendingSessionGrants,
   ensureDefaultHostPolicies,
@@ -48,7 +49,9 @@ function decodeHostJwtIssuer(hostJwt: string): string | null {
 }
 
 export async function POST(request: Request) {
-  const authResult = await requireUserAccessToken(request, ["agent:manage"]);
+  const authResult = await requireBootstrapAccessToken(request, [
+    AGENT_SESSION_REGISTER_SCOPE,
+  ]);
   if (!authResult.ok) {
     return authResult.response;
   }

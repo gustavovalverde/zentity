@@ -16,7 +16,7 @@ Zentity uses three distinct caller classes:
 | Caller | How it authenticates | Where it belongs |
 | --- | --- | --- |
 | Browser user | Better Auth session cookie | Dashboard and browser-only surfaces |
-| User-delegated machine | OAuth access token, optionally DPoP-bound | Agent host and session registration, session revoke |
+| User-delegated machine | OAuth access token exchanged into a dedicated DPoP-bound bootstrap token | Agent host and session registration, session revoke |
 | Pure machine client | `client_credentials` access token | Introspection and resource-server style machine APIs |
 
 This split is enforced in the web app by explicit helpers:
@@ -92,11 +92,12 @@ flowchart TD
 
 Registration happens in two steps because the two identities prove different things.
 
-1. The MCP authenticates via OAuth and receives a user-bound access token with `agent:manage`.
-2. The MCP ensures its durable host exists by calling `POST /api/auth/agent/register-host`.
-3. The MCP signs a short-lived host JWT proving possession of the host private key.
-4. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register`.
-5. Zentity creates a new `agent_session`, seeds default grants from host policy, and records any requested extra capabilities as pending grants.
+1. The MCP authenticates via OAuth and receives a pairwise user login token.
+2. The MCP exchanges that login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`, `agent:session.register`, and `agent:session.revoke`.
+3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/register-host` with the bootstrap token.
+4. The MCP signs a short-lived host JWT proving possession of the host private key.
+5. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register` with the bootstrap token.
+6. Zentity creates a new `agent_session`, seeds default grants from host policy, and records any requested extra capabilities as pending grants.
 
 ```mermaid
 sequenceDiagram
@@ -106,12 +107,15 @@ sequenceDiagram
   participant AS as Zentity AS
 
   MCP->>Browser: Open OAuth login
-  Browser->>AS: Authorize client with scope agent:manage
-  AS-->>MCP: User access token
+  Browser->>AS: Authorize client with login scopes
+  AS-->>MCP: Pairwise user login token
+
+  MCP->>AS: RFC 8693 token exchange for bootstrap scopes
+  AS-->>MCP: DPoP-bound bootstrap token
 
   Note over MCP: Load or create durable host key
   MCP->>AS: POST /api/auth/agent/register-host
-  Note over MCP,AS: Authorization: DPoP user access token
+  Note over MCP,AS: Authorization: DPoP bootstrap token
   AS-->>MCP: { hostId, attestation_tier }
 
   Note over MCP: Generate fresh session keypair
@@ -121,6 +125,7 @@ sequenceDiagram
 ```
 
 This host/session split answers the core lifecycle question up front: continuity belongs to the host, not to the runtime process.
+The bootstrap token is intentionally narrow and short-lived; it exists only to authorize host/session bootstrap and revocation, not to replace the login token everywhere else.
 
 ---
 
@@ -654,6 +659,8 @@ The document publishes:
 - `issued_token_types`
 - `supported_features`
 
+The bootstrap contract implied by the document is narrow: the client first exchanges its login token for a dedicated DPoP-bound bootstrap token, then uses that token for host/session registration and revocation. The raw login token is not the bootstrap credential.
+
 The current feature document advertises:
 
 ```json
@@ -844,6 +851,8 @@ The runtime proof is bound to a specific consent request rather than floating as
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
 **Token exchange** (RFC 8693) repackages the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and artifact creation (`purchase-authorization+jwt` with the approved purchase details forward-copied from the subject token). The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
+
+Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap artifact is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream purchase artifacts.
 
 **Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 

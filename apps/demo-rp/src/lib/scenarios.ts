@@ -273,7 +273,12 @@ export const SCENARIOS: Record<string, Scenario> = {
     };
   })(),
   aether: (() => {
-    const signInScopes = ["openid", "email", "agent:manage"];
+    const signInScopes = [
+      "openid",
+      "email",
+      "agent:host.register",
+      "agent:session.register",
+    ];
     const stepUpScopes = [
       "proof:age",
       "proof:nationality",

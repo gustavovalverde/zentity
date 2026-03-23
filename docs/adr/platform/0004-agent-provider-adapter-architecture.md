@@ -72,6 +72,7 @@ Adapt these ideas to Zentity's stricter architecture:
 Reject these patterns as Zentity defaults:
 
 * Custom `host+jwt` and `agent+jwt` bearer transport as the primary delegated auth model
+* Reusing the login token directly as the agent bootstrap credential
 * Treating `Agent-Assertion` or agent self-signed tokens as bearer credentials independent of OAuth
 * Making OAuth device authorization the main approval model for core agent consent
 * Unlinked autonomous mode as a default architectural goal for Zentity
@@ -126,6 +127,7 @@ Connector runtimes should be treated as explicit trust boundaries, not hidden im
 Zentity core owns:
 
 * host and session registration
+* dedicated RFC 8693 bootstrap token exchange for agent control-plane bootstrap
 * durable host policy
 * ephemeral session grants
 * CIBA approval flows

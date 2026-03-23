@@ -11,12 +11,12 @@ import {
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
-const { mockRequireUserAccessToken } = vi.hoisted(() => ({
-  mockRequireUserAccessToken: vi.fn(),
+const { mockRequireBootstrapAccessToken } = vi.hoisted(() => ({
+  mockRequireBootstrapAccessToken: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/api-auth", () => ({
-  requireUserAccessToken: mockRequireUserAccessToken,
+  requireBootstrapAccessToken: mockRequireBootstrapAccessToken,
 }));
 
 async function createOAuthClient(clientId: string) {
@@ -36,7 +36,7 @@ async function createOAuthClient(clientId: string) {
 describe("POST /api/auth/agent/revoke", () => {
   beforeEach(async () => {
     await resetDatabase();
-    mockRequireUserAccessToken.mockReset();
+    mockRequireBootstrapAccessToken.mockReset();
   });
 
   it("rejects delegated callers from a different OAuth client", async () => {
@@ -90,12 +90,12 @@ describe("POST /api/auth/agent/revoke", () => {
       })
       .run();
 
-    mockRequireUserAccessToken.mockResolvedValue({
+    mockRequireBootstrapAccessToken.mockResolvedValue({
       ok: true,
       principal: {
         clientId: "other-client",
         kind: "user_access_token",
-        scopes: ["agent:manage"],
+        scopes: ["agent:session.revoke"],
         token: "test-token",
         userId,
       },

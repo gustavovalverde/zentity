@@ -10,6 +10,13 @@ import { describe, expect, it } from "vitest";
 interface AgentConfiguration {
   approval_methods: string[];
   approval_page_url_template: string;
+  bootstrap_token_exchange: {
+    audience: string;
+    grant_type: string;
+    requested_token_type: string;
+    scopes_supported: string[];
+    token_use: string;
+  };
   capabilities_endpoint: string;
   host_registration_endpoint: string;
   introspection_endpoint: string;
@@ -19,6 +26,7 @@ interface AgentConfiguration {
   revocation_endpoint: string;
   supported_algorithms: string[];
   supported_features: {
+    bootstrap_token_exchange: boolean;
     task_attestation: boolean;
     pairwise_agents: boolean;
     risk_graduated_approval: boolean;
@@ -60,6 +68,7 @@ describe("Agent Auth Discovery — structure", () => {
     expect(config.supported_algorithms).toBeDefined();
     expect(config.approval_methods).toBeDefined();
     expect(config.approval_page_url_template).toBeDefined();
+    expect(config.bootstrap_token_exchange).toBeDefined();
     expect(config.supported_features).toBeDefined();
   });
 });
@@ -145,6 +154,21 @@ describe("Agent Auth Discovery — protocol details", () => {
 
     expect(config.approval_methods).toContain("ciba");
   });
+
+  it("advertises the bootstrap token exchange contract", async () => {
+    const config = await parseConfig(await getConfiguration());
+
+    expect(config.bootstrap_token_exchange.audience).toBe(config.issuer);
+    expect(config.bootstrap_token_exchange.grant_type).toBe(
+      "urn:ietf:params:oauth:grant-type:token-exchange"
+    );
+    expect(config.bootstrap_token_exchange.scopes_supported).toEqual([
+      "agent:host.register",
+      "agent:session.register",
+      "agent:session.revoke",
+    ]);
+    expect(config.bootstrap_token_exchange.token_use).toBe("agent_bootstrap");
+  });
 });
 
 describe("Agent Auth Discovery — feature detection", () => {
@@ -152,6 +176,7 @@ describe("Agent Auth Discovery — feature detection", () => {
     const config = await parseConfig(await getConfiguration());
     const features = config.supported_features;
 
+    expect(features.bootstrap_token_exchange).toBe(true);
     expect(features.task_attestation).toBe(true);
     expect(features.pairwise_agents).toBe(true);
     expect(features.risk_graduated_approval).toBe(true);

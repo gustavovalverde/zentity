@@ -63,17 +63,27 @@ describe("authenticateViaBrowser", () => {
   });
 
   it("starts callback server and exchanges code for tokens", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: "browser-at",
-          token_type: "DPoP",
-          expires_in: 3600,
-          refresh_token: "browser-rt",
-        }),
-        { status: 200 }
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "browser-at",
+            token_type: "DPoP",
+            expires_in: 3600,
+            refresh_token: "browser-rt",
+          }),
+          { status: 200 }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user@example.com",
+            sub: "pairwise-subject",
+          }),
+          { status: 200 }
+        )
+      );
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -97,15 +107,25 @@ describe("authenticateViaBrowser", () => {
   });
 
   it("includes resource parameter in authorize URL", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          access_token: "at",
-          token_type: "DPoP",
-        }),
-        { status: 200 }
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: "at",
+            token_type: "DPoP",
+          }),
+          { status: 200 }
+        )
       )
-    );
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user@example.com",
+            sub: "pairwise-subject",
+          }),
+          { status: 200 }
+        )
+      );
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -148,6 +168,16 @@ describe("authenticateViaBrowser", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({ access_token: "par-at", token_type: "DPoP" }),
+          { status: 200 }
+        )
+      )
+      // Userinfo response
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user@example.com",
+            sub: "pairwise-subject",
+          }),
           { status: 200 }
         )
       );

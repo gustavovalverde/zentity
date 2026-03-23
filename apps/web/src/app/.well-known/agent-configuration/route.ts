@@ -1,4 +1,9 @@
 import { env } from "@/env";
+import {
+  AGENT_BOOTSTRAP_SCOPES,
+  AGENT_BOOTSTRAP_TOKEN_USE,
+} from "@/lib/auth/oidc/agent-scopes";
+import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 
 /**
  * Agent Auth Protocol — Discovery Document
@@ -42,9 +47,17 @@ function buildAgentConfiguration() {
     approval_methods: ["ciba"],
     approval_page_url_template: `${baseUrl}/approve/{auth_req_id}`,
     issued_token_types: ["urn:zentity:token-type:purchase-authorization"],
+    bootstrap_token_exchange: {
+      audience: baseUrl,
+      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      scopes_supported: AGENT_BOOTSTRAP_SCOPES,
+      token_use: AGENT_BOOTSTRAP_TOKEN_USE,
+    },
 
     // Feature detection
     supported_features: {
+      bootstrap_token_exchange: true,
       task_attestation: true,
       pairwise_agents: true,
       risk_graduated_approval: true,

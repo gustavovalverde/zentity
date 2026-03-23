@@ -214,7 +214,7 @@ describe("step-up authentication: acr_values", () => {
     await insertParRequest(
       requestId,
       baseParParams({
-        scope: "openid email agent:manage",
+        scope: "openid email agent:host.register agent:session.register",
         state: "consent-state",
       })
     );
@@ -228,7 +228,7 @@ describe("step-up authentication: acr_values", () => {
     expect(location?.pathname).toBe("/oauth/consent");
     expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
     expect(location?.searchParams.get("scope")).toBe(
-      "openid email agent:manage"
+      "openid email agent:host.register agent:session.register"
     );
     expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
     expect(location?.searchParams.get("state")).toBe("consent-state");

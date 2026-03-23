@@ -239,6 +239,8 @@ Ping mode eliminates polling overhead and reduces latency between approval and t
 
 Token Exchange enables audience narrowing and token repackaging at the standard token endpoint (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`). The current deployment publishes `delegation_chains: false`, so general multi-hop delegation-chain portability is not part of the active contract.
 
+One active use of token exchange is agent bootstrap. A client first receives a pairwise login token, then exchanges it for a dedicated DPoP-bound bootstrap token carrying narrow agent scopes (`agent:host.register`, `agent:session.register`, and `agent:session.revoke`). That bootstrap token is the credential used at the agent registration endpoints; it is intentionally distinct from the original login token and from downstream delegated purchase artifacts.
+
 **Exchange modes:**
 
 | Source token | Target | Use case |
@@ -256,6 +258,8 @@ Token Exchange enables audience narrowing and token repackaging at the standard 
 **`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim, computed as the left half of SHA-256 of the access token (base64url-encoded), following the same algorithm as standard OIDC at_hash computation and using the signing algorithm's hash function.
 
 **`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token. Precedence: `resource` > `audience` > issuer URI.
+
+**Bootstrap exchange:** When the source token is a login token used for agent bootstrap, the exchange is scope-narrowing rather than delegation-heavy. The output token is DPoP-bound and audience-bound to Zentity's agent control plane, and it should not be reused for unrelated downstream APIs.
 
 ---
 

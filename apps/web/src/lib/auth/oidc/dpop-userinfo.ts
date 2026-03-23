@@ -3,6 +3,11 @@ import "server-only";
 import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { decodeJwt } from "jose";
 
+import {
+  loadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop,
+} from "@/lib/auth/oidc/opaque-access-token";
+
 const validateDpop = createDpopAccessTokenValidator({ requireDpop: false });
 
 /**
@@ -28,7 +33,16 @@ export async function rewriteDpopForUserinfo(
   try {
     tokenPayload = decodeJwt(token) as Record<string, unknown>;
   } catch {
-    // Not a valid JWT — forward with Bearer and let better-auth handle the error
+    const opaqueToken = await loadOpaqueAccessToken(token);
+    if (opaqueToken?.dpopJkt) {
+      const validDpop = await validateOpaqueAccessTokenDpop(
+        request,
+        opaqueToken.dpopJkt
+      );
+      if (!validDpop) {
+        throw new Error("Invalid DPoP proof");
+      }
+    }
     return rewriteBearer(request, token);
   }
 

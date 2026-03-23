@@ -9,9 +9,8 @@ import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/types";
 
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
-import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
@@ -20,9 +19,13 @@ import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { auth, type Session } from "@/lib/auth/auth";
+import {
+  loadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop,
+} from "@/lib/auth/oidc/opaque-access-token";
+import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
-import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
 import { extractInputMeta } from "@/lib/logging/redact";
@@ -52,8 +55,6 @@ interface TrpcContext {
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 
-const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
-
 /**
  * Resolve a user from an OAuth access token (DPoP or Bearer).
  * Handles both JWT tokens (decode + sub lookup) and opaque tokens (hash lookup).
@@ -78,7 +79,7 @@ async function resolveOAuthSession(req: Request): Promise<Session | null> {
     return await resolveJwtSession(token, scheme, req);
   }
 
-  return await resolveOpaqueSession(token);
+  return await resolveOpaqueSession(req, token, scheme);
 }
 
 async function resolveJwtSession(
@@ -98,33 +99,46 @@ async function resolveJwtSession(
       return null;
     }
     try {
-      await dpopValidator({
-        request: req,
-        tokenPayload: payload as Record<string, unknown>,
-      });
+      const validDpop = await validateOpaqueAccessTokenDpop(req, cnf.jkt);
+      if (!validDpop) {
+        return null;
+      }
     } catch {
       return null;
     }
   }
 
-  return await buildSessionFromUserId(payload.sub);
+  const clientId =
+    (payload.client_id as string | undefined) ??
+    (payload.azp as string | undefined);
+  const userId = clientId
+    ? ((await resolveUserIdFromSub(payload.sub, clientId)) ?? payload.sub)
+    : payload.sub;
+
+  return await buildSessionFromUserId(userId);
 }
 
-async function resolveOpaqueSession(token: string): Promise<Session | null> {
-  const tokenHash = createHash("sha256").update(token).digest("base64url");
-
-  const accessToken = await db
-    .select({
-      userId: oauthAccessTokens.userId,
-      expiresAt: oauthAccessTokens.expiresAt,
-    })
-    .from(oauthAccessTokens)
-    .where(eq(oauthAccessTokens.token, tokenHash))
-    .limit(1)
-    .get();
-
+async function resolveOpaqueSession(
+  req: Request,
+  token: string,
+  scheme: string
+): Promise<Session | null> {
+  const accessToken = await loadOpaqueAccessToken(token);
   if (!accessToken?.userId || accessToken.expiresAt < new Date()) {
     return null;
+  }
+
+  if (accessToken.dpopJkt) {
+    if (scheme.toLowerCase() !== "dpop") {
+      return null;
+    }
+    const validDpop = await validateOpaqueAccessTokenDpop(
+      req,
+      accessToken.dpopJkt
+    );
+    if (!validDpop) {
+      return null;
+    }
   }
 
   return buildSessionFromUserId(accessToken.userId);

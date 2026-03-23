@@ -8,6 +8,7 @@ import {
   buildHostKeyNamespace,
   clearCachedHostId,
   ensureHostRegistered,
+  prepareBootstrapRegistrationAuth,
   registerAgent,
 } from "../auth/agent-registration.js";
 import {
@@ -24,14 +25,13 @@ import { getOrCreateDpopKey } from "../auth/dpop.js";
 import { getResourceMetadata } from "../auth/resource-metadata.js";
 import type { AgentRuntimeState } from "../auth/runtime-manager.js";
 import { isAuthError, validateToken } from "../auth/token-auth.js";
-import { exchangeToken } from "../auth/token-exchange.js";
+import { exchangeToken, resolveLoginHint } from "../auth/token-exchange.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
 const DPOP_PREFIX = /^DPoP\s+/i;
 const BEARER_PREFIX = /^Bearer\s+/i;
 const AUTH_ISSUER_SUFFIX = /\/api\/auth\/?$/;
-
 let httpServerCredentials:
   | { clientId: string; dpopKey: DpopKeyPair }
   | undefined;
@@ -51,30 +51,22 @@ export function setServerCredentials(creds: {
   httpServerCredentials = creds;
 }
 
-function hasRuntimeRegistrationScope(scope: unknown): boolean {
-  return typeof scope === "string" && scope.split(" ").includes("agent:manage");
-}
-
 export async function registerHttpRuntime(
-  oauth: OAuthSessionContext,
-  scope: unknown
+  oauth: OAuthSessionContext
 ): Promise<AgentRuntimeState | undefined> {
-  if (!hasRuntimeRegistrationScope(scope)) {
-    return undefined;
-  }
-
   const keyNamespace = buildHostKeyNamespace(oauth);
+  const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauth);
 
   const registerRuntime = async () => {
     const hostId = await ensureHostRegistered(
       config.zentityUrl,
-      oauth,
+      bootstrapAuth,
       HTTP_RUNTIME_DISPLAY.name,
       keyNamespace
     );
     return registerAgent(
       config.zentityUrl,
-      oauth,
+      bootstrapAuth,
       hostId,
       HTTP_RUNTIME_DISPLAY,
       keyNamespace
@@ -95,15 +87,14 @@ export async function registerHttpRuntime(
 export async function ensureSessionRuntime(
   runtimes: Map<string, AgentRuntimeState>,
   sessionId: string,
-  oauth: OAuthSessionContext,
-  scope: unknown
+  oauth: OAuthSessionContext
 ): Promise<AgentRuntimeState | undefined> {
   const existing = runtimes.get(sessionId);
   if (existing) {
     return existing;
   }
 
-  const runtime = await registerHttpRuntime(oauth, scope);
+  const runtime = await registerHttpRuntime(oauth);
   if (runtime) {
     runtimes.set(sessionId, runtime);
   }
@@ -200,7 +191,7 @@ export function createApp(): Hono {
         ],
         token_endpoint_auth_method: "none",
         scope:
-          "openid email proof:identity identity.name identity.address agent:manage",
+          "openid email proof:identity identity.name identity.address agent:host.register agent:session.register agent:session.revoke",
       },
       200,
       {
@@ -239,8 +230,6 @@ export function createApp(): Hono {
     // RFC 8693 token exchange: exchange caller's token for an MCP-bound token
     const callerToken =
       authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "";
-    const callerSub = (result.payload.sub as string) ?? "";
-
     let exchangedToken: string;
     try {
       const discovery = await discover(config.zentityUrl);
@@ -260,24 +249,27 @@ export function createApp(): Hono {
       );
     }
 
+    const loginHint =
+      (await resolveLoginHint(exchangedToken, httpServerCredentials.dpopKey)) ??
+      (result.payload.sub as string) ??
+      "";
+
     const oauth: OAuthSessionContext = {
       accessToken: exchangedToken,
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
-      loginHint: callerSub,
+      loginHint,
     };
 
     // Store validated auth info for transport.handleRequest
     c.set("authInfo" as never, result);
     c.set("oauthCtx" as never, oauth);
-    c.set("validatedScope" as never, result.payload.scope);
 
     return next();
   });
 
   app.post("/mcp", async (c) => {
     const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
-    const scope = c.get("validatedScope" as never) as unknown;
     const sessionId = c.req.header("mcp-session-id");
     const existing = getTransport(transports, sessionId);
 
@@ -285,7 +277,7 @@ export function createApp(): Hono {
       let runtime: AgentRuntimeState | undefined;
       try {
         runtime = sessionId
-          ? await ensureSessionRuntime(runtimes, sessionId, oauth, scope)
+          ? await ensureSessionRuntime(runtimes, sessionId, oauth)
           : undefined;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -314,7 +306,7 @@ export function createApp(): Hono {
 
     let runtime: AgentRuntimeState | undefined;
     try {
-      runtime = await ensureSessionRuntime(runtimes, newSessionId, oauth, scope);
+      runtime = await ensureSessionRuntime(runtimes, newSessionId, oauth);
     } catch (err) {
       transports.delete(newSessionId);
       const message = err instanceof Error ? err.message : String(err);
@@ -330,7 +322,6 @@ export function createApp(): Hono {
 
   app.get("/mcp", async (c) => {
     const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
-    const scope = c.get("validatedScope" as never) as unknown;
     const sessionId = c.req.header("mcp-session-id");
     const transport = getTransport(transports, sessionId);
     if (!transport) {
@@ -338,9 +329,7 @@ export function createApp(): Hono {
     }
     let runtime: AgentRuntimeState | undefined;
     try {
-      runtime = sessionId
-        ? await ensureSessionRuntime(runtimes, sessionId, oauth, scope)
-        : undefined;
+      runtime = sessionId ? await ensureSessionRuntime(runtimes, sessionId, oauth) : undefined;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return c.json(

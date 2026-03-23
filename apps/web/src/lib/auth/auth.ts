@@ -43,6 +43,7 @@ import {
 } from "@/lib/assurance/oidc-claims";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent-scopes";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
@@ -75,6 +76,7 @@ import {
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { OAUTH_SCOPES } from "@/lib/auth/oidc/oauth-scopes";
+import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/opaque-access-token";
 import {
   extractProofScopes,
   filterProofClaimsByScopes,
@@ -325,7 +327,11 @@ const defaultClientScopes = [
   ...PROOF_SCOPES,
   ...IDENTITY_SCOPES,
 ];
-const allowedClientScopes = [...defaultClientScopes, "email", "agent:manage"];
+const allowedClientScopes = [
+  ...defaultClientScopes,
+  "email",
+  ...AGENT_BOOTSTRAP_SCOPES,
+];
 const oidcStandardClaims = [
   "sub",
   "name",
@@ -1061,6 +1067,18 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
   }
 }
 
+async function afterTokenPersistOpaqueDpopBinding(ctx: HookCtx) {
+  const returned = (ctx as HookCtx & { returned?: unknown }).returned as
+    | { access_token?: unknown }
+    | undefined;
+  const accessToken = returned?.access_token;
+  if (typeof accessToken !== "string") {
+    return;
+  }
+
+  await persistOpaqueAccessTokenDpopBinding(accessToken, ctx.request);
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1275,6 +1293,10 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/par") {
         await afterParPersistResource(ctx);
+        return;
+      }
+      if (ctx.path === "/oauth2/token") {
+        await afterTokenPersistOpaqueDpopBinding(ctx);
         return;
       }
       if (ctx.path === "/two-factor/disable") {

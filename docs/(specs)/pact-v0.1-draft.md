@@ -162,10 +162,10 @@ PACT distinguishes three caller classes. They cluster by the relationship betwee
 | Caller | Authentication | Scope |
 |--------|---------------|-------|
 | Browser user | Session cookie | Dashboard and browser-only surfaces |
-| User-delegated machine | OAuth access token, optionally DPoP-bound | Agent host/session registration, revocation |
+| User-delegated machine | OAuth access token exchanged into a dedicated DPoP-bound bootstrap token | Agent host/session registration, revocation |
 | Pure machine client | `client_credentials` access token | Introspection, resource-server APIs |
 
-The agent protocol is machine-facing even when a human is in the loop. Registration, introspection, and token exchange are OAuth surfaces. The human consent step happens later, through CIBA.
+The agent protocol is machine-facing even when a human is in the loop. Registration, introspection, and token exchange are OAuth surfaces. The human consent step happens later, through CIBA. For bootstrap, the client never reuses the login token directly; it exchanges that token for a dedicated DPoP-bound bootstrap token with narrow agent scopes before calling the registration endpoints.
 
 Sections 4 through 9 walk through these concerns in execution order: identity (who), capability (what), consent (whether), and tokens (how the result is delivered).
 
@@ -179,7 +179,7 @@ Every use case in this section is an instance of the same structural problem: tw
 
 A host is the persistent installation identity for a client environment. It represents a specific installation on a specific machine, not a user or an application.
 
-**Registration.** `POST {host_registration_endpoint}` with a user-bound OAuth access token carrying `agent:manage` scope.
+**Bootstrap.** The client first exchanges its pairwise login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`. `POST {host_registration_endpoint}` authenticates with that bootstrap token, not the login token.
 
 **Request:**
 
@@ -231,7 +231,7 @@ Attestation results in an elevated trust tier that widens default host policy (S
 
 The host provides continuity; the session provides accountability. An agent session is the runtime identity for one live process. Each session gets its own Ed25519 keypair. The private key MUST exist only in process memory, never persisted to disk.
 
-**Registration.** `POST {registration_endpoint}` with a user-bound OAuth access token and a host attestation JWT.
+**Registration.** `POST {registration_endpoint}` with the bootstrap token carrying `agent:session.register` and a host attestation JWT.
 
 The host attestation JWT (`typ: host-attestation+jwt`) proves the client possesses the durable host key:
 
@@ -289,13 +289,16 @@ sequenceDiagram
     participant C as Client
     participant AS as Authorization Server
 
-    C->>AS: 1. POST /register-host<br/>Authorization: DPoP user-token<br/>Body: { publicKey, name }
+    C->>AS: 1. Exchange login token for bootstrap token<br/>Scope: agent:host.register agent:session.register agent:session.revoke
+    AS-->>C: 2. DPoP bootstrap token
+
+    C->>AS: 3. POST /register-host<br/>Authorization: DPoP bootstrap token<br/>Body: { publicKey, name }
     Note right of AS: Compute JWK thumbprint<br/>Upsert agent_host
     AS-->>C: { hostId, attestation_tier }
 
-    Note left of C: 2. Generate fresh session keypair<br/>3. Sign host-attestation+jwt
+    Note left of C: 4. Generate fresh session keypair<br/>5. Sign host-attestation+jwt
 
-    C->>AS: 4. POST /register<br/>Authorization: DPoP user-token<br/>Body: { hostJwt, agentPublicKey, … }
+    C->>AS: 6. POST /register<br/>Authorization: DPoP bootstrap token<br/>Body: { hostJwt, agentPublicKey, … }
     Note right of AS: Verify host JWT sig<br/>Seed capabilities<br/>Seed host policies<br/>Create session<br/>Copy host→session grants<br/>Create pending grants
     AS-->>C: { sessionId, status, grants }
 ```
@@ -856,7 +859,7 @@ Session activity (`last_seen_at`) is updated after successful authenticated oper
 
 ### 9.4 Revocation Cascade
 
-An agent session can be revoked by the user (via dashboard or API), the client (via `POST {revocation_endpoint}` with a user-bound OAuth token), or the server (policy-based).
+An agent session can be revoked by the user (via dashboard or API), the client (via `POST {revocation_endpoint}` with the bootstrap token carrying `agent:session.revoke`), or the server (policy-based).
 
 Revoking a session also revokes all its session grants (`status = "revoked"`, `revoked_at = now`). Revoking a host revokes all sessions under it, cascading to all session grants.
 

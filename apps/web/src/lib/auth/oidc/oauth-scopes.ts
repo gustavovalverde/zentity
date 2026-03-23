@@ -1,3 +1,4 @@
+import { AGENT_BOOTSTRAP_SCOPES, AGENT_INTROSPECT_SCOPE } from "./agent-scopes";
 import { IDENTITY_SCOPES } from "./identity-scopes";
 import { PROOF_SCOPES } from "./proof-scopes";
 
@@ -12,8 +13,8 @@ export const OAUTH_SCOPES = [
   "proof:identity",
   ...PROOF_SCOPES,
   "proof:sybil",
-  "agent:manage",
-  "agent:introspect",
+  ...AGENT_BOOTSTRAP_SCOPES,
+  AGENT_INTROSPECT_SCOPE,
   "compliance:key:read",
   "compliance:key:write",
   ...IDENTITY_SCOPES,

@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { requireUserAccessToken } from "@/lib/auth/api-auth";
+import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
+import { AGENT_HOST_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -18,7 +19,9 @@ const registerHostSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const authResult = await requireUserAccessToken(request, ["agent:manage"]);
+  const authResult = await requireBootstrapAccessToken(request, [
+    AGENT_HOST_REGISTER_SCOPE,
+  ]);
   if (!authResult.ok) {
     return authResult.response;
   }

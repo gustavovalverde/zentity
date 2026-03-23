@@ -6,6 +6,7 @@ import {
   buildHostKeyNamespace,
   clearCachedHostId,
   ensureHostRegistered,
+  prepareBootstrapRegistrationAuth,
   registerAgent,
 } from "../auth/agent-registration.js";
 import { ensureAuthenticated, refreshAuthContext } from "../auth/bootstrap.js";
@@ -59,15 +60,16 @@ export async function bootstrapRegisteredRuntime(
     oauth: (typeof auth)["oauth"]
   ): Promise<Awaited<ReturnType<typeof registerAgent>>> => {
     const keyNamespace = buildHostKeyNamespace(oauth);
+    const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauth);
     const hostId = await ensureHostRegistered(
       config.zentityUrl,
-      oauth,
+      bootstrapAuth,
       "@zentity/mcp-server",
       keyNamespace
     );
     return registerAgent(
       config.zentityUrl,
-      oauth,
+      bootstrapAuth,
       hostId,
       display,
       keyNamespace

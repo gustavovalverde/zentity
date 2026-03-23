@@ -19,6 +19,11 @@ import { createPersistentDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 const HOST_NAME = "Aether Demo RP";
+const AGENT_BOOTSTRAP_SCOPE = "agent:host.register agent:session.register";
+const TOKEN_EXCHANGE_GRANT_TYPE =
+  "urn:ietf:params:oauth:grant-type:token-exchange";
+const TOKEN_TYPE_ACCESS_TOKEN =
+  "urn:ietf:params:oauth:token-type:access_token";
 const DISPLAY = {
   model: "gpt-4",
   name: "Aether AI",
@@ -37,6 +42,11 @@ interface EnsureHostRegistrationOptions {
 
 interface RegisterAgentSessionOptions {
   force?: boolean;
+}
+
+interface BootstrapAccessContext {
+  accessToken: string;
+  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>;
 }
 
 function hasRegisteredSession(
@@ -104,6 +114,21 @@ async function getDpopKey(providerId: ProviderId, accessToken: string) {
   });
 }
 
+async function getPersistedDpopClient(
+  providerId: ProviderId,
+  accessToken: string
+) {
+  const dpopRow = await getDpopKey(providerId, accessToken);
+  if (!dpopRow) {
+    throw new Error("Missing persisted DPoP key for the current OAuth session");
+  }
+
+  return createPersistentDpopClient({
+    privateJwk: JSON.parse(dpopRow.privateJwk),
+    publicJwk: JSON.parse(dpopRow.publicJwk),
+  });
+}
+
 async function getOrCreateAgentRuntime(
   userId: string,
   providerId: ProviderId,
@@ -147,19 +172,10 @@ async function getOrCreateAgentRuntime(
 async function postJsonWithDpop(
   url: string,
   accessToken: string,
-  providerId: ProviderId,
+  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>,
   payload: unknown,
   extraHeaders?: Record<string, string>
 ): Promise<Response> {
-  const dpopRow = await getDpopKey(providerId, accessToken);
-  if (!dpopRow) {
-    throw new Error("Missing persisted DPoP key for the current OAuth session");
-  }
-
-  const dpop = await createPersistentDpopClient({
-    privateJwk: JSON.parse(dpopRow.privateJwk),
-    publicJwk: JSON.parse(dpopRow.publicJwk),
-  });
   const body = JSON.stringify(payload);
 
   const attempt = async (nonce?: string) => {
@@ -181,12 +197,10 @@ async function postJsonWithDpop(
   return response;
 }
 
-async function ensureHostRegistered(
-  runtime: AgentRuntimeRow,
+async function exchangeBootstrapAccessToken(
   userId: string,
-  providerId: ProviderId,
-  options?: EnsureHostRegistrationOptions
-): Promise<AgentRuntimeRow> {
+  providerId: ProviderId
+): Promise<BootstrapAccessContext> {
   const authAccount = await getAccountForProvider(userId, providerId);
   if (!authAccount?.accessToken) {
     throw new Error("Missing OAuth access token. Sign in again.");
@@ -201,14 +215,70 @@ async function ensureHostRegistered(
     throw new Error("Client not registered. Register the demo client first.");
   }
 
+  const subjectToken = authAccount.accessToken;
+  const dpop = await getPersistedDpopClient(providerId, authAccount.accessToken);
+  const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
+
+  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
+    const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
+    const request = await fetch(tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        DPoP: proof,
+      },
+      body: new URLSearchParams({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        subject_token: subjectToken,
+        subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
+        client_id: client.clientId,
+        audience: env.ZENTITY_URL,
+        scope: AGENT_BOOTSTRAP_SCOPE,
+      }),
+    });
+
+    return {
+      response: request,
+      result: (await request.json().catch(() => ({}))) as Record<
+        string,
+        unknown
+      >,
+    };
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw buildReauthError();
+    }
+
+    throw new Error(
+      `Bootstrap token exchange failed: ${response.status} ${JSON.stringify(result)}`
+    );
+  }
+
+  const accessToken = result.access_token;
+  if (typeof accessToken !== "string" || accessToken.length === 0) {
+    throw new Error("Bootstrap token exchange did not return an access token");
+  }
+
+  return {
+    accessToken,
+    dpop,
+  };
+}
+
+async function ensureHostRegistered(
+  runtime: AgentRuntimeRow,
+  bootstrap: BootstrapAccessContext,
+  options?: EnsureHostRegistrationOptions
+): Promise<AgentRuntimeRow> {
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/register-host`,
-    authAccount.accessToken,
-    providerId,
+    bootstrap.accessToken,
+    bootstrap.dpop,
     {
       publicKey: runtime.hostPublicJwk,
       name: HOST_NAME,
-      clientId: client.clientId,
     },
     options?.attestationHeaders
   );
@@ -271,8 +341,7 @@ async function signHostJwt(
 
 async function registerAgentSession(
   runtime: AgentRuntimeRow,
-  userId: string,
-  providerId: ProviderId,
+  bootstrap: BootstrapAccessContext,
   options?: RegisterAgentSessionOptions
 ): Promise<AgentRuntimeRow> {
   if (hasRegisteredSession(runtime) && !options?.force) {
@@ -283,21 +352,12 @@ async function registerAgentSession(
     throw new Error("Host must be registered before creating an agent session");
   }
 
-  const authAccount = await getAccountForProvider(userId, providerId);
-  if (!authAccount?.accessToken) {
-    throw new Error("Missing OAuth access token. Sign in again.");
-  }
-
-  if (isExpired(authAccount.accessTokenExpiresAt)) {
-    throw buildReauthError();
-  }
-
   const sessionKeys = await generateEd25519Jwks();
   const hostJwt = await signHostJwt(runtime, runtime.hostId);
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/register`,
-    authAccount.accessToken,
-    providerId,
+    bootstrap.accessToken,
+    bootstrap.dpop,
     {
       hostJwt,
       agentPublicKey: JSON.stringify(sessionKeys.publicJwk),
@@ -351,6 +411,10 @@ export async function prepareAgentAssertionForProvider(params: {
     params.providerId,
     tier
   );
+  const bootstrap = await exchangeBootstrapAccessToken(
+    params.userId,
+    params.providerId
+  );
 
   if (tier === "attested") {
     const hadRegisteredSession = hasRegisteredSession(runtime);
@@ -366,8 +430,7 @@ export async function prepareAgentAssertionForProvider(params: {
     );
     runtime = await ensureHostRegistered(
       runtime,
-      params.userId,
-      params.providerId,
+      bootstrap,
       {
         attestationHeaders: {
           "OAuth-Client-Attestation": attestation,
@@ -382,27 +445,14 @@ export async function prepareAgentAssertionForProvider(params: {
     // cannot stay pinned to the weaker default policy set.
     runtime = await registerAgentSession(
       runtime,
-      params.userId,
-      params.providerId,
+      bootstrap,
       { force: hadRegisteredSession }
     );
   } else if (!runtime.hostId) {
-    runtime = await ensureHostRegistered(
-      runtime,
-      params.userId,
-      params.providerId
-    );
-    runtime = await registerAgentSession(
-      runtime,
-      params.userId,
-      params.providerId
-    );
+    runtime = await ensureHostRegistered(runtime, bootstrap);
+    runtime = await registerAgentSession(runtime, bootstrap);
   } else {
-    runtime = await registerAgentSession(
-      runtime,
-      params.userId,
-      params.providerId
-    );
+    runtime = await registerAgentSession(runtime, bootstrap);
   }
 
   if (!(runtime.sessionId && runtime.sessionPrivateJwk && runtime.hostId)) {

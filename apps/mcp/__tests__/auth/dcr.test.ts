@@ -68,6 +68,10 @@ describe("DCR", () => {
     expect(body.grant_types).toContain(
       "urn:ietf:params:oauth:grant-type:token-exchange"
     );
+    expect(body.scope).toContain("agent:host.register");
+    expect(body.scope).toContain("agent:session.register");
+    expect(body.scope).toContain("agent:session.revoke");
+    expect(body.subject_type).toBeUndefined();
   });
 
   it("reuses existing client_id", async () => {

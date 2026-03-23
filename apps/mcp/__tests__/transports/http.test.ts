@@ -8,10 +8,12 @@ import type {
 const {
   mockClearCachedHostId,
   mockEnsureHostRegistered,
+  mockPrepareBootstrapRegistrationAuth,
   mockRegisterAgent,
 } = vi.hoisted(() => ({
   mockClearCachedHostId: vi.fn(),
   mockEnsureHostRegistered: vi.fn(),
+  mockPrepareBootstrapRegistrationAuth: vi.fn(),
   mockRegisterAgent: vi.fn(),
 }));
 
@@ -54,6 +56,7 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
     tokenType: "DPoP",
     expiresIn: 3600,
   }),
+  resolveLoginHint: vi.fn().mockResolvedValue("user-123@example.com"),
 }));
 
 vi.mock("../../src/auth/agent-registration.js", async () => {
@@ -64,6 +67,7 @@ vi.mock("../../src/auth/agent-registration.js", async () => {
     ...actual,
     clearCachedHostId: mockClearCachedHostId,
     ensureHostRegistered: mockEnsureHostRegistered,
+    prepareBootstrapRegistrationAuth: mockPrepareBootstrapRegistrationAuth,
     registerAgent: mockRegisterAgent,
   };
 });
@@ -448,17 +452,17 @@ describe("HTTP runtime registration", () => {
     },
     loginHint: "user-123",
   };
+  const bootstrapAuth = {
+    ...oauth,
+    accessToken: "bootstrap-token-123",
+  };
 
   beforeEach(() => {
     mockClearCachedHostId.mockReset();
     mockEnsureHostRegistered.mockReset();
+    mockPrepareBootstrapRegistrationAuth.mockReset();
     mockRegisterAgent.mockReset();
-  });
-
-  it("skips runtime registration when agent:manage is absent", async () => {
-    await expect(registerHttpRuntime(oauth, "openid")).resolves.toBeUndefined();
-    expect(mockEnsureHostRegistered).not.toHaveBeenCalled();
-    expect(mockRegisterAgent).not.toHaveBeenCalled();
+    mockPrepareBootstrapRegistrationAuth.mockResolvedValue(bootstrapAuth);
   });
 
   it("registers a runtime with a user-scoped host namespace", async () => {
@@ -478,18 +482,19 @@ describe("HTTP runtime registration", () => {
     mockEnsureHostRegistered.mockResolvedValue("host-123");
     mockRegisterAgent.mockResolvedValue(runtime);
 
-    const result = await registerHttpRuntime(oauth, "openid agent:manage");
+    const result = await registerHttpRuntime(oauth);
 
     const namespace = buildHostKeyNamespace(oauth);
+    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(oauth);
     expect(mockEnsureHostRegistered).toHaveBeenCalledWith(
       "http://localhost:3000",
-      oauth,
+      bootstrapAuth,
       "@zentity/mcp-server",
       namespace
     );
     expect(mockRegisterAgent).toHaveBeenCalledWith(
       "http://localhost:3000",
-      oauth,
+      bootstrapAuth,
       "host-123",
       expect.objectContaining({
         model: "unknown",
@@ -521,8 +526,7 @@ describe("HTTP runtime registration", () => {
     const first = await ensureSessionRuntime(
       runtimes,
       "mcp-session-1",
-      oauth,
-      "openid agent:manage"
+      oauth
     );
     const second = await ensureSessionRuntime(
       runtimes,
@@ -530,8 +534,7 @@ describe("HTTP runtime registration", () => {
       {
         ...oauth,
         accessToken: "exchanged-token-456",
-      },
-      "openid agent:manage"
+      }
     );
 
     expect(first).toEqual(runtime);
