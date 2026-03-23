@@ -120,6 +120,10 @@ vi.mock("@/lib/env", () => ({
 import { prepareAgentAssertionForProvider } from "./agent-runtime";
 
 function createDbMock(state: {
+  accountRow?: {
+    accessToken: string | null;
+    accessTokenExpiresAt: string | null;
+  } | null;
   runtimeRow: RuntimeRow | null;
 }) {
   return {
@@ -151,10 +155,13 @@ function createDbMock(state: {
     })),
     query: {
       account: {
-        findFirst: vi.fn(async () => ({
-          accessToken: "access-token",
-          accessTokenExpiresAt: null,
-        })),
+        findFirst: vi.fn(
+          async () =>
+            state.accountRow ?? {
+              accessToken: "access-token",
+              accessTokenExpiresAt: null,
+            }
+        ),
       },
       agentRuntime: {
         findFirst: vi.fn(async () => state.runtimeRow),
@@ -257,6 +264,26 @@ describe("prepareAgentAssertionForProvider", () => {
       expect.objectContaining({
         method: "POST",
       })
+    );
+  });
+
+  it("asks for re-authentication when the saved OAuth token is rejected", async () => {
+    testState.fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "User access token required" }), {
+        headers: { "Content-Type": "application/json" },
+        status: 401,
+      })
+    );
+
+    await expect(
+      prepareAgentAssertionForProvider({
+        bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
+        providerId: "bank",
+        trustTier: "registered",
+        userId: "user-1",
+      })
+    ).rejects.toThrow(
+      "OAuth access token expired or is no longer valid. Sign in again."
     );
   });
 

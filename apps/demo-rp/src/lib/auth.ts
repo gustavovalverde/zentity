@@ -93,6 +93,14 @@ function validateAtHash(accessToken: string, idToken: string, atHash: string) {
   }
 }
 
+function toExpiryDate(seconds: unknown): Date | undefined {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+
+  return new Date(Date.now() + seconds * 1000);
+}
+
 async function fetchUserInfo(tokens: {
   accessToken?: string | undefined;
   idToken?: string | undefined;
@@ -281,8 +289,10 @@ function makeProviderConfig(
       }
       return {
         accessToken,
+        accessTokenExpiresAt: toExpiryDate(result.expires_in),
         idToken: result.id_token as string | undefined,
         refreshToken: result.refresh_token as string | undefined,
+        refreshTokenExpiresAt: toExpiryDate(result.refresh_token_expires_in),
         tokenType: result.token_type as string | undefined,
       };
     },

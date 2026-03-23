@@ -70,6 +70,18 @@ async function generateEd25519Jwks() {
   };
 }
 
+function isExpired(timestamp: string | null | undefined): boolean {
+  if (!timestamp) {
+    return false;
+  }
+
+  return new Date(timestamp).getTime() <= Date.now();
+}
+
+function buildReauthError() {
+  return new Error("OAuth access token expired or is no longer valid. Sign in again.");
+}
+
 async function getAccountForProvider(userId: string, providerId: ProviderId) {
   return getDb().query.account.findFirst({
     where: and(
@@ -180,11 +192,8 @@ async function ensureHostRegistered(
     throw new Error("Missing OAuth access token. Sign in again.");
   }
 
-  if (
-    authAccount.accessTokenExpiresAt &&
-    new Date(authAccount.accessTokenExpiresAt).getTime() <= Date.now()
-  ) {
-    throw new Error("OAuth access token expired. Sign in again.");
+  if (isExpired(authAccount.accessTokenExpiresAt)) {
+    throw buildReauthError();
   }
 
   const client = await readDcrClient(providerId);
@@ -204,6 +213,9 @@ async function ensureHostRegistered(
     options?.attestationHeaders
   );
   if (!response.ok) {
+    if (response.status === 401) {
+      throw buildReauthError();
+    }
     throw new Error(
       `Host registration failed: ${response.status} ${await response.text()}`
     );
@@ -276,6 +288,10 @@ async function registerAgentSession(
     throw new Error("Missing OAuth access token. Sign in again.");
   }
 
+  if (isExpired(authAccount.accessTokenExpiresAt)) {
+    throw buildReauthError();
+  }
+
   const sessionKeys = await generateEd25519Jwks();
   const hostJwt = await signHostJwt(runtime, runtime.hostId);
   const response = await postJsonWithDpop(
@@ -291,6 +307,9 @@ async function registerAgentSession(
   );
 
   if (!response.ok) {
+    if (response.status === 401) {
+      throw buildReauthError();
+    }
     throw new Error(
       `Agent registration failed: ${response.status} ${await response.text()}`
     );
