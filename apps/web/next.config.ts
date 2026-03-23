@@ -106,13 +106,14 @@ const nextConfig: NextConfig = {
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
     ];
 
-    // External domains required by @zkpassport/sdk (hardcoded in minified bundle).
+    // External domains required by @zkpassport/sdk and bb.js/Noir CRS downloads.
     const zkPassportDomains = [
       "https://cdn.zkpassport.id",
       "https://certificates.zkpassport.id",
       "https://circuits.zkpassport.id",
       "https://circuits2.zkpassport.id",
       "https://ipfs.zkpassport.id",
+      "https://crs.aztec.network",
       "https://*.g.alchemy.com",
       "https://ethereum-sepolia-rpc.publicnode.com",
     ].join(" ");

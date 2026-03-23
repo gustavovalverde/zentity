@@ -1,11 +1,10 @@
 import "server-only";
 
-import type { QueryResult } from "@zkpassport/sdk";
+import type { ProofResult, QueryResult } from "@zkpassport/utils";
 
 import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
-import { ZKPassport } from "@zkpassport/sdk";
 import { z } from "zod";
 
 import { env } from "@/env";
@@ -26,19 +25,12 @@ import {
   dobToDaysSince1900,
   parseBirthYearFromDob,
 } from "@/lib/identity/verification/birth-year";
+import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { signAttestationClaim } from "@/lib/privacy/zk/claims";
+import { verifyZkPassportProofs } from "@/lib/privacy/zk/zkpassport-verifier";
 
 import { protectedProcedure, router } from "../server";
-
-let zkPassportInstance: ZKPassport | null = null;
-
-function getZkPassport(): ZKPassport {
-  zkPassportInstance ??= new ZKPassport(
-    new URL(env.NEXT_PUBLIC_APP_URL).hostname
-  );
-  return zkPassportInstance;
-}
 
 function sha256(data: string): string {
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -78,22 +70,35 @@ export const passportChipRouter = router({
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
 
-      // Verify proofs server-side — this is the trust boundary
-      const zkpassport = getZkPassport();
       const devMode =
         env.NEXT_PUBLIC_APP_ENV === "development" ||
         env.NEXT_PUBLIC_APP_ENV === "test";
+      const domain = new URL(env.NEXT_PUBLIC_APP_URL).hostname;
 
-      const verifyResult = await zkpassport.verify({
-        proofs: input.proofs as Parameters<ZKPassport["verify"]>[0]["proofs"],
+      const verifyResult = await verifyZkPassportProofs({
+        domain,
+        proofs: input.proofs as ProofResult[],
         queryResult: input.result as QueryResult,
         devMode,
       });
 
       if (!verifyResult.verified) {
+        logger.warn(
+          {
+            proofCount: input.proofs.length,
+            queryResultErrorKeys: verifyResult.queryResultErrors
+              ? Object.keys(verifyResult.queryResultErrors)
+              : [],
+            verificationTimeMs: Math.round(verifyResult.verificationTimeMs),
+          },
+          "Passport chip verification failed"
+        );
+        const details = verifyResult.queryResultErrors
+          ? `: ${JSON.stringify(verifyResult.queryResultErrors)}`
+          : "";
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Proof verification failed",
+          message: `Proof verification failed${details}`,
         });
       }
 
@@ -269,11 +274,15 @@ export const passportChipRouter = router({
     }),
 
   status: protectedProcedure.query(async ({ ctx }) => {
-    const bundle = await getIdentityBundleByUserId(ctx.userId);
+    const [bundle, profileSecretStored] = await Promise.all([
+      getIdentityBundleByUserId(ctx.userId),
+      hasProfileSecret(ctx.userId),
+    ]);
 
     return {
       fheComplete: bundle?.fheStatus === "complete",
       fheError: bundle?.fheError ?? null,
+      profileSecretStored,
     };
   }),
 });

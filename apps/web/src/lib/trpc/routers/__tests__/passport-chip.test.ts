@@ -14,15 +14,12 @@ const mockHasProfileSecret = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 const mockInsertSignedClaim = vi.fn();
 const mockSignAttestationClaim = vi.fn();
+const mockLoggerWarn = vi.fn();
 
 // --- Module mocks ---
 
-vi.mock("@zkpassport/sdk", () => ({
-  ZKPassport: class {
-    verify(...args: unknown[]) {
-      return mockVerify(...args);
-    }
-  },
+vi.mock("@/lib/privacy/zk/zkpassport-verifier", () => ({
+  verifyZkPassportProofs: (...args: unknown[]) => mockVerify(...args),
 }));
 
 // identity mock is above (merged all identity-related mocks together)
@@ -58,6 +55,17 @@ vi.mock("@/lib/privacy/zk/claims", () => ({
   signAttestationClaim: (...args: unknown[]) =>
     mockSignAttestationClaim(...args),
 }));
+
+vi.mock("@/lib/logging/logger", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/logging/logger")>();
+  return {
+    ...actual,
+    logger: {
+      ...actual.logger,
+      warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    },
+  };
+});
 
 // Allow overriding specific env values per test
 let envOverrides: Record<string, string | undefined> = {};
@@ -153,6 +161,7 @@ describe("passportChip.submitResult", () => {
     mockHasProfileSecret.mockResolvedValue(true);
     mockCreateVerification.mockImplementation((data) => data);
     mockScheduleFheEncryption.mockReturnValue(undefined);
+    mockLoggerWarn.mockReset();
   });
 
   it("rejects unauthenticated requests", async () => {
@@ -165,15 +174,34 @@ describe("passportChip.submitResult", () => {
   // --- Proof verification ---
 
   it("rejects when proof verification fails", async () => {
-    mockVerify.mockResolvedValue({ verified: false });
+    mockVerify.mockResolvedValue({
+      verified: false,
+      verificationTimeMs: 123,
+      queryResultErrors: {
+        fullname: {
+          disclose: {
+            expected: "redacted expected value",
+            received: "John Doe",
+          },
+        },
+      },
+    });
 
     const caller = await createCaller(authedSession);
     await expect(caller.submitResult(validInput())).rejects.toMatchObject({
       code: "BAD_REQUEST",
-      message: "Proof verification failed",
+      message: expect.stringContaining("Proof verification failed"),
     });
 
     expect(mockCreateVerification).not.toHaveBeenCalled();
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      {
+        proofCount: mockProofs.length,
+        queryResultErrorKeys: ["fullname"],
+        verificationTimeMs: 123,
+      },
+      "Passport chip verification failed"
+    );
   });
 
   it("rejects when verified but nullifier is missing", async () => {
@@ -541,5 +569,43 @@ describe("passportChip.submitResult", () => {
     expect(mockCreateVerification).not.toHaveBeenCalled();
     expect(mockInsertSignedClaim).not.toHaveBeenCalled();
     expect(mockScheduleFheEncryption).not.toHaveBeenCalled();
+  });
+});
+
+describe("passportChip.status", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    envOverrides = {};
+    mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
+    mockHasProfileSecret.mockResolvedValue(true);
+  });
+
+  it("returns FHE state and whether the profile secret exists", async () => {
+    const caller = await createCaller(authedSession);
+    const result = await caller.status();
+
+    expect(result).toEqual({
+      fheComplete: true,
+      fheError: null,
+      profileSecretStored: true,
+    });
+  });
+
+  it("reports when the profile secret is still missing", async () => {
+    mockGetIdentityBundleByUserId.mockResolvedValue({
+      fheKeyId: "fhe-key-123",
+      fheStatus: "pending",
+      fheError: null,
+    });
+    mockHasProfileSecret.mockResolvedValue(false);
+
+    const caller = await createCaller(authedSession);
+    const result = await caller.status();
+
+    expect(result).toEqual({
+      fheComplete: false,
+      fheError: null,
+      profileSecretStored: false,
+    });
   });
 });

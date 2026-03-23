@@ -1186,18 +1186,26 @@ export const auth = betterAuth({
     },
   },
   socialProviders: {
-    google: {
-      clientId: env.GOOGLE_CLIENT_ID ?? "",
-      clientSecret: env.GOOGLE_CLIENT_SECRET ?? "",
-      disableSignUp: true,
-      disableDefaultScope: true,
-      scope: ["openid", "email"],
-    },
-    github: {
-      clientId: env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: env.GITHUB_CLIENT_SECRET ?? "",
-      disableSignUp: true,
-    },
+    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: env.GOOGLE_CLIENT_ID,
+            clientSecret: env.GOOGLE_CLIENT_SECRET,
+            disableSignUp: true,
+            disableDefaultScope: true,
+            scope: ["openid", "email"],
+          },
+        }
+      : {}),
+    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+      ? {
+          github: {
+            clientId: env.GITHUB_CLIENT_ID,
+            clientSecret: env.GITHUB_CLIENT_SECRET,
+            disableSignUp: true,
+          },
+        }
+      : {}),
   },
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
@@ -1364,6 +1372,7 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
+      silenceWarnings: { oauthAuthServerConfig: true },
       tokenBinding: dpopTokenBinding,
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {

@@ -42,6 +42,25 @@ interface ZkPassportFlowProps {
   wallet: { address: string; chainId: number } | null;
 }
 
+type VaultStoreOutcome = "stored" | "pending";
+
+/**
+ * Override the SDK's client-side verify() to skip expensive WASM proof
+ * verification in the browser. The server re-verifies all proofs in
+ * passportChip.submitResult, so the client-side check only duplicates
+ * work and blocks the main thread.
+ *
+ * Uses Object.defineProperty because simple assignment may be silently
+ * ignored if the bundler emits non-writable prototype descriptors.
+ */
+function bypassClientProofVerification(zkpassport: object): void {
+  Object.defineProperty(zkpassport, "verify", {
+    value: async () => ({ verified: true }),
+    writable: true,
+    configurable: true,
+  });
+}
+
 export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   const router = useRouter();
   const { data: session } = useSession();
@@ -54,6 +73,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const fhePollRef = useRef<ReturnType<typeof setTimeout>>(null);
   const startedRef = useRef(false);
+  const vaultSkippedRef = useRef(false);
 
   // Vault storage state
   const disclosedRef = useRef<DisclosedData | null>(null);
@@ -62,23 +82,70 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     "opaque"
   );
 
-  /**
-   * Store profile secret in the user's encrypted vault.
-   * Returns true if stored (or skipped), false if dialog was opened.
-   */
-  const storeVault = useCallback(
-    async (disclosed: DisclosedData): Promise<boolean> => {
-      const userId = session?.user?.id;
-      if (!userId) {
-        return true;
+  const requestVaultRetry = useCallback(
+    (disclosed: DisclosedData, message: string) => {
+      disclosedRef.current = disclosed;
+      toast.warning(message);
+      setStage("vault_pending");
+    },
+    []
+  );
+
+  const persistProfileSecret = useCallback(
+    async (
+      disclosed: DisclosedData,
+      credential: ReturnType<typeof buildEnrollmentCredential>
+    ) => {
+      if (!credential) {
+        throw new Error(
+          "The credential required to encrypt your identity data is unavailable."
+        );
       }
 
+      const { storeProfileSecret } = await import(
+        "@/lib/privacy/secrets/profile"
+      );
+      await storeProfileSecret({
+        extractedData: {
+          extractedFullName: disclosed.fullName,
+          extractedDOB: disclosed.dateOfBirth,
+          extractedNationality: disclosed.nationality,
+          extractedNationalityCode: disclosed.nationalityCode,
+          extractedDocumentType: disclosed.documentType,
+          extractedDocumentOrigin: disclosed.issuingCountry,
+        },
+        credential,
+      });
+    },
+    []
+  );
+
+  /**
+   * Store profile secret in the user's encrypted vault.
+   * Returns "stored" when persisted, "pending" when user action is still needed.
+   */
+  const storeVault = useCallback(
+    async (disclosed: DisclosedData): Promise<VaultStoreOutcome> => {
+      const userId = session?.user?.id;
+      if (!userId) {
+        requestVaultRetry(
+          disclosed,
+          "Your session expired before your identity data could be secured. Sign in again and retry."
+        );
+        return "pending";
+      }
+
+      vaultSkippedRef.current = false;
       let cached = getCachedBindingMaterial();
 
       if (!cached) {
         const authModeInfo = await detectAuthMode();
         if (!authModeInfo) {
-          return true; // No wrappers — skip
+          requestVaultRetry(
+            disclosed,
+            "No credential is available to encrypt your identity data. Retry after re-authenticating."
+          );
+          return "pending";
         }
 
         if (authModeInfo.mode === "passkey" && authModeInfo.passkeyCreds) {
@@ -88,48 +155,47 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
           if (material) {
             setCachedBindingMaterial(material);
             cached = material;
+          } else {
+            requestVaultRetry(
+              disclosed,
+              "Passkey confirmation was cancelled before your identity data could be saved."
+            );
+            return "pending";
           }
         } else {
           // OPAQUE or wallet — need dialog for re-auth
           disclosedRef.current = disclosed;
           setBindingAuthMode(authModeInfo.mode as "opaque" | "wallet");
           setBindingAuthOpen(true);
-          return false;
+          return "pending";
         }
       }
 
       if (!cached) {
-        return true;
-      }
-
-      const credential = buildEnrollmentCredential(cached, userId, wallet);
-      if (!credential) {
-        return true;
+        requestVaultRetry(
+          disclosed,
+          "The credential required to encrypt your identity data is unavailable. Retry to continue."
+        );
+        return "pending";
       }
 
       try {
-        const { storeProfileSecret } = await import(
-          "@/lib/privacy/secrets/profile"
+        await persistProfileSecret(
+          disclosed,
+          buildEnrollmentCredential(cached, userId, wallet)
         );
-        await storeProfileSecret({
-          extractedData: {
-            extractedFullName: disclosed.fullName,
-            extractedDOB: disclosed.dateOfBirth,
-            extractedNationality: disclosed.nationality,
-            extractedNationalityCode: disclosed.nationalityCode,
-            extractedDocumentType: disclosed.documentType,
-            extractedDocumentOrigin: disclosed.issuingCountry,
-          },
-          credential,
-        });
-      } catch {
-        toast.warning(
-          "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
+        disclosedRef.current = null;
+      } catch (error) {
+        console.error("[passport-chip] Profile secret storage failed:", error);
+        requestVaultRetry(
+          disclosed,
+          "Identity data could not be saved to your vault. Retry to enable identity sharing with applications."
         );
+        return "pending";
       }
-      return true;
+      return "stored";
     },
-    [session, wallet]
+    [persistProfileSecret, requestVaultRetry, session, wallet]
   );
 
   /**
@@ -143,35 +209,32 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     if (disclosed && userId) {
       const cached = getCachedBindingMaterial();
       if (cached) {
-        const credential = buildEnrollmentCredential(cached, userId, wallet);
-        if (credential) {
-          try {
-            const { storeProfileSecret } = await import(
-              "@/lib/privacy/secrets/profile"
-            );
-            await storeProfileSecret({
-              extractedData: {
-                extractedFullName: disclosed.fullName,
-                extractedDOB: disclosed.dateOfBirth,
-                extractedNationality: disclosed.nationality,
-                extractedNationalityCode: disclosed.nationalityCode,
-                extractedDocumentType: disclosed.documentType,
-                extractedDocumentOrigin: disclosed.issuingCountry,
-              },
-              credential,
-            });
-          } catch {
-            toast.warning(
-              "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
-            );
-          }
+        try {
+          await persistProfileSecret(
+            disclosed,
+            buildEnrollmentCredential(cached, userId, wallet)
+          );
+          disclosedRef.current = null;
+          vaultSkippedRef.current = false;
+          setStage("finalizing");
+          return;
+        } catch (error) {
+          console.error(
+            "[passport-chip] Profile secret storage failed:",
+            error
+          );
         }
       }
+
+      requestVaultRetry(
+        disclosed,
+        "Identity data could not be saved to your vault. Retry to enable identity sharing with applications."
+      );
+      return;
     }
 
-    disclosedRef.current = null;
-    setStage("finalizing");
-  }, [session, wallet]);
+    setStage("vault_pending");
+  }, [persistProfileSecret, requestVaultRetry, session, wallet]);
 
   /**
    * If user closes the dialog without authenticating, show vault_pending
@@ -193,7 +256,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     const disclosed = disclosedRef.current;
     if (disclosed) {
       storeVault(disclosed).then((stored) => {
-        if (stored) {
+        if (stored === "stored") {
           setStage("finalizing");
         }
       });
@@ -201,6 +264,8 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   }, [storeVault]);
 
   const handleSkipVault = useCallback(() => {
+    vaultSkippedRef.current = true;
+    setBindingAuthOpen(false);
     disclosedRef.current = null;
     setStage("finalizing");
   }, []);
@@ -208,9 +273,9 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   const submitResult = trpcReact.passportChip.submitResult.useMutation({
     onSuccess: (data) => {
       storeVault(data.disclosed).then((stored) => {
-        // If stored (or skipped), move to finalizing.
-        // If dialog was opened (!stored), handleBindingAuthSuccess will transition.
-        if (stored) {
+        // A successful vault write can move straight into finalizing.
+        // Pending states keep the user in the vault flow until they retry or skip.
+        if (stored === "stored") {
           setStage("finalizing");
         }
       });
@@ -244,6 +309,11 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
           return;
         }
 
+        if (!(status.profileSecretStored || vaultSkippedRef.current)) {
+          setStage("vault_pending");
+          return;
+        }
+
         if (status.fheComplete) {
           setStage("success");
           return;
@@ -261,7 +331,11 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       }
 
       if (attempt >= FHE_POLL_MAX_ATTEMPTS) {
-        setStage("success");
+        if (vaultSkippedRef.current) {
+          setStage("success");
+        } else {
+          setStage("vault_pending");
+        }
         return;
       }
 
@@ -285,12 +359,16 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     setProofsGenerated(0);
     setProofsTotal(0);
     proofsRef.current = [];
+    disclosedRef.current = null;
+    vaultSkippedRef.current = false;
+    setBindingAuthOpen(false);
 
     try {
       const { ZKPassport } = await import("@zkpassport/sdk");
       const zkpassport = new ZKPassport(
         typeof window === "undefined" ? undefined : window.location.hostname
       );
+      bypassClientProofVerification(zkpassport);
 
       const isDevMode =
         env.NEXT_PUBLIC_APP_ENV === "development" ||

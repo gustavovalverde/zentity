@@ -26,6 +26,12 @@ export async function register() {
     if (bbResult.status === "fulfilled") {
       const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
       await warmupCRS();
+
+      // ZKPassport verifier shares the Barretenberg WASM instance
+      const { warmupZkPassportVerifier } = await import(
+        "@/lib/privacy/zk/zkpassport-verifier"
+      );
+      await warmupZkPassportVerifier();
     }
 
     const { logNoirWasmAssetStatus } = await import(
