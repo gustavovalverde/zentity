@@ -18,8 +18,6 @@ import type {
   QueryResult,
 } from "@zkpassport/utils";
 
-import { dirname } from "node:path";
-
 import { UltraHonkVerifierBackend } from "@aztec/bb.js";
 import { RegistryClient } from "@zkpassport/registry";
 import {
@@ -74,6 +72,7 @@ import {
 
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
+import { getBarretenberg } from "@/lib/privacy/primitives/barretenberg";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -184,14 +183,12 @@ function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
     return backendInitPromise;
   }
 
-  backendInitPromise = Promise.resolve(
-    // Upstream ZKPassport initializes the verifier with a CRS path object.
-    // The bb.js types in this repo still expose the older constructor shape.
-    new UltraHonkVerifierBackend({ crsPath: env.BB_CRS_PATH } as never)
-  ).then((backend) => {
+  backendInitPromise = (async () => {
+    const api = await getBarretenberg();
+    const backend = new UltraHonkVerifierBackend(api);
     verifierBackend = backend;
     return backend;
-  });
+  })();
 
   backendInitPromise.catch(() => {
     backendInitPromise = null;
@@ -2389,7 +2386,7 @@ async function verifyWithSdkFallback(
   } = {
     proofs: params.proofs,
     queryResult: params.queryResult,
-    writingDirectory: dirname(env.BB_CRS_PATH),
+    writingDirectory: env.BB_CRS_PATH,
   };
 
   if (params.validity !== undefined) {
