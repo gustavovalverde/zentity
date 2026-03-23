@@ -30,7 +30,7 @@ export const meta: MetaFunction = () => [
   {
     name: "description",
     content:
-      "AI agents need human identity to complete tasks, but storing that identity creates liability. Zentity lets agents prove who they represent and what the human approved, without holding any personal data.",
+      "AI agents need human identity to complete tasks, but storing that identity creates liability. Zentity lets agents prove who they represent and what the human approved without holding any personal data.",
   },
 ];
 
@@ -174,7 +174,7 @@ function ComparisonVisual() {
             </pre>
           </div>
           <p className="landing-caption mt-3">
-            Full PII — stored, forwarded, breachable.
+            Full PII: stored, forwarded, breachable.
           </p>
         </CardContent>
       </Card>
@@ -206,7 +206,7 @@ function ComparisonVisual() {
             </pre>
           </div>
           <p className="landing-caption mt-3">
-            Zero-knowledge proofs — nothing to store, nothing to breach.
+            Zero-knowledge proofs: nothing to store, nothing to breach.
           </p>
         </CardContent>
       </Card>
@@ -223,7 +223,7 @@ const SCENARIOS = [
     tierColor: "purple" as SemanticColor,
     icon: IconShieldCheck,
     agentAction: "Agent checks if user meets KYC requirements",
-    humanExperience: "Silent — no notification, no approval needed",
+    humanExperience: "Silent: no notification, no approval needed",
     rsPayload: '{ verified: true, level: "full" }',
   },
   {
@@ -232,7 +232,7 @@ const SCENARIOS = [
     tierColor: "amber" as SemanticColor,
     icon: IconUserShield,
     agentAction: "Agent requests user's name and address",
-    humanExperience: "Push notification — tap to approve, unlock vault",
+    humanExperience: "Push notification: tap to approve, unlock vault",
     rsPayload: "{ name, address } (single-use, ephemeral)",
   },
   {
@@ -240,8 +240,8 @@ const SCENARIOS = [
     tier: "Attested",
     tierColor: "emerald" as SemanticColor,
     icon: IconLock,
-    agentAction: "Agent buys spirits — needs age proof + identity",
-    humanExperience: "Push + vault unlock — review purchase, prove age",
+    agentAction: "Agent buys spirits: age proof + identity required",
+    humanExperience: "Push + vault unlock: review purchase, prove age",
     rsPayload: "{ age_verification: true, act: { sub: agent } }",
   },
 ] as const;
@@ -259,22 +259,28 @@ function ScenarioCards() {
               <Badge variant="outline">{s.tier}</Badge>
             </div>
             <h3 className="font-semibold">{s.title}</h3>
-            <dl className="mt-3 space-y-2">
+            <dl className="mt-3 space-y-3">
               <div>
-                <dt className="landing-caption font-medium">Agent action</dt>
-                <dd className="landing-body">{s.agentAction}</dd>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Agent action
+                </dt>
+                <dd className="mt-0.5 text-sm text-foreground">
+                  {s.agentAction}
+                </dd>
               </div>
               <div>
-                <dt className="landing-caption font-medium">
+                <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Human experience
                 </dt>
-                <dd className="landing-body">{s.humanExperience}</dd>
+                <dd className="mt-0.5 text-sm text-foreground">
+                  {s.humanExperience}
+                </dd>
               </div>
               <div>
-                <dt className="landing-caption font-medium">
+                <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Resource server receives
                 </dt>
-                <dd className="font-mono text-xs text-muted-foreground">
+                <dd className="mt-0.5 font-mono text-xs text-muted-foreground">
                   {s.rsPayload}
                 </dd>
               </div>
@@ -296,7 +302,7 @@ const TIERS = [
     description:
       "No agent identity disclosed. The CIBA request has no Agent-Assertion.",
     autoActivates: "Compliance checks, read-only proof queries",
-    howToGet: "No registration — any OAuth client",
+    howToGet: "No registration: any OAuth client",
   },
   {
     name: "Registered",
@@ -327,14 +333,20 @@ function TrustTiersSection() {
             <t.icon className={cn("size-5", colorStyles[t.color].iconText)} />
             <h3 className="mt-3 font-semibold">{t.name}</h3>
             <p className="landing-body mt-1">{t.description}</p>
-            <dl className="mt-4 space-y-2 border-border border-t pt-3">
+            <dl className="mt-4 space-y-3 border-border border-t pt-3">
               <div>
-                <dt className="landing-caption font-medium">Auto-activates</dt>
-                <dd className="landing-body">{t.autoActivates}</dd>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Auto-activates
+                </dt>
+                <dd className="mt-0.5 text-sm text-foreground">
+                  {t.autoActivates}
+                </dd>
               </div>
               <div>
-                <dt className="landing-caption font-medium">How to get</dt>
-                <dd className="landing-body">{t.howToGet}</dd>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  How to get
+                </dt>
+                <dd className="mt-0.5 text-sm text-foreground">{t.howToGet}</dd>
               </div>
             </dl>
           </CardContent>
@@ -366,7 +378,7 @@ function McpSection() {
       <div>
         <h3 className="font-semibold">MCP Tools</h3>
         <p className="landing-body mt-1">
-          Five identity tools, available over HTTP (SSE) and stdio transports.
+          5 identity tools, available over HTTP (SSE) and stdio transports.
         </p>
         <ul className="mt-4 space-y-2">
           {MCP_TOOLS.map((tool) => (
@@ -407,7 +419,7 @@ function McpSection() {
               /.well-known/agent.json
             </code>
             <p className="landing-caption mt-0.5">
-              A2A agent card — security scheme, supported protocols
+              A2A agent card: security scheme, supported protocols
             </p>
           </li>
         </ul>
@@ -482,7 +494,7 @@ export default function AgentsPage() {
   return (
     <PageLayout
       title="Agentic Authorization"
-      description="AI agents need human identity to complete tasks, but storing that identity creates liability. Zentity lets agents prove who they represent and what the human approved, without holding any personal data."
+      description="AI agents need human identity to complete tasks, but storing that identity creates liability. Zentity lets agents prove who they represent and what the human approved without holding any personal data."
     >
       <div className="space-y-14">
         {/* Comparison Visual */}
@@ -491,9 +503,9 @@ export default function AgentsPage() {
             Identity without exposure
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Today, agents receive raw personal data. With Zentity, they receive
-            cryptographic proofs that answer the question without revealing the
-            answer.
+            Today, agents receive <strong>raw personal data</strong>. With
+            Zentity, they receive <strong>cryptographic proofs</strong> that
+            answer the question without revealing the answer.
           </p>
           <div className="mt-6">
             <ComparisonVisual />
@@ -506,9 +518,9 @@ export default function AgentsPage() {
             From tool call to human approval
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            An MCP tool call triggers the human-in-the-loop flow. The agent
-            never touches credentials — the human approves from their own
-            device.
+            An MCP tool call triggers the <strong>human-in-the-loop</strong>{" "}
+            flow. The agent never touches credentials; the human approves from
+            their own device.
           </p>
 
           <div className="mt-6 grid items-start gap-6 md:grid-cols-2">
@@ -555,12 +567,13 @@ export default function AgentsPage() {
         {/* Scenario Cards */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            Three scenarios, three trust levels
+            3 scenarios, 3 trust levels
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            The human experience differs based on what the agent needs and how
-            much it's trusted. Higher trust means more capabilities activate
-            automatically.
+            Every scenario below is an instance of{" "}
+            <strong>delegated identity</strong>. They differ along the trust
+            axis: anonymous agents operate silently, registered agents prompt
+            for approval, and attested agents unlock identity scopes.
           </p>
           <div className="mt-6">
             <ScenarioCards />
@@ -570,11 +583,12 @@ export default function AgentsPage() {
         {/* Trust Tiers */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            Agent trust tiers
+            Progressive trust
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Trust is earned, not assumed. Each tier unlocks progressively more
-            autonomous capabilities.
+            All 3 tiers use the same <strong>CIBA mechanism</strong>. What
+            varies is the level of cryptographic identity the agent presents,
+            and the capabilities that activate without human intervention.
           </p>
           <div className="mt-6">
             <TrustTiersSection />
@@ -584,11 +598,12 @@ export default function AgentsPage() {
         {/* MCP + A2A Integration */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            MCP + A2A integration
+            Standardized discovery
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
             Identity as a tool, not a data dump. Agents discover capabilities
-            through standard protocols.
+            through MCP tool calls and A2A protocol endpoints, both backed by
+            the same OAuth infrastructure.
           </p>
           <div className="mt-6">
             <McpSection />
@@ -598,12 +613,13 @@ export default function AgentsPage() {
         {/* Protocol Composition */}
         <section>
           <h2 className="font-display text-2xl font-semibold">
-            Six specs, one binding chain
+            6 specs, 1 binding chain
           </h2>
           <p className="landing-body mt-2 max-w-2xl">
-            Each mechanism solves one dimension of the delegation problem. The
-            composition, not any individual spec, is what makes agent-human
-            identity work.
+            Each spec solves 1 dimension of the{" "}
+            <strong>delegation problem</strong>: binding, consent, authorization
+            structure, delegation proof, or identity delivery. The composition,
+            not any individual spec, is what makes agent-human identity work.
           </p>
           <div className="mt-6">
             <ProtocolComposition />
