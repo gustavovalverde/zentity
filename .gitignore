@@ -101,6 +101,8 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env.production
+reset-production-db.sh
 
 # synpress wallet cache
 .cache-synpress/

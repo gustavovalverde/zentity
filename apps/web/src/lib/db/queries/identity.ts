@@ -42,6 +42,7 @@ import {
   identityVerificationJobs,
   identityVerifications,
 } from "../schema/identity";
+import { pushSubscriptions } from "../schema/push";
 import { getSignedClaimTypesByUserAndVerification } from "./crypto";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
@@ -112,6 +113,10 @@ export async function dedupKeyExistsForOtherUser(
 
 export async function deleteIdentityData(userId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId))
+      .run();
     await tx
       .delete(attestationEvidence)
       .where(eq(attestationEvidence.userId, userId))
@@ -876,6 +881,12 @@ export async function revokeIdentity(
       )
       .run();
     revokedCredentials = credResult.rowsAffected;
+
+    // Step 4: Remove push subscriptions (device identifiers)
+    await tx
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userId))
+      .run();
   });
 
   // Step 4: Revoke on-chain attestations (best-effort, outside transaction)

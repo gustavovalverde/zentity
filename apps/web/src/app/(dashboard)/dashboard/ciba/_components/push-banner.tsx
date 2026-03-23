@@ -91,7 +91,9 @@ export function PushNotificationBanner() {
         <AlertTitle>Push notifications active</AlertTitle>
         <AlertDescription>
           <span>
-            You&apos;ll receive instant notifications for agent requests.
+            This device will receive instant notifications for agent requests.
+            Enable notifications separately on your phone or other browsers if
+            you want alerts there too.
           </span>
           <Button
             className="mt-1"
@@ -126,8 +128,9 @@ export function PushNotificationBanner() {
       <AlertTitle>Get instant agent notifications</AlertTitle>
       <AlertDescription>
         <span>
-          Enable push notifications to approve or deny agent requests without
-          checking email.
+          Enable push notifications on this device to approve or deny agent
+          requests without checking email. If you use multiple devices, each one
+          needs its own opt-in.
         </span>
         <Button className="mt-1" onClick={handleEnable} size="sm">
           Enable Notifications

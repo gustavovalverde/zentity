@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -9,6 +9,7 @@ import { rateLimitResponse } from "@/lib/utils/rate-limit";
 import { cibaLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
+const MAX_SUBSCRIPTIONS = 5;
 
 const subscriptionSchema = z.object({
   endpoint: z.string().url(),
@@ -17,6 +18,26 @@ const subscriptionSchema = z.object({
     p256dh: z.string().min(1),
   }),
 });
+
+async function enforceSubscriptionLimit(userId: string) {
+  const userSubs = await db
+    .select({ id: pushSubscriptions.id })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.userId, userId))
+    .orderBy(desc(pushSubscriptions.createdAt));
+
+  if (userSubs.length <= MAX_SUBSCRIPTIONS) {
+    return;
+  }
+
+  const stale = userSubs.slice(MAX_SUBSCRIPTIONS);
+  await db.delete(pushSubscriptions).where(
+    inArray(
+      pushSubscriptions.id,
+      stale.map((subscription) => subscription.id)
+    )
+  );
+}
 
 export async function POST(request: Request) {
   const authResult = await requireBrowserSession(request.headers);
@@ -40,7 +61,6 @@ export async function POST(request: Request) {
 
   const { endpoint, keys } = parsed.data;
   const userId = authResult.session.user.id;
-  const userAgent = request.headers.get("user-agent") ?? undefined;
 
   const existing = await db
     .select({ id: pushSubscriptions.id })
@@ -52,7 +72,12 @@ export async function POST(request: Request) {
   if (existing) {
     await db
       .update(pushSubscriptions)
-      .set({ userId, p256dh: keys.p256dh, auth: keys.auth, userAgent })
+      .set({
+        userId,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        createdAt: new Date(),
+      })
       .where(eq(pushSubscriptions.endpoint, endpoint));
   } else {
     await db.insert(pushSubscriptions).values({
@@ -60,9 +85,10 @@ export async function POST(request: Request) {
       endpoint,
       p256dh: keys.p256dh,
       auth: keys.auth,
-      userAgent,
     });
   }
+
+  await enforceSubscriptionLimit(userId);
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }

@@ -46,6 +46,20 @@ self.addEventListener("activate", (event) => {
 
 // ── Push Notifications ──────────────────────────────────
 
+function notifyCibaClients(type, authReqId, extra) {
+  return self.clients.matchAll({ type: "window" }).then((clients) => {
+    for (const client of clients) {
+      const pathname = new URL(client.url).pathname;
+      if (
+        pathname.startsWith("/dashboard/ciba") ||
+        pathname.startsWith("/approve/")
+      ) {
+        client.postMessage({ type, authReqId, ...extra });
+      }
+    }
+  });
+}
+
 self.addEventListener("push", (event) => {
   if (!event.data) return;
 
@@ -73,7 +87,11 @@ self.addEventListener("push", (event) => {
     actions,
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration
+      .showNotification(title, options)
+      .then(() => notifyCibaClients("ciba:new-request", authReqId))
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -108,6 +126,23 @@ self.addEventListener("notificationclick", (event) => {
           if (!res.ok) {
             return self.clients.openWindow(approvalUrl);
           }
+          // Show confirmation (replaces original via same tag)
+          return self.registration
+            .showNotification(
+              action === "approve" ? "Request Approved" : "Request Denied",
+              {
+                body:
+                  action === "approve"
+                    ? "Authorization granted successfully."
+                    : "Authorization denied.",
+                icon: "/images/logo/icon-192.png",
+                tag: `ciba-${authReqId}`,
+                requireInteraction: false,
+              }
+            )
+            .then(() =>
+              notifyCibaClients("ciba:status-changed", authReqId, { action })
+            );
         })
         .catch(() => self.clients.openWindow(approvalUrl))
     );

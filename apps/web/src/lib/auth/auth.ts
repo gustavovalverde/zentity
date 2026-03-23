@@ -1069,6 +1069,14 @@ export const auth = betterAuth({
   secret: env.BETTER_AUTH_SECRET,
   baseURL: authIssuer,
   trustedOrigins: getTrustedOrigins(),
+  advanced: {
+    // Allow service worker notification-click fetches (origin: null) for inline
+    // approve/deny. Session cookie validation still runs via CIBA sessionMiddleware.
+    disableOriginCheck: [
+      "/ciba/authorize",
+      "/ciba/reject",
+    ] as unknown as boolean,
+  },
   rateLimit:
     isOidcE2e || process.env.NODE_ENV === "test"
       ? { enabled: false }

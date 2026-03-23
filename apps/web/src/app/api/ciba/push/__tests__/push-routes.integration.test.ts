@@ -157,6 +157,50 @@ describe("POST /api/ciba/push/subscribe", () => {
       .where(eq(pushSubscriptions.userId, userA));
     expect(rowsForA).toHaveLength(0);
   });
+
+  it("enforces the device cap when a transferred endpoint is reassigned", async () => {
+    const userA = await createTestUser({ email: "user-a@test.com" });
+    const userB = await createTestUser({ email: "user-b@test.com" });
+    const now = Date.now();
+
+    await db.insert(pushSubscriptions).values({
+      userId: userA,
+      endpoint: validSubscription.endpoint,
+      p256dh: validSubscription.keys.p256dh,
+      auth: validSubscription.keys.auth,
+      createdAt: new Date(now),
+    });
+
+    await db.insert(pushSubscriptions).values(
+      Array.from({ length: 5 }, (_, index) => ({
+        userId: userB,
+        endpoint: `https://fcm.googleapis.com/fcm/send/user-b-${index}`,
+        p256dh: `user-b-p256dh-${index}`,
+        auth: `user-b-auth-${index}`,
+        createdAt: new Date(now - (index + 1) * 1000),
+      }))
+    );
+
+    mockSession(userB);
+    const res = await subscribe(makeSubscribeRequest(validSubscription));
+    expect(res.status).toBe(201);
+
+    const transferred = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, validSubscription.endpoint));
+    expect(transferred).toHaveLength(1);
+    expect(transferred[0]?.userId).toBe(userB);
+
+    const rowsForB = await db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.userId, userB));
+    expect(rowsForB).toHaveLength(5);
+    expect(
+      rowsForB.some((row) => row.endpoint === validSubscription.endpoint)
+    ).toBe(true);
+  });
 });
 
 describe("POST /api/ciba/push/unsubscribe", () => {

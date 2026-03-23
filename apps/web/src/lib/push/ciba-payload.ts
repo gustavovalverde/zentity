@@ -1,5 +1,20 @@
 import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
 
+const MAX_BINDING_MESSAGE_LENGTH = 128;
+
+function sanitizeBindingMessage(
+  message: string | undefined
+): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+  const trimmed = message.trim();
+  if (trimmed.length <= MAX_BINDING_MESSAGE_LENGTH) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, MAX_BINDING_MESSAGE_LENGTH - 1)}\u2026`;
+}
+
 interface CibaNotificationData {
   agentName?: string | undefined;
   authorizationDetails?: unknown;
@@ -52,9 +67,12 @@ export function buildCibaPushPayload(
   const approvalUrl = `${origin}/approve/${encodeURIComponent(data.authReqId)}`;
   const clientLabel = data.clientName ?? "An application";
   const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
+  const safeBindingMessage = requiresVaultUnlock
+    ? undefined
+    : sanitizeBindingMessage(data.bindingMessage);
   const body = buildNotificationBody(
     clientLabel,
-    data.bindingMessage,
+    safeBindingMessage,
     data.authorizationDetails
   );
 

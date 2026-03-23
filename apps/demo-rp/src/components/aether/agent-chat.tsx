@@ -356,7 +356,28 @@ function TypingIndicator() {
   );
 }
 
+function resolveLocalMailpitUrl(appUrl: string): string | null {
+  try {
+    const url = new URL(appUrl);
+    const isLocalHost =
+      url.hostname === "localhost" ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "::1" ||
+      url.hostname === "[::1]";
+
+    if (!isLocalHost) {
+      return null;
+    }
+
+    return `http://${url.hostname === "[::1]" ? "[::1]" : url.hostname}:8025`;
+  } catch {
+    return null;
+  }
+}
+
 function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
+  const localMailpitUrl = resolveLocalMailpitUrl(env.NEXT_PUBLIC_ZENTITY_URL);
+
   return (
     <div className="fade-in animate-in space-y-3 duration-500">
       <div className="max-w-[85%] rounded-xl rounded-bl-sm bg-white/10 px-4 py-3">
@@ -396,9 +417,31 @@ function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
               >
                 Zentity Dashboard
               </a>{" "}
-              or check your email for the approval notification.
+              or check your email for the approval notification. Push alerts are
+              sent by Zentity only to devices where you enabled notifications.
             </p>
           </div>
+          {localMailpitUrl && (
+            <div className="flex items-start gap-2 rounded-md bg-white/5 p-3">
+              <HugeiconsIcon
+                className="mt-0.5 shrink-0 text-white/40"
+                icon={InformationCircleIcon}
+                size={14}
+              />
+              <p className="text-white/50 text-xs leading-relaxed">
+                Local development captures approval emails in{" "}
+                <a
+                  className="text-white/70 underline"
+                  href={localMailpitUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Mailpit
+                </a>{" "}
+                instead of sending them to your real inbox.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

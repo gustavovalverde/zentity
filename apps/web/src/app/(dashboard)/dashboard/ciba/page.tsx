@@ -1,9 +1,10 @@
 import { desc, eq } from "drizzle-orm";
-import { Bot, ShieldCheck } from "lucide-react";
+import { Bot, Mail, ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
 import { PageHeader } from "@/components/layouts/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -12,11 +13,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { env } from "@/env";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
+import { CibaLiveUpdater } from "./_components/live-updater";
 import { PushNotificationBanner } from "./_components/push-banner";
 import { PwaInstallBanner } from "./_components/pwa-install-banner";
 
@@ -39,12 +42,34 @@ function isExpired(expiresAt: Date, status: string): boolean {
   return status === "pending" && expiresAt < new Date();
 }
 
+function resolveLocalMailpitUrl(): string | null {
+  try {
+    const appUrl = new URL(env.NEXT_PUBLIC_APP_URL);
+    const isLocalHost =
+      appUrl.hostname === "localhost" ||
+      appUrl.hostname === "127.0.0.1" ||
+      appUrl.hostname === "::1" ||
+      appUrl.hostname === "[::1]";
+
+    if (!isLocalHost) {
+      return null;
+    }
+
+    return `http://${appUrl.hostname === "[::1]" ? "[::1]" : appUrl.hostname}:8025`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function CibaListPage() {
   const headersObj = await headers();
   const session = await getCachedSession(headersObj);
   if (!session) {
     return null;
   }
+
+  const mailpitUrl =
+    process.env.NODE_ENV === "production" ? null : resolveLocalMailpitUrl();
 
   const requests = await db
     .select({
@@ -70,6 +95,7 @@ export default async function CibaListPage() {
 
   return (
     <div className="space-y-6">
+      <CibaLiveUpdater />
       <PageHeader
         description="Applications requesting access to your account via backchannel authentication (CIBA)."
         title="Agent Requests"
@@ -77,6 +103,26 @@ export default async function CibaListPage() {
 
       <PushNotificationBanner />
       <PwaInstallBanner />
+      {mailpitUrl && (
+        <Alert variant="info">
+          <Mail />
+          <AlertTitle>Local notification behavior</AlertTitle>
+          <AlertDescription>
+            Approval emails are captured in{" "}
+            <a
+              className="underline"
+              href={mailpitUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              Mailpit
+            </a>{" "}
+            during local development instead of being delivered to your real
+            inbox. Push notifications are per-device, so enable them separately
+            anywhere you want approval alerts.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {requests.length === 0 ? (
         <Card>

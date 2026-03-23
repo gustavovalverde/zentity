@@ -225,6 +225,43 @@ export function CibaApproveClient({
       });
   }, [authReqId]);
 
+  // Real-time status updates via service worker push messages
+  useEffect(() => {
+    if (!authReqId || typeof navigator === "undefined") {
+      return;
+    }
+    const sw = navigator.serviceWorker;
+    if (!sw) {
+      return;
+    }
+
+    const reqId = authReqId;
+    function onMessage(event: MessageEvent) {
+      if (
+        event.data?.type === "ciba:status-changed" &&
+        event.data?.authReqId === reqId
+      ) {
+        fetch(`/api/auth/ciba/verify?auth_req_id=${encodeURIComponent(reqId)}`)
+          .then(async (res) => {
+            if (!res.ok) {
+              return;
+            }
+            const data = (await res.json()) as CibaRequestDetails;
+            setDetails(data);
+            if (data.status === "approved") {
+              setState("approved");
+            } else if (data.status === "rejected") {
+              setState("rejected");
+            }
+          })
+          .catch(() => undefined);
+      }
+    }
+
+    sw.addEventListener("message", onMessage);
+    return () => sw.removeEventListener("message", onMessage);
+  }, [authReqId]);
+
   useEffect(() => {
     if (state !== "ready" || timeLeft <= 0) {
       return;
