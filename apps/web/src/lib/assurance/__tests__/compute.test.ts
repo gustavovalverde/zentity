@@ -141,7 +141,7 @@ describe("computeAssuranceState", () => {
       expect(state.details.hasIncompleteProofs).toBe(true);
     });
 
-    it("stays at Tier 1 when missing FHE", () => {
+    it("stays at Tier 1 when only FHE is still pending", () => {
       const state = computeAssuranceState({
         hasSession: true,
         loginMethod: "passkey",
@@ -156,7 +156,7 @@ describe("computeAssuranceState", () => {
       });
 
       expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(true);
+      expect(state.details.hasIncompleteProofs).toBe(false);
     });
 
     it("stays at Tier 1 when missing face match", () => {

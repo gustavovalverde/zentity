@@ -379,6 +379,59 @@ describe("assurance data layer", () => {
       expect(state.authStrength).toBe("strong");
       expect(state.details.hasIncompleteProofs).toBe(false);
     });
+
+    it("keeps FHE-pending users out of the re-verify state once proofs exist", async () => {
+      const userId = await createTestUser();
+      const mockSession = createMockSession(userId, "passkey");
+      await createBundleWithKeys(userId);
+
+      const docId = crypto.randomUUID();
+      await createVerifiedDocument(docId, userId);
+
+      for (const claimType of [
+        "ocr_result",
+        "liveness_score",
+        "face_match_score",
+      ]) {
+        await insertSignedClaim({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId: docId,
+          claimType,
+          claimPayload: JSON.stringify({ data: "test" }),
+          signature: crypto.randomBytes(64).toString("hex"),
+          issuedAt: new Date().toISOString(),
+        });
+      }
+
+      const proofSessionId = await createProofSession(userId, docId);
+      for (const proofType of [
+        "age_verification",
+        "doc_validity",
+        "nationality_membership",
+        "face_match",
+        "identity_binding",
+      ]) {
+        await insertZkProofRecord({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId: docId,
+          proofSessionId,
+          proofType,
+          proofHash: crypto.randomBytes(32).toString("hex"),
+          proofPayload: crypto.randomBytes(256).toString("hex"),
+          policyVersion: POLICY_VERSION,
+          verified: true,
+        });
+      }
+
+      const state = await getAssuranceState(userId, mockSession);
+
+      expect(state.tier).toBe(1);
+      expect(state.details.zkProofsComplete).toBe(true);
+      expect(state.details.fheComplete).toBe(false);
+      expect(state.details.hasIncompleteProofs).toBe(false);
+    });
   });
 });
 

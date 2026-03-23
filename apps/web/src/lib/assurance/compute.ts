@@ -110,8 +110,9 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     documentVerified && livenessVerified && faceMatchVerified;
   const proofsComplete = zkProofsComplete && fheComplete;
 
-  // Detect incomplete proofs: identity done but proofs missing
-  const hasIncompleteProofs = identityComplete && !proofsComplete;
+  // "Incomplete proofs" specifically means the ZK proof set is missing.
+  // FHE completion is tracked separately via `fheComplete`.
+  const hasIncompleteProofs = identityComplete && !zkProofsComplete;
 
   // Compute tier
   let tier: AccountTier = 0;

@@ -44,6 +44,8 @@ import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.js
 import identityBindingCircuit from "@/noir-circuits/identity_binding/artifacts/identity_binding.json";
 import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
 
+import { rewriteWorkerFetchInput } from "./worker-fetch";
+
 const ENABLE_WORKER_LOGS =
   process.env.NEXT_PUBLIC_NOIR_DEBUG === "true" &&
   (process.env.NODE_ENV === "development" ||
@@ -154,26 +156,8 @@ function setFetchOrigin(origin: string | null) {
   fetchOrigin = origin;
 
   const originalFetchBound = originalFetch.bind(globalThis);
-  const CRS_CDN = "https://crs.aztec.network/";
   const wrappedFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-    // Serve CRS from pre-warmed local files instead of CDN
-    if (typeof input === "string" && input.startsWith(CRS_CDN)) {
-      return originalFetchBound(
-        `${origin}/api/bb-crs/${input.slice(CRS_CDN.length)}`,
-        init
-      );
-    }
-    // Fix absolute paths for blob: URL workers
-    if (typeof input === "string" && input.startsWith("/")) {
-      return originalFetchBound(`${origin}${input}`, init);
-    }
-    if (input instanceof URL && input.pathname.startsWith("/")) {
-      return originalFetchBound(
-        new URL(`${origin}${input.pathname}${input.search}`),
-        init
-      );
-    }
-    return originalFetchBound(input, init);
+    return originalFetchBound(rewriteWorkerFetchInput(input, origin), init);
   }) as typeof fetch;
 
   // Copy any non-standard fetch properties (e.g., Bun's preconnect)

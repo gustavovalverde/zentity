@@ -14,6 +14,7 @@ import { ISSUER_ID, POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
+  dedupKeyExistsForOtherUser,
   deleteIdentityDraft,
   getIdentityBundleByUserId,
   getIdentityDraftById,
@@ -132,6 +133,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
       const startTime = Date.now();
       const issues: string[] = [];
+      const finishedAt = new Date().toISOString();
 
       try {
         const draft = await getIdentityDraftById(job.draftId);
@@ -183,6 +185,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         const verificationRecord = await getVerificationById(verificationId);
 
         const documentHash = verificationRecord?.documentHash ?? null;
+        const dedupKey = verificationRecord?.dedupKey ?? null;
 
         if (!documentHashField && documentHash) {
           try {
@@ -198,6 +201,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         }
 
         const issuedAt = new Date().toISOString();
+        let ocrClaimSigned = false;
         if (documentProcessed && documentHash && documentHashField) {
           try {
             const claimHashes = {
@@ -232,6 +236,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: ocrSignature,
               issuedAt,
             });
+            ocrClaimSigned = true;
           } catch (error) {
             logger.error(
               { error: String(error), jobId, userId: job.userId },
@@ -241,6 +246,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           }
         }
 
+        let livenessClaimSigned = false;
         if (
           typeof draft.antispoofScore === "number" &&
           typeof draft.liveScore === "number"
@@ -279,6 +285,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: livenessSignature,
               issuedAt,
             });
+            livenessClaimSigned = true;
           } catch (error) {
             logger.error(
               { error: String(error), jobId, userId: job.userId },
@@ -288,6 +295,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           }
         }
 
+        let faceMatchClaimSigned = false;
         if (
           typeof draft.faceMatchConfidence === "number" &&
           documentHashField
@@ -333,6 +341,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               signature: faceMatchSignature,
               issuedAt,
             });
+            faceMatchClaimSigned = true;
           } catch (error) {
             logger.error(
               {
@@ -358,12 +367,73 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           issues.push("fhe_key_missing");
         }
 
+        const duplicateDocumentDetected =
+          isDuplicateDocument ||
+          (dedupKey
+            ? await dedupKeyExistsForOtherUser(dedupKey, job.userId)
+            : false);
+
+        if (duplicateDocumentDetected && !isDuplicateDocument) {
+          issues.push("duplicate_document");
+        }
+
         const verified =
           documentProcessed &&
           isDocumentValid &&
           livenessPassed &&
           faceMatchPassed &&
-          !isDuplicateDocument;
+          !duplicateDocumentDetected;
+
+        const missingProofPrerequisites: string[] = [];
+        if (verified) {
+          if (!documentHash) {
+            missingProofPrerequisites.push("document_hash_missing");
+          }
+          if (!documentHashField) {
+            missingProofPrerequisites.push("document_hash_field_missing");
+          }
+          if (!ocrClaimSigned) {
+            missingProofPrerequisites.push("signed_ocr_claim_missing");
+          }
+          if (!livenessClaimSigned) {
+            missingProofPrerequisites.push("signed_liveness_claim_missing");
+          }
+          if (!faceMatchClaimSigned) {
+            missingProofPrerequisites.push("signed_face_match_claim_missing");
+          }
+        }
+
+        if (missingProofPrerequisites.length > 0) {
+          const errorMessage = missingProofPrerequisites.some((issue) =>
+            issue.startsWith("document_hash")
+          )
+            ? "Verification finalization is missing the document commitment required for privacy proofs. Please retry the document step."
+            : "Verification finalization did not produce the signed claims required for privacy proofs. Please retry verification.";
+
+          logger.error(
+            {
+              jobId,
+              userId: job.userId,
+              verificationId,
+              missingProofPrerequisites,
+              issues,
+            },
+            "Finalize job completed without mandatory proof prerequisites"
+          );
+
+          await updateIdentityVerificationJobStatus({
+            jobId,
+            status: "error",
+            error: errorMessage,
+            finishedAt,
+          });
+          span.setAttribute("identity.job_error", true);
+          span.setAttribute(
+            "identity.missing_proof_prerequisites",
+            missingProofPrerequisites.join(",")
+          );
+          return;
+        }
 
         const bundleStatus = ((): "pending" | "verified" | "failed" => {
           if (verified) {
@@ -398,7 +468,9 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               userId: job.userId,
               method: "ocr",
               status: verified ? "verified" : "failed",
-              documentHash: isDuplicateDocument ? null : (documentHash ?? null),
+              documentHash: duplicateDocumentDetected
+                ? null
+                : (documentHash ?? null),
               livenessScore: draft.antispoofScore ?? null,
               verifiedAt: verified ? new Date().toISOString() : null,
             });
@@ -439,7 +511,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             isDocumentValid,
             livenessPassed,
             faceMatched: faceMatchPassed,
-            isDuplicateDocument,
+            isDuplicateDocument: duplicateDocumentDetected,
             ageProofGenerated: false,
             docValidityProofGenerated: false,
             nationalityCommitmentGenerated: Boolean(draft.nationalityClaimHash),
@@ -456,7 +528,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           jobId,
           status: "complete",
           result: JSON.stringify(resultPayload),
-          finishedAt: new Date().toISOString(),
+          finishedAt,
         });
 
         span.setAttribute("identity.verified", verified);
@@ -469,7 +541,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           jobId,
           status: "error",
           error: "Verification processing failed",
-          finishedAt: new Date().toISOString(),
+          finishedAt,
         });
         span.setAttribute("identity.job_error", true);
       }

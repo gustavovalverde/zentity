@@ -70,6 +70,7 @@ export interface VerificationDetails {
   documentVerified: boolean;
   faceMatchVerified: boolean;
   fheComplete: boolean;
+  /** True when identity checks passed but the ZK proof set is still incomplete. */
   hasIncompleteProofs: boolean;
   hasSecuredKeys: boolean;
   isAuthenticated: boolean;

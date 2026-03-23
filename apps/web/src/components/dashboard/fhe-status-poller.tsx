@@ -6,11 +6,8 @@ import { useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc/client";
 
 /**
- * FHE Status Poller
- *
- * Polls for FHE completion when ZK proofs are done but FHE is still pending.
- * Uses exponential backoff to reduce server load: 2s, 3s, 4.5s, 6.75s, 8s (capped).
- * Triggers a router refresh when FHE completes to update the tier display.
+ * Poll for FHE completion after proofs are already stored.
+ * Refreshes the current route once the assurance profile reports completion.
  */
 export function FheStatusPoller() {
   const router = useRouter();
@@ -19,12 +16,11 @@ export function FheStatusPoller() {
 
   useEffect(() => {
     const maxAttempts = 20;
-    const baseInterval = 2000; // Start at 2s
-    const maxInterval = 8000; // Cap at 8s
+    const baseInterval = 2000;
+    const maxInterval = 8000;
     const backoffFactor = 1.5;
 
     const scheduleNextPoll = () => {
-      // Exponential backoff: baseInterval * (factor ^ attempt), capped at maxInterval
       const interval = Math.min(
         baseInterval * backoffFactor ** attemptRef.current,
         maxInterval
@@ -44,7 +40,7 @@ export function FheStatusPoller() {
           return;
         }
       } catch {
-        // Ignore errors, will retry with backoff
+        // Ignore transient errors and keep polling.
       }
 
       attemptRef.current++;
@@ -53,7 +49,6 @@ export function FheStatusPoller() {
       }
     };
 
-    // Initial poll immediately
     poll();
 
     return () => {

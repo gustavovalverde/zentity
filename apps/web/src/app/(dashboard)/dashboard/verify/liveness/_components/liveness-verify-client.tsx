@@ -19,11 +19,22 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { FaceVerificationCard } from "@/components/verification/face-verification-card";
+import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
-import { buildEnrollmentCredential } from "@/lib/privacy/credentials/build-enrollment-credential";
-import { getCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
-import { getBindingContext } from "@/lib/privacy/zk/binding-context";
+import {
+  buildProfileSecretDataFromOcrSnapshot,
+  storeProfileSecretWithMaterial,
+} from "@/lib/identity/verification/profile-vault";
+import {
+  getCachedBindingMaterial,
+  setCachedBindingMaterial,
+} from "@/lib/privacy/credentials/cache";
+import {
+  acquirePasskeyMaterial,
+  detectAuthMode,
+  getBindingContext,
+} from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 
@@ -51,6 +62,49 @@ async function waitForLivenessWrite(
   return trpc.identity.livenessStatus.mutate({ draftId });
 }
 
+function getLivenessIssueMessage(issue: string): string {
+  const issueMessages: Record<string, string> = {
+    draft_not_found:
+      "This verification session is no longer active. Refresh and restart from the verification page.",
+    liveness_not_completed: "Liveness verification not recorded",
+    face_match_not_completed: "Face matching not recorded",
+  };
+
+  return issueMessages[issue] || issue;
+}
+
+function getFinalizeFailureMessage(jobStatus: {
+  error?: string;
+  result?: {
+    issues?: string[];
+    verified?: boolean;
+  } | null;
+}): string | null {
+  if (jobStatus.error) {
+    return jobStatus.error;
+  }
+
+  const issues = jobStatus.result?.issues ?? [];
+  if (issues.includes("document_hash_field_failed")) {
+    return "Verification finalization could not prepare the document commitment required for privacy proofs. Retry the document step.";
+  }
+  if (
+    issues.includes("signed_ocr_claim_failed") ||
+    issues.includes("signed_face_match_claim_failed") ||
+    issues.includes("signed_liveness_claim_failed")
+  ) {
+    return "Verification finalization could not prepare the signed claims required for privacy proofs. Please retry verification.";
+  }
+  if (issues.length > 0) {
+    return issues.map(getLivenessIssueMessage).join(", ");
+  }
+  if (jobStatus.result?.verified === false) {
+    return "Verification finalization did not complete successfully. Please retry.";
+  }
+
+  return null;
+}
+
 interface LivenessVerifyClientProps {
   wallet: { address: string; chainId: number } | null;
 }
@@ -71,60 +125,73 @@ export function LivenessVerifyClient({
   const [retryCount, setRetryCount] = useState(0);
   const livenessKey = `${baseId}-${retryCount}`;
 
-  // Binding auth dialog state
-  const [bindingAuthOpen, setBindingAuthOpen] = useState(false);
-  const [bindingAuthMode, setBindingAuthMode] = useState<"opaque" | "wallet">(
-    "opaque"
-  );
+  const {
+    bindingAuthMode,
+    bindingAuthOpen,
+    requestBindingAuth,
+    setBindingAuthOpen,
+  } = useVerificationBindingAuth();
   // Ref to hold the verificationId while dialog is open (avoids stale closure)
   const pendingVerificationIdRef = useRef<string | null>(null);
 
   const userId = session?.user?.id;
   const draftId = store.draftId;
 
+  const persistProfileSecret = useCallback(async (): Promise<
+    "stored" | "pending"
+  > => {
+    if (!userId) {
+      throw new Error("Session expired. Please sign in again.");
+    }
+
+    let cachedBindingMaterial = getCachedBindingMaterial();
+    if (!cachedBindingMaterial) {
+      const authModeInfo = await detectAuthMode();
+      if (!authModeInfo) {
+        throw new Error(
+          "No credential is available to encrypt your identity data."
+        );
+      }
+
+      if (authModeInfo.mode === "passkey" && authModeInfo.passkeyCreds) {
+        const material = await acquirePasskeyMaterial(
+          authModeInfo.passkeyCreds
+        );
+        if (!material) {
+          throw new Error(
+            "Passkey confirmation was cancelled before your identity data could be saved."
+          );
+        }
+
+        setCachedBindingMaterial(material);
+        cachedBindingMaterial = material;
+      } else {
+        requestBindingAuth(authModeInfo.mode as "opaque" | "wallet");
+        return "pending";
+      }
+    }
+
+    const outcome = await storeProfileSecretWithMaterial({
+      cachedBindingMaterial,
+      profileData: buildProfileSecretDataFromOcrSnapshot(getStoreState()),
+      userId,
+      wallet,
+    });
+
+    if (outcome !== "stored") {
+      throw new Error(
+        "The credential required to encrypt your identity data is unavailable."
+      );
+    }
+
+    return "stored";
+  }, [requestBindingAuth, userId, wallet]);
+
   /**
    * Execute proof generation with a resolved binding context.
    */
   const runProofGeneration = useCallback(
     async (verificationId: string, bindingContext: BindingContext) => {
-      // Store profile secret before generating proofs
-      const cached = getCachedBindingMaterial();
-      if (cached && userId) {
-        const credential = buildEnrollmentCredential(cached, userId, wallet);
-        if (credential) {
-          const storeSnapshot = getStoreState();
-          try {
-            const { storeProfileSecret } = await import(
-              "@/lib/privacy/secrets/profile"
-            );
-            await storeProfileSecret({
-              extractedData: {
-                extractedFullName: storeSnapshot.extractedName,
-                extractedFirstName: storeSnapshot.extractedFirstName,
-                extractedLastName: storeSnapshot.extractedLastName,
-                extractedDOB: storeSnapshot.extractedDOB,
-                extractedDocumentNumber: storeSnapshot.extractedDocNumber,
-                extractedNationality: storeSnapshot.extractedNationality,
-                extractedNationalityCode:
-                  storeSnapshot.extractedNationalityCode,
-                extractedExpirationDate: storeSnapshot.extractedExpirationDate
-                  ? Number.parseInt(
-                      storeSnapshot.extractedExpirationDate,
-                      10
-                    ) || null
-                  : null,
-                userSalt: storeSnapshot.userSalt,
-              },
-              credential,
-            });
-          } catch {
-            toast.warning(
-              "Identity data could not be saved to your vault. You may need to re-verify to share identity details with applications."
-            );
-          }
-        }
-      }
-
       toast.info("Generating privacy proofs...", {
         description: "This takes up to 30 seconds. Please keep this page open.",
       });
@@ -146,10 +213,10 @@ export function LivenessVerifyClient({
       // Privacy hardening: purge transient PII once proofs are generated.
       getStoreState().reset();
 
-      router.push("/dashboard/verify");
+      router.push("/dashboard");
       router.refresh();
     },
-    [router, userId, wallet]
+    [router]
   );
 
   /**
@@ -172,8 +239,7 @@ export function LivenessVerifyClient({
         ) {
           // Pause: show re-auth dialog, resume on success
           pendingVerificationIdRef.current = verificationId;
-          setBindingAuthMode(bindingResult.authMode);
-          setBindingAuthOpen(true);
+          requestBindingAuth(bindingResult.authMode);
           return;
         }
         // Unrecoverable — no wrappers, passkey cancelled, or error
@@ -182,7 +248,7 @@ export function LivenessVerifyClient({
 
       await runProofGeneration(verificationId, bindingResult.context);
     },
-    [userId, runProofGeneration]
+    [requestBindingAuth, userId, runProofGeneration]
   );
 
   /**
@@ -197,6 +263,7 @@ export function LivenessVerifyClient({
     }
 
     try {
+      await persistProfileSecret();
       const bindingResult = await getBindingContext(userId, verificationId);
       if (!bindingResult.success) {
         throw new Error(bindingResult.message);
@@ -211,7 +278,7 @@ export function LivenessVerifyClient({
       pendingVerificationIdRef.current = null;
       setIsSubmitting(false);
     }
-  }, [userId, runProofGeneration]);
+  }, [userId, persistProfileSecret, runProofGeneration, setBindingAuthOpen]);
 
   const handleVerified = useCallback(
     async ({
@@ -312,12 +379,8 @@ export function LivenessVerifyClient({
       // Step 1: Verify liveness results persisted
       const status = await waitForLivenessWrite(draftId);
       if (!status.success) {
-        const issueMessages: Record<string, string> = {
-          liveness_not_completed: "Liveness verification not recorded",
-          face_match_not_completed: "Face matching not recorded",
-        };
         const message =
-          status.issues.map((i) => issueMessages[i] || i).join(", ") ||
+          status.issues.map(getLivenessIssueMessage).join(", ") ||
           "Verification incomplete";
         throw new Error(message);
       }
@@ -330,6 +393,10 @@ export function LivenessVerifyClient({
       for (let attempts = 0; attempts < 30; attempts++) {
         const jobStatus = await trpc.identity.finalizeStatus.query({ jobId });
         if (jobStatus.status === "complete") {
+          const finalizeFailure = getFinalizeFailureMessage(jobStatus);
+          if (finalizeFailure) {
+            throw new Error(finalizeFailure);
+          }
           verificationId = jobStatus.result?.verificationId ?? null;
           break;
         }
@@ -344,6 +411,12 @@ export function LivenessVerifyClient({
       }
 
       getStoreState().set({ verificationId });
+
+      const profileSecretOutcome = await persistProfileSecret();
+      if (profileSecretOutcome === "pending") {
+        pendingVerificationIdRef.current = verificationId;
+        return;
+      }
 
       // Step 4: Get binding context and generate proofs
       // If cache is expired, this opens the re-auth dialog and returns early.
@@ -362,7 +435,12 @@ export function LivenessVerifyClient({
       });
       setIsSubmitting(false);
     }
-  }, [livenessCompleted, draftId, generateProofsWithBinding]);
+  }, [
+    livenessCompleted,
+    draftId,
+    generateProofsWithBinding,
+    persistProfileSecret,
+  ]);
 
   const isReadyToComplete = livenessCompleted && faceMatchStatus === "matched";
 

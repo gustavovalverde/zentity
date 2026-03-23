@@ -9,8 +9,12 @@ import { toast } from "sonner";
 
 import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { env } from "@/env";
+import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
 import { useSession } from "@/lib/auth/auth-client";
-import { buildEnrollmentCredential } from "@/lib/privacy/credentials/build-enrollment-credential";
+import {
+  buildProfileSecretDataFromPassportDisclosure,
+  storeProfileSecretWithMaterial,
+} from "@/lib/identity/verification/profile-vault";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,
@@ -77,10 +81,12 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
 
   // Vault storage state
   const disclosedRef = useRef<DisclosedData | null>(null);
-  const [bindingAuthOpen, setBindingAuthOpen] = useState(false);
-  const [bindingAuthMode, setBindingAuthMode] = useState<"opaque" | "wallet">(
-    "opaque"
-  );
+  const {
+    bindingAuthMode,
+    bindingAuthOpen,
+    requestBindingAuth,
+    setBindingAuthOpen,
+  } = useVerificationBindingAuth();
 
   const requestVaultRetry = useCallback(
     (disclosed: DisclosedData, message: string) => {
@@ -94,30 +100,31 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   const persistProfileSecret = useCallback(
     async (
       disclosed: DisclosedData,
-      credential: ReturnType<typeof buildEnrollmentCredential>
+      cachedBindingMaterial: Parameters<
+        typeof storeProfileSecretWithMaterial
+      >[0]["cachedBindingMaterial"]
     ) => {
-      if (!credential) {
+      const userId = session?.user?.id;
+      if (!userId) {
         throw new Error(
           "The credential required to encrypt your identity data is unavailable."
         );
       }
 
-      const { storeProfileSecret } = await import(
-        "@/lib/privacy/secrets/profile"
-      );
-      await storeProfileSecret({
-        extractedData: {
-          extractedFullName: disclosed.fullName,
-          extractedDOB: disclosed.dateOfBirth,
-          extractedNationality: disclosed.nationality,
-          extractedNationalityCode: disclosed.nationalityCode,
-          extractedDocumentType: disclosed.documentType,
-          extractedDocumentOrigin: disclosed.issuingCountry,
-        },
-        credential,
+      const outcome = await storeProfileSecretWithMaterial({
+        cachedBindingMaterial,
+        profileData: buildProfileSecretDataFromPassportDisclosure(disclosed),
+        userId,
+        wallet,
       });
+
+      if (outcome !== "stored") {
+        throw new Error(
+          "The credential required to encrypt your identity data is unavailable."
+        );
+      }
     },
-    []
+    [session, wallet]
   );
 
   /**
@@ -165,8 +172,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
         } else {
           // OPAQUE or wallet — need dialog for re-auth
           disclosedRef.current = disclosed;
-          setBindingAuthMode(authModeInfo.mode as "opaque" | "wallet");
-          setBindingAuthOpen(true);
+          requestBindingAuth(authModeInfo.mode as "opaque" | "wallet");
           return "pending";
         }
       }
@@ -180,10 +186,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       }
 
       try {
-        await persistProfileSecret(
-          disclosed,
-          buildEnrollmentCredential(cached, userId, wallet)
-        );
+        await persistProfileSecret(disclosed, cached);
         disclosedRef.current = null;
       } catch (error) {
         console.error("[passport-chip] Profile secret storage failed:", error);
@@ -195,7 +198,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       }
       return "stored";
     },
-    [persistProfileSecret, requestVaultRetry, session, wallet]
+    [persistProfileSecret, requestBindingAuth, requestVaultRetry, session]
   );
 
   /**
@@ -210,10 +213,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       const cached = getCachedBindingMaterial();
       if (cached) {
         try {
-          await persistProfileSecret(
-            disclosed,
-            buildEnrollmentCredential(cached, userId, wallet)
-          );
+          await persistProfileSecret(disclosed, cached);
           disclosedRef.current = null;
           vaultSkippedRef.current = false;
           setStage("finalizing");
@@ -234,7 +234,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     }
 
     setStage("vault_pending");
-  }, [persistProfileSecret, requestVaultRetry, session, wallet]);
+  }, [persistProfileSecret, requestVaultRetry, session, setBindingAuthOpen]);
 
   /**
    * If user closes the dialog without authenticating, show vault_pending
@@ -249,7 +249,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
         }
       }
     },
-    [stage]
+    [stage, setBindingAuthOpen]
   );
 
   const handleRetryVault = useCallback(() => {
@@ -268,7 +268,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
     setBindingAuthOpen(false);
     disclosedRef.current = null;
     setStage("finalizing");
-  }, []);
+  }, [setBindingAuthOpen]);
 
   const submitResult = trpcReact.passportChip.submitResult.useMutation({
     onSuccess: (data) => {
@@ -470,7 +470,7 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
       );
       setStage("error");
     }
-  }, [submitResult]);
+  }, [submitResult, setBindingAuthOpen]);
 
   // Auto-start on mount — prerequisites are shown on the verify page
   useEffect(() => {

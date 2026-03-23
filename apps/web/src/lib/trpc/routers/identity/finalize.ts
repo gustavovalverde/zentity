@@ -139,9 +139,7 @@ export const finalizeStatusProcedure = protectedProcedure
       jobId: job.id,
       status: job.status,
       result,
-      error: job.error
-        ? "Verification processing failed. Please try again."
-        : undefined,
+      error: job.error ?? undefined,
       startedAt: job.startedAt ?? undefined,
       finishedAt: job.finishedAt ?? undefined,
     };

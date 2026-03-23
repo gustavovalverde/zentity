@@ -78,6 +78,20 @@ const STAGE_LABELS: Record<EnrollmentStage, string> = {
 
 const KEK_SIGNATURE_VALIDITY_DAYS = 365;
 
+function formatEnrollmentError(message: string): string {
+  const lowerMessage = message.toLowerCase();
+  if (
+    lowerMessage === "failed to fetch" ||
+    lowerMessage.includes("zk proof generation timed out") ||
+    lowerMessage.includes("failed to load noir wasm") ||
+    lowerMessage.includes("failed to compile bb wasm")
+  ) {
+    return "Could not load the local verification assets needed to set up encryption keys. Refresh the page and try again.";
+  }
+
+  return message;
+}
+
 interface FheEnrollmentDialogProps {
   hasPasskeys: boolean;
   hasPassword: boolean;
@@ -761,7 +775,7 @@ export function FheEnrollmentDialog({
         setError(
           isCancelled
             ? "Key setup was cancelled. Try again when ready."
-            : message
+            : formatEnrollmentError(message)
         );
         setStage("idle");
       }

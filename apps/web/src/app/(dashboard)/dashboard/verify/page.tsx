@@ -11,6 +11,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
+import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { PageHeader } from "@/components/layouts/page-header";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
 import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getTierProgress } from "@/lib/assurance/features";
@@ -36,7 +38,6 @@ import { cn } from "@/lib/utils/classname";
 import { buildCountryDocumentList } from "@/lib/zkpassport/document-support";
 
 import { FheErrorBanner } from "./_components/fhe-error-banner";
-import { FheStatusPoller } from "./_components/fhe-status-poller";
 import { VerificationMethodCards } from "./_components/verification-method-cards";
 import { VerifyCta } from "./_components/verify-cta";
 
@@ -308,12 +309,7 @@ export default async function VerifyPage() {
             !details.fheComplete && (
               <div className="space-y-3">
                 <FheStatusPoller />
-                <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 p-3 text-blue-700 dark:text-blue-400">
-                  <Scan className="h-5 w-5 animate-pulse" />
-                  <span className="text-sm">
-                    Proofs generated. Finalizing encryption in the background...
-                  </span>
-                </div>
+                <VerificationFinalizationNotice />
                 <p className="text-muted-foreground text-sm">
                   Your verification proofs have been created. We&apos;re
                   encrypting the remaining data in the background. This page

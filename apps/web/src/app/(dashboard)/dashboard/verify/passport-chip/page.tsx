@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/layouts/page-header";
+import { VerificationJourneyCard } from "@/components/verification/verification-journey-card";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
@@ -49,6 +50,7 @@ export default async function PassportChipPage() {
         description="Verify your document's NFC chip for the highest level of identity assurance."
         title="NFC Chip Verification"
       />
+      <VerificationJourneyCard method="nfc_chip" />
       <ZkPassportFlow wallet={wallet} />
     </div>
   );

@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { db } from "@/lib/db/connection";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
@@ -10,6 +12,7 @@ import {
   updateIdentityBundleStatus,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
+import { identityVerifications } from "@/lib/db/schema/identity";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 describe("identity queries", () => {
@@ -85,5 +88,41 @@ describe("identity queries", () => {
     await expect(
       dedupKeyExistsForOtherUser("dedup-latest", otherUser)
     ).resolves.toBe(true);
+  });
+
+  it("allows same-user re-verification with the same dedup key", async () => {
+    const userId = await createTestUser();
+    const originalId = crypto.randomUUID();
+    const reverifyId = crypto.randomUUID();
+
+    await createVerification({
+      id: originalId,
+      userId,
+      method: "ocr",
+      documentHash: "hash-original",
+      dedupKey: "dedup-repeat",
+      status: "verified",
+      verifiedAt: "2025-01-01T00:00:00Z",
+    });
+
+    await createVerification({
+      id: reverifyId,
+      userId,
+      method: "ocr",
+      documentHash: "hash-reverify",
+      dedupKey: "dedup-repeat",
+      status: "pending",
+    });
+
+    const rows = await db
+      .select()
+      .from(identityVerifications)
+      .where(eq(identityVerifications.userId, userId))
+      .all();
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.id)).toEqual(
+      expect.arrayContaining([originalId, reverifyId])
+    );
   });
 });

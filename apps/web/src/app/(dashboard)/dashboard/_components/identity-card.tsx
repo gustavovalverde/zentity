@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
+import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { TransparencySection } from "@/components/dashboard/transparency-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
@@ -59,6 +61,41 @@ export async function IdentityCard({
 
   // Tier 0 or 1: Show CTA or incomplete proofs warning
   if (tier < 2) {
+    if (
+      details?.documentVerified &&
+      details.livenessVerified &&
+      details.faceMatchVerified &&
+      details.zkProofsComplete &&
+      !details.fheComplete
+    ) {
+      return (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Identity Status</CardTitle>
+              {assuranceState && <TierBadge tier={tier} />}
+            </div>
+          </CardHeader>
+          <CardContent className="pt-2">
+            <div className="space-y-4">
+              <FheStatusPoller />
+              <VerificationFinalizationNotice />
+              <p className="text-muted-foreground text-sm">
+                This page will update automatically when encryption finishes.
+                You don&apos;t need to re-verify.
+              </p>
+              <Button asChild className="w-full" variant="outline">
+                <Link href="/dashboard/verify">
+                  View Verification Status
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
     // Check for incomplete proofs (identity done but proofs missing)
     if (details?.hasIncompleteProofs) {
       return (

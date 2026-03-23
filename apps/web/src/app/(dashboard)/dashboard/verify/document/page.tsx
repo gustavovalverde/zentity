@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/layouts/page-header";
+import { VerificationJourneyCard } from "@/components/verification/verification-journey-card";
 import { env } from "@/env";
 import { getAssuranceState } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
@@ -64,6 +65,8 @@ export default async function DocumentVerifyPage() {
         description="Upload a photo (JPEG, PNG, or WebP) of your government-issued ID"
         title="Verify Your Document"
       />
+
+      <VerificationJourneyCard method="ocr" />
 
       <DocumentUploadClient
         demoMode={env.DEMO_MODE === true}

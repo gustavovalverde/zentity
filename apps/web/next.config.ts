@@ -114,6 +114,8 @@ const nextConfig: NextConfig = {
       "https://circuits2.zkpassport.id",
       "https://ipfs.zkpassport.id",
       "https://crs.aztec.network",
+      "https://crs.aztec-cdn.foundation",
+      "https://crs.aztec-labs.com",
       "https://*.g.alchemy.com",
       "https://ethereum-sepolia-rpc.publicnode.com",
     ].join(" ");

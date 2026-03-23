@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import { env } from "@/env";
@@ -13,6 +14,16 @@ import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
 import { protectedProcedure } from "../../server";
+
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if ("code" in error && error.code === "SQLITE_CONSTRAINT_UNIQUE") {
+    return true;
+  }
+  return error.message.includes("UNIQUE constraint failed");
+}
 
 /**
  * Document verification procedure.
@@ -82,14 +93,29 @@ export const prepareDocumentProcedure = protectedProcedure
           birthYearOffset: dobDaysToBirthYearOffset(result.parsedDates.dobDays),
         });
       } catch (error) {
-        logger.debug(
+        logger.error(
           {
             error: String(error),
             userId,
             verificationId: result.verificationId,
+            dedupKey: result.dedupKey,
           },
-          "Verification record already exists or failed to create"
+          "Failed to create verification record for OCR flow"
         );
+
+        if (isUniqueConstraintError(error)) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "This document is already linked to another active verification. Refresh and restart verification.",
+          });
+        }
+
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Could not start verification after processing the document. Please retry the document step.",
+        });
       }
     }
 

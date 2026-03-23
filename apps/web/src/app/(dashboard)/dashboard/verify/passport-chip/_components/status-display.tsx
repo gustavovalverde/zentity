@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Clock, Loader2, Scan, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, ShieldCheck } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
 
 export type FlowStage =
   | "connecting"
@@ -131,14 +132,10 @@ export function StatusDisplay({
 
   if (stage === "finalizing") {
     return (
-      <Alert>
-        <Scan className="h-4 w-4 animate-pulse" />
-        <AlertTitle>Document verified. Finalizing encryption...</AlertTitle>
-        <AlertDescription>
-          Your document has been cryptographically verified. Encryption is being
-          finalized in the background. This page will update automatically.
-        </AlertDescription>
-      </Alert>
+      <VerificationFinalizationNotice
+        description="Your verification checks are complete. Encryption is being finalized in the background. This page will update automatically."
+        title="Finalizing Verification"
+      />
     );
   }
 
@@ -148,7 +145,7 @@ export function StatusDisplay({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
             <ShieldCheck className="h-5 w-5" />
-            Document Verified
+            Verification Complete
           </CardTitle>
           <CardDescription>
             Your document&apos;s NFC chip has been cryptographically verified.
