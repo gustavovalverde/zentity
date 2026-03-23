@@ -75,6 +75,7 @@ import {
 } from "@/lib/auth/oidc/identity-scopes";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt-signing-keys";
 import { OAUTH_SCOPES } from "@/lib/auth/oidc/oauth-scopes";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/opaque-access-token";
 import {
@@ -175,22 +176,6 @@ const betterAuthSchema = {
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
 };
-
-async function getJwtSigningKeys() {
-  // Better Auth's generic JWKS adapter path can drop optional columns like
-  // `alg`/`crv`, which breaks OIDC4VCI when multiple signing key algorithms
-  // share the same table. Read the rows directly from our typed schema instead.
-  const rows = await db.select().from(jwks);
-  return rows.map((row) => ({
-    id: row.id,
-    publicKey: row.publicKey,
-    privateKey: row.privateKey,
-    createdAt: row.createdAt,
-    ...(row.alg ? { alg: row.alg } : {}),
-    ...(row.crv ? { crv: row.crv } : {}),
-    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-  }));
-}
 
 function toScopeList(scopes: unknown): string[] {
   return Array.isArray(scopes) ? [...scopes] : [];
