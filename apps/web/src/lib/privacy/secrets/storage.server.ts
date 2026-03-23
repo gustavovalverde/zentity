@@ -16,8 +16,10 @@ import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+import { env } from "@/env";
+
 const BLOB_REF_PATTERN = /^[a-f0-9]{64}$/;
-const BLOB_DIR = ".data/secret-blobs";
+const BLOB_DIR = env.SECRET_BLOB_DIR;
 const BLOB_MAX_BYTES = 94_371_840; // 90 MiB
 
 export function computeSecretBlobRef(secretId: string): string {

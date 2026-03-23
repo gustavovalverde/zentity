@@ -150,6 +150,7 @@ export const env = createEnv({
     MAIL_FROM_NAME: z.string().default("Zentity"),
 
     // Storage & ZK
+    SECRET_BLOB_DIR: z.string().default(".data/secret-blobs"),
     BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
     ZK_WARMUP_STRICT: booleanStringWithDefault("true"),
 
@@ -251,6 +252,7 @@ export const env = createEnv({
     RESEND_API_KEY: process.env.RESEND_API_KEY,
     MAIL_FROM_EMAIL: process.env.MAIL_FROM_EMAIL,
     MAIL_FROM_NAME: process.env.MAIL_FROM_NAME,
+    SECRET_BLOB_DIR: process.env.SECRET_BLOB_DIR,
     BB_CRS_PATH: process.env.BB_CRS_PATH,
     ZK_WARMUP_STRICT: process.env.ZK_WARMUP_STRICT,
     LOG_LEVEL: process.env.LOG_LEVEL,
