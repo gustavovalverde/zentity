@@ -1,22 +1,18 @@
 /**
  * Tests for the ID token proof-claim projection used by auth.ts.
  *
- * Identity PII is delivered through userinfo, not customIdTokenClaims.
- * These tests verify that the ID token path only emits proof claims.
+ * Identity PII is delivered through userinfo; this suite only verifies
+ * the proof-claim projection that remains eligible for ID tokens.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.resetModules();
 
-const mockGetVerificationStatus = vi.fn();
-const mockGetIdentityBundleByUserId = vi.fn();
-const mockGetLatestIdentityDocumentByUserId = vi.fn();
+const mockGetUnifiedVerificationModel = vi.fn();
 
-vi.doMock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: mockGetVerificationStatus,
-  getIdentityBundleByUserId: mockGetIdentityBundleByUserId,
-  getLatestVerification: mockGetLatestIdentityDocumentByUserId,
+vi.doMock("@/lib/identity/verification/unified-model", () => ({
+  getUnifiedVerificationModel: mockGetUnifiedVerificationModel,
 }));
 
 const { buildProofClaims } = await import("../claims");
@@ -40,33 +36,47 @@ async function simulateIdTokenProofClaims(
 }
 
 function setVerifiedUser() {
-  mockGetVerificationStatus.mockResolvedValue({
-    verified: true,
-    level: "full",
-    numericLevel: 3,
-    birthYearOffset: null,
-    checks: {
-      documentVerified: true,
-      livenessVerified: true,
-      ageVerified: true,
-      nationalityVerified: true,
-      faceMatchVerified: true,
-      identityBound: true,
-      sybilResistant: true,
-    },
-  });
-  mockGetIdentityBundleByUserId.mockResolvedValue({
-    policyVersion: "policy-1",
-    issuerId: "issuer-1",
-    attestationExpiresAt: "2030-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  });
-  mockGetLatestIdentityDocumentByUserId.mockResolvedValue({
+  mockGetUnifiedVerificationModel.mockResolvedValue({
+    method: "ocr",
+    verificationId: "verification-1",
     verifiedAt: "2026-01-02T00:00:00.000Z",
+    issuerCountry: "PT",
+    compliance: {
+      verified: true,
+      level: "full",
+      numericLevel: 3,
+      birthYearOffset: null,
+      checks: {
+        documentVerified: true,
+        livenessVerified: true,
+        ageVerified: true,
+        nationalityVerified: true,
+        faceMatchVerified: true,
+        identityBound: true,
+        sybilResistant: true,
+      },
+    },
+    checks: [],
+    proofs: [],
+    bundle: {
+      policyVersion: "policy-1",
+      issuerId: "issuer-1",
+      attestationExpiresAt: "2030-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    fhe: {
+      complete: true,
+      attributeTypes: [],
+    },
+    vault: {
+      hasProfileSecret: true,
+    },
+    onChainAttested: false,
+    needsDocumentReprocessing: false,
   });
 }
 
-describe("customIdTokenClaims", () => {
+describe("ID token proof claim projection", () => {
   beforeEach(() => {
     setVerifiedUser();
   });

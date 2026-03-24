@@ -1,62 +1,32 @@
-import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-intent";
-
-const TEST_SECRET = "test-secret-at-least-32-characters-long";
 
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
-const insertedJtis = new Set<string>();
-
-vi.mock("drizzle-orm", () => ({
-  eq: (col: string, val: string) => ({ col, val }),
+const { mockStagePendingOauthDisclosure } = vi.hoisted(() => ({
+  mockStagePendingOauthDisclosure: vi.fn(),
 }));
+const { mockComputeOAuthRequestKey, mockVerifySignedOAuthQuery } = vi.hoisted(
+  () => ({
+    mockComputeOAuthRequestKey: vi.fn(),
+    mockVerifySignedOAuthQuery: vi.fn(),
+  })
+);
 
-vi.mock("@/lib/db/connection", () => ({
-  db: {
-    delete: () => ({
-      where: () => ({ run: vi.fn() }),
-      run: vi.fn().mockImplementation(() => {
-        insertedJtis.clear();
-      }),
-    }),
-    select: () => ({
-      from: () => ({
-        where: (condition: unknown) => ({
-          limit: () => ({
-            get: vi.fn().mockImplementation(() => {
-              const queriedJti =
-                condition && typeof condition === "object" && "val" in condition
-                  ? (condition as { val: string }).val
-                  : undefined;
-              if (queriedJti && insertedJtis.has(queriedJti)) {
-                return { jti: queriedJti };
-              }
-              return undefined;
-            }),
-          }),
-        }),
-      }),
-    }),
-    insert: () => ({
-      values: (row: { jti?: string }) => ({
-        onConflictDoNothing: () => ({
-          run: vi.fn().mockImplementation(() => {
-            if (row?.jti) {
-              insertedJtis.add(row.jti);
-            }
-          }),
-        }),
-      }),
-    }),
-  },
+vi.mock("@/lib/auth/oidc/disclosure-context", () => ({
+  stagePendingOauthDisclosure: mockStagePendingOauthDisclosure,
 }));
-
-vi.mock("@/lib/db/schema/crypto", () => ({
-  usedIntentJtis: { jti: "jti", expiresAt: "expiresAt" },
+vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+  computeOAuthRequestKey: mockComputeOAuthRequestKey,
+  parseRequestedScopes: (queryParams: URLSearchParams) =>
+    (queryParams.get("scope") ?? "")
+      .split(" ")
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+  verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
 }));
 
 vi.mock("@/lib/auth/auth", () => ({
@@ -74,12 +44,8 @@ import { requireBrowserSession } from "@/lib/auth/api-auth";
 
 import { POST } from "../route";
 
-async function makeSignedOAuthQuery(params: Record<string, string>) {
-  const query = new URLSearchParams(params);
-  query.set("exp", String(Math.floor(Date.now() / 1000) + 300));
-  const sig = await makeSignature(query.toString(), TEST_SECRET);
-  query.set("sig", sig);
-  return query.toString();
+function makeOAuthQuery(params: Record<string, string>) {
+  return new URLSearchParams(params).toString();
 }
 
 function makeRequest(body: unknown) {
@@ -93,16 +59,20 @@ function makeRequest(body: unknown) {
 describe("oauth2 identity stage route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    insertedJtis.clear();
     vi.mocked(requireBrowserSession).mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);
+    mockStagePendingOauthDisclosure.mockResolvedValue({ ok: true });
+    mockComputeOAuthRequestKey.mockReturnValue("oauth-request-key");
+    mockVerifySignedOAuthQuery.mockImplementation(
+      async (query: string) => new URLSearchParams(query)
+    );
   });
 
   it("requires intent_token when identity scopes are requested", async () => {
     const scopes = ["openid", "identity.name"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const oauthQuery = makeOAuthQuery({
       client_id: "client-1",
       scope: scopes.join(" "),
     });
@@ -123,7 +93,7 @@ describe("oauth2 identity stage route", () => {
 
   it("rejects expired intent tokens", async () => {
     const scopes = ["openid", "identity.name"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const oauthQuery = makeOAuthQuery({
       client_id: "client-1",
       scope: scopes.join(" "),
     });
@@ -152,7 +122,7 @@ describe("oauth2 identity stage route", () => {
   it("rejects scope mismatch between intent token and stage request", async () => {
     const tokenScopes = ["openid", "identity.name"];
     const requestScopes = ["openid", "identity.name", "identity.dob"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const oauthQuery = makeOAuthQuery({
       client_id: "client-1",
       scope: requestScopes.join(" "),
     });
@@ -179,7 +149,7 @@ describe("oauth2 identity stage route", () => {
 
   it("rejects reused intent tokens", async () => {
     const scopes = ["openid", "identity.name"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const oauthQuery = makeOAuthQuery({
       client_id: "client-1",
       scope: scopes.join(" "),
     });
@@ -200,6 +170,10 @@ describe("oauth2 identity stage route", () => {
     expect(first.status).toBe(200);
     await expect(first.json()).resolves.toEqual({ staged: true });
 
+    mockStagePendingOauthDisclosure.mockResolvedValueOnce({
+      ok: false,
+      reason: "intent_reused",
+    });
     const second = await POST(makeRequest(body));
     expect(second.status).toBe(409);
     await expect(second.json()).resolves.toEqual({
@@ -207,9 +181,9 @@ describe("oauth2 identity stage route", () => {
     });
   });
 
-  it("rejects concurrent staged flows for the same user", async () => {
+  it("rejects concurrent stages for the same authorization request", async () => {
     const scopes = ["openid", "identity.name"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const oauthQuery = makeOAuthQuery({
       client_id: "client-1",
       scope: scopes.join(" "),
     });
@@ -234,6 +208,10 @@ describe("oauth2 identity stage route", () => {
     );
     expect(first.status).toBe(200);
 
+    mockStagePendingOauthDisclosure.mockResolvedValueOnce({
+      ok: false,
+      reason: "concurrent_stage",
+    });
     const second = await POST(
       makeRequest({
         oauth_query: oauthQuery,
@@ -244,7 +222,8 @@ describe("oauth2 identity stage route", () => {
     );
     expect(second.status).toBe(409);
     await expect(second.json()).resolves.toEqual({
-      error: "An active identity stage already exists for this user",
+      error:
+        "An active identity stage already exists for this authorization request.",
     });
   });
 });

@@ -165,7 +165,9 @@ const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 const PAR_URI_RE = /^urn:ietf:params:oauth:request_uri:.+/;
 
-async function completeOpaqueFlow(): Promise<{
+async function completeOpaqueFlow(
+  initialRequestOverrides: Record<string, unknown> = {}
+): Promise<{
   authSession: string;
   authorizationCode: string;
 }> {
@@ -177,6 +179,7 @@ async function completeOpaqueFlow(): Promise<{
     code_challenge: CODE_CHALLENGE,
     code_challenge_method: "S256",
     identifier: TEST_EMAIL,
+    ...initialRequestOverrides,
   });
   const authSession = round1.json.auth_session as string;
 
@@ -329,6 +332,33 @@ describe("Authorization Challenge Endpoint", () => {
           auth_session: authSession,
         },
       });
+    });
+
+    it("applies claims.id_token filtering through the full OPAQUE challenge flow", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const { authSession, authorizationCode } = await completeOpaqueFlow({
+        claims: JSON.stringify({
+          id_token: {
+            acr: null,
+          },
+        }),
+      });
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: "authorization_code",
+        client_id: TEST_CLIENT_ID,
+        code: authorizationCode,
+        code_verifier: CODE_VERIFIER,
+      });
+
+      expect(status).toBe(200);
+      expect(json.auth_session).toBe(authSession);
+      expect(json.id_token).toEqual(expect.any(String));
+
+      const claims = decodeJwt(json.id_token as string);
+      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.amr).toBeUndefined();
+      expect(claims.acr_eidas).toBeUndefined();
     });
 
     it("rejects token exchange without code_verifier (PKCE required)", async () => {

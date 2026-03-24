@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  CIBA_EPHEMERAL_TTL_MS,
-  storeEphemeralClaims,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure-context";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
 import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
 import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
@@ -17,11 +14,12 @@ const StageSchema = z.object({
 });
 
 /**
- * POST /api/ciba/identity/stage — Store ephemeral PII for a CIBA request.
+ * POST /api/ciba/identity/stage — Bind a CIBA release context and stage PII.
  *
- * Stores identity claims in the ephemeral in-memory store with a 10-minute
- * TTL. The RP retrieves PII by calling the standard userinfo endpoint with
- * the CIBA access token.
+ * Persists the final non-PII release metadata durably by `auth_req_id` and
+ * stores the plaintext identity payload in the volatile in-memory store with
+ * a 10-minute TTL. The RP retrieves PII by calling the standard userinfo
+ * endpoint with the bound CIBA access token.
  */
 export function POST(request: Request): Promise<Response> {
   return handleIdentityStage(
@@ -54,20 +52,28 @@ export function POST(request: Request): Promise<Response> {
     async ({
       userId,
       filteredIdentity,
-      scopes,
+      identityScopes,
       clientId,
       scopeHash,
       intentJti,
       authReqId,
     }) => {
-      const stored = await storeEphemeralClaims(
+      if (!authReqId) {
+        return NextResponse.json(
+          { error: "Missing auth_req_id disclosure binding" },
+          { status: 400 }
+        );
+      }
+
+      const stored = await stageFinalCibaDisclosure({
         userId,
-        filteredIdentity,
-        scopes,
-        { clientId, scopeHash, intentJti },
-        `ciba:${authReqId}`,
-        CIBA_EPHEMERAL_TTL_MS
-      );
+        clientId,
+        claims: filteredIdentity,
+        releaseId: authReqId,
+        scopes: identityScopes,
+        scopeHash,
+        intentJti,
+      });
 
       if (!stored.ok) {
         if (stored.reason === "intent_reused") {

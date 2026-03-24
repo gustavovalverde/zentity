@@ -6,31 +6,31 @@ category: "technical"
 domains: [privacy, security, platform]
 ---
 
-# Volatile in-memory store for identity release staging
+# Volatile in-memory store for plaintext identity release payloads
 
 ## Context and Problem Statement
 
-Zentity's identity release flow stages decrypted PII (name, address, date of birth) between a user's explicit vault-unlock action and the relying party's subsequent `userinfo` call. This staging window is 5 minutes for OAuth consent and 10 minutes for CIBA approval. The question is whether this staging store should use durable persistence (database, Redis) or volatile process memory.
+Zentity's identity release flow stages decrypted PII (name, address, date of birth) between a user's explicit vault-unlock action and the relying party's subsequent `userinfo` call. Plaintext identity payloads live for 5 minutes in OAuth pending state and 10 minutes in CIBA/final release state. The question is whether that plaintext staging layer should use durable persistence (database, Redis) or volatile process memory.
 
-Two stores handle staging:
+The current architecture is hybrid:
 
-- **`ephemeral-identity-claims.ts`** — Decrypted profile data from the user's credential-wrapped vault (passkey PRF, OPAQUE export key, or wallet signature). Used by OAuth consent and CIBA approval flows.
-- **`claims-parameter.ts`** — The OIDC `claims` request parameter (Section 5.5) between authorization and token/userinfo. Controls which claims are released.
+- **Volatile only**: plaintext identity payloads in `ephemeral-identity-claims.ts`
+- **Durable, non-PII metadata**: exact disclosure binding in `disclosure-context.ts` backed by `oauthPendingDisclosures` and `oidcReleaseContexts`
 
-Both use single-consume semantics: data is deleted on first read.
+The durable metadata does not store plaintext PII. It stores release identifiers, user/client binding, approved identity scopes, parsed `claims` requests, scope hashes, and expiry data so token issuance and userinfo can resolve the exact authorization context without heuristics.
 
 ## Priorities & Constraints
 
-- PII must never touch durable storage between stage and consume — no DB, no WAL, no replication log
-- Single-consume semantics must hold (one reader, one delivery)
+- Plaintext PII must never touch durable storage between stage and consume — no DB row, no WAL segment, no replica, no backup trace
+- Single-consume semantics must hold for plaintext payloads
 - Replay protection must survive process restarts (handled separately via durable JTI table)
 - Store must survive Next.js HMR in development
 
 ## Decision Outcome
 
-Chosen option: volatile process-scoped memory via `globalThis[Symbol.for(...)]`.
+Chosen option: volatile process-scoped memory via `globalThis[Symbol.for(...)]` for plaintext payloads only.
 
-PII exists only in volatile process memory for at most 10 minutes. Process termination is a complete data wipe. This is a privacy feature, not a reliability gap — it aligns with the platform's core principle that data which doesn't exist can't be breached.
+Plaintext identity data exists only in volatile process memory for at most 10 minutes. Process termination is a complete data wipe. This is a privacy feature, not a reliability gap. Exact release metadata is durable, but it contains no plaintext PII and exists only to bind token issuance and userinfo to the exact authorization that produced the release.
 
 Replay protection is handled separately by the durable `used_intent_jtis` table, which stores only opaque UUIDs and expiry timestamps (no PII).
 
@@ -38,9 +38,9 @@ Replay protection is handled separately by the durable `used_intent_jtis` table,
 
 - Raw PII exists only in process memory. No disk, no WAL, no replica, no backup trace.
 - The only way to extract staged PII is live process memory access, which implies full server compromise.
-- **Single-process deployment is an architectural invariant.** Multi-replica deployments without sticky sessions cause silent PII delivery failure (empty userinfo response, not a data leak). If horizontal scaling becomes necessary, sticky sessions preserve this invariant.
-- Process crashes between stage and consume lose staged data. The user must re-unlock. This is rare (5–10 minute window) and self-healing.
-- No audit trail for staged-but-unconsumed entries. Debugging delivery failures requires log correlation.
+- **Single-process deployment is still an architectural invariant for plaintext PII.** Multi-replica deployments without sticky sessions can lose the volatile payload, which now fails closed as `invalid_token` for bound releases rather than falling back to another flow.
+- Process crashes between stage and consume lose plaintext staged data. The user must re-unlock. Durable release metadata remains, but it cannot recreate the plaintext payload.
+- Exact release metadata survives process restarts, which improves diagnosis and prevents heuristic read-time recovery logic from creeping back in.
 
 ### What is persisted durably (boundary reference)
 
@@ -50,8 +50,9 @@ Replay protection is handled separately by the durable `used_intent_jtis` table,
 | Consent records | SQLite/Turso | No — scopes only, identity scopes stripped |
 | CIBA request metadata | SQLite/Turso | No — agent binding and status |
 | Credential-wrapped profile secret | SQLite/Turso | Encrypted — only user can decrypt |
-| **Staged identity claims** | **Volatile memory** | **Yes — plaintext PII** |
-| **OIDC claims parameter** | **Volatile memory** | **No — controls release** |
+| OAuth pending disclosure metadata | SQLite/Turso | No — release binding only |
+| Final release context metadata | SQLite/Turso | No — release binding only |
+| **Plaintext staged identity payload** | **Volatile memory** | **Yes — plaintext PII** |
 
 ## Alternatives Considered
 
@@ -61,9 +62,9 @@ Replay protection is handled separately by the durable `used_intent_jtis` table,
 
 ## More Information
 
-- `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts` — PII release store
-- `apps/web/src/lib/auth/oidc/claims-parameter.ts` — OIDC claims parameter store
-- `apps/web/src/lib/auth/oidc/identity-handler.ts` — Shared intent/stage/unstage handlers
+- `apps/web/src/lib/auth/oidc/ephemeral-identity-claims.ts` — volatile plaintext payload store
+- `apps/web/src/lib/auth/oidc/disclosure-context.ts` — durable exact disclosure metadata
+- `apps/web/src/lib/auth/oidc/identity-handler.ts` — shared intent/stage/unstage handlers
 - `apps/web/src/lib/auth/oidc/identity-intent.ts` — HMAC-signed intent token with JTI replay protection
 - Privacy architecture: [Attestation & Privacy Architecture](../../(understand)/attestation-privacy-architecture.md)
 - Builds on: [Consent-based disclosure](0004-consent-based-disclosure.md), [Passkey-sealed profile](0003-passkey-sealed-profile.md)

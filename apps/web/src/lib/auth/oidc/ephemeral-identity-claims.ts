@@ -2,50 +2,52 @@ import "server-only";
 
 import type { IdentityFields } from "./identity-scopes";
 
-import { eq, lt } from "drizzle-orm";
-
-import { db } from "@/lib/db/connection";
-import { usedIntentJtis } from "@/lib/db/schema/crypto";
 import { logger as rootLogger } from "@/lib/logging/logger";
 
-const log = rootLogger.child({ component: "identity-release" });
-
-export type FlowTag = "oauth" | `ciba:${string}`;
-
-interface EphemeralClaimsMeta {
+export interface IdentityPayloadMeta {
   clientId: string;
   intentJti: string;
   scopeHash: string;
 }
 
-interface EphemeralResult {
+interface IdentityPayloadResult {
   claims: Partial<IdentityFields>;
-  meta: EphemeralClaimsMeta;
+  meta: IdentityPayloadMeta;
   scopes: string[];
 }
 
-interface EphemeralEntry {
+interface IdentityPayloadEntry {
   claims: Partial<IdentityFields>;
   createdAt: number;
   expiresAt: number;
-  meta: EphemeralClaimsMeta;
+  meta: IdentityPayloadMeta;
   scopes: string[];
 }
 
-const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
-export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const log = rootLogger.child({ component: "identity-release" });
+
+export const EPHEMERAL_TTL_MS = 5 * 60 * 1000;
+export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000;
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
 
-function getStore(): Map<string, EphemeralEntry> {
-  const g = globalThis as Record<symbol, Map<string, EphemeralEntry>>;
+function getStore(): Map<string, IdentityPayloadEntry> {
+  const g = globalThis as Record<symbol, Map<string, IdentityPayloadEntry>>;
   if (!g[STORE_KEY]) {
     g[STORE_KEY] = new Map();
   }
   return g[STORE_KEY];
 }
 
-function evictExpiredClaims(): void {
+export function pendingOAuthIdentityKey(oauthRequestKey: string): string {
+  return `pending:oaq:${oauthRequestKey}`;
+}
+
+export function finalReleaseIdentityKey(releaseId: string): string {
+  return `release:${releaseId}`;
+}
+
+function evictExpiredIdentityPayloads(): void {
   const now = Date.now();
   const s = getStore();
   for (const [key, entry] of s) {
@@ -55,162 +57,102 @@ function evictExpiredClaims(): void {
   }
 }
 
-async function cleanupExpiredJtis(): Promise<void> {
-  try {
-    await db
-      .delete(usedIntentJtis)
-      .where(lt(usedIntentJtis.expiresAt, Date.now()))
-      .run();
-  } catch {
-    // Non-critical — stale rows are harmless
-  }
+export function hasIdentityPayload(bindingKey: string): boolean {
+  evictExpiredIdentityPayloads();
+  return getStore().has(bindingKey);
 }
 
-async function isJtiUsed(jti: string): Promise<boolean> {
-  const row = await db
-    .select({ jti: usedIntentJtis.jti })
-    .from(usedIntentJtis)
-    .where(eq(usedIntentJtis.jti, jti))
-    .limit(1)
-    .get();
-  return row !== undefined;
-}
-
-async function markJtiUsed(
-  jti: string,
-  userId: string,
-  expiresAt: number
-): Promise<void> {
-  await db
-    .insert(usedIntentJtis)
-    .values({ jti, userId, expiresAt })
-    .onConflictDoNothing()
-    .run();
-}
-
-function storeKey(userId: string, clientId: string, flowTag: FlowTag): string {
-  return `${userId}:${clientId}:${flowTag}`;
-}
-
-export async function storeEphemeralClaims(
-  userId: string,
-  claims: Partial<IdentityFields>,
-  scopes: string[],
-  meta: EphemeralClaimsMeta,
-  flowTag: FlowTag,
-  ttlMs: number = EPHEMERAL_TTL_MS
-): Promise<
-  { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
-> {
-  evictExpiredClaims();
-  await cleanupExpiredJtis();
-
-  if (await isJtiUsed(meta.intentJti)) {
-    return { ok: false, reason: "intent_reused" };
-  }
+export function storeIdentityPayload(input: {
+  bindingKey: string;
+  claims: Partial<IdentityFields>;
+  scopes: string[];
+  meta: IdentityPayloadMeta;
+  ttlMs: number;
+}): { ok: true } | { ok: false; reason: "concurrent_stage" } {
+  evictExpiredIdentityPayloads();
 
   const s = getStore();
-  const key = storeKey(userId, meta.clientId, flowTag);
-
-  const existing = s.get(key);
-  if (existing) {
+  if (s.has(input.bindingKey)) {
     return { ok: false, reason: "concurrent_stage" };
   }
 
   const now = Date.now();
-  const expiresAt = now + ttlMs;
-  s.set(key, {
-    claims,
-    scopes,
+  s.set(input.bindingKey, {
+    claims: input.claims,
+    scopes: input.scopes,
     createdAt: now,
-    expiresAt,
-    meta,
+    expiresAt: now + input.ttlMs,
+    meta: input.meta,
   });
-  await markJtiUsed(meta.intentJti, userId, expiresAt);
 
   log.info(
     {
       event: "stage_success",
-      userId,
-      clientId: meta.clientId,
-      flowTag,
-      intentJti: meta.intentJti,
-      ttlMs,
+      bindingKey: input.bindingKey,
+      clientId: input.meta.clientId,
+      intentJti: input.meta.intentJti,
+      ttlMs: input.ttlMs,
     },
-    "identity release staged"
+    "identity payload staged"
   );
 
   return { ok: true };
 }
 
-function consumeEphemeralClaims(
-  userId: string,
-  clientId: string,
-  flowTag: FlowTag
-): EphemeralResult | null {
-  evictExpiredClaims();
+export function consumeIdentityPayload(
+  bindingKey: string
+): IdentityPayloadResult | null {
+  evictExpiredIdentityPayloads();
+
   const s = getStore();
-  const key = storeKey(userId, clientId, flowTag);
-  const entry = s.get(key);
+  const entry = s.get(bindingKey);
   if (!entry) {
     return null;
   }
 
-  s.delete(key);
-  return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
+  s.delete(bindingKey);
+  log.info(
+    { event: "consume_success", bindingKey, clientId: entry.meta.clientId },
+    "identity payload consumed"
+  );
+  return {
+    claims: entry.claims,
+    scopes: entry.scopes,
+    meta: entry.meta,
+  };
 }
 
-/**
- * Two-key deterministic resolution for customUserInfoClaims.
- * If jti is present (CIBA token), try ciba:{jti} first.
- * Then fall through to oauth.
- */
-export function resolveEphemeralClaims(
-  userId: string,
-  clientId: string,
-  jti?: string
-): EphemeralResult | null {
-  if (jti) {
-    const cibaResult = consumeEphemeralClaims(userId, clientId, `ciba:${jti}`);
-    if (cibaResult) {
-      log.info(
-        {
-          event: "consume_success",
-          userId,
-          clientId,
-          resolvedFlowTag: `ciba:${jti}`,
-          resolution: "ciba_direct",
-        },
-        "identity release consumed"
-      );
-      return cibaResult;
-    }
+export function promoteIdentityPayload(
+  fromBindingKey: string,
+  toBindingKey: string
+): { ok: true } | { ok: false; reason: "missing_source" | "target_exists" } {
+  evictExpiredIdentityPayloads();
+
+  const s = getStore();
+  const entry = s.get(fromBindingKey);
+  if (!entry) {
+    return { ok: false, reason: "missing_source" };
+  }
+  if (s.has(toBindingKey)) {
+    return { ok: false, reason: "target_exists" };
   }
 
-  const oauthResult = consumeEphemeralClaims(userId, clientId, "oauth");
+  s.set(toBindingKey, entry);
+  s.delete(fromBindingKey);
 
   log.info(
     {
-      event: oauthResult ? "consume_success" : "consume_miss",
-      userId,
-      clientId,
-      resolvedFlowTag: oauthResult ? "oauth" : undefined,
-      resolution: jti ? "ciba_miss_oauth_fallback" : "oauth_direct",
-      found: !!oauthResult,
-      ...(jti ? { cibaJtiAttempted: jti } : {}),
+      event: "promote_success",
+      fromBindingKey,
+      toBindingKey,
+      clientId: entry.meta.clientId,
     },
-    oauthResult ? "identity release consumed" : "identity release not found"
+    "identity payload promoted"
   );
 
-  return oauthResult;
+  return { ok: true };
 }
 
-export function clearEphemeralClaims(
-  userId: string,
-  clientId: string,
-  flowTag: FlowTag
-): boolean {
-  const s = getStore();
-  const key = storeKey(userId, clientId, flowTag);
-  return s.delete(key);
+export function clearIdentityPayload(bindingKey: string): boolean {
+  return getStore().delete(bindingKey);
 }

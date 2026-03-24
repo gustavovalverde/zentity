@@ -1,68 +1,95 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  resolveEphemeralClaims,
-  storeEphemeralClaims,
+  clearIdentityPayload,
+  consumeIdentityPayload,
+  finalReleaseIdentityKey,
+  hasIdentityPayload,
+  pendingOAuthIdentityKey,
+  storeIdentityPayload,
 } from "../ephemeral-identity-claims";
 
-function resetEphemeralStore() {
-  const key = Symbol.for("zentity.ephemeral-identity-claims");
-  const g = globalThis as Record<symbol, Map<string, unknown> | undefined>;
-  g[key]?.clear();
+function clearIdentityPayloadStore(): void {
+  const store = (
+    globalThis as Record<symbol, Map<string, unknown> | undefined>
+  )[Symbol.for("zentity.ephemeral-identity-claims")];
+  store?.clear();
 }
 
-describe("ephemeral claims delivery (userinfo-only)", () => {
+describe("exact identity payload delivery", () => {
   beforeEach(() => {
-    resetEphemeralStore();
+    clearIdentityPayloadStore();
   });
 
-  it("resolveEphemeralClaims returns and removes entry", async () => {
-    await storeEphemeralClaims(
-      "user-1",
-      { name: "Alice", birthdate: "1990-01-01" },
-      ["openid", "identity.name", "identity.dob"],
-      { clientId: "client-1", intentJti: "jti-1", scopeHash: "hash-1" },
-      "oauth"
-    );
+  it("keeps pending OAuth and final release bindings isolated", () => {
+    const pendingKey = pendingOAuthIdentityKey("oauth-request-key");
+    const finalKey = finalReleaseIdentityKey("release-1");
 
-    const consumed = resolveEphemeralClaims("user-1", "client-1");
-    expect(consumed).not.toBeNull();
-    expect(consumed?.claims.name).toBe("Alice");
-    expect(consumed?.claims.birthdate).toBe("1990-01-01");
-
-    // Second resolve returns null (single-consume)
-    expect(resolveEphemeralClaims("user-1", "client-1")).toBeNull();
-  });
-
-  it("returns null when clientId doesn't match (fail closed)", async () => {
-    await storeEphemeralClaims(
-      "user-2",
-      { name: "Alice" },
-      ["openid"],
-      {
-        clientId: "client-a",
-        intentJti: "jti-2a",
-        scopeHash: "hash-2a",
+    storeIdentityPayload({
+      bindingKey: pendingKey,
+      claims: { name: "Alice" },
+      scopes: ["openid", "identity.name"],
+      meta: {
+        clientId: "client-1",
+        intentJti: "intent-oauth",
+        scopeHash: "hash-oauth",
       },
-      "oauth"
-    );
+      ttlMs: 5 * 60 * 1000,
+    });
 
-    expect(resolveEphemeralClaims("user-2", "wrong-client")).toBeNull();
+    expect(consumeIdentityPayload(finalKey)).toBeNull();
+    expect(hasIdentityPayload(pendingKey)).toBe(true);
+
+    storeIdentityPayload({
+      bindingKey: finalKey,
+      claims: { name: "Grace" },
+      scopes: ["openid", "identity.name"],
+      meta: {
+        clientId: "client-1",
+        intentJti: "intent-ciba",
+        scopeHash: "hash-ciba",
+      },
+      ttlMs: 10 * 60 * 1000,
+    });
+
+    expect(
+      consumeIdentityPayload(pendingOAuthIdentityKey("other-request"))
+    ).toBeNull();
+    expect(consumeIdentityPayload(pendingKey)?.claims.name).toBe("Alice");
+    expect(consumeIdentityPayload(finalKey)?.claims.name).toBe("Grace");
   });
 
-  it("respects custom TTL via storeEphemeralClaims", async () => {
-    const result = await storeEphemeralClaims(
-      "user-3",
-      { name: "Bob" },
-      ["openid", "identity.name"],
-      { clientId: "client-3", intentJti: "jti-3", scopeHash: "hash-3" },
-      "ciba:req-1",
-      10 * 60 * 1000 // 10-minute CIBA TTL
-    );
+  it("clears only the addressed exact binding key", () => {
+    const pendingKey = pendingOAuthIdentityKey("oauth-request-key");
+    const finalKey = finalReleaseIdentityKey("release-1");
 
-    expect(result.ok).toBe(true);
+    storeIdentityPayload({
+      bindingKey: pendingKey,
+      claims: { name: "Alice" },
+      scopes: ["openid"],
+      meta: {
+        clientId: "client-1",
+        intentJti: "intent-oauth",
+        scopeHash: "hash-oauth",
+      },
+      ttlMs: 5 * 60 * 1000,
+    });
+    storeIdentityPayload({
+      bindingKey: finalKey,
+      claims: { name: "Grace" },
+      scopes: ["openid"],
+      meta: {
+        clientId: "client-1",
+        intentJti: "intent-ciba",
+        scopeHash: "hash-ciba",
+      },
+      ttlMs: 10 * 60 * 1000,
+    });
 
-    const consumed = resolveEphemeralClaims("user-3", "client-3", "req-1");
-    expect(consumed?.claims.name).toBe("Bob");
+    expect(clearIdentityPayload(pendingKey)).toBe(true);
+    expect(hasIdentityPayload(pendingKey)).toBe(false);
+    expect(hasIdentityPayload(finalKey)).toBe(true);
+    expect(clearIdentityPayload(finalKey)).toBe(true);
+    expect(hasIdentityPayload(finalKey)).toBe(false);
   });
 });

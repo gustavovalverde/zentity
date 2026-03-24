@@ -1,6 +1,8 @@
 import type { LoginMethod } from "@/lib/assurance/types";
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
+import { createHash } from "node:crypto";
+
 import { ciba, deliverPing } from "@better-auth/ciba";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
@@ -57,15 +59,24 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import {
-  consumeIdTokenClaims,
-  consumeUserinfoClaims,
-  filterClaimsByRequest,
-  parseClaimsParameter,
-  stageClaimsParameter,
-} from "@/lib/auth/oidc/claims-parameter";
+import { filterClaimsByRequest } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
-import { resolveEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import {
+  ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+  claimsRequestForEndpoint,
+  consumeReleaseIdentityPayload,
+  DisclosureBindingError,
+  finalizeOauthDisclosureFromVerification,
+  hasReleaseContext,
+  loadReleaseContext,
+  type ReleaseContext,
+  touchReleaseContext,
+  validateReleaseContextForSubject,
+} from "@/lib/auth/oidc/disclosure-context";
+import {
+  finalReleaseIdentityKey,
+  hasIdentityPayload,
+} from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
   extractIdentityScopes,
   filterIdentityByScopes,
@@ -192,6 +203,26 @@ function hasAnyProofScope(scopeList: string[]): boolean {
     scopeList.includes("proof:identity") ||
     extractProofScopes(scopeList).length > 0
   );
+}
+
+function invalidGrantDisclosureError(reason: string): APIError {
+  return new APIError("BAD_REQUEST", {
+    error: "invalid_grant",
+    error_description: reason,
+  });
+}
+
+function invalidTokenDisclosureError(reason: string): APIError {
+  return new APIError("UNAUTHORIZED", {
+    error: "invalid_token",
+    error_description: reason,
+  });
+}
+
+function toDisclosureApiError(error: DisclosureBindingError): APIError {
+  return error.oauthError === "invalid_grant"
+    ? invalidGrantDisclosureError(error.reason)
+    : invalidTokenDisclosureError(error.reason);
 }
 
 // Build trusted origins based on environment
@@ -738,42 +769,64 @@ async function beforeTokenPairwiseGuard(ctx: HookCtx) {
   }
 }
 
-async function beforeTokenExtractClaimsParameter(ctx: HookCtx) {
+function hashAuthorizationCodeIdentifier(code: string): string {
+  return createHash("sha256").update(code).digest("base64url");
+}
+
+async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   const code = typeof ctx.body?.code === "string" ? ctx.body.code : undefined;
   if (!code) {
     return;
   }
 
-  const record = await db
+  let record = await db
     .select({ value: verifications.value })
     .from(verifications)
     .where(eq(verifications.identifier, code))
     .limit(1)
     .get();
   if (!record?.value) {
+    const hashedCode = hashAuthorizationCodeIdentifier(code);
+    if (hashedCode !== code) {
+      record = await db
+        .select({ value: verifications.value })
+        .from(verifications)
+        .where(eq(verifications.identifier, hashedCode))
+        .limit(1)
+        .get();
+    }
+  }
+  if (!record?.value) {
+    return;
+  }
+
+  let stored: {
+    referenceId?: string;
+    type?: string;
+    query?: Record<string, unknown>;
+    userId?: string;
+  };
+  try {
+    stored = JSON.parse(record.value) as typeof stored;
+  } catch {
+    // Malformed verification value — skip disclosure finalization
+    return;
+  }
+  if (stored.type !== "authorization_code" || !stored.userId) {
     return;
   }
 
   try {
-    const stored = JSON.parse(record.value) as {
-      type?: string;
-      query?: Record<string, unknown>;
-      userId?: string;
-    };
-    if (stored.type !== "authorization_code" || !stored.userId) {
-      return;
+    await finalizeOauthDisclosureFromVerification({
+      query: stored.query ?? {},
+      userId: stored.userId,
+      ...(stored.referenceId ? { referenceId: stored.referenceId } : {}),
+    });
+  } catch (error) {
+    if (error instanceof DisclosureBindingError) {
+      throw toDisclosureApiError(error);
     }
-
-    const parsed = parseClaimsParameter(stored.query?.claims);
-    if (parsed) {
-      const clientId =
-        typeof stored.query?.client_id === "string"
-          ? stored.query.client_id
-          : "unknown";
-      stageClaimsParameter(stored.userId, clientId, parsed);
-    }
-  } catch {
-    // Malformed verification value — skip claims extraction
+    throw error;
   }
 }
 
@@ -788,6 +841,104 @@ function refreshStaleCimdMetadata(ctx: HookCtx) {
   resolveCimdClient(clientId).catch(() => {
     // CIMD refresh failure is non-fatal — cached metadata is retained
   });
+}
+
+async function buildIdTokenDisclosureClaims(input: {
+  authContextId?: string | null;
+  referenceId?: string;
+  scopes: unknown;
+  sessionId?: string | null;
+  user: { id: string };
+}): Promise<Record<string, unknown>> {
+  const scopeList = toScopeList(input.scopes);
+  const cibaAuth = input.referenceId
+    ? await db
+        .select({ authContextId: cibaRequests.authContextId })
+        .from(cibaRequests)
+        .where(eq(cibaRequests.authReqId, input.referenceId))
+        .limit(1)
+        .get()
+    : null;
+  const auth = await resolveAuthenticationContext({
+    authContextId: input.authContextId ?? cibaAuth?.authContextId ?? null,
+    sessionId: input.sessionId ?? null,
+  });
+
+  const proofClaims = hasAnyProofScope(scopeList)
+    ? filterProofClaimsByScopes(
+        await buildProofClaims(input.user.id),
+        scopeList
+      )
+    : {};
+
+  let assuranceClaims: Record<string, unknown> = {};
+  if (scopeList.includes("openid")) {
+    if (!auth) {
+      throw invalidGrantDisclosureError(
+        "Authentication context required for ID token issuance"
+      );
+    }
+    const assurance = await getAccountAssurance(input.user.id, {
+      isAuthenticated: true,
+    });
+    assuranceClaims = {
+      ...buildOidcAssuranceClaims(assurance, auth),
+    };
+  }
+
+  const authContextClaims = auth
+    ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
+    : {};
+  const releaseContext = input.referenceId
+    ? await loadReleaseContext(input.referenceId)
+    : null;
+  const idTokenFilter = claimsRequestForEndpoint(
+    releaseContext?.claimsRequest ?? null,
+    "id_token"
+  );
+
+  return {
+    ...filterClaimsByRequest(
+      {
+        ...proofClaims,
+        ...assuranceClaims,
+      },
+      idTokenFilter
+    ),
+    ...authContextClaims,
+  };
+}
+
+function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
+  return {
+    id: "exact-disclosure-claims",
+    extensions: {
+      "oauth-provider": {
+        tokenClaims: {
+          id: async (info) =>
+            buildIdTokenDisclosureClaims({
+              ...((info as { authContextId?: string | null }).authContextId ===
+              undefined
+                ? {}
+                : {
+                    authContextId: (info as { authContextId?: string | null })
+                      .authContextId,
+                  }),
+              ...(info.referenceId ? { referenceId: info.referenceId } : {}),
+              scopes: info.scopes,
+              ...((info as { sessionId?: string | null }).sessionId ===
+              undefined
+                ? {}
+                : {
+                    sessionId: (info as { sessionId?: string | null })
+                      .sessionId,
+                  }),
+              user: info.user,
+            }),
+        },
+      },
+    },
+  } as BetterAuthPlugin;
 }
 
 function beforeConsentStripIdentityScopes(ctx: HookCtx) {
@@ -1338,7 +1489,7 @@ export const auth = betterAuth({
           await enforceCibaTokenAcr(ctx, db);
         }
         beforeTokenValidateResource(ctx);
-        await beforeTokenExtractClaimsParameter(ctx);
+        await beforeTokenFinalizeDisclosureBindings(ctx);
         refreshStaleCimdMetadata(ctx);
         return;
       }
@@ -1482,6 +1633,7 @@ export const auth = betterAuth({
     }),
     oauthProvider({
       silenceWarnings: { oauthAuthServerConfig: true },
+      accessTokenExpiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
       tokenBinding: dpopTokenBinding,
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {
@@ -1555,6 +1707,14 @@ export const auth = betterAuth({
         }
         const scopeList = toScopeList(scopes);
         const claims: Record<string, unknown> = {};
+        const cibaAuth = referenceId
+          ? await db
+              .select({ authContextId: cibaRequests.authContextId })
+              .from(cibaRequests)
+              .where(eq(cibaRequests.authReqId, referenceId))
+              .limit(1)
+              .get()
+          : null;
 
         // Per-RP sybil nullifier
         if (scopeList.includes("proof:sybil") && clientId) {
@@ -1573,10 +1733,12 @@ export const auth = betterAuth({
             referenceId,
             clientId
           );
+          if (cibaAuth) {
+            claims.jti = referenceId;
+          }
           if (aapSnapshot) {
             Object.assign(
               claims,
-              { jti: referenceId },
               aapSnapshot.aap.agent?.id
                 ? { act: { sub: aapSnapshot.aap.agent.id } }
                 : {},
@@ -1585,47 +1747,41 @@ export const auth = betterAuth({
           }
         }
 
-        if (referenceId) {
-          const cibaAuth = await db
-            .select({ authContextId: cibaRequests.authContextId })
-            .from(cibaRequests)
-            .where(eq(cibaRequests.authReqId, referenceId))
-            .limit(1)
-            .get();
-          if (cibaAuth?.authContextId) {
-            claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
-          }
+        if (cibaAuth?.authContextId) {
+          claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
         }
 
         if (!sessionId && authContextId) {
           claims[AUTHENTICATION_CONTEXT_CLAIM] = authContextId;
         }
 
+        if (referenceId && (await hasReleaseContext(referenceId))) {
+          await touchReleaseContext(
+            referenceId,
+            Date.now() + ACCESS_TOKEN_EXPIRES_IN_SECONDS * 1000
+          );
+          claims.zentity_release_id = referenceId;
+        }
+
         return claims;
       },
-      customIdTokenClaims: async (info) => {
+      customUserInfoClaims: async (info) => {
         const { user, scopes } = info;
-        const authContextId = (info as { authContextId?: string })
-          .authContextId;
-        const sessionId = (info as { sessionId?: string }).sessionId;
-        const referenceId = (info as { referenceId?: string }).referenceId;
+        const jwt = (
+          info as {
+            jwt?: {
+              azp?: string;
+              client_id?: string;
+              jti?: string;
+              zentity_release_id?: string;
+            };
+          }
+        ).jwt;
+        const clientId = jwt?.azp ?? jwt?.client_id;
+        const releaseId = jwt?.zentity_release_id;
         const scopeList = toScopeList(scopes);
-        const cibaAuth = referenceId
-          ? await db
-              .select({ authContextId: cibaRequests.authContextId })
-              .from(cibaRequests)
-              .where(eq(cibaRequests.authReqId, referenceId))
-              .limit(1)
-              .get()
-          : null;
-        const auth = user?.id
-          ? await resolveAuthenticationContext({
-              authContextId: authContextId ?? cibaAuth?.authContextId ?? null,
-              sessionId: sessionId ?? null,
-            })
-          : null;
+        const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
 
-        // Proof claims use the granted scopes directly — no vault unlock needed
         const proofClaims = hasAnyProofScope(scopeList)
           ? filterProofClaimsByScopes(
               await buildProofClaims(user.id),
@@ -1633,58 +1789,33 @@ export const auth = betterAuth({
             )
           : {};
 
-        // Assurance claims: acr, acr_eidas, amr (emitted when openid scope present)
-        let assuranceClaims: Record<string, unknown> = {};
-        if (scopeList.includes("openid") && user?.id) {
-          if (!auth) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_grant",
-              error_description:
-                "Authentication context required for ID token issuance",
-            });
+        let releaseContext: ReleaseContext | null = null;
+        if (releaseId) {
+          if (!clientId) {
+            throw invalidTokenDisclosureError("release_context_client_missing");
           }
-          const assurance = await getAccountAssurance(user.id, {
-            isAuthenticated: true,
-          });
-          assuranceClaims = {
-            ...buildOidcAssuranceClaims(assurance, auth),
-          };
-        }
-
-        const authContextClaims = auth
-          ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
-          : {};
-        const allClaims = {
-          ...proofClaims,
-          ...assuranceClaims,
-          ...authContextClaims,
-        };
-
-        // clientId=undefined triggers prefix-scan fallback in resolveKey
-        const idTokenFilter = consumeIdTokenClaims(user.id);
-        if (!idTokenFilter) {
-          return allClaims;
-        }
-
-        return {
-          ...filterClaimsByRequest(
-            {
-              ...proofClaims,
-              ...assuranceClaims,
-            },
-            idTokenFilter
-          ),
-          ...authContextClaims,
-        };
-      },
-      customUserInfoClaims: async (info) => {
-        const { user, scopes } = info;
-        const jwt = (info as { jwt?: { azp?: string; jti?: string } }).jwt;
-        const clientId = jwt?.azp;
-        const scopeList = toScopeList(scopes);
-        const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
-
-        if (!clientId && hasIdentityScopes) {
+          try {
+            releaseContext = await validateReleaseContextForSubject({
+              releaseId,
+              clientId,
+              userId: user.id,
+            });
+          } catch (error) {
+            if (error instanceof DisclosureBindingError) {
+              identityReleaseLog.warn(
+                {
+                  event: "binding_miss",
+                  userId: user.id,
+                  clientId,
+                  releaseId,
+                },
+                error.reason
+              );
+              throw toDisclosureApiError(error);
+            }
+            throw error;
+          }
+        } else if (!clientId && hasIdentityScopes) {
           identityReleaseLog.warn(
             {
               event: "fail_closed",
@@ -1696,50 +1827,43 @@ export const auth = betterAuth({
           );
         }
 
-        // Fail closed: no azp → no identity PII delivery
-        const ephemeral = clientId
-          ? resolveEphemeralClaims(user.id, clientId, jwt?.jti)
-          : null;
+        const payload =
+          releaseContext?.expectsIdentityPayload && releaseId
+            ? consumeReleaseIdentityPayload(releaseId)
+            : null;
 
-        if (!ephemeral && clientId && hasIdentityScopes) {
-          identityReleaseLog.warn(
-            {
-              event: "binding_miss",
-              userId: user.id,
-              clientId,
-              jtiPresent: !!jwt?.jti,
-              attemptedFlowTags: jwt?.jti
-                ? [`ciba:${jwt.jti}`, "oauth"]
-                : ["oauth"],
-            },
-            "identity scopes present but no staged release found"
-          );
+        if (releaseContext?.expectsIdentityPayload) {
+          if (!(payload && clientId)) {
+            throw invalidTokenDisclosureError("identity_payload_missing");
+          }
+          if (
+            payload.meta.clientId !== clientId ||
+            (releaseContext.scopeHash &&
+              payload.meta.scopeHash !== releaseContext.scopeHash)
+          ) {
+            throw invalidTokenDisclosureError("identity_payload_mismatch");
+          }
         }
 
-        // Proof claims from DB
-        const proofClaims = hasAnyProofScope(scopeList)
-          ? filterProofClaimsByScopes(
-              await buildProofClaims(user.id),
-              scopeList
-            )
-          : {};
-
-        // Identity PII — always included when ephemeral is present
-        const identityClaims = ephemeral
-          ? filterIdentityByScopes(ephemeral.claims, ephemeral.scopes)
-          : {};
+        const identityClaims =
+          payload && releaseContext
+            ? filterIdentityByScopes(
+                payload.claims,
+                releaseContext.approvedIdentityScopes.length > 0
+                  ? releaseContext.approvedIdentityScopes
+                  : payload.scopes
+              )
+            : {};
 
         const allClaims = { ...identityClaims, ...proofClaims };
-
-        // Apply claims.userinfo as data minimization filter if present
-        const userinfoFilter = consumeUserinfoClaims(user.id, clientId);
-        if (!userinfoFilter) {
-          return allClaims;
-        }
-
+        const userinfoFilter = claimsRequestForEndpoint(
+          releaseContext?.claimsRequest ?? null,
+          "userinfo"
+        );
         return filterClaimsByRequest(allClaims, userinfoFilter);
       },
     }),
+    exactDisclosureClaimsPlugin(),
     oidc4ida({
       getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
         buildOidcVerifiedClaims(user.id),
@@ -1836,11 +1960,31 @@ export const auth = betterAuth({
           cibaRequest.authReqId,
           cibaRequest.clientId
         );
+        const releaseContext = await loadReleaseContext(cibaRequest.authReqId);
+        if (
+          releaseContext?.expectsIdentityPayload &&
+          !hasIdentityPayload(finalReleaseIdentityKey(cibaRequest.authReqId))
+        ) {
+          throw invalidGrantDisclosureError("identity_payload_missing");
+        }
+        const claims: Record<string, unknown> = {
+          jti: cibaRequest.authReqId,
+        };
+
+        if (releaseContext) {
+          await touchReleaseContext(
+            cibaRequest.authReqId,
+            Date.now() + ACCESS_TOKEN_EXPIRES_IN_SECONDS * 1000
+          );
+          claims.zentity_release_id = cibaRequest.authReqId;
+        }
+
         if (!accessTokenClaims) {
-          return {};
+          return claims;
         }
 
         return {
+          ...claims,
           ...(accessTokenClaims.agent?.id
             ? { act: { sub: accessTokenClaims.agent.id } }
             : {}),

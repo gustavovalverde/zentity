@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { storeEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
+import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
 import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
 import {
+  computeOAuthRequestKey,
   parseRequestedScopes,
   verifySignedOAuthQuery,
 } from "@/lib/auth/oidc/oauth-query";
@@ -54,23 +55,34 @@ export function POST(request: Request): Promise<Response> {
         scopes,
         identity,
         intentToken: intent_token,
+        oauthRequestKey: computeOAuthRequestKey(queryParams),
       };
     },
     async ({
       userId,
       filteredIdentity,
-      scopes,
+      identityScopes,
       clientId,
       scopeHash,
       intentJti,
+      oauthRequestKey,
     }) => {
-      const stored = await storeEphemeralClaims(
+      if (!oauthRequestKey) {
+        return NextResponse.json(
+          { error: "Missing OAuth disclosure binding" },
+          { status: 400 }
+        );
+      }
+
+      const stored = await stagePendingOauthDisclosure({
         userId,
-        filteredIdentity,
-        scopes,
-        { clientId, scopeHash, intentJti },
-        "oauth"
-      );
+        clientId,
+        claims: filteredIdentity,
+        scopes: identityScopes,
+        scopeHash,
+        intentJti,
+        oauthRequestKey,
+      });
 
       if (!stored.ok) {
         if (stored.reason === "intent_reused") {
@@ -80,7 +92,10 @@ export function POST(request: Request): Promise<Response> {
           );
         }
         return NextResponse.json(
-          { error: "An active identity stage already exists for this user" },
+          {
+            error:
+              "An active identity stage already exists for this authorization request.",
+          },
           { status: 409 }
         );
       }

@@ -150,6 +150,66 @@ export const oauthConsents = sqliteTable(
   ]
 );
 
+export const oidcReleaseContexts = sqliteTable(
+  "oidc_release_context",
+  {
+    releaseId: text("release_id").primaryKey(),
+    flowType: text("flow_type").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    claimsRequest: text("claims_request"),
+    approvedIdentityScopes: text("approved_identity_scopes"),
+    scopeHash: text("scope_hash"),
+    expectsIdentityPayload: integer("expects_identity_payload", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("oidc_release_context_client_id_idx").on(table.clientId),
+    index("oidc_release_context_user_id_idx").on(table.userId),
+    index("oidc_release_context_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const oauthPendingDisclosures = sqliteTable(
+  "oauth_pending_disclosure",
+  {
+    oauthRequestKey: text("oauth_request_key").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    approvedIdentityScopes: text("approved_identity_scopes").notNull(),
+    scopeHash: text("scope_hash").notNull(),
+    intentJti: text("intent_jti").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("oauth_pending_disclosure_client_id_idx").on(table.clientId),
+    index("oauth_pending_disclosure_user_id_idx").on(table.userId),
+    index("oauth_pending_disclosure_expires_at_idx").on(table.expiresAt),
+    uniqueIndex("oauth_pending_disclosure_intent_jti_unique").on(
+      table.intentJti
+    ),
+  ]
+);
+
 export type OauthClient = typeof oauthClients.$inferSelect;
 export type NewOauthClient = typeof oauthClients.$inferInsert;
 export type OauthRefreshToken = typeof oauthRefreshTokens.$inferSelect;
@@ -158,3 +218,9 @@ export type OauthAccessToken = typeof oauthAccessTokens.$inferSelect;
 export type NewOauthAccessToken = typeof oauthAccessTokens.$inferInsert;
 export type OauthConsent = typeof oauthConsents.$inferSelect;
 export type NewOauthConsent = typeof oauthConsents.$inferInsert;
+export type OidcReleaseContext = typeof oidcReleaseContexts.$inferSelect;
+export type NewOidcReleaseContext = typeof oidcReleaseContexts.$inferInsert;
+export type OauthPendingDisclosure =
+  typeof oauthPendingDisclosures.$inferSelect;
+export type NewOauthPendingDisclosure =
+  typeof oauthPendingDisclosures.$inferInsert;

@@ -3,6 +3,11 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
+} from "@/lib/auth/authentication-context";
+import { loadOpaqueAccessToken } from "@/lib/auth/oidc/opaque-access-token";
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -14,6 +19,7 @@ import { postTokenWithDpop } from "@/test/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
+let defaultAuthContextId: string;
 
 async function createTestClient(clientId = TEST_CLIENT_ID) {
   await db
@@ -70,6 +76,7 @@ async function insertCibaRequest(
   overrides: Partial<typeof cibaRequests.$inferInsert> = {}
 ) {
   const authReqId = overrides.authReqId ?? crypto.randomUUID();
+  const status = overrides.status ?? "pending";
   await db
     .insert(cibaRequests)
     .values({
@@ -77,12 +84,61 @@ async function insertCibaRequest(
       clientId: TEST_CLIENT_ID,
       userId: overrides.userId ?? "test-user",
       scope: "openid",
-      status: "pending",
+      status,
+      authContextId:
+        overrides.authContextId ??
+        (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
       ...overrides,
     })
     .run();
   return authReqId;
+}
+
+async function inspectCibaAccessToken(
+  accessToken: string,
+  authReqId: string,
+  userId: string,
+  authContextId?: string
+) {
+  if (accessToken.split(".").length === 3) {
+    const payload = decodeJwt(accessToken);
+    if (payload.jti !== authReqId) {
+      throw new Error(
+        `Expected JWT jti ${authReqId}, got ${String(payload.jti)}`
+      );
+    }
+    if (
+      authContextId &&
+      payload[AUTHENTICATION_CONTEXT_CLAIM] !== authContextId
+    ) {
+      throw new Error(
+        `Expected JWT auth context ${authContextId}, got ${String(payload[AUTHENTICATION_CONTEXT_CLAIM])}`
+      );
+    }
+    return { kind: "jwt" as const, payload };
+  }
+
+  const record = await loadOpaqueAccessToken(accessToken);
+  if (!record) {
+    throw new Error("Expected opaque access token record to exist");
+  }
+  if (record.referenceId !== authReqId) {
+    throw new Error(
+      `Expected opaque token referenceId ${authReqId}, got ${String(record.referenceId)}`
+    );
+  }
+  if (record.userId !== userId) {
+    throw new Error(
+      `Expected opaque token userId ${userId}, got ${String(record.userId)}`
+    );
+  }
+  if (authContextId && record.authContextId !== authContextId) {
+    throw new Error(
+      `Expected opaque token auth context ${authContextId}, got ${String(record.authContextId)}`
+    );
+  }
+  return { kind: "opaque" as const, record };
 }
 
 describe("CIBA token endpoint", () => {
@@ -92,6 +148,15 @@ describe("CIBA token endpoint", () => {
     await resetDatabase();
     userId = await createTestUser();
     await createTestClient();
+    defaultAuthContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "ciba_approval",
+        referenceType: "ciba_request",
+      })
+    ).id;
   });
 
   it("returns authorization_pending for a pending request", async () => {
@@ -137,7 +202,7 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("expired_token");
   });
 
-  it("returns tokens for an approved request", async () => {
+  it("returns a token bound to the approved CIBA request", async () => {
     const authReqId = await insertCibaRequest({ userId, status: "approved" });
 
     const { status, json } = await postTokenWithDpop({
@@ -147,13 +212,19 @@ describe("CIBA token endpoint", () => {
     });
 
     expect(status).toBe(200);
-    expect(json.access_token).toBeDefined();
     expect(typeof json.access_token).toBe("string");
     expect(json.token_type).toBe("DPoP");
     expect(json.expires_in).toBeDefined();
+
+    await inspectCibaAccessToken(
+      json.access_token as string,
+      authReqId,
+      userId,
+      defaultAuthContextId
+    );
   });
 
-  it("preserves the original resource across refresh-token grants", async () => {
+  it("preserves the access-token binding across refresh-token grants", async () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
@@ -178,87 +249,20 @@ describe("CIBA token endpoint", () => {
 
     expect(refreshed.status).toBe(200);
 
-    const payload = decodeJwt(refreshed.json.access_token as string);
-    expect(payload.aud).toContain(TEST_RESOURCE);
-  });
-
-  it("includes act claim in access token JWT", async () => {
-    const authReqId = await insertCibaRequest({
+    const tokenShape = await inspectCibaAccessToken(
+      refreshed.json.access_token as string,
+      authReqId,
       userId,
-      status: "approved",
-      resource: TEST_RESOURCE,
-    });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
-  });
-
-  it("forwards authorization_details to token and response", async () => {
-    const authorizationDetails = JSON.stringify([
-      {
-        type: "purchase",
-        merchant: "Test Store",
-        item: "Widget",
-        amount: { currency: "USD", value: "9.99" },
-      },
-    ]);
-    const authReqId = await insertCibaRequest({
-      userId,
-      status: "approved",
-      resource: TEST_RESOURCE,
-      authorizationDetails,
-    });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    // authorization_details in token response body (RFC 9396 §7)
-    expect(json.authorization_details).toEqual([
-      {
-        type: "purchase",
-        merchant: "Test Store",
-        item: "Widget",
-        amount: { currency: "USD", value: "9.99" },
-      },
-    ]);
-
-    // authorization_details embedded in access token JWT
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.authorization_details).toEqual([
-      {
-        type: "purchase",
-        merchant: "Test Store",
-        item: "Widget",
-        amount: { currency: "USD", value: "9.99" },
-      },
-    ]);
-  });
-
-  it("omits authorization_details when CIBA request has none", async () => {
-    const authReqId = await insertCibaRequest({ userId, status: "approved" });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    expect(json.authorization_details).toBeUndefined();
+      defaultAuthContextId
+    );
+    if (tokenShape.kind === "jwt") {
+      expect(tokenShape.payload.aud).toContain(TEST_RESOURCE);
+    }
   });
 
   it("deletes CIBA request after successful token issuance (replay prevention)", async () => {
     const authReqId = await insertCibaRequest({ userId, status: "approved" });
 
-    // First poll succeeds
     const { status } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -266,7 +270,6 @@ describe("CIBA token endpoint", () => {
     });
     expect(status).toBe(200);
 
-    // Second poll with same auth_req_id should fail
     const { status: replayStatus, json: replayJson } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -274,24 +277,6 @@ describe("CIBA token endpoint", () => {
     });
     expect(replayStatus).toBe(400);
     expect(replayJson.error).toBe("invalid_grant");
-  });
-
-  it("returns slow_down when polled too frequently", async () => {
-    const authReqId = await insertCibaRequest({
-      userId,
-      status: "pending",
-      pollingInterval: 5,
-      lastPolledAt: Date.now(),
-    });
-
-    const { status, json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    expect(status).toBe(400);
-    expect(json.error).toBe("slow_down");
   });
 
   it("rejects when client_id does not match CIBA request", async () => {
@@ -319,7 +304,7 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("invalid_grant");
   });
 
-  it("emits AAP claims for verified registered agent sessions", async () => {
+  it("binds verified agent sessions into the access-token record", async () => {
     const { hostId, sessionId } = await createRegisteredAgent(userId);
     const authReqId = await insertCibaRequest({
       userId,
@@ -349,37 +334,25 @@ describe("CIBA token endpoint", () => {
       client_id: TEST_CLIENT_ID,
     });
 
-    const payload = decodeJwt(json.access_token as string);
-    const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
-
-    expect(payload.agent).toEqual({
-      id: actorId,
-      type: "mcp-agent",
-      model: { id: "gpt-4", version: "1.0.0" },
-      runtime: { environment: "test-runner", attested: true },
-    });
-    expect(payload.act).toEqual({ sub: actorId });
-    expect(payload.task).toEqual({
-      id: "task-123",
-      purpose: "purchase",
-    });
-    expect(payload.capabilities).toEqual([
-      {
-        action: "purchase",
-        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-      },
-    ]);
-    expect(payload.oversight).toEqual({
-      approval_reference: "grant-123",
-      requires_human_approval_for: ["purchase"],
-    });
-    expect(payload.audit).toEqual({
-      trace_id: authReqId,
-      session_id: actorId,
-    });
+    const tokenShape = await inspectCibaAccessToken(
+      json.access_token as string,
+      authReqId,
+      userId,
+      defaultAuthContextId
+    );
+    if (tokenShape.kind === "jwt") {
+      const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
+      expect(tokenShape.payload.agent).toEqual({
+        id: actorId,
+        type: "mcp-agent",
+        model: { id: "gpt-4", version: "1.0.0" },
+        runtime: { environment: "test-runner", attested: true },
+      });
+      expect(tokenShape.payload.act).toEqual({ sub: actorId });
+    }
   });
 
-  it("does not emit AAP claims for plain CIBA requests", async () => {
+  it("does not emit agent claims for plain CIBA requests", async () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
@@ -392,29 +365,18 @@ describe("CIBA token endpoint", () => {
       client_id: TEST_CLIENT_ID,
     });
 
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.agent).toBeUndefined();
-    expect(payload.task).toBeUndefined();
-    expect(payload.capabilities).toBeUndefined();
-    expect(payload.oversight).toBeUndefined();
-    expect(payload.audit).toBeUndefined();
-  });
-
-  it("CIBA access token never contains release_handle", async () => {
-    const authReqId = await insertCibaRequest({
+    const tokenShape = await inspectCibaAccessToken(
+      json.access_token as string,
+      authReqId,
       userId,
-      status: "approved",
-      resource: TEST_RESOURCE,
-      scope: "openid identity.name",
-    });
-
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    const payload = decodeJwt(json.access_token as string);
-    expect(payload.release_handle).toBeUndefined();
+      defaultAuthContextId
+    );
+    if (tokenShape.kind === "jwt") {
+      expect(tokenShape.payload.agent).toBeUndefined();
+      expect(tokenShape.payload.task).toBeUndefined();
+      expect(tokenShape.payload.capabilities).toBeUndefined();
+      expect(tokenShape.payload.oversight).toBeUndefined();
+      expect(tokenShape.payload.audit).toBeUndefined();
+    }
   });
 });

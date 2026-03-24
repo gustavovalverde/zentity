@@ -1,9 +1,6 @@
-import type { FlowTag } from "@/lib/auth/oidc/ephemeral-identity-claims";
-
 import { NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
-import { clearEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { normalizeIdentityFields } from "@/lib/auth/oidc/identity-fields-schema";
 import {
   createIdentityIntentToken,
@@ -32,6 +29,7 @@ interface IdentityStageInput {
   clientId: string;
   identity: Record<string, unknown> | undefined;
   intentToken: string | undefined;
+  oauthRequestKey?: string | undefined;
   scopes: string[];
 }
 
@@ -41,6 +39,7 @@ interface ValidatedIdentityStage {
   filteredIdentity: Record<string, unknown>;
   identityScopes: string[];
   intentJti: string;
+  oauthRequestKey?: string | undefined;
   scopeHash: string;
   scopes: string[];
   userId: string;
@@ -212,6 +211,7 @@ export async function handleIdentityStage(
     scopeHash,
     intentJti: intentPayload.jti,
     authReqId: ctx.authReqId,
+    oauthRequestKey: ctx.oauthRequestKey,
   });
 }
 
@@ -222,7 +222,8 @@ export async function handleIdentityUnstage(
   resolveContext: (
     body: unknown,
     userId: string
-  ) => Promise<{ clientId: string; flowTag: FlowTag } | Response>
+  ) => Promise<unknown | Response>,
+  clear: (context: unknown) => Promise<void>
 ): Promise<Response> {
   const sessionResult = await resolveSessionAndBody(request);
   if (sessionResult instanceof Response) {
@@ -235,6 +236,6 @@ export async function handleIdentityUnstage(
     return result;
   }
 
-  clearEphemeralClaims(userId, result.clientId, result.flowTag);
+  await clear(result);
   return NextResponse.json({ cleared: true });
 }

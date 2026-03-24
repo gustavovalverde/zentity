@@ -19,6 +19,7 @@ export const authChallengeSessions = sqliteTable(
     }),
     dpopJkt: text("dpop_jkt"),
     scope: text("scope").notNull(),
+    claims: text("claims"),
     resource: text("resource"),
     codeChallenge: text("code_challenge"),
     codeChallengeMethod: text("code_challenge_method"),

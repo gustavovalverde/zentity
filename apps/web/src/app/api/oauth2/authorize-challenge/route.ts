@@ -67,6 +67,7 @@ export const fpaLimiter = createRealRateLimiter({ windowMs: 60_000, max: 10 });
 const InitialRequestSchema = z.object({
   chain_id: z.number().int().positive().optional(),
   client_id: z.string().min(1),
+  claims: z.string().optional(),
   code_challenge: z.string().min(43).optional(),
   code_challenge_method: z.string().default("S256").optional(),
   identifier: z.string().min(1),
@@ -290,6 +291,7 @@ async function handleInitialRequest(
       userId: null,
       dpopJkt: null,
       scope: params.scope,
+      claims: params.claims ?? null,
       resource: params.resource ?? null,
       codeChallenge: params.code_challenge,
       codeChallengeMethod: params.code_challenge_method,
@@ -372,6 +374,7 @@ async function handleInitialRequest(
     userId: user?.id ?? null,
     dpopJkt: dpopJkt ?? null,
     scope: params.scope,
+    claims: params.claims ?? null,
     resource: params.resource ?? null,
     codeChallenge: params.code_challenge,
     codeChallengeMethod: params.code_challenge_method,
@@ -393,6 +396,7 @@ async function handleInitialRequest(
           client_id: params.client_id,
           response_type: params.response_type,
           scope: params.scope,
+          ...(params.claims && { claims: params.claims }),
           code_challenge: params.code_challenge,
           code_challenge_method: params.code_challenge_method,
           ...(params.resource && { resource: params.resource }),
@@ -823,6 +827,7 @@ async function handleStepUpReEntry(
           client_id: session.clientId,
           response_type: "code",
           scope: session.scope,
+          ...(session.claims && { claims: session.claims }),
           code_challenge: effectiveCodeChallenge,
           code_challenge_method:
             codeChallengeMethod ?? session.codeChallengeMethod ?? "S256",
@@ -964,9 +969,11 @@ async function issueAuthorizationCode(
     identifier: codeHash,
     value: JSON.stringify({
       type: "authorization_code",
+      referenceId: codeHash,
       query: {
         client_id: session.clientId,
         scope: session.scope,
+        ...(session.claims && { claims: session.claims }),
         ...(session.codeChallenge && {
           code_challenge: session.codeChallenge,
           code_challenge_method: session.codeChallengeMethod,
