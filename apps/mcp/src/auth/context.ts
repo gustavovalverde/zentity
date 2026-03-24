@@ -1,15 +1,17 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DpopKeyPair } from "./dpop.js";
 import {
-  agentRuntimeManager,
   type AgentRuntimeState,
+  agentRuntimeManager,
 } from "./runtime-manager.js";
 
 export interface OAuthSessionContext {
   accessToken: string;
+  accountSub: string;
   clientId: string;
   dpopKey: DpopKeyPair;
   loginHint: string;
+  scopes: string[];
 }
 
 export interface AuthContext {
@@ -86,7 +88,8 @@ export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
 }
 
 export function requireRuntimeState(ctx?: AuthContext): AgentRuntimeState {
-  const runtime = (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
+  const runtime =
+    (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
   if (!runtime) {
     throw new Error(
       "Agent runtime is not initialized — complete host and session registration first"

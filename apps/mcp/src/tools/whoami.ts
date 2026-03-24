@@ -31,7 +31,22 @@ interface AccountData {
   };
 }
 
-export function registerWhoamiTool(server: McpServer): void {
+interface WhoamiOptions {
+  allowIdentityUnlock?: boolean;
+}
+
+type WhoamiIdentityResult =
+  | Awaited<ReturnType<typeof getIdentityResolution>>
+  | {
+      claims: null;
+      message: string;
+      status: "unavailable";
+    };
+
+export function registerWhoamiTool(
+  server: McpServer,
+  options: WhoamiOptions = {}
+): void {
   server.tool(
     "whoami",
     "Get the user's identity: name, email, verification tier, and completed checks. On first use, this may return account status plus an approval URL to unlock the identity vault instead of blocking. Use when the user asks who they are, what their name is, what their account status is, or whether they are verified.",
@@ -52,7 +67,7 @@ export function registerWhoamiTool(server: McpServer): void {
         };
       }
 
-      const data = await fetchWhoamiData();
+      const data = await fetchWhoamiData(options);
 
       return {
         content: [
@@ -66,14 +81,23 @@ export function registerWhoamiTool(server: McpServer): void {
   );
 }
 
-async function fetchWhoamiData() {
+async function fetchWhoamiData(options: WhoamiOptions) {
+  const identityPromise: Promise<WhoamiIdentityResult> =
+    options.allowIdentityUnlock
+      ? getIdentityResolution().catch(() => ({
+          status: "ready" as const,
+          claims: null,
+        }))
+      : Promise.resolve({
+          claims: null,
+          message:
+            "Full identity unlock is only available to registered installed-agent runtimes.",
+          status: "unavailable" as const,
+        });
   const [profileRes, accountRes, identity] = await Promise.all([
     zentityFetch(`${config.zentityUrl}/api/trpc/assurance.profile`),
     zentityFetch(`${config.zentityUrl}/api/trpc/account.getData`),
-    getIdentityResolution().catch(() => ({
-      status: "ready" as const,
-      claims: null,
-    })),
+    identityPromise,
   ]);
 
   const profile = profileRes.ok
@@ -98,15 +122,15 @@ async function fetchWhoamiData() {
         }
       : null;
   const identityMessage =
-    identity.status === "denied" || identity.status === "timed_out"
+    identity.status === "denied" ||
+    identity.status === "timed_out" ||
+    identity.status === "unavailable"
       ? identity.message
       : null;
 
   return {
     first_name:
-      claims?.given_name?.split(" ")[0] ??
-      claims?.name?.split(" ")[0] ??
-      null,
+      claims?.given_name?.split(" ")[0] ?? claims?.name?.split(" ")[0] ?? null,
     name: claims?.name ?? null,
     given_name: claims?.given_name ?? null,
     family_name: claims?.family_name ?? null,

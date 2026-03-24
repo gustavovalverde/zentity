@@ -1,5 +1,13 @@
 import { config } from "../config.js";
-import { loadCredentials, updateCredentials } from "./credentials.js";
+import {
+  buildInstalledAgentRegistrationRequest,
+  getInstalledAgentRegistrationFingerprint,
+} from "./auth-surfaces.js";
+import {
+  clearClientRegistration,
+  loadCredentials,
+  updateCredentials,
+} from "./credentials.js";
 import type { DiscoveryState } from "./discovery.js";
 
 interface DcrResponse {
@@ -16,14 +24,33 @@ export async function ensureClientRegistration(
   options: EnsureClientRegistrationOptions = {}
 ): Promise<string> {
   const existing = loadCredentials(config.zentityUrl);
-  if (existing?.clientId && !options.force && existing.registrationMethod !== "cimd") {
-    console.error(`[dcr] Reusing existing client_id: ${existing.clientId}`);
-    return existing.clientId;
+  const registrationFingerprint = getInstalledAgentRegistrationFingerprint();
+
+  if (
+    existing?.clientId &&
+    existing.registrationMethod === "dcr" &&
+    existing.registrationFingerprint !== registrationFingerprint
+  ) {
+    console.error(
+      "[dcr] Installed-agent registration contract changed, re-registering OAuth client..."
+    );
+    clearClientRegistration(config.zentityUrl);
   }
 
-  if (existing?.clientId && existing.registrationMethod === "cimd") {
+  const refreshed = loadCredentials(config.zentityUrl);
+  if (
+    refreshed?.clientId &&
+    !options.force &&
+    refreshed.registrationMethod === "dcr" &&
+    refreshed.registrationFingerprint === registrationFingerprint
+  ) {
+    console.error(`[dcr] Reusing existing client_id: ${refreshed.clientId}`);
+    return refreshed.clientId;
+  }
+
+  if (refreshed?.clientId && refreshed.registrationMethod === "cimd") {
     console.error(
-      `[dcr] Ignoring cached CIMD client_id for stdio OAuth flow: ${existing.clientId}`
+      `[dcr] Ignoring cached CIMD client_id for stdio OAuth flow: ${refreshed.clientId}`
     );
   }
 
@@ -33,22 +60,7 @@ export async function ensureClientRegistration(
     );
   }
 
-  const redirectUri = "http://127.0.0.1/callback";
-
-  const body = {
-    client_name: "@zentity/mcp-server",
-    redirect_uris: [redirectUri],
-    scope:
-      "openid email proof:identity identity.name identity.address agent:host.register agent:session.register agent:session.revoke",
-    token_endpoint_auth_method: "none",
-    grant_types: [
-      "authorization_code",
-      "refresh_token",
-      "urn:openid:params:grant-type:ciba",
-      "urn:ietf:params:oauth:grant-type:token-exchange",
-    ],
-    response_types: ["code"],
-  };
+  const body = buildInstalledAgentRegistrationRequest();
 
   const response = await fetch(discovery.registration_endpoint, {
     method: "POST",
@@ -66,6 +78,7 @@ export async function ensureClientRegistration(
   updateCredentials(config.zentityUrl, {
     clientId: data.client_id,
     ...(data.client_secret ? { clientSecret: data.client_secret } : {}),
+    registrationFingerprint,
     registrationMethod: "dcr",
   });
 

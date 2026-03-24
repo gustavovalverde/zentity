@@ -8,6 +8,7 @@ const CREDENTIALS_FILE = join(CREDENTIALS_DIR, "credentials.json");
 
 export interface StoredCredentials {
   accessToken?: string;
+  accountSub?: string;
   authSession?: string;
   clientId: string;
   clientSecret?: string;
@@ -16,6 +17,7 @@ export interface StoredCredentials {
   expiresAt?: number;
   loginHint?: string;
   refreshToken?: string;
+  registrationFingerprint?: string;
   registrationMethod?: "cimd" | "dcr";
   zentityUrl: string;
 }

@@ -83,6 +83,11 @@ import {
   filterProofClaimsByScopes,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/proof-scopes";
+import {
+  getFirstPartyProtectedResourceAudiences,
+  type ResolveProtectedResourceAudienceInput,
+  resolveProtectedResourceAudience,
+} from "@/lib/auth/oidc/protected-resources";
 import { validateResourceUri } from "@/lib/auth/oidc/resource";
 import {
   enforceCibaApprovalAcr,
@@ -315,6 +320,7 @@ const defaultClientScopes = [
 const allowedClientScopes = [
   ...defaultClientScopes,
   "email",
+  "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
 ];
 const oidcStandardClaims = [
@@ -1403,12 +1409,35 @@ export const auth = betterAuth({
         TOKEN_EXCHANGE_GRANT_TYPE as typeof TOKEN_EXCHANGE_GRANT_TYPE &
           "authorization_code",
       ],
-      validAudiences: [
+      validAudiences: getFirstPartyProtectedResourceAudiences({
         appUrl,
         authIssuer,
         oidc4vciCredentialAudience,
         rpApiAudience,
-      ],
+      }),
+      resolveResourceAudience: ({
+        baseURL,
+        clientId,
+        grantType,
+        resource,
+        scopes,
+      }: ResolveProtectedResourceAudienceInput) =>
+        resolveProtectedResourceAudience(
+          {
+            appUrl,
+            authIssuer,
+            mcpPublicUrl: env.MCP_PUBLIC_URL,
+            oidc4vciCredentialAudience,
+            rpApiAudience,
+          },
+          {
+            baseURL,
+            clientId,
+            grantType,
+            resource,
+            scopes,
+          }
+        ),
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,

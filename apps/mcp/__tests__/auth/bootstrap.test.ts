@@ -122,7 +122,7 @@ describe("ensureAuthenticated", () => {
       )
       .mockResolvedValueOnce({
         accessToken: "fresh-access-token",
-        expiresAt: Date.now() + 3600_000,
+        expiresAt: Date.now() + 3_600_000,
         loginHint: "user-123",
       });
 
@@ -139,12 +139,14 @@ describe("ensureAuthenticated", () => {
       1,
       expect.objectContaining({
         clientId: "stale-client",
+        resource: "http://localhost:3000",
       })
     );
     expect(mockAuthenticateViaBrowser).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         clientId: "fresh-client",
+        resource: "http://localhost:3000",
       })
     );
     expect(mockExchangeToken).toHaveBeenCalledWith(
@@ -157,5 +159,26 @@ describe("ensureAuthenticated", () => {
     expect(result.oauth.clientId).toBe("fresh-client");
     expect(result.oauth.accessToken).toBe("app-access-token");
     expect(result.oauth.loginHint).toBe("user-123");
+  });
+
+  it("passes the app resource into browser authentication", async () => {
+    mockEnsureClientRegistration.mockResolvedValue("client-1");
+    mockAuthenticateViaBrowser.mockResolvedValue({
+      accessToken: "browser-access-token",
+      expiresAt: Date.now() + 3_600_000,
+      loginHint: "user-123",
+    });
+
+    await ensureAuthenticated();
+
+    expect(mockAuthenticateViaBrowser).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorizeEndpoint: discovery.authorization_endpoint,
+        clientId: "client-1",
+        parEndpoint: discovery.pushed_authorization_request_endpoint,
+        resource: "http://localhost:3000",
+        tokenEndpoint: discovery.token_endpoint,
+      })
+    );
   });
 });

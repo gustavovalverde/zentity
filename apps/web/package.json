@@ -30,6 +30,7 @@
     "security:audit": "pnpm exec tsx scripts/security-audit.ts",
     "security:audit:ci": "pnpm exec tsx scripts/security-audit.ts --ci",
     "format": "biome format --write .",
+    "probe:mcp-http": "node --env-file=.env --import tsx scripts/probe-mcp-http.ts",
     "test": "pnpm test:unit && pnpm test:integration",
     "test:unit": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --config vitest.unit.config.mts",
     "test:integration": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --config vitest.config.mts",
@@ -148,9 +149,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",
-    "@simplewebauthn/server": "13.3.0",
     "@next/bundle-analyzer": "16.1.7",
     "@playwright/test": "1.58.2",
+    "@simplewebauthn/server": "13.3.0",
     "@synthetixio/synpress": "4.1.2",
     "@synthetixio/synpress-cache": "0.0.14",
     "@tailwindcss/postcss": "4.2.1",
@@ -240,11 +241,21 @@
       }
     },
     "onlyBuiltDependencies": [
+      "@reown/appkit",
+      "@synthetixio/synpress-cache",
       "@tensorflow/tfjs-node",
-      "@synthetixio/synpress-cache"
+      "esbuild",
+      "protobufjs"
     ],
     "ignoredBuiltDependencies": [
-      "core-js"
+      "@prisma/engines",
+      "bufferutil",
+      "core-js",
+      "keccak",
+      "msgpackr-extract",
+      "prisma",
+      "sharp",
+      "utf-8-validate"
     ]
   }
 }

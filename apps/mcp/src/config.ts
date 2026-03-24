@@ -1,4 +1,5 @@
 const args = process.argv.slice(2);
+const DEFAULT_MCP_PORT = "3300";
 
 function getArg(name: string, fallback: string): string {
   const index = args.indexOf(`--${name}`);
@@ -11,7 +12,7 @@ function getArg(name: string, fallback: string): string {
   return fallback;
 }
 
-const port = Number.parseInt(getArg("port", "3200"), 10);
+const port = Number.parseInt(getArg("port", DEFAULT_MCP_PORT), 10);
 
 export const config = {
   transport: getArg("transport", "stdio") as "stdio" | "http",

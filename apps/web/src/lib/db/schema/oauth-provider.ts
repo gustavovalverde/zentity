@@ -73,6 +73,8 @@ export const oauthRefreshTokens = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    resource: text("resource"),
+    authTime: integer("auth_time", { mode: "timestamp_ms" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`

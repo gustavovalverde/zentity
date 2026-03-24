@@ -2,6 +2,7 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 const TRAILING_SLASHES = /\/+$/;
+const DEFAULT_MCP_PUBLIC_URL = "http://localhost:3300";
 const booleanTransform = (v: string) => v === "true" || v === "1";
 
 const booleanString = z
@@ -100,6 +101,10 @@ export const env = createEnv({
     TRUSTED_WALLET_ISSUERS: z.string().optional(),
     TRUSTED_AGENT_ATTESTERS: z.string().optional(),
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS: z.string().optional(),
+    MCP_PUBLIC_URL: z
+      .string()
+      .default(DEFAULT_MCP_PUBLIC_URL)
+      .transform((value) => value.replace(TRAILING_SLASHES, "")),
 
     // Blockchain (server-only secrets/overrides)
     REGISTRAR_PRIVATE_KEY: z.string().optional(),
@@ -230,6 +235,7 @@ export const env = createEnv({
     TRUSTED_AGENT_ATTESTERS: process.env.TRUSTED_AGENT_ATTESTERS,
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS:
       process.env.TRUSTED_SOFTWARE_STATEMENT_ISSUERS,
+    MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
     REGISTRAR_PRIVATE_KEY: process.env.REGISTRAR_PRIVATE_KEY,
     FHEVM_REGISTRAR_PRIVATE_KEY: process.env.FHEVM_REGISTRAR_PRIVATE_KEY,
     LOCAL_REGISTRAR_PRIVATE_KEY: process.env.LOCAL_REGISTRAR_PRIVATE_KEY,

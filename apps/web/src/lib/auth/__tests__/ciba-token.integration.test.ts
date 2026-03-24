@@ -13,7 +13,6 @@ import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";
-// Resource must match a validAudiences entry so the access token is JWT (not opaque)
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
 
 async function createTestClient(clientId = TEST_CLIENT_ID) {
@@ -23,7 +22,7 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       clientId,
       name: "CIBA Test Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
-      grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+      grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "refresh_token"]),
       tokenEndpointAuthMethod: "none",
       public: true,
     })
@@ -152,6 +151,35 @@ describe("CIBA token endpoint", () => {
     expect(typeof json.access_token).toBe("string");
     expect(json.token_type).toBe("DPoP");
     expect(json.expires_in).toBeDefined();
+  });
+
+  it("preserves the original resource across refresh-token grants", async () => {
+    const authReqId = await insertCibaRequest({
+      userId,
+      status: "approved",
+      resource: TEST_RESOURCE,
+      scope: "openid offline_access",
+    });
+
+    const initial = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    expect(initial.status).toBe(200);
+    expect(typeof initial.json.refresh_token).toBe("string");
+
+    const refreshed = await postTokenWithDpop({
+      grant_type: "refresh_token",
+      refresh_token: initial.json.refresh_token as string,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    expect(refreshed.status).toBe(200);
+
+    const payload = decodeJwt(refreshed.json.access_token as string);
+    expect(payload.aud).toContain(TEST_RESOURCE);
   });
 
   it("includes act claim in access token JWT", async () => {

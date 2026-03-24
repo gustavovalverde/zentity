@@ -1,5 +1,9 @@
 import { env } from "@/env";
 import {
+  type AgentConfiguration,
+  agentConfigurationSchema,
+} from "@/lib/auth/oidc/agent-configuration";
+import {
   AGENT_BOOTSTRAP_SCOPES,
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/auth/oidc/agent-scopes";
@@ -22,10 +26,10 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type",
 } as const;
 
-function buildAgentConfiguration() {
+function buildAgentConfiguration(): AgentConfiguration {
   const baseUrl = env.NEXT_PUBLIC_APP_URL;
 
-  return {
+  return agentConfigurationSchema.parse({
     issuer: baseUrl,
 
     // Registration
@@ -64,7 +68,7 @@ function buildAgentConfiguration() {
       capability_constraints: true,
       delegation_chains: false,
     },
-  };
+  });
 }
 
 export function GET() {

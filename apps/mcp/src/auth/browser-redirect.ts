@@ -3,13 +3,12 @@ import { createServer } from "node:http";
 import { platform } from "node:os";
 import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
+import { INSTALLED_AGENT_LOGIN_SCOPE_STRING } from "./installed-agent-scopes.js";
 import type { PkceChallenge } from "./pkce.js";
 import type { TokenResult } from "./token-exchange.js";
 import { exchangeAuthCode } from "./token-exchange.js";
 
 const CALLBACK_TIMEOUT_MS = 120_000;
-const BROWSER_SCOPES =
-  "openid email proof:identity identity.name identity.address agent:host.register agent:session.register agent:session.revoke";
 
 export interface BrowserRedirectParams {
   authorizeEndpoint: string;
@@ -44,7 +43,7 @@ export async function authenticateViaBrowser(
       url.searchParams.set("client_id", params.clientId);
       url.searchParams.set("response_type", "code");
       url.searchParams.set("redirect_uri", redirectUri);
-      url.searchParams.set("scope", BROWSER_SCOPES);
+      url.searchParams.set("scope", INSTALLED_AGENT_LOGIN_SCOPE_STRING);
       url.searchParams.set("code_challenge", params.pkce.codeChallenge);
       url.searchParams.set("code_challenge_method", "S256");
       if (params.resource) {
@@ -83,7 +82,7 @@ async function pushAuthorizationRequest(
     client_id: params.clientId,
     response_type: "code",
     redirect_uri: redirectUri,
-    scope: BROWSER_SCOPES,
+    scope: INSTALLED_AGENT_LOGIN_SCOPE_STRING,
     code_challenge: params.pkce.codeChallenge,
     code_challenge_method: "S256",
   });

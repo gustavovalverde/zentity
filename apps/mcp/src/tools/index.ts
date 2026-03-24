@@ -6,11 +6,27 @@ import { registerPurchaseTool } from "./purchase.js";
 import { registerRequestApprovalTool } from "./request-approval.js";
 import { registerWhoamiTool } from "./whoami.js";
 
-export function registerTools(server: McpServer): void {
+interface ToolRegistrationOptions {
+  allowIdentityUnlock?: boolean;
+  allowRuntimeTools?: boolean;
+}
+
+export function registerTools(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
   registerCheckComplianceTool(server);
   registerEchoTool(server);
   registerMyProofsTool(server);
-  registerPurchaseTool(server);
-  registerRequestApprovalTool(server);
-  registerWhoamiTool(server);
+  registerWhoamiTool(
+    server,
+    options.allowIdentityUnlock === undefined
+      ? {}
+      : { allowIdentityUnlock: options.allowIdentityUnlock }
+  );
+
+  if (options.allowRuntimeTools) {
+    registerPurchaseTool(server);
+    registerRequestApprovalTool(server);
+  }
 }

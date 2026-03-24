@@ -2,14 +2,18 @@ import { config } from "../config.js";
 import { signAgentAssertion } from "./agent-registration.js";
 import {
   beginCibaApproval,
+  type CibaPendingApproval,
+  type CibaPendingAuthorization,
   createPendingApproval,
   logPendingApprovalHandoff,
   pollCibaTokenOnce,
   requestCibaApproval,
-  type CibaPendingApproval,
-  type CibaPendingAuthorization,
 } from "./ciba.js";
-import { getOAuthContext, requireAuth, requireRuntimeState } from "./context.js";
+import {
+  getOAuthContext,
+  requireAuth,
+  requireRuntimeState,
+} from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
 
 export interface IdentityClaims {
@@ -60,7 +64,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
   const runtime = requireRuntimeState(auth);
-  const userId = oauth.loginHint;
+  const userId = oauth.accountSub || oauth.loginHint;
 
   const cached = getCachedIdentity(userId);
   if (cached) {
@@ -100,7 +104,7 @@ export async function getIdentityResolution(): Promise<IdentityResolution> {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
   const runtime = requireRuntimeState(auth);
-  const userId = oauth.loginHint;
+  const userId = oauth.accountSub || oauth.loginHint;
 
   const cached = getCachedIdentity(userId);
   if (cached) {
@@ -125,7 +129,10 @@ export async function getIdentityResolution(): Promise<IdentityResolution> {
 
       if (pollResult.status === "approved") {
         pendingIdentityCache.delete(userId);
-        const claims = await redeemRelease(pollResult.result.accessToken, oauth.dpopKey);
+        const claims = await redeemRelease(
+          pollResult.result.accessToken,
+          oauth.dpopKey
+        );
         if (claims) {
           identityCache.set(userId, {
             claims,
@@ -163,7 +170,8 @@ export async function getIdentityResolution(): Promise<IdentityResolution> {
 
       return {
         status: "timed_out",
-        message: "Identity unlock expired. Run whoami again to request a new approval.",
+        message:
+          "Identity unlock expired. Run whoami again to request a new approval.",
       };
     }
   }

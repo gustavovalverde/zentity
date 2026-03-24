@@ -90,11 +90,7 @@ describe("agent bootstrap token exchange", () => {
         clientId: CLIENT_ID,
         dpopJkt,
         expiresAt: new Date(Date.now() + 3_600_000),
-        scopes: JSON.stringify([
-          "openid",
-          "agent:host.register",
-          "agent:session.register",
-        ]),
+        scopes: JSON.stringify(["openid"]),
         token: hashOpaqueAccessToken(loginToken),
         userId,
       })
@@ -172,11 +168,7 @@ describe("agent bootstrap token exchange", () => {
       .values({
         clientId: CLIENT_ID,
         expiresAt: new Date(Date.now() + 3_600_000),
-        scopes: JSON.stringify([
-          "openid",
-          "agent:host.register",
-          "agent:session.register",
-        ]),
+        scopes: JSON.stringify(["openid"]),
         token: hashOpaqueAccessToken(loginToken),
         userId,
       })

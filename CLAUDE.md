@@ -35,7 +35,7 @@ Monorepo with services communicating via REST APIs:
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
 | FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
-| MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3200 (HTTP) / stdio |
+| MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 Additional apps (not core services):
 

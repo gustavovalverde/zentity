@@ -291,7 +291,7 @@ Details: [docs/architecture.md](docs/architecture.md) |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
 | Signer Coordinator | Rust (Actix), FROST coordinator | 5002 |
 | Signer Services | Rust (Actix), FROST signers | 5101+ |
-| MCP Server | Node.js, Hono, @modelcontextprotocol/sdk | 3200 (HTTP) / stdio |
+| MCP Server | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 ## License
 

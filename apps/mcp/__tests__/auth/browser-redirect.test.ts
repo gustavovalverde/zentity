@@ -219,6 +219,69 @@ describe("authenticateViaBrowser", () => {
     expect(result.accessToken).toBe("par-at");
   });
 
+  it("includes resource parameter in PAR requests", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            request_uri: "urn:par:resource-test",
+            expires_in: 60,
+          }),
+          { status: 201 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: "par-at", token_type: "DPoP" }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            email: "user@example.com",
+            sub: "pairwise-subject",
+          }),
+          { status: 200 }
+        )
+      );
+
+    const resultPromise = authenticateViaBrowser({
+      authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
+      parEndpoint: "http://localhost:3000/api/auth/oauth2/par",
+      clientId: "client-1",
+      dpopKey: mockDpopKey,
+      resource: "http://localhost:3000",
+      pkce: {
+        codeVerifier: "v",
+        codeChallenge: "c",
+        codeChallengeMethod: "S256",
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const parCall = fetchSpy.mock.calls.find(([url]) =>
+      (url as string).includes("/par")
+    );
+    expect(parCall).toBeDefined();
+
+    const parBody = new URLSearchParams(
+      (parCall?.[1] as RequestInit).body as string
+    );
+    expect(parBody.get("resource")).toBe("http://localhost:3000");
+
+    const redirectUri = parBody.get("redirect_uri") ?? "";
+    const port = new URL(redirectUri).port;
+    await httpGet(`http://127.0.0.1:${port}/callback?code=par-code`);
+
+    await expect(resultPromise).resolves.toMatchObject({
+      accessToken: "par-at",
+    });
+  });
+
   it("rejects on authorization error callback", async () => {
     vi.spyOn(globalThis, "fetch");
 

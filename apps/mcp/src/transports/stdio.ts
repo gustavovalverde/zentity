@@ -10,13 +10,15 @@ import {
   registerAgent,
 } from "../auth/agent-registration.js";
 import { ensureAuthenticated, refreshAuthContext } from "../auth/bootstrap.js";
-import { clearTokenCredentials } from "../auth/credentials.js";
 import {
+  getAuthContext,
   setAuthFactory,
   setAuthPromise,
   setDefaultAuth,
 } from "../auth/context.js";
+import { clearTokenCredentials } from "../auth/credentials.js";
 import { agentRuntimeManager } from "../auth/runtime-manager.js";
+import { revokeAgentSession } from "../auth/runtime-revoke.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
@@ -84,10 +86,7 @@ export async function bootstrapRegisteredRuntime(
       console.error(
         "[auth] Cached host registration is stale, re-registering the durable host..."
       );
-      clearCachedHostId(
-        config.zentityUrl,
-        buildHostKeyNamespace(auth.oauth)
-      );
+      clearCachedHostId(config.zentityUrl, buildHostKeyNamespace(auth.oauth));
       const runtime = await registerRuntime(auth.oauth);
       return { ...auth, runtime };
     }
@@ -149,11 +148,27 @@ async function runAuth(
 }
 
 export async function startStdio(): Promise<void> {
-  const { server, cleanup } = createServer();
+  const { server, cleanup } = createServer("full");
   const transport = new StdioServerTransport();
   const initializedPromise = waitForInitialized(server);
 
   const shutdown = async () => {
+    const runtime = agentRuntimeManager.getState();
+    if (runtime) {
+      try {
+        const auth = getAuthContext();
+        const bootstrapAuth = await prepareBootstrapRegistrationAuth(
+          auth.oauth
+        );
+        await revokeAgentSession(bootstrapAuth, runtime.sessionId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          `[agent] Session revoke failed during shutdown: ${message}`
+        );
+      }
+    }
+
     if (refreshTimer) {
       clearInterval(refreshTimer);
       refreshTimer = undefined;
@@ -170,7 +185,7 @@ export async function startStdio(): Promise<void> {
   // Tools were registered before connect(), so the SDK's per-tool
   // sendToolListChanged() no-ops (transport wasn't set yet).
   // Once the client finishes the handshake, notify it to fetch tools/list.
-  void initializedPromise.then(() => {
+  initializedPromise.then(() => {
     server.server.sendToolListChanged();
   });
 

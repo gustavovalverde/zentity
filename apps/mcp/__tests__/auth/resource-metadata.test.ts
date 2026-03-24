@@ -16,8 +16,15 @@ describe("Resource Metadata (RFC 9728)", () => {
     const metadata = getResourceMetadata();
 
     expect(metadata.resource).toBe("http://localhost:3200");
-    expect(metadata.authorization_servers).toEqual(["http://localhost:3000"]);
-    expect(metadata.bearer_methods_supported).toEqual(["header"]);
-    expect(metadata.scopes_supported).toContain("openid");
+    expect(metadata.authorization_servers).toEqual([
+      "http://localhost:3000/api/auth",
+    ]);
+    expect(metadata.bearer_methods_supported).toEqual(["header", "dpop"]);
+    expect(metadata.scopes_supported).toEqual([
+      "openid",
+      "compliance:key:read",
+      "proof:identity",
+      "email",
+    ]);
   });
 });

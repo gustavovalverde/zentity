@@ -1,3 +1,6 @@
+// Keep these values aligned with the MCP-side auth constants in
+// apps/mcp/src/auth/bootstrap-scopes.ts and
+// apps/mcp/src/auth/installed-agent-scopes.ts.
 export const AGENT_HOST_REGISTER_SCOPE = "agent:host.register";
 export const AGENT_SESSION_REGISTER_SCOPE = "agent:session.register";
 export const AGENT_SESSION_REVOKE_SCOPE = "agent:session.revoke";

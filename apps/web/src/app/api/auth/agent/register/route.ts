@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
+import { registerSessionRequestSchema } from "@/lib/auth/oidc/agent-registration-contract";
 import { AGENT_SESSION_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
 import {
   createPendingSessionGrants,
@@ -20,18 +20,6 @@ import {
 } from "@/lib/db/seed/capabilities";
 
 export const runtime = "nodejs";
-
-const registerSessionSchema = z.object({
-  hostJwt: z.string().min(1),
-  agentPublicKey: z.string().min(1),
-  requestedCapabilities: z.array(z.string()).optional(),
-  display: z.object({
-    model: z.string().max(128).optional(),
-    name: z.string().min(1).max(128),
-    runtime: z.string().max(128).optional(),
-    version: z.string().max(64).optional(),
-  }),
-});
 
 function decodeHostJwtIssuer(hostJwt: string): string | null {
   try {
@@ -57,7 +45,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = registerSessionSchema.safeParse(body);
+  const parsed = registerSessionRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request body", details: parsed.error.flatten() },
@@ -170,7 +158,7 @@ export async function POST(request: Request) {
   const pendingGrants = await createPendingSessionGrants(
     session.id,
     requestedCapabilities.filter(
-      (capability) => !defaultCapabilities.includes(capability)
+      (capability: string) => !defaultCapabilities.includes(capability)
     )
   );
 

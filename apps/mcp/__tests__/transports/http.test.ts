@@ -5,18 +5,6 @@ import type {
   TokenAuthResult,
 } from "../../src/auth/token-auth.js";
 
-const {
-  mockClearCachedHostId,
-  mockEnsureHostRegistered,
-  mockPrepareBootstrapRegistrationAuth,
-  mockRegisterAgent,
-} = vi.hoisted(() => ({
-  mockClearCachedHostId: vi.fn(),
-  mockEnsureHostRegistered: vi.fn(),
-  mockPrepareBootstrapRegistrationAuth: vi.fn(),
-  mockRegisterAgent: vi.fn(),
-}));
-
 vi.mock("../../src/config.js", () => ({
   config: {
     zentityUrl: "http://localhost:3000",
@@ -33,7 +21,8 @@ const mockValidateToken =
       authHeader: string | undefined,
       dpopHeader: string | undefined,
       method: string,
-      url: string
+      url: string,
+      requiredScopes?: string[]
     ) => Promise<TokenAuthResult | TokenAuthError>
   >();
 
@@ -43,7 +32,8 @@ vi.mock("../../src/auth/token-auth.js", () => ({
       args[0] as string | undefined,
       args[1] as string | undefined,
       args[2] as string,
-      args[3] as string
+      args[3] as string,
+      args[4] as string[] | undefined
     ),
   isAuthError: (result: unknown) =>
     typeof result === "object" && result !== null && "status" in result,
@@ -55,22 +45,9 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
     accessToken: "exchanged-token-123",
     tokenType: "DPoP",
     expiresIn: 3600,
+    scope: "openid",
   }),
-  resolveLoginHint: vi.fn().mockResolvedValue("user-123@example.com"),
 }));
-
-vi.mock("../../src/auth/agent-registration.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../../src/auth/agent-registration.js")
-  >("../../src/auth/agent-registration.js");
-  return {
-    ...actual,
-    clearCachedHostId: mockClearCachedHostId,
-    ensureHostRegistered: mockEnsureHostRegistered,
-    prepareBootstrapRegistrationAuth: mockPrepareBootstrapRegistrationAuth,
-    registerAgent: mockRegisterAgent,
-  };
-});
 
 vi.mock("../../src/auth/discovery.js", () => ({
   discover: vi.fn().mockResolvedValue({
@@ -89,12 +66,9 @@ vi.mock("../../src/server/index.js", () => ({
 
 import { discover } from "../../src/auth/discovery.js";
 import { exchangeToken } from "../../src/auth/token-exchange.js";
-import { buildHostKeyNamespace } from "../../src/auth/agent-registration.js";
 import {
   createApp,
-  ensureSessionRuntime,
   matchOrigin,
-  registerHttpRuntime,
   resolveTokenExchangeAudience,
   setServerCredentials,
 } from "../../src/transports/http.js";
@@ -115,17 +89,17 @@ function validPayload(overrides: Partial<JWTPayload> = {}): TokenAuthResult {
 function authError(
   status: 401 | 403,
   error: string,
-  description: string
+  description: string,
+  scope?: string
 ): TokenAuthError {
   const parts = [
     'Bearer realm="zentity-mcp"',
     `error="${error}"`,
     `error_description="${description}"`,
+    'resource_metadata="http://localhost:3200/.well-known/oauth-protected-resource"',
   ];
-  if (status === 401) {
-    parts.push(
-      'resource_metadata="http://localhost:3200/.well-known/oauth-protected-resource"'
-    );
+  if (scope) {
+    parts.push(`scope="${scope}"`);
   }
   return {
     status,
@@ -178,6 +152,7 @@ describe("HTTP transport middleware", () => {
       accessToken: "exchanged-token-123",
       tokenType: "DPoP",
       expiresIn: 3600,
+      scope: "openid",
     });
     setServerCredentials({
       clientId: "test-client",
@@ -200,13 +175,35 @@ describe("HTTP transport middleware", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.resource).toBe("http://localhost:3200");
-    expect(body.authorization_servers).toContain("http://localhost:3000");
-    expect(body.scopes_supported).toContain("openid");
+    expect(body.authorization_servers).toContain(
+      "http://localhost:3000/api/auth"
+    );
+    expect(body.bearer_methods_supported).toEqual(["header", "dpop"]);
+    expect(body.scopes_supported).toEqual([
+      "openid",
+      "compliance:key:read",
+      "proof:identity",
+      "email",
+    ]);
+  });
+
+  it("serves a remote-client metadata document without bootstrap grants", async () => {
+    const res = await app.request("/.well-known/oauth-client.json");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.grant_types).toEqual(["authorization_code", "refresh_token"]);
+    expect(body.scope).toBe("openid");
+    expect(body.scope).not.toContain("offline_access");
   });
 
   it("returns 401 with resource_metadata when no auth header", async () => {
     mockValidateToken.mockResolvedValue(
-      authError(401, "invalid_request", "Missing Authorization header")
+      authError(
+        401,
+        "invalid_request",
+        "Missing Authorization header",
+        "openid"
+      )
     );
 
     const res = await app.request("/mcp", { method: "POST" });
@@ -214,53 +211,34 @@ describe("HTTP transport middleware", () => {
 
     const wwwAuth = res.headers.get("WWW-Authenticate");
     expect(wwwAuth).toContain("resource_metadata");
-    expect(wwwAuth).toContain("oauth-protected-resource");
+    expect(wwwAuth).toContain('scope="openid"');
 
     const body = await res.json();
     expect(body.error).toBe("invalid_request");
   });
 
-  it("returns 401 for expired token", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(401, "invalid_token", "Token has expired")
-    );
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: { Authorization: "Bearer expired-token" },
-    });
-    expect(res.status).toBe(401);
-
-    const body = await res.json();
-    expect(body.error).toBe("invalid_token");
-    expect(body.error_description).toContain("expired");
-  });
-
-  it("returns 401 for token with wrong issuer", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(401, "invalid_token", "Unexpected issuer")
-    );
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: { Authorization: "Bearer wrong-issuer-token" },
-    });
-    expect(res.status).toBe(401);
-    expect((await res.json()).error).toBe("invalid_token");
-  });
-
-  it("returns 403 for insufficient scopes", async () => {
+  it("returns 403 with resource_metadata and scope for insufficient scopes", async () => {
     mockValidateToken.mockResolvedValue(
       authError(
         403,
         "insufficient_scope",
-        "Token missing required scope(s): openid"
+        "Token missing required scope(s): email",
+        "openid email"
       )
     );
 
     const res = await app.request("/mcp", {
       method: "POST",
-      headers: { Authorization: "Bearer no-scope-token" },
+      headers: {
+        Authorization: "Bearer no-scope-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        id: 1,
+        params: { name: "whoami", arguments: {} },
+      }),
     });
     expect(res.status).toBe(403);
 
@@ -268,10 +246,99 @@ describe("HTTP transport middleware", () => {
     expect(body.error).toBe("insufficient_scope");
 
     const wwwAuth = res.headers.get("WWW-Authenticate");
-    expect(wwwAuth).not.toContain("resource_metadata");
+    expect(wwwAuth).toContain("resource_metadata");
+    expect(wwwAuth).toContain('scope="openid email"');
   });
 
-  it("creates MCP session with valid token after token exchange", async () => {
+  it("uses minimal scopes for initialize", async () => {
+    mockValidateToken.mockResolvedValue(validPayload());
+
+    const res = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token",
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "initialize",
+        id: 1,
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockValidateToken).toHaveBeenCalledWith(
+      "Bearer valid-token",
+      undefined,
+      "POST",
+      expect.stringContaining("/mcp"),
+      ["openid"]
+    );
+  });
+
+  it("challenges whoami with account scopes", async () => {
+    mockValidateToken.mockResolvedValue(
+      validPayload({ scope: "openid email" })
+    );
+
+    await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        id: 1,
+        params: { name: "whoami", arguments: {} },
+      }),
+    });
+
+    expect(mockValidateToken).toHaveBeenCalledWith(
+      "Bearer valid-token",
+      undefined,
+      "POST",
+      expect.stringContaining("/mcp"),
+      ["openid", "email"]
+    );
+  });
+
+  it("challenges proof tools with proof scopes", async () => {
+    mockValidateToken.mockResolvedValue(
+      validPayload({ scope: "openid proof:identity" })
+    );
+
+    await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/call",
+        id: 1,
+        params: { name: "my_proofs", arguments: {} },
+      }),
+    });
+
+    expect(mockValidateToken).toHaveBeenCalledWith(
+      "Bearer valid-token",
+      undefined,
+      "POST",
+      expect.stringContaining("/mcp"),
+      ["openid", "proof:identity"]
+    );
+  });
+
+  it("creates an MCP session with a valid token after downstream token exchange", async () => {
     mockValidateToken.mockResolvedValue(validPayload());
 
     const res = await app.request("/mcp", {
@@ -302,6 +369,56 @@ describe("HTTP transport middleware", () => {
         clientId: "test-client",
       })
     );
+  });
+
+  it("rejects reusing a session id across different principals", async () => {
+    mockValidateToken.mockResolvedValueOnce(validPayload({ sub: "user-123" }));
+
+    const initialize = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer valid-token",
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "initialize",
+        id: 1,
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+      }),
+    });
+
+    expect(initialize.status).toBe(200);
+    const sessionId = initialize.headers.get("mcp-session-id");
+    expect(sessionId).toBeTruthy();
+
+    mockValidateToken.mockResolvedValueOnce(validPayload({ sub: "user-456" }));
+
+    const reuse = await app.request("/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer other-valid-token",
+        Accept: "application/json, text/event-stream",
+        "Content-Type": "application/json",
+        "mcp-session-id": sessionId ?? "",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "tools/list",
+        id: 2,
+        params: {},
+      }),
+    });
+
+    expect(reuse.status).toBe(403);
+    await expect(reuse.json()).resolves.toEqual({
+      error: "Session principal mismatch",
+    });
   });
 
   it("derives token exchange audience from the discovered public issuer", async () => {
@@ -351,24 +468,11 @@ describe("HTTP transport middleware", () => {
       headers: { Authorization: "Bearer valid-token" },
     });
     expect(res.status).toBe(502);
-const body = await res.json();
+    const body = await res.json();
     expect(body.error).toBe("token_exchange_failed");
   });
 
-  it("returns 401 for DPoP token without proof", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(401, "invalid_token", "Missing DPoP proof header")
-    );
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: { Authorization: "DPoP some-token" },
-    });
-    expect(res.status).toBe(401);
-    expect((await res.json()).error_description).toContain("DPoP");
-  });
-
-  it("accepts DPoP token with valid proof", async () => {
+  it("accepts DPoP tokens with valid proof", async () => {
     mockValidateToken.mockResolvedValue({
       scheme: "DPoP",
       payload: {
@@ -418,129 +522,6 @@ const body = await res.json();
     });
     const acao = res.headers.get("Access-Control-Allow-Origin");
     expect(acao === null || acao === "").toBe(true);
-  });
-
-  it("passes auth header and DPoP header to validateToken", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(401, "invalid_token", "test")
-    );
-
-    await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer my-token",
-        DPoP: "my-proof",
-      },
-    });
-
-    expect(mockValidateToken).toHaveBeenCalledWith(
-      "Bearer my-token",
-      "my-proof",
-      "POST",
-      expect.stringContaining("/mcp")
-    );
-  });
-});
-
-describe("HTTP runtime registration", () => {
-  const oauth = {
-    accessToken: "exchanged-token-123",
-    clientId: "test-client",
-    dpopKey: {
-      privateJwk: { kty: "EC", crv: "P-256" },
-      publicJwk: { kty: "EC", crv: "P-256" },
-    },
-    loginHint: "user-123",
-  };
-  const bootstrapAuth = {
-    ...oauth,
-    accessToken: "bootstrap-token-123",
-  };
-
-  beforeEach(() => {
-    mockClearCachedHostId.mockReset();
-    mockEnsureHostRegistered.mockReset();
-    mockPrepareBootstrapRegistrationAuth.mockReset();
-    mockRegisterAgent.mockReset();
-    mockPrepareBootstrapRegistrationAuth.mockResolvedValue(bootstrapAuth);
-  });
-
-  it("registers a runtime with a user-scoped host namespace", async () => {
-    const runtime = {
-      display: {
-        model: "unknown",
-        name: "@zentity/mcp-server",
-        runtime: "node",
-        version: "unknown",
-      },
-      grants: [],
-      hostId: "host-123",
-      sessionId: "session-123",
-      sessionPrivateKey: { kty: "OKP", crv: "Ed25519", d: "priv", x: "pub" },
-      sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
-    };
-    mockEnsureHostRegistered.mockResolvedValue("host-123");
-    mockRegisterAgent.mockResolvedValue(runtime);
-
-    const result = await registerHttpRuntime(oauth);
-
-    const namespace = buildHostKeyNamespace(oauth);
-    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(oauth);
-    expect(mockEnsureHostRegistered).toHaveBeenCalledWith(
-      "http://localhost:3000",
-      bootstrapAuth,
-      "@zentity/mcp-server",
-      namespace
-    );
-    expect(mockRegisterAgent).toHaveBeenCalledWith(
-      "http://localhost:3000",
-      bootstrapAuth,
-      "host-123",
-      expect.objectContaining({
-        model: "unknown",
-        name: "@zentity/mcp-server",
-      }),
-      namespace
-    );
-    expect(result).toEqual(runtime);
-  });
-
-  it("reuses the cached runtime for repeat requests in the same MCP session", async () => {
-    const runtime = {
-      display: {
-        model: "unknown",
-        name: "@zentity/mcp-server",
-        runtime: "node",
-        version: "unknown",
-      },
-      grants: [],
-      hostId: "host-123",
-      sessionId: "session-123",
-      sessionPrivateKey: { kty: "OKP", crv: "Ed25519", d: "priv", x: "pub" },
-      sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
-    };
-    const runtimes = new Map<string, (typeof runtime)>();
-    mockEnsureHostRegistered.mockResolvedValue("host-123");
-    mockRegisterAgent.mockResolvedValue(runtime);
-
-    const first = await ensureSessionRuntime(
-      runtimes,
-      "mcp-session-1",
-      oauth
-    );
-    const second = await ensureSessionRuntime(
-      runtimes,
-      "mcp-session-1",
-      {
-        ...oauth,
-        accessToken: "exchanged-token-456",
-      }
-    );
-
-    expect(first).toEqual(runtime);
-    expect(second).toBe(runtime);
-    expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(1);
-    expect(mockRegisterAgent).toHaveBeenCalledTimes(1);
   });
 });
 

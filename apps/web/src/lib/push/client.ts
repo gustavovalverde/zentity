@@ -117,7 +117,7 @@ export async function getPushState(): Promise<
     .register("/push-sw.js", { scope: "/", updateViaCache: "none" })
     .catch(() => undefined);
   if (!registration) {
-    return "unsubscribed";
+    return "unsupported";
   }
   const subscription = await registration.pushManager
     .getSubscription()

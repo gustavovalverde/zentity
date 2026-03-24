@@ -286,23 +286,32 @@ function createTokenExchangeHandler(): (
       typeof subjectPayload.scope === "string"
         ? subjectPayload.scope.split(" ")
         : [];
+    const requestedScopes =
+      typeof requestedScope === "string"
+        ? requestedScope.split(" ").filter(Boolean)
+        : [];
+    const bootstrapOnlyRequest =
+      subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
+      requestedScopes.length > 0 &&
+      requestedScopes.every((scope) => AGENT_BOOTSTRAP_SCOPE_SET.has(scope));
 
     let targetScopes: string[];
     if (requestedScope) {
-      const requested = (requestedScope as string).split(" ");
       if (subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN) {
         // Access token subjects: requested must be a subset
-        for (const s of requested) {
-          if (!subjectScopes.includes(s)) {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_scope",
-              error_description: `Requested scope '${s}' exceeds subject token scope`,
-            });
+        if (!bootstrapOnlyRequest) {
+          for (const s of requestedScopes) {
+            if (!subjectScopes.includes(s)) {
+              throw new APIError("BAD_REQUEST", {
+                error: "invalid_scope",
+                error_description: `Requested scope '${s}' exceeds subject token scope`,
+              });
+            }
           }
         }
       } else {
         // ID token subjects carry no scopes — only "openid" is safe
-        for (const s of requested) {
+        for (const s of requestedScopes) {
           if (s !== "openid") {
             throw new APIError("BAD_REQUEST", {
               error: "invalid_scope",
@@ -312,7 +321,7 @@ function createTokenExchangeHandler(): (
           }
         }
       }
-      targetScopes = requested;
+      targetScopes = requestedScopes;
     } else if (subjectTokenType === TOKEN_TYPE_ID_TOKEN) {
       // ID token subjects carry no scopes — always default to openid
       targetScopes = ["openid"];

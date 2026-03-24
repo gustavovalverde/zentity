@@ -11,7 +11,7 @@ export async function zentityFetch(
   const auth = getAuthContext();
   const oauth = getOAuthContext(auth);
 
-  const nonceKey = oauth.loginHint;
+  const nonceKey = oauth.accountSub || oauth.clientId;
   const dpopNonce = dpopNonces.get(nonceKey);
 
   let proof = await createDpopProof(

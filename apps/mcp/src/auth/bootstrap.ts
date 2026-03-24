@@ -4,10 +4,7 @@ import type { OAuthSessionContext } from "./context.js";
 import { clearClientRegistration, loadCredentials } from "./credentials.js";
 import { ensureClientRegistration } from "./dcr.js";
 import { discover } from "./discovery.js";
-import {
-  getOrCreateDpopKey,
-  type DpopKeyPair,
-} from "./dpop.js";
+import { type DpopKeyPair, getOrCreateDpopKey } from "./dpop.js";
 import { generatePkce } from "./pkce.js";
 import { exchangeToken } from "./token-exchange.js";
 import { TokenManager } from "./token-manager.js";
@@ -29,8 +26,8 @@ async function exchangeAppAccessToken(
   subjectToken: string,
   clientId: string,
   dpopKey: DpopKeyPair
-): Promise<string> {
-  const { accessToken } = await exchangeToken({
+): Promise<{ accessToken: string; scopes: string[] }> {
+  const { accessToken, scope } = await exchangeToken({
     tokenEndpoint: discovery.token_endpoint,
     subjectToken,
     audience: config.zentityUrl,
@@ -38,7 +35,10 @@ async function exchangeAppAccessToken(
     dpopKey,
   });
 
-  return accessToken;
+  return {
+    accessToken,
+    scopes: typeof scope === "string" ? scope.split(" ").filter(Boolean) : [],
+  };
 }
 
 async function authenticateFreshSession(
@@ -68,8 +68,9 @@ async function authenticateFreshSession(
       clientId: activeClientId,
       dpopKey,
       pkce,
+      resource: config.zentityUrl,
     });
-    const appAccessToken = await exchangeAppAccessToken(
+    const appAuth = await exchangeAppAccessToken(
       discovery,
       result.accessToken,
       activeClientId,
@@ -78,10 +79,12 @@ async function authenticateFreshSession(
 
     return {
       oauth: {
-        accessToken: appAccessToken,
+        accessToken: appAuth.accessToken,
+        accountSub: result.accountSub ?? "",
         clientId: activeClientId,
         dpopKey,
         loginHint: result.loginHint ?? "",
+        scopes: appAuth.scopes,
       },
       tokenManager,
     };
@@ -122,17 +125,19 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   if (creds?.accessToken || creds?.refreshToken) {
     try {
       const loginAccessToken = await tokenManager.getAccessToken();
-      const accessToken = await exchangeAppAccessToken(
+      const appAuth = await exchangeAppAccessToken(
         discovery,
         loginAccessToken,
         clientId,
         dpopKey
       );
       const oauth: OAuthSessionContext = {
-        accessToken,
+        accessToken: appAuth.accessToken,
+        accountSub: creds.accountSub ?? "",
         clientId,
         dpopKey,
         loginHint: creds.loginHint ?? "",
+        scopes: appAuth.scopes,
       };
       console.error("[auth] Using stored credentials");
       return { oauth, tokenManager };
@@ -159,11 +164,14 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
  */
 export async function refreshAuthContext(
   tokenManager: TokenManager,
-  oauth: Pick<OAuthSessionContext, "clientId" | "dpopKey" | "loginHint">
+  oauth: Pick<
+    OAuthSessionContext,
+    "accountSub" | "clientId" | "dpopKey" | "loginHint"
+  >
 ): Promise<OAuthSessionContext> {
   const discovery = await discover(config.zentityUrl);
   const loginAccessToken = await tokenManager.getAccessToken();
-  const accessToken = await exchangeAppAccessToken(
+  const appAuth = await exchangeAppAccessToken(
     discovery,
     loginAccessToken,
     oauth.clientId,
@@ -171,9 +179,11 @@ export async function refreshAuthContext(
   );
   const creds = loadCredentials(config.zentityUrl);
   return {
-    accessToken,
+    accessToken: appAuth.accessToken,
+    accountSub: creds?.accountSub ?? oauth.accountSub,
     clientId: oauth.clientId,
     dpopKey: oauth.dpopKey,
     loginHint: creds?.loginHint ?? oauth.loginHint,
+    scopes: appAuth.scopes,
   };
 }

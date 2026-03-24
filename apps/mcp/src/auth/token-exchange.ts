@@ -15,10 +15,12 @@ interface TokenResponse {
 
 export interface TokenResult {
   accessToken: string;
+  accountSub?: string;
   expiresAt: number;
   idToken?: string;
   loginHint?: string;
   refreshToken?: string;
+  scopes: string[];
 }
 
 export interface ExchangeTokenResult {
@@ -35,6 +37,23 @@ export interface ExchangeTokenParams {
   scope?: string;
   subjectToken: string;
   tokenEndpoint: string;
+}
+
+function decodeJwtClaim(
+  token: string | undefined,
+  claim: string
+): string | undefined {
+  if (!token?.startsWith("eyJ")) {
+    return undefined;
+  }
+
+  try {
+    const payload = decodeJwt(token);
+    const value = payload[claim];
+    return typeof value === "string" && value ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchUserInfo(
@@ -102,31 +121,43 @@ async function fetchUserInfo(
   return data;
 }
 
+export async function resolveOAuthIdentity(
+  accessToken: string,
+  dpopKey: DpopKeyPair,
+  idToken?: string
+): Promise<{ accountSub?: string; loginHint?: string }> {
+  const userinfo = await fetchUserInfo(accessToken, dpopKey);
+  if (userinfo) {
+    const accountSub =
+      (typeof userinfo.sub === "string" && userinfo.sub) ||
+      decodeJwtClaim(accessToken, "sub") ||
+      decodeJwtClaim(idToken, "sub");
+    const loginHint =
+      (typeof userinfo.email === "string" && userinfo.email) ||
+      (typeof userinfo.preferred_username === "string" &&
+        userinfo.preferred_username) ||
+      accountSub ||
+      (typeof userinfo.id === "string" && userinfo.id) ||
+      undefined;
+
+    return {
+      ...(accountSub ? { accountSub } : {}),
+      ...(loginHint ? { loginHint } : {}),
+    };
+  }
+
+  const accountSub =
+    decodeJwtClaim(accessToken, "sub") || decodeJwtClaim(idToken, "sub");
+  return {
+    ...(accountSub ? { accountSub, loginHint: accountSub } : {}),
+  };
+}
+
 export async function resolveLoginHint(
   accessToken: string,
   dpopKey: DpopKeyPair
 ): Promise<string | undefined> {
-  const userinfo = await fetchUserInfo(accessToken, dpopKey);
-  if (!userinfo) {
-    return undefined;
-  }
-
-  if (typeof userinfo.email === "string" && userinfo.email) {
-    return userinfo.email;
-  }
-  if (
-    typeof userinfo.preferred_username === "string" &&
-    userinfo.preferred_username
-  ) {
-    return userinfo.preferred_username;
-  }
-  if (typeof userinfo.sub === "string" && userinfo.sub) {
-    return userinfo.sub;
-  }
-  if (typeof userinfo.id === "string" && userinfo.id) {
-    return userinfo.id;
-  }
-  return undefined;
+  return (await resolveOAuthIdentity(accessToken, dpopKey)).loginHint;
 }
 
 export async function exchangeAuthCode(
@@ -201,21 +232,17 @@ export async function exchangeAuthCode(
   const data = (await response.json()) as TokenResponse;
 
   const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
-
-  let loginHint = await resolveLoginHint(data.access_token, dpopKey);
-  if (!loginHint && data.id_token) {
-    try {
-      const claims = decodeJwt(data.id_token);
-      if (typeof claims.sub === "string") {
-        loginHint = claims.sub;
-      }
-    } catch {
-      // id_token decode is best-effort
-    }
-  }
+  const { accountSub, loginHint } = await resolveOAuthIdentity(
+    data.access_token,
+    dpopKey,
+    data.id_token
+  );
+  const scopes =
+    typeof data.scope === "string" ? data.scope.split(" ").filter(Boolean) : [];
 
   updateCredentials(config.zentityUrl, {
     accessToken: data.access_token,
+    ...(accountSub ? { accountSub } : {}),
     expiresAt,
     ...(loginHint ? { loginHint } : {}),
     ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}),
@@ -223,10 +250,12 @@ export async function exchangeAuthCode(
 
   return {
     accessToken: data.access_token,
+    ...(accountSub ? { accountSub } : {}),
     expiresAt,
     ...(data.id_token ? { idToken: data.id_token } : {}),
     ...(loginHint ? { loginHint } : {}),
     ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}),
+    scopes,
   };
 }
 

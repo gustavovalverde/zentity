@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  type AgentConfiguration,
+  agentConfigurationSchema,
+} from "@/lib/auth/oidc/agent-configuration";
+
 /**
  * Agent Auth Protocol — Discovery Document Integration Tests
  *
@@ -7,41 +12,13 @@ import { describe, expect, it } from "vitest";
  * the Agent Auth Protocol discovery specification.
  */
 
-interface AgentConfiguration {
-  approval_methods: string[];
-  approval_page_url_template: string;
-  bootstrap_token_exchange: {
-    audience: string;
-    grant_type: string;
-    requested_token_type: string;
-    scopes_supported: string[];
-    token_use: string;
-  };
-  capabilities_endpoint: string;
-  host_registration_endpoint: string;
-  introspection_endpoint: string;
-  issuer: string;
-  jwks_uri: string;
-  registration_endpoint: string;
-  revocation_endpoint: string;
-  supported_algorithms: string[];
-  supported_features: {
-    bootstrap_token_exchange: boolean;
-    task_attestation: boolean;
-    pairwise_agents: boolean;
-    risk_graduated_approval: boolean;
-    capability_constraints: boolean;
-    delegation_chains: boolean;
-  };
-}
-
 async function getConfiguration() {
   const { GET } = await import("@/app/.well-known/agent-configuration/route");
   return GET();
 }
 
-function parseConfig(response: Response): Promise<AgentConfiguration> {
-  return response.json() as Promise<AgentConfiguration>;
+async function parseConfig(response: Response): Promise<AgentConfiguration> {
+  return agentConfigurationSchema.parse(await response.json());
 }
 
 const URL_RE = /^https?:\/\//;

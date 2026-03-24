@@ -80,33 +80,11 @@ function ClientAvatar({ meta }: { meta: ClientMeta | null }) {
   );
 }
 
-function extractHostname(metadataUrl: string): string | null {
-  try {
-    return new URL(metadataUrl).hostname;
-  } catch {
-    return null;
-  }
-}
-
-function isLocalhostUri(uri: string): boolean {
-  try {
-    const host = new URL(uri).hostname;
-    return host === "localhost" || host === "127.0.0.1" || host === "::1";
-  } catch {
-    return false;
-  }
-}
-
-function areAllRedirectUrisLocalhost(redirectUris: string[] | null): boolean {
-  if (!redirectUris || redirectUris.length === 0) {
-    return false;
-  }
-  return redirectUris.every(isLocalhostUri);
-}
-
 export function OAuthConsentClient({
   clientId,
+  clientHostname,
   clientMeta,
+  isLocalApp,
   optionalScopes,
   scopeParam,
   securityBadgeInput,
@@ -114,7 +92,9 @@ export function OAuthConsentClient({
   wallet,
 }: Readonly<{
   clientId: string | null;
+  clientHostname: string | null;
   clientMeta: ClientMeta | null;
+  isLocalApp: boolean;
   optionalScopes: string[];
   scopeParam: string;
   securityBadgeInput: SecurityBadgeInput | null;
@@ -358,10 +338,8 @@ export function OAuthConsentClient({
             {clientName} wants to access your{" "}
             {hasApprovedIdentityScopes ? "personal information" : "account"}
           </CardTitle>
-          {clientMeta?.metadataUrl && (
-            <p className="text-muted-foreground text-xs">
-              {extractHostname(clientMeta.metadataUrl)}
-            </p>
+          {clientHostname && (
+            <p className="text-muted-foreground text-xs">{clientHostname}</p>
           )}
           <CardDescription>
             {hasOptional
@@ -382,7 +360,7 @@ export function OAuthConsentClient({
               </>
             ) : null}
           </CardDescription>
-          {areAllRedirectUrisLocalhost(clientMeta?.redirectUris ?? null) && (
+          {isLocalApp && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 text-xs dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
               Local app — authorization code delivered to a local application
             </div>

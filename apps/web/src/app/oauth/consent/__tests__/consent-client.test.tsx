@@ -122,6 +122,7 @@ describe("OAuthConsentClient identity hardening", () => {
     render(
       <OAuthConsentClient
         authMode="passkey"
+        clientHostname={null}
         clientId="client-1"
         clientMeta={{
           name: "RP",
@@ -130,6 +131,7 @@ describe("OAuthConsentClient identity hardening", () => {
           metadataUrl: null,
           redirectUris: null,
         }}
+        isLocalApp={false}
         optionalScopes={[]}
         scopeParam="openid identity.name"
         securityBadgeInput={null}
@@ -172,6 +174,7 @@ describe("OAuthConsentClient identity hardening", () => {
     render(
       <OAuthConsentClient
         authMode="wallet"
+        clientHostname={null}
         clientId="client-1"
         clientMeta={{
           name: "RP",
@@ -180,6 +183,7 @@ describe("OAuthConsentClient identity hardening", () => {
           metadataUrl: null,
           redirectUris: null,
         }}
+        isLocalApp={false}
         optionalScopes={[]}
         scopeParam="openid identity.name"
         securityBadgeInput={null}
@@ -194,5 +198,40 @@ describe("OAuthConsentClient identity hardening", () => {
     });
 
     expect(profileMocks.getStoredProfileWithCredential).not.toHaveBeenCalled();
+  });
+
+  it("renders server-derived consent display metadata without recomputing it", () => {
+    render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname="localhost"
+        clientId="client-1"
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: "http://localhost/metadata",
+          redirectUris: ["http://127.0.0.1:54324/callback"],
+        }}
+        isLocalApp={true}
+        optionalScopes={[]}
+        scopeParam="openid"
+        securityBadgeInput={{
+          encryptionLevel: "standard",
+          isPairwise: true,
+          requiresDpop: true,
+          signingAlg: "EdDSA",
+        }}
+        wallet={null}
+      />
+    );
+
+    expect(screen.getByText("localhost")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Local app — authorization code delivered to a local application"
+      )
+    ).toBeTruthy();
+    expect(screen.getByText("Encrypted")).toBeTruthy();
   });
 });

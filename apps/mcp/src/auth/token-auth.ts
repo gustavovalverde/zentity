@@ -61,7 +61,8 @@ export interface TokenAuthError {
 function authError(
   status: 401 | 403,
   error: string,
-  description: string
+  description: string,
+  requiredScopes: string[] = []
 ): TokenAuthError {
   const realm = `Bearer realm="zentity-mcp"`;
   const metadataUrl = `${config.mcpPublicUrl}/.well-known/oauth-protected-resource`;
@@ -70,9 +71,10 @@ function authError(
     realm,
     `error="${error}"`,
     `error_description="${description}"`,
+    `resource_metadata="${metadataUrl}"`,
   ];
-  if (status === 401) {
-    parts.push(`resource_metadata="${metadataUrl}"`);
+  if (requiredScopes.length > 0) {
+    parts.push(`scope="${requiredScopes.join(" ")}"`);
   }
 
   return {
@@ -94,12 +96,22 @@ export async function validateToken(
   requiredScopes: string[] = ["openid"]
 ): Promise<TokenAuthResult | TokenAuthError> {
   if (!authHeader) {
-    return authError(401, "invalid_request", "Missing Authorization header");
+    return authError(
+      401,
+      "invalid_request",
+      "Missing Authorization header",
+      requiredScopes
+    );
   }
 
   const match = AUTH_HEADER_RE.exec(authHeader);
   if (!(match?.[1] && match[2])) {
-    return authError(401, "invalid_request", "Malformed Authorization header");
+    return authError(
+      401,
+      "invalid_request",
+      "Malformed Authorization header",
+      requiredScopes
+    );
   }
 
   const scheme = match[1].toLowerCase() === "dpop" ? "DPoP" : "Bearer";
@@ -117,9 +129,14 @@ export async function validateToken(
       err instanceof Error ? err.message : "Token verification failed";
 
     if (message.includes("exp") || message.includes("expired")) {
-      return authError(401, "invalid_token", "Token has expired");
+      return authError(
+        401,
+        "invalid_token",
+        "Token has expired",
+        requiredScopes
+      );
     }
-    return authError(401, "invalid_token", message);
+    return authError(401, "invalid_token", message, requiredScopes);
   }
 
   const payload = result.payload;
@@ -135,13 +152,19 @@ export async function validateToken(
     return authError(
       401,
       "invalid_token",
-      "Sender-constrained token requires DPoP scheme"
+      "Sender-constrained token requires DPoP scheme",
+      requiredScopes
     );
   }
 
   if (scheme === "DPoP") {
     if (!dpopHeader) {
-      return authError(401, "invalid_token", "Missing DPoP proof header");
+      return authError(
+        401,
+        "invalid_token",
+        "Missing DPoP proof header",
+        requiredScopes
+      );
     }
 
     const dpopResult = await validateDpopProof(
@@ -177,7 +200,8 @@ function checkScopes(
   return authError(
     403,
     "insufficient_scope",
-    `Token missing required scope(s): ${missing.join(", ")}`
+    `Token missing required scope(s): ${missing.join(", ")}`,
+    required
   );
 }
 

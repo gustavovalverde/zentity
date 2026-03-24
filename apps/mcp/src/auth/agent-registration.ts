@@ -2,6 +2,14 @@ import { randomUUID } from "node:crypto";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
+import { discoverAgentConfiguration } from "./agent-configuration.js";
+import {
+  registerHostRequestSchema,
+  registerHostResponseSchema,
+  registerSessionRequestSchema,
+  registerSessionResponseSchema,
+} from "./agent-registration-contract.js";
+import { RUNTIME_BOOTSTRAP_SCOPE_STRING } from "./bootstrap-scopes.js";
 import type { OAuthSessionContext } from "./context.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
 import {
@@ -10,8 +18,8 @@ import {
   loadHostKey,
   saveHostKey,
 } from "./host-key.js";
-import { exchangeToken } from "./token-exchange.js";
 import type { AgentRuntimeState } from "./runtime-manager.js";
+import { exchangeToken } from "./token-exchange.js";
 
 const REQUESTED_CAPABILITIES = [
   "purchase",
@@ -19,7 +27,6 @@ const REQUESTED_CAPABILITIES = [
   "check_compliance",
   "request_approval",
 ];
-const BOOTSTRAP_SCOPES = "agent:host.register agent:session.register";
 
 export class AgentRegistrationError extends Error {
   readonly responseBody: string;
@@ -34,14 +41,19 @@ export class AgentRegistrationError extends Error {
 }
 
 export function buildHostKeyNamespace(
-  auth: Pick<OAuthSessionContext, "clientId" | "loginHint">
+  auth: Pick<OAuthSessionContext, "accountSub" | "clientId">
 ): string {
-  return auth.loginHint ? `${auth.clientId}:${auth.loginHint}` : auth.clientId;
+  return auth.accountSub
+    ? `${auth.clientId}:${auth.accountSub}`
+    : auth.clientId;
 }
 
 export async function prepareBootstrapRegistrationAuth(
   auth: OAuthSessionContext
 ): Promise<OAuthSessionContext> {
+  const agentConfiguration = await discoverAgentConfiguration(
+    config.zentityUrl
+  );
   const tokenEndpoint = new URL(
     "/api/auth/oauth2/token",
     config.zentityUrl
@@ -49,10 +61,12 @@ export async function prepareBootstrapRegistrationAuth(
   const { accessToken } = await exchangeToken({
     tokenEndpoint,
     subjectToken: auth.accessToken,
-    audience: config.zentityUrl,
+    audience: agentConfiguration.bootstrap_token_exchange.audience,
     clientId: auth.clientId,
     dpopKey: auth.dpopKey,
-    scope: BOOTSTRAP_SCOPES,
+    scope:
+      agentConfiguration.bootstrap_token_exchange.scopes_supported.join(" ") ||
+      RUNTIME_BOOTSTRAP_SCOPE_STRING,
   });
 
   return {
@@ -119,6 +133,7 @@ export async function ensureHostRegistered(
   hostName: string,
   keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<string> {
+  const agentConfiguration = await discoverAgentConfiguration(zentityUrl);
   const hostKey = await getOrCreateHostKey(zentityUrl, keyNamespace);
 
   // Already registered — return cached host ID
@@ -126,11 +141,15 @@ export async function ensureHostRegistered(
     return hostKey.hostId;
   }
 
-  const url = `${zentityUrl}/api/auth/agent/register-host`;
-  const response = await postJsonWithDpopRetry(url, auth, {
-    publicKey: JSON.stringify(hostKey.publicKey),
-    name: hostName,
-  });
+  const url = agentConfiguration.host_registration_endpoint;
+  const response = await postJsonWithDpopRetry(
+    url,
+    auth,
+    registerHostRequestSchema.parse({
+      publicKey: JSON.stringify(hostKey.publicKey),
+      name: hostName,
+    })
+  );
   if (!response.ok) {
     const text = await response.text();
     throw new AgentRegistrationError(
@@ -140,7 +159,7 @@ export async function ensureHostRegistered(
     );
   }
 
-  const data = (await response.json()) as { hostId: string; created: boolean };
+  const data = registerHostResponseSchema.parse(await response.json());
   hostKey.hostId = data.hostId;
   saveHostKey(zentityUrl, keyNamespace, hostKey);
   console.error(
@@ -185,6 +204,7 @@ export async function registerAgent(
   display: AgentInfo,
   keyNamespace = buildHostKeyNamespace(auth)
 ): Promise<AgentRuntimeState> {
+  const agentConfiguration = await discoverAgentConfiguration(zentityUrl);
   const hostKey = loadHostKey(zentityUrl, keyNamespace);
   if (!hostKey) {
     throw new Error("Host key not found — call ensureHostRegistered first");
@@ -200,13 +220,17 @@ export async function registerAgent(
 
   const hostJwt = await signHostJwt(hostKey, hostId);
 
-  const url = `${zentityUrl}/api/auth/agent/register`;
-  const response = await postJsonWithDpopRetry(url, auth, {
-    hostJwt,
-    agentPublicKey: JSON.stringify(agentPublicJwk),
-    requestedCapabilities: REQUESTED_CAPABILITIES,
-    display,
-  });
+  const url = agentConfiguration.registration_endpoint;
+  const response = await postJsonWithDpopRetry(
+    url,
+    auth,
+    registerSessionRequestSchema.parse({
+      hostJwt,
+      agentPublicKey: JSON.stringify(agentPublicJwk),
+      requestedCapabilities: REQUESTED_CAPABILITIES,
+      display,
+    })
+  );
 
   if (!response.ok) {
     const text = await response.text();
@@ -217,18 +241,14 @@ export async function registerAgent(
     );
   }
 
-  const data = (await response.json()) as {
-    sessionId: string;
-    grants?: Array<{ capability: string; status: string }>;
-    status: string;
-  };
+  const data = registerSessionResponseSchema.parse(await response.json());
   if (data.grants?.length) {
     const active = data.grants
-      .filter((g) => g.status === "active")
-      .map((g) => g.capability);
+      .filter((grant) => grant.status === "active")
+      .map((grant) => grant.capability);
     const pending = data.grants
-      .filter((g) => g.status === "pending")
-      .map((g) => g.capability);
+      .filter((grant) => grant.status === "pending")
+      .map((grant) => grant.capability);
     console.error(
       `[agent] Session registered: ${data.sessionId} (${data.status}), ` +
         `grants: ${active.length} active [${active.join(", ")}], ${pending.length} pending [${pending.join(", ")}]`

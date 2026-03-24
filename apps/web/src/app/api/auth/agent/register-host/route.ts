@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { z } from "zod";
 
 import { env } from "@/env";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
+import { registerHostRequestSchema } from "@/lib/auth/oidc/agent-registration-contract";
 import { AGENT_HOST_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
@@ -12,11 +12,6 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { verifyAgentAttestation } from "@/lib/identity/agent-attestation";
 
 export const runtime = "nodejs";
-
-const registerHostSchema = z.object({
-  publicKey: z.string().min(1),
-  name: z.string().min(1).max(255),
-});
 
 export async function POST(request: Request) {
   const authResult = await requireBootstrapAccessToken(request, [
@@ -27,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null);
-  const parsed = registerHostSchema.safeParse(body);
+  const parsed = registerHostRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid request body", details: parsed.error.flatten() },

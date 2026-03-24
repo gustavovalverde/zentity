@@ -6,6 +6,26 @@ const credentialsMock = {
 };
 
 vi.mock("../../src/auth/credentials.js", () => ({
+  clearClientRegistration: () => {
+    if (!credentialsMock.stored) {
+      return;
+    }
+    const {
+      accessToken: _accessToken,
+      clientId: _clientId,
+      clientSecret: _clientSecret,
+      expiresAt: _expiresAt,
+      refreshToken: _refreshToken,
+      registrationFingerprint: _registrationFingerprint,
+      registrationMethod: _registrationMethod,
+      ...rest
+    } = credentialsMock.stored;
+    credentialsMock.stored = {
+      ...rest,
+      zentityUrl: "http://localhost:3000",
+      clientId: "",
+    };
+  },
   loadCredentials: () => credentialsMock.stored,
   updateCredentials: (_url: string, updates: Record<string, unknown>) => {
     credentialsMock.stored = {
@@ -29,6 +49,9 @@ vi.mock("../../src/config.js", () => ({
 }));
 
 const { ensureClientRegistration } = await import("../../src/auth/dcr.js");
+const { getInstalledAgentRegistrationFingerprint } = await import(
+  "../../src/auth/auth-surfaces.js"
+);
 
 const discoveryWithRegistration: DiscoveryState = {
   issuer: "http://localhost:3000/api/auth",
@@ -68,17 +91,23 @@ describe("DCR", () => {
     expect(body.grant_types).toContain(
       "urn:ietf:params:oauth:grant-type:token-exchange"
     );
-    expect(body.scope).toContain("agent:host.register");
-    expect(body.scope).toContain("agent:session.register");
-    expect(body.scope).toContain("agent:session.revoke");
+    expect(body.scope).toContain("openid");
+    expect(body.scope).toContain("email");
+    expect(body.scope).toContain("offline_access");
+    expect(body.scope).not.toContain("proof:identity");
+    expect(body.scope).not.toContain("compliance:key:read");
+    expect(body.scope).not.toContain("agent:host.register");
     expect(body.subject_type).toBeUndefined();
   });
 
   it("reuses existing client_id", async () => {
+    const registrationFingerprint = getInstalledAgentRegistrationFingerprint();
     credentialsMock.stored = {
       zentityUrl: "http://localhost:3000",
       mcpPublicUrl: "http://localhost:3200",
       clientId: "existing-client",
+      registrationFingerprint,
+      registrationMethod: "dcr",
     };
 
     const fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -103,6 +132,35 @@ describe("DCR", () => {
 
     const clientId = await ensureClientRegistration(discoveryWithRegistration);
     expect(clientId).toBe("new-dcr-client");
+  });
+
+  it("re-registers a legacy cached DCR client without a registration fingerprint", async () => {
+    credentialsMock.stored = {
+      zentityUrl: "http://localhost:3000",
+      mcpPublicUrl: "http://localhost:3200",
+      clientId: "legacy-client",
+      registrationMethod: "dcr",
+      accessToken: "stale-access-token",
+      refreshToken: "stale-refresh-token",
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ client_id: "fresh-client" }), {
+        status: 200,
+      })
+    );
+
+    const clientId = await ensureClientRegistration(discoveryWithRegistration);
+    expect(clientId).toBe("fresh-client");
+    expect(credentialsMock.stored).toEqual(
+      expect.objectContaining({
+        clientId: "fresh-client",
+        registrationFingerprint: getInstalledAgentRegistrationFingerprint(),
+        registrationMethod: "dcr",
+      })
+    );
+    expect(credentialsMock.stored).not.toHaveProperty("accessToken");
+    expect(credentialsMock.stored).not.toHaveProperty("refreshToken");
   });
 
   it("re-registers when forced", async () => {

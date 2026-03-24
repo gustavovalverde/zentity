@@ -556,7 +556,7 @@ packages:
         optional: true
 
   '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-3FSL07K9NVVuhEnqCLjUkUPLFF8M7AhwcZenc840xivRt01AVuDDy+wA2hV7rFwI59ZdrBABMzt+wP1nBdUurQ==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-sq9mzPSUK4SZ0x1nhgbRtCZJPivvn/mlAe9h+rnb26nj+4fD3d860Xxio2CAAme0Si9VA45GS9o/HQ4AE7LIDg==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.1-beta.3

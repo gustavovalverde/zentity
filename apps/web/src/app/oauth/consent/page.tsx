@@ -15,6 +15,10 @@ import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { OAuthConsentClient } from "./consent-client";
+import {
+  areAllRedirectUrisLocal,
+  extractMetadataHostname,
+} from "./consent-view-model";
 
 export default async function OAuthConsentPage({
   searchParams,
@@ -31,6 +35,8 @@ export default async function OAuthConsentPage({
     metadataUrl: string | null;
     redirectUris: string[] | null;
   } | null = null;
+  let clientHostname: string | null = null;
+  let isLocalApp = false;
   let optionalScopes: string[] = [];
   let securityBadgeInput: SecurityBadgeInput | null = null;
 
@@ -51,13 +57,16 @@ export default async function OAuthConsentPage({
       .get();
 
     if (row?.name) {
+      const redirectUris = parseStoredStringArray(row.redirectUris);
       clientMeta = {
         name: row.name,
         icon: row.icon,
         uri: row.uri,
         metadataUrl: row.metadataUrl,
-        redirectUris: parseStoredStringArray(row.redirectUris),
+        redirectUris,
       };
+      clientHostname = extractMetadataHostname(row.metadataUrl);
+      isLocalApp = areAllRedirectUrisLocal(redirectUris);
     }
 
     let signingAlg = "RS256";
@@ -120,8 +129,10 @@ export default async function OAuthConsentPage({
   return (
     <OAuthConsentClient
       authMode={authMode}
+      clientHostname={clientHostname}
       clientId={clientId}
       clientMeta={clientMeta}
+      isLocalApp={isLocalApp}
       optionalScopes={optionalScopes}
       scopeParam={params.scope ?? ""}
       securityBadgeInput={securityBadgeInput}
