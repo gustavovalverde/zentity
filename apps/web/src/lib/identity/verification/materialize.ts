@@ -23,6 +23,7 @@ import {
 } from "@/lib/db/schema/crypto";
 
 import { deriveComplianceStatus } from "./compliance";
+import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";
 
 // ─── Check type constants ────────────────────────────────────────────
 
@@ -65,6 +66,9 @@ export async function materializeVerificationChecks(
       .select({
         id: proofArtifacts.id,
         proofType: proofArtifacts.proofType,
+        proofSessionId: proofArtifacts.proofSessionId,
+        policyVersion: proofArtifacts.policyVersion,
+        createdAt: proofArtifacts.createdAt,
         verified: proofArtifacts.verified,
       })
       .from(proofArtifacts)
@@ -94,11 +98,14 @@ export async function materializeVerificationChecks(
   // Build compliance input and derive checks
   const claimTypes = claimRows.map((c) => ({ claimType: c.claimType }));
   const chipVerified = isChipVerified(verification);
+  const selectedProofRows = chipVerified
+    ? proofRows
+    : selectLatestCompleteOcrProofRows(proofRows);
 
   const result = deriveComplianceStatus({
     verificationMethod: chipVerified ? "nfc_chip" : "ocr",
     birthYearOffset: verification.birthYearOffset ?? null,
-    zkProofs: proofRows.map((p) => ({
+    zkProofs: selectedProofRows.map((p) => ({
       proofType: p.proofType,
       verified: p.verified ?? false,
     })),
@@ -111,7 +118,9 @@ export async function materializeVerificationChecks(
   });
 
   // Build evidence index for lookups
-  const proofByType = new Map(proofRows.map((p) => [p.proofType, p.id]));
+  const proofByType = new Map(
+    selectedProofRows.map((proofRow) => [proofRow.proofType, proofRow.id])
+  );
   const claimByType = new Map(claimRows.map((c) => [c.claimType, c.id]));
 
   // Upsert all 7 checks

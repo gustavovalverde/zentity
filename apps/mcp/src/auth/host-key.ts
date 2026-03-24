@@ -19,8 +19,9 @@ function ensureDir(): void {
   }
 }
 
+const TRAILING_SLASHES = /\/+$/;
 function normalizeZentityUrl(zentityUrl: string): string {
-  return zentityUrl.replace(/\/+$/, "");
+  return zentityUrl.replace(TRAILING_SLASHES, "");
 }
 
 function getHostKeyFile(zentityUrl: string, namespace: string): string {
@@ -66,7 +67,7 @@ export function saveHostKey(
 
 export function clearHostId(zentityUrl: string, clientId: string): void {
   const existing = loadHostKey(zentityUrl, clientId);
-  if (!(existing && existing.hostId)) {
+  if (!existing?.hostId) {
     return;
   }
 

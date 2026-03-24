@@ -17,8 +17,9 @@ function hashNamespace(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+const TRAILING_SLASHES = /\/+$/;
 function normalizeUrl(url: string): string {
-  return url.replace(/\/+$/, "");
+  return url.replace(TRAILING_SLASHES, "");
 }
 
 describe("host-key persistence", () => {

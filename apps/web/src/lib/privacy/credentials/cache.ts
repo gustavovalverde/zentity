@@ -133,8 +133,35 @@ export function setCachedBindingMaterial(
   );
 }
 
+/**
+ * Returns a snapshot with cloned byte arrays so the TTL wipe
+ * cannot zero buffers that are still in-flight.
+ */
 export function getCachedBindingMaterial(): CachedBindingMaterial | null {
-  return bindingMaterial;
+  if (!bindingMaterial) {
+    return null;
+  }
+
+  if (bindingMaterial.mode === "passkey") {
+    return {
+      mode: "passkey",
+      prfOutput: bindingMaterial.prfOutput.slice(),
+      credentialId: bindingMaterial.credentialId,
+      prfSalt: bindingMaterial.prfSalt.slice(),
+    };
+  }
+
+  if (bindingMaterial.mode === "opaque") {
+    return {
+      mode: "opaque",
+      exportKey: bindingMaterial.exportKey.slice(),
+    };
+  }
+
+  return {
+    mode: "wallet",
+    signatureBytes: bindingMaterial.signatureBytes.slice(),
+  };
 }
 
 export function clearCachedBindingMaterial(): void {

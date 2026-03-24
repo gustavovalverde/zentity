@@ -94,9 +94,11 @@ describe("DCR", () => {
     expect(body.scope).toContain("openid");
     expect(body.scope).toContain("email");
     expect(body.scope).toContain("offline_access");
+    expect(body.scope).toContain("agent:host.register");
+    expect(body.scope).toContain("agent:session.register");
+    expect(body.scope).toContain("agent:session.revoke");
     expect(body.scope).not.toContain("proof:identity");
     expect(body.scope).not.toContain("compliance:key:read");
-    expect(body.scope).not.toContain("agent:host.register");
     expect(body.subject_type).toBeUndefined();
   });
 

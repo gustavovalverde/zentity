@@ -159,7 +159,7 @@ export async function beginCibaApproval(
   };
 }
 
-export async function pollCibaToken(
+export function pollCibaToken(
   params: Pick<CibaRequest, "clientId" | "dpopKey" | "tokenEndpoint">,
   pendingAuthorization: CibaPendingAuthorization
 ): Promise<CibaResult> {

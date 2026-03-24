@@ -26,6 +26,8 @@ import {
 } from "@/lib/db/queries/identity";
 import { proofArtifacts, verificationChecks } from "@/lib/db/schema/crypto";
 
+import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";
+
 // ─── Types ─────────────────────────────────────────────────────────
 
 export interface VerificationCheck {
@@ -184,13 +186,16 @@ async function getChecksByVerificationId(
 
 async function getProofSummaries(
   userId: string,
-  verificationId: string
+  verificationId: string,
+  method: "ocr" | "nfc_chip"
 ): Promise<ProofSummary[]> {
   const rows = await db
     .select({
       proofSystem: proofArtifacts.proofSystem,
       proofType: proofArtifacts.proofType,
       proofHash: proofArtifacts.proofHash,
+      proofSessionId: proofArtifacts.proofSessionId,
+      policyVersion: proofArtifacts.policyVersion,
       verified: proofArtifacts.verified,
       createdAt: proofArtifacts.createdAt,
     })
@@ -204,7 +209,10 @@ async function getProofSummaries(
     )
     .all();
 
-  return rows.map((r) => ({
+  const selectedRows =
+    method === "ocr" ? selectLatestCompleteOcrProofRows(rows) : rows;
+
+  return selectedRows.map((r) => ({
     proofSystem: r.proofSystem,
     proofType: r.proofType,
     proofHash: r.proofHash,
@@ -318,7 +326,7 @@ export const getUnifiedVerificationModel = cache(
     // Batch 2: verification-dependent queries
     const secondBatch = [
       getChecksByVerificationId(verificationId),
-      getProofSummaries(userId, verificationId),
+      getProofSummaries(userId, verificationId, method),
     ] as const;
     // OCR-only: check if document needs reprocessing
     const reprocessPromise =

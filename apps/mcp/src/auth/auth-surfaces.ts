@@ -1,4 +1,4 @@
-import { INSTALLED_AGENT_LOGIN_SCOPE_STRING } from "./installed-agent-scopes.js";
+import { INSTALLED_AGENT_REGISTRATION_SCOPE_STRING } from "./installed-agent-scopes.js";
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
 const MCP_SERVER_CLIENT_NAME = "@zentity/mcp-server";
@@ -35,8 +35,9 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
+const TRAILING_SLASHES = /\/+$/;
 function normalizeUrl(value: string): string {
-  return value.replace(/\/+$/, "");
+  return value.replace(TRAILING_SLASHES, "");
 }
 
 function buildRemoteOAuthClientId(mcpPublicUrl: string): string {
@@ -50,7 +51,7 @@ export function buildInstalledAgentRegistrationRequest(): Record<
   return {
     client_name: MCP_SERVER_CLIENT_NAME,
     redirect_uris: [LOOPBACK_REDIRECT_URI],
-    scope: INSTALLED_AGENT_LOGIN_SCOPE_STRING,
+    scope: INSTALLED_AGENT_REGISTRATION_SCOPE_STRING,
     token_endpoint_auth_method: "none",
     grant_types: [...INSTALLED_AGENT_GRANT_TYPES],
     response_types: ["code"],

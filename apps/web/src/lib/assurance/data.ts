@@ -16,19 +16,10 @@ import { cache } from "react";
 import { db } from "@/lib/db/connection";
 import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
 import { sessions } from "@/lib/db/schema/auth";
+import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-proof-sessions";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 
 import { computeAssuranceState } from "./compute";
-
-// ─── Required ZK proof types for "proofs complete" ──────────────────
-
-const REQUIRED_ZK_PROOF_TYPES = [
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-] as const;
 
 // ─── Unified model → AssuranceInput conversion ─────────────────────
 
@@ -38,10 +29,8 @@ function toAssuranceInput(
 ) {
   const documentVerified = model.verifiedAt !== null;
   const chipVerified = model.method === "nfc_chip";
-
-  const proofTypes = new Set(model.proofs.map((p) => p.proofType));
-  const zkProofsComplete = REQUIRED_ZK_PROOF_TYPES.every((t) =>
-    proofTypes.has(t)
+  const zkProofsComplete = hasRequiredOcrProofTypes(
+    model.proofs.map((proof) => proof.proofType)
   );
 
   return {
@@ -125,7 +114,10 @@ export async function getAssuranceForOAuth(
     getUnifiedVerificationModel(userId),
   ]);
 
-  const loginMethod = latestSession?.lastLoginMethod ?? null;
+  const loginMethod = await resolveLoginMethod(
+    latestSession?.lastLoginMethod ?? null,
+    userId
+  );
   const data = toAssuranceInput(model, loginMethod);
 
   const authTime = latestSession?.createdAt
