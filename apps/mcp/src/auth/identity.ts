@@ -13,6 +13,7 @@ import {
   getOAuthContext,
   requireAuth,
   requireRuntimeState,
+  tryGetRuntimeState,
 } from "./context.js";
 import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
 
@@ -100,10 +101,14 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
   return claims;
 }
 
-export async function getIdentityResolution(): Promise<IdentityResolution> {
+const DEFAULT_IDENTITY_SCOPE = "openid identity.name identity.address";
+
+export async function getIdentityResolution(
+  scope: string = DEFAULT_IDENTITY_SCOPE
+): Promise<IdentityResolution> {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
-  const runtime = requireRuntimeState(auth);
+  const runtime = tryGetRuntimeState(auth);
   const userId = oauth.accountSub || oauth.loginHint;
 
   const cached = getCachedIdentity(userId);
@@ -118,73 +123,96 @@ export async function getIdentityResolution(): Promise<IdentityResolution> {
     if (pending.expiresAt <= Date.now()) {
       pendingIdentityCache.delete(userId);
     } else {
-      const pollResult = await pollCibaTokenOnce(
-        {
-          clientId: oauth.clientId,
-          dpopKey: oauth.dpopKey,
-          tokenEndpoint,
-        },
-        pending.pendingAuthorization
-      );
-
-      if (pollResult.status === "approved") {
-        pendingIdentityCache.delete(userId);
-        const claims = await redeemRelease(
-          pollResult.result.accessToken,
-          oauth.dpopKey
-        );
-        if (claims) {
-          identityCache.set(userId, {
-            claims,
-            expiresAt: Date.now() + CACHE_TTL_MS,
-          });
-        }
-        return { status: "ready", claims };
-      }
-
-      if (pollResult.status === "pending") {
-        const updatedPending = {
-          ...pending,
-          approval: {
-            ...pending.approval,
-            expiresIn: getRemainingApprovalSeconds(pending.expiresAt),
-            intervalSeconds: pollResult.pendingAuthorization.intervalSeconds,
-          },
-          pendingAuthorization: pollResult.pendingAuthorization,
-        };
-        pendingIdentityCache.set(userId, updatedPending);
-        return {
-          status: "approval_required",
-          approval: updatedPending.approval,
-        };
-      }
-
-      pendingIdentityCache.delete(userId);
-
-      if (pollResult.status === "denied") {
-        return {
-          status: "denied",
-          message: `Identity unlock was denied: ${pollResult.message}`,
-        };
-      }
-
-      return {
-        status: "timed_out",
-        message:
-          "Identity unlock expired. Run whoami again to request a new approval.",
-      };
+      return resolvePendingIdentity(userId, oauth, pending, tokenEndpoint);
     }
   }
 
-  const bindingMessage = `${runtime.display.name}: Unlock identity for this session`;
-  const agentAssertion = await signAgentAssertion(runtime, bindingMessage);
+  return initiateCibaIdentityUnlock(
+    userId,
+    oauth,
+    runtime,
+    scope,
+    tokenEndpoint
+  );
+}
+
+async function resolvePendingIdentity(
+  userId: string,
+  oauth: ReturnType<typeof getOAuthContext>,
+  pending: PendingIdentityEntry,
+  tokenEndpoint: string
+): Promise<IdentityResolution> {
+  const pollResult = await pollCibaTokenOnce(
+    { clientId: oauth.clientId, dpopKey: oauth.dpopKey, tokenEndpoint },
+    pending.pendingAuthorization
+  );
+
+  if (pollResult.status === "approved") {
+    pendingIdentityCache.delete(userId);
+    const claims = await redeemRelease(
+      pollResult.result.accessToken,
+      oauth.dpopKey
+    );
+    if (claims) {
+      identityCache.set(userId, {
+        claims,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      });
+    }
+    return { status: "ready", claims };
+  }
+
+  if (pollResult.status === "pending") {
+    const updatedPending = {
+      ...pending,
+      approval: {
+        ...pending.approval,
+        expiresIn: getRemainingApprovalSeconds(pending.expiresAt),
+        intervalSeconds: pollResult.pendingAuthorization.intervalSeconds,
+      },
+      pendingAuthorization: pollResult.pendingAuthorization,
+    };
+    pendingIdentityCache.set(userId, updatedPending);
+    return { status: "approval_required", approval: updatedPending.approval };
+  }
+
+  pendingIdentityCache.delete(userId);
+
+  if (pollResult.status === "denied") {
+    return {
+      status: "denied",
+      message: `Identity unlock was denied: ${pollResult.message}`,
+    };
+  }
+
+  return {
+    status: "timed_out",
+    message:
+      "Identity unlock expired. Run whoami again to request a new approval.",
+  };
+}
+
+async function initiateCibaIdentityUnlock(
+  userId: string,
+  oauth: ReturnType<typeof getOAuthContext>,
+  runtime: ReturnType<typeof tryGetRuntimeState>,
+  scope: string,
+  tokenEndpoint: string
+): Promise<IdentityResolution> {
+  const loginHint = oauth.loginHint || oauth.accountSub;
+  const bindingMessage = runtime
+    ? `${runtime.display.name}: Unlock identity for this session`
+    : "Unlock identity for this session";
+  const agentAssertion = runtime
+    ? await signAgentAssertion(runtime, bindingMessage)
+    : undefined;
   const cibaRequest = {
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
     tokenEndpoint,
     clientId: oauth.clientId,
     dpopKey: oauth.dpopKey,
-    loginHint: oauth.loginHint,
-    scope: "openid identity.name identity.address",
+    loginHint,
+    scope,
     bindingMessage,
     resource: config.zentityUrl,
     agentAssertion,

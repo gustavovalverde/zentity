@@ -63,11 +63,9 @@ import {
   stageClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
+import { resolveEphemeralClaims } from "@/lib/auth/oidc/ephemeral-identity-claims";
 import {
-  consumeEphemeralClaims,
-  consumeEphemeralClaimsByUser,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
-import {
+  extractIdentityScopes,
   filterIdentityByScopes,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPES,
@@ -153,6 +151,7 @@ import {
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { computeRpNullifier } from "@/lib/identity/dedup";
+import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
 import { sendWebPush } from "@/lib/push/web-push";
@@ -301,6 +300,10 @@ const resolveOpaqueUserByIdentifier = async (
   const accounts = await ctx.context.internalAdapter.findAccounts(user.id);
   return { user, accounts };
 };
+
+const identityReleaseLog = rootLogger.child({
+  component: "identity-release",
+});
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
@@ -1533,13 +1536,42 @@ export const auth = betterAuth({
       },
       customUserInfoClaims: async (info) => {
         const { user, scopes } = info;
-        const clientId = (info as { jwt?: { azp?: string } }).jwt?.azp;
+        const jwt = (info as { jwt?: { azp?: string; jti?: string } }).jwt;
+        const clientId = jwt?.azp;
         const scopeList = toScopeList(scopes);
+        const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
 
-        // Consume ephemeral PII scoped to the requesting client
+        if (!clientId && hasIdentityScopes) {
+          identityReleaseLog.warn(
+            {
+              event: "fail_closed",
+              userId: user.id,
+              scopesPresent: scopeList,
+              jtiPresent: !!jwt?.jti,
+            },
+            "azp missing on token with identity scopes — no PII delivered"
+          );
+        }
+
+        // Fail closed: no azp → no identity PII delivery
         const ephemeral = clientId
-          ? consumeEphemeralClaims(user.id, clientId)
-          : consumeEphemeralClaimsByUser(user.id);
+          ? resolveEphemeralClaims(user.id, clientId, jwt?.jti)
+          : null;
+
+        if (!ephemeral && clientId && hasIdentityScopes) {
+          identityReleaseLog.warn(
+            {
+              event: "binding_miss",
+              userId: user.id,
+              clientId,
+              jtiPresent: !!jwt?.jti,
+              attemptedFlowTags: jwt?.jti
+                ? [`ciba:${jwt.jti}`, "oauth"]
+                : ["oauth"],
+            },
+            "identity scopes present but no staged release found"
+          );
+        }
 
         // Proof claims from DB
         const proofClaims = hasAnyProofScope(scopeList)

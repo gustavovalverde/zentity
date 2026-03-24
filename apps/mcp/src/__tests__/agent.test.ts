@@ -49,9 +49,7 @@ describe("detectAgent", () => {
   });
 
   it("throws when both clientInfo and env var are absent", () => {
-    expect(() => detectAgent(undefined)).toThrow(
-      "MCP clientInfo is required"
-    );
+    expect(() => detectAgent(undefined)).toThrow("MCP clientInfo is required");
   });
 
   it("prefers clientInfo over ZENTITY_AGENT_NAME", () => {

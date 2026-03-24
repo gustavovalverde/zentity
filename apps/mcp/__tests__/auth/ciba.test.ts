@@ -151,8 +151,7 @@ describe("CIBA", () => {
     const onPendingApproval = vi.fn().mockImplementation(async (pending) => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(pending).toEqual({
-        approvalUrl:
-          "http://localhost:3000/approve/req-abc?source=cli_handoff",
+        approvalUrl: "http://localhost:3000/approve/req-abc?source=cli_handoff",
         authReqId: "req-abc",
         expiresIn: 300,
         intervalSeconds: 0,

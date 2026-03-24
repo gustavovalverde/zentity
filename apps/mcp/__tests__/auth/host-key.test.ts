@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   existsSync,
-  mkdtempSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -89,6 +89,8 @@ describe("host-key persistence", () => {
     expect(hostKeyModule.loadHostKey(TEST_URL, "initial-client")).toEqual(
       hostKey
     );
-    expect(hostKeyModule.loadHostKey(TEST_URL, "rotated-client")).toBeUndefined();
+    expect(
+      hostKeyModule.loadHostKey(TEST_URL, "rotated-client")
+    ).toBeUndefined();
   });
 });

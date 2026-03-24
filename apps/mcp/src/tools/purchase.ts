@@ -75,10 +75,16 @@ export function registerPurchaseTool(server: McpServer): void {
       const rawMessage = description
         ? `Purchase ${item} from ${merchant} for ${amount} ${currency}: ${description}`
         : `Purchase ${item} from ${merchant} for ${amount} ${currency}`;
-      const bindingMessage = prefixBindingMessage(runtime.display.name, rawMessage);
+      const bindingMessage = prefixBindingMessage(
+        runtime.display.name,
+        rawMessage
+      );
 
       try {
-        const agentAssertion = await signAgentAssertion(runtime, bindingMessage);
+        const agentAssertion = await signAgentAssertion(
+          runtime,
+          bindingMessage
+        );
 
         const result = await requestCibaApproval({
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,

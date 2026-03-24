@@ -15,14 +15,16 @@ export function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const result = await validateCibaRequestOwnership(
-      parsed.data.auth_req_id,
-      userId
-    );
+    const { auth_req_id } = parsed.data;
+
+    const result = await validateCibaRequestOwnership(auth_req_id, userId);
     if (result instanceof Response) {
       return result;
     }
 
-    return result.clientId;
+    return {
+      clientId: result.clientId,
+      flowTag: `ciba:${auth_req_id}` as const,
+    };
   });
 }

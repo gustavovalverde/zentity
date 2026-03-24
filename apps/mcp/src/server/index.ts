@@ -14,7 +14,6 @@ export function createServer(surface: ServerSurface = "full"): {
   cleanup: () => Promise<void>;
 } {
   const allowRuntimeTools = surface === "full";
-  const allowIdentityUnlock = surface === "full";
   const server = new McpServer(
     { name: "@zentity/mcp-server", version: VERSION },
     {
@@ -35,10 +34,7 @@ export function createServer(surface: ServerSurface = "full"): {
     }
   );
 
-  registerTools(server, {
-    allowIdentityUnlock,
-    allowRuntimeTools,
-  });
+  registerTools(server, { allowRuntimeTools });
 
   const cleanup = async () => {
     await server.close();

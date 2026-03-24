@@ -191,7 +191,11 @@ describe("HTTP transport middleware", () => {
     const res = await app.request("/.well-known/oauth-client.json");
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.grant_types).toEqual(["authorization_code", "refresh_token"]);
+    expect(body.grant_types).toEqual([
+      "authorization_code",
+      "refresh_token",
+      "urn:openid:params:grant-type:ciba",
+    ]);
     expect(body.scope).toBe("openid");
     expect(body.scope).not.toContain("offline_access");
   });

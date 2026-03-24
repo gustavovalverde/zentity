@@ -7,7 +7,6 @@ import { registerRequestApprovalTool } from "./request-approval.js";
 import { registerWhoamiTool } from "./whoami.js";
 
 interface ToolRegistrationOptions {
-  allowIdentityUnlock?: boolean;
   allowRuntimeTools?: boolean;
 }
 
@@ -18,12 +17,7 @@ export function registerTools(
   registerCheckComplianceTool(server);
   registerEchoTool(server);
   registerMyProofsTool(server);
-  registerWhoamiTool(
-    server,
-    options.allowIdentityUnlock === undefined
-      ? {}
-      : { allowIdentityUnlock: options.allowIdentityUnlock }
-  );
+  registerWhoamiTool(server);
 
   if (options.allowRuntimeTools) {
     registerPurchaseTool(server);

@@ -66,7 +66,7 @@ export function saveHostKey(
 
 export function clearHostId(zentityUrl: string, clientId: string): void {
   const existing = loadHostKey(zentityUrl, clientId);
-  if (!existing || !existing.hostId) {
+  if (!(existing && existing.hostId)) {
     return;
   }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  consumeEphemeralClaimsByUser,
+  resolveEphemeralClaims,
   storeEphemeralClaims,
 } from "../ephemeral-identity-claims";
 
@@ -16,36 +16,38 @@ describe("ephemeral claims delivery (userinfo-only)", () => {
     resetEphemeralStore();
   });
 
-  it("consumeEphemeralClaimsByUser returns and removes entry", async () => {
+  it("resolveEphemeralClaims returns and removes entry", async () => {
     await storeEphemeralClaims(
       "user-1",
       { name: "Alice", birthdate: "1990-01-01" },
       ["openid", "identity.name", "identity.dob"],
-      { clientId: "client-1", intentJti: "jti-1", scopeHash: "hash-1" }
+      { clientId: "client-1", intentJti: "jti-1", scopeHash: "hash-1" },
+      "oauth"
     );
 
-    const consumed = consumeEphemeralClaimsByUser("user-1");
+    const consumed = resolveEphemeralClaims("user-1", "client-1");
     expect(consumed).not.toBeNull();
     expect(consumed?.claims.name).toBe("Alice");
     expect(consumed?.claims.birthdate).toBe("1990-01-01");
 
-    // Second consume returns null (single-consume)
-    expect(consumeEphemeralClaimsByUser("user-1")).toBeNull();
+    // Second resolve returns null (single-consume)
+    expect(resolveEphemeralClaims("user-1", "client-1")).toBeNull();
   });
 
-  it("returns null for multiple clients (cross-client safety)", async () => {
-    await storeEphemeralClaims("user-2", { name: "Alice" }, ["openid"], {
-      clientId: "client-a",
-      intentJti: "jti-2a",
-      scopeHash: "hash-2a",
-    });
-    await storeEphemeralClaims("user-2", { name: "Bob" }, ["openid"], {
-      clientId: "client-b",
-      intentJti: "jti-2b",
-      scopeHash: "hash-2b",
-    });
+  it("returns null when clientId doesn't match (fail closed)", async () => {
+    await storeEphemeralClaims(
+      "user-2",
+      { name: "Alice" },
+      ["openid"],
+      {
+        clientId: "client-a",
+        intentJti: "jti-2a",
+        scopeHash: "hash-2a",
+      },
+      "oauth"
+    );
 
-    expect(consumeEphemeralClaimsByUser("user-2")).toBeNull();
+    expect(resolveEphemeralClaims("user-2", "wrong-client")).toBeNull();
   });
 
   it("respects custom TTL via storeEphemeralClaims", async () => {
@@ -54,12 +56,13 @@ describe("ephemeral claims delivery (userinfo-only)", () => {
       { name: "Bob" },
       ["openid", "identity.name"],
       { clientId: "client-3", intentJti: "jti-3", scopeHash: "hash-3" },
+      "ciba:req-1",
       10 * 60 * 1000 // 10-minute CIBA TTL
     );
 
     expect(result.ok).toBe(true);
 
-    const consumed = consumeEphemeralClaimsByUser("user-3");
+    const consumed = resolveEphemeralClaims("user-3", "client-3", "req-1");
     expect(consumed?.claims.name).toBe("Bob");
   });
 });

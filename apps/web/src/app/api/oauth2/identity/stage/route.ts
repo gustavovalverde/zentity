@@ -68,7 +68,8 @@ export function POST(request: Request): Promise<Response> {
         userId,
         filteredIdentity,
         scopes,
-        { clientId, scopeHash, intentJti }
+        { clientId, scopeHash, intentJti },
+        "oauth"
       );
 
       if (!stored.ok) {

@@ -87,9 +87,14 @@ export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
   return (ctx ?? getAuthContext()).oauth;
 }
 
+export function tryGetRuntimeState(
+  ctx?: AuthContext
+): AgentRuntimeState | undefined {
+  return (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
+}
+
 export function requireRuntimeState(ctx?: AuthContext): AgentRuntimeState {
-  const runtime =
-    (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
+  const runtime = tryGetRuntimeState(ctx);
   if (!runtime) {
     throw new Error(
       "Agent runtime is not initialized — complete host and session registration first"

@@ -58,12 +58,14 @@ export function POST(request: Request): Promise<Response> {
       clientId,
       scopeHash,
       intentJti,
+      authReqId,
     }) => {
       const stored = await storeEphemeralClaims(
         userId,
         filteredIdentity,
         scopes,
         { clientId, scopeHash, intentJti },
+        `ciba:${authReqId}`,
         CIBA_EPHEMERAL_TTL_MS
       );
 

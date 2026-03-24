@@ -199,7 +199,8 @@ export async function pollCibaTokenOnce(
     }),
   });
 
-  const nextNonce = extractDpopNonce(response) ?? pendingAuthorization.dpopNonce;
+  const nextNonce =
+    extractDpopNonce(response) ?? pendingAuthorization.dpopNonce;
 
   try {
     const result = await handlePollResponse(
@@ -230,9 +231,7 @@ export async function pollCibaTokenOnce(
   }
 }
 
-export function logPendingApprovalHandoff(
-  pending: CibaPendingApproval
-): void {
+export function logPendingApprovalHandoff(pending: CibaPendingApproval): void {
   console.error(`[ciba] Approval required: ${pending.approvalUrl}`);
   console.error(
     `[ciba] Expires in ${pending.expiresIn}s; polling every ${pending.intervalSeconds}s`

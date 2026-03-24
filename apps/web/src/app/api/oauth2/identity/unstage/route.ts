@@ -30,6 +30,6 @@ export function POST(request: Request): Promise<Response> {
       return NextResponse.json({ error: "Missing client_id" }, { status: 400 });
     }
 
-    return clientId;
+    return { clientId, flowTag: "oauth" as const };
   });
 }

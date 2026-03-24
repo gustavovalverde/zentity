@@ -47,11 +47,17 @@ export function registerRequestApprovalTool(server: McpServer): void {
       const runtime = requireRuntimeState(auth);
       const oauth = getOAuthContext(auth);
       const rawMessage = details ? `${action}: ${details}` : action;
-      const bindingMessage = prefixBindingMessage(runtime.display.name, rawMessage);
+      const bindingMessage = prefixBindingMessage(
+        runtime.display.name,
+        rawMessage
+      );
       console.error(`[ciba] Requesting approval: "${bindingMessage}"`);
 
       try {
-        const agentAssertion = await signAgentAssertion(runtime, bindingMessage);
+        const agentAssertion = await signAgentAssertion(
+          runtime,
+          bindingMessage
+        );
 
         const result = await requestCibaApproval({
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,

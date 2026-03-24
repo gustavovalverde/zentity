@@ -6,7 +6,7 @@
  * customUserInfoClaims hooks. This module bridges the gap:
  *
  * 1. Before token exchange, extract `claims` from the verification record
- * 2. Store it in a module-scoped Map keyed by userId
+ * 2. Store it in a process-scoped Map keyed by userId:clientId
  * 3. In the custom claims hooks, consume and filter claims accordingly
  */
 
@@ -32,24 +32,34 @@ interface ClaimsEntry {
   expiresAt: number;
 }
 
-const pendingClaims = new Map<string, ClaimsEntry>();
+const STORE_KEY = Symbol.for("zentity.claims-parameter");
+
+function getStore(): Map<string, ClaimsEntry> {
+  const g = globalThis as Record<symbol, Map<string, ClaimsEntry>>;
+  if (!g[STORE_KEY]) {
+    g[STORE_KEY] = new Map();
+  }
+  return g[STORE_KEY];
+}
 
 function evictExpired(): void {
   const now = Date.now();
-  for (const [key, entry] of pendingClaims) {
+  const s = getStore();
+  for (const [key, entry] of s) {
     if (entry.expiresAt <= now) {
-      pendingClaims.delete(key);
+      s.delete(key);
     }
   }
 }
 
-function getEntry(userId: string): ClaimsEntry | null {
-  const entry = pendingClaims.get(userId);
+function getEntry(key: string): ClaimsEntry | null {
+  const s = getStore();
+  const entry = s.get(key);
   if (!entry) {
     return null;
   }
   if (entry.expiresAt <= Date.now()) {
-    pendingClaims.delete(userId);
+    s.delete(key);
     return null;
   }
   return entry;
@@ -62,29 +72,17 @@ export function stageClaimsParameter(
   claims: ParsedClaimsParameter
 ): void {
   evictExpired();
-  pendingClaims.set(`${userId}:${clientId}`, {
+  getStore().set(`${userId}:${clientId}`, {
     claims,
     expiresAt: Date.now() + CLAIMS_TTL_MS,
   });
 }
 
-/**
- * Resolve the composite key for a user.
- * If clientId is provided, use it directly. Otherwise, prefix-scan for a
- * unique match (same pattern as ephemeral-identity-claims.ts).
- */
 function resolveKey(userId: string, clientId?: string): string | null {
-  if (clientId) {
-    return `${userId}:${clientId}`;
+  if (!clientId) {
+    return null;
   }
-  const prefix = `${userId}:`;
-  const matches: string[] = [];
-  for (const key of pendingClaims.keys()) {
-    if (key.startsWith(prefix)) {
-      matches.push(key);
-    }
-  }
-  return (matches.length === 1 ? matches[0] : null) ?? null;
+  return `${userId}:${clientId}`;
 }
 
 /**
@@ -106,7 +104,7 @@ export function consumeIdTokenClaims(
   const idTokenClaims = entry.claims.id_token;
   entry.claims.id_token = undefined;
   if (!entry.claims.userinfo) {
-    pendingClaims.delete(key);
+    getStore().delete(key);
   }
   return idTokenClaims;
 }
@@ -128,7 +126,7 @@ export function consumeUserinfoClaims(
     return undefined;
   }
   const userinfoClaims = entry.claims.userinfo;
-  pendingClaims.delete(key);
+  getStore().delete(key);
   return userinfoClaims;
 }
 

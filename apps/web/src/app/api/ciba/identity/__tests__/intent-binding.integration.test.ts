@@ -183,8 +183,8 @@ describe("CIBA intent token authReqId binding", () => {
     );
     expect(stageAforB.status).toBe(400);
 
-    // Token B fails for B — an active stage for this user+client already exists
-    // (concurrent_stage: PII is dropped rather than delivered to the wrong request)
+    // Token B succeeds for B — flow-aware keying allows concurrent stages
+    // for the same user+client when flow tags differ (ciba:reqA vs ciba:reqB)
     const stageB = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
         auth_req_id: reqB,
@@ -193,6 +193,8 @@ describe("CIBA intent token authReqId binding", () => {
         intent_token: tokenB,
       })
     );
-    expect(stageB.status).toBe(409);
+    expect(stageB.status).toBe(200);
+    const stageBBody = (await stageB.json()) as { staged: boolean };
+    expect(stageBBody.staged).toBe(true);
   });
 });

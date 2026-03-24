@@ -6,11 +6,22 @@ import { eq, lt } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import { usedIntentJtis } from "@/lib/db/schema/crypto";
+import { logger as rootLogger } from "@/lib/logging/logger";
+
+const log = rootLogger.child({ component: "identity-release" });
+
+export type FlowTag = "oauth" | `ciba:${string}`;
 
 interface EphemeralClaimsMeta {
   clientId: string;
   intentJti: string;
   scopeHash: string;
+}
+
+interface EphemeralResult {
+  claims: Partial<IdentityFields>;
+  meta: EphemeralClaimsMeta;
+  scopes: string[];
 }
 
 interface EphemeralEntry {
@@ -23,10 +34,6 @@ interface EphemeralEntry {
 
 const EPHEMERAL_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const CIBA_EPHEMERAL_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-// Only one live stage is permitted per user+client pair. Userinfo resolves
-// staged PII by that pair, so allowing a later same-client stage to replace an
-// earlier live entry would break the binding between user action and delivery.
 
 const STORE_KEY = Symbol.for("zentity.ephemeral-identity-claims");
 
@@ -81,8 +88,8 @@ async function markJtiUsed(
     .run();
 }
 
-function storeKey(userId: string, clientId: string): string {
-  return `${userId}:${clientId}`;
+function storeKey(userId: string, clientId: string, flowTag: FlowTag): string {
+  return `${userId}:${clientId}:${flowTag}`;
 }
 
 export async function storeEphemeralClaims(
@@ -90,6 +97,7 @@ export async function storeEphemeralClaims(
   claims: Partial<IdentityFields>,
   scopes: string[],
   meta: EphemeralClaimsMeta,
+  flowTag: FlowTag,
   ttlMs: number = EPHEMERAL_TTL_MS
 ): Promise<
   { ok: true } | { ok: false; reason: "intent_reused" | "concurrent_stage" }
@@ -102,7 +110,7 @@ export async function storeEphemeralClaims(
   }
 
   const s = getStore();
-  const key = storeKey(userId, meta.clientId);
+  const key = storeKey(userId, meta.clientId, flowTag);
 
   const existing = s.get(key);
   if (existing) {
@@ -119,20 +127,30 @@ export async function storeEphemeralClaims(
     meta,
   });
   await markJtiUsed(meta.intentJti, userId, expiresAt);
+
+  log.info(
+    {
+      event: "stage_success",
+      userId,
+      clientId: meta.clientId,
+      flowTag,
+      intentJti: meta.intentJti,
+      ttlMs,
+    },
+    "identity release staged"
+  );
+
   return { ok: true };
 }
 
-export function consumeEphemeralClaims(
+function consumeEphemeralClaims(
   userId: string,
-  clientId: string
-): {
-  claims: Partial<IdentityFields>;
-  scopes: string[];
-  meta: EphemeralClaimsMeta;
-} | null {
+  clientId: string,
+  flowTag: FlowTag
+): EphemeralResult | null {
   evictExpiredClaims();
   const s = getStore();
-  const key = storeKey(userId, clientId);
+  const key = storeKey(userId, clientId, flowTag);
   const entry = s.get(key);
   if (!entry) {
     return null;
@@ -143,47 +161,56 @@ export function consumeEphemeralClaims(
 }
 
 /**
- * Consume ephemeral claims for a user when clientId is not directly available
- * (for example, as a fallback in the userinfo claims path).
- * Scans entries with the userId prefix. If exactly one entry exists, consumes it.
- * If multiple exist (rare: concurrent flows for different clients), returns null
- * to avoid cross-client leakage.
+ * Two-key deterministic resolution for customUserInfoClaims.
+ * If jti is present (CIBA token), try ciba:{jti} first.
+ * Then fall through to oauth.
  */
-export function consumeEphemeralClaimsByUser(userId: string): {
-  claims: Partial<IdentityFields>;
-  scopes: string[];
-  meta: EphemeralClaimsMeta;
-} | null {
-  evictExpiredClaims();
-  const s = getStore();
-  const prefix = `${userId}:`;
-  let matchKey: string | null = null;
-  let matchCount = 0;
-  for (const key of s.keys()) {
-    if (key.startsWith(prefix)) {
-      matchKey = key;
-      matchCount++;
-      if (matchCount > 1) {
-        return null;
-      }
+export function resolveEphemeralClaims(
+  userId: string,
+  clientId: string,
+  jti?: string
+): EphemeralResult | null {
+  if (jti) {
+    const cibaResult = consumeEphemeralClaims(userId, clientId, `ciba:${jti}`);
+    if (cibaResult) {
+      log.info(
+        {
+          event: "consume_success",
+          userId,
+          clientId,
+          resolvedFlowTag: `ciba:${jti}`,
+          resolution: "ciba_direct",
+        },
+        "identity release consumed"
+      );
+      return cibaResult;
     }
   }
-  if (!matchKey) {
-    return null;
-  }
-  const entry = s.get(matchKey);
-  if (!entry) {
-    return null;
-  }
-  s.delete(matchKey);
-  return { claims: entry.claims, scopes: entry.scopes, meta: entry.meta };
+
+  const oauthResult = consumeEphemeralClaims(userId, clientId, "oauth");
+
+  log.info(
+    {
+      event: oauthResult ? "consume_success" : "consume_miss",
+      userId,
+      clientId,
+      resolvedFlowTag: oauthResult ? "oauth" : undefined,
+      resolution: jti ? "ciba_miss_oauth_fallback" : "oauth_direct",
+      found: !!oauthResult,
+      ...(jti ? { cibaJtiAttempted: jti } : {}),
+    },
+    oauthResult ? "identity release consumed" : "identity release not found"
+  );
+
+  return oauthResult;
 }
 
 export function clearEphemeralClaims(
   userId: string,
-  clientId: string
+  clientId: string,
+  flowTag: FlowTag
 ): boolean {
   const s = getStore();
-  const key = storeKey(userId, clientId);
+  const key = storeKey(userId, clientId, flowTag);
   return s.delete(key);
 }

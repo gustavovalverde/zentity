@@ -15,6 +15,7 @@ const INSTALLED_AGENT_GRANT_TYPES = [
 const REMOTE_CLIENT_GRANT_TYPES = [
   "authorization_code",
   "refresh_token",
+  "urn:openid:params:grant-type:ciba",
 ] as const;
 
 function stableStringify(value: unknown): string {

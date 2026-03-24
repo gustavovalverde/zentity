@@ -114,7 +114,10 @@ export class TokenManager {
 
     if (!response.ok) {
       const text = await response.text();
-      if (text.includes("invalid_client") || text.includes("client not found")) {
+      if (
+        text.includes("invalid_client") ||
+        text.includes("client not found")
+      ) {
         clearClientRegistration(config.zentityUrl);
         throw new TokenExpiredError();
       }

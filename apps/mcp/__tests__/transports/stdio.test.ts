@@ -46,8 +46,10 @@ vi.mock("../../src/auth/agent-registration.js", async () => {
   };
 });
 
-import { AgentRegistrationError } from "../../src/auth/agent-registration.js";
-import { buildHostKeyNamespace } from "../../src/auth/agent-registration.js";
+import {
+  AgentRegistrationError,
+  buildHostKeyNamespace,
+} from "../../src/auth/agent-registration.js";
 import { bootstrapRegisteredRuntime } from "../../src/transports/stdio.js";
 
 const baseOauth = {
@@ -135,7 +137,9 @@ describe("bootstrapRegisteredRuntime", () => {
     await bootstrapPromise;
 
     expect(mockEnsureAuthenticated).toHaveBeenCalledTimes(1);
-    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(baseOauth);
+    expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(
+      baseOauth
+    );
     expect(mockRegisterAgent).toHaveBeenCalledWith(
       "http://localhost:3000",
       bootstrapOauth,

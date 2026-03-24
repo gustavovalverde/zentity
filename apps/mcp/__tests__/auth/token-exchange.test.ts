@@ -76,10 +76,7 @@ describe("Token Exchange", () => {
 
   it("throws on failed token exchange", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        "invalid_grant",
-        { status: 400 }
-      )
+      new Response("invalid_grant", { status: 400 })
     );
 
     await expect(
