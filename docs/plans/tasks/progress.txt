@@ -53,3 +53,78 @@ Decisions:
 
 Blockers: None
 Next: Phase 2 — unified read model, consumer migration, dead code removal
+
+## Phase 2: Read Convergence + Cleanup (PRD-17)
+
+### Completed: Unified Read Model + Consumer Migration + Dead Code Removal
+
+Unified read model:
+- getUnifiedVerificationModel(userId) in identity/verification/unified-model.ts
+- Reads verification_checks (7 materialized checks), proof_artifacts (summaries), identity_verifications, identity_bundles, encrypted_attributes, encrypted_secrets, blockchain_attestations
+- Derives compliance level from materialized checks (no re-running deriveComplianceStatus)
+- React.cache() wrapped for per-request dedup in server components
+- isFheComplete inlined to avoid circular dep with assurance module
+
+Assurance layer migration:
+- gatherVerificationData replaced with getUnifiedVerificationModel + toAssuranceInput conversion
+- toAssuranceInput preserves assurance semantics: documentVerified from verifiedAt, zkProofsComplete from proof summaries, liveness/faceMatch from compliance checks
+- getAssuranceState and getAssuranceForOAuth both use unified model
+- hasPasskeyCredentials login method fallback preserved
+
+OAuth claims migration:
+- buildProofClaims reads from unified model (single query instead of 3 parallel)
+- buildOidcVerifiedClaims reads from unified model
+- mapVerificationClaims → mapComplianceToClaims (takes compliance struct, not ComplianceResult)
+- Output shape unchanged: 15 OIDC claim keys preserved
+
+Attestation migration:
+- attestation.submit reads birthYearOffset, numericLevel, issuerCountry from unified model
+- Single getUnifiedVerificationModel call replaces getVerificationStatus + getSelectedVerification
+
+New tRPC endpoints:
+- zk.getChecks — returns method, level, verified, 7 checks with source/evidenceRef
+- zk.getProofs — returns method, proof summaries (system, type, hash, verified, createdAt)
+- Both backed by getUnifiedVerificationModel
+
+MCP my_proofs rewrite:
+- Calls zk.getChecks + zk.getProofs (replaces zk.getUserProof + zk.getAllProofs)
+- Returns verificationMethod, verificationLevel, verified, checks with human-readable source labels
+- NFC chip users now see non-empty results with "passport chip" source labels
+
+Dead code removed:
+- getUserAgeProof, getUserAgeProofFull, getAllVerifiedProofsFull from crypto.ts
+- getUserProofProcedure, getAllProofsProcedure from zk/proof.ts
+- parseProofMetadata, getCiphertextInfo private helpers from crypto.ts
+- AgeProofFull/AgeProofSummary imports from crypto.ts
+- gatherVerificationData and all private helpers from assurance/data.ts
+
+Client-side updates:
+- zk/client.ts: getUserProof/getAllProofs → getChecks/getProofs
+- Inspector page rewritten to show verification checks + proof summaries (no raw proof data)
+
+Tests updated:
+- data.integration.test.ts: 4 tests now call materializeVerificationChecks before asserting
+- crypto.integration.test.ts: removed 2 tests for deleted functions
+- claims.test.ts: mocks getUnifiedVerificationModel instead of getVerificationStatus
+- attestation.test.ts: added getUnifiedVerificationModel mock
+
+Files changed:
+- src/lib/identity/verification/unified-model.ts — NEW
+- src/lib/assurance/data.ts — rewritten
+- src/lib/auth/oidc/claims.ts — rewritten
+- src/lib/trpc/routers/attestation.ts — migrated
+- src/lib/trpc/routers/zk/proof.ts — new procedures, removed old
+- src/lib/trpc/routers/zk/router.ts — new endpoints, removed old
+- src/lib/db/queries/crypto.ts — removed dead functions
+- src/lib/privacy/zk/client.ts — new client functions
+- src/app/(dashboard)/dashboard/developer/inspector/page.tsx — rewritten
+- apps/mcp/src/tools/my-proofs.ts — rewritten
+- 4 test files updated
+
+Decisions:
+- getVerificationStatus kept for write-side consumers (storeProofProcedure, fhe/encryption, identity-card, page components)
+- Compliance level derived from 7 materialized checks, not by re-running deriveComplianceStatus
+- Assurance documentVerified from verification.verifiedAt (not compliance check) — preserves pipeline vs proof distinction
+- No backfill needed — no existing users; new verifications materialize checks on write
+
+Blockers: None

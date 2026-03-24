@@ -26,9 +26,9 @@ import {
 } from "./challenge";
 import { healthProcedure } from "./health";
 import {
-  getAllProofsProcedure,
+  getChecksProcedure,
+  getProofsProcedure,
   getSignedClaimsProcedure,
-  getUserProofProcedure,
   storeProofProcedure,
   verifyProofProcedure,
 } from "./proof";
@@ -39,8 +39,8 @@ export const zkRouter = router({
   createProofSession: createProofSessionProcedure,
   createChallenge: createChallengeProcedure,
   challengeStatus: challengeStatusProcedure,
-  getUserProof: getUserProofProcedure,
-  getAllProofs: getAllProofsProcedure,
+  getChecks: getChecksProcedure,
+  getProofs: getProofsProcedure,
   getSignedClaims: getSignedClaimsProcedure,
   storeProof: storeProofProcedure,
   bbs: bbsRouter,

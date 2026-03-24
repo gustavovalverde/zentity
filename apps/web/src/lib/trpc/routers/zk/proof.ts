@@ -10,13 +10,10 @@ import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   closeProofSession,
-  getAllVerifiedProofsFull,
   getLatestSignedClaimByUserTypeAndVerification,
   getProofHashesByUserVerificationAndSession,
   getProofSessionById,
   getProofTypesByUserVerificationAndSession,
-  getUserAgeProof,
-  getUserAgeProofFull,
   getUserBaseCommitments,
   insertProofArtifact,
 } from "@/lib/db/queries/crypto";
@@ -31,6 +28,7 @@ import {
   minAgeYearsToDays,
 } from "@/lib/identity/verification/birth-year";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
+import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 import { withSpan } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
@@ -606,21 +604,34 @@ export const verifyProofProcedure = protectedProcedure
     return result;
   });
 
-export const getUserProofProcedure = protectedProcedure
-  .input(z.object({ full: z.boolean().optional() }).optional())
-  .query(async ({ ctx, input }) =>
-    input?.full === true
-      ? await getUserAgeProofFull(ctx.userId)
-      : await getUserAgeProof(ctx.userId)
-  );
+/**
+ * Get materialized verification checks with evidence sources.
+ * Returns 7 boolean checks (document, age, liveness, face_match, nationality,
+ * identity_binding, sybil_resistant) with source attribution.
+ * Works for both OCR and NFC chip verification paths.
+ */
+export const getChecksProcedure = protectedProcedure.query(async ({ ctx }) => {
+  const model = await getUnifiedVerificationModel(ctx.userId);
+  return {
+    method: model.method,
+    level: model.compliance.level,
+    verified: model.compliance.verified,
+    checks: model.checks,
+  };
+});
 
 /**
- * Get all verified ZK proofs for the authenticated user.
- * Used by the developer view to show all proof types.
+ * Get verified proof summaries for the authenticated user.
+ * Returns proof system, type, hash, and creation time for all verified proofs.
+ * Covers both Noir/UltraHonk (OCR) and ZKPassport (NFC chip) proofs.
  */
-export const getAllProofsProcedure = protectedProcedure.query(
-  async ({ ctx }) => await getAllVerifiedProofsFull(ctx.userId)
-);
+export const getProofsProcedure = protectedProcedure.query(async ({ ctx }) => {
+  const model = await getUnifiedVerificationModel(ctx.userId);
+  return {
+    method: model.method,
+    proofs: model.proofs,
+  };
+});
 
 /**
  * Fetch latest signed claims for proof generation (OCR + face match + liveness).

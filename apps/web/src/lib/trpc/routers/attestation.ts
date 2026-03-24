@@ -34,11 +34,8 @@ import {
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
-import {
-  getSelectedVerification,
-  getVerificationStatus,
-} from "@/lib/db/queries/identity";
 import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
+import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
@@ -120,12 +117,9 @@ export const attestationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const [verificationStatus, verification] = await Promise.all([
-        getVerificationStatus(ctx.userId),
-        getSelectedVerification(ctx.userId),
-      ]);
+      const model = await getUnifiedVerificationModel(ctx.userId);
 
-      if (!verification) {
+      if (!model.verificationId) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message:
@@ -133,7 +127,7 @@ export const attestationRouter = router({
         });
       }
 
-      const issuerCountry = verification.issuerCountry || undefined;
+      const issuerCountry = model.issuerCountry || undefined;
 
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
@@ -263,16 +257,16 @@ export const attestationRouter = router({
         }
       }
 
-      if (verificationStatus.birthYearOffset === null) {
+      if (model.compliance.birthYearOffset === null) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
             "Birth year offset not available. Please re-verify your identity.",
         });
       }
-      const birthYearOffset = verificationStatus.birthYearOffset;
+      const birthYearOffset = model.compliance.birthYearOffset;
       const countryCode = countryCodeToNumeric(issuerCountry || "");
-      const complianceLevel = verificationStatus.numericLevel;
+      const complianceLevel = model.compliance.numericLevel;
 
       try {
         const result = await provider.submitAttestation({

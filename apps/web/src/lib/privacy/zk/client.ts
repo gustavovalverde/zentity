@@ -7,10 +7,6 @@
 
 "use client";
 
-import type {
-  AgeProofFull,
-  AgeProofSummary,
-} from "@/lib/privacy/zk/age-proof-types";
 import type { RouterOutputs } from "@/lib/trpc/types";
 
 import {
@@ -483,32 +479,24 @@ export async function storeProof(options: StoreProofOptions): Promise<{
 }
 
 /**
- * Get user's stored age proof
- * @param full - If true, returns full proof details including ciphertext metadata
+ * Get verification checks with evidence sources.
  */
-export async function getUserProof(full: true): Promise<AgeProofFull | null>;
-export async function getUserProof(
-  full?: false
-): Promise<AgeProofSummary | null>;
-export async function getUserProof(
-  full = false
-): Promise<AgeProofFull | AgeProofSummary | null> {
+export async function getChecks(): Promise<ZkOutputs["getChecks"]> {
   try {
-    return await trpc.zk.getUserProof.query({ full });
+    return await trpc.zk.getChecks.query();
   } catch (error) {
     throw new Error(
-      error instanceof Error ? error.message : "Failed to get proof"
+      error instanceof Error ? error.message : "Failed to get checks"
     );
   }
 }
 
 /**
- * Get all verified ZK proofs for the authenticated user.
- * Used by the developer view to display all proof types.
+ * Get verified proof summaries for the authenticated user.
  */
-export async function getAllProofs(): Promise<ZkOutputs["getAllProofs"]> {
+export async function getProofs(): Promise<ZkOutputs["getProofs"]> {
   try {
-    return await trpc.zk.getAllProofs.query();
+    return await trpc.zk.getProofs.query();
   } catch (error) {
     throw new Error(
       error instanceof Error ? error.message : "Failed to get proofs"

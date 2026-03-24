@@ -7,19 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  areZkProofsComplete,
-  computeAssuranceState,
-  isFheComplete,
-} from "../compute";
-
-const REQUIRED_ZK_PROOF_TYPES = [
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-] as const;
+import { computeAssuranceState, isFheComplete } from "../compute";
 
 describe("computeAssuranceState", () => {
   describe("Tier 0 - Anonymous", () => {
@@ -300,26 +288,6 @@ describe("computeAssuranceState", () => {
 
       expect(state.details.missingProfileSecret).toBe(false);
     });
-  });
-});
-
-describe("areZkProofsComplete", () => {
-  it("returns false when no proofs", () => {
-    expect(areZkProofsComplete([])).toBe(false);
-  });
-
-  it("returns false when missing proofs", () => {
-    expect(areZkProofsComplete(["age_verification"])).toBe(false);
-  });
-
-  it("returns true when all required proofs present", () => {
-    expect(areZkProofsComplete([...REQUIRED_ZK_PROOF_TYPES])).toBe(true);
-  });
-
-  it("returns true with extra proofs", () => {
-    expect(
-      areZkProofsComplete([...REQUIRED_ZK_PROOF_TYPES, "experimental_proof"])
-    ).toBe(true);
   });
 });
 

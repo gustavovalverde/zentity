@@ -23,6 +23,7 @@ import {
   createVerification,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
+import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 import { getAssuranceState, getUnauthenticatedAssuranceState } from "../data";
@@ -158,6 +159,7 @@ describe("assurance data layer", () => {
         issuedAt: new Date().toISOString(),
       });
 
+      await materializeVerificationChecks(userId, docId);
       const state = await getAssuranceState(userId, mockSession);
 
       expect(state.details.livenessVerified).toBe(true);
@@ -182,6 +184,7 @@ describe("assurance data layer", () => {
         issuedAt: new Date().toISOString(),
       });
 
+      await materializeVerificationChecks(userId, docId);
       const state = await getAssuranceState(userId, mockSession);
 
       expect(state.details.faceMatchVerified).toBe(true);
@@ -300,6 +303,7 @@ describe("assurance data layer", () => {
         });
       }
 
+      await materializeVerificationChecks(userId, docId);
       const state = await getAssuranceState(userId, mockSession);
 
       expect(state.tier).toBe(1);
@@ -374,6 +378,7 @@ describe("assurance data layer", () => {
         ciphertext: crypto.randomBytes(256),
       });
 
+      await materializeVerificationChecks(userId, docId);
       const state = await getAssuranceState(userId, mockSession);
 
       expect(state.tier).toBe(2);
@@ -428,6 +433,7 @@ describe("assurance data layer", () => {
         });
       }
 
+      await materializeVerificationChecks(userId, docId);
       const state = await getAssuranceState(userId, mockSession);
 
       expect(state.tier).toBe(1);

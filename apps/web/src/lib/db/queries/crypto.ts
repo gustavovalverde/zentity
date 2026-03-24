@@ -1,8 +1,4 @@
 import type {
-  AgeProofFull,
-  AgeProofSummary,
-} from "../../privacy/zk/age-proof-types";
-import type {
   EncryptedSecretRecord,
   NewEncryptedAttribute,
   ProofSessionRecord,
@@ -59,19 +55,6 @@ type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
   metadata: Record<string, unknown> | null;
 };
 
-function parseProofMetadata(
-  raw: string | null
-): Record<string, unknown> | null {
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 function parseSecretMetadata(
   raw: string | null
 ): Record<string, unknown> | null {
@@ -98,23 +81,6 @@ function computeCiphertextHash(
     .digest("hex");
 }
 
-function getCiphertextInfo(
-  ciphertext: Buffer | null | undefined,
-  userId: string,
-  attributeType: string
-): {
-  hash: string | null;
-  byteLength: number | null;
-} {
-  if (!ciphertext || ciphertext.byteLength === 0) {
-    return { hash: null, byteLength: null };
-  }
-  return {
-    hash: computeCiphertextHash(ciphertext, userId, attributeType),
-    byteLength: ciphertext.byteLength,
-  };
-}
-
 function ensureCiphertextIntegrity(params: {
   ciphertext: Buffer;
   ciphertextHash: string | null;
@@ -139,144 +105,6 @@ function ensureCiphertextIntegrity(params: {
   }
 
   return stored;
-}
-
-export async function getUserAgeProof(
-  userId: string
-): Promise<AgeProofSummary | null> {
-  const proof = await db
-    .select({
-      id: proofArtifacts.id,
-      metadata: proofArtifacts.metadata,
-      generationTimeMs: proofArtifacts.generationTimeMs,
-      createdAt: proofArtifacts.createdAt,
-    })
-    .from(proofArtifacts)
-    .where(
-      and(
-        eq(proofArtifacts.userId, userId),
-        eq(proofArtifacts.proofType, "age_verification"),
-        eq(proofArtifacts.verified, true)
-      )
-    )
-    .orderBy(desc(proofArtifacts.createdAt))
-    .limit(1)
-    .get();
-
-  if (!proof) {
-    return null;
-  }
-
-  const meta = parseProofMetadata(proof.metadata);
-
-  let encrypted = await getLatestEncryptedAttributeByUserAndType(
-    userId,
-    "dob_days"
-  );
-  let dobAttrType = "dob_days";
-  if (!encrypted) {
-    encrypted = await getLatestEncryptedAttributeByUserAndType(
-      userId,
-      "birth_year_offset"
-    );
-    dobAttrType = "birth_year_offset";
-  }
-  const ciphertextInfo = getCiphertextInfo(
-    encrypted?.ciphertext ?? null,
-    userId,
-    dobAttrType
-  );
-
-  return {
-    proofId: proof.id,
-    isOver18: Boolean(meta?.isOver18),
-    generationTimeMs: proof.generationTimeMs ?? null,
-    createdAt: proof.createdAt,
-    birthYearOffsetCiphertextHash: ciphertextInfo.hash,
-    birthYearOffsetCiphertextBytes: ciphertextInfo.byteLength,
-    fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
-  };
-}
-
-export async function getUserAgeProofFull(
-  userId: string
-): Promise<AgeProofFull | null> {
-  const row = await db
-    .select({
-      id: proofArtifacts.id,
-      metadata: proofArtifacts.metadata,
-      generationTimeMs: proofArtifacts.generationTimeMs,
-      createdAt: proofArtifacts.createdAt,
-      proofPayload: proofArtifacts.proofPayload,
-      publicInputs: proofArtifacts.publicInputs,
-    })
-    .from(proofArtifacts)
-    .where(
-      and(
-        eq(proofArtifacts.userId, userId),
-        eq(proofArtifacts.proofType, "age_verification"),
-        eq(proofArtifacts.verified, true)
-      )
-    )
-    .orderBy(desc(proofArtifacts.createdAt))
-    .limit(1)
-    .get();
-
-  if (!row) {
-    return null;
-  }
-
-  const meta = parseProofMetadata(row.metadata);
-
-  let encrypted = await getLatestEncryptedAttributeByUserAndType(
-    userId,
-    "dob_days"
-  );
-  let dobAttrType2 = "dob_days";
-  if (!encrypted) {
-    encrypted = await getLatestEncryptedAttributeByUserAndType(
-      userId,
-      "birth_year_offset"
-    );
-    dobAttrType2 = "birth_year_offset";
-  }
-  const ciphertextInfo = getCiphertextInfo(
-    encrypted?.ciphertext ?? null,
-    userId,
-    dobAttrType2
-  );
-
-  let publicSignals: string[] | null = null;
-  if (row.publicInputs) {
-    try {
-      const parsed = JSON.parse(row.publicInputs) as unknown;
-      if (Array.isArray(parsed)) {
-        publicSignals = parsed.map(String);
-      }
-    } catch {
-      publicSignals = null;
-    }
-  }
-
-  return {
-    proofId: row.id,
-    isOver18: Boolean(meta?.isOver18),
-    generationTimeMs: row.generationTimeMs ?? null,
-    createdAt: row.createdAt,
-    birthYearOffsetCiphertextHash: ciphertextInfo.hash,
-    birthYearOffsetCiphertextBytes: ciphertextInfo.byteLength,
-    fheEncryptionTimeMs: encrypted?.encryptionTimeMs ?? null,
-    proof: row.proofPayload ?? null,
-    publicSignals,
-    fheKeyId: encrypted?.keyId ?? null,
-    circuitType: (meta?.circuitType as string) ?? null,
-    noirVersion: (meta?.noirVersion as string) ?? null,
-    circuitHash: (meta?.circuitHash as string) ?? null,
-    verificationKeyHash: (meta?.verificationKeyHash as string) ?? null,
-    verificationKeyPoseidonHash:
-      (meta?.verificationKeyPoseidonHash as string) ?? null,
-    bbVersion: (meta?.bbVersion as string) ?? null,
-  };
 }
 
 export async function getEncryptedSecretByUserAndType(
@@ -424,78 +252,6 @@ export async function deleteSecretWrapper(
       )
     )
     .run();
-}
-
-/**
- * Get all verified proofs for a user with full details.
- * Used by the dev page to display proof metadata.
- */
-export async function getAllVerifiedProofsFull(userId: string): Promise<
-  {
-    proofId: string;
-    proofType: string;
-    proofSystem: string;
-    generationTimeMs: number | null;
-    createdAt: string;
-    proof: string | null;
-    publicSignals: string[] | null;
-    circuitType: string | null;
-    noirVersion: string | null;
-    circuitHash: string | null;
-    verificationKeyHash: string | null;
-    verificationKeyPoseidonHash: string | null;
-    bbVersion: string | null;
-  }[]
-> {
-  const rows = await db
-    .select({
-      id: proofArtifacts.id,
-      proofType: proofArtifacts.proofType,
-      proofSystem: proofArtifacts.proofSystem,
-      generationTimeMs: proofArtifacts.generationTimeMs,
-      createdAt: proofArtifacts.createdAt,
-      proofPayload: proofArtifacts.proofPayload,
-      publicInputs: proofArtifacts.publicInputs,
-      metadata: proofArtifacts.metadata,
-    })
-    .from(proofArtifacts)
-    .where(
-      and(eq(proofArtifacts.userId, userId), eq(proofArtifacts.verified, true))
-    )
-    .orderBy(desc(proofArtifacts.createdAt))
-    .all();
-
-  return rows.map((row) => {
-    const meta = parseProofMetadata(row.metadata);
-    let publicSignals: string[] | null = null;
-    if (row.publicInputs) {
-      try {
-        const parsed = JSON.parse(row.publicInputs) as unknown;
-        if (Array.isArray(parsed)) {
-          publicSignals = parsed.map(String);
-        }
-      } catch {
-        publicSignals = null;
-      }
-    }
-
-    return {
-      proofId: row.id,
-      proofType: row.proofType,
-      proofSystem: row.proofSystem,
-      generationTimeMs: row.generationTimeMs ?? null,
-      createdAt: row.createdAt,
-      proof: row.proofPayload ?? null,
-      publicSignals,
-      circuitType: (meta?.circuitType as string) ?? null,
-      noirVersion: (meta?.noirVersion as string) ?? null,
-      circuitHash: (meta?.circuitHash as string) ?? null,
-      verificationKeyHash: (meta?.verificationKeyHash as string) ?? null,
-      verificationKeyPoseidonHash:
-        (meta?.verificationKeyPoseidonHash as string) ?? null,
-      bbVersion: (meta?.bbVersion as string) ?? null,
-    };
-  });
 }
 
 export async function createProofSession(

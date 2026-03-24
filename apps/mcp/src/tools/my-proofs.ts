@@ -3,17 +3,41 @@ import { zentityFetch } from "../auth/api-client.js";
 import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
-interface AgeProof {
-  createdAt: string;
-  isOver18: boolean;
-  proofId: string;
+interface VerificationCheck {
+  checkType: string;
+  evidenceRef: string | null;
+  passed: boolean;
+  source: string;
 }
 
-interface ZkProof {
-  createdAt: string;
-  proofId: string;
-  proofType: string;
+interface ChecksResponse {
+  checks: VerificationCheck[];
+  level: string;
+  method: "ocr" | "nfc_chip" | null;
+  verified: boolean;
 }
+
+interface ProofSummary {
+  createdAt: string;
+  proofHash: string;
+  proofSystem: string;
+  proofType: string;
+  verified: boolean;
+}
+
+interface ProofsResponse {
+  method: "ocr" | "nfc_chip" | null;
+  proofs: ProofSummary[];
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  zk_proof: "ZK proof",
+  signed_claim: "server attestation",
+  chip_claim: "passport chip",
+  commitment: "cryptographic commitment",
+  nullifier: "passport nullifier",
+  dedup_key: "deduplication key",
+};
 
 export function registerMyProofsTool(server: McpServer): void {
   server.tool(
@@ -36,43 +60,54 @@ export function registerMyProofsTool(server: McpServer): void {
         };
       }
 
-      const [ageRes, allRes] = await Promise.all([
-        zentityFetch(
-          `${config.zentityUrl}/api/trpc/zk.getUserProof?input=${encodeURIComponent(JSON.stringify({ json: {} }))}`
-        ),
-        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getAllProofs`),
+      const [checksRes, proofsRes] = await Promise.all([
+        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getChecks`),
+        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getProofs`),
       ]);
 
-      const ageProof = ageRes.ok
-        ? ((await ageRes.json()) as { result: { data: AgeProof | null } })
-            .result.data
+      const checksData = checksRes.ok
+        ? (
+            (await checksRes.json()) as {
+              result: { data: ChecksResponse };
+            }
+          ).result.data
         : null;
 
-      const allProofs = allRes.ok
-        ? ((await allRes.json()) as { result: { data: ZkProof[] } }).result.data
-        : [];
+      const proofsData = proofsRes.ok
+        ? (
+            (await proofsRes.json()) as {
+              result: { data: ProofsResponse };
+            }
+          ).result.data
+        : null;
 
-      const proofSummary = allProofs.map((p) => ({
-        type: p.proofType,
-        verified: true,
-        verifiedAt: p.createdAt,
-      }));
+      const checks = checksData?.checks ?? [];
+      const proofs = proofsData?.proofs ?? [];
 
-      const proofTypes = new Set(allProofs.map((p) => p.proofType));
+      const checkMap = new Map(checks.map((c) => [c.checkType, c]));
+      const ageCheck = checkMap.get("age");
 
       return {
         content: [
           {
             type: "text" as const,
             text: JSON.stringify({
-              isOver18: ageProof?.isOver18 ?? null,
-              hasAgeProof: proofTypes.has("age_verification"),
-              hasDocValidityProof: proofTypes.has("doc_validity"),
-              hasNationalityProof: proofTypes.has("nationality_membership"),
-              hasFaceMatchProof: proofTypes.has("face_match"),
-              hasIdentityBindingProof: proofTypes.has("identity_binding"),
-              totalProofs: allProofs.length,
-              proofs: proofSummary,
+              verificationMethod: checksData?.method ?? null,
+              verificationLevel: checksData?.level ?? "none",
+              verified: checksData?.verified ?? false,
+              isOver18: ageCheck?.passed ?? null,
+              checks: checks.map((c) => ({
+                type: c.checkType,
+                passed: c.passed,
+                source: SOURCE_LABELS[c.source] ?? c.source,
+              })),
+              totalProofs: proofs.length,
+              proofs: proofs.map((p) => ({
+                system: p.proofSystem,
+                type: p.proofType,
+                verified: p.verified,
+                verifiedAt: p.createdAt,
+              })),
             }),
           },
         ],

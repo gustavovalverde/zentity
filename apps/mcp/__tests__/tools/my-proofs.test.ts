@@ -62,36 +62,105 @@ describe("my_proofs", () => {
     return client;
   }
 
-  it("returns age proof and all proof types", async () => {
-    const ageProof = {
-      proofId: "proof-1",
-      isOver18: true,
-      createdAt: "2026-03-01",
+  it("returns checks and proof summaries for verified user", async () => {
+    const checksData = {
+      method: "ocr",
+      level: "full",
+      verified: true,
+      checks: [
+        {
+          checkType: "document",
+          passed: true,
+          source: "zk_proof",
+          evidenceRef: "p1",
+        },
+        {
+          checkType: "age",
+          passed: true,
+          source: "zk_proof",
+          evidenceRef: "p2",
+        },
+        {
+          checkType: "liveness",
+          passed: true,
+          source: "signed_claim",
+          evidenceRef: "c1",
+        },
+        {
+          checkType: "face_match",
+          passed: true,
+          source: "zk_proof",
+          evidenceRef: "p3",
+        },
+        {
+          checkType: "nationality",
+          passed: true,
+          source: "zk_proof",
+          evidenceRef: "p4",
+        },
+        {
+          checkType: "identity_binding",
+          passed: true,
+          source: "zk_proof",
+          evidenceRef: "p5",
+        },
+        {
+          checkType: "sybil_resistant",
+          passed: true,
+          source: "dedup_key",
+          evidenceRef: "v1",
+        },
+      ],
     };
-    const allProofs = [
-      { proofId: "p1", proofType: "age_verification", createdAt: "2026-03-01" },
-      { proofId: "p2", proofType: "doc_validity", createdAt: "2026-03-01" },
-      {
-        proofId: "p3",
-        proofType: "nationality_membership",
-        createdAt: "2026-03-01",
-      },
-      { proofId: "p4", proofType: "face_match", createdAt: "2026-03-01" },
-      {
-        proofId: "p5",
-        proofType: "identity_binding",
-        createdAt: "2026-03-01",
-      },
-    ];
+    const proofsData = {
+      method: "ocr",
+      proofs: [
+        {
+          proofSystem: "noir_ultrahonk",
+          proofType: "age_verification",
+          proofHash: "h1",
+          verified: true,
+          createdAt: "2026-03-01",
+        },
+        {
+          proofSystem: "noir_ultrahonk",
+          proofType: "doc_validity",
+          proofHash: "h2",
+          verified: true,
+          createdAt: "2026-03-01",
+        },
+        {
+          proofSystem: "noir_ultrahonk",
+          proofType: "nationality_membership",
+          proofHash: "h3",
+          verified: true,
+          createdAt: "2026-03-01",
+        },
+        {
+          proofSystem: "noir_ultrahonk",
+          proofType: "face_match",
+          proofHash: "h4",
+          verified: true,
+          createdAt: "2026-03-01",
+        },
+        {
+          proofSystem: "noir_ultrahonk",
+          proofType: "identity_binding",
+          proofHash: "h5",
+          verified: true,
+          createdAt: "2026-03-01",
+        },
+      ],
+    };
 
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: ageProof } }), {
+        new Response(JSON.stringify({ result: { data: checksData } }), {
           status: 200,
         })
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: allProofs } }), {
+        new Response(JSON.stringify({ result: { data: proofsData } }), {
           status: 200,
         })
       );
@@ -106,23 +175,35 @@ describe("my_proofs", () => {
       (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.isOver18).toBe(true);
-    expect(parsed.hasAgeProof).toBe(true);
-    expect(parsed.hasDocValidityProof).toBe(true);
-    expect(parsed.hasNationalityProof).toBe(true);
-    expect(parsed.hasFaceMatchProof).toBe(true);
-    expect(parsed.hasIdentityBindingProof).toBe(true);
+    expect(parsed.verificationMethod).toBe("ocr");
+    expect(parsed.verificationLevel).toBe("full");
+    expect(parsed.verified).toBe(true);
+    expect(parsed.checks).toHaveLength(7);
     expect(parsed.totalProofs).toBe(5);
   });
 
-  it("returns nulls when no proofs exist", async () => {
+  it("returns empty state when no verification exists", async () => {
+    const checksData = {
+      method: null,
+      level: "none",
+      verified: false,
+      checks: [],
+    };
+    const proofsData = {
+      method: null,
+      proofs: [],
+    };
+
     vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: null } }), {
+        new Response(JSON.stringify({ result: { data: checksData } }), {
           status: 200,
         })
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: [] } }), { status: 200 })
+        new Response(JSON.stringify({ result: { data: proofsData } }), {
+          status: 200,
+        })
       );
 
     const client = await createConnectedClient();
@@ -135,7 +216,8 @@ describe("my_proofs", () => {
       (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.isOver18).toBeNull();
-    expect(parsed.hasAgeProof).toBe(false);
+    expect(parsed.verified).toBe(false);
     expect(parsed.totalProofs).toBe(0);
+    expect(parsed.checks).toHaveLength(0);
   });
 });

@@ -43,6 +43,12 @@ vi.mock("@/lib/db/queries/identity", () => ({
     mockGetSelectedVerification(...args),
 }));
 
+const mockGetUnifiedVerificationModel = vi.fn();
+vi.mock("@/lib/identity/verification/unified-model", () => ({
+  getUnifiedVerificationModel: (...args: unknown[]) =>
+    mockGetUnifiedVerificationModel(...args),
+}));
+
 vi.mock("@/lib/db/queries/attestation", () => ({
   getBlockchainAttestationsByUserId: (...args: unknown[]) =>
     mockGetBlockchainAttestationsByUserId(...args),
@@ -142,6 +148,41 @@ describe("attestation router", () => {
     vi.clearAllMocks();
     // Default to Tier 2 + strong auth for most tests (attestation requirement)
     mockGetAssuranceState.mockResolvedValue(createTier2State());
+    // Default unified model for submit flow
+    mockGetUnifiedVerificationModel.mockResolvedValue({
+      method: "ocr",
+      verificationId: "v-1",
+      verifiedAt: "2026-01-01T00:00:00.000Z",
+      issuerCountry: "USA",
+      compliance: {
+        level: "full",
+        numericLevel: 3,
+        verified: true,
+        birthYearOffset: 25,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          faceMatchVerified: true,
+          nationalityVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
+      },
+      checks: [],
+      proofs: [],
+      bundle: {
+        exists: true,
+        fheKeyId: "k-1",
+        policyVersion: "v1",
+        attestationExpiresAt: null,
+        updatedAt: null,
+      },
+      fhe: { complete: true, attributeTypes: [] },
+      vault: { hasProfileSecret: true },
+      onChainAttested: false,
+      needsDocumentReprocessing: false,
+    });
   });
 
   it("returns networks with attestation status", async () => {

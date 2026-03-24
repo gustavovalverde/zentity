@@ -1,9 +1,7 @@
+import type { ComplianceLevel } from "@/lib/identity/verification/compliance";
+
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
-import {
-  getIdentityBundleByUserId,
-  getLatestVerification,
-  getVerificationStatus,
-} from "@/lib/db/queries/identity";
+import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 
 export const PROOF_DISCLOSURE_KEYS = [
   "verification_level",
@@ -23,8 +21,6 @@ export const PROOF_DISCLOSURE_KEYS = [
   "chip_verification_method",
 ] as const;
 
-type VerificationStatus = Awaited<ReturnType<typeof getVerificationStatus>>;
-
 interface VerificationClaims extends Record<string, unknown> {
   age_verification: boolean;
   attestation_expires_at?: string | undefined;
@@ -38,26 +34,38 @@ interface VerificationClaims extends Record<string, unknown> {
   nationality_verified: boolean;
   policy_version?: string | undefined;
   sybil_resistant: boolean;
-  verification_level: VerificationStatus["level"];
+  verification_level: ComplianceLevel;
   verification_time?: string | undefined;
   verified: boolean;
 }
 
-function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
-  const isChip = status.level === "chip";
+function mapComplianceToClaims(compliance: {
+  level: ComplianceLevel;
+  verified: boolean;
+  checks: {
+    documentVerified: boolean;
+    livenessVerified: boolean;
+    ageVerified: boolean;
+    faceMatchVerified: boolean;
+    nationalityVerified: boolean;
+    identityBound: boolean;
+    sybilResistant: boolean;
+  };
+}): VerificationClaims {
+  const isChip = compliance.level === "chip";
   return {
-    verification_level: status.level,
-    verified: status.verified,
-    document_verified: status.checks.documentVerified,
-    liveness_verified: status.checks.livenessVerified,
-    age_verification: status.checks.ageVerified,
-    face_match_verified: status.checks.faceMatchVerified,
-    nationality_verified: status.checks.nationalityVerified,
-    nationality_group: status.checks.nationalityVerified
+    verification_level: compliance.level,
+    verified: compliance.verified,
+    document_verified: compliance.checks.documentVerified,
+    liveness_verified: compliance.checks.livenessVerified,
+    age_verification: compliance.checks.ageVerified,
+    face_match_verified: compliance.checks.faceMatchVerified,
+    nationality_verified: compliance.checks.nationalityVerified,
+    nationality_group: compliance.checks.nationalityVerified
       ? NATIONALITY_GROUP
       : undefined,
-    identity_bound: status.checks.identityBound,
-    sybil_resistant: status.checks.sybilResistant,
+    identity_bound: compliance.checks.identityBound,
+    sybil_resistant: compliance.checks.sybilResistant,
     chip_verified: isChip,
     chip_verification_method: isChip ? "nfc" : undefined,
   };
@@ -66,23 +74,18 @@ function mapVerificationClaims(status: VerificationStatus): VerificationClaims {
 export async function buildProofClaims(
   userId: string
 ): Promise<Record<string, unknown>> {
-  const [status, bundle, latestVerification] = await Promise.all([
-    getVerificationStatus(userId),
-    getIdentityBundleByUserId(userId),
-    getLatestVerification(userId),
-  ]);
+  const model = await getUnifiedVerificationModel(userId);
 
-  const claims: VerificationClaims = mapVerificationClaims(status);
-  if (bundle?.policyVersion) {
-    claims.policy_version = bundle.policyVersion;
+  const claims: VerificationClaims = mapComplianceToClaims(model.compliance);
+  if (model.bundle.policyVersion) {
+    claims.policy_version = model.bundle.policyVersion;
   }
-  const verificationTime =
-    latestVerification?.verifiedAt ?? bundle?.updatedAt ?? null;
+  const verificationTime = model.verifiedAt ?? model.bundle.updatedAt ?? null;
   if (verificationTime) {
     claims.verification_time = verificationTime;
   }
-  if (bundle?.attestationExpiresAt) {
-    claims.attestation_expires_at = bundle.attestationExpiresAt;
+  if (model.bundle.attestationExpiresAt) {
+    claims.attestation_expires_at = model.bundle.attestationExpiresAt;
   }
 
   return claims;
@@ -92,34 +95,29 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
   verification: Record<string, unknown>;
   claims: Record<string, unknown>;
 } | null> {
-  const [status, bundle, latestVerification] = await Promise.all([
-    getVerificationStatus(userId),
-    getIdentityBundleByUserId(userId),
-    getLatestVerification(userId),
-  ]);
+  const model = await getUnifiedVerificationModel(userId);
 
-  if (!status.verified) {
+  if (!model.compliance.verified) {
     return null;
   }
 
   const verification: Record<string, unknown> = {
     trust_framework: "eidas",
-    assurance_level: status.level,
+    assurance_level: model.compliance.level,
   };
-  const verificationTime =
-    latestVerification?.verifiedAt ?? bundle?.updatedAt ?? null;
+  const verificationTime = model.verifiedAt ?? model.bundle.updatedAt ?? null;
   if (verificationTime) {
     verification.time = verificationTime;
   }
-  if (bundle?.policyVersion) {
-    verification.policy_version = bundle.policyVersion;
+  if (model.bundle.policyVersion) {
+    verification.policy_version = model.bundle.policyVersion;
   }
-  if (bundle?.attestationExpiresAt) {
-    verification.attestation_expires_at = bundle.attestationExpiresAt;
+  if (model.bundle.attestationExpiresAt) {
+    verification.attestation_expires_at = model.bundle.attestationExpiresAt;
   }
 
   return {
     verification,
-    claims: mapVerificationClaims(status),
+    claims: mapComplianceToClaims(model.compliance),
   };
 }

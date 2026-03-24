@@ -1,47 +1,56 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Reset module cache to avoid vmThreads mock registry leakage
-// where a previous test file's vi.mock for the same module persists.
 vi.resetModules();
 
-const mockGetVerificationStatus = vi.fn();
-const mockGetIdentityBundleByUserId = vi.fn();
-const mockGetLatestIdentityDocumentByUserId = vi.fn();
+const mockGetUnifiedVerificationModel = vi.fn();
 
-vi.doMock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: mockGetVerificationStatus,
-  getIdentityBundleByUserId: mockGetIdentityBundleByUserId,
-  getLatestVerification: mockGetLatestIdentityDocumentByUserId,
+vi.doMock("@/lib/identity/verification/unified-model", () => ({
+  getUnifiedVerificationModel: mockGetUnifiedVerificationModel,
 }));
 
 const { buildOidcVerifiedClaims, buildProofClaims } = await import("../claims");
 
-describe("oidc claim mapping", () => {
-  beforeEach(() => {
-    mockGetVerificationStatus.mockResolvedValue({
-      verified: true,
+function makeModel(overrides: Record<string, unknown> = {}) {
+  return {
+    method: "ocr",
+    verificationId: "v-1",
+    verifiedAt: "2026-01-02T00:00:00.000Z",
+    issuerCountry: "USA",
+    compliance: {
       level: "full",
       numericLevel: 3,
+      verified: true,
       birthYearOffset: null,
       checks: {
         documentVerified: true,
         livenessVerified: true,
         ageVerified: true,
-        nationalityVerified: true,
         faceMatchVerified: true,
+        nationalityVerified: true,
         identityBound: true,
         sybilResistant: true,
       },
-    });
-    mockGetIdentityBundleByUserId.mockResolvedValue({
+    },
+    checks: [],
+    proofs: [],
+    bundle: {
+      exists: true,
+      fheKeyId: "fhe-1",
       policyVersion: "policy-1",
-      issuerId: "issuer-1",
       attestationExpiresAt: "2030-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
-    });
-    mockGetLatestIdentityDocumentByUserId.mockResolvedValue({
-      verifiedAt: "2026-01-02T00:00:00.000Z",
-    });
+    },
+    fhe: { complete: true, attributeTypes: [] },
+    vault: { hasProfileSecret: true },
+    onChainAttested: false,
+    needsDocumentReprocessing: false,
+    ...overrides,
+  };
+}
+
+describe("oidc claim mapping", () => {
+  beforeEach(() => {
+    mockGetUnifiedVerificationModel.mockResolvedValue(makeModel());
   });
 
   it("builds derived proof claims from verification data", async () => {
@@ -85,21 +94,26 @@ describe("oidc claim mapping", () => {
   });
 
   it("builds chip-verified claims with correct check mappings", async () => {
-    mockGetVerificationStatus.mockResolvedValueOnce({
-      verified: true,
-      level: "chip",
-      numericLevel: 4,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        nationalityVerified: true,
-        faceMatchVerified: true,
-        identityBound: true,
-        sybilResistant: true,
-      },
-    });
+    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+      makeModel({
+        method: "nfc_chip",
+        compliance: {
+          level: "chip",
+          numericLevel: 4,
+          verified: true,
+          birthYearOffset: null,
+          checks: {
+            documentVerified: true,
+            livenessVerified: true,
+            ageVerified: true,
+            nationalityVerified: true,
+            faceMatchVerified: true,
+            identityBound: true,
+            sybilResistant: true,
+          },
+        },
+      })
+    );
 
     const claims = await buildProofClaims("user-chip");
 
@@ -120,21 +134,26 @@ describe("oidc claim mapping", () => {
   });
 
   it("builds chip-verified OIDC4IDA claims", async () => {
-    mockGetVerificationStatus.mockResolvedValueOnce({
-      verified: true,
-      level: "chip",
-      numericLevel: 4,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        nationalityVerified: true,
-        faceMatchVerified: false,
-        identityBound: true,
-        sybilResistant: true,
-      },
-    });
+    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+      makeModel({
+        method: "nfc_chip",
+        compliance: {
+          level: "chip",
+          numericLevel: 4,
+          verified: true,
+          birthYearOffset: null,
+          checks: {
+            documentVerified: true,
+            livenessVerified: true,
+            ageVerified: true,
+            nationalityVerified: true,
+            faceMatchVerified: false,
+            identityBound: true,
+            sybilResistant: true,
+          },
+        },
+      })
+    );
 
     const verifiedClaims = await buildOidcVerifiedClaims("user-chip");
 
@@ -154,21 +173,27 @@ describe("oidc claim mapping", () => {
   });
 
   it("returns null verified_claims when no assurance", async () => {
-    mockGetVerificationStatus.mockResolvedValueOnce({
-      verified: false,
-      level: "none",
-      numericLevel: 0,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: false,
-        livenessVerified: false,
-        ageVerified: false,
-        nationalityVerified: false,
-        faceMatchVerified: false,
-        identityBound: false,
-        sybilResistant: false,
-      },
-    });
+    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+      makeModel({
+        method: null,
+        verifiedAt: null,
+        compliance: {
+          level: "none",
+          numericLevel: 1,
+          verified: false,
+          birthYearOffset: null,
+          checks: {
+            documentVerified: false,
+            livenessVerified: false,
+            ageVerified: false,
+            nationalityVerified: false,
+            faceMatchVerified: false,
+            identityBound: false,
+            sybilResistant: false,
+          },
+        },
+      })
+    );
 
     const verifiedClaims = await buildOidcVerifiedClaims("user-2");
     expect(verifiedClaims).toBeNull();

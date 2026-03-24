@@ -16,17 +16,6 @@ import type {
 } from "./types";
 
 /**
- * Required ZK proof types for full verification (Tier 2)
- */
-const REQUIRED_ZK_PROOF_TYPES = [
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-] as const;
-
-/**
  * Valid login methods
  */
 const VALID_LOGIN_METHODS = new Set<LoginMethod>([
@@ -157,13 +146,6 @@ export function computeAssuranceState(input: AssuranceInput): AssuranceState {
     loginMethod: method,
     details,
   };
-}
-
-/**
- * Check if ZK proofs are complete based on proof types
- */
-export function areZkProofsComplete(proofTypes: string[]): boolean {
-  return REQUIRED_ZK_PROOF_TYPES.every((type) => proofTypes.includes(type));
 }
 
 /**
