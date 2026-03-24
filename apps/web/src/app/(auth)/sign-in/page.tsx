@@ -29,37 +29,11 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { authClient } from "@/lib/auth/auth-client";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
 import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { getSafeRedirectPath, redirectTo } from "@/lib/utils/navigation";
-
-function getLastUsedLabel(method: string | null): string | null {
-  if (!method) {
-    return null;
-  }
-  if (method === "passkey") {
-    return "Passkey";
-  }
-  if (method === "wallet" || method === "eip712") {
-    return "Wallet";
-  }
-  if (method === "opaque") {
-    return "Password";
-  }
-  if (method === "credential" || method === "email") {
-    return "Email/Password";
-  }
-  if (method === "google") {
-    return "Google";
-  }
-  if (method === "github") {
-    return "GitHub";
-  }
-  return method;
-}
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -67,7 +41,6 @@ export default function SignInPage() {
     searchParams.get("callbackURL"),
     "/dashboard"
   );
-  const [lastUsedMethod, setLastUsedMethod] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
@@ -83,8 +56,6 @@ export default function SignInPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    setLastUsedMethod(authClient.getLastUsedLoginMethod?.() ?? null);
-
     let active = true;
     checkPrfSupport()
       .then((result) => {
@@ -134,9 +105,6 @@ export default function SignInPage() {
       setPasskeyLoading(false);
     }
   };
-
-  const lastUsedLabel = getLastUsedLabel(lastUsedMethod);
-
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
@@ -144,13 +112,6 @@ export default function SignInPage() {
         <CardDescription>Sign in to your Zentity account</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {lastUsedLabel ? (
-          <p className="text-center text-muted-foreground text-xs">
-            Last used:{" "}
-            <span className="font-medium text-foreground">{lastUsedLabel}</span>
-          </p>
-        ) : null}
-
         {/* Passkey — primary CTA */}
         <div className="space-y-2">
           {passkeyError ? (

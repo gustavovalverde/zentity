@@ -1,31 +1,33 @@
 /**
  * Assurance Data Access Layer
  *
- * Converts the unified verification model into assurance state.
- * Uses React.cache() for per-request deduplication in server components.
+ * Separates account proofing, authentication provenance, and account
+ * capabilities. Security-sensitive callers should use SecurityPosture.
  */
 import "server-only";
 
 import type { Session } from "@/lib/auth/auth";
 import type { UnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
-import type { AssuranceState } from "./types";
+import type {
+  AccountAssurance,
+  AccountCapabilities,
+  SecurityPosture,
+} from "./types";
 
-import { desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { cache } from "react";
 
+import { resolveAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
-import { hasPasskeyCredentials } from "@/lib/db/queries/passkey";
-import { sessions } from "@/lib/db/schema/auth";
+import { accounts, passkeys } from "@/lib/db/schema/auth";
 import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-proof-sessions";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 
-import { computeAssuranceState } from "./compute";
+import { computeAccountAssurance } from "./compute";
 
-// ─── Unified model → AssuranceInput conversion ─────────────────────
-
-function toAssuranceInput(
+function toAccountAssuranceInput(
   model: UnifiedVerificationModel,
-  loginMethod: string | null
+  isAuthenticated: boolean
 ) {
   const documentVerified = model.verifiedAt !== null;
   const chipVerified = model.method === "nfc_chip";
@@ -34,7 +36,7 @@ function toAssuranceInput(
   );
 
   return {
-    lastLoginMethod: loginMethod,
+    isAuthenticated,
     hasSecuredKeys: model.bundle.fheKeyId !== null,
     chipVerified,
     documentVerified,
@@ -49,107 +51,116 @@ function toAssuranceInput(
   };
 }
 
-/**
- * Resolve login method: use stored value, or fall back to passkey check.
- */
-async function resolveLoginMethod(
-  storedLoginMethod: string | null,
-  userId: string
-): Promise<string | null> {
-  if (storedLoginMethod) {
-    return storedLoginMethod;
-  }
-  const hasPasskeys = await hasPasskeyCredentials(userId);
-  return hasPasskeys ? "passkey" : null;
-}
-
-// ─── Exported functions ─────────────────────────────────────────────
-
-/**
- * Get the complete assurance state for a user.
- */
-export const getAssuranceState = cache(async function getAssuranceState(
+export const getAccountAssurance = cache(async function getAccountAssurance(
   userId: string,
-  session: Session | null
-): Promise<AssuranceState> {
-  const hasSession = !!session;
-  const storedLoginMethod =
-    (session?.session as { lastLoginMethod?: string } | undefined)
-      ?.lastLoginMethod ?? null;
-
-  const [model, loginMethod] = await Promise.all([
-    getUnifiedVerificationModel(userId),
-    resolveLoginMethod(storedLoginMethod, userId),
-  ]);
-
-  const data = toAssuranceInput(model, loginMethod);
-
-  return computeAssuranceState({
-    hasSession,
-    loginMethod: data.lastLoginMethod,
-    ...data,
-  });
+  options?: { isAuthenticated?: boolean }
+): Promise<AccountAssurance> {
+  const model = await getUnifiedVerificationModel(userId);
+  return computeAccountAssurance(
+    toAccountAssuranceInput(model, options?.isAuthenticated ?? true)
+  );
 });
 
-/**
- * Get assurance state for the OAuth token endpoint.
- *
- * Unlike getAssuranceState, this doesn't require a Session object.
- * Queries the latest session for lastLoginMethod directly.
- */
-export async function getAssuranceForOAuth(
+const getAccountCapabilities = cache(async function getAccountCapabilities(
   userId: string
-): Promise<AssuranceState & { authTime: number }> {
-  const [latestSession, model] = await Promise.all([
+): Promise<AccountCapabilities> {
+  const [passkeyRow, opaqueAccount, walletAccount] = await Promise.all([
     db
-      .select({
-        lastLoginMethod: sessions.lastLoginMethod,
-        createdAt: sessions.createdAt,
-      })
-      .from(sessions)
-      .where(eq(sessions.userId, userId))
-      .orderBy(desc(sessions.createdAt))
+      .select({ id: passkeys.id })
+      .from(passkeys)
+      .where(eq(passkeys.userId, userId))
       .limit(1)
       .get(),
-    getUnifiedVerificationModel(userId),
+    db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(
+        and(eq(accounts.userId, userId), eq(accounts.providerId, "opaque"))
+      )
+      .limit(1)
+      .get(),
+    db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(
+        and(eq(accounts.userId, userId), eq(accounts.providerId, "eip712"))
+      )
+      .limit(1)
+      .get(),
   ]);
 
-  const loginMethod = await resolveLoginMethod(
-    latestSession?.lastLoginMethod ?? null,
-    userId
-  );
-  const data = toAssuranceInput(model, loginMethod);
+  return {
+    hasPasskeys: Boolean(passkeyRow),
+    hasOpaqueAccount: Boolean(opaqueAccount),
+    hasWalletAuth: Boolean(walletAccount),
+  };
+});
 
-  const authTime = latestSession?.createdAt
-    ? Math.floor(new Date(latestSession.createdAt).getTime() / 1000)
-    : Math.floor(Date.now() / 1000);
+export async function getSecurityPosture(input: {
+  userId: string;
+  presentedAuth?: {
+    authContextId?: string | null | undefined;
+    cibaAuthReqId?: string | null | undefined;
+    sessionId?: string | null | undefined;
+  } | null;
+}): Promise<SecurityPosture> {
+  const auth = await resolveAuthenticationContext({
+    authContextId: input.presentedAuth?.authContextId,
+    cibaAuthReqId: input.presentedAuth?.cibaAuthReqId,
+    sessionId: input.presentedAuth?.sessionId,
+  });
+
+  const [assurance, capabilities] = await Promise.all([
+    getAccountAssurance(input.userId, { isAuthenticated: auth !== null }),
+    getAccountCapabilities(input.userId),
+  ]);
 
   return {
-    ...computeAssuranceState({
-      hasSession: true,
-      loginMethod: data.lastLoginMethod,
-      ...data,
-    }),
-    authTime,
+    assurance,
+    auth,
+    capabilities,
   };
 }
 
-/**
- * Get assurance state for unauthenticated users (Tier 0)
- */
-export function getUnauthenticatedAssuranceState(): AssuranceState {
-  return computeAssuranceState({
-    hasSession: false,
-    loginMethod: null,
-    hasSecuredKeys: false,
-    chipVerified: false,
-    documentVerified: false,
-    livenessVerified: false,
-    faceMatchVerified: false,
-    zkProofsComplete: false,
-    fheComplete: false,
-    onChainAttested: false,
-    missingProfileSecret: false,
-    needsDocumentReprocessing: false,
+export function getSecurityPostureForSession(
+  userId: string,
+  session: Session | null
+): Promise<SecurityPosture> {
+  const authContextId =
+    (session?.session as { authContextId?: string | null } | undefined)
+      ?.authContextId ?? null;
+
+  return getSecurityPosture({
+    userId,
+    presentedAuth: session?.session?.id
+      ? {
+          authContextId,
+          sessionId: session.session.id,
+        }
+      : null,
   });
+}
+
+export function getUnauthenticatedSecurityPosture(): SecurityPosture {
+  return {
+    assurance: computeAccountAssurance({
+      isAuthenticated: false,
+      hasSecuredKeys: false,
+      chipVerified: false,
+      documentVerified: false,
+      livenessVerified: false,
+      faceMatchVerified: false,
+      zkProofsComplete: false,
+      fheComplete: false,
+      onChainAttested: false,
+      missingProfileSecret: false,
+      needsDocumentReprocessing: false,
+    }),
+    auth: null,
+    capabilities: {
+      hasPasskeys: false,
+      hasOpaqueAccount: false,
+      hasWalletAuth: false,
+    },
+  };
 }

@@ -5,12 +5,22 @@
  */
 
 import type {
+  AccountAssurance,
   AccountTier,
-  AssuranceState,
+  AuthenticationState,
   AuthStrength,
   FeatureName,
   FeatureRequirement,
 } from "./types";
+
+function resolveAuthStrength(
+  auth: AuthenticationState | AuthStrength | null
+): AuthStrength | null {
+  if (auth === null) {
+    return null;
+  }
+  return typeof auth === "string" ? auth : auth.authStrength;
+}
 
 /**
  * Feature gates defining tier and auth strength requirements
@@ -35,11 +45,12 @@ const FEATURE_REQUIREMENTS: Record<FeatureName, FeatureRequirement> = {
 export function canAccessFeature(
   feature: FeatureName,
   tier: AccountTier,
-  authStrength: AuthStrength
+  auth: AuthenticationState | AuthStrength | null
 ): boolean {
   const req = FEATURE_REQUIREMENTS[feature];
   const tierOk = tier >= req.minTier;
-  const authOk = !req.requiresStrongAuth || authStrength === "strong";
+  const authOk =
+    !req.requiresStrongAuth || resolveAuthStrength(auth) === "strong";
   return tierOk && authOk;
 }
 
@@ -49,7 +60,7 @@ export function canAccessFeature(
 export function getBlockedReason(
   feature: FeatureName,
   tier: AccountTier,
-  authStrength: AuthStrength
+  auth: AuthenticationState | AuthStrength | null
 ): string | null {
   const req = FEATURE_REQUIREMENTS[feature];
 
@@ -60,7 +71,7 @@ export function getBlockedReason(
     return "Complete identity verification to access this feature";
   }
 
-  if (req.requiresStrongAuth && authStrength !== "strong") {
+  if (req.requiresStrongAuth && resolveAuthStrength(auth) !== "strong") {
     return "Passkey authentication required for this feature";
   }
 
@@ -87,7 +98,7 @@ interface TierAdvancementRequirement {
  * Get requirements for advancing from current tier to next tier
  */
 function getNextTierRequirements(
-  state: AssuranceState
+  state: AccountAssurance
 ): TierAdvancementRequirement[] | null {
   const { tier, details } = state;
 
@@ -164,7 +175,7 @@ function getNextTierRequirements(
 /**
  * Calculate tier progress percentage
  */
-export function getTierProgress(state: AssuranceState): number {
+export function getTierProgress(state: AccountAssurance): number {
   const requirements = getNextTierRequirements(state);
 
   if (!requirements || requirements.length === 0) {

@@ -1,4 +1,4 @@
-import type { AssuranceState } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/types";
 
 import crypto from "node:crypto";
 
@@ -41,7 +41,7 @@ import {
 } from "@/lib/db/queries/identity";
 
 interface IdentityCardProps {
-  assuranceState: AssuranceState | null;
+  posture: SecurityPosture | null;
   userId: string | undefined;
 }
 
@@ -54,10 +54,11 @@ interface IdentityCardProps {
  */
 export async function IdentityCard({
   userId,
-  assuranceState,
+  posture,
 }: Readonly<IdentityCardProps>) {
-  const tier = assuranceState?.tier ?? 0;
-  const details = assuranceState?.details;
+  const assurance = posture?.assurance ?? null;
+  const tier = assurance?.tier ?? 0;
+  const details = assurance?.details;
 
   // Tier 0 or 1: Show CTA or incomplete proofs warning
   if (tier < 2) {
@@ -73,7 +74,7 @@ export async function IdentityCard({
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Identity Status</CardTitle>
-              {assuranceState && <TierBadge tier={tier} />}
+              {assurance && <TierBadge tier={tier} />}
             </div>
           </CardHeader>
           <CardContent className="pt-2">
@@ -103,7 +104,7 @@ export async function IdentityCard({
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>Identity Status</CardTitle>
-              {assuranceState && <TierBadge tier={tier} />}
+              {assurance && <TierBadge tier={tier} />}
             </div>
           </CardHeader>
           <CardContent className="pt-2">
@@ -145,7 +146,7 @@ export async function IdentityCard({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
-            {assuranceState && <TierBadge tier={tier} />}
+            {assurance && <TierBadge tier={tier} />}
           </div>
         </CardHeader>
         <CardContent className="pt-2">
@@ -181,7 +182,7 @@ export async function IdentityCard({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
-            {assuranceState && <TierBadge tier={tier} />}
+            {assurance && <TierBadge tier={tier} />}
           </div>
         </CardHeader>
         <CardContent className="pt-2">
@@ -225,7 +226,7 @@ export async function IdentityCard({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
-            {assuranceState && <TierBadge tier={tier} />}
+            {assurance && <TierBadge tier={tier} />}
           </div>
         </CardHeader>
         <CardContent className="pt-2">
@@ -328,7 +329,7 @@ export async function IdentityCard({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Identity Status</CardTitle>
-            {assuranceState && <TierBadge tier={tier} />}
+            {assurance && <TierBadge tier={tier} />}
           </div>
         </CardHeader>
         <CardContent className="pt-2">
@@ -341,7 +342,7 @@ export async function IdentityCard({
               <div>
                 <p className="font-medium text-success">Fully Verified</p>
                 <p className="text-muted-foreground text-sm">
-                  {assuranceState?.authStrength === "strong"
+                  {posture?.auth?.authStrength === "strong"
                     ? "Ready for on-chain attestation"
                     : "Identity verified. Add a passkey to enable on-chain attestation."}
                 </p>

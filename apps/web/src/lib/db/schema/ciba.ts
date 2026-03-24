@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { agentHosts, agentSessions } from "./agent";
 import { users } from "./auth";
+import { authenticationContexts } from "./authentication-context";
 import { oauthClients } from "./oauth-provider";
 import { defaultId } from "./utils";
 
@@ -53,6 +54,10 @@ export const cibaRequests = sqliteTable(
     approvalMethod: text("approval_method"),
     attestationProvider: text("attestation_provider"),
     attestationTier: text("attestation_tier"),
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     lastPolledAt: integer("last_polled_at"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

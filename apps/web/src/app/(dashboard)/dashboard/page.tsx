@@ -1,13 +1,10 @@
-import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { Suspense } from "react";
 
 import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { isWeb3Enabled } from "@/env";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getSecurityPostureForSession } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
-import { db } from "@/lib/db/connection";
-import { passkeys } from "@/lib/db/schema/auth";
 
 import { IdentityActionsCard } from "./_components/identity-actions-card";
 import {
@@ -20,19 +17,9 @@ export default async function DashboardPage() {
   const userId = session?.user?.id;
   const web3Enabled = isWeb3Enabled;
 
-  // Parallelize assurance state and passkey queries to eliminate waterfall
-  const [assuranceState, hasPasskeys] = userId
-    ? await Promise.all([
-        getAssuranceState(userId, session),
-        db
-          .select({ id: passkeys.id })
-          .from(passkeys)
-          .where(eq(passkeys.userId, userId))
-          .limit(1)
-          .get()
-          .then((result) => !!result),
-      ])
-    : [null, false];
+  const posture = userId
+    ? await getSecurityPostureForSession(userId, session)
+    : null;
 
   return (
     <div className="space-y-6">
@@ -49,15 +36,11 @@ export default async function DashboardPage() {
 
       {/* Identity Card - Unified status card with tier badge */}
       <Suspense fallback={<IdentityCardSkeleton />}>
-        <IdentityCard assuranceState={assuranceState} userId={userId} />
+        <IdentityCard posture={posture} userId={userId} />
       </Suspense>
 
       {/* Actions Card - What you can do with your identity */}
-      <IdentityActionsCard
-        assuranceState={assuranceState}
-        hasPasskeys={hasPasskeys}
-        web3Enabled={web3Enabled}
-      />
+      <IdentityActionsCard posture={posture} web3Enabled={web3Enabled} />
     </div>
   );
 }

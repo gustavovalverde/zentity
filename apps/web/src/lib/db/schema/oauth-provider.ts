@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth";
+import { authenticationContexts } from "./authentication-context";
 import { defaultId } from "./utils";
 
 export const oauthClients = sqliteTable(
@@ -69,6 +70,10 @@ export const oauthRefreshTokens = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     sessionId: text("session_id"),
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -98,6 +103,10 @@ export const oauthAccessTokens = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     sessionId: text("session_id"),
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),

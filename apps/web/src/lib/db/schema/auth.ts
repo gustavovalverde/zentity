@@ -7,6 +7,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+import { authenticationContexts } from "./authentication-context";
+
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull().default(""),
@@ -22,7 +24,6 @@ export const users = sqliteTable("user", {
   twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
-  lastLoginMethod: text("lastLoginMethod"),
   role: text("role"),
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("banReason"),
@@ -42,7 +43,10 @@ export const sessions = sqliteTable(
     ipAddress: text("ipAddress"),
     userAgent: text("userAgent"),
     activeOrganizationId: text("activeOrganizationId"),
-    lastLoginMethod: text("lastLoginMethod"),
+    authContextId: text("authContextId").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     impersonatedBy: text("impersonatedBy"),
     userId: text("userId")
       .notNull()

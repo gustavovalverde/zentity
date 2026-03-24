@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/layouts/page-header";
 import { VerificationJourneyCard } from "@/components/verification/verification-journey-card";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
 import {
@@ -22,8 +22,8 @@ export default async function PassportChipPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, bundle, verification, wallet] = await Promise.all([
-    getAssuranceState(userId, session),
+  const [assurance, bundle, verification, wallet] = await Promise.all([
+    getAccountAssurance(userId),
     getIdentityBundleByUserId(userId),
     getSelectedVerification(userId),
     getPrimaryWalletAddress(userId),
@@ -32,8 +32,8 @@ export default async function PassportChipPage() {
   // Already chip-verified → dashboard (unless profile secret missing)
   const alreadyChipVerified = isChipVerified(verification);
   if (
-    (alreadyChipVerified || assuranceState.tier >= 3) &&
-    !assuranceState.details.missingProfileSecret
+    (alreadyChipVerified || assurance.tier >= 3) &&
+    !assurance.details.missingProfileSecret
   ) {
     redirect("/dashboard");
   }

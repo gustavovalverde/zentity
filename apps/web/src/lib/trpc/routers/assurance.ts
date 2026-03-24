@@ -9,8 +9,9 @@ import "server-only";
 import type { FeatureName } from "@/lib/assurance/types";
 
 import {
-  getAssuranceState,
-  getUnauthenticatedAssuranceState,
+  getSecurityPosture,
+  getSecurityPostureForSession,
+  getUnauthenticatedSecurityPosture,
 } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 
@@ -18,16 +19,18 @@ import { protectedProcedure, publicProcedure, router } from "../server";
 
 export const assuranceRouter = router({
   /**
-   * Get current user's assurance state
+   * Get current user's security posture
    *
-   * Returns:
-   * - tier: 0-2
-   * - tierName: "Anonymous" | "Account" | "Verified"
-   * - authStrength: "basic" | "strong"
-   * - details: breakdown of verification checks
+   * Returns account assurance, current auth context, and account capabilities.
    */
   profile: protectedProcedure.query(async ({ ctx }) => {
-    return await getAssuranceState(ctx.userId, ctx.session);
+    return await getSecurityPosture({
+      userId: ctx.userId,
+      presentedAuth: {
+        authContextId: ctx.authContext?.id ?? null,
+        sessionId: ctx.session.session.id,
+      },
+    });
   }),
 
   /**
@@ -38,9 +41,9 @@ export const assuranceRouter = router({
    */
   publicProfile: publicProcedure.query(({ ctx }) => {
     if (!ctx.session?.user?.id) {
-      return getUnauthenticatedAssuranceState();
+      return getUnauthenticatedSecurityPosture();
     }
-    return getAssuranceState(ctx.session.user.id, ctx.session);
+    return getSecurityPostureForSession(ctx.session.user.id, ctx.session);
   }),
 
   /**
@@ -56,21 +59,27 @@ export const assuranceRouter = router({
       return val as FeatureName;
     })
     .query(async ({ ctx, input }) => {
-      const state = await getAssuranceState(ctx.userId, ctx.session);
+      const posture = await getSecurityPosture({
+        userId: ctx.userId,
+        presentedAuth: {
+          authContextId: ctx.authContext?.id ?? null,
+          sessionId: ctx.session.session.id,
+        },
+      });
       const accessible = canAccessFeature(
         input,
-        state.tier,
-        state.authStrength
+        posture.assurance.tier,
+        posture.auth
       );
 
       return {
         feature: input,
         accessible,
-        currentTier: state.tier,
-        authStrength: state.authStrength,
+        currentTier: posture.assurance.tier,
+        auth: posture.auth,
         blockedReason: accessible
           ? null
-          : getBlockedReason(input, state.tier, state.authStrength),
+          : getBlockedReason(input, posture.assurance.tier, posture.auth),
       };
     }),
 });

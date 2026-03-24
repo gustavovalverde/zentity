@@ -1,13 +1,17 @@
-/**
- * Assurance Data Layer Integration Tests
- *
- * Tests tier computation with real database queries.
- * Covers the full tier progression path from Tier 0 to Tier 2.
- */
+import type { LoginMethod } from "@/lib/assurance/types";
+import type { Session } from "@/lib/auth/auth";
+
 import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  getAccountAssurance,
+  getSecurityPosture,
+  getSecurityPostureForSession,
+  getUnauthenticatedSecurityPosture,
+} from "@/lib/assurance/data";
+import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
@@ -28,15 +32,6 @@ import { passkeys, sessions } from "@/lib/db/schema/auth";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
-import {
-  getAssuranceForOAuth,
-  getAssuranceState,
-  getUnauthenticatedAssuranceState,
-} from "../data";
-
-/**
- * Helper to create a verified identity document with all required fields
- */
 async function createVerifiedDocument(docId: string, userId: string) {
   await createVerification({
     id: docId,
@@ -50,9 +45,6 @@ async function createVerifiedDocument(docId: string, userId: string) {
   });
 }
 
-/**
- * Helper to create identity bundle with FHE keys (required for Tier 1+)
- */
 async function createBundleWithKeys(userId: string) {
   await upsertIdentityBundle({
     userId,
@@ -81,22 +73,6 @@ async function setupProofSession(
   return sessionId;
 }
 
-async function createStoredSession(userId: string, loginMethod: string | null) {
-  const now = new Date().toISOString();
-  await db
-    .insert(sessions)
-    .values({
-      id: crypto.randomUUID(),
-      userId,
-      token: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-      createdAt: now,
-      updatedAt: now,
-      lastLoginMethod: loginMethod,
-    })
-    .run();
-}
-
 async function createPasskeyCredential(userId: string) {
   await db
     .insert(passkeys)
@@ -114,575 +90,415 @@ async function createPasskeyCredential(userId: string) {
     .run();
 }
 
+async function createSessionWithAuthContext(
+  userId: string,
+  loginMethod: LoginMethod
+): Promise<Session> {
+  const now = new Date();
+  const sessionId = crypto.randomUUID();
+  const token = crypto.randomBytes(32).toString("hex");
+  const auth = await createAuthenticationContext({
+    userId,
+    loginMethod,
+    authenticatedAt: now,
+    sourceKind: "better_auth",
+    sourceSessionId: sessionId,
+    referenceType: "session",
+    referenceId: sessionId,
+  });
+
+  await db
+    .insert(sessions)
+    .values({
+      id: sessionId,
+      userId,
+      token,
+      authContextId: auth.id,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    })
+    .run();
+
+  return {
+    user: {
+      id: userId,
+    },
+    session: {
+      id: sessionId,
+      authContextId: auth.id,
+      userId,
+      expiresAt: new Date(Date.now() + 86_400_000),
+      createdAt: now,
+      updatedAt: now,
+      token,
+    },
+  } as unknown as Session;
+}
+
+async function seedFullyVerifiedIdentity(userId: string) {
+  await createBundleWithKeys(userId);
+
+  const docId = crypto.randomUUID();
+  await createVerifiedDocument(docId, userId);
+
+  for (const claimType of [
+    "ocr_result",
+    "liveness_score",
+    "face_match_score",
+  ]) {
+    await insertSignedClaim({
+      id: crypto.randomUUID(),
+      userId,
+      verificationId: docId,
+      claimType,
+      claimPayload: JSON.stringify({ data: "test" }),
+      signature: crypto.randomBytes(64).toString("hex"),
+      issuedAt: new Date().toISOString(),
+    });
+  }
+
+  const proofSessionId = await setupProofSession(userId, docId);
+  for (const proofType of [
+    "age_verification",
+    "doc_validity",
+    "nationality_membership",
+    "face_match",
+    "identity_binding",
+  ]) {
+    await insertProofArtifact({
+      id: crypto.randomUUID(),
+      userId,
+      verificationId: docId,
+      proofSessionId,
+      proofSystem: "noir_ultrahonk",
+      proofType,
+      proofHash: crypto.randomBytes(32).toString("hex"),
+      proofPayload: crypto.randomBytes(256).toString("hex"),
+      policyVersion: POLICY_VERSION,
+      verified: true,
+    });
+  }
+
+  await insertEncryptedAttribute({
+    id: crypto.randomUUID(),
+    userId,
+    source: "fhe-service",
+    attributeType: "birth_year_offset",
+    ciphertext: crypto.randomBytes(256),
+  });
+  await insertEncryptedAttribute({
+    id: crypto.randomUUID(),
+    userId,
+    source: "fhe-service",
+    attributeType: "liveness_score",
+    ciphertext: crypto.randomBytes(256),
+  });
+
+  await materializeVerificationChecks(userId, docId);
+
+  return { docId };
+}
+
 describe("assurance data layer", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  describe("getUnauthenticatedAssuranceState", () => {
-    it("returns Tier 0 for unauthenticated users", () => {
-      const state = getUnauthenticatedAssuranceState();
+  it("returns an unauthenticated posture for anonymous users", () => {
+    const posture = getUnauthenticatedSecurityPosture();
 
-      expect(state.tier).toBe(0);
-      expect(state.tierName).toBe("Anonymous");
-      expect(state.authStrength).toBe("basic");
-      expect(state.loginMethod).toBe("none");
+    expect(posture.assurance.tier).toBe(0);
+    expect(posture.auth).toBeNull();
+    expect(posture.capabilities).toEqual({
+      hasPasskeys: false,
+      hasOpaqueAccount: false,
+      hasWalletAuth: false,
     });
   });
 
-  describe("getAssuranceState - authenticated", () => {
-    it("returns Tier 0 for authenticated user without secured keys", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
+  it("returns tier 0 for a user without secured keys", async () => {
+    const userId = await createTestUser();
 
-      const state = await getAssuranceState(userId, mockSession);
+    const assurance = await getAccountAssurance(userId);
 
-      expect(state.tier).toBe(0);
-      expect(state.tierName).toBe("Anonymous");
-      expect(state.authStrength).toBe("basic");
-      expect(state.loginMethod).toBe("opaque");
-      expect(state.details.isAuthenticated).toBe(true);
-      expect(state.details.hasSecuredKeys).toBe(false);
+    expect(assurance.tier).toBe(0);
+    expect(assurance.details.isAuthenticated).toBe(true);
+    expect(assurance.details.hasSecuredKeys).toBe(false);
+  });
+
+  it("resolves auth provenance from the bound authentication context", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
+    await createPasskeyCredential(userId);
+    const session = await createSessionWithAuthContext(userId, "passkey");
+
+    const posture = await getSecurityPostureForSession(userId, session);
+
+    expect(posture.assurance.tier).toBe(1);
+    expect(posture.auth).toMatchObject({
+      loginMethod: "passkey",
+      authStrength: "strong",
+      sourceKind: "better_auth",
+    });
+    expect(posture.capabilities.hasPasskeys).toBe(true);
+  });
+
+  it("does not infer passkey auth from passkey enrollment alone", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
+    await createPasskeyCredential(userId);
+
+    const posture = await getSecurityPosture({
+      userId,
+      presentedAuth: null,
     });
 
-    it("returns Tier 1 for authenticated user with secured keys", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
+    expect(posture.assurance.tier).toBe(0);
+    expect(posture.auth).toBeNull();
+    expect(posture.capabilities.hasPasskeys).toBe(true);
+  });
 
-      const state = await getAssuranceState(userId, mockSession);
+  it("computes tier 2 for a fully verified user", async () => {
+    const userId = await createTestUser();
+    await seedFullyVerifiedIdentity(userId);
 
-      expect(state.tier).toBe(1);
-      expect(state.tierName).toBe("Account");
-      expect(state.authStrength).toBe("basic");
-      expect(state.loginMethod).toBe("opaque");
-      expect(state.details.hasSecuredKeys).toBe(true);
+    const assurance = await getAccountAssurance(userId);
+
+    expect(assurance.tier).toBe(2);
+    expect(assurance.details.documentVerified).toBe(true);
+    expect(assurance.details.livenessVerified).toBe(true);
+    expect(assurance.details.faceMatchVerified).toBe(true);
+    expect(assurance.details.zkProofsComplete).toBe(true);
+    expect(assurance.details.fheComplete).toBe(true);
+    expect(assurance.details.hasIncompleteProofs).toBe(false);
+  });
+
+  it("tracks on-chain attestation independently from authentication state", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
+
+    const attestation = await createBlockchainAttestation({
+      userId,
+      walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
+      networkId: "sepolia",
+      chainId: 11_155_111,
     });
+    await updateBlockchainAttestationConfirmed(attestation.id, 12_345);
 
-    it("returns strong auth for passkey authentication", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "passkey");
-      await createBundleWithKeys(userId);
+    const assurance = await getAccountAssurance(userId);
+    expect(assurance.details.onChainAttested).toBe(true);
+  });
 
-      const state = await getAssuranceState(userId, mockSession);
+  it("does not combine OCR proofs from different sessions", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
 
-      expect(state.tier).toBe(1);
-      expect(state.authStrength).toBe("strong");
-      expect(state.loginMethod).toBe("passkey");
-    });
+    const docId = crypto.randomUUID();
+    await createVerifiedDocument(docId, userId);
 
-    it("falls back to passkey credentials for OAuth assurance", async () => {
-      const userId = await createTestUser();
-      await createBundleWithKeys(userId);
-      await createPasskeyCredential(userId);
-      await createStoredSession(userId, null);
-
-      const state = await getAssuranceForOAuth(userId);
-
-      expect(state.tier).toBe(1);
-      expect(state.authStrength).toBe("strong");
-      expect(state.loginMethod).toBe("passkey");
-      expect(state.authTime).toBeGreaterThan(0);
-    });
-
-    it("tracks document verification status", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.documentVerified).toBe(true);
-    });
-
-    it("tracks liveness from signed claims", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
+    for (const claimType of [
+      "ocr_result",
+      "liveness_score",
+      "face_match_score",
+    ]) {
       await insertSignedClaim({
         id: crypto.randomUUID(),
         userId,
         verificationId: docId,
-        claimType: "liveness_score",
-        claimPayload: JSON.stringify({ score: 0.95 }),
+        claimType,
+        claimPayload: JSON.stringify({ data: "test" }),
         signature: crypto.randomBytes(64).toString("hex"),
         issuedAt: new Date().toISOString(),
       });
+    }
 
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.livenessVerified).toBe(true);
-      expect(state.details.faceMatchVerified).toBe(false);
-    });
-
-    it("tracks face match from signed claims", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      await insertSignedClaim({
+    const firstSessionId = await setupProofSession(userId, docId);
+    for (const proofType of [
+      "age_verification",
+      "doc_validity",
+      "face_match",
+    ]) {
+      await insertProofArtifact({
         id: crypto.randomUUID(),
         userId,
         verificationId: docId,
-        claimType: "face_match_score",
-        claimPayload: JSON.stringify({ score: 0.95 }),
-        signature: crypto.randomBytes(64).toString("hex"),
-        issuedAt: new Date().toISOString(),
+        proofSessionId: firstSessionId,
+        proofSystem: "noir_ultrahonk",
+        proofType,
+        proofHash: crypto.randomBytes(32).toString("hex"),
+        proofPayload: crypto.randomBytes(256).toString("hex"),
+        policyVersion: POLICY_VERSION,
+        verified: true,
       });
+    }
 
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.faceMatchVerified).toBe(true);
-    });
-
-    it("tracks ZK proof completion", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      const proofTypes = [
-        "age_verification",
-        "doc_validity",
-        "nationality_membership",
-        "face_match",
-        "identity_binding",
-      ];
-      const proofSessionId = await setupProofSession(userId, docId);
-      for (const proofType of proofTypes) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: POLICY_VERSION,
-          verified: true,
-        });
-      }
-
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.zkProofsComplete).toBe(true);
-    });
-
-    it("tracks FHE encryption completion", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      await insertEncryptedAttribute({
+    const secondSessionId = await setupProofSession(userId, docId);
+    for (const proofType of ["nationality_membership", "identity_binding"]) {
+      await insertProofArtifact({
         id: crypto.randomUUID(),
         userId,
-        source: "fhe-service",
-        attributeType: "birth_year_offset",
-        ciphertext: crypto.randomBytes(256),
+        verificationId: docId,
+        proofSessionId: secondSessionId,
+        proofSystem: "noir_ultrahonk",
+        proofType,
+        proofHash: crypto.randomBytes(32).toString("hex"),
+        proofPayload: crypto.randomBytes(256).toString("hex"),
+        policyVersion: POLICY_VERSION,
+        verified: true,
       });
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "liveness_score",
-        ciphertext: crypto.randomBytes(256),
-      });
+    }
 
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.fheComplete).toBe(true);
-    });
-
-    it("tracks on-chain attestation", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const attestation = await createBlockchainAttestation({
-        userId,
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        networkId: "sepolia",
-        chainId: 11_155_111,
-      });
-      await updateBlockchainAttestationConfirmed(attestation.id, 12_345);
-
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.details.onChainAttested).toBe(true);
-    });
-  });
-
-  describe("tier progression", () => {
-    it("computes Tier 1 for authenticated user with keys", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(1);
-      expect(state.tierName).toBe("Account");
-    });
-
-    it("stays at Tier 1 when identity verified but proofs missing", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      // Add signed claims for identity verification
-      for (const claimType of ["liveness_score", "face_match_score"]) {
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          claimType,
-          claimPayload: JSON.stringify({ score: 0.95 }),
-          signature: crypto.randomBytes(64).toString("hex"),
-          issuedAt: new Date().toISOString(),
-        });
-      }
-
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(true);
-      expect(state.details.documentVerified).toBe(true);
-      expect(state.details.livenessVerified).toBe(true);
-      expect(state.details.faceMatchVerified).toBe(true);
-      expect(state.details.zkProofsComplete).toBe(false);
-    });
-
-    it("computes Tier 2 for fully verified user", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "passkey");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      // Signed claims
-      for (const claimType of [
-        "ocr_result",
-        "liveness_score",
-        "face_match_score",
-      ]) {
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          claimType,
-          claimPayload: JSON.stringify({ data: "test" }),
-          signature: crypto.randomBytes(64).toString("hex"),
-          issuedAt: new Date().toISOString(),
-        });
-      }
-
-      // All ZK proofs
-      const proofSessionId = await setupProofSession(userId, docId);
-      for (const proofType of [
-        "age_verification",
-        "doc_validity",
-        "nationality_membership",
-        "face_match",
-        "identity_binding",
-      ]) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: POLICY_VERSION,
-          verified: true,
-        });
-      }
-
-      // FHE attributes
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "birth_year_offset",
-        ciphertext: crypto.randomBytes(256),
-      });
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "liveness_score",
-        ciphertext: crypto.randomBytes(256),
-      });
-
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(2);
-      expect(state.tierName).toBe("Verified");
-      expect(state.authStrength).toBe("strong");
-      expect(state.details.hasIncompleteProofs).toBe(false);
-    });
-
-    it("does not combine OCR proofs from different sessions", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      for (const claimType of [
-        "ocr_result",
-        "liveness_score",
-        "face_match_score",
-      ]) {
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          claimType,
-          claimPayload: JSON.stringify({ data: "test" }),
-          signature: crypto.randomBytes(64).toString("hex"),
-          issuedAt: new Date().toISOString(),
-        });
-      }
-
-      const firstSessionId = await setupProofSession(userId, docId);
-      for (const proofType of [
-        "age_verification",
-        "doc_validity",
-        "face_match",
-      ]) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId: firstSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: POLICY_VERSION,
-          verified: true,
-        });
-      }
-
-      const secondSessionId = await setupProofSession(userId, docId);
-      for (const proofType of ["nationality_membership", "identity_binding"]) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId: secondSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: POLICY_VERSION,
-          verified: true,
-        });
-      }
-
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "birth_year_offset",
-        ciphertext: crypto.randomBytes(256),
-      });
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "liveness_score",
-        ciphertext: crypto.randomBytes(256),
-      });
-
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(1);
-      expect(state.details.zkProofsComplete).toBe(false);
-      expect(state.details.hasIncompleteProofs).toBe(true);
-    });
-
-    it("ignores stale OCR proof sessions when deriving verification state", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "opaque");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      for (const claimType of [
-        "ocr_result",
-        "liveness_score",
-        "face_match_score",
-      ]) {
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          claimType,
-          claimPayload: JSON.stringify({ data: "test" }),
-          signature: crypto.randomBytes(64).toString("hex"),
-          issuedAt: new Date().toISOString(),
-        });
-      }
-
-      const stalePolicyVersion = `${POLICY_VERSION}-stale`;
-      const staleSessionId = await setupProofSession(
-        userId,
-        docId,
-        stalePolicyVersion
-      );
-      for (const proofType of [
-        "age_verification",
-        "doc_validity",
-        "nationality_membership",
-        "face_match",
-        "identity_binding",
-      ]) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId: staleSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: stalePolicyVersion,
-          verified: true,
-        });
-      }
-
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "birth_year_offset",
-        ciphertext: crypto.randomBytes(256),
-      });
-      await insertEncryptedAttribute({
-        id: crypto.randomUUID(),
-        userId,
-        source: "fhe-service",
-        attributeType: "liveness_score",
-        ciphertext: crypto.randomBytes(256),
-      });
-
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(1);
-      expect(state.details.zkProofsComplete).toBe(false);
-      expect(state.details.hasIncompleteProofs).toBe(true);
-    });
-
-    it("keeps FHE-pending users out of the re-verify state once proofs exist", async () => {
-      const userId = await createTestUser();
-      const mockSession = createMockSession(userId, "passkey");
-      await createBundleWithKeys(userId);
-
-      const docId = crypto.randomUUID();
-      await createVerifiedDocument(docId, userId);
-
-      for (const claimType of [
-        "ocr_result",
-        "liveness_score",
-        "face_match_score",
-      ]) {
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          claimType,
-          claimPayload: JSON.stringify({ data: "test" }),
-          signature: crypto.randomBytes(64).toString("hex"),
-          issuedAt: new Date().toISOString(),
-        });
-      }
-
-      const proofSessionId = await setupProofSession(userId, docId);
-      for (const proofType of [
-        "age_verification",
-        "doc_validity",
-        "nationality_membership",
-        "face_match",
-        "identity_binding",
-      ]) {
-        await insertProofArtifact({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId: docId,
-          proofSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType,
-          proofHash: crypto.randomBytes(32).toString("hex"),
-          proofPayload: crypto.randomBytes(256).toString("hex"),
-          policyVersion: POLICY_VERSION,
-          verified: true,
-        });
-      }
-
-      await materializeVerificationChecks(userId, docId);
-      const state = await getAssuranceState(userId, mockSession);
-
-      expect(state.tier).toBe(1);
-      expect(state.details.zkProofsComplete).toBe(true);
-      expect(state.details.fheComplete).toBe(false);
-      expect(state.details.hasIncompleteProofs).toBe(false);
-    });
-  });
-});
-
-/**
- * Create a mock session object for testing
- */
-function createMockSession(userId: string, loginMethod: string) {
-  const now = new Date();
-  return {
-    user: {
-      id: userId,
-      name: "Test User",
-      email: `test-${userId}@example.com`,
-      emailVerified: true,
-      isAnonymous: false,
-      twoFactorEnabled: loginMethod === "passkey",
-      banned: false,
-      createdAt: now,
-      updatedAt: now,
-    },
-    session: {
+    await insertEncryptedAttribute({
       id: crypto.randomUUID(),
       userId,
-      lastLoginMethod: loginMethod,
-      expiresAt: new Date(Date.now() + 86_400_000),
-      createdAt: now,
-      updatedAt: now,
-      token: crypto.randomBytes(32).toString("hex"),
-    },
-  } as Parameters<typeof getAssuranceState>[1];
-}
+      source: "fhe-service",
+      attributeType: "birth_year_offset",
+      ciphertext: crypto.randomBytes(256),
+    });
+    await insertEncryptedAttribute({
+      id: crypto.randomUUID(),
+      userId,
+      source: "fhe-service",
+      attributeType: "liveness_score",
+      ciphertext: crypto.randomBytes(256),
+    });
+
+    await materializeVerificationChecks(userId, docId);
+
+    const assurance = await getAccountAssurance(userId);
+
+    expect(assurance.tier).toBe(1);
+    expect(assurance.details.zkProofsComplete).toBe(false);
+    expect(assurance.details.hasIncompleteProofs).toBe(true);
+  });
+
+  it("ignores stale OCR proof sessions when deriving verification state", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
+
+    const docId = crypto.randomUUID();
+    await createVerifiedDocument(docId, userId);
+
+    for (const claimType of [
+      "ocr_result",
+      "liveness_score",
+      "face_match_score",
+    ]) {
+      await insertSignedClaim({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId: docId,
+        claimType,
+        claimPayload: JSON.stringify({ data: "test" }),
+        signature: crypto.randomBytes(64).toString("hex"),
+        issuedAt: new Date().toISOString(),
+      });
+    }
+
+    const stalePolicyVersion = `${POLICY_VERSION}-stale`;
+    const staleSessionId = await setupProofSession(
+      userId,
+      docId,
+      stalePolicyVersion
+    );
+    for (const proofType of [
+      "age_verification",
+      "doc_validity",
+      "nationality_membership",
+      "face_match",
+      "identity_binding",
+    ]) {
+      await insertProofArtifact({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId: docId,
+        proofSessionId: staleSessionId,
+        proofSystem: "noir_ultrahonk",
+        proofType,
+        proofHash: crypto.randomBytes(32).toString("hex"),
+        proofPayload: crypto.randomBytes(256).toString("hex"),
+        policyVersion: stalePolicyVersion,
+        verified: true,
+      });
+    }
+
+    await insertEncryptedAttribute({
+      id: crypto.randomUUID(),
+      userId,
+      source: "fhe-service",
+      attributeType: "birth_year_offset",
+      ciphertext: crypto.randomBytes(256),
+    });
+    await insertEncryptedAttribute({
+      id: crypto.randomUUID(),
+      userId,
+      source: "fhe-service",
+      attributeType: "liveness_score",
+      ciphertext: crypto.randomBytes(256),
+    });
+
+    await materializeVerificationChecks(userId, docId);
+
+    const assurance = await getAccountAssurance(userId);
+
+    expect(assurance.tier).toBe(1);
+    expect(assurance.details.zkProofsComplete).toBe(false);
+    expect(assurance.details.hasIncompleteProofs).toBe(true);
+  });
+
+  it("keeps FHE-pending users out of the re-verify state once proofs exist", async () => {
+    const userId = await createTestUser();
+    await createBundleWithKeys(userId);
+
+    const docId = crypto.randomUUID();
+    await createVerifiedDocument(docId, userId);
+
+    for (const claimType of [
+      "ocr_result",
+      "liveness_score",
+      "face_match_score",
+    ]) {
+      await insertSignedClaim({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId: docId,
+        claimType,
+        claimPayload: JSON.stringify({ data: "test" }),
+        signature: crypto.randomBytes(64).toString("hex"),
+        issuedAt: new Date().toISOString(),
+      });
+    }
+
+    const proofSessionId = await setupProofSession(userId, docId);
+    for (const proofType of [
+      "age_verification",
+      "doc_validity",
+      "nationality_membership",
+      "face_match",
+      "identity_binding",
+    ]) {
+      await insertProofArtifact({
+        id: crypto.randomUUID(),
+        userId,
+        verificationId: docId,
+        proofSessionId,
+        proofSystem: "noir_ultrahonk",
+        proofType,
+        proofHash: crypto.randomBytes(32).toString("hex"),
+        proofPayload: crypto.randomBytes(256).toString("hex"),
+        policyVersion: POLICY_VERSION,
+        verified: true,
+      });
+    }
+
+    await materializeVerificationChecks(userId, docId);
+
+    const assurance = await getAccountAssurance(userId);
+
+    expect(assurance.tier).toBe(1);
+    expect(assurance.details.zkProofsComplete).toBe(true);
+    expect(assurance.details.fheComplete).toBe(false);
+    expect(assurance.details.hasIncompleteProofs).toBe(false);
+  });
+});

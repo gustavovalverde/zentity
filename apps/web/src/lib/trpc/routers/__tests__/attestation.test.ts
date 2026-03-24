@@ -2,7 +2,7 @@
  * Integration tests for attestation router.
  */
 
-import type { AssuranceState } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/types";
 import type { Session } from "@/lib/auth/auth";
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +22,7 @@ const mockUpdateBlockchainAttestationSubmitted = vi.fn();
 const mockUpdateBlockchainAttestationFailed = vi.fn();
 const mockUpdateBlockchainAttestationConfirmed = vi.fn();
 const mockUpdateBlockchainAttestationWallet = vi.fn();
-const mockGetAssuranceState = vi.fn();
+const mockGetSecurityPosture = vi.fn();
 
 // All mocks must be hoisted before any imports
 vi.mock("@/lib/blockchain/networks", () => ({
@@ -73,58 +73,84 @@ vi.mock("@/lib/db/queries/attestation", () => ({
 }));
 
 vi.mock("@/lib/assurance/data", () => ({
-  getAssuranceState: (...args: unknown[]) => mockGetAssuranceState(...args),
+  getSecurityPosture: (...args: unknown[]) => mockGetSecurityPosture(...args),
 }));
 
-function createTier2State(): AssuranceState {
+function createTier2Posture(): SecurityPosture {
   return {
-    tier: 2,
-    tierName: "Verified",
-    authStrength: "strong",
-    loginMethod: "passkey",
-    details: {
-      isAuthenticated: true,
-      hasSecuredKeys: true,
-      chipVerified: false,
-      documentVerified: true,
-      livenessVerified: true,
-      faceMatchVerified: true,
-      zkProofsComplete: true,
-      fheComplete: true,
-      hasIncompleteProofs: false,
-      missingProfileSecret: false,
-      needsDocumentReprocessing: false,
-      onChainAttested: false,
+    assurance: {
+      tier: 2,
+      tierName: "Verified",
+      details: {
+        isAuthenticated: true,
+        hasSecuredKeys: true,
+        chipVerified: false,
+        documentVerified: true,
+        livenessVerified: true,
+        faceMatchVerified: true,
+        zkProofsComplete: true,
+        fheComplete: true,
+        hasIncompleteProofs: false,
+        missingProfileSecret: false,
+        needsDocumentReprocessing: false,
+        onChainAttested: false,
+      },
+    },
+    auth: {
+      id: "auth-context-1",
+      loginMethod: "passkey",
+      amr: ["pop", "hwk", "user"],
+      authStrength: "strong",
+      authenticatedAt: 1_700_000_000,
+      sourceKind: "better_auth",
+    },
+    capabilities: {
+      hasPasskeys: true,
+      hasOpaqueAccount: true,
+      hasWalletAuth: false,
     },
   };
 }
 
-function createTier1State(): AssuranceState {
+function createTier1Posture(): SecurityPosture {
   return {
-    tier: 1,
-    tierName: "Account",
-    authStrength: "basic",
-    loginMethod: "opaque",
-    details: {
-      isAuthenticated: true,
-      hasSecuredKeys: true,
-      chipVerified: false,
-      documentVerified: false,
-      livenessVerified: false,
-      faceMatchVerified: false,
-      zkProofsComplete: false,
-      fheComplete: false,
-      hasIncompleteProofs: false,
-      missingProfileSecret: false,
-      needsDocumentReprocessing: false,
-      onChainAttested: false,
+    assurance: {
+      tier: 1,
+      tierName: "Account",
+      details: {
+        isAuthenticated: true,
+        hasSecuredKeys: true,
+        chipVerified: false,
+        documentVerified: false,
+        livenessVerified: false,
+        faceMatchVerified: false,
+        zkProofsComplete: false,
+        fheComplete: false,
+        hasIncompleteProofs: false,
+        missingProfileSecret: false,
+        needsDocumentReprocessing: false,
+        onChainAttested: false,
+      },
+    },
+    auth: {
+      id: "auth-context-2",
+      loginMethod: "opaque",
+      amr: ["pwd"],
+      authStrength: "basic",
+      authenticatedAt: 1_700_000_000,
+      sourceKind: "better_auth",
+    },
+    capabilities: {
+      hasPasskeys: false,
+      hasOpaqueAccount: true,
+      hasWalletAuth: false,
     },
   };
 }
 
 const authedSession = {
   user: { id: "test-user", twoFactorEnabled: true },
-  session: { id: "test-session", lastLoginMethod: "passkey" },
+  session: { id: "test-session" },
 } as unknown as Session;
 
 async function createCaller(session: Session | null) {
@@ -147,7 +173,7 @@ describe("attestation router", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Default to Tier 2 + strong auth for most tests (attestation requirement)
-    mockGetAssuranceState.mockResolvedValue(createTier2State());
+    mockGetSecurityPosture.mockResolvedValue(createTier2Posture());
     // Default unified model for submit flow
     mockGetUnifiedVerificationModel.mockResolvedValue({
       method: "ocr",
@@ -208,7 +234,7 @@ describe("attestation router", () => {
   });
 
   it("rejects submission when user lacks required tier", async () => {
-    mockGetAssuranceState.mockResolvedValue(createTier1State());
+    mockGetSecurityPosture.mockResolvedValue(createTier1Posture());
 
     const caller = await createCaller(authedSession);
     await expect(

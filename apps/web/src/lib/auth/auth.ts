@@ -1,3 +1,4 @@
+import type { LoginMethod } from "@/lib/assurance/types";
 import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
 
 import { ciba, deliverPing } from "@better-auth/ciba";
@@ -26,7 +27,6 @@ import {
   anonymous,
   genericOAuth,
   jwt,
-  lastLoginMethod,
   magicLink,
   twoFactor,
 } from "better-auth/plugins";
@@ -35,12 +35,14 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
-import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
+import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import {
-  computeAcr,
-  computeAcrEidas,
-  loginMethodToAmr,
-} from "@/lib/assurance/oidc-claims";
+  AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
+  getAuthenticationStateBySessionId,
+  resolveAuthenticationContext,
+} from "@/lib/auth/authentication-context";
 import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent-scopes";
@@ -252,7 +254,7 @@ const parseGenericOAuthConfig = () => {
   }
 };
 
-const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
+const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
   const path = ctx.path ?? "";
   if (path.includes("/passkey/")) {
     return "passkey";
@@ -266,8 +268,22 @@ const resolveLastLoginMethod = (ctx: { path?: string }): string | null => {
   if (path.startsWith("/sign-in/opaque/complete")) {
     return "opaque";
   }
+  if (path.startsWith("/sign-up/opaque/complete")) {
+    return "opaque";
+  }
+  if (
+    path.startsWith("/sign-in/social") ||
+    path.startsWith("/sign-in/oauth2") ||
+    path.startsWith("/callback/") ||
+    path.startsWith("/oauth2/callback/")
+  ) {
+    return "oauth";
+  }
   if (path.includes("/eip712/")) {
     return "eip712";
+  }
+  if (path.startsWith("/sign-in/anonymous")) {
+    return "anonymous";
   }
   return null;
 };
@@ -1073,6 +1089,75 @@ async function afterTokenPersistOpaqueDpopBinding(ctx: HookCtx) {
   await persistOpaqueAccessTokenDpopBinding(accessToken, ctx.request);
 }
 
+async function afterPersistAuthenticationContext(ctx: HookCtx) {
+  const authMethod = resolveLastLoginMethod(ctx);
+  const newSession = (
+    ctx.context as {
+      newSession?: {
+        session?: { createdAt?: Date | string; id?: string };
+        user?: { id?: string };
+      };
+    }
+  ).newSession;
+
+  if (!(authMethod && newSession?.session?.id && newSession.user?.id)) {
+    return;
+  }
+
+  const existing = await getAuthenticationStateBySessionId(
+    newSession.session.id
+  );
+  if (existing) {
+    return;
+  }
+
+  const authContext = await createAuthenticationContext({
+    userId: newSession.user.id,
+    loginMethod: authMethod,
+    authenticatedAt:
+      newSession.session.createdAt instanceof Date
+        ? newSession.session.createdAt
+        : new Date(newSession.session.createdAt ?? Date.now()),
+    sourceKind: "better_auth",
+    sourceSessionId: newSession.session.id,
+    referenceType: "session",
+    referenceId: newSession.session.id,
+  });
+
+  await db
+    .update(sessions)
+    .set({ authContextId: authContext.id })
+    .where(eq(sessions.id, newSession.session.id))
+    .run();
+}
+
+async function afterCibaAuthorizePersistAuthContext(ctx: HookCtx) {
+  const authReqId =
+    typeof ctx.body?.auth_req_id === "string"
+      ? ctx.body.auth_req_id
+      : undefined;
+  if (!authReqId) {
+    return;
+  }
+
+  const sessionId = (ctx.context as { session?: { session?: { id?: string } } })
+    .session?.session?.id;
+  if (!sessionId) {
+    return;
+  }
+
+  const auth = await getAuthenticationStateBySessionId(sessionId);
+  if (!auth) {
+    return;
+  }
+
+  await db
+    .update(cibaRequests)
+    .set({ authContextId: auth.id })
+    .where(eq(cibaRequests.authReqId, authReqId))
+    .run();
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1297,6 +1382,7 @@ export const auth = betterAuth({
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
+      await afterPersistAuthenticationContext(ctx);
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         await afterConsentStoreHmac(ctx);
@@ -1308,6 +1394,10 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/token") {
         await afterTokenPersistOpaqueDpopBinding(ctx);
+        return;
+      }
+      if (ctx.path === "/ciba/authorize") {
+        await afterCibaAuthorizePersistAuthContext(ctx);
         return;
       }
       if (ctx.path === "/two-factor/disable") {
@@ -1370,10 +1460,6 @@ export const auth = betterAuth({
     }),
     genericOAuth({
       config: parseGenericOAuthConfig(),
-    }),
-    lastLoginMethod({
-      customResolveMethod: resolveLastLoginMethod,
-      storeInDatabase: true,
     }),
     jwt({
       jwks: {
@@ -1459,8 +1545,11 @@ export const auth = betterAuth({
       },
       customAccessTokenClaims: async (info) => {
         const { user, scopes } = info;
+        const authContextId = (info as { authContextId?: string })
+          .authContextId;
         const clientId = (info as { clientId?: string }).clientId;
         const referenceId = (info as { referenceId?: string }).referenceId;
+        const sessionId = (info as { sessionId?: string }).sessionId;
         if (!user?.id) {
           return {};
         }
@@ -1496,10 +1585,45 @@ export const auth = betterAuth({
           }
         }
 
+        if (referenceId) {
+          const cibaAuth = await db
+            .select({ authContextId: cibaRequests.authContextId })
+            .from(cibaRequests)
+            .where(eq(cibaRequests.authReqId, referenceId))
+            .limit(1)
+            .get();
+          if (cibaAuth?.authContextId) {
+            claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
+          }
+        }
+
+        if (!sessionId && authContextId) {
+          claims[AUTHENTICATION_CONTEXT_CLAIM] = authContextId;
+        }
+
         return claims;
       },
-      customIdTokenClaims: async ({ user, scopes }) => {
+      customIdTokenClaims: async (info) => {
+        const { user, scopes } = info;
+        const authContextId = (info as { authContextId?: string })
+          .authContextId;
+        const sessionId = (info as { sessionId?: string }).sessionId;
+        const referenceId = (info as { referenceId?: string }).referenceId;
         const scopeList = toScopeList(scopes);
+        const cibaAuth = referenceId
+          ? await db
+              .select({ authContextId: cibaRequests.authContextId })
+              .from(cibaRequests)
+              .where(eq(cibaRequests.authReqId, referenceId))
+              .limit(1)
+              .get()
+          : null;
+        const auth = user?.id
+          ? await resolveAuthenticationContext({
+              authContextId: authContextId ?? cibaAuth?.authContextId ?? null,
+              sessionId: sessionId ?? null,
+            })
+          : null;
 
         // Proof claims use the granted scopes directly — no vault unlock needed
         const proofClaims = hasAnyProofScope(scopeList)
@@ -1512,18 +1636,28 @@ export const auth = betterAuth({
         // Assurance claims: acr, acr_eidas, amr (emitted when openid scope present)
         let assuranceClaims: Record<string, unknown> = {};
         if (scopeList.includes("openid") && user?.id) {
-          const assurance = await getAssuranceForOAuth(user.id);
+          if (!auth) {
+            throw new APIError("BAD_REQUEST", {
+              error: "invalid_grant",
+              error_description:
+                "Authentication context required for ID token issuance",
+            });
+          }
+          const assurance = await getAccountAssurance(user.id, {
+            isAuthenticated: true,
+          });
           assuranceClaims = {
-            acr: computeAcr(assurance.tier),
-            acr_eidas: computeAcrEidas(assurance.tier),
-            amr: loginMethodToAmr(assurance.loginMethod),
-            auth_time: assurance.authTime,
+            ...buildOidcAssuranceClaims(assurance, auth),
           };
         }
 
+        const authContextClaims = auth
+          ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
+          : {};
         const allClaims = {
           ...proofClaims,
           ...assuranceClaims,
+          ...authContextClaims,
         };
 
         // clientId=undefined triggers prefix-scan fallback in resolveKey
@@ -1532,7 +1666,16 @@ export const auth = betterAuth({
           return allClaims;
         }
 
-        return filterClaimsByRequest(allClaims, idTokenFilter);
+        return {
+          ...filterClaimsByRequest(
+            {
+              ...proofClaims,
+              ...assuranceClaims,
+            },
+            idTokenFilter
+          ),
+          ...authContextClaims,
+        };
       },
       customUserInfoClaims: async (info) => {
         const { user, scopes } = info;
@@ -1753,14 +1896,18 @@ export const auth = betterAuth({
             data.scope,
             authDetails
           );
+          const approvalAuth = grantResult.approved
+            ? await getAuthenticationStateBySessionId(verifiedSessionId)
+            : null;
           if (grantResult.approvalStrength === "biometric") {
             requiresBiometric = true;
           }
-          if (grantResult.approved) {
+          if (grantResult.approved && approvalAuth) {
             const updated = await db
               .update(cibaRequests)
               .set({
                 status: "approved",
+                authContextId: approvalAuth.id,
                 approvalMethod: "capability_grant",
                 approvedCapabilityName:
                   grantResult.capabilityName ??

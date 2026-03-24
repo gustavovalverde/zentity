@@ -30,7 +30,7 @@ vi.mock("@/lib/db/queries/identity", () => ({
 
 const authedSession = {
   user: { id: "test-user", twoFactorEnabled: true },
-  session: { id: "test-session", lastLoginMethod: "passkey" },
+  session: { id: "test-session" },
 } as unknown as Session;
 
 function createCaller(session: Session | null) {

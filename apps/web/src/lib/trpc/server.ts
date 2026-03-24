@@ -7,7 +7,7 @@
  */
 import "server-only";
 
-import type { FeatureName } from "@/lib/assurance/types";
+import type { AuthenticationState, FeatureName } from "@/lib/assurance/types";
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
@@ -16,16 +16,20 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getSecurityPosture } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { auth, type Session } from "@/lib/auth/auth";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/authentication-context";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/opaque-access-token";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
-import { users } from "@/lib/db/schema/auth";
+import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 import { createRequestLogger, isDebugEnabled } from "@/lib/logging/logger";
 import { extractInputMeta } from "@/lib/logging/redact";
@@ -41,6 +45,7 @@ type SpanAttributes = Record<string, string | number | boolean>;
 
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
+  authContext?: AuthenticationState | null;
   flowId: string | null;
   flowIdSource: "header" | "cookie" | "query" | "none";
   req: Request;
@@ -55,20 +60,70 @@ interface TrpcContext {
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 
+interface ResolvedAuthSession {
+  authContext: AuthenticationState | null;
+  session: Session | null;
+}
+
+async function loadPersistedSession(
+  sessionId: string
+): Promise<Session | null> {
+  const sessionRow = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1)
+    .get();
+
+  if (!sessionRow || new Date(sessionRow.expiresAt) < new Date()) {
+    return null;
+  }
+
+  const user = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, sessionRow.userId))
+    .limit(1)
+    .get();
+
+  if (!user) {
+    return null;
+  }
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      emailVerified: user.emailVerified,
+      image: user.image,
+      role: user.role,
+      createdAt: new Date(user.createdAt),
+      updatedAt: new Date(user.updatedAt),
+    },
+    session: {
+      ...sessionRow,
+      expiresAt: new Date(sessionRow.expiresAt),
+      createdAt: new Date(sessionRow.createdAt),
+      updatedAt: new Date(sessionRow.updatedAt),
+    },
+  } as unknown as Session;
+}
+
 /**
  * Resolve a user from an OAuth access token (DPoP or Bearer).
  * Handles both JWT tokens (decode + sub lookup) and opaque tokens (hash lookup).
  * Validates DPoP proof-of-possession when the token is DPoP-bound (cnf.jkt).
  */
-async function resolveOAuthSession(req: Request): Promise<Session | null> {
+async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   const authHeader = req.headers.get("authorization");
   if (!authHeader) {
-    return null;
+    return { session: null, authContext: null };
   }
 
   const match = authHeader.match(AUTH_HEADER_RE);
   if (!(match?.[1] && match[2])) {
-    return null;
+    return { session: null, authContext: null };
   }
 
   const scheme = match[1];
@@ -86,25 +141,25 @@ async function resolveJwtSession(
   token: string,
   scheme: string,
   req: Request
-): Promise<Session | null> {
+): Promise<ResolvedAuthSession> {
   const payload = await verifyAccessToken(token);
   if (!payload?.sub) {
-    return null;
+    return { session: null, authContext: null };
   }
 
   // Enforce DPoP proof-of-possession for DPoP-bound tokens
   const cnf = payload.cnf as { jkt?: string } | undefined;
   if (cnf?.jkt) {
     if (scheme.toLowerCase() !== "dpop") {
-      return null;
+      return { session: null, authContext: null };
     }
     try {
       const validDpop = await validateOpaqueAccessTokenDpop(req, cnf.jkt);
       if (!validDpop) {
-        return null;
+        return { session: null, authContext: null };
       }
     } catch {
-      return null;
+      return { session: null, authContext: null };
     }
   }
 
@@ -115,33 +170,82 @@ async function resolveJwtSession(
     ? ((await resolveUserIdFromSub(payload.sub, clientId)) ?? payload.sub)
     : payload.sub;
 
-  return await buildSessionFromUserId(userId);
+  const sessionId = typeof payload.sid === "string" ? payload.sid : undefined;
+  const authContextId =
+    typeof payload[AUTHENTICATION_CONTEXT_CLAIM] === "string"
+      ? (payload[AUTHENTICATION_CONTEXT_CLAIM] as string)
+      : undefined;
+  const authContext = await resolveAuthenticationContext({
+    authContextId,
+    sessionId,
+  });
+
+  if (sessionId) {
+    const session = await loadPersistedSession(sessionId);
+    if (!(session && authContext)) {
+      return { session: null, authContext: null };
+    }
+    return { session, authContext };
+  }
+
+  if (!authContext) {
+    return { session: null, authContext: null };
+  }
+
+  return {
+    authContext,
+    session: await buildSessionFromUserId(userId, {
+      authContextId: authContext.id,
+    }),
+  };
 }
 
 async function resolveOpaqueSession(
   req: Request,
   token: string,
   scheme: string
-): Promise<Session | null> {
+): Promise<ResolvedAuthSession> {
   const accessToken = await loadOpaqueAccessToken(token);
   if (!accessToken?.userId || accessToken.expiresAt < new Date()) {
-    return null;
+    return { session: null, authContext: null };
   }
 
   if (accessToken.dpopJkt) {
     if (scheme.toLowerCase() !== "dpop") {
-      return null;
+      return { session: null, authContext: null };
     }
     const validDpop = await validateOpaqueAccessTokenDpop(
       req,
       accessToken.dpopJkt
     );
     if (!validDpop) {
-      return null;
+      return { session: null, authContext: null };
     }
   }
 
-  return buildSessionFromUserId(accessToken.userId);
+  const authContext = await resolveAuthenticationContext({
+    authContextId: accessToken.authContextId,
+    sessionId: accessToken.sessionId,
+  });
+
+  if (accessToken.sessionId) {
+    const session = await loadPersistedSession(accessToken.sessionId);
+    if (!(session && authContext)) {
+      return { session: null, authContext: null };
+    }
+    return { session, authContext };
+  }
+
+  if (!authContext) {
+    return { session: null, authContext: null };
+  }
+
+  return {
+    authContext,
+    session: await buildSessionFromUserId(accessToken.userId, {
+      authContextId: authContext.id,
+    }),
+  };
 }
 
 /**
@@ -149,24 +253,32 @@ async function resolveOpaqueSession(
  * Used by trusted internal services (MCP HTTP transport) that have
  * already validated the caller's identity and pass the user ID directly.
  */
-function resolveServiceTokenSession(req: Request): Promise<Session | null> {
+function resolveServiceTokenSession(
+  req: Request
+): Promise<ResolvedAuthSession> {
   const token = req.headers.get("x-zentity-internal-token");
   const userId = req.headers.get("x-zentity-user-id");
 
   if (!(token && userId && env.INTERNAL_SERVICE_TOKEN)) {
-    return Promise.resolve(null);
+    return Promise.resolve({ session: null, authContext: null });
   }
 
   const expected = Buffer.from(env.INTERNAL_SERVICE_TOKEN);
   const actual = Buffer.from(token);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-    return Promise.resolve(null);
+    return Promise.resolve({ session: null, authContext: null });
   }
 
-  return buildSessionFromUserId(userId);
+  return buildSessionFromUserId(userId).then((session) => ({
+    session,
+    authContext: null,
+  }));
 }
 
-async function buildSessionFromUserId(userId: string): Promise<Session | null> {
+async function buildSessionFromUserId(
+  userId: string,
+  options?: { authContextId?: string | null; sessionId?: string }
+): Promise<Session | null> {
   const user = await db
     .select()
     .from(users)
@@ -190,12 +302,13 @@ async function buildSessionFromUserId(userId: string): Promise<Session | null> {
       updatedAt: new Date(user.updatedAt),
     },
     session: {
-      id: `oauth:${user.id}`,
+      id: options?.sessionId ?? `oauth:${user.id}`,
       userId: user.id,
       expiresAt: new Date(Date.now() + 3_600_000),
       token: "",
       createdAt: new Date(),
       updatedAt: new Date(),
+      authContextId: options?.authContextId ?? null,
       ipAddress: null,
       userAgent: null,
     },
@@ -212,8 +325,17 @@ export async function createTrpcContext(args: {
 }): Promise<TrpcContext> {
   const requestContext = resolveRequestContext(args.req.headers);
   let session: Session | null = null;
+  let authContext: AuthenticationState | null = null;
   try {
     session = await auth.api.getSession({ headers: args.req.headers });
+    if (session?.session?.id) {
+      authContext = await resolveAuthenticationContext({
+        authContextId:
+          (session.session as { authContextId?: string | null } | undefined)
+            ?.authContextId ?? null,
+        sessionId: session.session.id,
+      });
+    }
   } catch (error) {
     logError(error, {
       requestId: requestContext.requestId,
@@ -223,7 +345,9 @@ export async function createTrpcContext(args: {
 
   if (!session) {
     try {
-      session = await resolveOAuthSession(args.req);
+      const resolved = await resolveOAuthSession(args.req);
+      session = resolved.session;
+      authContext = resolved.authContext;
     } catch (error) {
       logError(error, {
         requestId: requestContext.requestId,
@@ -234,7 +358,9 @@ export async function createTrpcContext(args: {
 
   if (!session) {
     try {
-      session = await resolveServiceTokenSession(args.req);
+      const resolved = await resolveServiceTokenSession(args.req);
+      session = resolved.session;
+      authContext = resolved.authContext;
     } catch (error) {
       logError(error, {
         requestId: requestContext.requestId,
@@ -246,6 +372,7 @@ export async function createTrpcContext(args: {
   return {
     req: args.req,
     session: session ?? null,
+    authContext,
     requestId: requestContext.requestId,
     flowId: requestContext.flowId,
     flowIdSource: requestContext.flowIdSource,
@@ -511,26 +638,24 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 export function requireFeature(feature: FeatureName) {
   return trpc.middleware(async ({ ctx, next }) => {
     const tierContext = ctx as typeof ctx & {
+      authContext: AuthenticationState | null;
       userId: string;
       session: Session;
     };
 
-    const assuranceState = await getAssuranceState(
-      tierContext.userId,
-      tierContext.session
-    );
+    const posture = await getSecurityPosture({
+      userId: tierContext.userId,
+      presentedAuth: {
+        authContextId: tierContext.authContext?.id ?? null,
+        sessionId: tierContext.session.session.id,
+      },
+    });
 
-    if (
-      !canAccessFeature(
-        feature,
-        assuranceState.tier,
-        assuranceState.authStrength
-      )
-    ) {
+    if (!canAccessFeature(feature, posture.assurance.tier, posture.auth)) {
       const reason = getBlockedReason(
         feature,
-        assuranceState.tier,
-        assuranceState.authStrength
+        posture.assurance.tier,
+        posture.auth
       );
       throw new TRPCError({
         code: "FORBIDDEN",
@@ -541,7 +666,7 @@ export function requireFeature(feature: FeatureName) {
     return next({
       ctx: {
         ...ctx,
-        assuranceState,
+        assuranceState: posture,
       },
     });
   });

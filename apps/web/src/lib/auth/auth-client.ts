@@ -8,7 +8,6 @@ import { InferAuth } from "better-auth/client";
 import {
   anonymousClient,
   genericOAuthClient,
-  lastLoginMethodClient,
   magicLinkClient,
   organizationClient,
   twoFactorClient,
@@ -42,7 +41,6 @@ export const authClient = createAuthClient({
     anonymousClient(),
     eip712AuthClient(),
     genericOAuthClient(),
-    lastLoginMethodClient(),
     oauthProviderClient(),
     organizationClient(),
     twoFactorClient({

@@ -20,12 +20,6 @@ import {
   vi,
 } from "vitest";
 
-const mockGetAssuranceState = vi.fn();
-
-vi.mock("@/lib/assurance/data", () => ({
-  getAssuranceState: (...args: unknown[]) => mockGetAssuranceState(...args),
-}));
-
 vi.mock("@/env", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/env")>();
   return {
@@ -41,34 +35,14 @@ vi.mock("@/env", async (importOriginal) => {
   };
 });
 
-function createTier2State() {
-  return {
-    tier: 2,
-    tierName: "Verified",
-    authStrength: "strong" as const,
-    loginMethod: "passkey" as const,
-    details: {
-      isAuthenticated: true,
-      hasSecuredKeys: true,
-      documentVerified: true,
-      livenessVerified: true,
-      faceMatchVerified: true,
-      zkProofsComplete: true,
-      fheComplete: true,
-      hasIncompleteProofs: false,
-      onChainAttested: false,
-    },
-  };
-}
-
 const authedSession = {
   user: { id: "test-user-123", twoFactorEnabled: true },
-  session: { id: "test-session", lastLoginMethod: "passkey" },
+  session: { id: "test-session" },
 } as unknown as Session;
 
 const anotherUserSession = {
   user: { id: "another-user-456", twoFactorEnabled: true },
-  session: { id: "another-session", lastLoginMethod: "passkey" },
+  session: { id: "another-session" },
 } as unknown as Session;
 
 async function createCaller(session: Session | null) {
@@ -90,7 +64,6 @@ describe("BBS credentials router", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetAssuranceState.mockResolvedValue(createTier2State());
   });
 
   afterEach(() => {

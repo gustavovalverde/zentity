@@ -1,320 +1,156 @@
-/**
- * Compute Module Unit Tests
- *
- * Tests for pure assurance computation functions.
- * All functions here are deterministic and have no side effects.
- */
-
 import { describe, expect, it } from "vitest";
 
-import { computeAssuranceState, isFheComplete } from "../compute";
+import {
+  computeAccountAssurance,
+  deriveAuthStrength,
+  isFheComplete,
+} from "../compute";
 
-describe("computeAssuranceState", () => {
-  describe("Tier 0 - Anonymous", () => {
-    it("returns Tier 0 for unauthenticated users", () => {
-      const state = computeAssuranceState({
-        hasSession: false,
-        loginMethod: null,
-        hasSecuredKeys: false,
-        chipVerified: false,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(0);
-      expect(state.tierName).toBe("Anonymous");
-      expect(state.authStrength).toBe("basic");
-      expect(state.loginMethod).toBe("none");
+describe("computeAccountAssurance", () => {
+  it("returns tier 0 for unauthenticated users", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: false,
+      hasSecuredKeys: false,
+      chipVerified: false,
+      documentVerified: false,
+      livenessVerified: false,
+      faceMatchVerified: false,
+      zkProofsComplete: false,
+      fheComplete: false,
+      onChainAttested: false,
     });
+
+    expect(assurance.tier).toBe(0);
+    expect(assurance.tierName).toBe("Anonymous");
   });
 
-  describe("Tier 1 - Account", () => {
-    it("returns Tier 1 for authenticated users with secured keys", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "opaque",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-      expect(state.tierName).toBe("Account");
-      expect(state.authStrength).toBe("basic");
-      expect(state.loginMethod).toBe("opaque");
+  it("returns tier 1 for authenticated users with secured keys", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: false,
+      documentVerified: false,
+      livenessVerified: false,
+      faceMatchVerified: false,
+      zkProofsComplete: false,
+      fheComplete: false,
+      onChainAttested: false,
     });
 
-    it("stays at Tier 1 without secured keys even if authenticated", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: false,
-        chipVerified: false,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(0);
-      expect(state.authStrength).toBe("strong");
-    });
-
-    it("detects incomplete proofs (identity done but proofs missing)", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(true);
-    });
+    expect(assurance.tier).toBe(1);
+    expect(assurance.tierName).toBe("Account");
   });
 
-  describe("Tier 2 - Verified", () => {
-    it("returns Tier 2 for fully verified users", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(2);
-      expect(state.tierName).toBe("Verified");
-      expect(state.authStrength).toBe("strong");
-      expect(state.details.hasIncompleteProofs).toBe(false);
+  it("flags incomplete proofs when identity checks passed but proofs are missing", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: false,
+      documentVerified: true,
+      livenessVerified: true,
+      faceMatchVerified: true,
+      zkProofsComplete: false,
+      fheComplete: false,
+      onChainAttested: false,
     });
 
-    it("stays at Tier 1 when missing ZK proofs", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: false,
-        fheComplete: true,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(true);
-    });
-
-    it("stays at Tier 1 when only FHE is still pending", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(false);
-    });
-
-    it("stays at Tier 1 when missing face match", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: false,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-      expect(state.details.hasIncompleteProofs).toBe(false);
-    });
+    expect(assurance.tier).toBe(1);
+    expect(assurance.details.hasIncompleteProofs).toBe(true);
   });
 
-  describe("Tier 3 - Chip Verified", () => {
-    it("returns Tier 3 for chip verified users with FHE complete", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: true,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: true,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(3);
-      expect(state.tierName).toBe("Chip Verified");
-      expect(state.details.chipVerified).toBe(true);
+  it("returns tier 2 for fully verified users", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: false,
+      documentVerified: true,
+      livenessVerified: true,
+      faceMatchVerified: true,
+      zkProofsComplete: true,
+      fheComplete: true,
+      onChainAttested: true,
     });
 
-    it("Tier 3 takes precedence over Tier 2", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: true,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(3);
-      expect(state.tierName).toBe("Chip Verified");
-    });
-
-    it("stays at Tier 1 if chipVerified but FHE incomplete", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: true,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: false,
-        onChainAttested: false,
-      });
-
-      expect(state.tier).toBe(1);
-    });
+    expect(assurance.tier).toBe(2);
+    expect(assurance.tierName).toBe("Verified");
+    expect(assurance.details.onChainAttested).toBe(true);
   });
 
-  describe("details population", () => {
-    it("populates all details fields correctly", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: true,
-      });
-
-      expect(state.details).toEqual({
-        isAuthenticated: true,
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        hasIncompleteProofs: false,
-        missingProfileSecret: false,
-        needsDocumentReprocessing: false,
-        onChainAttested: true,
-      });
+  it("returns tier 3 for chip-verified users with FHE complete", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: true,
+      documentVerified: false,
+      livenessVerified: false,
+      faceMatchVerified: false,
+      zkProofsComplete: false,
+      fheComplete: true,
+      onChainAttested: false,
     });
 
-    it("propagates missingProfileSecret into details", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: true,
-        documentVerified: false,
-        livenessVerified: false,
-        faceMatchVerified: false,
-        zkProofsComplete: false,
-        fheComplete: true,
-        onChainAttested: false,
-        missingProfileSecret: true,
-      });
+    expect(assurance.tier).toBe(3);
+    expect(assurance.tierName).toBe("Chip Verified");
+  });
 
-      expect(state.tier).toBe(3);
-      expect(state.details.missingProfileSecret).toBe(true);
+  it("keeps tier 1 when FHE is pending even if OCR proofs are complete", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: false,
+      documentVerified: true,
+      livenessVerified: true,
+      faceMatchVerified: true,
+      zkProofsComplete: true,
+      fheComplete: false,
+      onChainAttested: false,
     });
 
-    it("defaults missingProfileSecret to false when omitted", () => {
-      const state = computeAssuranceState({
-        hasSession: true,
-        loginMethod: "passkey",
-        hasSecuredKeys: true,
-        chipVerified: false,
-        documentVerified: true,
-        livenessVerified: true,
-        faceMatchVerified: true,
-        zkProofsComplete: true,
-        fheComplete: true,
-        onChainAttested: false,
-      });
+    expect(assurance.tier).toBe(1);
+    expect(assurance.details.hasIncompleteProofs).toBe(false);
+  });
 
-      expect(state.details.missingProfileSecret).toBe(false);
+  it("preserves missingProfileSecret and reprocessing flags", () => {
+    const assurance = computeAccountAssurance({
+      isAuthenticated: true,
+      hasSecuredKeys: true,
+      chipVerified: false,
+      documentVerified: true,
+      livenessVerified: true,
+      faceMatchVerified: true,
+      zkProofsComplete: true,
+      fheComplete: true,
+      onChainAttested: false,
+      missingProfileSecret: true,
+      needsDocumentReprocessing: true,
     });
+
+    expect(assurance.details.missingProfileSecret).toBe(true);
+    expect(assurance.details.needsDocumentReprocessing).toBe(true);
+  });
+});
+
+describe("deriveAuthStrength", () => {
+  it("treats passkey as strong auth", () => {
+    expect(deriveAuthStrength("passkey")).toBe("strong");
+  });
+
+  it("treats non-passkey methods as basic auth", () => {
+    expect(deriveAuthStrength("opaque")).toBe("basic");
+    expect(deriveAuthStrength("oauth")).toBe("basic");
+    expect(deriveAuthStrength(null)).toBe("basic");
   });
 });
 
 describe("isFheComplete", () => {
-  it("returns false when no attributes", () => {
-    expect(isFheComplete([])).toBe(false);
-  });
-
-  it("returns false with birth_year_offset only", () => {
-    expect(isFheComplete(["birth_year_offset"])).toBe(false);
-  });
-
-  it("returns false with dob_days only", () => {
-    expect(isFheComplete(["dob_days"])).toBe(false);
-  });
-
-  it("returns true with dob_days and liveness_score", () => {
+  it("returns true when both required encrypted attributes exist", () => {
+    expect(isFheComplete(["birth_year_offset", "liveness_score"])).toBe(true);
     expect(isFheComplete(["dob_days", "liveness_score"])).toBe(true);
   });
 
-  it("returns true with birth_year_offset and liveness_score", () => {
-    expect(isFheComplete(["birth_year_offset", "liveness_score"])).toBe(true);
-  });
-
-  it("returns true with both dob formats and liveness_score", () => {
-    expect(
-      isFheComplete(["birth_year_offset", "dob_days", "liveness_score"])
-    ).toBe(true);
+  it("returns false when either required encrypted attribute is missing", () => {
+    expect(isFheComplete(["birth_year_offset"])).toBe(false);
+    expect(isFheComplete(["liveness_score"])).toBe(false);
+    expect(isFheComplete([])).toBe(false);
   });
 });

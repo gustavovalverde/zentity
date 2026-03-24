@@ -72,12 +72,12 @@ vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
 
 const authedUserSession = {
   user: { id: "user-123", twoFactorEnabled: true },
-  session: { id: "session-123", lastLoginMethod: "passkey" },
+  session: { id: "session-123" },
 } as unknown as Session;
 
 const alternateUserSession = {
   user: { id: "user-456", twoFactorEnabled: true },
-  session: { id: "session-456", lastLoginMethod: "passkey" },
+  session: { id: "session-456" },
 } as unknown as Session;
 
 const nonce = "123";

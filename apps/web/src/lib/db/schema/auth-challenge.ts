@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { users } from "./auth";
+import { authenticationContexts } from "./authentication-context";
 import { oauthClients } from "./oauth-provider";
 import { defaultId } from "./utils";
 
@@ -29,6 +30,10 @@ export const authChallengeSessions = sqliteTable(
     challengeType: text("challenge_type", {
       enum: ["opaque", "eip712", "redirect_to_web"],
     }),
+    resolvedAuthContextId: text("resolved_auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     acrValues: text("acr_values"),
     opaqueServerState: text("opaque_server_state"),
     authorizationCode: text("authorization_code").unique(),

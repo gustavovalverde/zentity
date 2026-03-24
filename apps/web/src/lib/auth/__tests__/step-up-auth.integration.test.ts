@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth";
+import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { haipPushedRequests } from "@/lib/db/schema/haip";
@@ -37,16 +38,24 @@ async function insertSession(
 ) {
   const token = opts.token ?? crypto.randomUUID();
   const createdAt = opts.createdAt ?? new Date().toISOString();
+  const authContext = await createAuthenticationContext({
+    userId,
+    loginMethod: "passkey",
+    authenticatedAt: new Date(createdAt),
+    sourceKind: "better_auth",
+    sourceSessionId: crypto.randomUUID(),
+    referenceType: "session",
+  });
   await db
     .insert(sessions)
     .values({
       id: crypto.randomUUID(),
       userId,
       token,
+      authContextId: authContext.id,
       expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       createdAt,
       updatedAt: createdAt,
-      lastLoginMethod: "passkey",
     })
     .run();
 
@@ -538,6 +547,14 @@ describe("step-up authentication: session resolution edge cases", () => {
   it("invalid session cookie signature skips step-up (no crash)", async () => {
     await seedTier1User(userId);
     const token = crypto.randomUUID();
+    const authContext = await createAuthenticationContext({
+      userId,
+      loginMethod: "passkey",
+      authenticatedAt: new Date(),
+      sourceKind: "better_auth",
+      sourceSessionId: crypto.randomUUID(),
+      referenceType: "session",
+    });
     // Insert a real session so the token exists in DB
     await db
       .insert(sessions)
@@ -545,10 +562,10 @@ describe("step-up authentication: session resolution edge cases", () => {
         id: crypto.randomUUID(),
         userId,
         token,
+        authContextId: authContext.id,
         expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        lastLoginMethod: "passkey",
       })
       .run();
 

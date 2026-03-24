@@ -89,7 +89,7 @@ vi.mock("@/env", async (importOriginal) => {
 
 const authedSession = {
   user: { id: "user-123", twoFactorEnabled: true },
-  session: { id: "session-123", lastLoginMethod: "passkey" },
+  session: { id: "session-123" },
 } as unknown as Session;
 
 const verifiedNullifier = "0xabc123nullifier";

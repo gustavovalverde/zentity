@@ -14,6 +14,8 @@ import * as attestationSchema from "./schema/attestation";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as authSchema from "./schema/auth";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as authenticationContextSchema from "./schema/authentication-context";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as complianceSchema from "./schema/compliance";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as cryptoSchema from "./schema/crypto";
@@ -39,6 +41,7 @@ import * as usageLedgerSchema from "./schema/usage-ledger";
 const schema = {
   ...agentSchema,
   ...attestationSchema,
+  ...authenticationContextSchema,
   ...authSchema,
   ...complianceSchema,
   ...cryptoSchema,

@@ -18,7 +18,7 @@ import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
-import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   buildOAuthErrorUrl,
@@ -264,7 +264,9 @@ async function evaluate(
   }
 
   if (params.acr_values) {
-    const assurance = await getAssuranceForOAuth(session.userId);
+    const assurance = await getAccountAssurance(session.userId, {
+      isAuthenticated: true,
+    });
     const satisfied = findSatisfiedAcr(params.acr_values, assurance.tier);
     if (!satisfied) {
       return {

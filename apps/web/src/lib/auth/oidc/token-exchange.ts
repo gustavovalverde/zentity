@@ -16,13 +16,15 @@ import {
 } from "jose";
 
 import { env } from "@/env";
-import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import {
-  computeAcr,
-  computeAcrEidas,
+  buildOidcAssuranceClaims,
   computeAtHash,
-  loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/authentication-context";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
@@ -237,6 +239,10 @@ function createTokenExchangeHandler(): (
           client_id: opaqueSubject.clientId,
           scope: opaqueSubject.scopes.join(" "),
           exp: Math.floor(opaqueSubject.expiresAt.getTime() / 1000),
+          ...(opaqueSubject.sessionId ? { sid: opaqueSubject.sessionId } : {}),
+          ...(opaqueSubject.authContextId
+            ? { [AUTHENTICATION_CONTEXT_CLAIM]: opaqueSubject.authContextId }
+            : {}),
           ...(opaqueSubject.referenceId
             ? { jti: opaqueSubject.referenceId }
             : {}),
@@ -254,6 +260,17 @@ function createTokenExchangeHandler(): (
         error_description: "Subject token verification failed",
       });
     }
+
+    const subjectSessionId =
+      typeof subjectPayload.sid === "string" ? subjectPayload.sid : undefined;
+    const subjectAuthContextId =
+      typeof subjectPayload[AUTHENTICATION_CONTEXT_CLAIM] === "string"
+        ? (subjectPayload[AUTHENTICATION_CONTEXT_CLAIM] as string)
+        : undefined;
+    const subjectAuth = await resolveAuthenticationContext({
+      authContextId: subjectAuthContextId,
+      sessionId: subjectSessionId,
+    });
 
     const sub = subjectPayload.sub as string | undefined;
     if (!sub) {
@@ -278,6 +295,13 @@ function createTokenExchangeHandler(): (
       throw new APIError("BAD_REQUEST", {
         error: "invalid_grant",
         error_description: "Subject user not found",
+      });
+    }
+
+    if (!subjectAuth) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_grant",
+        error_description: "Subject token is missing an authentication context",
       });
     }
 
@@ -550,7 +574,9 @@ function createTokenExchangeHandler(): (
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
-      const assurance = await getAssuranceForOAuth(rawUserId);
+      const assurance = await getAccountAssurance(rawUserId, {
+        isAuthenticated: true,
+      });
       const signingAlg = await getClientSigningAlg(client.clientId);
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
@@ -561,10 +587,11 @@ function createTokenExchangeHandler(): (
         iat: now,
         exp,
         act: actClaim,
-        acr: computeAcr(assurance.tier),
-        acr_eidas: computeAcrEidas(assurance.tier),
-        amr: loginMethodToAmr(assurance.loginMethod),
-        auth_time: assurance.authTime,
+        ...buildOidcAssuranceClaims(assurance, subjectAuth),
+        ...(subjectSessionId ? { sid: subjectSessionId } : {}),
+        ...(subjectSessionId
+          ? {}
+          : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
         ...(subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
           ? { at_hash: computeAtHash(subjectToken, signingAlg) }
           : {}),
@@ -596,6 +623,10 @@ function createTokenExchangeHandler(): (
       scope: targetScopes.join(" "),
       iat: now,
       exp,
+      ...(subjectSessionId ? { sid: subjectSessionId } : {}),
+      ...(!subjectSessionId && subjectAuth
+        ? { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }
+        : {}),
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
         : {}),

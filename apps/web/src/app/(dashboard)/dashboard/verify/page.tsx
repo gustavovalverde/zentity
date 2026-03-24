@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -24,16 +23,14 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
 import { env } from "@/env";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getSecurityPostureForSession } from "@/lib/assurance/data";
 import { getTierProgress } from "@/lib/assurance/features";
 import { getCachedSession } from "@/lib/auth/cached-session";
-import { db } from "@/lib/db/connection";
 import {
   getPrimaryWalletAddress,
   userHasPassword,
 } from "@/lib/db/queries/auth";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
-import { passkeys } from "@/lib/db/schema/auth";
 import { cn } from "@/lib/utils/classname";
 import { buildCountryDocumentList } from "@/lib/zkpassport/document-support";
 
@@ -51,43 +48,34 @@ export default async function VerifyPage() {
   }
   const cookies = headersObj.get("cookie");
 
-  const [assuranceState, bundle, hasPassword, passkeyRow, wallet, countries] =
-    await Promise.all([
-      getAssuranceState(userId, session),
-      getIdentityBundleByUserId(userId),
-      userHasPassword(userId),
-      db
-        .select({ id: passkeys.id })
-        .from(passkeys)
-        .where(eq(passkeys.userId, userId))
-        .limit(1)
-        .get(),
-      getPrimaryWalletAddress(userId),
-      buildCountryDocumentList(),
-    ]);
+  const [posture, bundle, hasPassword, wallet, countries] = await Promise.all([
+    getSecurityPostureForSession(userId, session),
+    getIdentityBundleByUserId(userId),
+    userHasPassword(userId),
+    getPrimaryWalletAddress(userId),
+    buildCountryDocumentList(),
+  ]);
+  const assurance = posture.assurance;
 
-  if (
-    assuranceState.tier >= 3 &&
-    !assuranceState.details.missingProfileSecret
-  ) {
+  if (assurance.tier >= 3 && !assurance.details.missingProfileSecret) {
     redirect("/dashboard");
   }
 
   const hasEnrollment = Boolean(bundle?.fheKeyId);
   const hasFheError = bundle?.fheStatus === "error";
-  const progress = getTierProgress(assuranceState);
-  const { details } = assuranceState;
+  const progress = getTierProgress(assurance);
+  const { details } = assurance;
   const zkPassportEnabled = env.NEXT_PUBLIC_ZKPASSPORT_ENABLED;
 
   // Tier 2+ users with missing profile secret: allow re-verification
-  if (assuranceState.tier >= 2 && assuranceState.details.missingProfileSecret) {
+  if (assurance.tier >= 2 && assurance.details.missingProfileSecret) {
     return (
       <div className="space-y-6">
         <PageHeader
           description="Your identity data was not saved during verification. Re-verify to enable identity sharing with applications."
           title="Re-verify Identity"
         >
-          <TierBadge size="md" tier={assuranceState.tier} />
+          <TierBadge size="md" tier={assurance.tier} />
         </PageHeader>
         <Card>
           <CardContent className="pt-6">
@@ -102,7 +90,7 @@ export default async function VerifyPage() {
   }
 
   // Tier 2 users: show chip upgrade if enabled, otherwise redirect
-  if (assuranceState.tier >= 2) {
+  if (assurance.tier >= 2) {
     if (!zkPassportEnabled) {
       redirect("/dashboard");
     }
@@ -113,7 +101,7 @@ export default async function VerifyPage() {
           description="Some services require a higher level of assurance. Upgrade with your document's NFC chip for the strongest verification."
           title="Upgrade Verification"
         >
-          <TierBadge size="md" tier={assuranceState.tier} />
+          <TierBadge size="md" tier={assurance.tier} />
         </PageHeader>
         <Card>
           <CardContent className="pt-6">
@@ -139,7 +127,7 @@ export default async function VerifyPage() {
           description="Scan your document or use your document's NFC chip to verify and unlock features"
           title="Verify Your Identity"
         >
-          <TierBadge size="md" tier={assuranceState.tier} />
+          <TierBadge size="md" tier={assurance.tier} />
         </PageHeader>
 
         {hasEnrollment ? (
@@ -155,7 +143,7 @@ export default async function VerifyPage() {
           <VerifyCta
             cookies={cookies}
             hasEnrollment={false}
-            hasPasskeys={Boolean(passkeyRow)}
+            hasPasskeys={posture.capabilities.hasPasskeys}
             hasPassword={hasPassword}
             nextStepHref="/dashboard/verify"
             nextStepTitle="Verify Identity"
@@ -202,7 +190,7 @@ export default async function VerifyPage() {
         description="Verify your identity to unlock more features"
         title="Complete Verification"
       >
-        <TierBadge size="md" tier={assuranceState.tier} />
+        <TierBadge size="md" tier={assurance.tier} />
       </PageHeader>
 
       {hasFheError && bundle?.fheKeyId && (
@@ -295,7 +283,7 @@ export default async function VerifyPage() {
             <VerifyCta
               cookies={cookies}
               hasEnrollment={hasEnrollment}
-              hasPasskeys={Boolean(passkeyRow)}
+              hasPasskeys={posture.capabilities.hasPasskeys}
               hasPassword={hasPassword}
               nextStepHref={nextStep.href}
               nextStepTitle={nextStep.title}

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
 import { db } from "@/lib/db/connection";
@@ -35,7 +35,7 @@ export default async function CibaApprovePage({
 
   const [detected, assurance] = await Promise.all([
     detectAuthMode(session.user.id),
-    getAssuranceState(session.user.id, session),
+    getAccountAssurance(session.user.id),
   ]);
   authMode = detected.authMode;
   wallet = detected.wallet;

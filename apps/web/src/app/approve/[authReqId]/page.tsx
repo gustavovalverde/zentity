@@ -4,7 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
 import { buildStandaloneApprovalPath } from "@/lib/ciba/approval-path";
@@ -102,7 +102,7 @@ export default async function ApprovePage({
     }
   }
 
-  const assurance = await getAssuranceState(session.user.id, session);
+  const assurance = await getAccountAssurance(session.user.id);
 
   return (
     <div className="w-full max-w-md">

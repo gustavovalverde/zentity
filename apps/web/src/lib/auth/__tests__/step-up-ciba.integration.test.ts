@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
+import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -15,6 +16,7 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
 const FPA_CLIENT_ID = "step-up-ciba-fpa-test";
 const APPROVE_URL = "http://localhost:3000/api/auth/ciba/authorize";
+let defaultAuthContextId: string | null = null;
 
 async function createTestClient() {
   await db
@@ -49,6 +51,7 @@ async function insertCibaRequest(
   overrides: Partial<typeof cibaRequests.$inferInsert> = {}
 ) {
   const authReqId = overrides.authReqId ?? crypto.randomUUID();
+  const status = overrides.status ?? "pending";
   await db
     .insert(cibaRequests)
     .values({
@@ -56,7 +59,10 @@ async function insertCibaRequest(
       clientId: TEST_CLIENT_ID,
       userId: overrides.userId ?? "test-user",
       scope: "openid",
-      status: "pending",
+      status,
+      authContextId:
+        overrides.authContextId ??
+        (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
       ...overrides,
     })
@@ -64,7 +70,7 @@ async function insertCibaRequest(
   return authReqId;
 }
 
-async function insertSession(userId: string) {
+async function insertSession(userId: string, authContextId: string) {
   const token = crypto.randomUUID();
   await db
     .insert(sessions)
@@ -72,10 +78,10 @@ async function insertSession(userId: string) {
       id: crypto.randomUUID(),
       userId,
       token,
+      authContextId,
       expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      lastLoginMethod: "passkey",
     })
     .run();
   return token;
@@ -114,7 +120,16 @@ describe("CIBA step-up: acr_values at approval time", () => {
     await resetDatabase();
     userId = await createTestUser();
     await createTestClient();
-    sessionToken = await insertSession(userId);
+    defaultAuthContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "better_auth",
+        referenceType: "session",
+      })
+    ).id;
+    sessionToken = await insertSession(userId, defaultAuthContextId);
   });
 
   it("tier-1 user cannot approve CIBA request requiring tier-2", async () => {
@@ -200,6 +215,15 @@ describe("CIBA step-up: acr_values at token exchange (safety net)", () => {
     await resetDatabase();
     userId = await createTestUser();
     await createTestClient();
+    defaultAuthContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "ciba_approval",
+        referenceType: "ciba_request",
+      })
+    ).id;
   });
 
   it("approved request with unsatisfied acr_values returns interaction_required", async () => {
@@ -280,6 +304,15 @@ describe("CIBA step-up: first-party client (FPA) path", () => {
     await resetDatabase();
     userId = await createTestUser();
     await createFirstPartyClient();
+    defaultAuthContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "ciba_approval",
+        referenceType: "ciba_request",
+      })
+    ).id;
   });
 
   it("FPA client with unsatisfied acr_values returns 403 + auth_session", async () => {

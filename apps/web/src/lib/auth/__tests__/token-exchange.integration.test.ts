@@ -10,6 +10,10 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
+} from "@/lib/auth/authentication-context";
 import { getAuthIssuer } from "@/lib/auth/issuer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
@@ -34,6 +38,7 @@ const authIssuer = getAuthIssuer();
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
 let testKid: string;
+let defaultAuthContextId: string;
 
 async function ensureSigningKey() {
   testKeyPair = await generateKeyPair("EdDSA", {
@@ -75,6 +80,7 @@ function mintAccessToken(
     aap?: Record<string, unknown>;
     scope?: string;
     act?: Record<string, unknown>;
+    authContextId?: string;
     authorizationDetails?: unknown;
     azp?: string;
     exp?: number;
@@ -89,6 +95,7 @@ function mintAccessToken(
     azp: opts.azp ?? TEST_CLIENT_ID,
     iat: Math.floor(Date.now() / 1000),
     exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600,
+    [AUTHENTICATION_CONTEXT_CLAIM]: opts.authContextId ?? defaultAuthContextId,
     ...(opts.aap ?? {}),
   };
   if (opts.act) {
@@ -104,7 +111,8 @@ function mintAccessToken(
 
 function mintIdToken(
   sub: string,
-  aud: string = TEST_CLIENT_ID
+  aud: string = TEST_CLIENT_ID,
+  authContextId = defaultAuthContextId
 ): Promise<string> {
   const payload: Record<string, unknown> = {
     iss: authIssuer,
@@ -112,6 +120,7 @@ function mintIdToken(
     aud,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
+    [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
   };
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
@@ -124,6 +133,14 @@ describe("Token Exchange (RFC 8693)", () => {
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
+    defaultAuthContextId = (
+      await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "token_exchange",
+      })
+    ).id;
     await ensureSigningKey();
     await createTestClient();
   });
@@ -440,6 +457,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.iss).toBe(authIssuer);
       expect(payload.aud).toBe(TEST_CLIENT_ID);
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
+      expect(payload[AUTHENTICATION_CONTEXT_CLAIM]).toBe(defaultAuthContextId);
 
       // at_hash binds the id_token to the subject access token (OIDC Core §3.3.2.11)
       const expectedAtHash = computeAtHash(subjectToken, "RS256");
@@ -458,17 +476,27 @@ describe("Token Exchange (RFC 8693)", () => {
         })
         .run();
 
-      // Seed session with lastLoginMethod=passkey
+      const authContext = await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "better_auth",
+        sourceSessionId: crypto.randomUUID(),
+        referenceType: "session",
+      });
+
+      // Seed a passkey-authenticated session so the exchanged ID token can
+      // resolve trusted auth provenance.
       await db
         .insert(sessions)
         .values({
           id: crypto.randomUUID(),
           userId,
           token: crypto.randomUUID(),
+          authContextId: authContext.id,
           expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          lastLoginMethod: "passkey",
         })
         .run();
 

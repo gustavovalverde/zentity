@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/layouts/page-header";
 import { VerificationJourneyCard } from "@/components/verification/verification-journey-card";
 import { env } from "@/env";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import {
   getIdentityBundleByUserId,
@@ -27,8 +27,8 @@ export default async function DocumentVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, bundle, latestVerification] = await Promise.all([
-    getAssuranceState(userId, session),
+  const [assurance, bundle, latestVerification] = await Promise.all([
+    getAccountAssurance(userId),
     getIdentityBundleByUserId(userId),
     getLatestVerification(userId),
   ]);
@@ -44,17 +44,16 @@ export default async function DocumentVerifyPage() {
   // Exceptions:
   // - Users with incomplete proofs or missing claim hashes need to re-verify
   // - Users with a pending document are actively re-verifying
-  const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
-  const needsDocumentReprocessing =
-    assuranceState.details.needsDocumentReprocessing;
+  const needsProofRegeneration = assurance.details.hasIncompleteProofs;
+  const needsDocumentReprocessing = assurance.details.needsDocumentReprocessing;
   const hasActiveVerification = latestVerification?.status === "pending";
 
   if (
-    assuranceState.details.documentVerified &&
+    assurance.details.documentVerified &&
     !needsProofRegeneration &&
     !needsDocumentReprocessing &&
     !hasActiveVerification &&
-    !assuranceState.details.missingProfileSecret
+    !assurance.details.missingProfileSecret
   ) {
     redirect("/dashboard/verify/liveness");
   }

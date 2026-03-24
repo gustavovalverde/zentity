@@ -31,7 +31,10 @@ export function FheStatusPoller() {
     const poll = async () => {
       try {
         const status = await trpc.assurance.profile.query();
-        if (status.details.fheComplete || status.tier >= 2) {
+        if (
+          status.assurance.details.fheComplete ||
+          status.assurance.tier >= 2
+        ) {
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;

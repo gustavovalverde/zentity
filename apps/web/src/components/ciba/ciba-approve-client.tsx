@@ -327,9 +327,13 @@ export function CibaApproveClient({
         credentials: "include",
       });
       const data = (await res.json().catch(() => null)) as {
-        result?: { data?: { json?: { tier?: number } } };
+        result?: {
+          data?: { json?: { assurance?: { tier?: number }; tier?: number } };
+        };
       } | null;
-      const tier = data?.result?.data?.json?.tier;
+      const tier =
+        data?.result?.data?.json?.assurance?.tier ??
+        data?.result?.data?.json?.tier;
       if (tier === 0 || tier === 1 || tier === 2 || tier === 3) {
         setAssuranceTier(tier);
       }

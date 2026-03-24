@@ -9,7 +9,12 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
+import { auth } from "@/lib/auth/auth";
+import {
+  createAuthenticationContext,
+  getAuthenticationStateBySessionId,
+} from "@/lib/auth/authentication-context";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   buildDefaultTypedData,
@@ -591,7 +596,7 @@ async function handleOpaqueFinish(
     return errorJson(401, "access_denied", "Authentication failed");
   }
 
-  return issueAuthorizationCode(session, user.id, auth_session);
+  return issueAuthorizationCode(request, session, user.id, auth_session);
 }
 
 // ── EIP-712 Round 2: Verify signature + issue auth code ─
@@ -673,7 +678,37 @@ async function handleEip712Finish(
     return errorJson(401, "access_denied", "Authentication failed");
   }
 
-  return issueAuthorizationCode(session, user.id, auth_session);
+  return issueAuthorizationCode(request, session, user.id, auth_session);
+}
+
+async function resolveExistingBrowserAuth(
+  request: Request,
+  userId: string
+): Promise<{
+  authContextId: string;
+  authTimeMs: number;
+  sessionId: string;
+} | null> {
+  const browserSession = await auth.api.getSession({
+    headers: request.headers,
+  });
+
+  if (!(browserSession?.user?.id === userId && browserSession.session.id)) {
+    return null;
+  }
+
+  const authState = await getAuthenticationStateBySessionId(
+    browserSession.session.id
+  );
+  if (!authState) {
+    return null;
+  }
+
+  return {
+    sessionId: browserSession.session.id,
+    authContextId: authState.id,
+    authTimeMs: authState.authenticatedAt * 1000,
+  };
 }
 
 // ── Step-up re-entry: resume auth after 403 ─────────────
@@ -725,7 +760,12 @@ async function handleStepUpReEntry(
     if (!session.userId) {
       return errorJson(400, "invalid_session", "Invalid session state");
     }
-    return issueAuthorizationCode(session, session.userId, authSession);
+    return issueAuthorizationCode(
+      request,
+      session,
+      session.userId,
+      authSession
+    );
   }
 
   // Only pending step-up sessions (created without challengeType) continue
@@ -836,12 +876,15 @@ async function handleStepUpReEntry(
 // ── Shared: Issue authorization code ────────────────────
 
 async function issueAuthorizationCode(
+  request: Request,
   session: AuthChallengeSession,
   userId: string,
   authSession: string
 ): Promise<Response> {
   if (session.acrValues) {
-    const assurance = await getAssuranceForOAuth(userId);
+    const assurance = await getAccountAssurance(userId, {
+      isAuthenticated: true,
+    });
     const satisfied = findSatisfiedAcr(session.acrValues, assurance.tier);
     if (!satisfied) {
       await db
@@ -863,17 +906,58 @@ async function issueAuthorizationCode(
   const now = new Date();
   const iat = Math.floor(now.getTime() / 1000);
 
-  // Create a better-auth session so the standard token endpoint can reference it
-  const sessionId = randomBytes(16).toString("hex");
-  const sessionToken = randomBytes(32).toString("hex");
-  await db.insert(sessions).values({
-    id: sessionId,
-    token: sessionToken,
-    userId,
-    expiresAt: new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString(),
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-  });
+  const existingBrowserAuth =
+    session.state === "authenticated"
+      ? await resolveExistingBrowserAuth(request, userId)
+      : null;
+
+  let sessionId: string;
+  let authContextId: string;
+  let authTimeMs: number;
+
+  if (existingBrowserAuth) {
+    sessionId = existingBrowserAuth.sessionId;
+    authContextId = existingBrowserAuth.authContextId;
+    authTimeMs = existingBrowserAuth.authTimeMs;
+  } else {
+    if (
+      session.challengeType !== "opaque" &&
+      session.challengeType !== "eip712"
+    ) {
+      return errorJson(
+        400,
+        "invalid_session",
+        "Missing authentication context"
+      );
+    }
+
+    const authContext = await createAuthenticationContext({
+      userId,
+      loginMethod: session.challengeType === "opaque" ? "opaque" : "eip712",
+      authenticatedAt: now,
+      sourceKind:
+        session.challengeType === "opaque"
+          ? "authorize_challenge_opaque"
+          : "authorize_challenge_eip712",
+      referenceType: "authorization_code",
+      referenceId: codeHash,
+    });
+
+    sessionId = randomBytes(16).toString("hex");
+    authContextId = authContext.id;
+    authTimeMs = authContext.authenticatedAt * 1000;
+
+    const sessionToken = randomBytes(32).toString("hex");
+    await db.insert(sessions).values({
+      id: sessionId,
+      token: sessionToken,
+      userId,
+      authContextId,
+      expiresAt: new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString(),
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+  }
 
   await db.insert(verifications).values({
     id: randomBytes(16).toString("hex"),
@@ -891,7 +975,8 @@ async function issueAuthorizationCode(
       },
       userId,
       sessionId,
-      authTime: now.getTime(),
+      authContextId,
+      authTime: authTimeMs,
       authSession,
     }),
     expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000).toISOString(),
@@ -901,7 +986,12 @@ async function issueAuthorizationCode(
 
   await db
     .update(authChallengeSessions)
-    .set({ state: "code_issued", authorizationCode: codeHash, userId })
+    .set({
+      state: "code_issued",
+      authorizationCode: codeHash,
+      resolvedAuthContextId: authContextId,
+      userId,
+    })
     .where(eq(authChallengeSessions.id, session.id));
 
   return NextResponse.json({ authorization_code: code });

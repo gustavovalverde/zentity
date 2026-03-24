@@ -5,12 +5,14 @@ import crypto from "node:crypto";
 import { client, ready, server } from "@serenity-kit/opaque";
 import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
+import { auth } from "@/lib/auth/auth";
+import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
-import { accounts, walletAddresses } from "@/lib/db/schema/auth";
+import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -1018,6 +1020,66 @@ describe("Authorization Challenge Endpoint", () => {
       expect(recheck.status).toBe(200);
       expect(recheck.json.authorization_code).toBeTypeOf("string");
       expect((recheck.json.authorization_code as string).length).toBe(32);
+    });
+
+    it("uses persisted auth context when browser session payload omits it", async () => {
+      const userId = await createTestUser({ email: TEST_EMAIL });
+      const authSession = crypto.randomUUID();
+      const browserSessionId = crypto.randomUUID();
+      const authContext = await createAuthenticationContext({
+        userId,
+        loginMethod: "passkey",
+        authenticatedAt: new Date(),
+        sourceKind: "better_auth",
+        sourceSessionId: browserSessionId,
+        referenceType: "session",
+        referenceId: browserSessionId,
+      });
+
+      await db
+        .insert(sessions)
+        .values({
+          id: browserSessionId,
+          userId,
+          token: crypto.randomUUID(),
+          authContextId: authContext.id,
+          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        .run();
+
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          scope: "openid",
+          challengeType: "redirect_to_web",
+          state: "authenticated",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      const getSessionSpy = vi.spyOn(auth.api, "getSession").mockResolvedValue({
+        user: { id: userId },
+        session: {
+          id: browserSessionId,
+          authContextId: null,
+        },
+      } as unknown as Awaited<ReturnType<typeof auth.api.getSession>>);
+
+      try {
+        const { status, json } = await callChallenge({
+          auth_session: authSession,
+        });
+
+        expect(status).toBe(200);
+        expect(json.authorization_code).toBeTypeOf("string");
+      } finally {
+        getSessionSpy.mockRestore();
+      }
     });
 
     it("step-up re-entry returns request_uri for passkey-only user", async () => {

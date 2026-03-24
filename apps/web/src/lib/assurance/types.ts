@@ -2,26 +2,17 @@
  * Assurance Types
  *
  * Four-tier system representing user verification states:
- * - Tier 0: Anonymous (no session)
- * - Tier 1: Account (authenticated + FHE keys secured)
- * - Tier 2: Verified (identity proven via OCR + ZK proofs + FHE complete)
- * - Tier 3: Chip Verified (passport NFC chip proof + FHE complete)
+ * - Tier 0: Anonymous or missing required secured keys
+ * - Tier 1: Account with secured keys
+ * - Tier 2: Verified identity
+ * - Tier 3: Chip verified identity
  *
- * Two auth strength levels:
- * - basic: OPAQUE, magic link, EIP-712 wallet
- * - strong: Passkey (WebAuthn) - required for on-chain operations
+ * Authentication is modeled separately from proofing:
+ * - AccountAssurance: proofing and tier
+ * - AuthenticationState: actual login provenance
+ * - AccountCapabilities: enrolled authenticators / account affordances
  */
 
-/**
- * Account Tier (0-3)
- *
- * | Tier | Name          | What User Has                                |
- * |------|---------------|----------------------------------------------|
- * | 0    | Anonymous     | No session                                   |
- * | 1    | Account       | Authenticated + FHE keys secured             |
- * | 2    | Verified      | Account + Identity proven + ZK proofs        |
- * | 3    | Chip Verified | Account + Passport NFC chip proof + FHE      |
- */
 export type AccountTier = 0 | 1 | 2 | 3;
 
 export const TIER_NAMES = {
@@ -33,44 +24,35 @@ export const TIER_NAMES = {
 
 export type TierName = (typeof TIER_NAMES)[AccountTier];
 
-/**
- * Auth Strength - Determines high-security feature access
- *
- * | Level  | Methods                    | Enables                         |
- * |--------|----------------------------|---------------------------------|
- * | basic  | OPAQUE, magic link, EIP-712| All features except on-chain    |
- * | strong | Passkey (WebAuthn)         | On-chain attestation, minting   |
- */
 export type AuthStrength = "basic" | "strong";
 
-/**
- * Login methods supported by Better Auth
- */
 export type LoginMethod =
   | "passkey"
-  | "opaque" // OPAQUE password-authenticated key exchange
+  | "opaque"
   | "magic-link"
-  | "eip712" // EIP-712 wallet authentication
+  | "oauth"
+  | "eip712"
   | "anonymous"
-  | "credential"; // Legacy password (disabled in prod)
+  | "credential";
 
-/**
- * Feature requirements for access control
- */
+export type AuthenticationSourceKind =
+  | "better_auth"
+  | "authorize_challenge_opaque"
+  | "authorize_challenge_eip712"
+  | "authorize_challenge_redirect"
+  | "ciba_approval"
+  | "token_exchange";
+
 export interface FeatureRequirement {
   minTier: AccountTier;
   requiresStrongAuth: boolean;
 }
 
-/**
- * Verification details - breakdown of what the user has completed
- */
 export interface VerificationDetails {
   chipVerified: boolean;
   documentVerified: boolean;
   faceMatchVerified: boolean;
   fheComplete: boolean;
-  /** True when identity checks passed but the ZK proof set is still incomplete. */
   hasIncompleteProofs: boolean;
   hasSecuredKeys: boolean;
   isAuthenticated: boolean;
@@ -81,23 +63,33 @@ export interface VerificationDetails {
   zkProofsComplete: boolean;
 }
 
-/**
- * User's complete assurance state
- *
- * This is the primary type returned by the assurance module.
- * Use it for feature gating and UI rendering decisions.
- */
-export interface AssuranceState {
-  authStrength: AuthStrength;
+export interface AccountAssurance {
   details: VerificationDetails;
-  loginMethod: LoginMethod | "none";
   tier: AccountTier;
   tierName: TierName;
 }
 
-/**
- * Feature names that can be gated by tier/auth strength
- */
+export interface AuthenticationState {
+  amr: string[];
+  authenticatedAt: number;
+  authStrength: AuthStrength;
+  id: string;
+  loginMethod: LoginMethod;
+  sourceKind: AuthenticationSourceKind;
+}
+
+export interface AccountCapabilities {
+  hasOpaqueAccount: boolean;
+  hasPasskeys: boolean;
+  hasWalletAuth: boolean;
+}
+
+export interface SecurityPosture {
+  assurance: AccountAssurance;
+  auth: AuthenticationState | null;
+  capabilities: AccountCapabilities;
+}
+
 export type FeatureName =
   | "dashboard"
   | "profile"

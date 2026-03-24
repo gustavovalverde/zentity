@@ -6,38 +6,66 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACR_VALUES_SUPPORTED,
-  computeAcr,
-  computeAcrEidas,
+  buildOidcAssuranceClaims,
   computeAtHash,
   loginMethodToAmr,
 } from "../oidc-claims";
 
-describe("computeAcr", () => {
+describe("buildOidcAssuranceClaims", () => {
   it.each([
     [0, "urn:zentity:assurance:tier-0"],
     [1, "urn:zentity:assurance:tier-1"],
     [2, "urn:zentity:assurance:tier-2"],
     [3, "urn:zentity:assurance:tier-3"],
   ] as [AccountTier, string][])("maps tier %d to %s", (tier, expectedUri) => {
-    expect(computeAcr(tier)).toBe(expectedUri);
+    expect(
+      buildOidcAssuranceClaims(
+        { tier },
+        { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
+      ).acr
+    ).toBe(expectedUri);
   });
 
   it("ACR_VALUES_SUPPORTED contains all tier URIs", () => {
     expect(ACR_VALUES_SUPPORTED).toHaveLength(4);
     for (const tier of [0, 1, 2, 3] as AccountTier[]) {
-      expect(ACR_VALUES_SUPPORTED).toContain(computeAcr(tier));
+      expect(ACR_VALUES_SUPPORTED).toContain(
+        buildOidcAssuranceClaims(
+          { tier },
+          { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
+        ).acr
+      );
     }
   });
-});
 
-describe("computeAcrEidas", () => {
   it.each([
     [0, "http://eidas.europa.eu/LoA/low"],
     [1, "http://eidas.europa.eu/LoA/low"],
     [2, "http://eidas.europa.eu/LoA/substantial"],
     [3, "http://eidas.europa.eu/LoA/high"],
-  ] as [AccountTier, string][])("maps tier %d to %s", (tier, expectedUri) => {
-    expect(computeAcrEidas(tier)).toBe(expectedUri);
+  ] as [
+    AccountTier,
+    string,
+  ][])("maps tier %d to %s for acr_eidas", (tier, expectedUri) => {
+    expect(
+      buildOidcAssuranceClaims(
+        { tier },
+        { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
+      ).acr_eidas
+    ).toBe(expectedUri);
+  });
+
+  it("omits amr when the auth method cannot be normalized", () => {
+    expect(
+      buildOidcAssuranceClaims(
+        { tier: 1 },
+        { amr: [], authenticatedAt: 1_700_000_000 }
+      )
+    ).toEqual({
+      acr: "urn:zentity:assurance:tier-1",
+      acr_eidas: "http://eidas.europa.eu/LoA/low",
+      auth_time: 1_700_000_000,
+    });
   });
 });
 
@@ -52,6 +80,10 @@ describe("loginMethodToAmr", () => {
 
   it("maps magic-link to otp", () => {
     expect(loginMethodToAmr("magic-link")).toEqual(["otp"]);
+  });
+
+  it("maps oauth to an empty AMR set", () => {
+    expect(loginMethodToAmr("oauth")).toEqual([]);
   });
 
   it("maps eip712 to pop + hwk", () => {

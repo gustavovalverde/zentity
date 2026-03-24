@@ -6,7 +6,12 @@
  * Also computes at_hash per OIDC Core §3.1.3.6.
  */
 
-import type { AccountTier, LoginMethod } from "./types";
+import type {
+  AccountAssurance,
+  AccountTier,
+  AuthenticationState,
+  LoginMethod,
+} from "./types";
 
 import crypto from "node:crypto";
 
@@ -21,7 +26,7 @@ const ACR_URIS = {
 
 export const ACR_VALUES_SUPPORTED = Object.values(ACR_URIS);
 
-export function computeAcr(tier: AccountTier): string {
+function computeAcr(tier: AccountTier): string {
   return ACR_URIS[tier];
 }
 
@@ -34,8 +39,20 @@ const EIDAS_URIS = {
   3: "http://eidas.europa.eu/LoA/high",
 } as const satisfies Record<AccountTier, string>;
 
-export function computeAcrEidas(tier: AccountTier): string {
+function computeAcrEidas(tier: AccountTier): string {
   return EIDAS_URIS[tier];
+}
+
+export function buildOidcAssuranceClaims(
+  assurance: Pick<AccountAssurance, "tier">,
+  auth: Pick<AuthenticationState, "amr" | "authenticatedAt">
+) {
+  return {
+    acr: computeAcr(assurance.tier),
+    acr_eidas: computeAcrEidas(assurance.tier),
+    auth_time: auth.authenticatedAt,
+    ...(auth.amr.length > 0 ? { amr: auth.amr } : {}),
+  };
 }
 
 // --- AMR (Authentication Methods References, RFC 8176) ---
@@ -44,6 +61,7 @@ const AMR_MAP: Record<LoginMethod | "none", string[]> = {
   passkey: ["pop", "hwk", "user"],
   opaque: ["pwd"],
   "magic-link": ["otp"],
+  oauth: [],
   eip712: ["pop", "hwk"],
   anonymous: ["user"],
   credential: ["pwd"],

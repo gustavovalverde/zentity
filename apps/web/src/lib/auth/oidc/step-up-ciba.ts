@@ -18,7 +18,7 @@ import { APIError } from "better-auth/api";
 import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
-import { getAssuranceForOAuth } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -75,7 +75,9 @@ export async function enforceCibaApprovalAcr(
     return;
   }
 
-  const assurance = await getAssuranceForOAuth(record.userId);
+  const assurance = await getAccountAssurance(record.userId, {
+    isAuthenticated: true,
+  });
   const satisfied = findSatisfiedAcr(record.acrValues, assurance.tier);
 
   if (!satisfied) {
@@ -123,7 +125,9 @@ export async function enforceCibaTokenAcr(
     return;
   }
 
-  const assurance = await getAssuranceForOAuth(record.userId);
+  const assurance = await getAccountAssurance(record.userId, {
+    isAuthenticated: true,
+  });
   const satisfied = findSatisfiedAcr(record.acrValues, assurance.tier);
 
   if (!satisfied) {

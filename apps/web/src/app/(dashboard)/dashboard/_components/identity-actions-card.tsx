@@ -1,4 +1,4 @@
-import type { AssuranceState } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/types";
 
 import {
   ArrowRight,
@@ -22,8 +22,7 @@ import { canAccessFeature } from "@/lib/assurance/features";
 import { cn } from "@/lib/utils/classname";
 
 interface IdentityActionsCardProps {
-  assuranceState: AssuranceState | null;
-  hasPasskeys: boolean;
+  posture: SecurityPosture | null;
   web3Enabled: boolean;
 }
 
@@ -32,19 +31,22 @@ interface IdentityActionsCardProps {
  * Displays available actions with locked state for features requiring higher tiers.
  */
 export function IdentityActionsCard({
-  assuranceState,
+  posture,
   web3Enabled,
-  hasPasskeys,
 }: Readonly<IdentityActionsCardProps>) {
-  const tier = assuranceState?.tier ?? 0;
-  const authStrength = assuranceState?.authStrength ?? "basic";
+  const assurance = posture?.assurance ?? null;
+  const auth = posture?.auth ?? null;
+  const tier = assurance?.tier ?? 0;
 
-  const canAttest = canAccessFeature("attestation", tier, authStrength);
+  const canAttest = canAccessFeature("attestation", tier, auth);
 
-  const needsStrongAuthForAttestation = tier >= 2 && authStrength !== "strong";
+  const needsStrongAuthForAttestation =
+    tier >= 2 && auth?.authStrength !== "strong";
   let attestationPasskeyAction: "auth" | "enroll" | undefined;
   if (!canAttest && needsStrongAuthForAttestation) {
-    attestationPasskeyAction = hasPasskeys ? "auth" : "enroll";
+    attestationPasskeyAction = posture?.capabilities.hasPasskeys
+      ? "auth"
+      : "enroll";
   }
 
   return (

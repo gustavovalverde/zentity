@@ -13,11 +13,13 @@ import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
 
 interface OpaqueAccessTokenRecord {
+  authContextId: string | null;
   clientId: string;
   dpopJkt: string | null;
   expiresAt: Date;
   referenceId: string | null;
   scopes: string[];
+  sessionId: string | null;
   userId: string | null;
 }
 
@@ -50,10 +52,12 @@ export async function loadOpaqueAccessToken(
 ): Promise<OpaqueAccessTokenRecord | null> {
   const row = await db
     .select({
+      authContextId: oauthAccessTokens.authContextId,
       clientId: oauthAccessTokens.clientId,
       dpopJkt: oauthAccessTokens.dpopJkt,
       expiresAt: oauthAccessTokens.expiresAt,
       referenceId: oauthAccessTokens.referenceId,
+      sessionId: oauthAccessTokens.sessionId,
       scopes: oauthAccessTokens.scopes,
       userId: oauthAccessTokens.userId,
     })

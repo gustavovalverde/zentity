@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/layouts/page-header";
-import { getAssuranceState } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
 import {
@@ -26,13 +26,12 @@ export default async function LivenessVerifyPage() {
     redirect("/sign-in");
   }
 
-  const [assuranceState, latestVerification, bundle, wallet] =
-    await Promise.all([
-      getAssuranceState(userId, session),
-      getLatestVerification(userId),
-      getIdentityBundleByUserId(userId),
-      getPrimaryWalletAddress(userId),
-    ]);
+  const [assurance, latestVerification, bundle, wallet] = await Promise.all([
+    getAccountAssurance(userId),
+    getLatestVerification(userId),
+    getIdentityBundleByUserId(userId),
+    getPrimaryWalletAddress(userId),
+  ]);
 
   const hasEnrollment = Boolean(bundle?.fheKeyId);
 
@@ -50,15 +49,15 @@ export default async function LivenessVerifyPage() {
   // Exceptions:
   // - Users with incomplete proofs need to re-verify
   // - Users with a pending document are actively re-verifying
-  const needsProofRegeneration = assuranceState.details.hasIncompleteProofs;
+  const needsProofRegeneration = assurance.details.hasIncompleteProofs;
   const hasActiveVerification = latestVerification?.status === "pending";
 
   if (
-    assuranceState.details.livenessVerified &&
-    assuranceState.details.faceMatchVerified &&
+    assurance.details.livenessVerified &&
+    assurance.details.faceMatchVerified &&
     !needsProofRegeneration &&
     !hasActiveVerification &&
-    !assuranceState.details.missingProfileSecret
+    !assurance.details.missingProfileSecret
   ) {
     redirect("/dashboard/verify");
   }

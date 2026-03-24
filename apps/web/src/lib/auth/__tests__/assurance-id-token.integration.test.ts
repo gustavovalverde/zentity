@@ -4,6 +4,10 @@ import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
+} from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -61,6 +65,19 @@ async function seedTier1User(userId: string) {
     .run();
 }
 
+function createAuthContext(
+  userId: string,
+  loginMethod: "opaque" | "passkey" = "passkey"
+) {
+  return createAuthenticationContext({
+    userId,
+    loginMethod,
+    authenticatedAt: new Date(),
+    sourceKind: "ciba_approval",
+    referenceType: "ciba_request",
+  });
+}
+
 describe("assurance claims in ID tokens", () => {
   let userId: string;
 
@@ -72,22 +89,11 @@ describe("assurance claims in ID tokens", () => {
 
   it("tier-1 passkey user gets correct acr, acr_eidas, and amr", async () => {
     await seedTier1User(userId);
-
-    // Insert session with lastLoginMethod=passkey so amr resolves correctly
-    await db
-      .insert((await import("@/lib/db/schema/auth")).sessions)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        token: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastLoginMethod: "passkey",
-      })
-      .run();
-
-    const authReqId = await insertCibaRequest({ userId });
+    const authContext = await createAuthContext(userId, "passkey");
+    const authReqId = await insertCibaRequest({
+      userId,
+      authContextId: authContext.id,
+    });
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -102,6 +108,7 @@ describe("assurance claims in ID tokens", () => {
     expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
     expect(claims.amr).toEqual(["pop", "hwk", "user"]);
+    expect(claims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
     const now = Math.floor(Date.now() / 1000);
@@ -111,21 +118,11 @@ describe("assurance claims in ID tokens", () => {
 
   it("tier-1 opaque user gets amr=pwd", async () => {
     await seedTier1User(userId);
-
-    await db
-      .insert((await import("@/lib/db/schema/auth")).sessions)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        token: crypto.randomUUID(),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        lastLoginMethod: "opaque",
-      })
-      .run();
-
-    const authReqId = await insertCibaRequest({ userId });
+    const authContext = await createAuthContext(userId, "opaque");
+    const authReqId = await insertCibaRequest({
+      userId,
+      authContextId: authContext.id,
+    });
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -139,9 +136,13 @@ describe("assurance claims in ID tokens", () => {
 
   it("tier-0 user (no FHE keys) gets acr tier-0", async () => {
     // No identity bundle → no secured keys → tier 0
-    // But getAssuranceForOAuth sets hasSession=true, so if no keys,
-    // tier stays at 0 since tier 1 requires hasSecuredKeys
-    const authReqId = await insertCibaRequest({ userId });
+    // Authentication provenance now comes from AuthenticationContext only,
+    // but tier 1 still requires secured keys, so this remains tier 0.
+    const authContext = await createAuthContext(userId, "passkey");
+    const authReqId = await insertCibaRequest({
+      userId,
+      authContextId: authContext.id,
+    });
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -149,8 +150,7 @@ describe("assurance claims in ID tokens", () => {
     });
 
     const claims = decodeJwt(json.id_token as string);
-    // hasSession=true but hasSecuredKeys=false → stays at tier 0
-    // Actually tier computation: hasSession && hasSecuredKeys → tier 1
+    // hasSecuredKeys=false keeps the account at tier 0
     // Without secured keys, tier remains 0
     expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
     expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
@@ -163,8 +163,11 @@ describe("assurance claims in ID tokens", () => {
 
   it("includes correct at_hash (OIDC Core §3.1.3.6)", async () => {
     await seedTier1User(userId);
-
-    const authReqId = await insertCibaRequest({ userId });
+    const authContext = await createAuthContext(userId, "passkey");
+    const authReqId = await insertCibaRequest({
+      userId,
+      authContextId: authContext.id,
+    });
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
@@ -185,11 +188,13 @@ describe("assurance claims in ID tokens", () => {
 
   it("omits assurance claims when openid scope is absent", async () => {
     await seedTier1User(userId);
+    const authContext = await createAuthContext(userId, "passkey");
 
     // Request without openid scope
     const authReqId = await insertCibaRequest({
       userId,
       scope: "email",
+      authContextId: authContext.id,
     });
     const { json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
