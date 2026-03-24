@@ -7,12 +7,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
-  createZkProofSession,
+  createProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   insertEncryptedAttribute,
+  insertProofArtifact,
   insertSignedClaim,
-  insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
   createVerification,
@@ -58,7 +58,7 @@ describe("Database Module", () => {
         verifiedAt: new Date().toISOString(),
       });
 
-      await createZkProofSession({
+      await createProofSession({
         id: proofSessionId,
         userId,
         verificationId,
@@ -76,11 +76,12 @@ describe("Database Module", () => {
         "face_match",
         "identity_binding",
       ]) {
-        await insertZkProofRecord({
+        await insertProofArtifact({
           id: crypto.randomUUID(),
           userId,
           verificationId,
           proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType,
           proofHash: `hash-${proofType}`,
           policyVersion: POLICY_VERSION,
@@ -126,7 +127,7 @@ describe("Database Module", () => {
         verifiedAt: new Date().toISOString(),
       });
 
-      await createZkProofSession({
+      await createProofSession({
         id: proofSessionId,
         userId,
         verificationId,
@@ -139,11 +140,12 @@ describe("Database Module", () => {
 
       // Only 2 of 5 required proofs — incomplete session
       for (const proofType of ["age_verification", "doc_validity"]) {
-        await insertZkProofRecord({
+        await insertProofArtifact({
           id: crypto.randomUUID(),
           userId,
           verificationId,
           proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType,
           proofHash: `hash-${proofType}`,
           policyVersion: POLICY_VERSION,
@@ -364,7 +366,7 @@ describe("Document selection", () => {
 
     const proofSessionId = crypto.randomUUID();
     const now = Date.now();
-    await createZkProofSession({
+    await createProofSession({
       id: proofSessionId,
       userId,
       verificationId: docFull,
@@ -382,11 +384,12 @@ describe("Document selection", () => {
       "face_match",
       "identity_binding",
     ]) {
-      await insertZkProofRecord({
+      await insertProofArtifact({
         id: crypto.randomUUID(),
         userId,
         verificationId: docFull,
         proofSessionId,
+        proofSystem: "noir_ultrahonk",
         proofType,
         proofHash: `hash-${proofType}`,
         policyVersion: POLICY_VERSION,

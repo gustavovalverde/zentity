@@ -3,8 +3,8 @@ import z from "zod";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
-  createZkProofSession,
-  getZkProofSessionById,
+  createProofSession,
+  getProofSessionById,
 } from "@/lib/db/queries/crypto";
 import { getSelectedVerification } from "@/lib/db/queries/identity";
 import {
@@ -43,7 +43,7 @@ export const createProofSessionProcedure = protectedProcedure
     const proofSessionId = crypto.randomUUID();
     const audience = resolveAudience(ctx.req);
 
-    await createZkProofSession({
+    await createProofSession({
       id: proofSessionId,
       userId: ctx.userId,
       verificationId,
@@ -76,7 +76,7 @@ export const createChallengeProcedure = protectedProcedure
   )
   .mutation(async ({ ctx, input }) => {
     const audience = resolveAudience(ctx.req);
-    const proofSession = await getZkProofSessionById(input.proofSessionId);
+    const proofSession = await getProofSessionById(input.proofSessionId);
     if (!proofSession) {
       throw new TRPCError({
         code: "BAD_REQUEST",

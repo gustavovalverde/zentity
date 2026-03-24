@@ -1,0 +1,55 @@
+## Phase 1: Write Convergence (PRD-17)
+
+### Completed: Schema + Write Path Migration
+
+Schema changes:
+- zk_proofs → proof_artifacts: added proofSystem discriminator, metadata JSON, removed Noir-specific columns (isOver18, circuitType, noirVersion, circuitHash, bbVersion, verificationKeyHash, verificationKeyPoseidonHash)
+- zk_proof_sessions → proof_sessions
+- New: verification_checks table (7 check types, unique on verificationId+checkType)
+- zkChallenges FK updated to reference proof_sessions
+
+OCR write path:
+- storeProofProcedure writes proofSystem: "noir_ultrahonk", Noir fields in metadata JSON
+- Calls materializeVerificationChecks after proof storage
+
+NFC write path:
+- submitResult stores each ZKPassport ProofResult in proof_artifacts (proofSystem: "zkpassport")
+- Computes proofSetHash and upserts attestation_evidence (was missing for NFC)
+- Calls materializeVerificationChecks after writes
+
+Materialization engine:
+- materializeVerificationChecks(userId, verificationId) in identity/verification/materialize.ts
+- Fetches proofs + claims, runs deriveComplianceStatus, maps 7 boolean checks to verification_checks rows
+- OCR evidence: zk_proof, signed_claim, dedup_key
+- NFC evidence: chip_claim, commitment, nullifier
+- Idempotent via upsert on unique constraint
+
+Query layer updates:
+- All query functions renamed (createProofSession, getProofSessionById, etc.)
+- getUserAgeProof/Full reads isOver18 and Noir metadata from JSON
+- getAllVerifiedProofsFull returns proofSystem field
+
+Files changed:
+- src/lib/db/schema/crypto.ts — schema rename + new table
+- src/lib/db/queries/crypto.ts — query functions
+- src/lib/db/queries/identity.ts — table references
+- src/lib/db/queries/auth.ts — comments
+- src/lib/trpc/routers/zk/proof.ts — OCR write path
+- src/lib/trpc/routers/zk/challenge.ts — session imports
+- src/lib/trpc/routers/passport-chip.ts — NFC write path
+- src/lib/identity/verification/materialize.ts — NEW
+- src/lib/assurance/data.ts — import rename
+- src/app/(dashboard)/dashboard/_components/identity-card.tsx — import rename
+- src/app/api/zk/nationality-proof/verify/route.ts — import rename
+- src/test/db-test-utils.ts — table reference + verificationChecks delete
+- e2e/global-setup.ts — seed SQL
+- 4 test files updated for new function signatures
+
+Decisions:
+- proofPayload kept as text (not blob): both Noir hex and ZKPassport proof strings are text-encodable
+- ComplianceInput.zkProofs property NOT renamed (deferred to Phase 2 unified model)
+- AssuranceState.zkProofsComplete NOT renamed (deferred to Phase 2)
+- materializeVerificationChecks is awaited (not fire-and-forget) — 7 upserts are fast
+
+Blockers: None
+Next: Phase 2 — unified read model, consumer migration, dead code removal

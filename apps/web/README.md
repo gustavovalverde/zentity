@@ -286,7 +286,8 @@ Zentity stores privacy-preserving artifacts across multiple tables:
 
 - **identity_bundles** — user-level status + FHE key registration
 - **identity_documents** — per-document commitments + metadata
-- **zk_proofs** — proof payloads + public inputs + verification metadata
+- **proof_artifacts** — proof payloads + public inputs + verification metadata (Noir + ZKPassport)
+- **verification_checks** — materialized compliance checks (7 per verification)
 - **encrypted_attributes** — TFHE ciphertexts
   (birth_year_offset, country_code, compliance_level, liveness_score)
 - **signed_claims** — server-signed OCR/liveness/face match claims

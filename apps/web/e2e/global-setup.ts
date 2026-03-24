@@ -315,23 +315,20 @@ async function seedVerifiedIdentity(
       );
   `;
 
-  const zkProofSql = `
-    INSERT OR REPLACE INTO zk_proofs (
+  const proofArtifactsSql = `
+    INSERT OR REPLACE INTO proof_artifacts (
       id,
       user_id,
       verification_id,
+      proof_system,
       proof_type,
       proof_hash,
       proof_payload,
       public_inputs,
-      is_over_18,
       generation_time_ms,
       nonce,
       policy_version,
-      circuit_type,
-      noir_version,
-      circuit_hash,
-      bb_version,
+      metadata,
       verified,
       created_at
     ) VALUES
@@ -339,18 +336,15 @@ async function seedVerifiedIdentity(
         '${randomUUID()}',
         '${userId}',
         '${verificationId}',
+        'noir_ultrahonk',
         'age_verification',
         'proof_${randomUUID().replaceAll("-", "")}',
         'mock-proof',
         '["${new Date().getFullYear()}","18","${randomUUID()}","1"]',
-        1,
         1240,
         '${randomUUID()}',
         '${policyVersion}',
-        'age_verification',
-        null,
-        null,
-        null,
+        '{"circuitType":"age_verification","isOver18":true}',
         1,
         '${now}'
       ),
@@ -358,18 +352,15 @@ async function seedVerifiedIdentity(
         '${randomUUID()}',
         '${userId}',
         '${verificationId}',
+        'noir_ultrahonk',
         'face_match',
         'proof_${randomUUID().replaceAll("-", "")}',
         'mock-proof',
         '["0.95","${randomUUID()}"]',
-        null,
         980,
         '${randomUUID()}',
         '${policyVersion}',
-        'face_match',
-        null,
-        null,
-        null,
+        '{"circuitType":"face_match"}',
         1,
         '${now}'
       );
@@ -400,7 +391,7 @@ async function seedVerifiedIdentity(
   await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, identityVerificationSql);
   await runSql(dbUrl, signedClaimsSql);
-  await runSql(dbUrl, zkProofSql);
+  await runSql(dbUrl, proofArtifactsSql);
   await runSql(dbUrl, encryptedAttributesSql);
 }
 

@@ -9,7 +9,12 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { insertSignedClaim } from "@/lib/db/queries/crypto";
+import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
+import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
+import {
+  insertProofArtifact,
+  insertSignedClaim,
+} from "@/lib/db/queries/crypto";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
@@ -25,9 +30,11 @@ import {
   dobToDaysSince1900,
   parseBirthYearFromDob,
 } from "@/lib/identity/verification/birth-year";
+import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { signAttestationClaim } from "@/lib/privacy/zk/claims";
+import { computeProofSetHash } from "@/lib/privacy/zk/verification-utils";
 import { verifyZkPassportProofs } from "@/lib/privacy/zk/zkpassport-verifier";
 
 import { protectedProcedure, router } from "../server";
@@ -241,6 +248,52 @@ export const passportChipRouter = router({
           signature: chipClaimSignature,
           issuedAt: now,
         });
+
+        // Store each ZKPassport proof in proof_artifacts
+        const proofHashes: string[] = [];
+        const proofs = input.proofs as ProofResult[];
+        for (const proofResult of proofs) {
+          const proofPayload = proofResult.proof ?? "";
+          const proofHash = crypto
+            .createHash("sha256")
+            .update(proofPayload)
+            .digest("hex");
+          proofHashes.push(proofHash);
+
+          await insertProofArtifact({
+            id: crypto.randomUUID(),
+            userId,
+            verificationId,
+            proofSystem: "zkpassport",
+            proofType: proofResult.name ?? "zkpassport",
+            proofHash,
+            proofPayload,
+            verified: true,
+            policyVersion: POLICY_VERSION,
+            metadata: JSON.stringify({
+              vkeyHash: proofResult.vkeyHash,
+              version: proofResult.version,
+              requestId: input.requestId,
+            }),
+          });
+        }
+
+        // Compute proofSetHash and upsert attestation evidence
+        if (proofHashes.length > 0) {
+          const proofSetHash = computeProofSetHash({
+            proofHashes,
+            policyHash: POLICY_HASH,
+          });
+          await upsertAttestationEvidence({
+            userId,
+            verificationId,
+            policyVersion: POLICY_VERSION,
+            policyHash: POLICY_HASH,
+            proofSetHash,
+          });
+        }
+
+        await materializeVerificationChecks(userId, verificationId);
 
         // Convert DOB to dobDays for FHE encryption
         const dobDays = dobToDaysSince1900(birthdate);

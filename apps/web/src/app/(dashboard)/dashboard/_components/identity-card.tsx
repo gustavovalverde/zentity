@@ -31,8 +31,8 @@ import { VerificationFinalizationNotice } from "@/components/verification/verifi
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
+  getProofTypesByUserAndVerification,
   getSignedClaimTypesByUserAndVerification,
-  getZkProofTypesByUserAndVerification,
 } from "@/lib/db/queries/crypto";
 import {
   getIdentityBundleByUserId,
@@ -299,10 +299,10 @@ export async function IdentityCard({
   const birthYearCipher = dobDaysCipher ?? birthYearOffsetCipher;
 
   const verificationId = verification?.id ?? null;
-  const [zkProofTypes, signedClaimTypes] =
+  const [zkProofTypes, signedClaimTypes]: [string[], string[]] =
     userId && verificationId
       ? await Promise.all([
-          getZkProofTypesByUserAndVerification(userId, verificationId),
+          getProofTypesByUserAndVerification(userId, verificationId),
           getSignedClaimTypesByUserAndVerification(userId, verificationId),
         ])
       : [[], []];

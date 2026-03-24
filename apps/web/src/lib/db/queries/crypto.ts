@@ -5,9 +5,9 @@ import type {
 import type {
   EncryptedSecretRecord,
   NewEncryptedAttribute,
+  ProofSessionRecord,
   SecretWrapperRecord,
   SignedClaimRecord,
-  ZkProofSessionRecord,
 } from "../schema/crypto";
 
 import crypto from "node:crypto";
@@ -21,35 +21,30 @@ import { db } from "../connection";
 import {
   encryptedAttributes,
   encryptedSecrets,
+  proofArtifacts,
+  proofSessions,
   secretWrappers,
   signedClaims,
-  zkProofSessions,
-  zkProofs,
 } from "../schema/crypto";
 
-interface ZkProofInsert {
-  bbVersion?: string | null | undefined;
-  circuitHash?: string | null | undefined;
-  circuitType?: string | null | undefined;
+interface ProofArtifactInsert {
   generationTimeMs?: number | null | undefined;
   id: string;
-  isOver18?: boolean | null | undefined;
-  noirVersion?: string | null | undefined;
+  metadata?: string | null | undefined;
   nonce?: string | null | undefined;
   policyVersion?: string | null | undefined;
   proofHash: string;
   proofPayload?: string | null | undefined;
-  proofSessionId: string;
+  proofSessionId?: string | null | undefined;
+  proofSystem: string;
   proofType: string;
   publicInputs?: string | null | undefined;
   userId: string;
   verificationId?: string | null | undefined;
-  verificationKeyHash?: string | null | undefined;
-  verificationKeyPoseidonHash?: string | null | undefined;
   verified?: boolean | undefined;
 }
 
-interface ZkProofSessionInsert {
+interface ProofSessionInsert {
   audience: string;
   createdAt: number;
   expiresAt: number;
@@ -63,6 +58,19 @@ interface ZkProofSessionInsert {
 type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
   metadata: Record<string, unknown> | null;
 };
+
+function parseProofMetadata(
+  raw: string | null
+): Record<string, unknown> | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
 
 function parseSecretMetadata(
   raw: string | null
@@ -138,20 +146,20 @@ export async function getUserAgeProof(
 ): Promise<AgeProofSummary | null> {
   const proof = await db
     .select({
-      id: zkProofs.id,
-      isOver18: zkProofs.isOver18,
-      generationTimeMs: zkProofs.generationTimeMs,
-      createdAt: zkProofs.createdAt,
+      id: proofArtifacts.id,
+      metadata: proofArtifacts.metadata,
+      generationTimeMs: proofArtifacts.generationTimeMs,
+      createdAt: proofArtifacts.createdAt,
     })
-    .from(zkProofs)
+    .from(proofArtifacts)
     .where(
       and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.proofType, "age_verification"),
-        eq(zkProofs.verified, true)
+        eq(proofArtifacts.userId, userId),
+        eq(proofArtifacts.proofType, "age_verification"),
+        eq(proofArtifacts.verified, true)
       )
     )
-    .orderBy(desc(zkProofs.createdAt))
+    .orderBy(desc(proofArtifacts.createdAt))
     .limit(1)
     .get();
 
@@ -159,7 +167,8 @@ export async function getUserAgeProof(
     return null;
   }
 
-  // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
+  const meta = parseProofMetadata(proof.metadata);
+
   let encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
     "dob_days"
@@ -180,7 +189,7 @@ export async function getUserAgeProof(
 
   return {
     proofId: proof.id,
-    isOver18: Boolean(proof.isOver18),
+    isOver18: Boolean(meta?.isOver18),
     generationTimeMs: proof.generationTimeMs ?? null,
     createdAt: proof.createdAt,
     birthYearOffsetCiphertextHash: ciphertextInfo.hash,
@@ -194,28 +203,22 @@ export async function getUserAgeProofFull(
 ): Promise<AgeProofFull | null> {
   const row = await db
     .select({
-      id: zkProofs.id,
-      isOver18: zkProofs.isOver18,
-      generationTimeMs: zkProofs.generationTimeMs,
-      createdAt: zkProofs.createdAt,
-      proofPayload: zkProofs.proofPayload,
-      publicInputs: zkProofs.publicInputs,
-      circuitType: zkProofs.circuitType,
-      noirVersion: zkProofs.noirVersion,
-      circuitHash: zkProofs.circuitHash,
-      verificationKeyHash: zkProofs.verificationKeyHash,
-      verificationKeyPoseidonHash: zkProofs.verificationKeyPoseidonHash,
-      bbVersion: zkProofs.bbVersion,
+      id: proofArtifacts.id,
+      metadata: proofArtifacts.metadata,
+      generationTimeMs: proofArtifacts.generationTimeMs,
+      createdAt: proofArtifacts.createdAt,
+      proofPayload: proofArtifacts.proofPayload,
+      publicInputs: proofArtifacts.publicInputs,
     })
-    .from(zkProofs)
+    .from(proofArtifacts)
     .where(
       and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.proofType, "age_verification"),
-        eq(zkProofs.verified, true)
+        eq(proofArtifacts.userId, userId),
+        eq(proofArtifacts.proofType, "age_verification"),
+        eq(proofArtifacts.verified, true)
       )
     )
-    .orderBy(desc(zkProofs.createdAt))
+    .orderBy(desc(proofArtifacts.createdAt))
     .limit(1)
     .get();
 
@@ -223,7 +226,8 @@ export async function getUserAgeProofFull(
     return null;
   }
 
-  // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
+  const meta = parseProofMetadata(row.metadata);
+
   let encrypted = await getLatestEncryptedAttributeByUserAndType(
     userId,
     "dob_days"
@@ -256,7 +260,7 @@ export async function getUserAgeProofFull(
 
   return {
     proofId: row.id,
-    isOver18: Boolean(row.isOver18),
+    isOver18: Boolean(meta?.isOver18),
     generationTimeMs: row.generationTimeMs ?? null,
     createdAt: row.createdAt,
     birthYearOffsetCiphertextHash: ciphertextInfo.hash,
@@ -265,12 +269,13 @@ export async function getUserAgeProofFull(
     proof: row.proofPayload ?? null,
     publicSignals,
     fheKeyId: encrypted?.keyId ?? null,
-    circuitType: row.circuitType ?? null,
-    noirVersion: row.noirVersion ?? null,
-    circuitHash: row.circuitHash ?? null,
-    verificationKeyHash: row.verificationKeyHash ?? null,
-    verificationKeyPoseidonHash: row.verificationKeyPoseidonHash ?? null,
-    bbVersion: row.bbVersion ?? null,
+    circuitType: (meta?.circuitType as string) ?? null,
+    noirVersion: (meta?.noirVersion as string) ?? null,
+    circuitHash: (meta?.circuitHash as string) ?? null,
+    verificationKeyHash: (meta?.verificationKeyHash as string) ?? null,
+    verificationKeyPoseidonHash:
+      (meta?.verificationKeyPoseidonHash as string) ?? null,
+    bbVersion: (meta?.bbVersion as string) ?? null,
   };
 }
 
@@ -422,13 +427,14 @@ export async function deleteSecretWrapper(
 }
 
 /**
- * Get all verified ZK proofs for a user with full details.
+ * Get all verified proofs for a user with full details.
  * Used by the dev page to display proof metadata.
  */
 export async function getAllVerifiedProofsFull(userId: string): Promise<
   {
     proofId: string;
     proofType: string;
+    proofSystem: string;
     generationTimeMs: number | null;
     createdAt: string;
     proof: string | null;
@@ -443,25 +449,24 @@ export async function getAllVerifiedProofsFull(userId: string): Promise<
 > {
   const rows = await db
     .select({
-      id: zkProofs.id,
-      proofType: zkProofs.proofType,
-      generationTimeMs: zkProofs.generationTimeMs,
-      createdAt: zkProofs.createdAt,
-      proofPayload: zkProofs.proofPayload,
-      publicInputs: zkProofs.publicInputs,
-      circuitType: zkProofs.circuitType,
-      noirVersion: zkProofs.noirVersion,
-      circuitHash: zkProofs.circuitHash,
-      verificationKeyHash: zkProofs.verificationKeyHash,
-      verificationKeyPoseidonHash: zkProofs.verificationKeyPoseidonHash,
-      bbVersion: zkProofs.bbVersion,
+      id: proofArtifacts.id,
+      proofType: proofArtifacts.proofType,
+      proofSystem: proofArtifacts.proofSystem,
+      generationTimeMs: proofArtifacts.generationTimeMs,
+      createdAt: proofArtifacts.createdAt,
+      proofPayload: proofArtifacts.proofPayload,
+      publicInputs: proofArtifacts.publicInputs,
+      metadata: proofArtifacts.metadata,
     })
-    .from(zkProofs)
-    .where(and(eq(zkProofs.userId, userId), eq(zkProofs.verified, true)))
-    .orderBy(desc(zkProofs.createdAt))
+    .from(proofArtifacts)
+    .where(
+      and(eq(proofArtifacts.userId, userId), eq(proofArtifacts.verified, true))
+    )
+    .orderBy(desc(proofArtifacts.createdAt))
     .all();
 
   return rows.map((row) => {
+    const meta = parseProofMetadata(row.metadata);
     let publicSignals: string[] | null = null;
     if (row.publicInputs) {
       try {
@@ -477,25 +482,27 @@ export async function getAllVerifiedProofsFull(userId: string): Promise<
     return {
       proofId: row.id,
       proofType: row.proofType,
+      proofSystem: row.proofSystem,
       generationTimeMs: row.generationTimeMs ?? null,
       createdAt: row.createdAt,
       proof: row.proofPayload ?? null,
       publicSignals,
-      circuitType: row.circuitType ?? null,
-      noirVersion: row.noirVersion ?? null,
-      circuitHash: row.circuitHash ?? null,
-      verificationKeyHash: row.verificationKeyHash ?? null,
-      verificationKeyPoseidonHash: row.verificationKeyPoseidonHash ?? null,
-      bbVersion: row.bbVersion ?? null,
+      circuitType: (meta?.circuitType as string) ?? null,
+      noirVersion: (meta?.noirVersion as string) ?? null,
+      circuitHash: (meta?.circuitHash as string) ?? null,
+      verificationKeyHash: (meta?.verificationKeyHash as string) ?? null,
+      verificationKeyPoseidonHash:
+        (meta?.verificationKeyPoseidonHash as string) ?? null,
+      bbVersion: (meta?.bbVersion as string) ?? null,
     };
   });
 }
 
-export async function createZkProofSession(
-  data: ZkProofSessionInsert
+export async function createProofSession(
+  data: ProofSessionInsert
 ): Promise<void> {
   await db
-    .insert(zkProofSessions)
+    .insert(proofSessions)
     .values({
       id: data.id,
       userId: data.userId,
@@ -510,67 +517,67 @@ export async function createZkProofSession(
     .run();
 }
 
-export async function getZkProofSessionById(
+export async function getProofSessionById(
   id: string
-): Promise<ZkProofSessionRecord | null> {
+): Promise<ProofSessionRecord | null> {
   const row = await db
     .select()
-    .from(zkProofSessions)
-    .where(eq(zkProofSessions.id, id))
+    .from(proofSessions)
+    .where(eq(proofSessions.id, id))
     .limit(1)
     .get();
   return row ?? null;
 }
 
-export async function closeZkProofSession(id: string): Promise<void> {
+export async function closeProofSession(id: string): Promise<void> {
   await db
-    .update(zkProofSessions)
+    .update(proofSessions)
     .set({
       closedAt: Date.now(),
     })
-    .where(eq(zkProofSessions.id, id))
+    .where(eq(proofSessions.id, id))
     .run();
 }
 
-export async function getZkProofTypesByUserAndVerification(
+export async function getProofTypesByUserAndVerification(
   userId: string,
   verificationId: string
 ): Promise<string[]> {
   const rows = await db
-    .select({ proofType: zkProofs.proofType })
-    .from(zkProofs)
+    .select({ proofType: proofArtifacts.proofType })
+    .from(proofArtifacts)
     .where(
       and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.verificationId, verificationId),
-        eq(zkProofs.verified, true)
+        eq(proofArtifacts.userId, userId),
+        eq(proofArtifacts.verificationId, verificationId),
+        eq(proofArtifacts.verified, true)
       )
     )
-    .groupBy(zkProofs.proofType)
-    .orderBy(zkProofs.proofType)
+    .groupBy(proofArtifacts.proofType)
+    .orderBy(proofArtifacts.proofType)
     .all();
 
   return rows.map((row) => row.proofType);
 }
 
-export async function getZkProofTypesByUserVerificationAndSession(
+export async function getProofTypesByUserVerificationAndSession(
   userId: string,
   verificationId: string,
   proofSessionId: string
 ): Promise<string[]> {
   const rows = await db
-    .select({ proofType: zkProofs.proofType })
-    .from(zkProofs)
+    .select({ proofType: proofArtifacts.proofType })
+    .from(proofArtifacts)
     .where(
       and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.verificationId, verificationId),
-        eq(zkProofs.proofSessionId, proofSessionId),
-        eq(zkProofs.verified, true)
+        eq(proofArtifacts.userId, userId),
+        eq(proofArtifacts.verificationId, verificationId),
+        eq(proofArtifacts.proofSessionId, proofSessionId),
+        eq(proofArtifacts.verified, true)
       )
     )
-    .groupBy(zkProofs.proofType)
-    .orderBy(zkProofs.proofType)
+    .groupBy(proofArtifacts.proofType)
+    .orderBy(proofArtifacts.proofType)
     .all();
 
   return rows.map((row) => row.proofType);
@@ -679,44 +686,41 @@ export async function getProofHashesByUserVerificationAndSession(
   proofSessionId: string
 ): Promise<string[]> {
   const rows = await db
-    .select({ proofHash: zkProofs.proofHash })
-    .from(zkProofs)
+    .select({ proofHash: proofArtifacts.proofHash })
+    .from(proofArtifacts)
     .where(
       and(
-        eq(zkProofs.userId, userId),
-        eq(zkProofs.verificationId, verificationId),
-        eq(zkProofs.proofSessionId, proofSessionId),
-        eq(zkProofs.verified, true)
+        eq(proofArtifacts.userId, userId),
+        eq(proofArtifacts.verificationId, verificationId),
+        eq(proofArtifacts.proofSessionId, proofSessionId),
+        eq(proofArtifacts.verified, true)
       )
     )
-    .orderBy(zkProofs.proofHash)
+    .orderBy(proofArtifacts.proofHash)
     .all();
 
   return rows.map((row) => row.proofHash);
 }
 
-export async function insertZkProofRecord(data: ZkProofInsert): Promise<void> {
+export async function insertProofArtifact(
+  data: ProofArtifactInsert
+): Promise<void> {
   await db
-    .insert(zkProofs)
+    .insert(proofArtifacts)
     .values({
       id: data.id,
       userId: data.userId,
       verificationId: data.verificationId ?? null,
-      proofSessionId: data.proofSessionId,
+      proofSessionId: data.proofSessionId ?? null,
+      proofSystem: data.proofSystem,
       proofType: data.proofType,
       proofHash: data.proofHash,
       proofPayload: data.proofPayload ?? null,
       publicInputs: data.publicInputs ?? null,
-      isOver18: data.isOver18 ?? null,
       generationTimeMs: data.generationTimeMs ?? null,
       nonce: data.nonce ?? null,
       policyVersion: data.policyVersion ?? null,
-      circuitType: data.circuitType ?? null,
-      noirVersion: data.noirVersion ?? null,
-      circuitHash: data.circuitHash ?? null,
-      verificationKeyHash: data.verificationKeyHash ?? null,
-      verificationKeyPoseidonHash: data.verificationKeyPoseidonHash ?? null,
-      bbVersion: data.bbVersion ?? null,
+      metadata: data.metadata ?? null,
       verified: data.verified ?? false,
     })
     .run();

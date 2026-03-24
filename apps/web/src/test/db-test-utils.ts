@@ -19,11 +19,12 @@ import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import {
   encryptedAttributes,
   encryptedSecrets,
+  proofArtifacts,
   secretWrappers,
   signedClaims,
   usedIntentJtis,
+  verificationChecks,
   zkChallenges,
-  zkProofs,
 } from "@/lib/db/schema/crypto";
 import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
 import {
@@ -72,7 +73,8 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(encryptedAttributes).run();
     await tx.delete(secretWrappers).run();
     await tx.delete(encryptedSecrets).run();
-    await tx.delete(zkProofs).run();
+    await tx.delete(verificationChecks).run();
+    await tx.delete(proofArtifacts).run();
     await tx.delete(identityVerificationJobs).run();
     await tx.delete(identityVerificationDrafts).run();
     await tx.delete(identityVerifications).run();

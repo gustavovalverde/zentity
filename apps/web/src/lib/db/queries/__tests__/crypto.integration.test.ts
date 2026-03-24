@@ -6,15 +6,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
-  createZkProofSession,
+  createProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   getLatestSignedClaimByUserTypeAndVerification,
   getUserAgeProof,
   getUserAgeProofFull,
   insertEncryptedAttribute,
+  insertProofArtifact,
   insertSignedClaim,
-  insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import { encryptedAttributes } from "@/lib/db/schema/crypto";
 import { encodeAad } from "@/lib/privacy/primitives/aad";
@@ -38,7 +38,7 @@ async function createProofContext(userId: string, verificationId?: string) {
   const resolvedDocumentId = verificationId ?? crypto.randomUUID();
   const proofSessionId = crypto.randomUUID();
   const now = Date.now();
-  await createZkProofSession({
+  await createProofSession({
     id: proofSessionId,
     userId,
     verificationId: resolvedDocumentId,
@@ -60,17 +60,18 @@ describe("crypto queries", () => {
     const userId = await createTestUser();
     const { verificationId, proofSessionId } = await createProofContext(userId);
 
-    await insertZkProofRecord({
+    await insertProofArtifact({
       id: crypto.randomUUID(),
       userId,
       verificationId,
       proofSessionId,
+      proofSystem: "noir_ultrahonk",
       proofType: "age_verification",
       proofHash: "proof-hash",
       policyVersion: POLICY_VERSION,
       verified: true,
-      isOver18: true,
       generationTimeMs: 120,
+      metadata: JSON.stringify({ isOver18: true }),
     });
 
     await insertEncryptedAttribute({
@@ -104,22 +105,25 @@ describe("crypto queries", () => {
     const payload = "proof-payload";
     const publicInputs = JSON.stringify(["1", "2", "3"]);
 
-    await insertZkProofRecord({
+    await insertProofArtifact({
       id: crypto.randomUUID(),
       userId,
       verificationId,
       proofSessionId,
+      proofSystem: "noir_ultrahonk",
       proofType: "age_verification",
       proofHash: "proof-hash",
       policyVersion: POLICY_VERSION,
       verified: true,
-      isOver18: false,
       proofPayload: payload,
       publicInputs,
-      circuitType: "age_verification",
-      noirVersion: "1.0.0",
-      circuitHash: "circuit-hash",
-      bbVersion: "0.8.0",
+      metadata: JSON.stringify({
+        isOver18: false,
+        circuitType: "age_verification",
+        noirVersion: "1.0.0",
+        circuitHash: "circuit-hash",
+        bbVersion: "0.8.0",
+      }),
     });
 
     const full = await getUserAgeProofFull(userId);

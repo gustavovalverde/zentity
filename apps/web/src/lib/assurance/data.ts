@@ -17,8 +17,8 @@ import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation"
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestSignedClaimByUserTypeAndVerification,
+  getProofTypesByUserAndVerification,
   getSignedClaimTypesByUserAndVerification,
-  getZkProofTypesByUserAndVerification,
 } from "@/lib/db/queries/crypto";
 import {
   getIdentityBundleByUserId,
@@ -137,7 +137,7 @@ async function gatherVerificationData(
 
   const [zkProofTypes, signedClaimTypes, claimHashesValid] = verificationId
     ? await Promise.all([
-        getZkProofTypesByUserAndVerification(userId, verificationId),
+        getProofTypesByUserAndVerification(userId, verificationId),
         getSignedClaimTypesByUserAndVerification(userId, verificationId),
         hasValidClaimHashes(userId, verificationId),
       ])
@@ -175,7 +175,7 @@ async function gatherVerificationData(
  * - identity_bundles: FHE key status
  * - identity_verifications: document verification status
  * - signed_claims: liveness and face match claims
- * - zk_proofs: proof completion
+ * - proof_artifacts: proof completion
  * - encrypted_attributes: FHE encryption status
  * - blockchain_attestations: on-chain attestation status
  */

@@ -14,11 +14,11 @@ const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
 const mockCreateChallenge = vi.fn();
 const mockGetActiveChallengeCount = vi.fn();
-const mockGetZkProofSessionById = vi.fn();
-const mockGetZkProofTypesByUserDocumentAndSession = vi.fn();
-const mockGetProofHashesByUserDocumentAndSession = vi.fn();
-const mockCloseZkProofSession = vi.fn();
-const mockCreateZkProofSession = vi.fn();
+const mockGetProofSessionById = vi.fn();
+const mockGetProofTypesByUserVerificationAndSession = vi.fn();
+const mockGetProofHashesByUserVerificationAndSession = vi.fn();
+const mockCloseProofSession = vi.fn();
+const mockCreateProofSession = vi.fn();
 const mockGetUserBaseCommitments = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
@@ -57,16 +57,14 @@ vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/db/queries/crypto")>();
   return {
     ...actual,
-    getZkProofSessionById: (...args: unknown[]) =>
-      mockGetZkProofSessionById(...args),
-    getZkProofTypesByUserVerificationAndSession: (...args: unknown[]) =>
-      mockGetZkProofTypesByUserDocumentAndSession(...args),
+    getProofSessionById: (...args: unknown[]) =>
+      mockGetProofSessionById(...args),
+    getProofTypesByUserVerificationAndSession: (...args: unknown[]) =>
+      mockGetProofTypesByUserVerificationAndSession(...args),
     getProofHashesByUserVerificationAndSession: (...args: unknown[]) =>
-      mockGetProofHashesByUserDocumentAndSession(...args),
-    closeZkProofSession: (...args: unknown[]) =>
-      mockCloseZkProofSession(...args),
-    createZkProofSession: (...args: unknown[]) =>
-      mockCreateZkProofSession(...args),
+      mockGetProofHashesByUserVerificationAndSession(...args),
+    closeProofSession: (...args: unknown[]) => mockCloseProofSession(...args),
+    createProofSession: (...args: unknown[]) => mockCreateProofSession(...args),
     getUserBaseCommitments: (...args: unknown[]) =>
       mockGetUserBaseCommitments(...args),
   };
@@ -186,7 +184,7 @@ describe("proof router replay and context binding", () => {
       verificationKeyPoseidonHash: null,
       bbVersion: null,
     });
-    mockGetZkProofSessionById.mockResolvedValue({
+    mockGetProofSessionById.mockResolvedValue({
       id: proofSessionId,
       userId: "user-123",
       verificationId: "ver-1",
@@ -197,12 +195,12 @@ describe("proof router replay and context binding", () => {
       expiresAt: Date.now() + 60_000,
       closedAt: null,
     });
-    mockGetZkProofTypesByUserDocumentAndSession.mockResolvedValue([
+    mockGetProofTypesByUserVerificationAndSession.mockResolvedValue([
       "identity_binding",
     ]);
-    mockGetProofHashesByUserDocumentAndSession.mockResolvedValue([]);
-    mockCloseZkProofSession.mockResolvedValue(undefined);
-    mockCreateZkProofSession.mockResolvedValue(undefined);
+    mockGetProofHashesByUserVerificationAndSession.mockResolvedValue([]);
+    mockCloseProofSession.mockResolvedValue(undefined);
+    mockCreateProofSession.mockResolvedValue(undefined);
     mockGetUserBaseCommitments.mockResolvedValue([baseCommitment]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
     mockCreateChallenge.mockImplementation(
@@ -275,7 +273,7 @@ describe("proof router replay and context binding", () => {
 
   it("rejects proofs when challenge is missing for a different caller context", async () => {
     mockConsumeChallenge.mockResolvedValue(null);
-    mockGetZkProofSessionById.mockResolvedValueOnce({
+    mockGetProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-456",
       verificationId: "ver-1",
@@ -361,7 +359,7 @@ describe("proof router replay and context binding", () => {
   });
 
   it("uses Origin header audience for identity binding context", async () => {
-    mockGetZkProofSessionById.mockResolvedValueOnce({
+    mockGetProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
       verificationId: "ver-1",
@@ -402,7 +400,7 @@ describe("proof router replay and context binding", () => {
   });
 
   it("binds challenge audience from Origin header", async () => {
-    mockGetZkProofSessionById.mockResolvedValueOnce({
+    mockGetProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
       verificationId: "ver-1",
@@ -436,7 +434,7 @@ describe("proof router replay and context binding", () => {
   });
 
   it("binds challenge audience from forwarded headers when Origin is missing", async () => {
-    mockGetZkProofSessionById.mockResolvedValueOnce({
+    mockGetProofSessionById.mockResolvedValueOnce({
       id: proofSessionId,
       userId: "user-123",
       verificationId: "ver-1",
@@ -529,7 +527,7 @@ describe("proof router replay and context binding", () => {
   });
 
   it("rejects storing non-binding proofs until identity binding is stored", async () => {
-    mockGetZkProofTypesByUserDocumentAndSession.mockResolvedValue([]);
+    mockGetProofTypesByUserVerificationAndSession.mockResolvedValue([]);
     const caller = await createCaller(authedUserSession);
 
     await expect(

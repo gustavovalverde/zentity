@@ -10,8 +10,8 @@ import {
 
 import { users } from "./auth";
 
-export const zkProofSessions = sqliteTable(
-  "zk_proof_sessions",
+export const proofSessions = sqliteTable(
+  "proof_sessions",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
@@ -26,14 +26,14 @@ export const zkProofSessions = sqliteTable(
     closedAt: integer("closed_at"),
   },
   (table) => [
-    index("idx_zk_proof_sessions_user_id").on(table.userId),
-    index("idx_zk_proof_sessions_verification_id").on(table.verificationId),
-    index("idx_zk_proof_sessions_expires_at").on(table.expiresAt),
+    index("idx_proof_sessions_user_id").on(table.userId),
+    index("idx_proof_sessions_verification_id").on(table.verificationId),
+    index("idx_proof_sessions_expires_at").on(table.expiresAt),
   ]
 );
 
-export const zkProofs = sqliteTable(
-  "zk_proofs",
+export const proofArtifacts = sqliteTable(
+  "proof_artifacts",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
@@ -41,34 +41,30 @@ export const zkProofs = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     verificationId: text("verification_id"),
     proofSessionId: text("proof_session_id").references(
-      () => zkProofSessions.id,
+      () => proofSessions.id,
       {
         onDelete: "cascade",
       }
     ),
+    proofSystem: text("proof_system").notNull(),
     proofType: text("proof_type").notNull(),
     proofHash: text("proof_hash").notNull(),
     proofPayload: text("proof_payload"),
     publicInputs: text("public_inputs"),
-    isOver18: integer("is_over_18", { mode: "boolean" }),
+    verified: integer("verified", { mode: "boolean" }).default(false),
     generationTimeMs: integer("generation_time_ms"),
     nonce: text("nonce"),
     policyVersion: text("policy_version"),
-    circuitType: text("circuit_type"),
-    noirVersion: text("noir_version"),
-    circuitHash: text("circuit_hash"),
-    verificationKeyHash: text("verification_key_hash"),
-    verificationKeyPoseidonHash: text("verification_key_poseidon_hash"),
-    bbVersion: text("bb_version"),
-    verified: integer("verified", { mode: "boolean" }).default(false),
+    metadata: text("metadata"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
-    index("idx_zk_proofs_user_id").on(table.userId),
-    index("idx_zk_proofs_session_id").on(table.proofSessionId),
-    index("idx_zk_proofs_type").on(table.proofType),
-    index("idx_zk_proofs_verification_id").on(table.verificationId),
-    index("idx_zk_proofs_hash").on(table.proofHash),
+    index("idx_proof_artifacts_user_id").on(table.userId),
+    index("idx_proof_artifacts_session_id").on(table.proofSessionId),
+    index("idx_proof_artifacts_type").on(table.proofType),
+    index("idx_proof_artifacts_verification_id").on(table.verificationId),
+    index("idx_proof_artifacts_hash").on(table.proofHash),
+    index("idx_proof_artifacts_system").on(table.proofSystem),
   ]
 );
 
@@ -123,7 +119,7 @@ export const zkChallenges = sqliteTable(
     nonce: text("nonce").primaryKey(),
     circuitType: text("circuit_type").notNull(),
     proofSessionId: text("proof_session_id").references(
-      () => zkProofSessions.id,
+      () => proofSessions.id,
       {
         onDelete: "cascade",
       }
@@ -139,6 +135,32 @@ export const zkChallenges = sqliteTable(
     index("idx_zk_challenges_session_id").on(table.proofSessionId),
     index("idx_zk_challenges_msg_sender").on(table.msgSender),
     index("idx_zk_challenges_audience").on(table.audience),
+  ]
+);
+
+export const verificationChecks = sqliteTable(
+  "verification_checks",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    verificationId: text("verification_id").notNull(),
+    checkType: text("check_type").notNull(),
+    passed: integer("passed", { mode: "boolean" }).notNull(),
+    source: text("source").notNull(),
+    evidenceRef: text("evidence_ref"),
+    metadata: text("metadata"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("uq_verification_checks_verification_check").on(
+      table.verificationId,
+      table.checkType
+    ),
+    index("idx_verification_checks_user_id").on(table.userId),
+    index("idx_verification_checks_verification_id").on(table.verificationId),
   ]
 );
 
@@ -207,11 +229,14 @@ export const secretWrappers = sqliteTable(
   ]
 );
 
-export type ZkProofRecord = typeof zkProofs.$inferSelect;
-export type NewZkProofRecord = typeof zkProofs.$inferInsert;
+export type ProofArtifactRecord = typeof proofArtifacts.$inferSelect;
+export type NewProofArtifact = typeof proofArtifacts.$inferInsert;
 
-export type ZkProofSessionRecord = typeof zkProofSessions.$inferSelect;
-export type NewZkProofSessionRecord = typeof zkProofSessions.$inferInsert;
+export type ProofSessionRecord = typeof proofSessions.$inferSelect;
+export type NewProofSession = typeof proofSessions.$inferInsert;
+
+export type VerificationCheckRecord = typeof verificationChecks.$inferSelect;
+export type NewVerificationCheck = typeof verificationChecks.$inferInsert;
 
 export type EncryptedAttributeRecord = typeof encryptedAttributes.$inferSelect;
 export type NewEncryptedAttribute = typeof encryptedAttributes.$inferInsert;

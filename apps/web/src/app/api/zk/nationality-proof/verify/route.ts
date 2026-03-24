@@ -8,7 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getZkProofSessionById } from "@/lib/db/queries/crypto";
+import { getProofSessionById } from "@/lib/db/queries/crypto";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       publicInputs[PROOF_TYPE_SPECS.nationality_membership.nonceIndex]
     );
     const audience = resolveAudience(request);
-    const proofSession = await getZkProofSessionById(proofSessionId);
+    const proofSession = await getProofSessionById(proofSessionId);
     if (!proofSession) {
       return NextResponse.json(
         { error: "Unknown proof session" },

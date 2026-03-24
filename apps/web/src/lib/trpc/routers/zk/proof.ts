@@ -9,16 +9,16 @@ import {
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  closeZkProofSession,
+  closeProofSession,
   getAllVerifiedProofsFull,
   getLatestSignedClaimByUserTypeAndVerification,
   getProofHashesByUserVerificationAndSession,
+  getProofSessionById,
+  getProofTypesByUserVerificationAndSession,
   getUserAgeProof,
   getUserAgeProofFull,
   getUserBaseCommitments,
-  getZkProofSessionById,
-  getZkProofTypesByUserVerificationAndSession,
-  insertZkProofRecord,
+  insertProofArtifact,
 } from "@/lib/db/queries/crypto";
 import {
   getSelectedVerification,
@@ -30,6 +30,7 @@ import {
   getTodayDobDays,
   minAgeYearsToDays,
 } from "@/lib/identity/verification/birth-year";
+import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { withSpan } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
@@ -83,7 +84,7 @@ async function requireActiveProofSession(args: {
   proofSessionId: string;
   userId: string;
 }) {
-  const proofSession = await getZkProofSessionById(args.proofSessionId);
+  const proofSession = await getProofSessionById(args.proofSessionId);
   if (!proofSession) {
     throw new TRPCError({
       code: "BAD_REQUEST",
@@ -730,12 +731,11 @@ export const storeProofProcedure = protectedProcedure
     });
 
     if (input.circuitType !== "identity_binding") {
-      const sessionProofTypes =
-        await getZkProofTypesByUserVerificationAndSession(
-          ctx.userId,
-          verificationId,
-          input.proofSessionId
-        );
+      const sessionProofTypes = await getProofTypesByUserVerificationAndSession(
+        ctx.userId,
+        verificationId,
+        input.proofSessionId
+      );
       if (!sessionProofTypes.includes("identity_binding")) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -783,28 +783,33 @@ export const storeProofProcedure = protectedProcedure
     });
 
     await withSpan(
-      "db.insert_zk_proof",
-      { "zk.circuit_type": input.circuitType },
+      "db.insert_proof_artifact",
+      { "proof.circuit_type": input.circuitType },
       () =>
-        insertZkProofRecord({
+        insertProofArtifact({
           id: proofId,
           userId: ctx.userId,
           verificationId,
           proofSessionId: input.proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType: input.circuitType,
           proofHash,
           proofPayload: input.proof,
           publicInputs: JSON.stringify(input.publicSignals),
-          isOver18: input.circuitType === "age_verification" ? true : null,
           generationTimeMs: input.generationTimeMs,
           nonce: nonceHex,
           policyVersion: POLICY_VERSION,
-          circuitType: result.circuitType,
-          noirVersion: result.noirVersion,
-          circuitHash: result.circuitHash,
-          verificationKeyHash: result.verificationKeyHash,
-          verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
-          bbVersion: result.bbVersion,
+          metadata: JSON.stringify({
+            circuitType: result.circuitType,
+            noirVersion: result.noirVersion,
+            circuitHash: result.circuitHash,
+            verificationKeyHash: result.verificationKeyHash,
+            verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
+            bbVersion: result.bbVersion,
+            ...(input.circuitType === "age_verification"
+              ? { isOver18: true }
+              : {}),
+          }),
           verified: true,
         })
     );
@@ -828,7 +833,7 @@ export const storeProofProcedure = protectedProcedure
       })
     );
 
-    const sessionProofTypes = await getZkProofTypesByUserVerificationAndSession(
+    const sessionProofTypes = await getProofTypesByUserVerificationAndSession(
       ctx.userId,
       verificationId,
       input.proofSessionId
@@ -837,7 +842,7 @@ export const storeProofProcedure = protectedProcedure
       sessionProofTypes.includes(proofType)
     );
     if (sessionComplete) {
-      await closeZkProofSession(input.proofSessionId);
+      await closeProofSession(input.proofSessionId);
     }
 
     const verificationStatus = await getVerificationStatus(ctx.userId);
@@ -849,6 +854,8 @@ export const storeProofProcedure = protectedProcedure
         issuerId: ISSUER_ID,
       });
     }
+
+    await materializeVerificationChecks(ctx.userId, verificationId);
 
     invalidateVerificationCache(ctx.userId);
     scheduleFheEncryption({

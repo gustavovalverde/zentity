@@ -14,10 +14,10 @@ import {
   updateBlockchainAttestationConfirmed,
 } from "@/lib/db/queries/attestation";
 import {
-  createZkProofSession,
+  createProofSession,
   insertEncryptedAttribute,
+  insertProofArtifact,
   insertSignedClaim,
-  insertZkProofRecord,
 } from "@/lib/db/queries/crypto";
 import {
   createVerification,
@@ -54,10 +54,10 @@ async function createBundleWithKeys(userId: string) {
   });
 }
 
-async function createProofSession(userId: string, verificationId: string) {
+async function setupProofSession(userId: string, verificationId: string) {
   const sessionId = crypto.randomUUID();
   const now = Date.now();
-  await createZkProofSession({
+  await createProofSession({
     id: sessionId,
     userId,
     verificationId,
@@ -202,13 +202,14 @@ describe("assurance data layer", () => {
         "face_match",
         "identity_binding",
       ];
-      const proofSessionId = await createProofSession(userId, docId);
+      const proofSessionId = await setupProofSession(userId, docId);
       for (const proofType of proofTypes) {
-        await insertZkProofRecord({
+        await insertProofArtifact({
           id: crypto.randomUUID(),
           userId,
           verificationId: docId,
           proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
           proofPayload: crypto.randomBytes(256).toString("hex"),
@@ -335,7 +336,7 @@ describe("assurance data layer", () => {
       }
 
       // All ZK proofs
-      const proofSessionId = await createProofSession(userId, docId);
+      const proofSessionId = await setupProofSession(userId, docId);
       for (const proofType of [
         "age_verification",
         "doc_validity",
@@ -343,11 +344,12 @@ describe("assurance data layer", () => {
         "face_match",
         "identity_binding",
       ]) {
-        await insertZkProofRecord({
+        await insertProofArtifact({
           id: crypto.randomUUID(),
           userId,
           verificationId: docId,
           proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
           proofPayload: crypto.randomBytes(256).toString("hex"),
@@ -404,7 +406,7 @@ describe("assurance data layer", () => {
         });
       }
 
-      const proofSessionId = await createProofSession(userId, docId);
+      const proofSessionId = await setupProofSession(userId, docId);
       for (const proofType of [
         "age_verification",
         "doc_validity",
@@ -412,11 +414,12 @@ describe("assurance data layer", () => {
         "face_match",
         "identity_binding",
       ]) {
-        await insertZkProofRecord({
+        await insertProofArtifact({
           id: crypto.randomUUID(),
           userId,
           verificationId: docId,
           proofSessionId,
+          proofSystem: "noir_ultrahonk",
           proofType,
           proofHash: crypto.randomBytes(32).toString("hex"),
           proofPayload: crypto.randomBytes(256).toString("hex"),

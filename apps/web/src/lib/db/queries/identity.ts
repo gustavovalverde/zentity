@@ -30,11 +30,11 @@ import {
 import {
   encryptedAttributes,
   encryptedSecrets,
+  proofArtifacts,
+  proofSessions,
   secretWrappers,
   signedClaims,
   zkChallenges,
-  zkProofSessions,
-  zkProofs,
 } from "../schema/crypto";
 import {
   identityBundles,
@@ -134,11 +134,14 @@ export async function deleteIdentityData(userId: string): Promise<void> {
       .delete(encryptedSecrets)
       .where(eq(encryptedSecrets.userId, userId))
       .run();
-    await tx.delete(zkProofs).where(eq(zkProofs.userId, userId)).run();
+    await tx
+      .delete(proofArtifacts)
+      .where(eq(proofArtifacts.userId, userId))
+      .run();
     await tx.delete(zkChallenges).where(eq(zkChallenges.userId, userId)).run();
     await tx
-      .delete(zkProofSessions)
-      .where(eq(zkProofSessions.userId, userId))
+      .delete(proofSessions)
+      .where(eq(proofSessions.userId, userId))
       .run();
     await tx
       .delete(identityVerificationJobs)
@@ -201,18 +204,18 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
   const [sessionProofRows, signedClaimTypes] = await Promise.all([
     db
       .select({
-        proofSessionId: zkProofs.proofSessionId,
-        proofType: zkProofs.proofType,
-        createdAt: zkProofs.createdAt,
+        proofSessionId: proofArtifacts.proofSessionId,
+        proofType: proofArtifacts.proofType,
+        createdAt: proofArtifacts.createdAt,
       })
-      .from(zkProofs)
+      .from(proofArtifacts)
       .where(
         and(
-          eq(zkProofs.userId, userId),
-          eq(zkProofs.verificationId, verificationId),
-          eq(zkProofs.verified, true),
-          eq(zkProofs.policyVersion, POLICY_VERSION),
-          sql`${zkProofs.proofSessionId} is not null`
+          eq(proofArtifacts.userId, userId),
+          eq(proofArtifacts.verificationId, verificationId),
+          eq(proofArtifacts.verified, true),
+          eq(proofArtifacts.policyVersion, POLICY_VERSION),
+          sql`${proofArtifacts.proofSessionId} is not null`
         )
       )
       .all(),
@@ -368,14 +371,14 @@ export const getSelectedVerification = cache(
     const [proofRows, claimRows] = await Promise.all([
       db
         .select({
-          verificationId: zkProofs.verificationId,
-          proofSessionId: zkProofs.proofSessionId,
-          proofType: zkProofs.proofType,
-          policyVersion: zkProofs.policyVersion,
-          verified: zkProofs.verified,
+          verificationId: proofArtifacts.verificationId,
+          proofSessionId: proofArtifacts.proofSessionId,
+          proofType: proofArtifacts.proofType,
+          policyVersion: proofArtifacts.policyVersion,
+          verified: proofArtifacts.verified,
         })
-        .from(zkProofs)
-        .where(eq(zkProofs.userId, userId))
+        .from(proofArtifacts)
+        .where(eq(proofArtifacts.userId, userId))
         .all(),
       db
         .select({

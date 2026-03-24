@@ -140,7 +140,7 @@ export async function deleteStaleAnonymousUserByEmail(
  * midway, they can retry with the same email by deleting the incomplete state.
  *
  * Cascade behavior:
- * - Most tables (sessions, accounts, passkeys, zkProofs, etc.) cascade on user delete
+ * - Most tables (sessions, accounts, passkeys, proofArtifacts, etc.) cascade on user delete
  * - identityVerificationDrafts cascades on user delete
  *
  * Passkey note: If a passkey was registered before failure, deleting the user
@@ -153,7 +153,7 @@ export async function deleteStaleAnonymousUserByEmail(
 export async function deleteIncompleteSignup(userId: string): Promise<void> {
   // Delete the user - cascades to:
   //    - sessions, accounts, passkeys (auth)
-  //    - zkProofs, encryptedAttributes, signedClaims, encryptedSecrets, secretWrappers (crypto)
+  //    - proofArtifacts, encryptedAttributes, signedClaims, encryptedSecrets, secretWrappers (crypto)
   //    - identityBundles, identityVerifications, identityVerificationJobs (identity)
   //    - attestationEvidence, attestationState (attestation)
   //    - recoveryConfigs, recoveryRequests, guardianRelationships, pendingGuardianInvites (recovery)
