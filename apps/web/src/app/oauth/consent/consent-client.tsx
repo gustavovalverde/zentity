@@ -30,6 +30,7 @@ import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
 import { authClient } from "@/lib/auth/auth-client";
 import { getSignedOAuthQuery } from "@/lib/auth/oauth-post-login";
 import {
+  findMissingIdentityFields,
   HIDDEN_SCOPES,
   isIdentityScope,
   SCOPE_DESCRIPTIONS,
@@ -213,6 +214,15 @@ export function OAuthConsentClient({
     }
 
     const identityPayload = buildIdentityPayload(profile);
+    const missingFields = findMissingIdentityFields(
+      identityPayload as Record<string, unknown>,
+      approvedScopes
+    );
+    if (missingFields.length > 0) {
+      throw new Error(
+        `Your profile does not contain: ${missingFields.join(", ")}. Complete identity verification to add this data.`
+      );
+    }
 
     const response = await fetch("/api/oauth2/identity/stage", {
       method: "POST",
@@ -236,7 +246,9 @@ export function OAuthConsentClient({
     }
     if (!body?.staged) {
       vault.clearIntent();
-      throw new Error("Identity claims were not staged.");
+      throw new Error(
+        "Your profile does not contain the requested data. Complete identity verification first."
+      );
     }
 
     vault.clearIntent();

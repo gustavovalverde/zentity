@@ -493,3 +493,25 @@ export function filterIdentityByScopes(
 
   return filtered as Partial<IdentityFields>;
 }
+
+/**
+ * Returns human-readable labels for identity scopes whose claim keys
+ * are all absent in the given payload. Used by consent/approval UIs
+ * to detect missing profile data before attempting to stage.
+ */
+export function findMissingIdentityFields(
+  payload: Record<string, unknown>,
+  scopes: readonly string[]
+): string[] {
+  const missing: string[] = [];
+  for (const scope of extractIdentityScopes(scopes)) {
+    const claimKeys = IDENTITY_SCOPE_CLAIMS[scope];
+    const hasAny = claimKeys.some(
+      (key) => payload[key] !== undefined && payload[key] !== null
+    );
+    if (!hasAny) {
+      missing.push(IDENTITY_SCOPE_DESCRIPTIONS[scope]);
+    }
+  }
+  return missing;
+}

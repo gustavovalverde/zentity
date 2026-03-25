@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,6 +27,7 @@ import {
 } from "@/components/vault-unlock/vault-unlock";
 import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
 import {
+  findMissingIdentityFields,
   IDENTITY_SCOPE_DESCRIPTIONS,
   type IdentityScope,
   isIdentityScope,
@@ -111,31 +111,6 @@ interface AgentIdentitySummary {
   runtime?: string;
 }
 
-function AgentIdentityCard({
-  identity,
-}: Readonly<{ identity: AgentIdentitySummary }>) {
-  if (!identity.name) {
-    return null;
-  }
-
-  return (
-    <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
-      <div className="flex items-center gap-2">
-        <Bot className="size-4 text-muted-foreground" />
-        <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-          Agent
-        </p>
-      </div>
-      <p className="font-medium">{identity.name}</p>
-      {(identity.model || identity.runtime) && (
-        <p className="text-muted-foreground text-sm">
-          {[identity.model, identity.runtime].filter(Boolean).join(" / ")}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function resolveTerminalState(message: string): PageState | null {
   const lower = message.toLowerCase();
   if (lower.includes("already approved")) {
@@ -163,21 +138,6 @@ interface InteractionCopy {
   requestedProfileFields?: string[];
   successDescription?: string;
   title?: string;
-}
-
-function formatRequestedFieldLabel(field: string): string {
-  switch (field) {
-    case "birthdate":
-      return "Birthdate";
-    case "email":
-      return "Email";
-    case "name":
-      return "Full name";
-    case "address":
-      return "Address";
-    default:
-      return field.replaceAll("_", " ");
-  }
 }
 
 export function CibaApproveClient({
@@ -344,6 +304,51 @@ export function CibaApproveClient({
   });
   const vaultStatus = vault.vaultState.status;
 
+  // Auto-deny when vault is unlocked but the profile lacks the requested data.
+  // The user shouldn't have to click Deny for something that can't succeed.
+  useEffect(() => {
+    if (
+      state !== "ready" ||
+      !hasIdentityScopes ||
+      vaultStatus !== "loaded" ||
+      !vault.profileRef.current
+    ) {
+      return;
+    }
+
+    const profile = vault.profileRef.current;
+    const payload = buildIdentityPayload(profile) as Record<string, unknown>;
+    const missingFields = findMissingIdentityFields(payload, scopes);
+
+    if (missingFields.length === 0) {
+      return;
+    }
+
+    // Auto-deny — the profile doesn't have the requested data
+    const reason = `Your profile does not contain: ${missingFields.join(", ")}. Complete identity verification to add this data.`;
+    setState("rejecting");
+    fetch("/api/auth/ciba/reject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auth_req_id: authReqId }),
+    })
+      .then(() => {
+        setError(reason);
+        setState("rejected");
+      })
+      .catch(() => {
+        setError(reason);
+        setState("rejected");
+      });
+  }, [
+    state,
+    hasIdentityScopes,
+    vaultStatus,
+    vault.profileRef,
+    scopes,
+    authReqId,
+  ]);
+
   const refreshAssuranceTier = useCallback(async () => {
     try {
       const res = await fetch("/api/trpc/assurance.profile", {
@@ -447,7 +452,9 @@ export function CibaApproveClient({
     }
     if (!body?.staged) {
       clearIntent();
-      throw new Error("Identity claims were not staged.");
+      throw new Error(
+        "Your profile does not contain the requested data. Complete identity verification first."
+      );
     }
 
     clearIntent();
@@ -524,9 +531,6 @@ export function CibaApproveClient({
 
   // ── Render ───────────────────────────────────────────────
 
-  const displayScopes =
-    details?.scope.split(" ").filter((s) => s !== "openid") ?? [];
-
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
@@ -589,6 +593,11 @@ export function CibaApproveClient({
   }
 
   if (state === "approved" || state === "rejected") {
+    const rejectedDescription = error
+      ? error
+      : (interactionCopy?.deniedDescription ??
+        `You have denied the request from ${details?.client_name ?? "the application"}.`);
+
     return (
       <div className="mx-auto max-w-md py-10">
         <Card>
@@ -600,8 +609,7 @@ export function CibaApproveClient({
               {state === "approved"
                 ? (interactionCopy?.successDescription ??
                   `You have granted ${details?.client_name ?? "the application"} access to your account.`)
-                : (interactionCopy?.deniedDescription ??
-                  `You have denied the request from ${details?.client_name ?? "the application"}.`)}
+                : rejectedDescription}
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -635,77 +643,47 @@ export function CibaApproveClient({
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {interactionCopy?.requestedProfileFields &&
-            interactionCopy.requestedProfileFields.length > 0 && (
-              <div>
-                <p className="mb-2 font-medium text-sm">
-                  Requested profile fields
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {interactionCopy.requestedProfileFields.map((field) => (
-                    <Badge key={field} variant="outline">
-                      {formatRequestedFieldLabel(field)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          {displayScopes.length > 0 && (
-            <div>
-              <p className="mb-2 font-medium text-sm">Requested scopes</p>
-              <div className="flex flex-wrap gap-2">
-                {displayScopes.map((scope) => (
-                  <Badge key={scope} variant="secondary">
-                    {scope}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {registeredAgent && (
+          {/* Requesting app — merged host + agent into one compact line */}
+          {(registeredAgent || agentIdentity) && (
             <div
-              className={`flex items-center gap-2 rounded-md border p-3 ${
-                registeredAgent.attestationTier === "attested"
-                  ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950"
-                  : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
+              className={`flex items-center gap-3 rounded-md border p-3 ${
+                registeredAgent?.attestationTier === "attested"
+                  ? "border-green-200 dark:border-green-800"
+                  : "border-amber-200 dark:border-amber-800"
               }`}
             >
-              {registeredAgent.attestationTier === "attested" ? (
+              {registeredAgent?.attestationTier === "attested" ? (
                 <ShieldCheck className="size-4 shrink-0 text-green-600 dark:text-green-400" />
               ) : (
-                <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <Bot className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
               )}
-              <div className="text-sm">
-                <span className="font-medium">{registeredAgent.hostName}</span>
-                <span className="ml-1.5 text-muted-foreground">
-                  {registeredAgent.attestationTier === "attested"
-                    ? `Verified by ${registeredAgent.attestationProvider ?? "Provider"}`
-                    : "Registered"}
+              <div className="min-w-0 text-sm">
+                <span className="font-medium">
+                  {agentIdentity?.name ?? registeredAgent?.hostName}
                 </span>
-                <p className="font-mono text-muted-foreground text-xs">
-                  {registeredAgent.sessionId}
-                </p>
+                {agentIdentity?.name && registeredAgent && (
+                  <span className="ml-1.5 text-muted-foreground">
+                    via {registeredAgent.hostName}
+                  </span>
+                )}
+                {(agentIdentity?.model || agentIdentity?.runtime) && (
+                  <p className="truncate text-muted-foreground text-xs">
+                    {[agentIdentity.model, agentIdentity.runtime]
+                      .filter(Boolean)
+                      .join(" / ")}
+                  </p>
+                )}
               </div>
             </div>
           )}
-
-          {agentIdentity ? (
-            <AgentIdentityCard identity={agentIdentity} />
-          ) : (
-            !registeredAgent &&
-            details && (
-              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                <p className="text-sm">
-                  No agent identity provided — this application has not
-                  disclosed what AI agent is acting on its behalf.
-                </p>
-              </div>
-            )
+          {!(registeredAgent || agentIdentity) && details && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 p-3 dark:border-amber-800">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+              <p className="text-sm">No agent identity disclosed.</p>
+            </div>
           )}
 
+          {/* Purchase details (authorization_details) */}
           {details?.authorization_details &&
             details.authorization_details.length > 0 && (
               <div className="space-y-2">
@@ -755,17 +733,8 @@ export function CibaApproveClient({
               </div>
             )}
 
-          {details?.binding_message && (
-            <div className="rounded-md bg-muted p-3">
-              <p className="font-medium text-sm">Message</p>
-              <p className="text-muted-foreground text-sm">
-                {details.binding_message}
-              </p>
-            </div>
-          )}
-
           {details?.acr_values && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950">
+            <div className="flex items-center gap-2 rounded-md border border-amber-200 p-3 dark:border-amber-800">
               <ShieldCheck className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <p className="text-sm">
                 <span className="font-medium">Required assurance:</span>{" "}
@@ -777,6 +746,7 @@ export function CibaApproveClient({
             </div>
           )}
 
+          {/* Data requested — single section replacing profile fields + scopes + claims */}
           <RequestedClaimsSection scopes={scopes} />
 
           <VaultUnlockPanel
