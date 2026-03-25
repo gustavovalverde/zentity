@@ -150,7 +150,7 @@ export function MintForm({
             {isSupplyExhausted ? (
               <span className="text-destructive">
                 Supply cap reached. No more tokens can be minted (~18.4 max
-                tokens.
+                tokens).
               </span>
             ) : (
               <>

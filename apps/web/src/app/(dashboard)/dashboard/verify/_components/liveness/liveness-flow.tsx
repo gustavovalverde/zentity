@@ -111,7 +111,7 @@ export function LivenessFlow() {
         {isIdle && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-background">
             <div className="text-center">
-              <h2 className="font-semibold text-xl">Liveness Verification</h2>
+              <h2 className="font-semibold text-xl">Selfie Check</h2>
               <p className="mt-2 text-muted-foreground">
                 We'll verify you're a real person using your camera
               </p>

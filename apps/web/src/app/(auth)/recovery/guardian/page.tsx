@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -578,14 +579,13 @@ export default function RecoverSocialPage() {
         {(phase === "email" || phase === "starting") && (
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="recovery-email">
-                Email or Recovery ID
-              </FieldLabel>
+              <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
+              <FieldDescription>Or use a Recovery ID</FieldDescription>
               <Input
                 disabled={phase === "starting"}
                 id="recovery-email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com or rec_XXXX"
+                placeholder="you@example.com"
                 type="text"
                 value={email}
               />

@@ -67,7 +67,7 @@ function getLivenessIssueMessage(issue: string): string {
   const issueMessages: Record<string, string> = {
     draft_not_found:
       "This verification session is no longer active. Refresh and restart from the verification page.",
-    liveness_not_completed: "Liveness verification not recorded",
+    liveness_not_completed: "Selfie check not recorded",
     face_match_not_completed: "Face matching not recorded",
   };
 
@@ -87,14 +87,14 @@ function getFinalizeFailureMessage(jobStatus: {
 
   const issues = jobStatus.result?.issues ?? [];
   if (issues.includes("document_hash_field_failed")) {
-    return "Verification finalization could not prepare the document commitment required for privacy proofs. Retry the document step.";
+    return "We couldn't prepare your document data for verification. Please retry the document step.";
   }
   if (
     issues.includes("signed_ocr_claim_failed") ||
     issues.includes("signed_face_match_claim_failed") ||
     issues.includes("signed_liveness_claim_failed")
   ) {
-    return "Verification finalization could not prepare the signed claims required for privacy proofs. Please retry verification.";
+    return "We couldn't prepare your verification data. Please retry verification.";
   }
   if (issues.length > 0) {
     return issues.map(getLivenessIssueMessage).join(", ");
@@ -206,7 +206,7 @@ export function LivenessVerifyClient({
    */
   const runProofGeneration = useCallback(
     async (verificationId: string, bindingContext: BindingContext) => {
-      toast.info("Generating privacy proofs...", {
+      toast.info("Verifying your information...", {
         description: "This takes up to 30 seconds. Please keep this page open.",
       });
 
@@ -223,7 +223,7 @@ export function LivenessVerifyClient({
       await assertProfileSecretStored();
 
       toast.success("Verification complete!", {
-        description: "Privacy proofs generated successfully.",
+        description: "Your verification records have been created.",
       });
 
       // Privacy hardening: purge transient PII once proofs are generated.
@@ -383,7 +383,7 @@ export function LivenessVerifyClient({
 
   const handleContinue = useCallback(async () => {
     if (!livenessCompleted) {
-      toast.error("Please complete liveness verification first");
+      toast.error("Please complete the selfie check first");
       return;
     }
 

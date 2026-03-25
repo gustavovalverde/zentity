@@ -266,7 +266,7 @@ export async function signInWithPasskey(params?: {
       ok: false,
       error: null,
       message:
-        "This passkey did not return PRF output. Please try a different authenticator.",
+        "This passkey doesn't support the encryption features needed. Please try a different passkey or use a password instead.",
     };
   }
 

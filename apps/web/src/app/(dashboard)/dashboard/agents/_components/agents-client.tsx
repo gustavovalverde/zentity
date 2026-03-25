@@ -27,7 +27,7 @@ import { ConnectedTab } from "./connected-tab";
 import { CibaLiveUpdater } from "./live-updater";
 import { RequestsTab } from "./requests-tab";
 
-export interface CibaRequestRow {
+interface CibaRequestRow {
   acrValues: string | null;
   agentSessionId: string | null;
   approvalMethod: string | null;

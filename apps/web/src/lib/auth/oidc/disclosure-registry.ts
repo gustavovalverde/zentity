@@ -103,7 +103,7 @@ const PROOF_ENTRIES = [
     delivery: ["id_token", "userinfo"],
     vaultRequired: false,
     exactBindingRequired: false,
-    description: "Liveness and photo match results",
+    description: "Selfie check and photo match results",
   },
   {
     scope: "proof:nationality",
@@ -130,7 +130,7 @@ const PROOF_ENTRIES = [
     delivery: ["id_token", "userinfo"],
     vaultRequired: false,
     exactBindingRequired: false,
-    description: "Passport NFC chip verification status",
+    description: "Passport chip verification",
   },
 ] as const satisfies readonly ScopeEntry[];
 
@@ -147,7 +147,7 @@ const SYBIL_ENTRY = {
   delivery: ["access_token"],
   vaultRequired: false,
   exactBindingRequired: false,
-  description: "Per-RP pseudonymous sybil nullifier",
+  description: "A unique, anonymous ID for this app",
 } as const satisfies ScopeEntry;
 
 const PROOF_UMBRELLA = {
@@ -157,7 +157,7 @@ const PROOF_UMBRELLA = {
   delivery: ["id_token", "userinfo"],
   vaultRequired: false,
   exactBindingRequired: false,
-  description: "All identity verification proofs",
+  description: "All identity verification records",
   expandsTo: PROOF_ENTRIES.map((e) => e.scope),
 } as const satisfies ScopeEntry;
 
@@ -337,7 +337,18 @@ export const OAUTH_SCOPES = ALL_ENTRIES.map(
   (e) => e.scope
 ) as readonly string[];
 export const OAUTH_SCOPE_SET = new Set<string>(OAUTH_SCOPES);
-export const HIDDEN_SCOPES = new Set(["openid", "profile"]);
+export const HIDDEN_SCOPES = new Set([
+  "openid",
+  "profile",
+  // Operational scopes — machine-facing, never shown on consent screens
+  "agent:host.register",
+  "agent:session.register",
+  "agent:session.revoke",
+  "agent:introspect",
+  "compliance:key:read",
+  "compliance:key:write",
+  "identity_verification",
+]);
 
 // ---------------------------------------------------------------------------
 // Scope-to-claim mappings (derived from entries)

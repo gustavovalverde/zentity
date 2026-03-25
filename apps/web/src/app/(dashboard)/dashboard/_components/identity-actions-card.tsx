@@ -76,13 +76,13 @@ export function IdentityActionsCard({
           >
             {/* Get Credentials - available at Tier 2 */}
             <ActionCard
-              actionLabel="Get Credentials"
-              description="Issue a portable credential you can present to third-party services."
+              actionLabel="Get Digital ID"
+              description="Get a digital identity you can share with apps, choosing exactly what they can see."
               icon={FileCheck2}
               locked={tier < 2}
               onAction={() => setCredentialsOpen(true)}
               requiredTier={2}
-              title="Verifiable Credentials"
+              title="Digital ID"
             />
 
             {/* On-Chain Attestation - requires Tier 2 + strong auth */}
@@ -91,7 +91,7 @@ export function IdentityActionsCard({
                 actionHref="/dashboard/attestation"
                 actionLabel="Go On-Chain"
                 badge="Web3"
-                description="Publish encrypted identity proofs on-chain for DeFi and Web3 compliance."
+                description="Publish your verification status on-chain for DeFi and Web3 compliance."
                 icon={Stamp}
                 locked={!canAttest}
                 passkeyAction={attestationPasskeyAction}

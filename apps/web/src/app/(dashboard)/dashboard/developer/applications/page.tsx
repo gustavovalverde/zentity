@@ -174,8 +174,9 @@ function OwnedClientsContent({
     return (
       <Alert>
         <AlertDescription>
-          No clients assigned to this organization yet. Clients register via DCR
-          and appear in &ldquo;Pending Registrations&rdquo; below.
+          No clients assigned to this organization yet. Clients register via
+          Dynamic Client Registration (DCR) and appear in &ldquo;Pending
+          Registrations&rdquo; below.
         </AlertDescription>
       </Alert>
     );
@@ -509,7 +510,7 @@ export default function ApplicationsPage() {
                       {approveMutation.isPending ? (
                         <Spinner />
                       ) : (
-                        "Assign to org"
+                        "Assign to organization"
                       )}
                     </Button>
                   }

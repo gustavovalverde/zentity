@@ -135,7 +135,7 @@ export function SignUpForm() {
 
       if (!(credentialId && prfOutput)) {
         throw new Error(
-          "This passkey did not return PRF output. Please try a different authenticator."
+          "This passkey doesn't support the encryption features needed. Please try a different passkey or use a password instead."
         );
       }
 

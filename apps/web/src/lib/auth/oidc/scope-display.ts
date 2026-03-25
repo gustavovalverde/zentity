@@ -13,6 +13,7 @@ import {
   isIdentityScope,
   isProofScope,
 } from "@/lib/auth/oidc/disclosure-registry";
+import { SCOPE_GROUP_LABELS } from "@/lib/copy-constants";
 
 interface ScopeGroup {
   icon: LucideIcon;
@@ -37,18 +38,22 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
 
   const groups: ScopeGroup[] = [];
   if (account.length > 0) {
-    groups.push({ label: "Account", icon: KeyRound, scopes: account });
+    groups.push({
+      label: SCOPE_GROUP_LABELS.account,
+      icon: KeyRound,
+      scopes: account,
+    });
   }
   if (proofs.length > 0) {
     groups.push({
-      label: "Verification proofs",
+      label: SCOPE_GROUP_LABELS.proofs,
       icon: BadgeCheck,
       scopes: proofs,
     });
   }
   if (identity.length > 0) {
     groups.push({
-      label: "Personal information",
+      label: SCOPE_GROUP_LABELS.identity,
       icon: Lock,
       scopes: identity,
     });

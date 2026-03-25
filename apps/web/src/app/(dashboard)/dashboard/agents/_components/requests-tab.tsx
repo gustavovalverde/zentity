@@ -196,7 +196,8 @@ export function RequestsTab({
                         </Badge>
                       )}
                       <Badge variant={statusVariant(displayStatus)}>
-                        {displayStatus}
+                        {displayStatus.charAt(0).toUpperCase() +
+                          displayStatus.slice(1)}
                       </Badge>
                     </div>
                   </button>

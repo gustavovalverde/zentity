@@ -97,18 +97,18 @@ export function WalletBindingSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wallet className="h-5 w-5" />
-          Wallet Binding
+          Connected Wallet
         </CardTitle>
         <CardDescription>
-          Your wallet is cryptographically bound to your identity for
-          privacy-preserving proofs
+          Your wallet is linked to your identity for privacy-preserving
+          verification
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {error ? (
           <Alert variant="destructive">
             <AlertDescription>
-              Failed to load wallet binding: {error}
+              Failed to load linked wallet: {error}
             </AlertDescription>
           </Alert>
         ) : null}
@@ -129,9 +129,9 @@ export function WalletBindingSection() {
                   <EmptyMedia variant="icon">
                     <Link2 />
                   </EmptyMedia>
-                  <EmptyTitle>No Wallet Bound</EmptyTitle>
+                  <EmptyTitle>No Wallet Linked</EmptyTitle>
                   <EmptyDescription>
-                    Your wallet will be automatically bound during sign-up when
+                    Your wallet will be automatically linked during sign-up when
                     you authenticate with a wallet.
                   </EmptyDescription>
                 </EmptyHeader>
@@ -161,11 +161,11 @@ export function WalletBindingSection() {
                         )}
                       </ItemTitle>
                       <p className="text-muted-foreground text-xs">
-                        Bound {formatDate(binding.issuedAt)}
+                        Linked {formatDate(binding.issuedAt)}
                       </p>
                     </ItemContent>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">Tier {binding.tier}</Badge>
+                      <Badge variant="secondary">Level {binding.tier}</Badge>
                       {binding.hasCommitmentSalt && (
                         <Badge variant="outline">Verifiable</Badge>
                       )}
@@ -185,15 +185,15 @@ export function WalletBindingSection() {
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p>
-                BBS+ signatures allow selective disclosure - proving specific
-                claims without revealing others. Your wallet address is never
-                exposed during verification.
+                Your wallet credentials allow selective disclosure — sharing
+                only what&apos;s needed without revealing other details. Your
+                wallet address is never exposed during verification.
               </p>
             </TooltipContent>
           </Tooltip>
           <p>
-            This binding enables ZK proofs of wallet ownership without revealing
-            your address. It's used internally for compliance checks.
+            This link verifies wallet ownership without revealing your address.
+            It&apos;s used for compliance checks.
           </p>
         </div>
       </CardFooter>

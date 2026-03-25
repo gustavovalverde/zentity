@@ -412,15 +412,15 @@ export function DocumentUploadClient({
         <CardContent>
           <CardDescription>
             Your ID is processed privately on our servers. We extract the
-            necessary data, then discard the image. Only encrypted proofs of
-            your verified attributes are stored.
+            necessary data, then discard the image. Only verified results are
+            kept — your personal details are never stored in readable form.
           </CardDescription>
         </CardContent>
       </Card>
 
       <div className="flex justify-end gap-3">
         <Button disabled={!isVerified} onClick={handleContinue}>
-          Continue to Liveness Check
+          Continue to Selfie Check
         </Button>
       </div>
     </div>

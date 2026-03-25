@@ -70,7 +70,7 @@ function IdentityCardHeader({
       </div>
       <CardDescription>
         {tier >= 2
-          ? "Your verified identity and proof summary"
+          ? "Your verified identity summary"
           : "Your verification progress"}
       </CardDescription>
     </CardHeader>
@@ -135,14 +135,13 @@ export async function IdentityCard({
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Verification Incomplete</AlertTitle>
                 <AlertDescription>
-                  Identity checks passed, but verification proofs still need to
-                  be generated.
+                  Your document was checked, but the verification process
+                  didn&apos;t complete fully.
                 </AlertDescription>
               </Alert>
               <p className="text-muted-foreground text-sm">
-                To complete verification, please re-upload your document. Proofs
-                are generated during the process and require your document data,
-                which we don&apos;t store.
+                To complete verification, please re-upload your document. The
+                process requires your document data, which we don&apos;t store.
               </p>
               <Button asChild className="w-full">
                 <Link href="/dashboard/verify">
@@ -199,11 +198,11 @@ export async function IdentityCard({
                 </p>
                 <p>
                   Your personal data is never stored in readable form.
-                  Zero-knowledge proofs are generated locally in your browser,
-                  and sensitive attributes are encrypted with fully homomorphic
-                  encryption (FHE). We only keep encrypted proofs of your
-                  verified attributes (e.g., &quot;over 18&quot;). Raw images
-                  are processed in memory and immediately discarded.
+                  Verification is processed privately on your device (using
+                  zero-knowledge proofs) and sensitive attributes are encrypted
+                  so only you can access them. We only keep verified results
+                  (e.g., &quot;over 18&quot;). Raw images are processed in
+                  memory and immediately discarded.
                 </p>
               </div>
             </div>

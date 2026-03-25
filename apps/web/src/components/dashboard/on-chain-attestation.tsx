@@ -710,7 +710,7 @@ const NetworkActions = memo(function NetworkActions({
             <ItemActions>
               <Button onClick={() => disconnect()} size="sm" variant="outline">
                 <Wallet className="mr-2 h-3 w-3" />
-                Change
+                Disconnect
               </Button>
             </ItemActions>
           </Item>
@@ -839,7 +839,7 @@ const NetworkActions = memo(function NetworkActions({
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                View TX
+                View on Explorer
                 <ExternalLink className="ml-2 h-3 w-3" />
               </a>
             </Button>

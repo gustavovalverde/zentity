@@ -268,7 +268,8 @@ export function PasswordRequirements({
     }
     return (
       <div className="text-muted-foreground text-xs">
-        Couldn’t check breaches right now — we’ll re-check when you submit.
+        Couldn&apos;t check breaches right now. If the check fails, try again in
+        a moment.
       </div>
     );
   }, [pwned.state]);

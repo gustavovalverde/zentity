@@ -48,7 +48,7 @@ export function VaultUnlockPanel({
     return (
       <div className="flex items-center gap-2 text-muted-foreground text-sm">
         <Spinner aria-hidden="true" size="sm" />
-        Unlocking your identity vault…
+        Unlocking your vault…
       </div>
     );
   }
@@ -107,7 +107,7 @@ export function VaultUnlockPanel({
       <Alert>
         <Lock className="size-4" />
         <AlertDescription className="space-y-2">
-          <p>Unlock your identity vault to share personal information.</p>
+          <p>Use your passkey to share your information.</p>
           <Button
             onClick={loadProfilePasskey}
             size="sm"
@@ -126,7 +126,7 @@ export function VaultUnlockPanel({
       <Alert>
         <Lock className="size-4" />
         <AlertDescription className="space-y-2">
-          <p>Enter your password to unlock your identity vault.</p>
+          <p>Enter your password to share your information.</p>
           <OpaqueVaultUnlockForm
             disabled={disabled}
             onError={handleVaultError}
@@ -142,7 +142,7 @@ export function VaultUnlockPanel({
       <Alert>
         <Lock className="size-4" />
         <AlertDescription className="space-y-2">
-          <p>Sign with your wallet to unlock your identity vault.</p>
+          <p>Sign with your wallet to share your information.</p>
           <WalletVaultUnlockButton
             disabled={disabled}
             onError={handleVaultError}

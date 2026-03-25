@@ -100,8 +100,7 @@ function WalletSignButton({
 
       if (signature1 !== signature2) {
         throw new Error(
-          "Wallet signatures are not stable for this message. " +
-            "Use passkey/password setup or switch wallets, then add backup recovery."
+          "This wallet produced inconsistent signatures. Please use a different wallet or sign in with a passkey or password."
         );
       }
 

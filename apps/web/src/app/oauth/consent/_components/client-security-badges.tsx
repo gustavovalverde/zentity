@@ -36,12 +36,12 @@ const ENCRYPTION_BADGES: Record<
   standard: {
     icon: Lock,
     label: "Encrypted",
-    tooltip: "Data encrypted with AES-GCM (standard)",
+    tooltip: "Your data is encrypted in transit and at rest",
   },
   "post-quantum": {
     icon: ShieldCheck,
-    label: "PQ Encrypted",
-    tooltip: "Data encrypted with ML-KEM-768 (post-quantum)",
+    label: "Quantum-safe",
+    tooltip: "Your data is protected with quantum-resistant encryption",
   },
 };
 
@@ -65,8 +65,8 @@ function deriveSecurityBadges(input: SecurityBadgeInput): SecurityBadge[] {
     if (input.signingAlg === "ML-DSA-65") {
       badges.push({
         icon: ShieldCheck,
-        label: "Post-Quantum",
-        tooltip: "Protected with quantum-resistant cryptography",
+        label: "Quantum-safe",
+        tooltip: "Protected against future quantum computing threats",
       });
     }
   }
@@ -87,8 +87,8 @@ function deriveSecurityBadges(input: SecurityBadgeInput): SecurityBadge[] {
   if (input.requiresDpop) {
     badges.push({
       icon: Lock,
-      label: "Proof-of-Possession",
-      tooltip: "Tokens are cryptographically bound to this client",
+      label: "Bound access",
+      tooltip: "Your access tokens can only be used by this app",
     });
   }
 

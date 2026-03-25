@@ -161,7 +161,7 @@ function TxHistoryContent({
           </div>
           {explorerUrl ? (
             <a
-              aria-label="View transaction on explorer"
+              aria-label="View on Explorer"
               className="text-muted-foreground transition-colors hover:text-foreground"
               href={`${explorerUrl}/tx/${tx.txHash}`}
               rel="noopener noreferrer"

@@ -151,7 +151,9 @@ export async function sendCibaNotification(params: {
     .filter((s) => s !== "openid")
     .join(", ");
 
-  const subject = `Authorization Request from ${clientLabel}`;
+  const subject = params.bindingMessage
+    ? `${clientLabel} wants to ${params.bindingMessage}`
+    : `${clientLabel} is requesting access`;
 
   const parsedDetails = parseAuthorizationDetails(params.authorizationDetails);
   const agent = params.registeredAgent ?? null;

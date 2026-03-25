@@ -38,7 +38,7 @@ export interface CibaRequestDetails {
   status: string;
 }
 
-export interface CibaApprovalData {
+interface CibaApprovalData {
   agentIdentity: AgentIdentitySummary | null;
   registeredAgent: RegisteredAgentInfo | null;
   request: CibaRequestDetails;

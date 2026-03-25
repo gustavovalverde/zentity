@@ -14,6 +14,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -103,9 +104,7 @@ export function ForgotPasswordForm() {
 
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={identifierId}>
-                  Email or Recovery ID
-                </FieldLabel>
+                <FieldLabel htmlFor={identifierId}>Email</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   autoCapitalize="none"
@@ -115,10 +114,11 @@ export function ForgotPasswordForm() {
                   name={field.name}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="you@example.com or rec_abc123"
+                  placeholder="you@example.com"
                   spellCheck={false}
                   value={field.state.value}
                 />
+                <FieldDescription>Or use a Recovery ID</FieldDescription>
                 <FieldError>{errorMessage}</FieldError>
               </Field>
             );

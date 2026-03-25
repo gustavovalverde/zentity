@@ -40,6 +40,7 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure-registry";
+import { formatAcrValue } from "@/lib/copy-constants";
 
 type PageState =
   | "loading"
@@ -61,7 +62,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
 
   return (
     <div className="space-y-2 rounded-md border p-3">
-      <p className="font-medium text-sm">Identity claims requested</p>
+      <p className="font-medium text-sm">Information requested</p>
       <ul className="space-y-1.5 text-sm">
         {proofScopes.map((scope) => (
           <li className="flex items-start gap-2" key={scope}>
@@ -69,7 +70,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
             <span>
               {PROOF_SCOPE_DESCRIPTIONS[scope]}
               <span className="ml-1 text-muted-foreground text-xs">
-                — no PII shared
+                — anonymous, no personal data shared
               </span>
             </span>
           </li>
@@ -80,7 +81,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
             <span>
               {IDENTITY_SCOPE_DESCRIPTIONS[scope]}
               <span className="ml-1 text-muted-foreground text-xs">
-                — requires vault unlock
+                — requires unlocking your vault
               </span>
             </span>
           </li>
@@ -432,7 +433,7 @@ export function CibaApproveClient({
 
     const profile = profileRef.current;
     if (!profile) {
-      throw new Error("Unlock your identity vault before approving.");
+      throw new Error("Unlock your vault to approve this request.");
     }
 
     if (!(identityIntent && hasValidIdentityIntent)) {
@@ -486,7 +487,7 @@ export function CibaApproveClient({
       try {
         if (action === "authorize" && hasIdentityScopes) {
           if (vault.vaultState.status !== "loaded") {
-            throw new Error("Unlock your identity vault before approving.");
+            throw new Error("Unlock your vault to approve this request.");
           }
           if (!hasValidIdentityIntent) {
             throw new Error(
@@ -635,13 +636,17 @@ export function CibaApproveClient({
       <Card>
         <CardHeader>
           <CardTitle>
-            {interactionCopy?.title ?? "Authorization Request"}
+            {interactionCopy?.title ??
+              (details?.binding_message
+                ? `${details?.client_name ?? "An application"} wants to ${details.binding_message}`
+                : `${details?.client_name ?? "An application"} is requesting access`)}
           </CardTitle>
           <CardDescription>
             {interactionCopy?.description ?? (
               <>
-                <strong>{details?.client_name ?? "An application"}</strong> is
-                requesting access to your account.
+                Review what{" "}
+                <strong>{details?.client_name ?? "the application"}</strong>{" "}
+                wants to do on your behalf.
               </>
             )}
           </CardDescription>
@@ -742,11 +747,7 @@ export function CibaApproveClient({
             <div className="flex items-center gap-2 rounded-md border border-warning/30 p-3">
               <BadgeCheck className="size-4 shrink-0 text-warning" />
               <p className="text-sm">
-                <span className="font-medium">Required assurance:</span>{" "}
-                {details.acr_values
-                  .split(" ")
-                  .map((v) => v.replace("urn:zentity:assurance:", ""))
-                  .join(", ")}
+                {details.acr_values.split(" ").map(formatAcrValue).join(", ")}
               </p>
             </div>
           )}
@@ -766,9 +767,8 @@ export function CibaApproveClient({
             <Alert>
               <AlertTriangle className="size-4" />
               <AlertDescription>
-                Complete identity verification to enable privacy-preserving
-                disclosure. The agent will be notified that verification is
-                required.
+                Complete identity verification first. The agent will be
+                notified.
               </AlertDescription>
             </Alert>
           )}

@@ -104,7 +104,7 @@ export function DeleteAccountSection({
             PII. Your encrypted profile data is credential-sealed (passkey,
             password, or wallet), and your email is stored only for
             authentication. Deleting your account removes encrypted data,
-            commitments, proofs, and credentials.
+            verification data, and credentials.
           </p>
 
           <Dialog onOpenChange={setIsOpen} open={isOpen}>
@@ -132,11 +132,9 @@ export function DeleteAccountSection({
                     The following will be permanently deleted:
                   </p>
                   <ul className="mt-2 list-inside list-disc space-y-1 text-muted-foreground">
-                    <li>Your account and login credentials</li>
+                    <li>Your account and sign-in methods</li>
                     <li>All identity verification data</li>
-                    <li>Cryptographic commitments and salts</li>
-                    <li>Zero-knowledge proofs</li>
-                    <li>Encrypted verification attributes (e.g., liveness)</li>
+                    <li>All encrypted records and verification results</li>
                   </ul>
                 </div>
 

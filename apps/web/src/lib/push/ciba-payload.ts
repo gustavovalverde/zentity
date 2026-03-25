@@ -78,7 +78,7 @@ export function buildCibaPushPayload(
 
   const title = data.agentName
     ? `${data.agentName} requests approval`
-    : "Authorization Request";
+    : `${clientLabel} is requesting access`;
 
   return {
     title,

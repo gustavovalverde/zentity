@@ -76,7 +76,7 @@ const STAGE_LABELS: Record<EnrollmentStage, string> = {
   generating: "Generating encryption keys (this may take up to a minute)...",
   encrypting: "Encrypting keys on your device...",
   uploading: "Storing encrypted keys...",
-  registering: "Registering keys with the encryption service...",
+  registering: "Connecting to the encryption service...",
   finalizing: "Finishing setup...",
   done: "Ready!",
 };
@@ -351,7 +351,9 @@ export function FheEnrollmentDialog({
   const enrollPasskey = useCallback(
     async (userId: string) => {
       if (!hasPasskeys || prfSupported === false) {
-        throw new Error("Passkey PRF not available on this device.");
+        throw new Error(
+          "This passkey doesn't support the encryption features needed. Please try a different passkey or use a password instead."
+        );
       }
 
       const passkeys = await listUserPasskeys();
@@ -370,7 +372,9 @@ export function FheEnrollmentDialog({
         throw new Error(signInResult.message);
       }
       if (!signInResult.prfOutput) {
-        throw new Error("Passkey PRF output missing.");
+        throw new Error(
+          "Your passkey didn't return the expected data. Please try again or use a different sign-in method."
+        );
       }
       if (!signInResult.credentialId) {
         throw new Error("Missing passkey credential ID.");
@@ -648,8 +652,7 @@ export function FheEnrollmentDialog({
 
       if (signature1 !== signature2) {
         throw new Error(
-          "Wallet signatures are not stable for this message. " +
-            "Use passkey/password setup or switch to a wallet that implements RFC 6979."
+          "This wallet produced inconsistent signatures. Please use a different wallet or sign in with a passkey or password."
         );
       }
 
@@ -774,7 +777,9 @@ export function FheEnrollmentDialog({
         } else if (method === "wallet" && walletContext) {
           await enrollWallet(userId, walletContext);
         } else {
-          throw new Error("No enrollment method available.");
+          throw new Error(
+            "No sign-in method available for setup. Please set up a passkey, password, or wallet first."
+          );
         }
 
         finishTiming("ok");
@@ -942,8 +947,8 @@ export function FheEnrollmentDialog({
 
           {availableMethods.length === 0 && !needsPasswordFallback && (
             <p className="text-center text-muted-foreground text-sm">
-              No enrollment methods available. Please set up a passkey,
-              password, or wallet first.
+              No sign-in methods available. Please set up a passkey, password,
+              or wallet first.
             </p>
           )}
         </div>

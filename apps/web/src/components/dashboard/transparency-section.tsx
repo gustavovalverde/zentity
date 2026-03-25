@@ -8,6 +8,7 @@ import {
   EyeOff,
   Hash,
   Lock,
+  Settings2,
 } from "lucide-react";
 import { useId, useState } from "react";
 
@@ -58,6 +59,7 @@ export function TransparencySection({
 }: Readonly<TransparencySectionProps>) {
   const collapsibleId = useId();
   const [isOpen, setIsOpen] = useState(false);
+  const [showTechnical, setShowTechnical] = useState(false);
 
   const truncateHash = (hash: string) => {
     if (hash.length <= 20) {
@@ -89,159 +91,280 @@ export function TransparencySection({
         </CardHeader>
         <CollapsibleContent>
           <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <Lock className="mt-0.5 h-5 w-5 text-info" />
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">Document Hash</span>
-                    <Badge className="text-xs" variant="outline">
-                      SHA256
-                    </Badge>
-                  </div>
-                  <code className="block font-mono text-muted-foreground text-xs">
-                    {documentHash ? truncateHash(documentHash) : "Not verified"}
-                  </code>
-                  <p className="text-muted-foreground text-xs">
-                    One-way hash of document number + salt
-                  </p>
-                </div>
+            {/* ── Plain-language summary (always visible) ── */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm">
+                <Lock className="h-4 w-4 text-info" />
+                <span>Document fingerprint</span>
+                {documentHash ? (
+                  <Badge className="text-xs" variant="success">
+                    Stored
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    Not verified
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <Hash className="mt-0.5 h-5 w-5 text-info" />
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">Name Commitment</span>
-                    <Badge className="text-xs" variant="outline">
-                      SHA256
-                    </Badge>
-                  </div>
-                  <code className="block font-mono text-muted-foreground text-xs">
-                    {nameCommitment
-                      ? truncateHash(nameCommitment)
-                      : "Not verified"}
-                  </code>
-                  <p className="text-muted-foreground text-xs">
-                    One-way hash of normalized name + salt
-                  </p>
-                </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Hash className="h-4 w-4 text-info" />
+                <span>Name fingerprint</span>
+                {nameCommitment ? (
+                  <Badge className="text-xs" variant="success">
+                    Stored
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    Not verified
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <Eye className="mt-0.5 h-5 w-5 text-info" />
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">
-                      Date of Birth Ciphertext
-                    </span>
-                    <Badge className="text-xs" variant="outline">
-                      FHE
-                    </Badge>
-                  </div>
-                  <code className="block font-mono text-muted-foreground text-xs">
-                    {birthYearOffsetCiphertextBytes
-                      ? `${birthYearOffsetCiphertextBytes} bytes`
-                      : "Not encrypted"}
-                  </code>
-                  {birthYearOffsetCiphertextHash ? (
-                    <code className="block font-mono text-muted-foreground text-xs">
-                      sha256: {truncateHash(birthYearOffsetCiphertextHash)}
-                    </code>
-                  ) : null}
-                  <p className="text-muted-foreground text-xs">
-                    Homomorphically encrypted date of birth
-                  </p>
-                </div>
+              <div className="flex items-center gap-2 text-sm">
+                <Eye className="h-4 w-4 text-info" />
+                <span>Encrypted date of birth</span>
+                {birthYearOffsetCiphertextBytes ? (
+                  <Badge className="text-xs" variant="success">
+                    Encrypted
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    Not encrypted
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <CalendarCheck className="mt-0.5 h-5 w-5 text-success" />
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">Age Proof</span>
-                    <Badge className="text-xs" variant="outline">
-                      ZK Proof
-                    </Badge>
-                    {hasAgeProof ? (
-                      <Badge className="text-xs" variant="success">
-                        Verified 18+
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <code className="block font-mono text-muted-foreground text-xs">
-                    {hasAgeProof ? "Stored" : "No proof stored"}
-                  </code>
-                  <p className="text-muted-foreground text-xs">
-                    Cryptographic proof that age {"\u2265"} 18 without revealing
-                    birth date
-                  </p>
-                </div>
+              <div className="flex items-center gap-2 text-sm">
+                <CalendarCheck className="h-4 w-4 text-success" />
+                <span>Age verified: 18+</span>
+                {hasAgeProof ? (
+                  <Badge className="text-xs" variant="success">
+                    Verified
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">
+                    No proof yet
+                  </span>
+                )}
               </div>
+
+              {proofTypes.length > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Lock className="h-4 w-4 text-success" />
+                  <span>
+                    {proofTypes.length} verification{" "}
+                    {proofTypes.length === 1 ? "record" : "records"}
+                  </span>
+                </div>
+              )}
+
+              {encryptedAttributes.length > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <Eye className="h-4 w-4 text-info" />
+                  <span>
+                    {encryptedAttributes.length} encrypted{" "}
+                    {encryptedAttributes.length === 1
+                      ? "attribute"
+                      : "attributes"}
+                  </span>
+                </div>
+              )}
+
+              {signedClaimTypes.length > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <CalendarCheck className="h-4 w-4 text-info" />
+                  <span>
+                    {signedClaimTypes.length} verified{" "}
+                    {signedClaimTypes.length === 1 ? "attribute" : "attributes"}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-3 border-t pt-2">
-              <div>
-                <h4 className="mb-2 font-medium text-sm">Proofs Stored</h4>
-                <div className="flex flex-wrap gap-2">
-                  {proofTypes.length === 0 ? (
-                    <Badge className="text-xs" variant="outline">
-                      None yet
-                    </Badge>
-                  ) : (
-                    proofTypes.map((proof) => (
-                      <Badge
-                        className="text-xs"
-                        key={proof}
-                        variant="secondary"
-                      >
-                        {getProofTypeLabel(proof)}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-              </div>
+            {/* ── Technical details toggle ── */}
+            <Button
+              className="gap-2"
+              onClick={() => setShowTechnical((prev) => !prev)}
+              size="sm"
+              variant="ghost"
+            >
+              <Settings2 className="h-4 w-4" />
+              {showTechnical
+                ? "Hide technical details"
+                : "Show technical details"}
+            </Button>
 
-              <div>
-                <h4 className="mb-2 font-medium text-sm">
-                  Encrypted Attributes
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {encryptedAttributes.length === 0 ? (
-                    <Badge className="text-xs" variant="outline">
-                      None yet
-                    </Badge>
-                  ) : (
-                    encryptedAttributes.map((attr) => (
-                      <Badge className="text-xs" key={attr} variant="secondary">
-                        {getAttributeLabel(attr)}
-                      </Badge>
-                    ))
-                  )}
-                </div>
-              </div>
+            {showTechnical && (
+              <>
+                {/* ── Technical view (protocol names, hashes, badges) ── */}
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <Lock className="mt-0.5 h-5 w-5 text-info" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">
+                          Document Hash
+                        </span>
+                        <Badge className="text-xs" variant="outline">
+                          SHA256
+                        </Badge>
+                      </div>
+                      <code className="block font-mono text-muted-foreground text-xs">
+                        {documentHash
+                          ? truncateHash(documentHash)
+                          : "Not verified"}
+                      </code>
+                      <p className="text-muted-foreground text-xs">
+                        One-way hash of document number + salt
+                      </p>
+                    </div>
+                  </div>
 
-              <div>
-                <h4 className="mb-2 font-medium text-sm">Signed Claims</h4>
-                <div className="flex flex-wrap gap-2">
-                  {signedClaimTypes.length === 0 ? (
-                    <Badge className="text-xs" variant="outline">
-                      None yet
-                    </Badge>
-                  ) : (
-                    signedClaimTypes.map((claim) => (
-                      <Badge
-                        className="text-xs"
-                        key={claim}
-                        variant="secondary"
-                      >
-                        {getClaimTypeLabel(claim)}
-                      </Badge>
-                    ))
-                  )}
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <Hash className="mt-0.5 h-5 w-5 text-info" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">
+                          Name Commitment
+                        </span>
+                        <Badge className="text-xs" variant="outline">
+                          SHA256
+                        </Badge>
+                      </div>
+                      <code className="block font-mono text-muted-foreground text-xs">
+                        {nameCommitment
+                          ? truncateHash(nameCommitment)
+                          : "Not verified"}
+                      </code>
+                      <p className="text-muted-foreground text-xs">
+                        One-way hash of normalized name + salt
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <Eye className="mt-0.5 h-5 w-5 text-info" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">
+                          Date of Birth Ciphertext
+                        </span>
+                        <Badge className="text-xs" variant="outline">
+                          FHE
+                        </Badge>
+                      </div>
+                      <code className="block font-mono text-muted-foreground text-xs">
+                        {birthYearOffsetCiphertextBytes
+                          ? `${birthYearOffsetCiphertextBytes} bytes`
+                          : "Not encrypted"}
+                      </code>
+                      {birthYearOffsetCiphertextHash ? (
+                        <code className="block font-mono text-muted-foreground text-xs">
+                          sha256: {truncateHash(birthYearOffsetCiphertextHash)}
+                        </code>
+                      ) : null}
+                      <p className="text-muted-foreground text-xs">
+                        Homomorphically encrypted date of birth
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
+                    <CalendarCheck className="mt-0.5 h-5 w-5 text-success" />
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">Age Proof</span>
+                        <Badge className="text-xs" variant="outline">
+                          ZK Proof
+                        </Badge>
+                        {hasAgeProof ? (
+                          <Badge className="text-xs" variant="success">
+                            Verified 18+
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <code className="block font-mono text-muted-foreground text-xs">
+                        {hasAgeProof ? "Stored" : "No proof stored"}
+                      </code>
+                      <p className="text-muted-foreground text-xs">
+                        Cryptographic proof that age {"\u2265"} 18 without
+                        revealing birth date
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+
+                <div className="space-y-3 border-t pt-2">
+                  <div>
+                    <h4 className="mb-2 font-medium text-sm">
+                      Verification Records
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {proofTypes.length === 0 ? (
+                        <Badge className="text-xs" variant="outline">
+                          None yet
+                        </Badge>
+                      ) : (
+                        proofTypes.map((proof) => (
+                          <Badge
+                            className="text-xs"
+                            key={proof}
+                            variant="secondary"
+                          >
+                            {getProofTypeLabel(proof)}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="mb-2 font-medium text-sm">Encrypted Data</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {encryptedAttributes.length === 0 ? (
+                        <Badge className="text-xs" variant="outline">
+                          None yet
+                        </Badge>
+                      ) : (
+                        encryptedAttributes.map((attr) => (
+                          <Badge
+                            className="text-xs"
+                            key={attr}
+                            variant="secondary"
+                          >
+                            {getAttributeLabel(attr)}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="mb-2 font-medium text-sm">
+                      Verified Attributes
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {signedClaimTypes.length === 0 ? (
+                        <Badge className="text-xs" variant="outline">
+                          None yet
+                        </Badge>
+                      ) : (
+                        signedClaimTypes.map((claim) => (
+                          <Badge
+                            className="text-xs"
+                            key={claim}
+                            variant="secondary"
+                          >
+                            {getClaimTypeLabel(claim)}
+                          </Badge>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="border-t pt-2">
               <h4 className="mb-2 flex items-center gap-2 font-medium text-sm">
@@ -250,7 +373,7 @@ export function TransparencySection({
               </h4>
               <p className="mb-2 text-muted-foreground text-xs">
                 Encrypted profile fields are stored and can only be unlocked
-                with your registered credential (passkey, password, or wallet).
+                with your sign-in method (passkey, password, or wallet).
               </p>
               <div className="flex flex-wrap gap-2">
                 {NEVER_STORED_ITEMS.map((item) => (

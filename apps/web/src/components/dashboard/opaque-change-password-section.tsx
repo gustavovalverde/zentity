@@ -103,7 +103,7 @@ export function OpaqueChangePasswordSection({
               "Password changed, but some encrypted data may need re-setup",
               {
                 description:
-                  "Your FHE keys or profile data may need to be re-enrolled.",
+                  "Your encryption keys or profile data may need to be set up again.",
               }
             );
           }

@@ -50,13 +50,13 @@ const CLAIM_LABELS: Record<string, string> = {
   verified: "Identity",
   verification_level: "Level",
   document_verified: "Document",
-  liveness_verified: "Liveness",
+  liveness_verified: "Selfie Check",
   age_verification: "Age",
   nationality_verified: "Nationality",
   nationality_group: "Nationality Group",
-  face_match_verified: "Face Match",
-  identity_bound: "Identity Binding",
-  sybil_resistant: "Sybil Resistant",
+  face_match_verified: "Photo Match",
+  identity_bound: "Linked to Account",
+  sybil_resistant: "Unique Person",
 };
 
 const METADATA_CLAIMS = new Set([
@@ -341,7 +341,7 @@ export function CredentialsContent() {
             <div className="flex w-full flex-col gap-2">
               <Button className="w-full" onClick={handleCopyUri}>
                 <Copy className="mr-2 h-4 w-4" />
-                Copy Offer URI
+                Copy link
               </Button>
               <Button
                 className="w-full"

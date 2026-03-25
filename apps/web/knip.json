@@ -5,7 +5,8 @@
     "types": "warn"
   },
   "ignoreIssues": {
-    "src/components/ui/**": ["exports", "types"]
+    "src/components/ui/**": ["exports", "types"],
+    "src/lib/copy-constants.ts": ["exports"]
   },
   "ignore": [
     "scripts/**",

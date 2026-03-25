@@ -6,14 +6,14 @@
 const CAPABILITY_LABELS: Record<string, string> = {
   check_compliance: "Check verification status",
   my_profile: "Read personal information",
-  my_proofs: "View verification proofs",
+  my_proofs: "View verification records",
   purchase: "Make purchases",
   whoami: "View basic account info",
 };
 
 const GRANT_SOURCE_LABELS: Record<string, string> = {
-  host_policy: "Default",
-  session_elevation: "Requested",
+  host_policy: "Granted by default",
+  session_elevation: "Requested by agent",
   session_once: "One-time",
 };
 

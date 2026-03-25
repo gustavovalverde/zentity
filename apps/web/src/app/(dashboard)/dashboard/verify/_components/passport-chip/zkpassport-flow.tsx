@@ -470,7 +470,9 @@ export function ZkPassportFlow({
       });
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Failed to initialize SDK"
+        error instanceof Error
+          ? error.message
+          : "Something went wrong loading the verification app. Please refresh and try again."
       );
       setStage("error");
     }

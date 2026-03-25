@@ -10,7 +10,7 @@ interface VerificationFinalizationNoticeProps {
 }
 
 const DEFAULT_DESCRIPTION =
-  "Your privacy proofs are ready. We're encrypting the remaining verification data in the background.";
+  "Your checks are complete. We're finishing setup in the background.";
 
 export function VerificationFinalizationNotice({
   className,

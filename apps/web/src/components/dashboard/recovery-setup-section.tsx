@@ -22,7 +22,7 @@ import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 
 const SECRET_LABELS: Record<string, string> = {
-  [SECRET_TYPES.FHE_KEYS]: "FHE key",
+  [SECRET_TYPES.FHE_KEYS]: "Encryption key",
   [SECRET_TYPES.PROFILE]: "Profile key",
 };
 
@@ -213,7 +213,7 @@ const GuardiansSection = memo(function GuardiansSection({
                 : guardian.email}
             </div>
             <div className="text-muted-foreground text-xs">
-              Participant {guardian.participantIndex}
+              Guardian #{guardian.participantIndex}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -500,15 +500,13 @@ export function RecoverySetupSection() {
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-sm">
               <span>
-                Threshold {config.threshold} of {config.totalGuardians}
+                {config.threshold} of {config.totalGuardians} guardians needed
+                to recover
               </span>
               <Badge variant="secondary">
                 {guardianSlots.filled}/{guardianSlots.total} guardians
               </Badge>
             </div>
-            <p className="text-muted-foreground text-sm">
-              Group key: {config.frostGroupPubkey.slice(0, 12)}...
-            </p>
 
             <GuardiansSection
               filledSlots={guardianSlots.filled}

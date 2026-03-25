@@ -84,7 +84,9 @@ async function resolvePasskeyUnlock(params: {
       : null;
 
     if (!(resolvedCredentialId && prfOutput)) {
-      throw new Error("PRF output missing for selected passkey.");
+      throw new Error(
+        "Your passkey didn't return the expected data. Please try again or use a different sign-in method."
+      );
     }
 
     return {

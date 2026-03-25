@@ -451,7 +451,7 @@ export function ViewIdentityData() {
           <Badge variant="info">Encrypted</Badge>
         </div>
         <CardDescription>
-          View your encrypted identity data stored on-chain
+          View your encrypted identity data associated with your account
         </CardDescription>
       </CardHeader>
 
