@@ -8,7 +8,6 @@ import {
   IdCard,
   LogOut,
   Settings,
-  SquareTerminal,
   Stamp,
   User,
 } from "lucide-react";
@@ -84,11 +83,6 @@ const developerNavItems: NavItem[] = [
     title: "Agents",
     url: "/dashboard/agents",
     icon: Bot,
-  },
-  {
-    title: "Debug Tools",
-    url: "/dashboard/developer/inspector",
-    icon: SquareTerminal,
   },
 ];
 

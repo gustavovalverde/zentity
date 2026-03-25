@@ -16,6 +16,7 @@ import Link from "next/link";
 import { TierBadge } from "@/components/assurance/tier-badge";
 import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { TransparencySection } from "@/components/dashboard/transparency-section";
+import { VerificationDetails } from "@/components/dashboard/verification-details";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -248,37 +249,43 @@ export async function IdentityCard({
     ]);
 
     return (
-      <Card>
-        <IdentityCardHeader assurance={assurance} tier={tier} />
-        <CardContent className="pt-2">
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              {verificationStatus.checks.ageVerified && (
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 shrink-0 text-success" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">
-                      Age Verified
-                    </p>
-                    <p className="font-medium">18+ Confirmed</p>
+      <div className="space-y-6">
+        <Card>
+          <IdentityCardHeader assurance={assurance} tier={tier} />
+          <CardContent className="pt-2">
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                {verificationStatus.checks.ageVerified && (
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-5 w-5 shrink-0 text-success" />
+                    <div>
+                      <p className="text-muted-foreground text-xs">
+                        Age Verified
+                      </p>
+                      <p className="font-medium">18+ Confirmed</p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {verification?.verifiedAt && (
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
-                  <div>
-                    <p className="text-muted-foreground text-xs">Verified On</p>
-                    <p className="font-medium">
-                      {new Date(verification.verifiedAt).toLocaleDateString()}
-                    </p>
+                )}
+                {verification?.verifiedAt && (
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div>
+                      <p className="text-muted-foreground text-xs">
+                        Verified On
+                      </p>
+                      <p className="font-medium">
+                        {new Date(verification.verifiedAt).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+
+        <VerificationDetails />
+      </div>
     );
   }
 
@@ -358,6 +365,9 @@ export async function IdentityCard({
         proofTypes={proofTypes}
         signedClaimTypes={signedClaimTypes}
       />
+
+      {/* Verification Details - Collapsible developer section */}
+      <VerificationDetails />
     </div>
   );
 }
