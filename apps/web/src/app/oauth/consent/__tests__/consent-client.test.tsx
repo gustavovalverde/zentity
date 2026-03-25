@@ -234,4 +234,110 @@ describe("OAuthConsentClient identity hardening", () => {
     ).toBeTruthy();
     expect(screen.getByText("Encrypted")).toBeTruthy();
   });
+
+  it("warns about missing profile fields but stages the available subset", async () => {
+    authClientMocks.oauth2.consent.mockResolvedValue({
+      data: { uri: null },
+    });
+    oauthPostLoginMocks.getSignedOAuthQuery.mockReturnValue(
+      "client_id=client-1&scope=openid%20identity.name%20identity.address%20identity.dob&exp=9999999999&sig=test"
+    );
+    profileMocks.getStoredProfile.mockResolvedValue({
+      firstName: "Ada",
+      lastName: "Lovelace",
+      dateOfBirth: "1815-12-10",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url === "/api/oauth2/identity/intent") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                intent_token: "intent-token",
+                expires_at: Math.floor(Date.now() / 1000) + 120,
+              }),
+              {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              }
+            )
+          );
+        }
+
+        if (url === "/api/oauth2/identity/stage") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ staged: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+          );
+        }
+
+        if (url === "/api/oauth2/identity/unstage") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ cleared: true }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            })
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      })
+    );
+
+    render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={[]}
+        scopeParam="openid identity.name identity.address identity.dob"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlock vault" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Residential address"
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Allow" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/oauth2/identity/stage",
+        expect.objectContaining({
+          method: "POST",
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(authClientMocks.oauth2.consent).toHaveBeenCalled();
+    });
+  });
 });

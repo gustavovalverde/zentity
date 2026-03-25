@@ -12,6 +12,7 @@ interface CapabilityRecord {
         };
       };
     };
+    required?: string[];
   } | null;
   name: string;
   output_schema: {
@@ -45,6 +46,7 @@ describe("GET /api/auth/agent/capabilities", () => {
       "address",
       "birthdate",
     ]);
+    expect(myProfile?.input_schema?.required).toEqual(["fields"]);
 
     const whoami = capabilities.find(
       (capability) => capability.name === "whoami"

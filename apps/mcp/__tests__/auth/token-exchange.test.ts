@@ -215,6 +215,32 @@ describe("exchangeToken (RFC 8693)", () => {
     expect(result.expiresIn).toBe(3600);
   });
 
+  it("extracts downstream identity hints from exchanged app tokens", async () => {
+    const jwt =
+      `${btoa(JSON.stringify({ alg: "none" }))}.` +
+      `${btoa(
+        JSON.stringify({
+          sub: "pairwise-subject",
+          zentity_login_hint: "user-123",
+        })
+      )}.`;
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          access_token: jwt,
+          token_type: "DPoP",
+        }),
+        { status: 200 }
+      )
+    );
+
+    const result = await exchangeToken(EXCHANGE_PARAMS);
+
+    expect(result.accountSub).toBe("pairwise-subject");
+    expect(result.loginHint).toBe("user-123");
+  });
+
   it("throws on failed exchange", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response("invalid_grant", { status: 400 })

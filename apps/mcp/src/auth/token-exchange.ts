@@ -25,7 +25,9 @@ export interface TokenResult {
 
 export interface ExchangeTokenResult {
   accessToken: string;
+  accountSub?: string;
   expiresIn: number;
+  loginHint?: string;
   scope?: string;
   tokenType: string;
 }
@@ -38,6 +40,8 @@ export interface ExchangeTokenParams {
   subjectToken: string;
   tokenEndpoint: string;
 }
+
+const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
 
 function decodeJwtClaim(
   token: string | undefined,
@@ -328,10 +332,15 @@ export async function exchangeToken(
   }
 
   const data = (await response.json()) as TokenResponse;
+  const accountSub = decodeJwtClaim(data.access_token, "sub");
+  const loginHint =
+    decodeJwtClaim(data.access_token, APP_LOGIN_HINT_CLAIM) ?? accountSub;
 
   return {
     accessToken: data.access_token,
+    ...(accountSub ? { accountSub } : {}),
     expiresIn: data.expires_in ?? 3600,
+    ...(loginHint ? { loginHint } : {}),
     ...(data.scope ? { scope: data.scope } : {}),
     tokenType: data.token_type,
   };

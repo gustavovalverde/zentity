@@ -197,4 +197,39 @@ describe("CIBA intent token authReqId binding", () => {
     const stageBBody = (await stageB.json()) as { staged: boolean };
     expect(stageBBody.staged).toBe(true);
   });
+
+  it("stages partial identity data when only some requested fields exist", async () => {
+    const authReqId = await insertCibaRequest({
+      userId,
+      scope: "openid identity.name identity.address identity.dob",
+    });
+    mockSession(userId);
+
+    const intentRes = await intentRoute(
+      makeRequest("http://localhost/api/ciba/identity/intent", {
+        auth_req_id: authReqId,
+        scopes: ["identity.name", "identity.address", "identity.dob"],
+      })
+    );
+    expect(intentRes.status).toBe(200);
+    const { intent_token } = (await intentRes.json()) as {
+      intent_token: string;
+    };
+
+    const stageRes = await stageRoute(
+      makeRequest("http://localhost/api/ciba/identity/stage", {
+        auth_req_id: authReqId,
+        scopes: ["identity.name", "identity.address", "identity.dob"],
+        identity: {
+          given_name: "Ada",
+          family_name: "Lovelace",
+          birthdate: "1815-12-10",
+        },
+        intent_token,
+      })
+    );
+    expect(stageRes.status).toBe(200);
+    const stageBody = (await stageRes.json()) as { staged: boolean };
+    expect(stageBody.staged).toBe(true);
+  });
 });

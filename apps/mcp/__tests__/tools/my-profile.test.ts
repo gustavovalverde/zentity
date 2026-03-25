@@ -56,37 +56,16 @@ describe("my_profile", () => {
     expect(parsed.profile.name.full).toBe("Ada Lovelace");
   });
 
-  it("defaults to all public profile fields when called without arguments", async () => {
-    mockReadProfile.mockResolvedValue({
-      status: "complete",
-      requestedFields: ["name", "address", "birthdate"],
-      returnedFields: [],
-      profile: {
-        name: {
-          full: null,
-          given: null,
-          family: null,
-        },
-        address: null,
-        birthdate: null,
-      },
-    });
-
+  it("requires an explicit field list", async () => {
     const client = await createConnectedClient();
     const result = await client.callTool({
       name: "my_profile",
     });
 
-    const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain(
+      "Invalid arguments for tool my_profile"
     );
-
-    expect(mockReadProfile).toHaveBeenCalledWith(
-      expect.objectContaining({
-        fields: ["name", "address", "birthdate"],
-      })
-    );
-    expect(parsed.requestedFields).toEqual(["name", "address", "birthdate"]);
   });
 
   it("accepts stringified arrays from less structured MCP callers", async () => {
@@ -107,7 +86,7 @@ describe("my_profile", () => {
     const client = await createConnectedClient();
     await client.callTool({
       name: "my_profile",
-      arguments: { fields: "[\"address\", \"name\"]" },
+      arguments: { fields: '["address", "name"]' },
     });
 
     expect(mockReadProfile).toHaveBeenCalledWith(

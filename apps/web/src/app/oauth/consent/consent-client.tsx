@@ -2,7 +2,7 @@
 
 import type { SecurityBadgeInput } from "./_components/security-badges";
 
-import { ExternalLink } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -186,6 +186,26 @@ export function OAuthConsentClient({
     fetchIntentToken,
   });
 
+  const missingIdentityFields = useMemo(() => {
+    if (
+      !hasApprovedIdentityScopes ||
+      vault.vaultState.status !== "loaded" ||
+      !vault.profileRef.current
+    ) {
+      return [] as string[];
+    }
+
+    return findMissingIdentityFields(
+      buildIdentityPayload(vault.profileRef.current) as Record<string, unknown>,
+      approvedScopes
+    );
+  }, [
+    approvedScopes,
+    hasApprovedIdentityScopes,
+    vault.profileRef,
+    vault.vaultState.status,
+  ]);
+
   const toggleOptional = (scope: string) => {
     setSelectedOptional((prev) =>
       prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]
@@ -214,16 +234,6 @@ export function OAuthConsentClient({
     }
 
     const identityPayload = buildIdentityPayload(profile);
-    const missingFields = findMissingIdentityFields(
-      identityPayload as Record<string, unknown>,
-      approvedScopes
-    );
-    if (missingFields.length > 0) {
-      throw new Error(
-        `Your profile does not contain: ${missingFields.join(", ")}. Complete identity verification to add this data.`
-      );
-    }
-
     const response = await fetch("/api/oauth2/identity/stage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -447,6 +457,17 @@ export function OAuthConsentClient({
             vault={vault}
             wallet={wallet}
           />
+
+          {missingIdentityFields.length > 0 && (
+            <Alert>
+              <AlertTriangle className="size-4" />
+              <AlertDescription>
+                Some requested data is not available in your profile:{" "}
+                {missingIdentityFields.join(", ")}. If you continue, only the
+                available data will be shared.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {error ? (
             <Alert variant="destructive">

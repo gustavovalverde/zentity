@@ -9,7 +9,6 @@ import { throwUrlElicitationIfSupported } from "../auth/interactive-tool-flow.js
 import { readProfile } from "../services/profile-read.js";
 
 const profileFieldSchema = z.enum(PROFILE_FIELDS);
-const DEFAULT_PROFILE_FIELDS = [...PROFILE_FIELDS] as PublicProfileField[];
 
 function coerceProfileFieldsInput(value: unknown): unknown {
   if (value == null) {
@@ -45,16 +44,14 @@ function coerceProfileFieldsInput(value: unknown): unknown {
 
 const profileFieldsInputSchema = z.preprocess(
   coerceProfileFieldsInput,
-  z.array(profileFieldSchema).min(1).default(DEFAULT_PROFILE_FIELDS)
+  z.array(profileFieldSchema).min(1)
 );
 
-const myProfileInputSchema = z
-  .object({
-    fields: profileFieldsInputSchema.describe(
-      "Optional requested vault-gated profile fields. Allowed values: name, address, birthdate. Defaults to all available vault-backed profile fields when omitted. Do not use this tool for standard account email."
-    ),
-  })
-  .default({ fields: DEFAULT_PROFILE_FIELDS });
+const myProfileInputSchema = z.object({
+  fields: profileFieldsInputSchema.describe(
+    'Required vault-gated profile fields to retrieve. Allowed values: name, address, birthdate. Always request the minimum needed fields, for example `["birthdate"]` when the user asks only for their birthdate. Do not use this tool for standard account email.'
+  ),
+});
 
 const profileNameSchema = z.object({
   full: z.string().nullable(),
@@ -109,7 +106,7 @@ export function registerMyProfileTool(server: McpServer): void {
     {
       title: "My Profile",
       description:
-        "Retrieve vault-gated profile data such as full name, address, or birthdate. Use this for 'what is my full name?' or 'what is my address?'. Do not use this tool for standard account email. This tool owns the browser approval flow; do not use a generic approval tool for profile reads.",
+        "Retrieve vault-gated profile data such as full name, address, or birthdate. Always pass only the specific fields needed for the user's request. Use this for 'what is my full name?' or 'what is my address?'. Do not use this tool for standard account email. This tool owns the browser approval flow; do not use a generic approval tool for profile reads.",
       inputSchema: myProfileInputSchema,
       outputSchema: profileOutputSchema,
       annotations: {
@@ -119,7 +116,7 @@ export function registerMyProfileTool(server: McpServer): void {
     },
     async ({ fields }) => {
       const normalizedFields = normalizeProfileFields(
-        (fields ?? DEFAULT_PROFILE_FIELDS) as PublicProfileField[]
+        fields as PublicProfileField[]
       );
       const result = await readProfile({
         server,

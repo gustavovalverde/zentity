@@ -149,31 +149,41 @@ interface GrantRow {
   capabilityName: string;
   constraints?: unknown;
   id: string;
+  sessionDisplayName: string;
   source: string;
   status: string;
 }
 
-function deduplicateGrants(
-  sessions: Array<{ grants: GrantRow[] }>
+function collectHostGrants(
+  sessions: Array<{
+    displayName: string;
+    grants: Omit<GrantRow, "sessionDisplayName">[];
+  }>
 ): GrantRow[] {
-  const byCapability = new Map<string, GrantRow>();
-
-  for (const session of sessions) {
-    for (const grant of session.grants) {
-      const existing = byCapability.get(grant.capabilityName);
-      if (!existing) {
-        byCapability.set(grant.capabilityName, grant);
-        continue;
+  return sessions
+    .flatMap((session) =>
+      session.grants.map((grant) => ({
+        ...grant,
+        sessionDisplayName: session.displayName,
+      }))
+    )
+    .toSorted((left, right) => {
+      const priorityDelta =
+        (STATUS_PRIORITY[left.status] ?? 99) -
+        (STATUS_PRIORITY[right.status] ?? 99);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
       }
-      const existingPriority = STATUS_PRIORITY[existing.status] ?? 99;
-      const newPriority = STATUS_PRIORITY[grant.status] ?? 99;
-      if (newPriority < existingPriority) {
-        byCapability.set(grant.capabilityName, grant);
-      }
-    }
-  }
 
-  return [...byCapability.values()];
+      const capabilityDelta = left.capabilityName.localeCompare(
+        right.capabilityName
+      );
+      if (capabilityDelta !== 0) {
+        return capabilityDelta;
+      }
+
+      return left.sessionDisplayName.localeCompare(right.sessionDisplayName);
+    });
 }
 
 export function ConnectedTab() {
@@ -249,8 +259,8 @@ export function ConnectedTab() {
           (sum, s) => sum + s.usageToday,
           0
         );
-        const uniqueGrants = deduplicateGrants(host.sessions);
-        const totalGrants = uniqueGrants.length;
+        const grants = collectHostGrants(host.sessions);
+        const totalGrants = grants.length;
         const lastActive = host.sessions.reduce<string | null>((latest, s) => {
           if (!s.lastActiveAt) {
             return latest;
@@ -312,7 +322,7 @@ export function ConnectedTab() {
                     </p>
                   ) : (
                     <ItemGroup>
-                      {uniqueGrants.map((grant) => {
+                      {grants.map((grant) => {
                         const isActing = pendingAction === `grant-${grant.id}`;
                         const constraintText = formatConstraints(
                           grant.constraints
@@ -336,6 +346,7 @@ export function ConnectedTab() {
                               </ItemTitle>
                               <ItemDescription>
                                 {formatGrantSource(grant.source)}
+                                {` · ${grant.sessionDisplayName}`}
                                 {constraintText ? ` · ${constraintText}` : ""}
                               </ItemDescription>
                             </ItemContent>

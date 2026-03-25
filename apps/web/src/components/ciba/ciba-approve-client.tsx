@@ -318,50 +318,21 @@ export function CibaApproveClient({
   });
   const vaultStatus = vault.vaultState.status;
 
-  // Auto-deny when vault is unlocked but the profile lacks the requested data.
-  // The user shouldn't have to click Deny for something that can't succeed.
-  useEffect(() => {
-    if (
-      state !== "ready" ||
-      !hasIdentityScopes ||
-      vaultStatus !== "loaded" ||
-      !vault.profileRef.current
-    ) {
-      return;
+  const missingIdentityFields = useMemo(() => {
+    if (!hasIdentityScopes || vaultStatus !== "loaded") {
+      return [] as string[];
     }
 
     const profile = vault.profileRef.current;
-    const payload = buildIdentityPayload(profile) as Record<string, unknown>;
-    const missingFields = findMissingIdentityFields(payload, scopes);
-
-    if (missingFields.length === 0) {
-      return;
+    if (!profile) {
+      return [] as string[];
     }
 
-    // Auto-deny — the profile doesn't have the requested data
-    const reason = `Your profile does not contain: ${missingFields.join(", ")}. Complete identity verification to add this data.`;
-    setState("rejecting");
-    fetch("/api/auth/ciba/reject", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auth_req_id: authReqId }),
-    })
-      .then(() => {
-        setError(reason);
-        setState("rejected");
-      })
-      .catch(() => {
-        setError(reason);
-        setState("rejected");
-      });
-  }, [
-    state,
-    hasIdentityScopes,
-    vaultStatus,
-    vault.profileRef,
-    scopes,
-    authReqId,
-  ]);
+    return findMissingIdentityFields(
+      buildIdentityPayload(profile) as Record<string, unknown>,
+      scopes
+    );
+  }, [hasIdentityScopes, vaultStatus, vault.profileRef, scopes]);
 
   const refreshAssuranceTier = useCallback(async () => {
     try {
@@ -769,6 +740,17 @@ export function CibaApproveClient({
               <AlertDescription>
                 Complete identity verification first. The agent will be
                 notified.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {missingIdentityFields.length > 0 && (
+            <Alert>
+              <AlertTriangle className="size-4" />
+              <AlertDescription>
+                Some requested data is not available in your profile:{" "}
+                {missingIdentityFields.join(", ")}. If you continue, only the
+                available data will be shared.
               </AlertDescription>
             </Alert>
           )}

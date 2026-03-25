@@ -179,11 +179,12 @@ export function createApp(): Hono {
 
     const callerToken =
       authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "";
+    let exchangeResult: Awaited<ReturnType<typeof exchangeToken>>;
     let exchangedToken: string;
     let exchangedScopes = getMinimalMcpScopes();
     try {
       const discovery = await discover(config.zentityUrl);
-      const exchangeResult = await exchangeToken({
+      exchangeResult = await exchangeToken({
         tokenEndpoint: discovery.token_endpoint,
         subjectToken: callerToken,
         audience: resolveTokenExchangeAudience(discovery.issuer),
@@ -205,10 +206,10 @@ export function createApp(): Hono {
 
     const oauth: OAuthSessionContext = {
       accessToken: exchangedToken,
-      accountSub: (result.payload.sub as string) ?? "",
+      accountSub: exchangeResult.accountSub ?? "",
       clientId: httpServerCredentials.clientId,
       dpopKey: httpServerCredentials.dpopKey,
-      loginHint: "",
+      loginHint: exchangeResult.loginHint ?? "",
       scopes: exchangedScopes,
     };
 

@@ -53,6 +53,7 @@ const CAPABILITIES = [
           },
         },
       },
+      required: ["fields"],
     }),
     outputSchema: JSON.stringify({
       type: "object",

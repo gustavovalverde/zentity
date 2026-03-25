@@ -83,6 +83,37 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
+const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname === "localhost"
+  );
+}
+
+function isInstalledAgentBootstrapClient(input: {
+  grantTypes: string[];
+  redirectUris: string[];
+}): boolean {
+  return (
+    input.grantTypes.includes(TOKEN_EXCHANGE_GRANT_TYPE) &&
+    input.redirectUris.length > 0 &&
+    input.redirectUris.every((redirectUri) => {
+      try {
+        const parsed = new URL(redirectUri);
+        return (
+          (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+          isLoopbackHostname(parsed.hostname)
+        );
+      } catch {
+        return false;
+      }
+    })
+  );
+}
 
 async function buildLocalJwks(kid: string) {
   const rows = await db.select().from(jwksTable).all();
@@ -121,8 +152,21 @@ function getAudienceClient(clientId: string) {
   return db
     .select({
       clientId: oauthClients.clientId,
+      grantTypes: oauthClients.grantTypes,
       redirectUris: oauthClients.redirectUris,
       subjectType: oauthClients.subjectType,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+}
+
+function getRequestingClientMetadata(clientId: string) {
+  return db
+    .select({
+      grantTypes: oauthClients.grantTypes,
+      redirectUris: oauthClients.redirectUris,
     })
     .from(oauthClients)
     .where(eq(oauthClients.clientId, clientId))
@@ -318,12 +362,25 @@ function createTokenExchangeHandler(): (
       subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
       requestedScopes.length > 0 &&
       requestedScopes.every((scope) => AGENT_BOOTSTRAP_SCOPE_SET.has(scope));
+    const requestingClientMetadata = bootstrapOnlyRequest
+      ? await getRequestingClientMetadata(client.clientId)
+      : null;
+    const canSelfBootstrap =
+      bootstrapOnlyRequest &&
+      sourceClientId === client.clientId &&
+      requestingClientMetadata != null &&
+      isInstalledAgentBootstrapClient({
+        grantTypes: parseStoredStringArray(requestingClientMetadata.grantTypes),
+        redirectUris: parseStoredStringArray(
+          requestingClientMetadata.redirectUris
+        ),
+      });
 
     let targetScopes: string[];
     if (requestedScope) {
       if (subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN) {
         // Access token subjects: requested must be a subset
-        if (!bootstrapOnlyRequest) {
+        if (!canSelfBootstrap) {
           for (const s of requestedScopes) {
             if (!subjectScopes.includes(s)) {
               throw new APIError("BAD_REQUEST", {
@@ -629,6 +686,9 @@ function createTokenExchangeHandler(): (
         : {}),
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
+        : {}),
+      ...(targetAudience === appUrl
+        ? { [APP_LOGIN_HINT_CLAIM]: rawUserId }
         : {}),
       act: actClaim,
       ...exchangedAapProfile,

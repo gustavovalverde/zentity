@@ -11,6 +11,8 @@ const DEFAULT_RE = /Default/;
 const REQUESTED_RE = /Requested/;
 const REGION_EU_RE = /region is EU/;
 const REVOKE_CONFIRM_RE = /Revoke access for Claude Code/;
+const REQUESTED_CLAUDE_RE = /Requested · Claude Code/;
+const DEFAULT_CURSOR_RE = /Default · Cursor · region is EU/;
 
 const trpcMocks = vi.hoisted(() => ({
   invalidate: vi.fn(),
@@ -138,6 +140,56 @@ const HOST_DATA = [
   },
 ];
 
+const [BASE_HOST] = HOST_DATA;
+if (!BASE_HOST) {
+  throw new Error("Expected host fixture");
+}
+
+const [BASE_SESSION] = BASE_HOST.sessions;
+if (!BASE_SESSION) {
+  throw new Error("Expected session fixture");
+}
+
+const DUPLICATE_GRANT_HOST_DATA = [
+  {
+    ...BASE_HOST,
+    sessions: [
+      {
+        ...BASE_SESSION,
+        id: "session-1",
+        displayName: "Claude Code",
+        grants: [
+          {
+            capabilityName: "my_profile",
+            constraints: null,
+            grantedAt: null,
+            hostPolicyId: null,
+            id: "grant-a",
+            source: "session_elevation",
+            status: "pending",
+          },
+        ],
+      },
+      {
+        ...BASE_SESSION,
+        id: "session-2",
+        displayName: "Cursor",
+        grants: [
+          {
+            capabilityName: "my_profile",
+            constraints: [{ field: "region", op: "eq", value: "EU" }],
+            grantedAt: new Date().toISOString(),
+            hostPolicyId: null,
+            id: "grant-b",
+            source: "host_policy",
+            status: "active",
+          },
+        ],
+      },
+    ],
+  },
+];
+
 describe("ConnectedTab", () => {
   it("shows empty state when no hosts exist", () => {
     setupMocks();
@@ -259,6 +311,27 @@ describe("ConnectedTab", () => {
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("renders separate rows for grants from different sessions", async () => {
+    const fetchSpy = setupMocks();
+    trpcMocks.useQuery.mockReturnValue({
+      data: DUPLICATE_GRANT_HOST_DATA,
+      isLoading: false,
+    });
+
+    render(<ConnectedTab />);
+
+    fireEvent.click(screen.getByRole("button", { name: TOGGLE_DETAILS_RE }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Read personal information")).toHaveLength(2);
+    });
+
+    expect(screen.getByText(REQUESTED_CLAUDE_RE)).toBeTruthy();
+    expect(screen.getByText(DEFAULT_CURSOR_RE)).toBeTruthy();
+
     fetchSpy.mockRestore();
   });
 });
