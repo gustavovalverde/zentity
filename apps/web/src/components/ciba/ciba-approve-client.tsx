@@ -1,6 +1,11 @@
 "use client";
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
+import type {
+  AgentIdentitySummary,
+  CibaRequestDetails,
+  RegisteredAgentInfo,
+} from "@/lib/ciba/resolve-approval";
 
 import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -35,26 +40,6 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure-registry";
-
-interface AuthorizationDetail {
-  amount?: { currency?: string; value?: string };
-  item?: string;
-  merchant?: string;
-  type?: string;
-  [key: string]: unknown;
-}
-
-interface CibaRequestDetails {
-  acr_values?: string;
-  auth_req_id: string;
-  authorization_details?: AuthorizationDetail[];
-  binding_message?: string;
-  client_id?: string;
-  client_name?: string;
-  expires_at: string;
-  scope: string;
-  status: string;
-}
 
 type PageState =
   | "loading"
@@ -105,12 +90,6 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
   );
 }
 
-interface AgentIdentitySummary {
-  model?: string;
-  name: string;
-  runtime?: string;
-}
-
 function resolveTerminalState(message: string): PageState | null {
   const lower = message.toLowerCase();
   if (lower.includes("already approved")) {
@@ -125,13 +104,6 @@ function resolveTerminalState(message: string): PageState | null {
   return null;
 }
 
-interface RegisteredAgentInfo {
-  attestationProvider: string | null;
-  attestationTier: string;
-  hostName: string;
-  sessionId: string;
-}
-
 interface InteractionCopy {
   deniedDescription?: string;
   description?: string;
@@ -140,10 +112,31 @@ interface InteractionCopy {
   title?: string;
 }
 
+function deriveInitialState(req?: CibaRequestDetails): {
+  pageState: PageState;
+  secondsLeft: number;
+} {
+  if (!req) {
+    return { pageState: "loading", secondsLeft: 0 };
+  }
+  if (req.status === "approved") {
+    return { pageState: "approved", secondsLeft: 0 };
+  }
+  if (req.status === "rejected") {
+    return { pageState: "rejected", secondsLeft: 0 };
+  }
+  const expiresMs = new Date(req.expires_at).getTime() - Date.now();
+  if (expiresMs <= 0) {
+    return { pageState: "expired", secondsLeft: 0 };
+  }
+  return { pageState: "ready", secondsLeft: Math.ceil(expiresMs / 1000) };
+}
+
 export function CibaApproveClient({
   agentIdentity,
   authMode,
   authReqId,
+  initialRequest,
   interactionCopy,
   registeredAgent,
   userTier = 0,
@@ -152,6 +145,7 @@ export function CibaApproveClient({
   agentIdentity?: AgentIdentitySummary | null;
   authMode: AuthMode;
   authReqId: string | null;
+  initialRequest?: CibaRequestDetails;
   interactionCopy?: InteractionCopy | null;
   registeredAgent?: RegisteredAgentInfo | null;
   userTier?: 0 | 1 | 2 | 3;
@@ -159,13 +153,22 @@ export function CibaApproveClient({
 }>) {
   const router = useRouter();
 
-  const [state, setState] = useState<PageState>("loading");
-  const [details, setDetails] = useState<CibaRequestDetails | null>(null);
+  const initialDerived = deriveInitialState(initialRequest);
+  const [state, setState] = useState<PageState>(initialDerived.pageState);
+  const [details, setDetails] = useState<CibaRequestDetails | null>(
+    initialRequest ?? null
+  );
   const [error, setError] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [timeLeft, setTimeLeft] = useState<number>(initialDerived.secondsLeft);
   const [assuranceTier, setAssuranceTier] = useState(userTier);
 
+  const hasInitialRequest = initialRequest != null;
+
   useEffect(() => {
+    if (hasInitialRequest) {
+      return;
+    }
+
     if (!authReqId) {
       setError("Missing auth_req_id parameter");
       setState("error");
@@ -206,7 +209,7 @@ export function CibaApproveClient({
         setError(err.message);
         setState("error");
       });
-  }, [authReqId]);
+  }, [authReqId, hasInitialRequest]);
 
   // Real-time status updates via service worker push messages
   useEffect(() => {
