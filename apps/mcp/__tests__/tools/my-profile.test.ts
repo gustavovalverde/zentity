@@ -30,22 +30,21 @@ describe("my_profile", () => {
   it("returns typed profile data when disclosure is complete", async () => {
     mockReadProfile.mockResolvedValue({
       status: "complete",
-      requestedFields: ["name", "email"],
-      returnedFields: ["name", "email"],
+      requestedFields: ["name"],
+      returnedFields: ["name"],
       profile: {
         name: {
           full: "Ada Lovelace",
           given: "Ada",
           family: "Lovelace",
         },
-        email: "ada@example.com",
       },
     });
 
     const client = await createConnectedClient();
     const result = await client.callTool({
       name: "my_profile",
-      arguments: { fields: ["email", "name"] },
+      arguments: { fields: ["name"] },
     });
 
     const parsed = JSON.parse(
@@ -53,15 +52,15 @@ describe("my_profile", () => {
     );
 
     expect(parsed.status).toBe("complete");
-    expect(parsed.requestedFields).toEqual(["name", "email"]);
+    expect(parsed.requestedFields).toEqual(["name"]);
     expect(parsed.profile.name.full).toBe("Ada Lovelace");
   });
 
   it("defaults to all public profile fields when called without arguments", async () => {
     mockReadProfile.mockResolvedValue({
       status: "complete",
-      requestedFields: ["name", "address", "birthdate", "email"],
-      returnedFields: ["email"],
+      requestedFields: ["name", "address", "birthdate"],
+      returnedFields: [],
       profile: {
         name: {
           full: null,
@@ -70,7 +69,6 @@ describe("my_profile", () => {
         },
         address: null,
         birthdate: null,
-        email: "ada@example.com",
       },
     });
 
@@ -85,15 +83,10 @@ describe("my_profile", () => {
 
     expect(mockReadProfile).toHaveBeenCalledWith(
       expect.objectContaining({
-        fields: ["name", "address", "birthdate", "email"],
+        fields: ["name", "address", "birthdate"],
       })
     );
-    expect(parsed.requestedFields).toEqual([
-      "name",
-      "address",
-      "birthdate",
-      "email",
-    ]);
+    expect(parsed.requestedFields).toEqual(["name", "address", "birthdate"]);
   });
 
   it("accepts stringified arrays from less structured MCP callers", async () => {
@@ -121,6 +114,20 @@ describe("my_profile", () => {
       expect.objectContaining({
         fields: ["name", "address"],
       })
+    );
+  });
+
+  it("rejects standard account email as a profile field", async () => {
+    const client = await createConnectedClient();
+
+    const result = await client.callTool({
+      name: "my_profile",
+      arguments: { fields: ["email"] },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain(
+      "Invalid arguments for tool my_profile"
     );
   });
 

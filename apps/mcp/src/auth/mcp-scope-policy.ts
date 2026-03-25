@@ -1,11 +1,26 @@
+/**
+ * MCP tool scope policy.
+ *
+ * Defines the minimum OAuth scopes required for each MCP tool at the
+ * HTTP transport layer. These are transport-level gates; the actual
+ * disclosure semantics (vault unlock, exact binding, delivery surface)
+ * are enforced by the Zentity auth server per the disclosure registry
+ * at `apps/web/src/lib/auth/oidc/disclosure-registry.ts`.
+ *
+ * Identity scopes (identity.*) are NOT listed here because they are
+ * negotiated per-request via CIBA inside the tool handler, not at the
+ * HTTP authentication layer. The profile-fields.ts adapter translates
+ * MCP field names to disclosure scopes.
+ */
 const MINIMAL_MCP_SCOPES = ["openid"] as const;
+const OPTIONAL_REMOTE_DISCLOSURE_SCOPES = ["email"] as const;
 
 const REMOTE_TOOL_SCOPE_REQUIREMENTS: Record<string, string[]> = {
   check_compliance: ["openid", "compliance:key:read"],
   my_proofs: ["openid", "proof:identity"],
   my_profile: ["openid"],
   purchase: ["openid"],
-  whoami: ["openid", "email"],
+  whoami: ["openid"],
 };
 
 interface JsonRpcRequest {
@@ -39,6 +54,7 @@ export function getRemoteMcpScopesSupported(): string[] {
   return [
     ...new Set([
       ...MINIMAL_MCP_SCOPES,
+      ...OPTIONAL_REMOTE_DISCLOSURE_SCOPES,
       ...Object.values(REMOTE_TOOL_SCOPE_REQUIREMENTS).flat(),
     ]),
   ];

@@ -41,7 +41,7 @@ describe("whoami", () => {
       authStrength: "strong",
       loginMethod: "passkey",
       checks: { document: true },
-      vaultFieldsAvailable: ["name", "address", "birthdate", "email"],
+      vaultFieldsAvailable: ["name", "address", "birthdate"],
       profileToolHint: "my_profile",
     });
 
@@ -54,12 +54,31 @@ describe("whoami", () => {
     expect(parsed.email).toBe("user@example.com");
     expect(parsed.tierName).toBe("Verified");
     expect(parsed.profileToolHint).toBe("my_profile");
-    expect(parsed.vaultFieldsAvailable).toEqual([
-      "name",
-      "address",
-      "birthdate",
-      "email",
-    ]);
+    expect(parsed.vaultFieldsAvailable).toEqual(["name", "address", "birthdate"]);
     expect(parsed.name).toBeUndefined();
+  });
+
+  it("can omit email when the granted scopes do not include it", async () => {
+    mockSummary.mockResolvedValue({
+      email: null,
+      memberSince: "2026-01-01",
+      tier: 2,
+      tierName: "Verified",
+      verificationLevel: "full",
+      authStrength: "strong",
+      loginMethod: "passkey",
+      checks: { document: true },
+      vaultFieldsAvailable: ["name", "address", "birthdate"],
+      profileToolHint: "my_profile",
+    });
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({ name: "whoami", arguments: {} });
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+
+    expect(parsed.email).toBeNull();
+    expect(parsed.vaultFieldsAvailable).toEqual(["name", "address", "birthdate"]);
   });
 });

@@ -71,7 +71,7 @@ standard OAuth 2.1 and OpenID Connect, without storing plaintext personal data.
 The protocol distinguishes between **proof scopes** and **identity scopes**:
 
 - `proof:age`, `proof:verification`, `proof:nationality`: boolean flags derived from ZK proofs. The relying party learns "eligible" without seeing the underlying data.
-- `identity.name`, `identity.dob`: actual PII, delivered ephemerally via `id_token` only when regulation requires it, after explicit user consent and credential unlock.
+- `identity.name`, `identity.dob`: actual PII, delivered ephemerally via the `userinfo` endpoint only after explicit user consent and credential unlock.
 
 Most integrations need only proof scopes.
 

@@ -18,7 +18,7 @@ export function createServer(surface: ServerSurface = "full"): {
     {
       instructions: [
         "Zentity identity server — use these tools instead of answering from session context:",
-        "• whoami → safe account summary only (for 'who am I?', 'am I verified?', 'what tier am I?')",
+        "• whoami → safe account summary only (for 'who am I?', 'am I verified?', 'what tier am I?'; includes standard email only when the granted scopes include `email`)",
         "• my_profile → vault-gated profile data (for 'what's my full name?', 'what is my address?', 'what is my birthdate?'; omit fields to fetch the full available profile set)",
         "• my_proofs → proof and verification-derived facts (for 'what proofs do I have?', 'am I over 18?')",
         "• check_compliance → on-chain attestation and compliance status",

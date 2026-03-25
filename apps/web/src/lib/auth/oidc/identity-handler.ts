@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
+import {
+  extractIdentityScopes,
+  filterIdentityByScopes,
+} from "@/lib/auth/oidc/disclosure-registry";
 import { normalizeIdentityFields } from "@/lib/auth/oidc/identity-fields-schema";
 import {
   createIdentityIntentToken,
   createScopeHash,
   verifyIdentityIntentToken,
 } from "@/lib/auth/oidc/identity-intent";
-import {
-  extractIdentityScopes,
-  filterIdentityByScopes,
-} from "@/lib/auth/oidc/identity-scopes";
 import { rateLimitResponse } from "@/lib/utils/rate-limit";
 import { oauth2IdentityLimiter } from "@/lib/utils/rate-limiters";
 

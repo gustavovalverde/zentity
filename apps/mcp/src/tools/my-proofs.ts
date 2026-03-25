@@ -4,41 +4,54 @@ import { zentityFetch } from "../auth/api-client.js";
 import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
-interface VerificationCheck {
-  checkType: string;
-  evidenceRef: string | null;
+/**
+ * Proof claims delivered by the userinfo endpoint when the token carries
+ * proof:* scopes. These are the OIDC claim keys from the disclosure registry.
+ */
+interface ProofClaims {
+  age_verification?: boolean;
+  attestation_expires_at?: string;
+  chip_verification_method?: string;
+  chip_verified?: boolean;
+  document_verified?: boolean;
+  face_match_verified?: boolean;
+  identity_bound?: boolean;
+  liveness_verified?: boolean;
+  nationality_group?: string;
+  nationality_verified?: boolean;
+  policy_version?: string;
+  sybil_resistant?: boolean;
+  verification_level?: string;
+  verification_time?: string;
+  verified?: boolean;
+}
+
+interface CheckOutput {
   passed: boolean;
-  source: string;
+  type: string;
 }
 
-interface ChecksResponse {
-  checks: VerificationCheck[];
-  level: string;
-  method: "ocr" | "nfc_chip" | null;
-  verified: boolean;
-}
+const PROOF_CLAIM_TO_CHECK: [keyof ProofClaims, string][] = [
+  ["age_verification", "age"],
+  ["document_verified", "document"],
+  ["liveness_verified", "liveness"],
+  ["face_match_verified", "face_match"],
+  ["nationality_verified", "nationality"],
+  ["identity_bound", "identity_binding"],
+  ["sybil_resistant", "sybil_resistant"],
+  ["chip_verified", "chip"],
+];
 
-interface ProofSummary {
-  createdAt: string;
-  proofHash: string;
-  proofSystem: string;
-  proofType: string;
-  verified: boolean;
+function mapProofClaimsToChecks(claims: ProofClaims): CheckOutput[] {
+  const checks: CheckOutput[] = [];
+  for (const [claimKey, checkType] of PROOF_CLAIM_TO_CHECK) {
+    const value = claims[claimKey];
+    if (typeof value === "boolean") {
+      checks.push({ type: checkType, passed: value });
+    }
+  }
+  return checks;
 }
-
-interface ProofsResponse {
-  method: "ocr" | "nfc_chip" | null;
-  proofs: ProofSummary[];
-}
-
-const SOURCE_LABELS: Record<string, string> = {
-  zk_proof: "ZK proof",
-  signed_claim: "server attestation",
-  chip_claim: "passport chip",
-  commitment: "cryptographic commitment",
-  nullifier: "passport nullifier",
-  dedup_key: "deduplication key",
-};
 
 export function registerMyProofsTool(server: McpServer): void {
   server.registerTool(
@@ -56,17 +69,7 @@ export function registerMyProofsTool(server: McpServer): void {
           z.object({
             type: z.string(),
             passed: z.boolean(),
-            source: z.string(),
-          })
-        ),
-        totalProofs: z.number(),
-        proofs: z.array(
-          z.object({
-            system: z.string(),
-            type: z.string(),
-            verified: z.boolean(),
-            verifiedAt: z.string(),
-          })
+          }),
         ),
       },
       annotations: {
@@ -90,49 +93,37 @@ export function registerMyProofsTool(server: McpServer): void {
         };
       }
 
-      const [checksRes, proofsRes] = await Promise.all([
-        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getChecks`),
-        zentityFetch(`${config.zentityUrl}/api/trpc/zk.getProofs`),
-      ]);
+      const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
+      const response = await zentityFetch(userinfoUrl);
 
-      const checksData = checksRes.ok
-        ? (
-            (await checksRes.json()) as {
-              result: { data: ChecksResponse };
-            }
-          ).result.data
-        : null;
+      if (!response.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: `Failed to fetch proof claims (${response.status})`,
+            },
+          ],
+        };
+      }
 
-      const proofsData = proofsRes.ok
-        ? (
-            (await proofsRes.json()) as {
-              result: { data: ProofsResponse };
-            }
-          ).result.data
-        : null;
+      const claims = (await response.json()) as ProofClaims;
+      const checks = mapProofClaimsToChecks(claims);
+      const ageCheck = checks.find((c) => c.type === "age");
 
-      const checks = checksData?.checks ?? [];
-      const proofs = proofsData?.proofs ?? [];
+      const verificationMethod = claims.chip_verified
+        ? claims.chip_verification_method ?? "nfc"
+        : claims.verified
+          ? "ocr"
+          : null;
 
-      const checkMap = new Map(checks.map((c) => [c.checkType, c]));
-      const ageCheck = checkMap.get("age");
       const structuredContent = {
-        verificationMethod: checksData?.method ?? null,
-        verificationLevel: checksData?.level ?? "none",
-        verified: checksData?.verified ?? false,
+        verificationMethod,
+        verificationLevel: claims.verification_level ?? "none",
+        verified: claims.verified ?? false,
         isOver18: ageCheck?.passed ?? null,
-        checks: checks.map((c) => ({
-          type: c.checkType,
-          passed: c.passed,
-          source: SOURCE_LABELS[c.source] ?? c.source,
-        })),
-        totalProofs: proofs.length,
-        proofs: proofs.map((p) => ({
-          system: p.proofSystem,
-          type: p.proofType,
-          verified: p.verified,
-          verifiedAt: p.createdAt,
-        })),
+        checks,
       };
 
       return {
@@ -144,6 +135,6 @@ export function registerMyProofsTool(server: McpServer): void {
         ],
         structuredContent,
       };
-    }
+    },
   );
 }

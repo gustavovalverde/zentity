@@ -70,8 +70,8 @@ RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
 RECOVERY_KEY_ID=v1
 
 # Custodial recovery guardian (optional)
-CUSTODIAL_SIGNER_URL=http://localhost:5101   # Zentity-operated signer for custodial guardian
-CUSTODIAL_SIGNER_ID=signer-custodial         # Signer ID for the custodial instance
+CUSTODIAL_SIGNER_URL=http://localhost:5101  # custodial guardian
+CUSTODIAL_SIGNER_ID=signer-custodial       # custodial signer ID
 
 # Email delivery
 RESEND_API_KEY=...                      # production
@@ -286,7 +286,7 @@ Zentity stores privacy-preserving artifacts across multiple tables:
 
 - **identity_bundles** — user-level status + FHE key registration
 - **identity_documents** — per-document commitments + metadata
-- **proof_artifacts** — proof payloads + public inputs + verification metadata (Noir + ZKPassport)
+- **proof_artifacts** — proof payloads + public inputs + metadata
 - **verification_checks** — materialized compliance checks (7 per verification)
 - **encrypted_attributes** — TFHE ciphertexts
   (birth_year_offset, country_code, compliance_level, liveness_score)
@@ -371,7 +371,7 @@ to modify three packages:
 | `better-auth` | Add `allowPasswordless` option for 2FA backup codes |
 | `@better-auth/passkey` | Add WebAuthn extensions support and new error codes |
 | `@daveyplate/better-auth-ui` | Custom auth UI configuration |
-| `@better-auth/oauth-provider` | CIBA grant type extensibility (`customGrantTypeHandlers`) |
+| `@better-auth/oauth-provider` | CIBA grant type extensibility |
 
 ### Updating Patches
 

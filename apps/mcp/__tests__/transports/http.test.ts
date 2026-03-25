@@ -181,9 +181,9 @@ describe("HTTP transport middleware", () => {
     expect(body.bearer_methods_supported).toEqual(["header", "dpop"]);
     expect(body.scopes_supported).toEqual([
       "openid",
+      "email",
       "compliance:key:read",
       "proof:identity",
-      "email",
     ]);
   });
 
@@ -226,8 +226,8 @@ describe("HTTP transport middleware", () => {
       authError(
         403,
         "insufficient_scope",
-        "Token missing required scope(s): email",
-        "openid email"
+        "Token missing required scope(s): proof:identity",
+        "openid proof:identity"
       )
     );
 
@@ -241,7 +241,7 @@ describe("HTTP transport middleware", () => {
         jsonrpc: "2.0",
         method: "tools/call",
         id: 1,
-        params: { name: "whoami", arguments: {} },
+        params: { name: "my_proofs", arguments: {} },
       }),
     });
     expect(res.status).toBe(403);
@@ -251,7 +251,7 @@ describe("HTTP transport middleware", () => {
 
     const wwwAuth = res.headers.get("WWW-Authenticate");
     expect(wwwAuth).toContain("resource_metadata");
-    expect(wwwAuth).toContain('scope="openid email"');
+    expect(wwwAuth).toContain('scope="openid proof:identity"');
   });
 
   it("uses minimal scopes for initialize", async () => {
@@ -286,10 +286,8 @@ describe("HTTP transport middleware", () => {
     );
   });
 
-  it("challenges whoami with account scopes", async () => {
-    mockValidateToken.mockResolvedValue(
-      validPayload({ scope: "openid email" })
-    );
+  it("challenges whoami with minimal account scopes", async () => {
+    mockValidateToken.mockResolvedValue(validPayload({ scope: "openid" }));
 
     await app.request("/mcp", {
       method: "POST",
@@ -310,7 +308,7 @@ describe("HTTP transport middleware", () => {
       undefined,
       "POST",
       expect.stringContaining("/mcp"),
-      ["openid", "email"]
+      ["openid"]
     );
   });
 

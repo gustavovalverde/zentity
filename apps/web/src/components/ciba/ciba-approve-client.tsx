@@ -31,12 +31,10 @@ import {
   IDENTITY_SCOPE_DESCRIPTIONS,
   type IdentityScope,
   isIdentityScope,
-} from "@/lib/auth/oidc/identity-scopes";
-import {
   isProofScope,
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
-} from "@/lib/auth/oidc/proof-scopes";
+} from "@/lib/auth/oidc/disclosure-registry";
 
 interface AuthorizationDetail {
   amount?: { currency?: string; value?: string };

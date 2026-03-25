@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { auth } from "@/lib/auth/auth";
-import { IDENTITY_SCOPES } from "@/lib/auth/oidc/identity-scopes";
-import { PROOF_SCOPES } from "@/lib/auth/oidc/proof-scopes";
+import {
+  IDENTITY_SCOPES,
+  PROOF_SCOPES,
+} from "@/lib/auth/oidc/disclosure-registry";
 import {
   buildWellKnownResponse,
   callAuthApi,

@@ -17,7 +17,7 @@ vi.doMock("@/lib/identity/verification/unified-model", () => ({
 
 const { buildProofClaims } = await import("../claims");
 const { extractProofScopes, filterProofClaimsByScopes } = await import(
-  "../proof-scopes"
+  "../disclosure-registry"
 );
 
 async function simulateIdTokenProofClaims(
@@ -32,7 +32,7 @@ async function simulateIdTokenProofClaims(
   }
 
   const allProofClaims = await buildProofClaims(userId);
-  return filterProofClaimsByScopes(allProofClaims, grantedScopes);
+  return filterProofClaimsByScopes(allProofClaims, grantedScopes, "id_token");
 }
 
 function setVerifiedUser() {

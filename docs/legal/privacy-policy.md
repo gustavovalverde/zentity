@@ -77,8 +77,9 @@ Social sign-in (Google, GitHub) is available for **account linking only** — yo
 - **Service providers** — Railway (hosting), Vercel (landing page), and Turso (database) process data on our behalf as data processors
 - **Relying parties** — when you explicitly consent to share data with a third-party application via OAuth, two types of sharing are available:
   - **Verification proofs** (`proof:*` scopes) — boolean flags indicating whether you passed specific checks (e.g., age verified, document verified). These contain **no personal information** and are derived from your verification record
-  - **Identity attributes** (`identity.*` scopes) — actual personal information (name, date of birth, address, nationality, document details) from your encrypted vault. Sharing requires you to actively unlock your vault with your credential (passkey, password, or wallet). This data is delivered ephemerally — it is held in server memory for at most 5 minutes, consumed exactly once during the token exchange, and never stored in any database or consent record
-  - In both cases, you select exactly which scopes to authorize on the consent screen. No data is shared without your explicit per-scope consent
+  - **Identity attributes** (`identity.*` scopes) — actual personal information (name, date of birth, address, nationality, document details) from your encrypted vault. Sharing requires you to actively unlock your vault with your credential (passkey, password, or wallet). This data is delivered ephemerally — it is held in server memory for a short time only (typically 5 minutes for browser OAuth flows and 10 minutes for CIBA approval flows), consumed exactly once through the disclosure delivery path, and never stored in any database or consent record
+  - **Standard account claims** (for example `email`) — account/session data disclosed only when the relying party explicitly requests the corresponding standard OAuth/OIDC scope. These are not vault-gated identity attributes
+  - In all cases, you select exactly which scopes to authorize on the consent screen. No data is shared without your explicit scope-based consent
 - **Law enforcement** — only if legally compelled, and only to the extent required by law
 
 ## 6. Data Security

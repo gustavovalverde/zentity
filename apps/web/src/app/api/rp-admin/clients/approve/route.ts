@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { OAUTH_SCOPE_SET } from "@/lib/auth/oidc/oauth-scopes";
+import { OAUTH_SCOPE_SET } from "@/lib/auth/oidc/disclosure-registry";
 import { requireRpAdmin } from "@/lib/auth/rp-admin";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

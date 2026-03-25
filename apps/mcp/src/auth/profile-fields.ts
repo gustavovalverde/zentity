@@ -1,10 +1,21 @@
+/**
+ * MCP profile field adapter.
+ *
+ * Maps MCP tool field names to the Zentity OIDC Disclosure Profile scopes.
+ * The source of truth for scope → claim mapping is the disclosure registry
+ * at `apps/web/src/lib/auth/oidc/disclosure-registry.ts`.
+ *
+ * Exposed fields: name, address, birthdate.
+ * Intentionally excluded: identity.document, identity.nationality — these
+ * contain sensitive document details not suitable for agent-initiated access.
+ */
+
 import { z } from "zod";
 
 export const PROFILE_FIELDS = [
   "name",
   "address",
   "birthdate",
-  "email",
 ] as const;
 
 export const profileFieldSchema = z.enum(PROFILE_FIELDS);
@@ -15,10 +26,14 @@ const PROFILE_FIELD_ORDER: Record<PublicProfileField, number> = {
   name: 0,
   address: 1,
   birthdate: 2,
-  email: 3,
 };
 
-const PROFILE_FIELD_SCOPE_MAP: Partial<Record<PublicProfileField, string>> = {
+/**
+ * Field → disclosure scope mapping.
+ * Every field requires an identity.* scope (vault-gated, userinfo-only,
+ * exact-bound per the disclosure profile).
+ */
+const PROFILE_FIELD_SCOPE_MAP: Record<PublicProfileField, string> = {
   name: "identity.name",
   address: "identity.address",
   birthdate: "identity.dob",
@@ -36,7 +51,7 @@ export function getProtectedProfileFields(
   fields: readonly PublicProfileField[]
 ): PublicProfileField[] {
   return fields.filter(
-    (field): field is PublicProfileField => PROFILE_FIELD_SCOPE_MAP[field] != null
+    (field): field is PublicProfileField => field in PROFILE_FIELD_SCOPE_MAP
   );
 }
 
@@ -45,10 +60,7 @@ export function buildIdentityScopeString(
 ): string {
   const scopes = new Set<string>(["openid"]);
   for (const field of fields) {
-    const scope = PROFILE_FIELD_SCOPE_MAP[field];
-    if (scope) {
-      scopes.add(scope);
-    }
+    scopes.add(PROFILE_FIELD_SCOPE_MAP[field]);
   }
   return Array.from(scopes).join(" ");
 }

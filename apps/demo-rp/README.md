@@ -4,11 +4,17 @@ A demonstration Relying Party (RP) application that showcases Zentity's privacy-
 
 ## What This Demonstrates
 
-This demo shows how Relying Parties can progressively request identity scopes:
+This demo shows how Relying Parties consume the [Zentity OIDC Disclosure Profile](../../docs/(protocols)/disclosure-profile.md) via progressive step-up authorization:
 
 1. **DCR**: All scenarios self-register via RFC 7591 Dynamic Client Registration
-2. **Sign-in**: Basic OAuth with standard scopes (openid, email, profile, proof:*)
-3. **Step-up**: Business action (e.g., "Open Account") triggers incremental authorization for identity scopes
+2. **Sign-in**: Standard + proof scopes only — no vault unlock needed
+3. **Step-up**: Business action triggers incremental authorization for `identity.*` scopes — requires vault unlock + exact disclosure binding
+
+The three scope families follow the disclosure profile contract:
+
+- **Standard** (`openid`, `email`) — account claims, no vault
+- **Proof** (`proof:*`) — non-PII verification status, generally id_token + userinfo (`proof:sybil` is access-token-only)
+- **Identity** (`identity.*`) — vault-gated PII, userinfo only, single-consume
 
 No admin pre-approval is required — the user controls data access at the consent page.
 
@@ -165,7 +171,7 @@ Demo RP                              Zentity
   |                                     |── Shows consent (identity)
   |← Redirect with code ───────────── |
   |── Exchange code ──────────────────→|
-  |← Updated claims (+ identity) ────|
+  |← Access token + userinfo-backed identity claims ─|
   |                                     |
   Display: basic → stepped-up claims
 ```
@@ -197,7 +203,12 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 
 ## How Step-Up Works
 
-1. Config scopes are **basic only** — sign-in never requests identity data
-2. Step-up calls `signIn.oauth2()` again with runtime scopes that include `identity.*`
-3. `overrideUserInfo: true` ensures the updated claims overwrite the user record
-4. Phase detection checks if `stepUpClaimKeys` are present in `session.user.claims`
+Step-up follows the disclosure profile's interaction rules:
+
+1. Sign-in uses **standard + proof scopes** — consent only, no vault unlock
+2. Step-up calls `signIn.oauth2()` with `identity.*` scopes — triggers vault unlock + exact binding on Zentity's consent page
+3. Zentity stages the PII ephemerally (5-minute TTL, single-consume) and delivers it through the userinfo-backed disclosure path
+4. `overrideUserInfo: true` ensures the updated claims overwrite the user record
+5. Phase detection checks if `stepUpClaimKeys` are present in `session.user.claims`
+
+The disclosure semantics (vault requirement, delivery surface, binding rules) are enforced by Zentity's auth server, not by the RP. The RP just requests the right scopes.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterProofClaimsByScopes } from "../proof-scopes";
+import { filterProofClaimsByScopes } from "../disclosure-registry";
 
 describe("proof scopes", () => {
   const proofClaims = {
@@ -21,9 +21,11 @@ describe("proof scopes", () => {
   } as const;
 
   it("includes identity binding status in proof:verification", () => {
-    const filtered = filterProofClaimsByScopes(proofClaims, [
-      "proof:verification",
-    ]);
+    const filtered = filterProofClaimsByScopes(
+      proofClaims,
+      ["proof:verification"],
+      "userinfo"
+    );
 
     expect(filtered).toEqual({
       verification_level: "full",
@@ -34,8 +36,33 @@ describe("proof scopes", () => {
   });
 
   it("includes identity binding status for proof:identity umbrella scope", () => {
-    const filtered = filterProofClaimsByScopes(proofClaims, ["proof:identity"]);
+    const filtered = filterProofClaimsByScopes(
+      proofClaims,
+      ["proof:identity"],
+      "userinfo"
+    );
 
     expect(filtered.identity_bound).toBe(true);
+  });
+
+  it("excludes sybil_nullifier from id_token and userinfo surfaces", () => {
+    const claimsWithSybil = {
+      ...proofClaims,
+      sybil_nullifier: "nullifier-abc",
+    };
+
+    const idToken = filterProofClaimsByScopes(
+      claimsWithSybil,
+      ["proof:identity", "proof:sybil"],
+      "id_token"
+    );
+    const userinfo = filterProofClaimsByScopes(
+      claimsWithSybil,
+      ["proof:identity", "proof:sybil"],
+      "userinfo"
+    );
+
+    expect(idToken).not.toHaveProperty("sybil_nullifier");
+    expect(userinfo).not.toHaveProperty("sybil_nullifier");
   });
 });

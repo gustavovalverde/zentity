@@ -23,7 +23,7 @@ export function registerWhoamiTool(server: McpServer): void {
     {
       title: "Who Am I",
       description:
-        "Get a safe account summary: email, verification tier, login method, and completed checks. Summary only; this tool does not unlock vault data such as full name or address. Use `my_profile` for vault-gated profile fields.",
+        "Get a safe account summary: verification tier, login method, completed checks, and standard account email when the granted scopes include `email`. Summary only; this tool does not unlock vault data such as full name or address. Use `my_profile` for vault-gated profile fields.",
       outputSchema: whoamiOutputSchema,
       annotations: {
         readOnlyHint: true,

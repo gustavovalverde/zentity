@@ -434,13 +434,17 @@ describe("remote MCP HTTP auth integration", () => {
       method: "POST",
     });
 
-    expect(whoamiResponse.status).toBe(403);
-    expect(whoamiResponse.headers.get("WWW-Authenticate")).toContain(
-      'scope="openid email"'
-    );
+    expect(whoamiResponse.status).toBe(200);
+    expect(whoamiResponse.headers.get("WWW-Authenticate")).toBeNull();
     await expect(whoamiResponse.json()).resolves.toEqual(
       expect.objectContaining({
-        error: "insufficient_scope",
+        result: expect.objectContaining({
+          structuredContent: expect.objectContaining({
+            email: null,
+            profileToolHint: "my_profile",
+            vaultFieldsAvailable: ["name", "address", "birthdate"],
+          }),
+        }),
       })
     );
   });

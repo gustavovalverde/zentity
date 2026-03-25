@@ -4,7 +4,7 @@ import type {
   ClaimsRequest,
   ParsedClaimsParameter,
 } from "@/lib/auth/oidc/claims-parameter";
-import type { IdentityFields } from "@/lib/auth/oidc/identity-scopes";
+import type { IdentityFields } from "@/lib/auth/oidc/disclosure-registry";
 
 import { eq, lt } from "drizzle-orm";
 

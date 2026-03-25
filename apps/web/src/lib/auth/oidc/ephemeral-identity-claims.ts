@@ -1,10 +1,10 @@
 import "server-only";
 
-import type { IdentityFields } from "./identity-scopes";
+import type { IdentityFields } from "./disclosure-registry";
 
 import { logger as rootLogger } from "@/lib/logging/logger";
 
-export interface IdentityPayloadMeta {
+interface IdentityPayloadMeta {
   clientId: string;
   intentJti: string;
   scopeHash: string;

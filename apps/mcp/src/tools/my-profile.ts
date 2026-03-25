@@ -51,7 +51,7 @@ const profileFieldsInputSchema = z.preprocess(
 const myProfileInputSchema = z
   .object({
     fields: profileFieldsInputSchema.describe(
-      "Optional requested profile fields. Allowed values: name, address, birthdate, email. Defaults to all available vault-backed profile fields when omitted."
+      "Optional requested vault-gated profile fields. Allowed values: name, address, birthdate. Defaults to all available vault-backed profile fields when omitted. Do not use this tool for standard account email."
     ),
   })
   .default({ fields: DEFAULT_PROFILE_FIELDS });
@@ -76,7 +76,6 @@ const profileOutputSchema = {
     name: profileNameSchema.optional(),
     address: z.record(z.string(), z.unknown()).nullable().optional(),
     birthdate: z.string().nullable().optional(),
-    email: z.string().nullable().optional(),
   }),
   interaction: z
     .object({
@@ -110,7 +109,7 @@ export function registerMyProfileTool(server: McpServer): void {
     {
       title: "My Profile",
       description:
-        "Retrieve vault-gated profile data such as full name, address, birthdate, or email. Use this for 'what is my full name?' or 'what is my address?'. This tool owns the browser approval flow; do not use a generic approval tool for profile reads.",
+        "Retrieve vault-gated profile data such as full name, address, or birthdate. Use this for 'what is my full name?' or 'what is my address?'. Do not use this tool for standard account email. This tool owns the browser approval flow; do not use a generic approval tool for profile reads.",
       inputSchema: myProfileInputSchema,
       outputSchema: profileOutputSchema,
       annotations: {

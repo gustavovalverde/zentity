@@ -42,10 +42,10 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import {
-  groupScopes,
   HIDDEN_SCOPES,
   SCOPE_DESCRIPTIONS,
-} from "@/lib/auth/oidc/scope-display";
+} from "@/lib/auth/oidc/disclosure-registry";
+import { groupScopes } from "@/lib/auth/oidc/scope-display";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 
 interface ConsentRow {

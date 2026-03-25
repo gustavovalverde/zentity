@@ -1,7 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prefixBindingMessage } from "../agent.js";
 import { signAgentAssertion } from "../auth/agent-registration.js";
-import { zentityFetch } from "../auth/api-client.js";
 import { getOAuthContext, requireAuth, tryGetRuntimeState } from "../auth/context.js";
 import {
   beginOrResumeInteractiveFlow,
@@ -21,10 +20,6 @@ import { config } from "../config.js";
 
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
 
-interface AccountData {
-  email: string;
-}
-
 interface ProfileName {
   family: string | null;
   full: string | null;
@@ -34,7 +29,6 @@ interface ProfileName {
 interface ProfileShape {
   address?: Record<string, unknown> | null;
   birthdate?: string | null;
-  email?: string | null;
   name?: ProfileName;
 }
 
@@ -94,19 +88,8 @@ function asRecordAddress(
   return value;
 }
 
-async function fetchAccountEmail(): Promise<string | null> {
-  const response = await zentityFetch(`${config.zentityUrl}/api/trpc/account.getData`);
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = (await response.json()) as { result: { data: AccountData } };
-  return data.result.data.email ?? null;
-}
-
 function mapProfileFromClaims(input: {
   claims: IdentityClaims | null;
-  email: string | null;
   fields: readonly PublicProfileField[];
 }): { profile: ProfileShape; returnedFields: PublicProfileField[] } {
   const returnedFields: PublicProfileField[] = [];
@@ -135,13 +118,6 @@ function mapProfileFromClaims(input: {
     profile.birthdate = birthdate;
     if (birthdate) {
       returnedFields.push("birthdate");
-    }
-  }
-
-  if (input.fields.includes("email")) {
-    profile.email = input.email;
-    if (input.email) {
-      returnedFields.push("email");
     }
   }
 
@@ -176,10 +152,9 @@ export async function readProfile(input: {
   }
 
   const protectedFields = getProtectedProfileFields(fields);
-  const email = fields.includes("email") ? await fetchAccountEmail() : null;
 
   if (protectedFields.length === 0) {
-    const result = mapProfileFromClaims({ claims: null, email, fields });
+    const result = mapProfileFromClaims({ claims: null, fields });
     return {
       status: result.returnedFields.length > 0 ? "complete" : "unavailable",
       requestedFields: fields,
@@ -224,7 +199,7 @@ export async function readProfile(input: {
     },
     onApproved: async (approval) => {
       const claims = await redeemRelease(approval.accessToken, oauth.dpopKey);
-      const result = mapProfileFromClaims({ claims, email, fields });
+      const result = mapProfileFromClaims({ claims, fields });
 
       if (claims) {
         profileCache.set(cacheKey, {

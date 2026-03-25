@@ -1,27 +1,18 @@
+/**
+ * Scope display — consent UI grouping.
+ *
+ * Only `groupScopes` lives here because it depends on `lucide-react` icons,
+ * which don't belong in the pure-data disclosure registry.
+ */
+
 import type { LucideIcon } from "lucide-react";
 
 import { BadgeCheck, KeyRound, ShieldAlert } from "lucide-react";
 
 import {
-  IDENTITY_SCOPE_DESCRIPTIONS,
   isIdentityScope,
-} from "@/lib/auth/oidc/identity-scopes";
-import {
   isProofScope,
-  PROOF_SCOPE_DESCRIPTIONS,
-} from "@/lib/auth/oidc/proof-scopes";
-
-export const SCOPE_DESCRIPTIONS: Record<string, string> = {
-  email: "Email address",
-  offline_access: "Access when you're not using the app",
-  "proof:identity": "All identity verification proofs",
-  "compliance:key:read": "Read compliance encryption key",
-  "compliance:key:write": "Manage compliance encryption key",
-  ...PROOF_SCOPE_DESCRIPTIONS,
-  ...IDENTITY_SCOPE_DESCRIPTIONS,
-};
-
-export const HIDDEN_SCOPES = new Set(["openid", "profile"]);
+} from "@/lib/auth/oidc/disclosure-registry";
 
 interface ScopeGroup {
   icon: LucideIcon;

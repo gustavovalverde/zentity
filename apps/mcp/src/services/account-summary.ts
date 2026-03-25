@@ -1,6 +1,6 @@
 import { PROFILE_FIELDS } from "../auth/profile-fields.js";
 import { zentityFetch } from "../auth/api-client.js";
-import { requireAuth } from "../auth/context.js";
+import { getOAuthContext, requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
 
 interface AssuranceProfile {
@@ -34,7 +34,9 @@ export interface AccountSummary {
 }
 
 export async function fetchAccountSummary(): Promise<AccountSummary> {
-  await requireAuth();
+  const auth = await requireAuth();
+  const oauth = getOAuthContext(auth);
+  const canDiscloseEmail = oauth.scopes.includes("email");
 
   const [profileRes, accountRes] = await Promise.all([
     zentityFetch(`${config.zentityUrl}/api/trpc/assurance.profile`),
@@ -52,7 +54,7 @@ export async function fetchAccountSummary(): Promise<AccountSummary> {
     : null;
 
   return {
-    email: account?.email ?? null,
+    email: canDiscloseEmail ? account?.email ?? null : null,
     memberSince: account?.createdAt ?? null,
     tier: profile?.tier ?? null,
     tierName: profile?.tierName ?? null,

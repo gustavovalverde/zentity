@@ -22,9 +22,9 @@ describe("Resource Metadata (RFC 9728)", () => {
     expect(metadata.bearer_methods_supported).toEqual(["header", "dpop"]);
     expect(metadata.scopes_supported).toEqual([
       "openid",
+      "email",
       "compliance:key:read",
       "proof:identity",
-      "email",
     ]);
   });
 });

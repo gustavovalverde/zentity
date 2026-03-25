@@ -1,5 +1,3 @@
-import type { IdentityFields } from "@/lib/auth/oidc/identity-scopes";
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,8 +6,9 @@ import {
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPE_DESCRIPTIONS,
   IDENTITY_SCOPES,
+  type IdentityFields,
   isIdentityScope,
-} from "../identity-scopes";
+} from "../disclosure-registry";
 
 describe("identity scopes", () => {
   describe("isIdentityScope", () => {

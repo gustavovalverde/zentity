@@ -1,4 +1,4 @@
-import type { IdentityFields } from "./identity-scopes";
+import type { IdentityFields } from "./disclosure-registry";
 
 import { z } from "zod";
 

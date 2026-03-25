@@ -74,26 +74,24 @@ import {
   validateReleaseContextForSubject,
 } from "@/lib/auth/oidc/disclosure-context";
 import {
-  finalReleaseIdentityKey,
-  hasIdentityPayload,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
-import {
   extractIdentityScopes,
   filterIdentityByScopes,
+  filterProofClaimsByScopes,
+  hasAnyProofScope,
   IDENTITY_SCOPE_CLAIMS,
   IDENTITY_SCOPES,
   isIdentityScope,
-} from "@/lib/auth/oidc/identity-scopes";
+  OAUTH_SCOPES,
+  PROOF_SCOPES,
+} from "@/lib/auth/oidc/disclosure-registry";
+import {
+  finalReleaseIdentityKey,
+  hasIdentityPayload,
+} from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt-signing-keys";
-import { OAUTH_SCOPES } from "@/lib/auth/oidc/oauth-scopes";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/opaque-access-token";
-import {
-  extractProofScopes,
-  filterProofClaimsByScopes,
-  PROOF_SCOPES,
-} from "@/lib/auth/oidc/proof-scopes";
 import {
   getFirstPartyProtectedResourceAudiences,
   type ResolveProtectedResourceAudienceInput,
@@ -196,13 +194,6 @@ const betterAuthSchema = {
 
 function toScopeList(scopes: unknown): string[] {
   return Array.isArray(scopes) ? [...scopes] : [];
-}
-
-function hasAnyProofScope(scopeList: string[]): boolean {
-  return (
-    scopeList.includes("proof:identity") ||
-    extractProofScopes(scopeList).length > 0
-  );
 }
 
 function invalidGrantDisclosureError(reason: string): APIError {
@@ -864,7 +855,8 @@ async function buildIdTokenDisclosureClaims(input: {
   const proofClaims = hasAnyProofScope(scopeList)
     ? filterProofClaimsByScopes(
         await buildProofClaims(input.user.id),
-        scopeList
+        scopeList,
+        "id_token"
       )
     : {};
 
@@ -1804,7 +1796,8 @@ export const auth = betterAuth({
         const proofClaims = hasAnyProofScope(scopeList)
           ? filterProofClaimsByScopes(
               await buildProofClaims(user.id),
-              scopeList
+              scopeList,
+              "userinfo"
             )
           : {};
 

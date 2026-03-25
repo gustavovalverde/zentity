@@ -189,10 +189,10 @@ async function main(): Promise<void> {
         throw new Error("Empty response");
       }
       const data = JSON.parse(text);
-      if (typeof data.totalProofs !== "number") {
-        throw new Error(`Expected totalProofs, got: ${text.slice(0, 100)}`);
+      if (typeof data.verified !== "boolean") {
+        throw new Error(`Expected verified boolean, got: ${text.slice(0, 100)}`);
       }
-      console.log(`    proofs=${data.totalProofs}, isOver18=${data.isOver18}`);
+      console.log(`    verified=${data.verified}, isOver18=${data.isOver18}`);
     });
 
     await step("Call check_compliance (requires auth)", async () => {

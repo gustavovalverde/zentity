@@ -40,7 +40,7 @@ const CAPABILITIES = [
   {
     name: "my_profile",
     description:
-      "Read vault-gated profile fields such as full name, address, birthdate, or email",
+      "Read vault-gated profile fields such as full name, address, or birthdate",
     approvalStrength: "session",
     inputSchema: JSON.stringify({
       type: "object",
@@ -49,7 +49,7 @@ const CAPABILITIES = [
           type: "array",
           items: {
             type: "string",
-            enum: ["name", "address", "birthdate", "email"],
+            enum: ["name", "address", "birthdate"],
           },
         },
       },
@@ -80,32 +80,54 @@ const CAPABILITIES = [
   {
     name: "my_proofs",
     description:
-      "Read proof inventory and verification-derived facts such as age status and verification method",
+      "Read verification-derived facts such as age status, verification checks, and verification method",
     approvalStrength: "none",
     inputSchema: null,
     outputSchema: JSON.stringify({
       type: "object",
       properties: {
-        verificationMethod: { type: "string" },
+        verificationMethod: { type: ["string", "null"] },
         verificationLevel: { type: "string" },
         verified: { type: "boolean" },
-        proofs: { type: "array", items: { type: "object" } },
+        isOver18: { type: ["boolean", "null"] },
+        checks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string" },
+              passed: { type: "boolean" },
+            },
+          },
+        },
       },
     }),
   },
   {
     name: "whoami",
     description:
-      "Read a safe account summary such as email, verification tier, login method, and completed checks",
+      "Read a safe account summary such as verification tier, login method, completed checks, and standard account email when the granted scopes include email",
     approvalStrength: "none",
     inputSchema: null,
     outputSchema: JSON.stringify({
       type: "object",
       properties: {
-        email: { type: "string" },
-        verificationLevel: { type: "string" },
-        tier: { type: "number" },
-        checks: { type: "object" },
+        email: { type: ["string", "null"] },
+        memberSince: { type: ["string", "null"] },
+        tier: { type: ["number", "null"] },
+        tierName: { type: ["string", "null"] },
+        verificationLevel: { type: ["string", "null"] },
+        authStrength: { type: ["string", "null"] },
+        loginMethod: { type: ["string", "null"] },
+        checks: { type: ["object", "null"] },
+        vaultFieldsAvailable: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["name", "address", "birthdate"],
+          },
+        },
+        profileToolHint: { const: "my_profile", type: "string" },
       },
     }),
   },

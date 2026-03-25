@@ -213,7 +213,7 @@ The two tracks produce different delivery behavior at each OAuth endpoint:
 
 **In id_tokens:** Proof claims MAY be embedded directly. Identity claims MUST NOT be embedded in id_tokens. Identity scopes unlock PII only through the ephemeral delivery channel and userinfo consumption path described in Section 6.
 
-**In access tokens:** Neither proof claims nor identity claims are embedded. Access tokens carry only structural claims (`sub`, `scope`, `aud`, `cnf`, and extension-defined claims like `act`).
+**In access tokens:** Access tokens ordinarily carry only structural claims (`sub`, `scope`, `aud`, `cnf`, and extension-defined claims like `act`). Proof claims are not embedded there except where a profile explicitly defines an access-token-only proof artifact. VEIL defines one such exception in Section 5.4: `proof:sybil` yields a per-RP `sybil_nullifier` in access tokens only. Identity claims MUST NOT be embedded in access tokens.
 
 **Via userinfo:** Both proof claims and identity claims are delivered. Proof claims are resolved from the user's verification state. Identity claims are consumed from the ephemeral store (single-consume; the entry is deleted after retrieval).
 

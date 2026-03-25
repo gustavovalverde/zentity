@@ -62,108 +62,25 @@ describe("my_proofs", () => {
     return client;
   }
 
-  it("returns checks and proof summaries for verified user", async () => {
-    const checksData = {
-      method: "ocr",
-      level: "full",
+  it("returns checks from userinfo proof claims for verified user", async () => {
+    // Userinfo returns OIDC proof claims (flat key-value, scope-filtered)
+    const userinfoResponse = {
+      sub: "user-sub",
+      verification_level: "full",
       verified: true,
-      checks: [
-        {
-          checkType: "document",
-          passed: true,
-          source: "zk_proof",
-          evidenceRef: "p1",
-        },
-        {
-          checkType: "age",
-          passed: true,
-          source: "zk_proof",
-          evidenceRef: "p2",
-        },
-        {
-          checkType: "liveness",
-          passed: true,
-          source: "signed_claim",
-          evidenceRef: "c1",
-        },
-        {
-          checkType: "face_match",
-          passed: true,
-          source: "zk_proof",
-          evidenceRef: "p3",
-        },
-        {
-          checkType: "nationality",
-          passed: true,
-          source: "zk_proof",
-          evidenceRef: "p4",
-        },
-        {
-          checkType: "identity_binding",
-          passed: true,
-          source: "zk_proof",
-          evidenceRef: "p5",
-        },
-        {
-          checkType: "sybil_resistant",
-          passed: true,
-          source: "dedup_key",
-          evidenceRef: "v1",
-        },
-      ],
-    };
-    const proofsData = {
-      method: "ocr",
-      proofs: [
-        {
-          proofSystem: "noir_ultrahonk",
-          proofType: "age_verification",
-          proofHash: "h1",
-          verified: true,
-          createdAt: "2026-03-01",
-        },
-        {
-          proofSystem: "noir_ultrahonk",
-          proofType: "doc_validity",
-          proofHash: "h2",
-          verified: true,
-          createdAt: "2026-03-01",
-        },
-        {
-          proofSystem: "noir_ultrahonk",
-          proofType: "nationality_membership",
-          proofHash: "h3",
-          verified: true,
-          createdAt: "2026-03-01",
-        },
-        {
-          proofSystem: "noir_ultrahonk",
-          proofType: "face_match",
-          proofHash: "h4",
-          verified: true,
-          createdAt: "2026-03-01",
-        },
-        {
-          proofSystem: "noir_ultrahonk",
-          proofType: "identity_binding",
-          proofHash: "h5",
-          verified: true,
-          createdAt: "2026-03-01",
-        },
-      ],
+      document_verified: true,
+      age_verification: true,
+      liveness_verified: true,
+      face_match_verified: true,
+      nationality_verified: true,
+      nationality_group: "GLOBAL",
+      identity_bound: true,
+      sybil_resistant: true,
     };
 
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: checksData } }), {
-          status: 200,
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: proofsData } }), {
-          status: 200,
-        })
-      );
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+    );
 
     const client = await createConnectedClient();
     const result = await client.callTool({
@@ -172,39 +89,27 @@ describe("my_proofs", () => {
     });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text
+      (result.content as Array<{ text: string }>)[0].text,
     );
     expect(parsed.isOver18).toBe(true);
     expect(parsed.verificationMethod).toBe("ocr");
     expect(parsed.verificationLevel).toBe("full");
     expect(parsed.verified).toBe(true);
-    expect(parsed.checks).toHaveLength(7);
-    expect(parsed.totalProofs).toBe(5);
+    expect(parsed.checks).toContainEqual({ type: "age", passed: true });
+    expect(parsed.checks).toContainEqual({ type: "document", passed: true });
+    expect(parsed.checks).toContainEqual({ type: "nationality", passed: true });
   });
 
-  it("returns empty state when no verification exists", async () => {
-    const checksData = {
-      method: null,
-      level: "none",
+  it("returns empty state for unverified user", async () => {
+    const userinfoResponse = {
+      sub: "user-sub",
+      verification_level: "none",
       verified: false,
-      checks: [],
-    };
-    const proofsData = {
-      method: null,
-      proofs: [],
     };
 
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: checksData } }), {
-          status: 200,
-        })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ result: { data: proofsData } }), {
-          status: 200,
-        })
-      );
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+    );
 
     const client = await createConnectedClient();
     const result = await client.callTool({
@@ -213,11 +118,61 @@ describe("my_proofs", () => {
     });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text
+      (result.content as Array<{ text: string }>)[0].text,
     );
     expect(parsed.isOver18).toBeNull();
     expect(parsed.verified).toBe(false);
-    expect(parsed.totalProofs).toBe(0);
+    expect(parsed.verificationLevel).toBe("none");
+    expect(parsed.verificationMethod).toBeNull();
     expect(parsed.checks).toHaveLength(0);
+  });
+
+  it("does not infer OCR method for unverified users with all-false claims", async () => {
+    const userinfoResponse = {
+      sub: "user-sub",
+      verification_level: "none",
+      verified: false,
+      document_verified: false,
+      age_verification: false,
+      liveness_verified: false,
+      face_match_verified: false,
+      nationality_verified: false,
+      identity_bound: false,
+      sybil_resistant: false,
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+    );
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({
+      name: "my_proofs",
+      arguments: {},
+    });
+
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text,
+    );
+    expect(parsed.verificationMethod).toBeNull();
+    expect(parsed.verified).toBe(false);
+    expect(parsed.checks.length).toBeGreaterThan(0);
+    expect(parsed.checks.every((c: { passed: boolean }) => !c.passed)).toBe(
+      true,
+    );
+  });
+
+  it("calls the userinfo endpoint, not tRPC", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ sub: "user-sub" }), { status: 200 }),
+    );
+
+    const client = await createConnectedClient();
+    await client.callTool({ name: "my_proofs", arguments: {} });
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const calledUrl = fetchSpy.mock.calls[0]?.[0];
+    expect(calledUrl).toContain("/api/auth/oauth2/userinfo");
+    expect(calledUrl).not.toContain("/api/trpc/");
   });
 });

@@ -1,4 +1,4 @@
-import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
 
 const MAX_BINDING_MESSAGE_LENGTH = 128;
 

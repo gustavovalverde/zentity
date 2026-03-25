@@ -21,6 +21,12 @@ interface AuthorizationServerMetadata {
   token_endpoint?: string;
 }
 
+interface JsonRpcToolResponse {
+  result?: {
+    structuredContent?: Record<string, unknown>;
+  };
+}
+
 function normalizeUrl(value: string): string {
   return value.replace(TRAILING_SLASHES, "");
 }
@@ -378,6 +384,7 @@ async function main(): Promise<void> {
       sessionId
     );
     const whoamiBody = await whoamiResponse.text();
+    const whoamiJson = JSON.parse(whoamiBody) as JsonRpcToolResponse;
     const wwwAuthenticate = whoamiResponse.headers.get("www-authenticate");
 
     console.log(
@@ -394,11 +401,12 @@ async function main(): Promise<void> {
     );
 
     if (
-      whoamiResponse.status !== 403 ||
-      !wwwAuthenticate?.includes('scope="openid email"')
+      whoamiResponse.status !== 200 ||
+      whoamiJson.result?.structuredContent?.email !== null ||
+      wwwAuthenticate !== null
     ) {
       throw new Error(
-        `Expected scoped challenge from whoami, got ${whoamiResponse.status} ${whoamiBody}`
+        `Expected whoami to succeed without email disclosure, got ${whoamiResponse.status} ${whoamiBody}`
       );
     }
   } finally {

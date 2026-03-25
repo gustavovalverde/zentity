@@ -361,29 +361,39 @@ Token security ensures tokens cannot be stolen or replayed. The next section des
 
 ## Scopes and Selective Disclosure
 
-The scopes cluster into two groups with fundamentally different privacy properties: proof scopes deliver non-PII boolean flags, while identity scopes deliver actual PII through an ephemeral pipeline.
+> **Canonical reference:** [Zentity OIDC Disclosure Profile](disclosure-profile.md)
+> **Code authority:** `apps/web/src/lib/auth/oidc/disclosure-registry.ts`
+> **Architectural rationale:** [ADR-0015 Disclosure surface assignment](../adr/privacy/0015-disclosure-surface-assignment.md)
+
+Scopes cluster into four families with distinct privacy properties. The full contract — including delivery rules, vault requirements, exact-binding semantics, and channel mapping — is defined in the [disclosure profile](disclosure-profile.md). This section summarizes the scope-to-claim mappings.
+
+### Standard session scopes
+
+| Scope | Claims | Notes |
+| --- | --- | --- |
+| `openid` | `sub` | Required for all flows |
+| `email` | `email`, `email_verified` | Account email (not vault-gated PII, disclosed only when requested) |
+| `offline_access` | — | Enables refresh tokens |
 
 ### Proof scopes (`proof:*`)
 
-Non-PII boolean verification flags, delivered via id_token and userinfo.
+Non-PII boolean verification flags, generally delivered via id_token and userinfo. `proof:sybil` is the exception: it is access-token-only.
 
 | Scope | Claims |
 | --- | --- |
 | `proof:identity` | All verification claims (umbrella, expanded at consent) |
 | `proof:verification` | `verification_level`, `verified`, `identity_bound`, `sybil_resistant` |
-| `proof:age` | `age_verified` |
+| `proof:age` | `age_verification` |
 | `proof:document` | `document_verified` |
 | `proof:liveness` | `liveness_verified`, `face_match_verified` |
-| `proof:nationality` | `nationality_verified` |
+| `proof:nationality` | `nationality_verified`, `nationality_group` |
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
-| `proof:sybil` | `sybil_nullifier`, a per-RP pseudonymous nullifier (delivered in access tokens, not in id_tokens) |
-| `compliance:key:read` | Read RP encryption keys for compliance data |
-| `compliance:key:write` | Register/rotate RP encryption keys |
+| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (access tokens only) |
 
 ### Identity scopes (`identity.*`)
 
-Actual PII, delivered exclusively via the userinfo endpoint (the server stores no persistent PII).
+Vault-gated PII, delivered exclusively via the userinfo endpoint with exact disclosure binding (single-consume, intent-bound). See the [disclosure profile](disclosure-profile.md) for the full privacy contract.
 
 | Scope | Claims |
 | --- | --- |
@@ -392,9 +402,18 @@ Actual PII, delivered exclusively via the userinfo endpoint (the server stores n
 | `identity.address` | `address` |
 | `identity.document` | `document_number`, `document_type`, `issuing_country` |
 | `identity.nationality` | `nationality`, `nationalities` |
-| `identity_verification` | Pre-authorization for credential issuance (OIDC4VCI) |
 
-Standard OIDC scopes (`openid`, `email`, `offline_access`) are auto-approved.
+### Operational scopes
+
+| Scope | Purpose |
+| --- | --- |
+| `compliance:key:read` | Read RP FHE encryption keys |
+| `compliance:key:write` | Register/rotate RP encryption keys |
+| `identity_verification` | Pre-authorization for credential issuance (OIDC4VCI) |
+| `agent:host.register` | Register an agent host |
+| `agent:session.register` | Register an agent session |
+| `agent:session.revoke` | Revoke an agent session |
+| `agent:introspect` | Introspect agent state |
 
 ### Consent and selective disclosure
 
@@ -435,7 +454,7 @@ sequenceDiagram
   Note over AS: Claims deleted after delivery
 ```
 
-PII is delivered exclusively via the userinfo endpoint and never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token contains only authentication claims (`sub`, `acr`, `amr`, `at_hash`, `sid`) and proof claims (`proof:*` scopes).
+PII is delivered exclusively via the userinfo endpoint and never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token may contain standard session claims (`sub`, optional `email`, `email_verified`), authentication context claims (`acr`, `amr`, `at_hash`, `sid`), proof claims (except the access-token-only `proof:sybil`), and an opaque `zentity_release_id` pointer when an identity release context exists, but never the identity payload itself.
 
 For CIBA flows, the same mechanism applies with a 10-minute TTL: the agent calls the standard userinfo endpoint with the CIBA access token after approval.
 
@@ -447,9 +466,10 @@ Identity scopes are never persisted in consent records. The consent page reappea
 
 | Path | Standard | Delivery |
 | --- | --- | --- |
-| `proof:*` scopes | OAuth 2.1 custom scopes | id_token + userinfo |
+| `proof:*` scopes (except `proof:sybil`) | OAuth 2.1 custom scopes | id_token + userinfo |
+| `proof:sybil` | OAuth 2.1 custom scopes | access_token only |
 | `identity.*` scopes | OAuth 2.1 custom scopes | userinfo only (PII never in id_token) |
-| `verified_claims` parameter | OIDC for Identity Assurance | id_token + userinfo |
+| `verified_claims` parameter | OIDC for Identity Assurance | userinfo |
 | SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
 
 ---

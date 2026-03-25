@@ -1,7 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 
-import { isIdentityScope } from "@/lib/auth/oidc/identity-scopes";
-import { extractProofScopes } from "@/lib/auth/oidc/proof-scopes";
+import {
+  extractProofScopes,
+  isIdentityScope,
+} from "@/lib/auth/oidc/disclosure-registry";
 import { computeSessionState } from "@/lib/ciba/agent-lifecycle";
 import { recordUsageIfAllowed } from "@/lib/ciba/usage-ledger";
 import { db } from "@/lib/db/connection";
