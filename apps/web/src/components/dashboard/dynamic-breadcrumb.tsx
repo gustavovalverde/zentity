@@ -26,7 +26,6 @@ const ROUTE_LABELS: Record<string, string> = {
   "/dashboard/developer/inspector": "Debug Tools",
   "/dashboard/developer/applications": "Applications",
   "/dashboard/agents": "Agents",
-  "/dashboard/agents/approve": "Approve Request",
   "/dashboard/verify": "Verify Identity",
 };
 
@@ -36,7 +35,6 @@ const ROUTE_LABELS: Record<string, string> = {
 const PARENT_ROUTES: Record<string, string> = {
   "/dashboard/developer/inspector": "/dashboard/developer",
   "/dashboard/developer/applications": "/dashboard/developer",
-  "/dashboard/agents/approve": "/dashboard/agents",
 };
 
 export function DynamicBreadcrumb() {

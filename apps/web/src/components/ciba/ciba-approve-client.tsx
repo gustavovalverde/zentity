@@ -138,6 +138,7 @@ export function CibaApproveClient({
   authReqId,
   initialRequest,
   interactionCopy,
+  onClose,
   registeredAgent,
   userTier = 0,
   wallet,
@@ -147,11 +148,20 @@ export function CibaApproveClient({
   authReqId: string | null;
   initialRequest?: CibaRequestDetails;
   interactionCopy?: InteractionCopy | null;
+  onClose?: () => void;
   registeredAgent?: RegisteredAgentInfo | null;
   userTier?: 0 | 1 | 2 | 3;
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
+
+  const navigateBack = useCallback(() => {
+    if (onClose) {
+      onClose();
+    } else {
+      router.push("/dashboard/agents");
+    }
+  }, [onClose, router]);
 
   const initialDerived = deriveInitialState(initialRequest);
   const [state, setState] = useState<PageState>(initialDerived.pageState);
@@ -541,6 +551,7 @@ export function CibaApproveClient({
   };
 
   const isActing = state === "approving" || state === "rejecting";
+  const containerClass = onClose ? "" : "mx-auto max-w-md py-10";
 
   if (state === "loading") {
     return (
@@ -552,17 +563,14 @@ export function CibaApproveClient({
 
   if (state === "error") {
     return (
-      <div className="mx-auto max-w-md py-10">
+      <div className={containerClass}>
         <Card>
           <CardHeader>
             <CardTitle>Error</CardTitle>
             <CardDescription>{error}</CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button
-              onClick={() => router.push("/dashboard/agents")}
-              variant="outline"
-            >
+            <Button onClick={navigateBack} variant="outline">
               Back to Agents
             </Button>
           </CardFooter>
@@ -573,7 +581,7 @@ export function CibaApproveClient({
 
   if (state === "expired") {
     return (
-      <div className="mx-auto max-w-md py-10">
+      <div className={containerClass}>
         <Card>
           <CardHeader>
             <CardTitle>Request Expired</CardTitle>
@@ -583,10 +591,7 @@ export function CibaApproveClient({
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button
-              onClick={() => router.push("/dashboard/agents")}
-              variant="outline"
-            >
+            <Button onClick={navigateBack} variant="outline">
               Back to Agents
             </Button>
           </CardFooter>
@@ -602,7 +607,7 @@ export function CibaApproveClient({
         `You have denied the request from ${details?.client_name ?? "the application"}.`);
 
     return (
-      <div className="mx-auto max-w-md py-10">
+      <div className={containerClass}>
         <Card>
           <CardHeader>
             <CardTitle>
@@ -616,10 +621,7 @@ export function CibaApproveClient({
             </CardDescription>
           </CardHeader>
           <CardFooter>
-            <Button
-              onClick={() => router.push("/dashboard/agents")}
-              variant="outline"
-            >
+            <Button onClick={navigateBack} variant="outline">
               Back to Agents
             </Button>
           </CardFooter>
@@ -629,7 +631,7 @@ export function CibaApproveClient({
   }
 
   return (
-    <div className="mx-auto max-w-md py-10">
+    <div className={containerClass}>
       <Card>
         <CardHeader>
           <CardTitle>

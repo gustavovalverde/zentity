@@ -1,5 +1,6 @@
+"use client";
+
 import { BadgeCheck, Bot, Mail, MessageSquare } from "lucide-react";
-import Link from "next/link";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ interface CibaRequest {
 
 interface RequestsTabProps {
   readonly mailpitUrl: string | null;
+  readonly onSelect: (authReqId: string) => void;
   readonly requests: CibaRequest[];
 }
 
@@ -97,7 +99,11 @@ function formatPurchaseDetail(
   }
 }
 
-export function RequestsTab({ requests, mailpitUrl }: RequestsTabProps) {
+export function RequestsTab({
+  requests,
+  mailpitUrl,
+  onSelect,
+}: RequestsTabProps) {
   return (
     <div className="space-y-6">
       <PushNotificationBanner />
@@ -153,8 +159,10 @@ export function RequestsTab({ requests, mailpitUrl }: RequestsTabProps) {
             return (
               <li key={req.authReqId}>
                 <Item asChild variant="outline">
-                  <Link
-                    href={`/dashboard/agents/approve?auth_req_id=${encodeURIComponent(req.authReqId)}`}
+                  <button
+                    className="w-full text-left"
+                    onClick={() => onSelect(req.authReqId)}
+                    type="button"
                   >
                     <ItemMedia variant="icon">
                       <Bot />
@@ -191,7 +199,7 @@ export function RequestsTab({ requests, mailpitUrl }: RequestsTabProps) {
                         {displayStatus}
                       </Badge>
                     </div>
-                  </Link>
+                  </button>
                 </Item>
               </li>
             );
