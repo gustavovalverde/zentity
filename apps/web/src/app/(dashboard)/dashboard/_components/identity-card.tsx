@@ -7,7 +7,6 @@ import {
   ArrowRight,
   Calendar,
   CheckCircle,
-  CheckCircle2,
   Shield,
   ShieldCheck,
 } from "lucide-react";
@@ -19,7 +18,13 @@ import { TransparencySection } from "@/components/dashboard/transparency-section
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -44,6 +49,31 @@ import {
 interface IdentityCardProps {
   posture: SecurityPosture | null;
   userId: string | undefined;
+}
+
+function IdentityCardHeader({
+  tier,
+  assurance,
+}: {
+  tier: 0 | 1 | 2 | 3;
+  assurance: SecurityPosture["assurance"] | null;
+}) {
+  return (
+    <CardHeader className="pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+          Identity Status
+        </CardTitle>
+        {assurance && <TierBadge tier={tier} />}
+      </div>
+      <CardDescription>
+        {tier >= 2
+          ? "Your verified identity and proof summary"
+          : "Your verification progress"}
+      </CardDescription>
+    </CardHeader>
+  );
 }
 
 /**
@@ -72,12 +102,7 @@ export async function IdentityCard({
     ) {
       return (
         <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Identity Status</CardTitle>
-              {assurance && <TierBadge tier={tier} />}
-            </div>
-          </CardHeader>
+          <IdentityCardHeader assurance={assurance} tier={tier} />
           <CardContent className="pt-2">
             <div className="space-y-4">
               <FheStatusPoller />
@@ -102,12 +127,7 @@ export async function IdentityCard({
     if (details?.hasIncompleteProofs) {
       return (
         <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Identity Status</CardTitle>
-              {assurance && <TierBadge tier={tier} />}
-            </div>
-          </CardHeader>
+          <IdentityCardHeader assurance={assurance} tier={tier} />
           <CardContent className="pt-2">
             <div className="space-y-4">
               <Alert variant="warning">
@@ -138,12 +158,7 @@ export async function IdentityCard({
     // Normal Tier 1: Ready to verify
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Identity Status</CardTitle>
-            {assurance && <TierBadge tier={tier} />}
-          </div>
-        </CardHeader>
+        <IdentityCardHeader assurance={assurance} tier={tier} />
         <CardContent className="pt-2">
           <Empty>
             <EmptyHeader>
@@ -174,12 +189,7 @@ export async function IdentityCard({
   if (tier >= 2 && details?.missingProfileSecret) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Identity Status</CardTitle>
-            {assurance && <TierBadge tier={tier} />}
-          </div>
-        </CardHeader>
+        <IdentityCardHeader assurance={assurance} tier={tier} />
         <CardContent className="pt-2">
           <div className="space-y-4">
             <Alert variant="warning">
@@ -212,23 +222,9 @@ export async function IdentityCard({
 
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Identity Status</CardTitle>
-            {assurance && <TierBadge tier={tier} />}
-          </div>
-        </CardHeader>
+        <IdentityCardHeader assurance={assurance} tier={tier} />
         <CardContent className="pt-2">
           <div className="space-y-6">
-            <Alert variant="info">
-              <ShieldCheck className="h-4 w-4" />
-              <AlertTitle>Chip Verified</AlertTitle>
-              <AlertDescription>
-                Your passport chip has been cryptographically verified, the
-                highest level of assurance
-              </AlertDescription>
-            </Alert>
-
             <div className="grid gap-4 sm:grid-cols-2">
               {verificationStatus.checks.ageVerified && (
                 <div className="flex items-center gap-3">
@@ -307,26 +303,15 @@ export async function IdentityCard({
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>Identity Status</CardTitle>
-            {assurance && <TierBadge tier={tier} />}
-          </div>
-        </CardHeader>
+        <IdentityCardHeader assurance={assurance} tier={tier} />
         <CardContent className="pt-2">
           <div className="space-y-6">
-            {/* Completion status */}
-            <Alert variant="success">
-              <CheckCircle2 className="h-4 w-4" />
-              <AlertTitle>Fully Verified</AlertTitle>
-              <AlertDescription>
-                {posture?.auth?.authStrength === "strong"
-                  ? "Ready for on-chain attestation"
-                  : "Identity verified. Add a passkey to enable on-chain attestation."}
-              </AlertDescription>
-            </Alert>
+            {posture?.auth?.authStrength !== "strong" && (
+              <p className="text-muted-foreground text-sm">
+                Add a passkey to enable on-chain attestation.
+              </p>
+            )}
 
-            {/* Identity Summary */}
             <IdentitySummary
               hasAgeProof={hasAgeProof}
               isVerified={identityBundle?.status === "verified"}
