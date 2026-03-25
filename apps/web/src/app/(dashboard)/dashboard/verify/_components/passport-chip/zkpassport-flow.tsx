@@ -43,6 +43,7 @@ interface DisclosedData {
 }
 
 interface ZkPassportFlowProps {
+  onComplete?: () => void;
   wallet: { address: string; chainId: number } | null;
 }
 
@@ -65,7 +66,10 @@ function bypassClientProofVerification(zkpassport: object): void {
   });
 }
 
-export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
+export function ZkPassportFlow({
+  onComplete,
+  wallet,
+}: Readonly<ZkPassportFlowProps>) {
   const router = useRouter();
   const { data: session } = useSession();
   const [stage, setStage] = useState<FlowStage>("connecting");
@@ -497,7 +501,13 @@ export function ZkPassportFlow({ wallet }: Readonly<ZkPassportFlowProps>) {
   if (stage === "success") {
     return (
       <StatusDisplay
-        onNavigate={() => router.push("/dashboard")}
+        onNavigate={() => {
+          if (onComplete) {
+            onComplete();
+          } else {
+            router.push("/dashboard");
+          }
+        }}
         stage="success"
       />
     );

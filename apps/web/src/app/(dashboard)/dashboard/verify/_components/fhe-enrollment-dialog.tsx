@@ -7,8 +7,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 
+import { Web3Provider } from "@/components/providers/web3-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +36,10 @@ import {
   signatureToBytes,
 } from "@/lib/privacy/credentials";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
-import { getPreGeneratedKeys } from "@/lib/privacy/fhe/background-keygen";
+import {
+  getPreGeneratedKeys,
+  startBackgroundKeygen,
+} from "@/lib/privacy/fhe/background-keygen";
 import { generateFheKeyMaterialForStorage } from "@/lib/privacy/fhe/client";
 import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import {
@@ -89,8 +100,10 @@ function formatEnrollmentError(message: string): string {
 interface FheEnrollmentDialogProps {
   hasPasskeys: boolean;
   hasPassword: boolean;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
+  inline?: boolean;
+  onComplete?: () => void;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
   wallet: { address: string; chainId: number } | null;
 }
 
@@ -178,8 +191,10 @@ interface WalletContext {
 }
 
 export function FheEnrollmentDialog({
-  open,
+  open = true,
   onOpenChange,
+  inline,
+  onComplete,
   hasPasskeys,
   hasPassword,
   wallet,
@@ -236,11 +251,17 @@ export function FheEnrollmentDialog({
   }, []);
 
   useEffect(() => {
-    if (open) {
+    if (inline) {
+      startBackgroundKeygen();
+    }
+  }, [inline]);
+
+  useEffect(() => {
+    if (inline || open) {
       prewarmTfheWorker();
       checkPrfSupport().then((r) => setPrfSupported(r.supported));
     }
-  }, [open]);
+  }, [inline, open]);
 
   const availableMethods = useMemo(() => {
     const methods: EnrollmentMethod[] = [];
@@ -735,8 +756,12 @@ export function FheEnrollmentDialog({
         if (alreadyEnrolled) {
           setStage("done");
           toast.success("Encryption keys already secured.");
-          router.refresh();
-          onOpenChange(false);
+          if (onComplete) {
+            onComplete();
+          } else {
+            router.refresh();
+            onOpenChange?.(false);
+          }
           return;
         }
 
@@ -755,8 +780,12 @@ export function FheEnrollmentDialog({
         finishTiming("ok");
         setStage("done");
         toast.success("Encryption keys secured.");
-        router.refresh();
-        onOpenChange(false);
+        if (onComplete) {
+          onComplete();
+        } else {
+          router.refresh();
+          onOpenChange?.(false);
+        }
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "Enrollment failed.";
@@ -777,6 +806,7 @@ export function FheEnrollmentDialog({
     [
       stage,
       router,
+      onComplete,
       onOpenChange,
       checkExistingEnrollment,
       enrollPasskey,
@@ -787,14 +817,13 @@ export function FheEnrollmentDialog({
     ]
   );
 
-  // Reset state when dialog closes
   useEffect(() => {
-    if (!open) {
+    if (!(inline || open)) {
       setStage("idle");
       setError(null);
       setPassword("");
     }
-  }, [open]);
+  }, [inline, open]);
 
   const isRunning = stage !== "idle" && stage !== "done";
   const stageLabel = STAGE_LABELS[stage];
@@ -802,130 +831,154 @@ export function FheEnrollmentDialog({
   const needsPasswordFallback =
     availableMethods.length === 0 && hasPasskeys && prfSupported === false;
 
+  const title = isRunning
+    ? "Setting up encryption keys..."
+    : "Set up encryption keys";
+
+  const description = isRunning
+    ? stageLabel
+    : "Before verification, we need to generate your personal encryption keys. This is a one-time setup that can take up to a minute depending on your device.";
+
+  const titleIcon = isRunning ? (
+    <Loader2 className="h-5 w-5 animate-spin" />
+  ) : (
+    <KeyRound className="h-5 w-5" />
+  );
+
+  const body = (
+    <>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {isRunning ? (
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="lg" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {availableMethods.includes("passkey") && (
+            <Button
+              className="w-full justify-start gap-3"
+              disabled={isRunning}
+              onClick={() => handleEnroll("passkey").catch(() => undefined)}
+              variant="outline"
+            >
+              <Fingerprint className="h-4 w-4" />
+              Continue with Passkey
+            </Button>
+          )}
+
+          {wallet && availableMethods.includes("wallet") && (
+            <WalletEnrollmentButton
+              onEnroll={handleEnroll}
+              stage={stage}
+              wallet={wallet}
+            />
+          )}
+
+          {availableMethods.includes("password") && (
+            <div className="space-y-2">
+              <Input
+                autoComplete="current-password"
+                disabled={isRunning}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && password.trim()) {
+                    handleEnroll("password").catch(() => undefined);
+                  }
+                }}
+                placeholder="Enter your password"
+                type="password"
+                value={password}
+              />
+              <Button
+                className="w-full justify-start gap-3"
+                disabled={isRunning || !password.trim()}
+                onClick={() => handleEnroll("password").catch(() => undefined)}
+                variant="outline"
+              >
+                <KeyRound className="h-4 w-4" />
+                Continue with Password
+              </Button>
+            </div>
+          )}
+
+          {needsPasswordFallback && (
+            <div className="space-y-3">
+              <p className="text-muted-foreground text-sm">
+                Your passkey doesn't support the encryption extensions needed on
+                this device. Create a password to secure your keys instead.
+              </p>
+              <Input
+                autoComplete="new-password"
+                disabled={isRunning}
+                minLength={10}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && password.trim().length >= 10) {
+                    handleEnroll("create-password").catch(() => undefined);
+                  }
+                }}
+                placeholder="Create a password (min 10 characters)"
+                type="password"
+                value={password}
+              />
+              <Button
+                className="w-full justify-start gap-3"
+                disabled={isRunning || password.trim().length < 10}
+                onClick={() =>
+                  handleEnroll("create-password").catch(() => undefined)
+                }
+                variant="outline"
+              >
+                <KeyRound className="h-4 w-4" />
+                Create Password & Continue
+              </Button>
+            </div>
+          )}
+
+          {availableMethods.length === 0 && !needsPasswordFallback && (
+            <p className="text-center text-muted-foreground text-sm">
+              No enrollment methods available. Please set up a passkey,
+              password, or wallet first.
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  if (inline) {
+    const card = (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            {titleIcon}
+            {title}
+          </CardTitle>
+          <CardDescription>{description}</CardDescription>
+        </CardHeader>
+        <CardContent>{body}</CardContent>
+      </Card>
+    );
+
+    return wallet ? <Web3Provider cookies={null}>{card}</Web3Provider> : card;
+  }
+
   return (
     <Dialog {...(isRunning ? {} : { onOpenChange })} open={open}>
       <DialogContent showCloseButton={!isRunning}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {isRunning ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <KeyRound className="h-5 w-5" />
-            )}
-            {isRunning
-              ? "Setting up encryption keys..."
-              : "Set up encryption keys"}
+            {titleIcon}
+            {title}
           </DialogTitle>
-          <DialogDescription>
-            {isRunning
-              ? stageLabel
-              : "Before verification, we need to generate your personal encryption keys. This is a one-time setup that can take up to a minute depending on your device."}
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {isRunning ? (
-          <div className="flex items-center justify-center py-8">
-            <Spinner size="lg" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {availableMethods.includes("passkey") && (
-              <Button
-                className="w-full justify-start gap-3"
-                disabled={isRunning}
-                onClick={() => handleEnroll("passkey").catch(() => undefined)}
-                variant="outline"
-              >
-                <Fingerprint className="h-4 w-4" />
-                Continue with Passkey
-              </Button>
-            )}
-
-            {wallet && availableMethods.includes("wallet") && (
-              <WalletEnrollmentButton
-                onEnroll={handleEnroll}
-                stage={stage}
-                wallet={wallet}
-              />
-            )}
-
-            {availableMethods.includes("password") && (
-              <div className="space-y-2">
-                <Input
-                  autoComplete="current-password"
-                  disabled={isRunning}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && password.trim()) {
-                      handleEnroll("password").catch(() => undefined);
-                    }
-                  }}
-                  placeholder="Enter your password"
-                  type="password"
-                  value={password}
-                />
-                <Button
-                  className="w-full justify-start gap-3"
-                  disabled={isRunning || !password.trim()}
-                  onClick={() =>
-                    handleEnroll("password").catch(() => undefined)
-                  }
-                  variant="outline"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  Continue with Password
-                </Button>
-              </div>
-            )}
-
-            {needsPasswordFallback && (
-              <div className="space-y-3">
-                <p className="text-muted-foreground text-sm">
-                  Your passkey doesn't support the encryption extensions needed
-                  on this device. Create a password to secure your keys instead.
-                </p>
-                <Input
-                  autoComplete="new-password"
-                  disabled={isRunning}
-                  minLength={10}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && password.trim().length >= 10) {
-                      handleEnroll("create-password").catch(() => undefined);
-                    }
-                  }}
-                  placeholder="Create a password (min 10 characters)"
-                  type="password"
-                  value={password}
-                />
-                <Button
-                  className="w-full justify-start gap-3"
-                  disabled={isRunning || password.trim().length < 10}
-                  onClick={() =>
-                    handleEnroll("create-password").catch(() => undefined)
-                  }
-                  variant="outline"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  Create Password & Continue
-                </Button>
-              </div>
-            )}
-
-            {availableMethods.length === 0 && !needsPasswordFallback && (
-              <p className="text-center text-muted-foreground text-sm">
-                No enrollment methods available. Please set up a passkey,
-                password, or wallet first.
-              </p>
-            )}
-          </div>
-        )}
+        {body}
       </DialogContent>
     </Dialog>
   );

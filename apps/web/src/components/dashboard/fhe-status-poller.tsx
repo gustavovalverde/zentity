@@ -1,18 +1,25 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useRef } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc/client";
+
+const MAX_POLL_ATTEMPTS = 60;
 
 /**
  * Poll for FHE completion after proofs are already stored.
  * Refreshes the current route once the assurance profile reports completion.
+ * Stops after MAX_POLL_ATTEMPTS and shows a timeout error.
  */
 export function FheStatusPoller() {
   const router = useRouter();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attemptRef = useRef(0);
+  const [error, setError] = useState<"timeout" | "network" | null>(null);
 
   useEffect(() => {
     const baseInterval = 2000;
@@ -39,6 +46,11 @@ export function FheStatusPoller() {
     };
 
     const poll = async () => {
+      if (attemptRef.current >= MAX_POLL_ATTEMPTS) {
+        setError("timeout");
+        return;
+      }
+
       try {
         const status = await trpc.assurance.profile.query();
         if (disposed) {
@@ -59,7 +71,10 @@ export function FheStatusPoller() {
           return;
         }
       } catch {
-        // Ignore transient errors and keep polling.
+        if (!disposed) {
+          setError("network");
+          return;
+        }
       }
 
       attemptRef.current++;
@@ -74,6 +89,31 @@ export function FheStatusPoller() {
       clearPendingPoll();
     };
   }, [router]);
+
+  const handleRetry = () => {
+    attemptRef.current = 0;
+    setError(null);
+    // Re-trigger the effect by refreshing the page
+    router.refresh();
+  };
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+          <span>
+            {error === "timeout"
+              ? "Encryption is taking longer than expected. Try refreshing the page."
+              : "Network error while checking encryption status."}
+          </span>
+          <Button onClick={handleRetry} size="sm" variant="outline">
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return null;
 }

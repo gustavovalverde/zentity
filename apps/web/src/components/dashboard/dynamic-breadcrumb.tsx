@@ -28,10 +28,6 @@ const ROUTE_LABELS: Record<string, string> = {
   "/dashboard/agents": "Agents",
   "/dashboard/agents/approve": "Approve Request",
   "/dashboard/verify": "Verify Identity",
-  "/dashboard/verify/document": "Document Upload",
-  "/dashboard/verify/liveness": "Liveness Check",
-  "/dashboard/verify/face": "Face Match",
-  "/dashboard/verify/proofs": "Generate Proofs",
 };
 
 /**
@@ -41,10 +37,6 @@ const PARENT_ROUTES: Record<string, string> = {
   "/dashboard/developer/inspector": "/dashboard/developer",
   "/dashboard/developer/applications": "/dashboard/developer",
   "/dashboard/agents/approve": "/dashboard/agents",
-  "/dashboard/verify/document": "/dashboard/verify",
-  "/dashboard/verify/liveness": "/dashboard/verify",
-  "/dashboard/verify/face": "/dashboard/verify",
-  "/dashboard/verify/proofs": "/dashboard/verify",
 };
 
 export function DynamicBreadcrumb() {

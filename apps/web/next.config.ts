@@ -219,7 +219,12 @@ const nextConfig: NextConfig = {
           { key: "Content-Encoding", value: "gzip" },
         ],
       },
-      // Verify routes: require-corp COEP for guaranteed multi-threaded WASM
+      // Verify routes: require-corp COEP for guaranteed multi-threaded WASM.
+      // The bare path must be listed explicitly — :path* requires ≥1 segment.
+      {
+        source: "/dashboard/verify",
+        headers: verifyIsolatedHeaders,
+      },
       {
         source: "/dashboard/verify/:path*",
         headers: verifyIsolatedHeaders,

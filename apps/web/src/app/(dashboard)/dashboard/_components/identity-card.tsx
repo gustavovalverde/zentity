@@ -8,6 +8,7 @@ import {
   BadgeCheck,
   Calendar,
   CheckCircle,
+  Lock,
   ScanSearch,
 } from "lucide-react";
 import Link from "next/link";
@@ -16,7 +17,6 @@ import { TierBadge } from "@/components/assurance/tier-badge";
 import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { TransparencySection } from "@/components/dashboard/transparency-section";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -144,7 +144,7 @@ export async function IdentityCard({
                 which we don&apos;t store.
               </p>
               <Button asChild className="w-full">
-                <Link href="/dashboard/verify/document">
+                <Link href="/dashboard/verify">
                   Complete Verification
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
@@ -157,31 +157,58 @@ export async function IdentityCard({
 
     // Normal Tier 1: Ready to verify
     return (
-      <Card>
-        <IdentityCardHeader assurance={assurance} tier={tier} />
-        <CardContent className="pt-2">
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ScanSearch />
-              </EmptyMedia>
-              <EmptyTitle>Ready to Verify</EmptyTitle>
-              <EmptyDescription>
-                Verify your identity to unlock credentials and on-chain
-                attestation.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <Button asChild>
-                <Link href="/dashboard/verify">
-                  Start Verification
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </EmptyContent>
-          </Empty>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <IdentityCardHeader assurance={assurance} tier={tier} />
+          <CardContent className="pt-2">
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ScanSearch />
+                </EmptyMedia>
+                <EmptyTitle>Ready to Verify</EmptyTitle>
+                <EmptyDescription>
+                  Verify your identity to unlock credentials and on-chain
+                  attestation.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button asChild>
+                  <Link href="/dashboard/verify">
+                    Start Verification
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </EmptyContent>
+            </Empty>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Lock className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="space-y-1.5 text-muted-foreground text-sm">
+                <p>
+                  <strong className="text-foreground">
+                    Privacy-first verification
+                  </strong>
+                </p>
+                <p>
+                  Your personal data is never stored in readable form.
+                  Zero-knowledge proofs are generated locally in your browser,
+                  and sensitive attributes are encrypted with fully homomorphic
+                  encryption (FHE). We only keep encrypted proofs of your
+                  verified attributes (e.g., &quot;over 18&quot;). Raw images
+                  are processed in memory and immediately discarded.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -257,7 +284,7 @@ export async function IdentityCard({
 
   // Tier 2: Fetch identity data for fully verified display
   const [
-    identityBundle,
+    ,
     verification,
     encryptedAttributes,
     dobDaysCipher,
@@ -314,7 +341,6 @@ export async function IdentityCard({
 
             <IdentitySummary
               hasAgeProof={hasAgeProof}
-              isVerified={identityBundle?.status === "verified"}
               verification={verification}
             />
           </div>
@@ -341,11 +367,9 @@ export async function IdentityCard({
  */
 function IdentitySummary({
   verification,
-  isVerified,
   hasAgeProof,
 }: {
   verification: Awaited<ReturnType<typeof getSelectedVerification>>;
-  isVerified: boolean;
   hasAgeProof: boolean;
 }) {
   if (!verification) {
@@ -354,10 +378,7 @@ function IdentitySummary({
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-medium text-sm">Identity Summary</h4>
-        {isVerified && <Badge variant="success">Verified</Badge>}
-      </div>
+      <h4 className="mb-3 font-medium text-sm">Identity Summary</h4>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {hasAgeProof && (
           <div className="flex items-center gap-3">

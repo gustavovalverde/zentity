@@ -63,7 +63,6 @@ interface LivenessStateContextValue {
   isCompleted: boolean;
   isFailed: boolean;
   phase: LivenessPhase;
-  retryCount: number;
   selfieImage: string | null;
   speechEnabled: boolean;
 }
@@ -461,7 +460,6 @@ export function LivenessProvider({
       hint: liveness.hint,
       isCompleted: liveness.phase === "completed",
       isFailed: liveness.phase === "failed",
-      retryCount: 0,
       audioEnabled,
       speechEnabled,
     };

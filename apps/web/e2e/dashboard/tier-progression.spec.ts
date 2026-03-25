@@ -66,7 +66,7 @@ test.describe("Tier System - Dashboard Display", () => {
     await expect(completeVerificationLink).toBeVisible({ timeout: 15_000 });
     await expect(completeVerificationLink).toHaveAttribute(
       "href",
-      "/dashboard/verify/document"
+      "/dashboard/verify"
     );
   });
 });

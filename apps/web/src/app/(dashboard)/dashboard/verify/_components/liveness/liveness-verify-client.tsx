@@ -107,10 +107,12 @@ function getFinalizeFailureMessage(jobStatus: {
 }
 
 interface LivenessVerifyClientProps {
+  onComplete?: () => void;
   wallet: { address: string; chainId: number } | null;
 }
 
 export function LivenessVerifyClient({
+  onComplete,
   wallet,
 }: Readonly<LivenessVerifyClientProps>) {
   const router = useRouter();
@@ -134,6 +136,17 @@ export function LivenessVerifyClient({
   } = useVerificationBindingAuth();
   // Ref to hold the verificationId while dialog is open (avoids stale closure)
   const pendingVerificationIdRef = useRef<string | null>(null);
+
+  const handleBindingAuthOpenChange = useCallback(
+    (open: boolean) => {
+      setBindingAuthOpen(open);
+      if (!open && pendingVerificationIdRef.current) {
+        pendingVerificationIdRef.current = null;
+        setIsSubmitting(false);
+      }
+    },
+    [setBindingAuthOpen]
+  );
 
   const userId = session?.user?.id;
   const draftId = store.draftId;
@@ -216,10 +229,14 @@ export function LivenessVerifyClient({
       // Privacy hardening: purge transient PII once proofs are generated.
       getStoreState().reset();
 
-      router.push("/dashboard");
-      router.refresh();
+      if (onComplete) {
+        onComplete();
+      } else {
+        router.push("/dashboard");
+        router.refresh();
+      }
     },
-    [router]
+    [onComplete, router]
   );
 
   /**
@@ -299,7 +316,7 @@ export function LivenessVerifyClient({
         toast.error("Verification session expired", {
           description: "Please upload your document again to continue.",
         });
-        router.replace("/dashboard/verify/document");
+        router.replace("/dashboard/verify");
         return;
       }
 
@@ -515,7 +532,7 @@ export function LivenessVerifyClient({
       {userId && (
         <BindingAuthDialog
           authMode={bindingAuthMode}
-          onOpenChange={setBindingAuthOpen}
+          onOpenChange={handleBindingAuthOpenChange}
           onSuccess={handleBindingAuthSuccess}
           open={bindingAuthOpen}
           userId={userId}

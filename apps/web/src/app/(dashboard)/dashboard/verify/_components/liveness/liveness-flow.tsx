@@ -32,7 +32,6 @@ export function LivenessFlow() {
     error,
     isCompleted,
     isFailed,
-    retryCount,
     start,
     retry,
     cancel,
@@ -68,7 +67,7 @@ export function LivenessFlow() {
     }
   };
 
-  const canRetry = error?.canRetry && retryCount < 3;
+  const canRetry = error?.canRetry;
 
   // ALWAYS render the same component tree structure to prevent remounting
   // Use CSS to toggle between desktop and fullscreen modes

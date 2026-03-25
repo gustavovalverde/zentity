@@ -248,11 +248,13 @@ const RejectedDocumentCard = memo(function RejectedDocumentCard({
 
 interface DocumentUploadClientProps {
   demoMode?: boolean;
+  onComplete?: () => void;
   resetOnMount?: boolean;
 }
 
 export function DocumentUploadClient({
   demoMode = false,
+  onComplete,
   resetOnMount = false,
 }: DocumentUploadClientProps) {
   const router = useRouter();
@@ -312,8 +314,12 @@ export function DocumentUploadClient({
       toast.error("Please verify your document first");
       return;
     }
-    router.push("/dashboard/verify/liveness");
-  }, [isVerified, router]);
+    if (onComplete) {
+      onComplete();
+    } else {
+      router.push("/dashboard/verify");
+    }
+  }, [isVerified, onComplete, router]);
 
   const isProcessing =
     processingState === "converting" || processingState === "processing";

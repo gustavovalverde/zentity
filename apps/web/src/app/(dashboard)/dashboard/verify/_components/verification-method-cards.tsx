@@ -19,11 +19,15 @@ const TENTATIVE_SUPPORT = 0.25;
 
 interface VerificationMethodCardsProps {
   countries: CountryDocumentEntry[];
+  onSelectDocument?: () => void;
+  onSelectPassportChip?: () => void;
   zkPassportEnabled: boolean;
 }
 
 export function VerificationMethodCards({
   countries,
+  onSelectDocument,
+  onSelectPassportChip,
   zkPassportEnabled,
 }: Readonly<VerificationMethodCardsProps>) {
   const [supportLevel, setSupportLevel] = useState<number | null>(null);
@@ -62,7 +66,11 @@ export function VerificationMethodCards({
 
       {nfcAvailable && (
         <>
-          <NfcMethodSection highlighted={nfcRecommended} partial={nfcPartial} />
+          <NfcMethodSection
+            highlighted={nfcRecommended}
+            onSelect={onSelectPassportChip}
+            partial={nfcPartial}
+          />
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -79,6 +87,7 @@ export function VerificationMethodCards({
         <DocumentScanMethodSection
           highlighted={countrySelected && !nfcAvailable}
           isAlternative={nfcAvailable}
+          onSelect={onSelectDocument}
         />
       )}
     </div>
@@ -87,8 +96,13 @@ export function VerificationMethodCards({
 
 function NfcMethodSection({
   highlighted,
+  onSelect,
   partial,
-}: Readonly<{ highlighted: boolean; partial: boolean }>) {
+}: Readonly<{
+  highlighted: boolean;
+  onSelect?: (() => void) | undefined;
+  partial: boolean;
+}>) {
   return (
     <div
       className={cn(
@@ -148,11 +162,15 @@ function NfcMethodSection({
         </ul>
       </div>
 
-      <Button asChild className="w-full" size="lg">
-        <Link href="/dashboard/verify/passport-chip">
+      {onSelect ? (
+        <Button className="w-full" onClick={onSelect} size="lg">
           Start NFC Verification
-        </Link>
-      </Button>
+        </Button>
+      ) : (
+        <Button asChild className="w-full" size="lg">
+          <Link href="/dashboard/verify">Start NFC Verification</Link>
+        </Button>
+      )}
     </div>
   );
 }
@@ -160,7 +178,12 @@ function NfcMethodSection({
 function DocumentScanMethodSection({
   isAlternative,
   highlighted,
-}: Readonly<{ isAlternative: boolean; highlighted: boolean }>) {
+  onSelect,
+}: Readonly<{
+  isAlternative: boolean;
+  highlighted: boolean;
+  onSelect?: (() => void) | undefined;
+}>) {
   return (
     <div
       className={cn(
@@ -213,18 +236,31 @@ function DocumentScanMethodSection({
         </ul>
       </div>
 
-      <Button
-        asChild
-        className="w-full"
-        size={isAlternative ? "default" : "lg"}
-        variant={isAlternative ? "outline" : "default"}
-      >
-        <Link href="/dashboard/verify/document">
+      {onSelect ? (
+        <Button
+          className="w-full"
+          onClick={onSelect}
+          size={isAlternative ? "default" : "lg"}
+          variant={isAlternative ? "outline" : "default"}
+        >
           {isAlternative
             ? "My document doesn't have NFC"
             : "Start Document Scan"}
-        </Link>
-      </Button>
+        </Button>
+      ) : (
+        <Button
+          asChild
+          className="w-full"
+          size={isAlternative ? "default" : "lg"}
+          variant={isAlternative ? "outline" : "default"}
+        >
+          <Link href="/dashboard/verify">
+            {isAlternative
+              ? "My document doesn't have NFC"
+              : "Start Document Scan"}
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }
