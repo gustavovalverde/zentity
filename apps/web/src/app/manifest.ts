@@ -27,7 +27,7 @@ export default function manifest(): MetadataRoute.Manifest {
     shortcuts: [
       {
         name: "Pending Approvals",
-        url: "/dashboard/ciba",
+        url: "/dashboard/agents",
         icons: [
           {
             src: "/images/logo/icon-192.png",

@@ -557,10 +557,10 @@ export function CibaApproveClient({
           </CardHeader>
           <CardFooter>
             <Button
-              onClick={() => router.push("/dashboard/ciba")}
+              onClick={() => router.push("/dashboard/agents")}
               variant="outline"
             >
-              Back to Agent Requests
+              Back to Agents
             </Button>
           </CardFooter>
         </Card>
@@ -581,10 +581,10 @@ export function CibaApproveClient({
           </CardHeader>
           <CardFooter>
             <Button
-              onClick={() => router.push("/dashboard/ciba")}
+              onClick={() => router.push("/dashboard/agents")}
               variant="outline"
             >
-              Back to Agent Requests
+              Back to Agents
             </Button>
           </CardFooter>
         </Card>
@@ -614,10 +614,10 @@ export function CibaApproveClient({
           </CardHeader>
           <CardFooter>
             <Button
-              onClick={() => router.push("/dashboard/ciba")}
+              onClick={() => router.push("/dashboard/agents")}
               variant="outline"
             >
-              Back to Agent Requests
+              Back to Agents
             </Button>
           </CardFooter>
         </Card>

@@ -117,7 +117,7 @@ export default async function ApprovePage({
       <div className="mt-4 hidden text-center md:block">
         <Link
           className="text-muted-foreground text-sm underline-offset-4 hover:underline"
-          href={`/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(authReqId)}`}
+          href={`/dashboard/agents/approve?auth_req_id=${encodeURIComponent(authReqId)}`}
         >
           View in dashboard
         </Link>

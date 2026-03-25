@@ -51,7 +51,7 @@ function notifyCibaClients(type, authReqId, extra) {
     for (const client of clients) {
       const pathname = new URL(client.url).pathname;
       if (
-        pathname.startsWith("/dashboard/ciba") ||
+        pathname.startsWith("/dashboard/agents") ||
         pathname.startsWith("/approve/")
       ) {
         client.postMessage({ type, authReqId, ...extra });
@@ -66,7 +66,7 @@ self.addEventListener("push", (event) => {
   const payload = event.data.json();
   const { title, body, data } = payload;
   const authReqId = data?.authReqId;
-  const approvalUrl = data?.approvalUrl ?? "/dashboard/ciba";
+  const approvalUrl = data?.approvalUrl ?? "/dashboard/agents";
   const requiresVaultUnlock = data?.requiresVaultUnlock === true;
 
   const actions = requiresVaultUnlock
@@ -104,7 +104,7 @@ self.addEventListener("notificationclick", (event) => {
   // Identity-scoped requests always route to the approval page
   if (requiresVaultUnlock) {
     event.waitUntil(
-      self.clients.openWindow(approvalUrl ?? "/dashboard/ciba")
+      self.clients.openWindow(approvalUrl ?? "/dashboard/agents")
     );
     return;
   }
@@ -150,5 +150,5 @@ self.addEventListener("notificationclick", (event) => {
   }
 
   // Default click (no action button or unsupported platform) — open approval page
-  event.waitUntil(self.clients.openWindow(approvalUrl ?? "/dashboard/ciba"));
+  event.waitUntil(self.clients.openWindow(approvalUrl ?? "/dashboard/agents"));
 });

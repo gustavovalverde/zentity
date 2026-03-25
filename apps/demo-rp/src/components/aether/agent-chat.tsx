@@ -411,7 +411,7 @@ function CibaWaiting({ state }: { state: "requesting" | "polling" }) {
               Open your{" "}
               <a
                 className="text-white/70 underline"
-                href={`${env.NEXT_PUBLIC_ZENTITY_URL}/dashboard/ciba`}
+                href={`${env.NEXT_PUBLIC_ZENTITY_URL}/dashboard/agents`}
                 rel="noopener noreferrer"
                 target="_blank"
               >

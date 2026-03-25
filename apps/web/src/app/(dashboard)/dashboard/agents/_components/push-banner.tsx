@@ -20,15 +20,21 @@ type PushState =
   | "loading";
 
 const IOS_DEVICE_RE = /iPhone|iPod/;
+const MAC_UA_RE = /Macintosh/;
 
 function isIOSDevice(): boolean {
-  // iPhone/iPod still report correctly in the user agent
   if (IOS_DEVICE_RE.test(navigator.userAgent)) {
     return true;
   }
-  // iPadOS 13+ spoofs a Mac user agent — detect via touch support
-  // Real Macs have maxTouchPoints === 0; iPads report > 0
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  // iPadOS 13+ spoofs a Mac user agent — detect via touch support.
+  const uaData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const isMac = uaData.userAgentData?.platform
+    ? uaData.userAgentData.platform === "macOS"
+    : MAC_UA_RE.test(navigator.userAgent);
+
+  return isMac && navigator.maxTouchPoints > 1;
 }
 
 function useIsIOSInstallable(): boolean {

@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AppWindow,
   Bot,
-  BotMessageSquare,
   Coins,
   FileCheck2,
   IdCard,
@@ -86,11 +85,6 @@ const developerNavItems: NavItem[] = [
     title: "Applications",
     url: "/dashboard/developer/applications",
     icon: AppWindow,
-  },
-  {
-    title: "Agent Requests",
-    url: "/dashboard/ciba",
-    icon: BotMessageSquare,
   },
   {
     title: "Agents",

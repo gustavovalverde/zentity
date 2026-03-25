@@ -480,7 +480,7 @@ packages:
     engines: {node: '>=18'}
 
   '@better-auth/ciba@file:vendor/better-auth-ciba-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-4rs0IEfST0zCC2gKiSD4oIQpqVhDLGKM6uPql1i5sNJXjLed9LgPBnuP7fOWeTvlKQRDb3X/PIfKis4Nat9eTw==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-S5vsFVQkgYdvCyuUHXwLlTZyJvG/sCLCM+39z/o0LzwVUJqouJ3Yjvh7bbX0G4mGn2iFJ5pEikj97pZuMDrWQg==, tarball: file:vendor/better-auth-ciba-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.1-beta.3
@@ -556,7 +556,7 @@ packages:
         optional: true
 
   '@better-auth/oauth-provider@file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz':
-    resolution: {integrity: sha512-sq9mzPSUK4SZ0x1nhgbRtCZJPivvn/mlAe9h+rnb26nj+4fD3d860Xxio2CAAme0Si9VA45GS9o/HQ4AE7LIDg==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
+    resolution: {integrity: sha512-XteefZQIlcI+P1pNfIjIU68fg1+75RVbkV5mID8lARgLdzFfGBBPEGKBuK5rREQdPlbM4SqEft403Ec33SpoIw==, tarball: file:vendor/better-auth-oauth-provider-1.5.1-beta.3.tgz}
     version: 1.5.1-beta.3
     peerDependencies:
       '@better-auth/core': 1.5.1-beta.3

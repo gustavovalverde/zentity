@@ -10,19 +10,50 @@ const DISMISS_KEY = "pwa-install-banner-dismissed";
 const DISMISS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const IOS_DEVICE_RE = /iPhone|iPod/;
+const MAC_UA_RE = /Macintosh/;
 
 type BannerState = "hidden" | "chromium" | "ios" | "loading";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+// Capture the install prompt at module scope so it survives the gap
+// between page load and React hydration. Chrome fires this event once
+// per navigation — if we only listen inside useEffect, we miss it
+// when hydration is slower than Chrome's installability check.
+let capturedPrompt: BeforeInstallPromptEvent | null = null;
+const captureListeners = new Set<() => void>();
+
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    capturedPrompt = e as BeforeInstallPromptEvent;
+    for (const listener of captureListeners) {
+      listener();
+    }
+  });
+}
 
 function isIOSDevice(): boolean {
   if (IOS_DEVICE_RE.test(navigator.userAgent)) {
     return true;
   }
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  // iPadOS 13+ spoofs a Mac user agent — detect via touch support.
+  const uaData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const isMac = uaData.userAgentData?.platform
+    ? uaData.userAgentData.platform === "macOS"
+    : MAC_UA_RE.test(navigator.userAgent);
+
+  return isMac && navigator.maxTouchPoints > 1;
 }
 
 function isStandalone(): boolean {
   return (
-    window.matchMedia("(display-mode: standalone)").matches ||
+    globalThis.matchMedia("(display-mode: standalone)").matches ||
     ("standalone" in navigator &&
       (navigator as { standalone?: boolean }).standalone === true)
   );
@@ -52,19 +83,28 @@ export function PwaInstallBanner() {
       return;
     }
 
-    // Chromium: listen for the install prompt event
-    const handler = (e: Event) => {
-      e.preventDefault();
-      promptRef.current = e as BeforeInstallPromptEvent;
+    // Check if the event was already captured before this component mounted
+    if (capturedPrompt) {
+      promptRef.current = capturedPrompt;
       setState("chromium");
+      return;
+    }
+
+    // Listen for future events via the module-level capture set
+    const onCapture = () => {
+      if (capturedPrompt) {
+        promptRef.current = capturedPrompt;
+        setState("chromium");
+      }
     };
+    captureListeners.add(onCapture);
 
-    window.addEventListener("beforeinstallprompt", handler);
-
-    // If beforeinstallprompt doesn't fire (Firefox, Safari desktop), stay hidden
+    // No event yet and not iOS — stay hidden (Firefox, Safari desktop)
     setState("hidden");
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    return () => {
+      captureListeners.delete(onCapture);
+    };
   }, []);
 
   const handleInstall = useCallback(async () => {
@@ -78,6 +118,7 @@ export function PwaInstallBanner() {
       setState("hidden");
     }
     promptRef.current = null;
+    capturedPrompt = null;
   }, []);
 
   const handleDismiss = useCallback(() => {
@@ -129,9 +170,4 @@ export function PwaInstallBanner() {
       </AlertDescription>
     </Alert>
   );
-}
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
