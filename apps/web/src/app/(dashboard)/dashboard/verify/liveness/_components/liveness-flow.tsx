@@ -162,7 +162,7 @@ export function LivenessFlow() {
         {isCompleted && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-background">
             <SuccessAnimation showConfetti={false} />
-            <p className="font-medium text-green-600">Verification complete!</p>
+            <p className="font-medium text-success">Verification complete!</p>
             <p className="text-center text-muted-foreground text-sm">
               Click Continue to proceed
             </p>

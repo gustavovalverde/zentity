@@ -47,7 +47,7 @@ export function DirectionalNudge({
     >
       <Icon
         className={cn(
-          "size-8 text-amber-400",
+          "size-8 text-warning",
           direction === "left" && "animate-bounce-left",
           direction === "right" && "animate-bounce-right",
           direction === "up" && "animate-bounce",

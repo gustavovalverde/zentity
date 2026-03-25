@@ -15,18 +15,20 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
-function statusColor(status: string): string {
+function statusVariant(
+  status: string
+): "success" | "warning" | "destructive" | "info" | "outline" {
   switch (status) {
     case "active":
-      return "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300";
+      return "success";
     case "expired":
-      return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300";
+      return "warning";
     case "revoked":
-      return "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300";
+      return "destructive";
     case "attested":
-      return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300";
+      return "info";
     default:
-      return "border-border";
+      return "outline";
   }
 }
 
@@ -133,10 +135,10 @@ export function AgentsDashboardClient() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Bot className="size-4 text-muted-foreground" />
                   <CardTitle className="text-base">{host.name}</CardTitle>
-                  <Badge className={statusColor(host.status)}>
+                  <Badge variant={statusVariant(host.status)}>
                     {host.status}
                   </Badge>
-                  <Badge className={statusColor(host.attestationTier)}>
+                  <Badge variant={statusVariant(host.attestationTier)}>
                     {host.attestationTier}
                   </Badge>
                 </div>
@@ -173,7 +175,7 @@ export function AgentsDashboardClient() {
                             <span className="font-medium text-sm">
                               {session.displayName}
                             </span>
-                            <Badge className={statusColor(session.status)}>
+                            <Badge variant={statusVariant(session.status)}>
                               {session.status}
                             </Badge>
                             {session.runtime ? (
@@ -231,7 +233,8 @@ export function AgentsDashboardClient() {
                                     {grant.capabilityName}
                                   </span>
                                   <Badge
-                                    className={`text-xs ${statusColor(grant.status)}`}
+                                    className="text-xs"
+                                    variant={statusVariant(grant.status)}
                                   >
                                     {grant.status}
                                   </Badge>

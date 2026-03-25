@@ -102,11 +102,9 @@ export function StatusDisplay({
 
   if (stage === "vault_pending") {
     return (
-      <Alert className="border-amber-500/30 bg-amber-500/5">
-        <AlertTriangle className="h-4 w-4 text-amber-600" />
-        <AlertTitle className="text-amber-700 dark:text-amber-400">
-          Save your identity data
-        </AlertTitle>
+      <Alert variant="warning">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Save your identity data</AlertTitle>
         <AlertDescription className="space-y-3">
           <p>
             Your verified identity data needs to be secured in your encrypted
@@ -143,7 +141,7 @@ export function StatusDisplay({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <CardTitle className="flex items-center gap-2 text-success">
             <ShieldCheck className="h-5 w-5" />
             Verification Complete
           </CardTitle>
@@ -166,7 +164,7 @@ export function StatusDisplay({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+          <CardTitle className="flex items-center gap-2 text-warning">
             <Clock className="h-5 w-5" />
             Connection Timed Out
           </CardTitle>

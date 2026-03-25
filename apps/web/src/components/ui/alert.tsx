@@ -5,18 +5,18 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils/classname";
 
 const alertVariants = cva(
-  "relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-lg border px-4 py-3 text-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current",
+  "relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-lg border border-l-[3px] px-4 py-3 text-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5",
   {
     variants: {
       variant: {
         default: "bg-card text-card-foreground",
         destructive:
-          "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 [&>svg]:text-current",
+          "border-l-destructive bg-card text-card-foreground *:data-[slot=alert-title]:text-destructive [&>svg]:text-destructive",
         success:
-          "border-success/30 bg-success/10 text-success *:data-[slot=alert-description]:text-success/90 [&>svg]:text-current",
+          "border-l-success bg-card text-card-foreground [&>svg]:text-success",
         warning:
-          "border-warning/30 bg-warning/10 text-warning *:data-[slot=alert-description]:text-warning/90 [&>svg]:text-current",
-        info: "border-info/30 bg-info/10 text-info *:data-[slot=alert-description]:text-info/90 [&>svg]:text-current",
+          "border-l-warning bg-card text-card-foreground [&>svg]:text-warning",
+        info: "border-l-info bg-card text-card-foreground [&>svg]:text-info",
       },
     },
     defaultVariants: {

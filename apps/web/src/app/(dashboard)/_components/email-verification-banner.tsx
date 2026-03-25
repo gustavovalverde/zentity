@@ -30,14 +30,11 @@ export function EmailVerificationBanner({
         <AlertDescription>
           <p>
             Add an email address to receive notifications and enable account
-            recovery.{" "}
-            <Link
-              className="text-info underline underline-offset-2"
-              href="/dashboard/settings?tab=profile"
-            >
-              Go to settings
-            </Link>
+            recovery.
           </p>
+          <Button asChild size="sm" variant="outline">
+            <Link href="/dashboard/settings?tab=profile">Go to settings</Link>
+          </Button>
         </AlertDescription>
       </Alert>
     );
@@ -64,18 +61,20 @@ export function EmailVerificationBanner({
         {sent ? (
           <p>Verification email sent. Check your inbox.</p>
         ) : (
-          <p>
-            Verify your email to receive notifications and enable account
-            recovery.{" "}
+          <>
+            <p>
+              Verify your email to receive notifications and enable account
+              recovery.
+            </p>
             <Button
-              className="h-auto p-0 text-warning underline underline-offset-2"
               disabled={sending}
               onClick={handleResend}
-              variant="link"
+              size="sm"
+              variant="outline"
             >
               {sending ? "Sending…" : "Resend verification email"}
             </Button>
-          </p>
+          </>
         )}
       </AlertDescription>
     </Alert>

@@ -80,7 +80,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
       <ul className="space-y-1.5 text-sm">
         {proofScopes.map((scope) => (
           <li className="flex items-start gap-2" key={scope}>
-            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-green-600 dark:text-green-400" />
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
             <span>
               {PROOF_SCOPE_DESCRIPTIONS[scope]}
               <span className="ml-1 text-muted-foreground text-xs">
@@ -91,7 +91,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
         ))}
         {identityScopes.map((scope) => (
           <li className="flex items-start gap-2" key={scope}>
-            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
             <span>
               {IDENTITY_SCOPE_DESCRIPTIONS[scope]}
               <span className="ml-1 text-muted-foreground text-xs">
@@ -648,14 +648,14 @@ export function CibaApproveClient({
             <div
               className={`flex items-center gap-3 rounded-md border p-3 ${
                 registeredAgent?.attestationTier === "attested"
-                  ? "border-green-200 dark:border-green-800"
-                  : "border-amber-200 dark:border-amber-800"
+                  ? "border-success/30"
+                  : "border-warning/30"
               }`}
             >
               {registeredAgent?.attestationTier === "attested" ? (
-                <ShieldCheck className="size-4 shrink-0 text-green-600 dark:text-green-400" />
+                <ShieldCheck className="size-4 shrink-0 text-success" />
               ) : (
-                <Bot className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <Bot className="size-4 shrink-0 text-warning" />
               )}
               <div className="min-w-0 text-sm">
                 <span className="font-medium">
@@ -677,8 +677,8 @@ export function CibaApproveClient({
             </div>
           )}
           {!(registeredAgent || agentIdentity) && details && (
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 p-3 dark:border-amber-800">
-              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex items-start gap-2 rounded-md border border-warning/30 p-3">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-warning" />
               <p className="text-sm">No agent identity disclosed.</p>
             </div>
           )}
@@ -734,8 +734,8 @@ export function CibaApproveClient({
             )}
 
           {details?.acr_values && (
-            <div className="flex items-center gap-2 rounded-md border border-amber-200 p-3 dark:border-amber-800">
-              <ShieldCheck className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex items-center gap-2 rounded-md border border-warning/30 p-3">
+              <ShieldCheck className="size-4 shrink-0 text-warning" />
               <p className="text-sm">
                 <span className="font-medium">Required assurance:</span>{" "}
                 {details.acr_values

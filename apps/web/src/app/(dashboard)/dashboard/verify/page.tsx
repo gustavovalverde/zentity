@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { TierBadge } from "@/components/assurance/tier-badge";
 import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { PageHeader } from "@/components/layouts/page-header";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -308,13 +309,13 @@ export default async function VerifyPage() {
 
           {!nextStep && identityComplete && !details.zkProofsComplete && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-3 text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="h-5 w-5" />
-                <span className="text-sm">
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
                   Identity checks passed, but verification proofs could not be
                   generated.
-                </span>
-              </div>
+                </AlertDescription>
+              </Alert>
               <p className="text-muted-foreground text-sm">
                 To reach Verified tier, you&apos;ll need to re-upload your
                 document. Proofs are generated during verification and require

@@ -16,6 +16,7 @@ import Link from "next/link";
 import { TierBadge } from "@/components/assurance/tier-badge";
 import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
 import { TransparencySection } from "@/components/dashboard/transparency-section";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,20 +110,14 @@ export async function IdentityCard({
           </CardHeader>
           <CardContent className="pt-2">
             <div className="space-y-4">
-              <div className="flex items-center gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-amber-700 dark:text-amber-400">
-                    Verification Incomplete
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    Identity checks passed, but verification proofs still need
-                    to be generated.
-                  </p>
-                </div>
-              </div>
+              <Alert variant="warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Verification Incomplete</AlertTitle>
+                <AlertDescription>
+                  Identity checks passed, but verification proofs still need to
+                  be generated.
+                </AlertDescription>
+              </Alert>
               <p className="text-muted-foreground text-sm">
                 To complete verification, please re-upload your document. Proofs
                 are generated during the process and require your document data,
@@ -187,21 +182,15 @@ export async function IdentityCard({
         </CardHeader>
         <CardContent className="pt-2">
           <div className="space-y-4">
-            <div className="flex items-center gap-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-amber-700 dark:text-amber-400">
-                  Identity Data Not Saved
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  Your identity was verified, but your personal data could not
-                  be saved to your encrypted vault. Re-verify to enable identity
-                  sharing with applications.
-                </p>
-              </div>
-            </div>
+            <Alert variant="warning">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Identity Data Not Saved</AlertTitle>
+              <AlertDescription>
+                Your identity was verified, but your personal data could not be
+                saved to your encrypted vault. Re-verify to enable identity
+                sharing with applications.
+              </AlertDescription>
+            </Alert>
             <Button asChild className="w-full">
               <Link href="/dashboard/verify">
                 Re-verify Identity
@@ -231,25 +220,19 @@ export async function IdentityCard({
         </CardHeader>
         <CardContent className="pt-2">
           <div className="space-y-6">
-            <div className="flex items-center gap-4 rounded-lg border border-info/30 bg-info/5 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-info/10 text-info">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-medium text-info">Chip Verified</p>
-                <p className="text-muted-foreground text-sm">
-                  Your passport chip has been cryptographically verified, the
-                  highest level of assurance
-                </p>
-              </div>
-            </div>
+            <Alert variant="info">
+              <ShieldCheck className="h-4 w-4" />
+              <AlertTitle>Chip Verified</AlertTitle>
+              <AlertDescription>
+                Your passport chip has been cryptographically verified, the
+                highest level of assurance
+              </AlertDescription>
+            </Alert>
 
             <div className="grid gap-4 sm:grid-cols-2">
               {verificationStatus.checks.ageVerified && (
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
-                    <CheckCircle className="h-5 w-5" />
-                  </div>
+                  <CheckCircle className="h-5 w-5 shrink-0 text-success" />
                   <div>
                     <p className="text-muted-foreground text-xs">
                       Age Verified
@@ -260,9 +243,7 @@ export async function IdentityCard({
               )}
               {verification?.verifiedAt && (
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
-                    <Calendar className="h-5 w-5" />
-                  </div>
+                  <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
                   <div>
                     <p className="text-muted-foreground text-xs">Verified On</p>
                     <p className="font-medium">
@@ -335,19 +316,15 @@ export async function IdentityCard({
         <CardContent className="pt-2">
           <div className="space-y-6">
             {/* Completion status */}
-            <div className="flex items-center gap-4 rounded-lg border bg-success/5 p-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-medium text-success">Fully Verified</p>
-                <p className="text-muted-foreground text-sm">
-                  {posture?.auth?.authStrength === "strong"
-                    ? "Ready for on-chain attestation"
-                    : "Identity verified. Add a passkey to enable on-chain attestation."}
-                </p>
-              </div>
-            </div>
+            <Alert variant="success">
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertTitle>Fully Verified</AlertTitle>
+              <AlertDescription>
+                {posture?.auth?.authStrength === "strong"
+                  ? "Ready for on-chain attestation"
+                  : "Identity verified. Add a passkey to enable on-chain attestation."}
+              </AlertDescription>
+            </Alert>
 
             {/* Identity Summary */}
             <IdentitySummary
@@ -399,9 +376,7 @@ function IdentitySummary({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {hasAgeProof && (
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
-              <CheckCircle className="h-5 w-5" />
-            </div>
+            <CheckCircle className="h-5 w-5 shrink-0 text-success" />
             <div>
               <p className="text-muted-foreground text-xs">Age Verified</p>
               <p className="font-medium">18+ Confirmed</p>
@@ -411,9 +386,7 @@ function IdentitySummary({
 
         {verification.verifiedAt && (
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
-              <Calendar className="h-5 w-5" />
-            </div>
+            <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
             <div>
               <p className="text-muted-foreground text-xs">Verified On</p>
               <p className="font-medium">

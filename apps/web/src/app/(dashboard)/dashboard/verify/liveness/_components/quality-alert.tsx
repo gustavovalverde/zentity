@@ -95,7 +95,7 @@ export function QualityAlert({
       className={cn(
         "absolute top-4 left-1/2 z-10 -translate-x-1/2",
         "flex items-center gap-2 rounded-lg px-4 py-2",
-        "bg-amber-500/90 text-white backdrop-blur-sm",
+        "bg-warning/90 text-warning-foreground backdrop-blur-sm",
         "fade-in slide-in-from-top-2 animate-in duration-200",
         className
       )}

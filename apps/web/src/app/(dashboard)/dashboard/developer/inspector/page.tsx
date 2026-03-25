@@ -2,7 +2,19 @@
 
 import type { RouterOutputs } from "@/lib/trpc/types";
 
-import { Check, Code, Link as LinkIcon, Shield, X } from "lucide-react";
+import {
+  CalendarCheck,
+  Check,
+  Code,
+  FileCheck,
+  Fingerprint,
+  Globe,
+  Link as LinkIcon,
+  ScanFace,
+  Shield,
+  UserCheck,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -41,13 +53,13 @@ const CHECK_TYPE_LABELS: Record<string, string> = {
 };
 
 const CHECK_TYPE_ICONS: Record<string, React.ReactNode> = {
-  document: <Shield className="h-4 w-4 text-success" />,
-  age: <Shield className="h-4 w-4 text-info" />,
-  liveness: <Shield className="h-4 w-4 text-warning" />,
-  face_match: <Shield className="h-4 w-4 text-primary" />,
-  nationality: <Shield className="h-4 w-4 text-orange-500" />,
-  identity_binding: <LinkIcon className="h-4 w-4 text-violet-500" />,
-  sybil_resistant: <Shield className="h-4 w-4 text-red-500" />,
+  document: <FileCheck className="h-4 w-4 text-muted-foreground" />,
+  age: <CalendarCheck className="h-4 w-4 text-muted-foreground" />,
+  liveness: <ScanFace className="h-4 w-4 text-muted-foreground" />,
+  face_match: <UserCheck className="h-4 w-4 text-muted-foreground" />,
+  nationality: <Globe className="h-4 w-4 text-muted-foreground" />,
+  identity_binding: <LinkIcon className="h-4 w-4 text-muted-foreground" />,
+  sybil_resistant: <Fingerprint className="h-4 w-4 text-muted-foreground" />,
 };
 
 const SOURCE_LABELS: Record<string, string> = {

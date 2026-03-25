@@ -25,10 +25,10 @@ import { PwaInstallBanner } from "./_components/pwa-install-banner";
 
 function statusVariant(
   status: string
-): "default" | "secondary" | "destructive" | "outline" {
+): "success" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "approved":
-      return "default";
+      return "success";
     case "rejected":
       return "destructive";
     case "pending":
@@ -167,7 +167,7 @@ export default async function CibaListPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         {agentInfo && agentInfo.trustTier === "attested" && (
-                          <Badge className="border-green-200 bg-green-50 text-green-700 text-xs dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+                          <Badge className="text-xs" variant="info">
                             Attested
                           </Badge>
                         )}

@@ -373,7 +373,7 @@ export function OAuthConsentClient({
             ) : null}
           </CardDescription>
           {isLocalApp && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-amber-800 text-xs dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            <div className="rounded-md border border-warning/30 px-3 py-1.5 text-muted-foreground text-xs">
               Local app — authorization code delivered to a local application
             </div>
           )}

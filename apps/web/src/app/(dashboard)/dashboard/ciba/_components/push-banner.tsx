@@ -132,7 +132,12 @@ export function PushNotificationBanner() {
           requests without checking email. If you use multiple devices, each one
           needs its own opt-in.
         </span>
-        <Button className="mt-1" onClick={handleEnable} size="sm">
+        <Button
+          className="mt-1"
+          onClick={handleEnable}
+          size="sm"
+          variant="outline"
+        >
           Enable Notifications
         </Button>
       </AlertDescription>
