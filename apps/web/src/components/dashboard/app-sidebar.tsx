@@ -5,7 +5,6 @@ import {
   AppWindow,
   Bot,
   Coins,
-  FileCheck2,
   IdCard,
   LogOut,
   Settings,
@@ -54,11 +53,6 @@ const identityNavItems: NavItem[] = [
     title: "My Identity",
     url: "/dashboard",
     icon: IdCard,
-  },
-  {
-    title: "Credentials",
-    url: "/dashboard/credentials",
-    icon: FileCheck2,
   },
   {
     title: "Settings",

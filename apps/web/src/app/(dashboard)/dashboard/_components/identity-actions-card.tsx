@@ -1,7 +1,10 @@
+"use client";
+
 import type { SecurityPosture } from "@/lib/assurance/types";
 
 import { ArrowRight, FileCheck2, Lock, Stamp, Zap } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +15,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { canAccessFeature } from "@/lib/assurance/features";
 import { cn } from "@/lib/utils/classname";
+
+import { CredentialsContent } from "./credentials-content";
 
 interface IdentityActionsCardProps {
   posture: SecurityPosture | null;
@@ -32,6 +43,8 @@ export function IdentityActionsCard({
   const auth = posture?.auth ?? null;
   const tier = assurance?.tier ?? 0;
 
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
+
   const canAttest = canAccessFeature("attestation", tier, auth);
 
   const needsStrongAuthForAttestation =
@@ -44,57 +57,69 @@ export function IdentityActionsCard({
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Zap className="h-5 w-5 text-success" />
-          What You Can Do
-        </CardTitle>
-        <CardDescription>
-          {tier >= 2
-            ? "Use your verified identity across different platforms"
-            : "Complete verification to unlock more features"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div
-          className={web3Enabled ? "grid gap-3 sm:grid-cols-2" : "space-y-3"}
-        >
-          {/* Get Credentials - available at Tier 2 */}
-          <ActionCard
-            actionHref="/dashboard/credentials"
-            actionLabel="Get Credentials"
-            description="Issue a portable credential you can present to third-party services."
-            icon={FileCheck2}
-            locked={tier < 2}
-            requiredTier={2}
-            title="Verifiable Credentials"
-          />
-
-          {/* On-Chain Attestation - requires Tier 2 + strong auth */}
-          {web3Enabled && (
+    <>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Zap className="h-5 w-5 text-success" />
+            What You Can Do
+          </CardTitle>
+          <CardDescription>
+            {tier >= 2
+              ? "Use your verified identity across different platforms"
+              : "Complete verification to unlock more features"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div
+            className={web3Enabled ? "grid gap-3 sm:grid-cols-2" : "space-y-3"}
+          >
+            {/* Get Credentials - available at Tier 2 */}
             <ActionCard
-              actionHref="/dashboard/attestation"
-              actionLabel="Go On-Chain"
-              badge="Web3"
-              description="Publish encrypted identity proofs on-chain for DeFi and Web3 compliance."
-              icon={Stamp}
-              locked={!canAttest}
-              passkeyAction={attestationPasskeyAction}
+              actionLabel="Get Credentials"
+              description="Issue a portable credential you can present to third-party services."
+              icon={FileCheck2}
+              locked={tier < 2}
+              onAction={() => setCredentialsOpen(true)}
               requiredTier={2}
-              title="On-Chain Attestation"
+              title="Verifiable Credentials"
             />
-          )}
-        </div>
-      </CardContent>
-    </Card>
+
+            {/* On-Chain Attestation - requires Tier 2 + strong auth */}
+            {web3Enabled && (
+              <ActionCard
+                actionHref="/dashboard/attestation"
+                actionLabel="Go On-Chain"
+                badge="Web3"
+                description="Publish encrypted identity proofs on-chain for DeFi and Web3 compliance."
+                icon={Stamp}
+                locked={!canAttest}
+                passkeyAction={attestationPasskeyAction}
+                requiredTier={2}
+                title="On-Chain Attestation"
+              />
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog onOpenChange={setCredentialsOpen} open={credentialsOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Verifiable Credentials</DialogTitle>
+          </DialogHeader>
+          <CredentialsContent />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
 interface ActionButtonProps {
-  actionHref: string;
+  actionHref?: string | undefined;
   actionLabel: string;
   locked: boolean;
+  onAction?: (() => void) | undefined;
   passkeyAction?: "auth" | "enroll" | undefined;
 }
 
@@ -102,6 +127,7 @@ function ActionButton({
   actionHref,
   actionLabel,
   locked,
+  onAction,
   passkeyAction,
 }: Readonly<ActionButtonProps>) {
   if (passkeyAction === "enroll") {
@@ -118,7 +144,7 @@ function ActionButton({
   if (passkeyAction === "auth") {
     return (
       <Button asChild variant="outline">
-        <Link href={actionHref}>
+        <Link href={actionHref ?? "#"}>
           Continue with Passkey
           <ArrowRight className="ml-2 h-4 w-4" />
         </Link>
@@ -137,9 +163,18 @@ function ActionButton({
     );
   }
 
+  if (onAction) {
+    return (
+      <Button onClick={onAction} variant="outline">
+        {actionLabel}
+        <ArrowRight className="ml-2 h-4 w-4" />
+      </Button>
+    );
+  }
+
   return (
     <Button asChild variant="outline">
-      <Link href={actionHref}>
+      <Link href={actionHref ?? "#"}>
         {actionLabel}
         <ArrowRight className="ml-2 h-4 w-4" />
       </Link>
@@ -148,12 +183,13 @@ function ActionButton({
 }
 
 interface ActionCardProps {
-  actionHref: string;
+  actionHref?: string | undefined;
   actionLabel: string;
   badge?: string | undefined;
   description: string;
   icon: React.ElementType;
   locked: boolean;
+  onAction?: (() => void) | undefined;
   passkeyAction?: "auth" | "enroll" | undefined;
   requiredTier: number;
   title: string;
@@ -166,6 +202,7 @@ function ActionCard({
   actionLabel,
   actionHref,
   locked,
+  onAction,
   requiredTier,
   badge,
   passkeyAction,
@@ -224,6 +261,7 @@ function ActionCard({
         actionHref={actionHref}
         actionLabel={actionLabel}
         locked={locked}
+        onAction={onAction}
         passkeyAction={passkeyAction}
       />
     </div>
