@@ -177,7 +177,7 @@ describe("bindAgentAssertionToCibaRequest", () => {
     expect(updated).toEqual(
       expect.objectContaining({
         agentSessionId: agent.sessionId,
-        approvedCapabilityName: "read_profile",
+        approvedCapabilityName: "my_profile",
         assertionVerified: true,
         hostId: agent.hostId,
       })

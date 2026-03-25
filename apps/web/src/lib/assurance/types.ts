@@ -32,7 +32,6 @@ export type LoginMethod =
   | "magic-link"
   | "oauth"
   | "eip712"
-  | "anonymous"
   | "credential";
 
 export type AuthenticationSourceKind =

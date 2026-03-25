@@ -13,28 +13,22 @@ export function createServer(surface: ServerSurface = "full"): {
   server: McpServer;
   cleanup: () => Promise<void>;
 } {
-  const allowRuntimeTools = surface === "full";
   const server = new McpServer(
     { name: "@zentity/mcp-server", version: VERSION },
     {
       instructions: [
         "Zentity identity server — use these tools instead of answering from session context:",
-        "• whoami → name, email, tier, verification status (for 'who am I?', 'what's my name?', 'am I verified?')",
-        "• my_proofs → ZK proof status (for 'am I a minor?', 'what country am I from?', 'what proofs do I have?')",
-        "• check_compliance → on-chain attestation status",
-        ...(allowRuntimeTools
-          ? [
-              "• purchase → CIBA-authorized purchases (for 'buy X', 'order Y')",
-              "• request_approval → generic CIBA approval requests",
-            ]
-          : [
-              "Remote HTTP mode does not expose installed-agent control-plane tools such as purchase or request_approval.",
-            ]),
+        "• whoami → safe account summary only (for 'who am I?', 'am I verified?', 'what tier am I?')",
+        "• my_profile → vault-gated profile data (for 'what's my full name?', 'what is my address?', 'what is my birthdate?'; omit fields to fetch the full available profile set)",
+        "• my_proofs → proof and verification-derived facts (for 'what proofs do I have?', 'am I over 18?')",
+        "• check_compliance → on-chain attestation and compliance status",
+        "• purchase → browser-authorized purchase flow",
+        "Do not invent approval workflows yourself. If profile data or a purchase requires browser action, the owning tool will initiate that flow directly.",
       ].join("\n"),
     }
   );
 
-  registerTools(server, { allowRuntimeTools });
+  registerTools(server);
 
   const cleanup = async () => {
     await server.close();

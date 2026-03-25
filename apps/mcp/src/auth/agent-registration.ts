@@ -23,9 +23,10 @@ import { exchangeToken } from "./token-exchange.js";
 
 const REQUESTED_CAPABILITIES = [
   "purchase",
-  "read_profile",
+  "my_profile",
+  "whoami",
+  "my_proofs",
   "check_compliance",
-  "request_approval",
 ];
 
 export class AgentRegistrationError extends Error {

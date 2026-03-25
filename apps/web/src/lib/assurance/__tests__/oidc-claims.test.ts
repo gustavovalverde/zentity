@@ -90,10 +90,6 @@ describe("loginMethodToAmr", () => {
     expect(loginMethodToAmr("eip712")).toEqual(["pop", "hwk"]);
   });
 
-  it("maps anonymous to user", () => {
-    expect(loginMethodToAmr("anonymous")).toEqual(["user"]);
-  });
-
   it("maps credential to pwd", () => {
     expect(loginMethodToAmr("credential")).toEqual(["pwd"]);
   });

@@ -41,7 +41,7 @@ import { getAccountAssurance } from "@/lib/assurance/data";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
-  createAuthenticationContext,
+  createSessionAuthenticationContext,
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
@@ -312,9 +312,6 @@ const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
   }
   if (path.includes("/eip712/")) {
     return "eip712";
-  }
-  if (path.startsWith("/sign-in/anonymous")) {
-    return "anonymous";
   }
   return null;
 };
@@ -1240,12 +1237,39 @@ async function afterTokenPersistOpaqueDpopBinding(ctx: HookCtx) {
   await persistOpaqueAccessTokenDpopBinding(accessToken, ctx.request);
 }
 
+function expireSessionDataCookie(ctx: HookCtx) {
+  const authCookies = (
+    ctx.context as {
+      authCookies?: {
+        sessionData?: {
+          attributes?: Record<string, unknown>;
+          name: string;
+        };
+      };
+    }
+  ).authCookies;
+  const sessionDataCookie = authCookies?.sessionData;
+
+  if (!sessionDataCookie) {
+    return;
+  }
+
+  ctx.setCookie(sessionDataCookie.name, "", {
+    ...sessionDataCookie.attributes,
+    maxAge: 0,
+  });
+}
+
 async function afterPersistAuthenticationContext(ctx: HookCtx) {
+  if (ctx.path?.startsWith("/sign-in/anonymous")) {
+    return;
+  }
+
   const authMethod = resolveLastLoginMethod(ctx);
   const newSession = (
     ctx.context as {
       newSession?: {
-        session?: { createdAt?: Date | string; id?: string };
+        session?: { id?: string };
         user?: { id?: string };
       };
     }
@@ -1255,31 +1279,17 @@ async function afterPersistAuthenticationContext(ctx: HookCtx) {
     return;
   }
 
-  const existing = await getAuthenticationStateBySessionId(
-    newSession.session.id
-  );
-  if (existing) {
-    return;
-  }
-
-  const authContext = await createAuthenticationContext({
+  await createSessionAuthenticationContext({
     userId: newSession.user.id,
     loginMethod: authMethod,
-    authenticatedAt:
-      newSession.session.createdAt instanceof Date
-        ? newSession.session.createdAt
-        : new Date(newSession.session.createdAt ?? Date.now()),
     sourceKind: "better_auth",
-    sourceSessionId: newSession.session.id,
-    referenceType: "session",
-    referenceId: newSession.session.id,
+    sessionId: newSession.session.id,
   });
 
-  await db
-    .update(sessions)
-    .set({ authContextId: authContext.id })
-    .where(eq(sessions.id, newSession.session.id))
-    .run();
+  // Better Auth may have already minted the encrypted session_data cookie
+  // before authContextId is written to the session row. Expire it so the next
+  // request reloads fresh session metadata from the database.
+  expireSessionDataCookie(ctx);
 }
 
 async function afterCibaAuthorizePersistAuthContext(ctx: HookCtx) {
@@ -1466,6 +1476,15 @@ export const auth = betterAuth({
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // Update session every 24 hours
     storeSessionInDatabase: true,
+    additionalFields: {
+      authContextId: {
+        type: "string",
+        required: false,
+        input: false,
+        returned: true,
+        fieldName: "authContextId",
+      },
+    },
     // Cookie caching with JWE encryption for better performance.
     // Reduces database queries by caching session in encrypted cookies.
     // NOTE: Our passkey session creation now signs cookies correctly (HMAC-SHA256),

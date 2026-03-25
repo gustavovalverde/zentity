@@ -21,7 +21,6 @@ const VALID_LOGIN_METHODS = new Set<LoginMethod>([
   "magic-link",
   "oauth",
   "eip712",
-  "anonymous",
   "credential",
 ]);
 

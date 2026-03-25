@@ -108,7 +108,7 @@ describe("redeemRelease – address parsing", () => {
     });
   });
 
-  it("returns null when no name fields are present", async () => {
+  it("returns partial claims when non-name identity fields are present", async () => {
     mockFetch.mockResolvedValueOnce(
       userinfoResponse({
         response: { address: "123 Main St" },
@@ -118,7 +118,9 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import("../../auth/identity.js");
     const claims = await redeemRelease("tok", dpopKey);
 
-    expect(claims).toBeNull();
+    expect(claims).toEqual({
+      address: "123 Main St",
+    });
   });
 
   it("returns null on non-ok HTTP response", async () => {

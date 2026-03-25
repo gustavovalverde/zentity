@@ -1,43 +1,35 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { zentityFetch } from "../auth/api-client.js";
+import { z } from "zod";
 import { requireAuth } from "../auth/context.js";
-import { getIdentityResolution } from "../auth/identity.js";
-import { config } from "../config.js";
+import { PROFILE_FIELDS } from "../auth/profile-fields.js";
+import { fetchAccountSummary } from "../services/account-summary.js";
 
-interface AssuranceProfile {
-  authStrength: string;
-  details: {
-    isAuthenticated: boolean;
-    hasSecuredKeys: boolean;
-    chipVerified: boolean;
-    documentVerified: boolean;
-    livenessVerified: boolean;
-    faceMatchVerified: boolean;
-    zkProofsComplete: boolean;
-    fheComplete: boolean;
-    onChainAttested: boolean;
-  };
-  loginMethod: string;
-  tier: number;
-  tierName: string;
-}
-
-interface AccountData {
-  createdAt: string;
-  email: string;
-  verification: {
-    level: string;
-    checks: Record<string, boolean>;
-  };
-}
-
-type WhoamiIdentityResult = Awaited<ReturnType<typeof getIdentityResolution>>;
+const whoamiOutputSchema = {
+  email: z.string().nullable(),
+  memberSince: z.string().nullable(),
+  tier: z.number().nullable(),
+  tierName: z.string().nullable(),
+  verificationLevel: z.string().nullable(),
+  authStrength: z.string().nullable(),
+  loginMethod: z.string().nullable(),
+  checks: z.record(z.string(), z.boolean()).nullable(),
+  vaultFieldsAvailable: z.array(z.enum(PROFILE_FIELDS)),
+  profileToolHint: z.literal("my_profile"),
+};
 
 export function registerWhoamiTool(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "whoami",
-    "Get the user's identity: name, email, verification tier, and completed checks. On first use, this may return account status plus an approval URL to unlock the identity vault instead of blocking. Use when the user asks who they are, what their name is, what their account status is, or whether they are verified.",
-    {},
+    {
+      title: "Who Am I",
+      description:
+        "Get a safe account summary: email, verification tier, login method, and completed checks. Summary only; this tool does not unlock vault data such as full name or address. Use `my_profile` for vault-gated profile fields.",
+      outputSchema: whoamiOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
     async () => {
       try {
         await requireAuth();
@@ -54,74 +46,18 @@ export function registerWhoamiTool(server: McpServer): void {
         };
       }
 
-      const data = await fetchWhoamiData();
+      const summary = await fetchAccountSummary();
+      const structuredContent = summary as unknown as Record<string, unknown>;
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(data),
+            text: JSON.stringify(summary, null, 2),
           },
         ],
+        structuredContent,
       };
     }
   );
-}
-
-async function fetchWhoamiData() {
-  const identityPromise: Promise<WhoamiIdentityResult> =
-    getIdentityResolution().catch(() => ({
-      status: "ready" as const,
-      claims: null,
-    }));
-  const [profileRes, accountRes, identity] = await Promise.all([
-    zentityFetch(`${config.zentityUrl}/api/trpc/assurance.profile`),
-    zentityFetch(`${config.zentityUrl}/api/trpc/account.getData`),
-    identityPromise,
-  ]);
-
-  const profile = profileRes.ok
-    ? ((await profileRes.json()) as { result: { data: AssuranceProfile } })
-        .result.data
-    : null;
-
-  const account = accountRes.ok
-    ? ((await accountRes.json()) as { result: { data: AccountData } }).result
-        .data
-    : null;
-
-  const claims = identity.status === "ready" ? identity.claims : null;
-  const identityApproval =
-    identity.status === "approval_required"
-      ? {
-          approvalUrl: identity.approval.approvalUrl,
-          authReqId: identity.approval.authReqId,
-          expiresIn: identity.approval.expiresIn,
-          intervalSeconds: identity.approval.intervalSeconds,
-          message: "Approve the identity unlock and call whoami again.",
-        }
-      : null;
-  const identityMessage =
-    identity.status === "denied" || identity.status === "timed_out"
-      ? identity.message
-      : null;
-
-  return {
-    first_name:
-      claims?.given_name?.split(" ")[0] ?? claims?.name?.split(" ")[0] ?? null,
-    name: claims?.name ?? null,
-    given_name: claims?.given_name ?? null,
-    family_name: claims?.family_name ?? null,
-    email: account?.email ?? null,
-    memberSince: account?.createdAt ?? null,
-    tier: profile?.tier ?? null,
-    tierName: profile?.tierName ?? null,
-    verificationLevel: account?.verification?.level ?? null,
-    authStrength: profile?.authStrength ?? null,
-    loginMethod: profile?.loginMethod ?? null,
-    checks: account?.verification?.checks ?? profile?.details ?? null,
-    identityApproval,
-    identityMessage,
-    identityStatus: identity.status,
-  };
 }

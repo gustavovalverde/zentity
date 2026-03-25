@@ -60,9 +60,19 @@ async function seedCapabilities() {
         name: "check_compliance",
       },
       {
+        approvalStrength: "none",
+        description: "Safe account summary",
+        name: "whoami",
+      },
+      {
         approvalStrength: "session",
-        description: "Approval requests",
-        name: "request_approval",
+        description: "Profile disclosure",
+        name: "my_profile",
+      },
+      {
+        approvalStrength: "none",
+        description: "Proof inventory",
+        name: "my_proofs",
       },
     ])
     .onConflictDoNothing()
@@ -213,7 +223,7 @@ describe("agentRouter", () => {
       sessionId: activeSession.id,
     });
     await createGrant({
-      capabilityName: "request_approval",
+      capabilityName: "my_profile",
       sessionId: expiredSession.id,
       source: "session_elevation",
       status: "pending",

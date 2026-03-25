@@ -39,7 +39,7 @@ Monorepo with services communicating via REST APIs:
 
 Additional apps (not core services):
 
-- `apps/mcp` — MCP HTTP/stdio server with OAuth auth (FPA OPAQUE 3-round, PKCE, DPoP), CIBA integration, step-up re-auth. Tools: whoami, my_proofs, check_compliance, purchase, request_approval
+- `apps/mcp` — MCP HTTP/stdio server with OAuth auth (FPA OPAQUE 3-round, PKCE, DPoP), CIBA integration, step-up re-auth. Public tools: whoami, my_profile, my_proofs, check_compliance, purchase
 - `apps/landing` — Marketing landing page (deploys to Vercel)
 - `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid), OID4VP verifier (VeriPass), and CIBA agent authorization (Aether AI at `/aether`)
 

@@ -77,18 +77,18 @@ export function deriveCapabilityName(
 
   const scopes = scope.split(" ").filter((item) => item !== "openid");
   if (scopes.some(isIdentityScope)) {
-    return "read_profile";
+    return "my_profile";
+  }
+
+  if (scopes.includes("compliance:key:read")) {
+    return "check_compliance";
   }
 
   if (
     scopes.includes("proof:identity") ||
     extractProofScopes(scopes).length > 0
   ) {
-    return "check_compliance";
-  }
-
-  if (scopes.length === 0) {
-    return "request_approval";
+    return "my_proofs";
   }
 
   return null;
@@ -348,15 +348,6 @@ export async function evaluateSessionGrants(
   const approvalStrength = capability?.approvalStrength ?? "session";
   const scopes = scope.split(" ").filter((item) => item !== "openid");
   const containsIdentityScope = scopes.some(isIdentityScope);
-
-  if (capabilityName === "request_approval") {
-    return {
-      approved: false,
-      approvalStrength,
-      capabilityName,
-      reason: "explicit approval required",
-    };
-  }
 
   if (approvalStrength === "biometric") {
     return {

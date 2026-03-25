@@ -159,10 +159,34 @@ interface RegisteredAgentInfo {
   sessionId: string;
 }
 
+interface InteractionCopy {
+  deniedDescription?: string;
+  description?: string;
+  requestedProfileFields?: string[];
+  successDescription?: string;
+  title?: string;
+}
+
+function formatRequestedFieldLabel(field: string): string {
+  switch (field) {
+    case "birthdate":
+      return "Birthdate";
+    case "email":
+      return "Email";
+    case "name":
+      return "Full name";
+    case "address":
+      return "Address";
+    default:
+      return field.replaceAll("_", " ");
+  }
+}
+
 export function CibaApproveClient({
   agentIdentity,
   authMode,
   authReqId,
+  interactionCopy,
   registeredAgent,
   userTier = 0,
   wallet,
@@ -170,6 +194,7 @@ export function CibaApproveClient({
   agentIdentity?: AgentIdentitySummary | null;
   authMode: AuthMode;
   authReqId: string | null;
+  interactionCopy?: InteractionCopy | null;
   registeredAgent?: RegisteredAgentInfo | null;
   userTier?: 0 | 1 | 2 | 3;
   wallet: { address: string; chainId: number } | null;
@@ -575,8 +600,10 @@ export function CibaApproveClient({
             </CardTitle>
             <CardDescription>
               {state === "approved"
-                ? `You have granted ${details?.client_name ?? "the application"} access to your account.`
-                : `You have denied the request from ${details?.client_name ?? "the application"}.`}
+                ? (interactionCopy?.successDescription ??
+                  `You have granted ${details?.client_name ?? "the application"} access to your account.`)
+                : (interactionCopy?.deniedDescription ??
+                  `You have denied the request from ${details?.client_name ?? "the application"}.`)}
             </CardDescription>
           </CardHeader>
           <CardFooter>
@@ -596,14 +623,36 @@ export function CibaApproveClient({
     <div className="mx-auto max-w-md py-10">
       <Card>
         <CardHeader>
-          <CardTitle>Authorization Request</CardTitle>
+          <CardTitle>
+            {interactionCopy?.title ?? "Authorization Request"}
+          </CardTitle>
           <CardDescription>
-            <strong>{details?.client_name ?? "An application"}</strong> is
-            requesting access to your account.
+            {interactionCopy?.description ?? (
+              <>
+                <strong>{details?.client_name ?? "An application"}</strong> is
+                requesting access to your account.
+              </>
+            )}
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {interactionCopy?.requestedProfileFields &&
+            interactionCopy.requestedProfileFields.length > 0 && (
+              <div>
+                <p className="mb-2 font-medium text-sm">
+                  Requested profile fields
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {interactionCopy.requestedProfileFields.map((field) => (
+                    <Badge key={field} variant="outline">
+                      {formatRequestedFieldLabel(field)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
           {displayScopes.length > 0 && (
             <div>
               <p className="mb-2 font-medium text-sm">Requested scopes</p>

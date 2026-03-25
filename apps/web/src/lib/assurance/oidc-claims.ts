@@ -63,7 +63,6 @@ const AMR_MAP: Record<LoginMethod | "none", string[]> = {
   "magic-link": ["otp"],
   oauth: [],
   eip712: ["pop", "hwk"],
-  anonymous: ["user"],
   credential: ["pwd"],
   none: ["user"],
 };

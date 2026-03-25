@@ -33,3 +33,16 @@ type HeadersObject = Awaited<ReturnType<typeof headers>>;
 export const getCachedSession = cache(async (headersObj: HeadersObject) => {
   return await auth.api.getSession({ headers: headersObj });
 });
+
+/**
+ * Get the current session while bypassing Better Auth's encrypted cookie cache.
+ *
+ * Use this only on flows that depend on database-fresh session metadata written
+ * after session creation, such as `authContextId` on interactive approval pages.
+ */
+export const getFreshSession = cache(async (headersObj: HeadersObject) => {
+  return await auth.api.getSession({
+    headers: headersObj,
+    query: { disableCookieCache: true },
+  });
+});

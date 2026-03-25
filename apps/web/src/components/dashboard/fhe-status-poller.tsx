@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { startTransition, useEffect, useRef } from "react";
 
 import { trpc } from "@/lib/trpc/client";
 
@@ -15,12 +15,22 @@ export function FheStatusPoller() {
   const attemptRef = useRef(0);
 
   useEffect(() => {
-    const maxAttempts = 20;
     const baseInterval = 2000;
     const maxInterval = 8000;
     const backoffFactor = 1.5;
+    let disposed = false;
+
+    const clearPendingPoll = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
 
     const scheduleNextPoll = () => {
+      if (disposed) {
+        return;
+      }
       const interval = Math.min(
         baseInterval * backoffFactor ** attemptRef.current,
         maxInterval
@@ -31,15 +41,21 @@ export function FheStatusPoller() {
     const poll = async () => {
       try {
         const status = await trpc.assurance.profile.query();
+        if (disposed) {
+          return;
+        }
         if (
           status.assurance.details.fheComplete ||
           status.assurance.tier >= 2
         ) {
-          if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-            timeoutRef.current = null;
-          }
-          router.refresh();
+          clearPendingPoll();
+          startTransition(() => {
+            if (status.assurance.details.missingProfileSecret) {
+              router.refresh();
+              return;
+            }
+            router.replace("/dashboard");
+          });
           return;
         }
       } catch {
@@ -47,18 +63,15 @@ export function FheStatusPoller() {
       }
 
       attemptRef.current++;
-      if (attemptRef.current < maxAttempts) {
-        scheduleNextPoll();
-      }
+      scheduleNextPoll();
     };
 
-    poll();
+    attemptRef.current = 0;
+    poll().catch(() => undefined);
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      disposed = true;
+      clearPendingPoll();
     };
   }, [router]);
 

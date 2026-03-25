@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { zentityFetch } from "../auth/api-client.js";
 import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
@@ -40,10 +41,39 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 export function registerMyProofsTool(server: McpServer): void {
-  server.tool(
+  server.registerTool(
     "my_proofs",
-    "Check the user's verified proofs: age verification (over 18 or minor), document validity, nationality group, face match, and identity binding. Use when the user asks if they are a minor, over 18, what proofs they have, whether their document is valid, or about their nationality group.",
-    {},
+    {
+      title: "My Proofs",
+      description:
+        "Check the user's proofs and verification-derived facts such as age status, proof inventory, and verification method. Use this for 'what proofs do I have?' or 'am I over 18?'.",
+      outputSchema: {
+        verificationMethod: z.string().nullable(),
+        verificationLevel: z.string(),
+        verified: z.boolean(),
+        isOver18: z.boolean().nullable(),
+        checks: z.array(
+          z.object({
+            type: z.string(),
+            passed: z.boolean(),
+            source: z.string(),
+          })
+        ),
+        totalProofs: z.number(),
+        proofs: z.array(
+          z.object({
+            system: z.string(),
+            type: z.string(),
+            verified: z.boolean(),
+            verifiedAt: z.string(),
+          })
+        ),
+      },
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
     async () => {
       try {
         await requireAuth();
@@ -86,31 +116,33 @@ export function registerMyProofsTool(server: McpServer): void {
 
       const checkMap = new Map(checks.map((c) => [c.checkType, c]));
       const ageCheck = checkMap.get("age");
+      const structuredContent = {
+        verificationMethod: checksData?.method ?? null,
+        verificationLevel: checksData?.level ?? "none",
+        verified: checksData?.verified ?? false,
+        isOver18: ageCheck?.passed ?? null,
+        checks: checks.map((c) => ({
+          type: c.checkType,
+          passed: c.passed,
+          source: SOURCE_LABELS[c.source] ?? c.source,
+        })),
+        totalProofs: proofs.length,
+        proofs: proofs.map((p) => ({
+          system: p.proofSystem,
+          type: p.proofType,
+          verified: p.verified,
+          verifiedAt: p.createdAt,
+        })),
+      };
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({
-              verificationMethod: checksData?.method ?? null,
-              verificationLevel: checksData?.level ?? "none",
-              verified: checksData?.verified ?? false,
-              isOver18: ageCheck?.passed ?? null,
-              checks: checks.map((c) => ({
-                type: c.checkType,
-                passed: c.passed,
-                source: SOURCE_LABELS[c.source] ?? c.source,
-              })),
-              totalProofs: proofs.length,
-              proofs: proofs.map((p) => ({
-                system: p.proofSystem,
-                type: p.proofType,
-                verified: p.verified,
-                verifiedAt: p.createdAt,
-              })),
-            }),
+            text: JSON.stringify(structuredContent, null, 2),
           },
         ],
+        structuredContent,
       };
     }
   );

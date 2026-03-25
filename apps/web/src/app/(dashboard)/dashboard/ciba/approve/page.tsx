@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getFreshSession } from "@/lib/auth/cached-session";
 import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -14,7 +14,7 @@ export default async function CibaApprovePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await getCachedSession(await headers());
+  const session = await getFreshSession(await headers());
   let authMode: AuthMode = null;
   let wallet: { address: string; chainId: number } | null = null;
   let userTier: 0 | 1 | 2 | 3 = 0;

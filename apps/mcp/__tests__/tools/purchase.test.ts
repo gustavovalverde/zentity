@@ -1,21 +1,27 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mockBeginOrResumeInteractiveFlow = vi.fn();
+const mockSignAgentAssertion = vi.fn();
 
 const mockOAuthContext = {
   accessToken: "test-token",
+  accountSub: "user-123",
   clientId: "test-client",
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
   },
-  loginHint: "user-sub",
+  loginHint: "user@example.com",
 };
 
 const mockRuntimeState = {
   display: {
-    model: "unknown",
-    name: "Unknown Agent",
+    model: "claude",
+    name: "Claude Code",
     runtime: "node",
-    version: "unknown",
+    version: "1.0.0",
   },
   grants: [],
   hostId: "host-123",
@@ -24,94 +30,36 @@ const mockRuntimeState = {
   sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
 };
 
-const mockAuthContext = {
-  oauth: mockOAuthContext,
-  runtime: mockRuntimeState,
-};
-
-vi.mock("../../src/config.js", () => ({
-  config: {
-    zentityUrl: "http://localhost:3000",
-    mcpPublicUrl: "http://localhost:3200",
-    port: 3200,
-    transport: "stdio",
-  },
-}));
-
-vi.mock("../../src/auth/dpop.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
-}));
-
 vi.mock("../../src/auth/context.js", () => ({
-  getAuthContext: () => mockAuthContext,
+  requireAuth: () => Promise.resolve({ oauth: mockOAuthContext }),
   getOAuthContext: () => mockOAuthContext,
-  requireAuth: () => Promise.resolve(mockAuthContext),
-  requireRuntimeState: () => mockRuntimeState,
+  tryGetRuntimeState: () => mockRuntimeState,
 }));
 
-const { mockRequestCibaApproval } = vi.hoisted(() => ({
-  mockRequestCibaApproval: vi.fn(),
-}));
-
-vi.mock("../../src/auth/ciba.js", () => ({
-  CibaDeniedError: class CibaDeniedError extends Error {
-    name = "CibaDeniedError";
-  },
-  CibaTimeoutError: class CibaTimeoutError extends Error {
-    name = "CibaTimeoutError";
-  },
-  logPendingApprovalHandoff: vi.fn(),
-  requestCibaApproval: mockRequestCibaApproval,
-}));
-
-const { mockRedeemRelease } = vi.hoisted(() => ({
-  mockRedeemRelease: vi.fn(),
-}));
-
-vi.mock("../../src/auth/identity.js", () => ({
-  redeemRelease: mockRedeemRelease,
-}));
-
-const { mockSignAgentAssertion } = vi.hoisted(() => ({
-  mockSignAgentAssertion: vi.fn(),
+vi.mock("../../src/auth/interactive-tool-flow.js", () => ({
+  beginOrResumeInteractiveFlow: (...args: unknown[]) =>
+    mockBeginOrResumeInteractiveFlow(...args),
+  throwUrlElicitationIfSupported: vi.fn(),
 }));
 
 vi.mock("../../src/auth/agent-registration.js", () => ({
-  signAgentAssertion: mockSignAgentAssertion,
+  signAgentAssertion: (...args: unknown[]) => mockSignAgentAssertion(...args),
 }));
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { CibaDeniedError } from "../../src/auth/ciba.js";
 import { createServer } from "../../src/server/index.js";
 
 describe("purchase", () => {
   beforeEach(() => {
-    mockRequestCibaApproval.mockReset();
-    mockRedeemRelease.mockReset();
+    mockBeginOrResumeInteractiveFlow.mockReset();
     mockSignAgentAssertion.mockReset();
-    mockSignAgentAssertion.mockResolvedValue("mock-agent-assertion");
-    mockRuntimeState.display = {
-      model: "unknown",
-      name: "Unknown Agent",
-      runtime: "node",
-      version: "unknown",
-    };
+    mockSignAgentAssertion.mockResolvedValue("agent-assertion");
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  async function createConnectedClient(
-    clientName = "test-client",
-    clientVersion = "0.1.0"
-  ) {
+  async function createConnectedClient() {
     const { server } = createServer();
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: clientName, version: clientVersion });
+    const client = new Client({ name: "claude-code", version: "1.0.0" });
     await Promise.all([
       client.connect(clientTransport),
       server.connect(serverTransport),
@@ -119,192 +67,91 @@ describe("purchase", () => {
     return client;
   }
 
-  const PURCHASE_ARGS = {
+  const purchaseArgs = {
     merchant: "Acme Store",
     amount: 49.99,
     currency: "USD",
     item: "Widget Pro",
   };
 
-  it("returns approved with PII from release endpoint", async () => {
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce({
-      name: "Jane Doe",
-      address: "123 Main St",
-      given_name: "Jane",
-      family_name: "Doe",
+  it("returns typed purchase data after approval", async () => {
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "complete",
+      data: {
+        status: "complete",
+        approved: true,
+        bindingMessage: "Claude Code: Purchase Widget Pro from Acme Store",
+        fulfillment: {
+          name: "Ada Lovelace",
+          address: { formatted: "123 Main St" },
+        },
+      },
     });
 
     const client = await createConnectedClient();
     const result = await client.callTool({
       name: "purchase",
-      arguments: PURCHASE_ARGS,
+      arguments: purchaseArgs,
     });
 
     const parsed = JSON.parse(
       (result.content as Array<{ text: string }>)[0].text
     );
+
+    expect(parsed.status).toBe("complete");
     expect(parsed.approved).toBe(true);
-    expect(parsed.pii).toEqual({ name: "Jane Doe", address: "123 Main St" });
-    expect(parsed.binding_message).toContain("Widget Pro");
-    expect(parsed.binding_message).toContain("Acme Store");
-    expect(mockRedeemRelease).toHaveBeenCalledWith(
-      "ciba-token",
-      mockOAuthContext.dpopKey
-    );
+    expect(parsed.fulfillment.name).toBe("Ada Lovelace");
   });
 
-  it("returns approved with null PII when release returns nothing", async () => {
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
+  it("returns structured fallback interaction data while approval is pending", async () => {
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "needs_user_action",
+      interaction: {
+        mode: "url",
+        url: "http://localhost:3000/mcp/interactive/interaction-1",
+        message: "Open the link to continue.",
+        expiresAt: "2026-03-24T10:00:00.000Z",
+      },
     });
-    mockRedeemRelease.mockResolvedValueOnce(null);
 
     const client = await createConnectedClient();
     const result = await client.callTool({
       name: "purchase",
-      arguments: PURCHASE_ARGS,
+      arguments: purchaseArgs,
     });
 
     const parsed = JSON.parse(
       (result.content as Array<{ text: string }>)[0].text
     );
-    expect(parsed.approved).toBe(true);
-    expect(parsed.pii).toBeNull();
+
+    expect(parsed.status).toBe("needs_user_action");
+    expect(parsed.interaction.url).toContain("/mcp/interactive/");
   });
 
-  it("returns error when user denies", async () => {
-    mockRequestCibaApproval.mockRejectedValueOnce(
-      new CibaDeniedError("User rejected")
-    );
-
-    const client = await createConnectedClient();
-    const result = await client.callTool({
-      name: "purchase",
-      arguments: PURCHASE_ARGS,
+  it("includes description in the interactive deduplication fingerprint", async () => {
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "needs_user_action",
+      interaction: {
+        mode: "url",
+        url: "http://localhost:3000/mcp/interactive/interaction-1",
+        message: "Open the link to continue.",
+        expiresAt: "2026-03-24T10:00:00.000Z",
+      },
     });
-
-    expect(result.isError).toBe(true);
-    expect((result.content as Array<{ text: string }>)[0].text).toContain(
-      "denied"
-    );
-  });
-
-  it("includes authorization_details in CIBA request", async () => {
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce(null);
 
     const client = await createConnectedClient();
     await client.callTool({
       name: "purchase",
-      arguments: PURCHASE_ARGS,
+      arguments: {
+        ...purchaseArgs,
+        description: "For the office team lunch",
+      },
     });
 
-    expect(mockRequestCibaApproval).toHaveBeenCalledWith(
+    expect(mockBeginOrResumeInteractiveFlow).toHaveBeenCalledWith(
       expect.objectContaining({
-        agentAssertion: "mock-agent-assertion",
-        authorizationDetails: [
-          expect.objectContaining({
-            type: "purchase",
-            merchant: "Acme Store",
-            item: "Widget Pro",
-            amount: { value: "49.99", currency: "USD" },
-          }),
-        ],
-        scope: "openid identity.name identity.address",
+        fingerprint: expect.stringContaining("For the office team lunch"),
       })
-    );
-  });
-
-  it("sends detected agent name in CIBA request when using known client", async () => {
-    mockRuntimeState.display = {
-      model: "claude",
-      name: "Claude Code",
-      runtime: "node",
-      version: "1.5.0",
-    };
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce(null);
-
-    const client = await createConnectedClient("claude-code", "1.5.0");
-    await client.callTool({
-      name: "purchase",
-      arguments: PURCHASE_ARGS,
-    });
-
-    const cibaCall = mockRequestCibaApproval.mock.calls[0]?.[0];
-    expect(cibaCall.agentAssertion).toBe("mock-agent-assertion");
-    expect(cibaCall.bindingMessage).toContain("Claude Code: ");
-  });
-
-  it("prefixes binding message with agent name", async () => {
-    mockRuntimeState.display = {
-      model: "claude",
-      name: "Claude Code",
-      runtime: "node",
-      version: "1.0.0",
-    };
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce(null);
-
-    const client = await createConnectedClient("claude-code", "1.0.0");
-    await client.callTool({
-      name: "purchase",
-      arguments: PURCHASE_ARGS,
-    });
-
-    const cibaCall = mockRequestCibaApproval.mock.calls[0]?.[0];
-    expect(cibaCall.bindingMessage).toContain("Claude Code: ");
-    expect(cibaCall.bindingMessage).toContain("Widget Pro");
-  });
-
-  it("passes through unknown agent names verbatim", async () => {
-    mockRuntimeState.display = {
-      model: "unknown",
-      name: "my-custom-agent",
-      runtime: "node",
-      version: "2.0.0",
-    };
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce(null);
-
-    const client = await createConnectedClient("my-custom-agent", "2.0.0");
-    await client.callTool({
-      name: "purchase",
-      arguments: PURCHASE_ARGS,
-    });
-
-    const cibaCall = mockRequestCibaApproval.mock.calls[0]?.[0];
-    expect(cibaCall.bindingMessage).toContain("my-custom-agent: ");
-  });
-
-  it("includes a signed agent assertion on the CIBA request", async () => {
-    mockRequestCibaApproval.mockResolvedValueOnce({
-      accessToken: "ciba-token",
-    });
-    mockRedeemRelease.mockResolvedValueOnce(null);
-
-    const client = await createConnectedClient();
-    await client.callTool({
-      name: "purchase",
-      arguments: PURCHASE_ARGS,
-    });
-
-    const cibaCall = mockRequestCibaApproval.mock.calls[0]?.[0];
-    expect(cibaCall.agentAssertion).toBe("mock-agent-assertion");
-    expect(mockSignAgentAssertion).toHaveBeenCalledWith(
-      mockRuntimeState,
-      expect.stringContaining("Purchase Widget Pro")
     );
   });
 });

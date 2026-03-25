@@ -1,3 +1,5 @@
+import { notInArray } from "drizzle-orm";
+
 import { db } from "@/lib/db/connection";
 import { agentCapabilities } from "@/lib/db/schema/agent";
 
@@ -36,17 +38,29 @@ const CAPABILITIES = [
     }),
   },
   {
-    name: "read_profile",
-    description: "Read the user's identity profile and verification status",
+    name: "my_profile",
+    description:
+      "Read vault-gated profile fields such as full name, address, birthdate, or email",
     approvalStrength: "session",
-    inputSchema: null,
+    inputSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          items: {
+            type: "string",
+            enum: ["name", "address", "birthdate", "email"],
+          },
+        },
+      },
+    }),
     outputSchema: JSON.stringify({
       type: "object",
       properties: {
-        name: { type: "string" },
-        email: { type: "string" },
-        tier: { type: "number" },
-        verified: { type: "boolean" },
+        status: { type: "string" },
+        profile: { type: "object" },
+        requestedFields: { type: "array", items: { type: "string" } },
+        returnedFields: { type: "array", items: { type: "string" } },
       },
     }),
   },
@@ -64,49 +78,80 @@ const CAPABILITIES = [
     }),
   },
   {
-    name: "request_approval",
+    name: "my_proofs",
     description:
-      "Request explicit user approval for a sensitive action via push notification",
-    approvalStrength: "session",
-    inputSchema: JSON.stringify({
-      type: "object",
-      properties: {
-        action: { type: "string" },
-        details: { type: "string" },
-      },
-      required: ["action"],
-    }),
+      "Read proof inventory and verification-derived facts such as age status and verification method",
+    approvalStrength: "none",
+    inputSchema: null,
     outputSchema: JSON.stringify({
       type: "object",
       properties: {
-        approved: { type: "boolean" },
+        verificationMethod: { type: "string" },
+        verificationLevel: { type: "string" },
+        verified: { type: "boolean" },
+        proofs: { type: "array", items: { type: "object" } },
+      },
+    }),
+  },
+  {
+    name: "whoami",
+    description:
+      "Read a safe account summary such as email, verification tier, login method, and completed checks",
+    approvalStrength: "none",
+    inputSchema: null,
+    outputSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        email: { type: "string" },
+        verificationLevel: { type: "string" },
+        tier: { type: "number" },
+        checks: { type: "object" },
       },
     }),
   },
 ] as const;
 
 /**
- * Seed agent capabilities (idempotent — uses INSERT OR IGNORE).
+ * Seed agent capabilities and prune stale definitions to keep the
+ * server-side catalog aligned with the public MCP tool surface.
  */
 export async function ensureCapabilitiesSeeded(): Promise<void> {
-  await db
-    .insert(agentCapabilities)
-    .values(
-      CAPABILITIES.map((c) => ({
-        name: c.name,
-        description: c.description,
-        approvalStrength: c.approvalStrength,
-        inputSchema: c.inputSchema,
-        outputSchema: c.outputSchema,
-      }))
-    )
-    .onConflictDoNothing();
+  await db.transaction(async (tx) => {
+    await tx.delete(agentCapabilities).where(
+      notInArray(
+        agentCapabilities.name,
+        CAPABILITIES.map((capability) => capability.name)
+      )
+    );
+
+    for (const capability of CAPABILITIES) {
+      await tx
+        .insert(agentCapabilities)
+        .values({
+          name: capability.name,
+          description: capability.description,
+          approvalStrength: capability.approvalStrength,
+          inputSchema: capability.inputSchema,
+          outputSchema: capability.outputSchema,
+        })
+        .onConflictDoUpdate({
+          target: agentCapabilities.name,
+          set: {
+            description: capability.description,
+            approvalStrength: capability.approvalStrength,
+            inputSchema: capability.inputSchema,
+            outputSchema: capability.outputSchema,
+          },
+        });
+    }
+  });
 }
 
 /** Default capabilities stored as durable host policies. */
 export const DEFAULT_HOST_POLICY_CAPABILITIES = [
+  "whoami",
+  "my_proofs",
   "check_compliance",
-  "request_approval",
 ];
 
 /**

@@ -217,6 +217,42 @@ describe("assurance data layer", () => {
     });
   });
 
+  it("treats bootstrap sessions without auth context as unauthenticated", async () => {
+    const userId = await createTestUser();
+    const now = new Date();
+    const sessionId = crypto.randomUUID();
+    const token = crypto.randomBytes(32).toString("hex");
+
+    await db
+      .insert(sessions)
+      .values({
+        id: sessionId,
+        userId,
+        token,
+        authContextId: null,
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      })
+      .run();
+
+    const posture = await getSecurityPostureForSession(userId, {
+      user: { id: userId },
+      session: {
+        id: sessionId,
+        userId,
+        token,
+        authContextId: null,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdAt: now,
+        updatedAt: now,
+      },
+    } as unknown as Session);
+
+    expect(posture.auth).toBeNull();
+    expect(posture.assurance.details.isAuthenticated).toBe(false);
+  });
+
   it("returns tier 0 for a user without secured keys", async () => {
     const userId = await createTestUser();
 

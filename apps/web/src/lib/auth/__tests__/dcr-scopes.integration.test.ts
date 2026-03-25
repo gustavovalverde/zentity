@@ -41,6 +41,22 @@ describe("dynamic client registration scopes", () => {
     );
   });
 
+  it("allows installed-agent registration to request identity and proof scopes used by MCP tools", async () => {
+    const response = await auth.handler(
+      buildRegistrationRequest(
+        "openid email offline_access identity.name identity.address identity.dob proof:identity proof:age proof:nationality"
+      )
+    );
+    const text = await response.text();
+
+    expect(response.status).toBeLessThan(400);
+    expect(JSON.parse(text)).toEqual(
+      expect.objectContaining({
+        client_id: expect.any(String),
+      })
+    );
+  });
+
   it("rejects compliance:key:read for dynamically registered clients", async () => {
     const response = await auth.handler(
       buildRegistrationRequest(

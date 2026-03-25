@@ -19,6 +19,7 @@ import { createDpopProof, type DpopKeyPair, extractDpopNonce } from "./dpop.js";
 
 export interface IdentityClaims {
   address?: string | Record<string, unknown>;
+  birthdate?: string;
   family_name?: string;
   given_name?: string;
   name?: string;
@@ -303,15 +304,17 @@ async function parseUserinfoResponse(
   const givenName = asOptionalString(userinfo.given_name);
   const familyName = asOptionalString(userinfo.family_name);
   const address = asOptionalAddress(userinfo.address);
+  const birthdate = asOptionalString(userinfo.birthdate);
 
   const claims: IdentityClaims = {
     ...(name ? { name } : {}),
     ...(givenName ? { given_name: givenName } : {}),
     ...(familyName ? { family_name: familyName } : {}),
     ...(address ? { address } : {}),
+    ...(birthdate ? { birthdate } : {}),
   };
 
-  if (!(name || givenName || familyName)) {
+  if (!(name || givenName || familyName || address || birthdate)) {
     return null;
   }
 

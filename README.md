@@ -239,7 +239,7 @@ flowchart LR
 - OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)
 - OIDC4VP credential presentation (DCQL queries, JARM encrypted responses, x509_hash client_id, KB-JWT holder binding)
 - VeriPass demo verifier (4 OID4VP scenarios: border control, background check, age-restricted venue, financial KYC)
-- MCP identity server with OAuth-authenticated tools (whoami, my_proofs, check_compliance, purchase, request_approval)
+- MCP identity server with OAuth-authenticated tools (whoami, my_profile, my_proofs, check_compliance, purchase)
 - Agent authorization via CIBA: AI agent initiates backchannel auth, user approves via push notification, agent receives identity data
 
 ## Scenarios

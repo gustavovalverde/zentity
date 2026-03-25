@@ -30,6 +30,7 @@ import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,
 } from "@/lib/privacy/credentials/cache";
+import { assertProfileSecretStored } from "@/lib/privacy/secrets/profile";
 import {
   acquirePasskeyMaterial,
   detectAuthMode,
@@ -205,6 +206,8 @@ export function LivenessVerifyClient({
         extractedNationalityCode: storeState.extractedNationalityCode,
         bindingContext,
       });
+
+      await assertProfileSecretStored();
 
       toast.success("Verification complete!", {
         description: "Privacy proofs generated successfully.",
@@ -429,7 +432,7 @@ export function LivenessVerifyClient({
       }
       // Otherwise isSubmitting stays true until dialog flow completes
     } catch (error) {
-      toast.error("Failed to save verification", {
+      toast.error("Verification incomplete", {
         description:
           error instanceof Error ? error.message : "Please try again.",
       });

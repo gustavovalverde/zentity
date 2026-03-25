@@ -80,6 +80,9 @@ export function getServerProfileSnapshot(): ProfileSecretPayload | null {
 
 const textDecoder = new TextDecoder();
 
+const PROFILE_SECRET_MISSING_ERROR =
+  "Identity data could not be saved to your vault. Please retry verification.";
+
 function deserializeProfile(payload: Uint8Array): ProfileSecretPayload {
   const parsed = JSON.parse(
     textDecoder.decode(payload)
@@ -176,6 +179,20 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
   return pendingGetStoredProfile;
 }
 
+async function getProfileSecretBundle() {
+  const { trpc } = await import("@/lib/trpc/client");
+  return trpc.secrets.getSecretBundle.query({
+    secretType: SECRET_TYPES.PROFILE,
+  });
+}
+
+export async function assertProfileSecretStored(): Promise<void> {
+  const bundle = await getProfileSecretBundle();
+  if (!(bundle?.secret && bundle.wrappers?.length)) {
+    throw new Error(PROFILE_SECRET_MISSING_ERROR);
+  }
+}
+
 /**
  * Store profile secret encrypted with the user's credential.
  * Skips if a profile secret already exists (idempotent).
@@ -202,10 +219,7 @@ export async function storeProfileSecret(params: {
   const { storeSecretWithCredential } = await import("./index");
 
   // Check if profile secret already exists
-  const { trpc } = await import("@/lib/trpc/client");
-  const bundle = await trpc.secrets.getSecretBundle.query({
-    secretType: SECRET_TYPES.PROFILE,
-  });
+  const bundle = await getProfileSecretBundle();
   if (bundle?.secret && bundle.wrappers?.length) {
     return;
   }
@@ -241,6 +255,7 @@ export async function storeProfileSecret(params: {
     envelopeFormat: PROFILE_ENVELOPE_FORMAT,
   });
 
+  await assertProfileSecretStored();
   cacheProfile(profile);
 }
 

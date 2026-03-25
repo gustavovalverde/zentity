@@ -3,7 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
 import { createServer } from "../../src/server/index.js";
 
-describe("echo tool", () => {
+describe("public MCP surface", () => {
   async function createConnectedClient() {
     const { server } = createServer();
     const [clientTransport, serverTransport] =
@@ -16,29 +16,24 @@ describe("echo tool", () => {
     return client;
   }
 
-  it("lists echo in tools/list", async () => {
+  it("advertises only the alias-first public tools", async () => {
     const client = await createConnectedClient();
     const { tools } = await client.listTools();
-    const echo = tools.find((t) => t.name === "echo");
-    expect(echo).toBeDefined();
-    expect(echo?.description).toContain("Echo");
+
+    expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "check_compliance",
+      "my_profile",
+      "my_proofs",
+      "purchase",
+      "whoami",
+    ]);
   });
 
-  it("echoes back the provided message", async () => {
+  it("does not advertise generic approval or echo helpers", async () => {
     const client = await createConnectedClient();
-    const result = await client.callTool({
-      name: "echo",
-      arguments: { message: "hello world" },
-    });
-    expect(result.content).toEqual([{ type: "text", text: "hello world" }]);
-  });
+    const { tools } = await client.listTools();
 
-  it("handles empty string", async () => {
-    const client = await createConnectedClient();
-    const result = await client.callTool({
-      name: "echo",
-      arguments: { message: "" },
-    });
-    expect(result.content).toEqual([{ type: "text", text: "" }]);
+    expect(tools.find((tool) => tool.name === "request_approval")).toBeFalsy();
+    expect(tools.find((tool) => tool.name === "echo")).toBeFalsy();
   });
 });

@@ -1,40 +1,116 @@
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { getFreshSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
-import { buildStandaloneApprovalPath } from "@/lib/ciba/approval-path";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
-export default async function ApprovePage({
+interface InteractionCopy {
+  deniedDescription?: string;
+  description?: string;
+  requestedProfileFields?: string[];
+  successDescription?: string;
+  title?: string;
+}
+
+function buildInteractionCopy(input: {
+  fields: string[];
+  tool: string;
+}): InteractionCopy {
+  if (input.tool === "my_profile") {
+    return {
+      title: "Profile Access Request",
+      description:
+        "An application is requesting access to the selected profile fields. Vault-protected fields require an unlock before they can be released.",
+      successDescription:
+        "You approved the profile disclosure request. The requesting agent can now continue.",
+      deniedDescription: "You denied the profile disclosure request.",
+      requestedProfileFields: input.fields,
+    };
+  }
+
+  if (input.tool === "purchase") {
+    return {
+      title: "Purchase Authorization",
+      description:
+        "An application is requesting approval to complete a purchase on your behalf.",
+      successDescription:
+        "You approved the purchase request. The requesting agent can now continue.",
+      deniedDescription: "You denied the purchase request.",
+    };
+  }
+
+  return {
+    title: "Authorization Request",
+  };
+}
+
+export default async function McpInteractivePage({
   params,
   searchParams,
 }: {
-  params: Promise<{ authReqId: string }>;
+  params: Promise<{ interactionId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { authReqId } = await params;
-  const callbackPath = buildStandaloneApprovalPath(
-    authReqId,
-    await searchParams
-  );
+  const { interactionId } = await params;
+  const resolvedSearchParams = await searchParams;
+  const authReqId = resolvedSearchParams.authReqId;
+  const tool = resolvedSearchParams.tool;
+  const fieldsParam = resolvedSearchParams.fields;
+  const fields =
+    typeof fieldsParam === "string"
+      ? fieldsParam.split(",").filter(Boolean)
+      : [];
+
+  if (typeof authReqId !== "string" || typeof tool !== "string") {
+    return (
+      <div className="w-full max-w-md">
+        <div className="rounded-lg border p-6 text-center">
+          <p className="text-muted-foreground">Invalid interaction link</p>
+        </div>
+      </div>
+    );
+  }
+
+  const callbackPath = `/mcp/interactive/${encodeURIComponent(interactionId)}`;
+  const callbackQuery = new URLSearchParams();
+  callbackQuery.set("authReqId", authReqId);
+  callbackQuery.set("tool", tool);
+  if (fields.length > 0) {
+    callbackQuery.set("fields", fields.join(","));
+  }
+
   const session = await getFreshSession(await headers());
 
   if (!session?.user?.id) {
-    redirect(`/sign-in?callbackURL=${encodeURIComponent(callbackPath)}`);
+    redirect(
+      `/sign-in?callbackURL=${encodeURIComponent(
+        `${callbackPath}?${callbackQuery.toString()}`
+      )}`
+    );
+  }
+
+  const sessionAuthContextId =
+    (session.session as { authContextId?: string | null }).authContextId ??
+    null;
+
+  if (!sessionAuthContextId) {
+    redirect(
+      `/sign-in?callbackURL=${encodeURIComponent(
+        `${callbackPath}?${callbackQuery.toString()}`
+      )}`
+    );
   }
 
   const detected = await detectAuthMode(session.user.id);
   const { authMode } = detected;
   const { wallet } = detected;
 
-  // Fetch agent claims — scoped to the current user to prevent cross-user leakage
   const cibaRow = await db
     .select({
       agentSessionId: cibaRequests.agentSessionId,
@@ -71,13 +147,13 @@ export default async function ApprovePage({
           ...(cibaRow.runtime ? { runtime: cibaRow.runtime } : {}),
         };
 
-  // Resolve registered agent identity if present
   let registeredAgent: {
-    hostName: string;
     attestationProvider: string | null;
     attestationTier: string;
+    hostName: string;
     sessionId: string;
   } | null = null;
+
   if (cibaRow.agentSessionId) {
     const agentRow = await db
       .select({
@@ -110,18 +186,11 @@ export default async function ApprovePage({
         agentIdentity={agentIdentity}
         authMode={authMode}
         authReqId={authReqId}
+        interactionCopy={buildInteractionCopy({ tool, fields })}
         registeredAgent={registeredAgent}
         userTier={assurance.tier}
         wallet={wallet}
       />
-      <div className="mt-4 hidden text-center md:block">
-        <Link
-          className="text-muted-foreground text-sm underline-offset-4 hover:underline"
-          href={`/dashboard/ciba/approve?auth_req_id=${encodeURIComponent(authReqId)}`}
-        >
-          View in dashboard
-        </Link>
-      </div>
     </div>
   );
 }

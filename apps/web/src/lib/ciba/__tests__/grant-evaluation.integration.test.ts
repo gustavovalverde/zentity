@@ -79,11 +79,11 @@ describe("evaluateSessionGrants", () => {
     sessionId = created.sessionId;
   });
 
-  it("keeps identity-scoped read_profile manual even with an active grant", async () => {
+  it("keeps identity-scoped my_profile manual even with an active grant", async () => {
     await db
       .insert(agentSessionGrants)
       .values({
-        capabilityName: "read_profile",
+        capabilityName: "my_profile",
         sessionId,
         source: "host_policy",
         status: "active",
@@ -101,7 +101,7 @@ describe("evaluateSessionGrants", () => {
       expect.objectContaining({
         approved: false,
         approvalStrength: "session",
-        capabilityName: "read_profile",
+        capabilityName: "my_profile",
         reason: "identity scopes require explicit approval",
       })
     );
@@ -161,11 +161,11 @@ describe("evaluateSessionGrants", () => {
     );
   });
 
-  it("approves proof-only requests when they map to an active check_compliance grant", async () => {
+  it("approves proof-only requests when they map to an active my_proofs grant", async () => {
     await db
       .insert(agentSessionGrants)
       .values({
-        capabilityName: "check_compliance",
+        capabilityName: "my_proofs",
         sessionId,
         source: "host_policy",
         status: "active",
@@ -183,44 +183,29 @@ describe("evaluateSessionGrants", () => {
       expect.objectContaining({
         approved: true,
         approvalStrength: "none",
-        capabilityName: "check_compliance",
+        capabilityName: "my_proofs",
       })
     );
   });
 
-  it("keeps request_approval manual even when an active grant exists", async () => {
-    await db
-      .insert(agentSessionGrants)
-      .values({
-        capabilityName: "request_approval",
-        sessionId,
-        source: "host_policy",
-        status: "active",
-        grantedAt: new Date(),
-      })
-      .run();
-
+  it("returns no matching capability for openid-only requests", async () => {
     const result = await evaluateSessionGrants(sessionId, "openid", []);
 
-    expect(result).toEqual(
-      expect.objectContaining({
-        approved: false,
-        approvalStrength: "session",
-        capabilityName: "request_approval",
-        reason: "explicit approval required",
-      })
-    );
+    expect(result).toEqual({
+      approved: false,
+      reason: "no matching capability for request",
+    });
   });
 
   it("does not widen silent defaults when a host later becomes attested", async () => {
     await ensureDefaultHostPolicies(
       hostId,
-      ["check_compliance", "request_approval"],
+      ["whoami", "my_proofs", "check_compliance"],
       "default"
     );
     await ensureDefaultHostPolicies(
       hostId,
-      ["check_compliance", "request_approval"],
+      ["whoami", "my_proofs", "check_compliance"],
       "attestation_default"
     );
 
@@ -244,7 +229,12 @@ describe("evaluateSessionGrants", () => {
         status: "active",
       },
       {
-        capabilityName: "request_approval",
+        capabilityName: "my_proofs",
+        source: "default",
+        status: "active",
+      },
+      {
+        capabilityName: "whoami",
         source: "default",
         status: "active",
       },

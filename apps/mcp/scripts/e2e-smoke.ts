@@ -7,7 +7,7 @@
  * the core flows via the MCP Client SDK.
  *
  * Usage:
- *   bun run scripts/e2e-smoke.ts                    # basic (echo + tool listing)
+ *   bun run scripts/e2e-smoke.ts                    # basic (tool listing)
  *   bun run scripts/e2e-smoke.ts --with-auth         # includes FPA auth (requires running Zentity)
  *   bun run scripts/e2e-smoke.ts --with-ciba         # includes CIBA approval (requires manual action)
  *
@@ -126,10 +126,9 @@ async function main(): Promise<void> {
 
     const expected = [
       "check_compliance",
-      "echo",
+      "my_profile",
       "my_proofs",
       "purchase",
-      "request_approval",
       "whoami",
     ];
     for (const name of expected) {
@@ -141,33 +140,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── 3. Echo tool ─────────────────────────────
-  console.log("\n─── Echo ───");
-
-  await step("Call echo", async () => {
-    const result = await client.callTool({
-      name: "echo",
-      arguments: { message: "smoke test" },
-    });
-    const text = (result.content as Array<{ text: string }>)[0]?.text;
-    if (text !== "smoke test") {
-      throw new Error(`Expected "smoke test", got "${text}"`);
-    }
-  });
-
-  await step("Echo with unicode", async () => {
-    const msg = "こんにちは 🌐";
-    const result = await client.callTool({
-      name: "echo",
-      arguments: { message: msg },
-    });
-    const text = (result.content as Array<{ text: string }>)[0]?.text;
-    if (text !== msg) {
-      throw new Error(`Expected "${msg}", got "${text}"`);
-    }
-  });
-
-  // ── 4. Authenticated flows (optional) ────────
+  // ── 3. Authenticated flows (optional) ────────
   if (withAuth) {
     console.log("\n─── Auth ───");
     console.log(
@@ -250,12 +223,14 @@ async function main(): Promise<void> {
       "  ℹ️  Check the Zentity dashboard or push notification to approve.\n"
     );
 
-    await step("Call request_approval (requires manual approval)", async () => {
+    await step("Call purchase (requires manual approval)", async () => {
       const result = await client.callTool({
-        name: "request_approval",
+        name: "purchase",
         arguments: {
-          action: "E2E smoke test approval",
-          details: `Automated test at ${new Date().toISOString()}`,
+          merchant: "Zentity Smoke Test",
+          amount: 1,
+          currency: "USD",
+          item: `Smoke Test Purchase ${new Date().toISOString()}`,
         },
       });
       const text = (result.content as Array<{ text: string }>)[0]?.text;
