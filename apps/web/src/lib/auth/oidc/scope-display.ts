@@ -7,7 +7,7 @@
 
 import type { LucideIcon } from "lucide-react";
 
-import { BadgeCheck, KeyRound, ShieldAlert } from "lucide-react";
+import { BadgeCheck, KeyRound, Lock } from "lucide-react";
 
 import {
   isIdentityScope,
@@ -49,7 +49,7 @@ export function groupScopes(scopes: string[]): ScopeGroup[] {
   if (identity.length > 0) {
     groups.push({
       label: "Personal information",
-      icon: ShieldAlert,
+      icon: Lock,
       scopes: identity,
     });
   }

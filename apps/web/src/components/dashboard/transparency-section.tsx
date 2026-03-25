@@ -1,6 +1,14 @@
 "use client";
 
-import { ChevronDown, Database, Eye, EyeOff, Lock, Shield } from "lucide-react";
+import {
+  CalendarCheck,
+  ChevronDown,
+  Database,
+  Eye,
+  EyeOff,
+  Hash,
+  Lock,
+} from "lucide-react";
 import { useId, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +109,7 @@ export function TransparencySection({
               </div>
 
               <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <Shield className="mt-0.5 h-5 w-5 text-success" />
+                <Hash className="mt-0.5 h-5 w-5 text-info" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">Name Commitment</span>
@@ -148,7 +156,7 @@ export function TransparencySection({
               </div>
 
               <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-3">
-                <Shield className="mt-0.5 h-5 w-5 text-success" />
+                <CalendarCheck className="mt-0.5 h-5 w-5 text-success" />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">Age Proof</span>

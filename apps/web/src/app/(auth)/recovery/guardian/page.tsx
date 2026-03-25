@@ -2,7 +2,7 @@
 
 import {
   Check,
-  KeyRound,
+  Fingerprint,
   Mail,
   ShieldCheck,
   TriangleAlert,
@@ -543,7 +543,7 @@ export default function RecoverSocialPage() {
   if (phase === "complete") {
     icon = <Check className="size-6 text-success" />;
   } else if (phase === "ready" || phase === "registering") {
-    icon = <KeyRound className="size-6 text-primary" />;
+    icon = <Fingerprint className="size-6 text-primary" />;
   } else if (phase === "pending") {
     icon = <ShieldCheck className="size-6 text-primary" />;
   }

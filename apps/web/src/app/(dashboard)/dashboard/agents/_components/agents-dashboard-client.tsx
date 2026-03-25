@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Fingerprint, Shield, ShieldOff } from "lucide-react";
+import { Ban, Bot, Fingerprint, KeyRound } from "lucide-react";
 import { useCallback, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -209,7 +209,7 @@ export function AgentsDashboardClient() {
                             {revoking ? (
                               <Spinner className="mr-1.5 size-3.5" />
                             ) : (
-                              <ShieldOff className="mr-1.5 size-3.5" />
+                              <Ban className="mr-1.5 size-3.5" />
                             )}
                             Revoke session
                           </Button>
@@ -228,7 +228,7 @@ export function AgentsDashboardClient() {
                                 key={grant.id}
                               >
                                 <div className="flex flex-wrap items-center gap-2">
-                                  <Shield className="size-3.5 text-muted-foreground" />
+                                  <KeyRound className="size-3.5 text-muted-foreground" />
                                   <span className="font-medium text-sm">
                                     {grant.capabilityName}
                                   </span>

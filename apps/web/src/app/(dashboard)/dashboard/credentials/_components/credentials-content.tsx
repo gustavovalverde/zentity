@@ -8,7 +8,6 @@ import {
   Copy,
   FileCheck2,
   QrCode,
-  Shield,
   Wallet,
 } from "lucide-react";
 import Image from "next/image";
@@ -217,7 +216,7 @@ export function CredentialsContent() {
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Shield />
+                <FileCheck2 />
               </EmptyMedia>
               <EmptyTitle>Complete Verification First</EmptyTitle>
               <EmptyDescription>

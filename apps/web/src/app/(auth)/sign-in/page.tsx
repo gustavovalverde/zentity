@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyRound, TriangleAlert } from "lucide-react";
+import { Fingerprint, TriangleAlert } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -129,7 +129,7 @@ export default function SignInPage() {
             {passkeyLoading ? (
               <Spinner aria-hidden="true" className="mr-2" size="sm" />
             ) : (
-              <KeyRound className="mr-2 h-4 w-4" />
+              <Fingerprint className="mr-2 h-4 w-4" />
             )}
             Sign in with Passkey
           </Button>

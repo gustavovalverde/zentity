@@ -2,7 +2,7 @@
 
 import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
-import { AlertTriangle, Bot, ShieldCheck } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -80,7 +80,7 @@ function RequestedClaimsSection({ scopes }: Readonly<{ scopes: string[] }>) {
       <ul className="space-y-1.5 text-sm">
         {proofScopes.map((scope) => (
           <li className="flex items-start gap-2" key={scope}>
-            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
+            <BadgeCheck className="mt-0.5 size-3.5 shrink-0 text-success" />
             <span>
               {PROOF_SCOPE_DESCRIPTIONS[scope]}
               <span className="ml-1 text-muted-foreground text-xs">
@@ -653,7 +653,7 @@ export function CibaApproveClient({
               }`}
             >
               {registeredAgent?.attestationTier === "attested" ? (
-                <ShieldCheck className="size-4 shrink-0 text-success" />
+                <BadgeCheck className="size-4 shrink-0 text-success" />
               ) : (
                 <Bot className="size-4 shrink-0 text-warning" />
               )}
@@ -735,7 +735,7 @@ export function CibaApproveClient({
 
           {details?.acr_values && (
             <div className="flex items-center gap-2 rounded-md border border-warning/30 p-3">
-              <ShieldCheck className="size-4 shrink-0 text-warning" />
+              <BadgeCheck className="size-4 shrink-0 text-warning" />
               <p className="text-sm">
                 <span className="font-medium">Required assurance:</span>{" "}
                 {details.acr_values

@@ -2,8 +2,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  Lock,
   Scan,
-  ShieldCheck,
 } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -342,7 +342,7 @@ function PrivacyCard({ showChipInfo }: Readonly<{ showChipInfo?: boolean }>) {
       <CardContent className="pt-6">
         <div className="flex gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <Lock className="h-4 w-4 text-muted-foreground" />
           </div>
           <div className="space-y-1.5 text-muted-foreground text-sm">
             <p>

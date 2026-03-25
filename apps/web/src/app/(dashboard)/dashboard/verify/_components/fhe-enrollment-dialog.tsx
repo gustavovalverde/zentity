@@ -1,13 +1,7 @@
 "use client";
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
-import {
-  Fingerprint,
-  KeyRound,
-  Loader2,
-  ShieldCheck,
-  Wallet,
-} from "lucide-react";
+import { Fingerprint, KeyRound, Loader2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -816,7 +810,7 @@ export function FheEnrollmentDialog({
             {isRunning ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <ShieldCheck className="h-5 w-5" />
+              <KeyRound className="h-5 w-5" />
             )}
             {isRunning
               ? "Setting up encryption keys..."

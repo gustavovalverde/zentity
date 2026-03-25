@@ -2,7 +2,7 @@ import {
   LockKeyhole,
   type LucideIcon,
   ScanSearch,
-  ShieldCheck,
+  SmartphoneNfc,
 } from "lucide-react";
 
 import {
@@ -37,7 +37,7 @@ const METHOD_STEPS: Record<
     title: "Read your document's NFC chip",
     description:
       "Use your phone to read the chip and prove the document is genuine.",
-    icon: ShieldCheck,
+    icon: SmartphoneNfc,
   },
 };
 

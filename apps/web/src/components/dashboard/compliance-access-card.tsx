@@ -8,7 +8,7 @@ import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
  * Requests the user to grant the ComplianceRules contract access
  * to their encrypted identity data in IdentityRegistry.
  */
-import { AlertTriangle, CheckCircle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle, Scale } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   useBalance,
@@ -177,7 +177,7 @@ export function ComplianceAccessCard({
     <Card className={isGranted ? "border-success/30" : "border-dashed"}>
       <CardHeader className="pb-3">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-primary" />
+          <Scale className="h-5 w-5 text-primary" />
           <CardTitle className="text-lg">Compliance Access</CardTitle>
         </div>
         <CardDescription>

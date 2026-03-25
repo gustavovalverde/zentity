@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Clock, Loader2, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Loader2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -142,7 +142,7 @@ export function StatusDisplay({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-success">
-            <ShieldCheck className="h-5 w-5" />
+            <CheckCircle className="h-5 w-5" />
             Verification Complete
           </CardTitle>
           <CardDescription>

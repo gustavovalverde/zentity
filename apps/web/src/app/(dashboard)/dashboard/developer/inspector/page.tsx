@@ -5,13 +5,14 @@ import type { RouterOutputs } from "@/lib/trpc/types";
 import {
   CalendarCheck,
   Check,
-  Code,
+  CircleHelp,
   FileCheck,
+  FileKey,
   Fingerprint,
   Globe,
   Link as LinkIcon,
   ScanFace,
-  Shield,
+  SquareTerminal,
   UserCheck,
   X,
 } from "lucide-react";
@@ -142,7 +143,7 @@ export default function DevViewPage() {
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  <Code />
+                  <SquareTerminal />
                 </EmptyMedia>
                 <EmptyTitle>{error || "No Verification Data"}</EmptyTitle>
                 <EmptyDescription>
@@ -173,7 +174,7 @@ export default function DevViewPage() {
       </div>
 
       <Alert>
-        <Code className="h-4 w-4" />
+        <SquareTerminal className="h-4 w-4" />
         <AlertDescription>
           This view shows the raw verification data stored for your account.
           Intended for developers and debugging purposes.
@@ -234,7 +235,7 @@ export default function DevViewPage() {
               >
                 <div className="flex items-center gap-3">
                   {CHECK_TYPE_ICONS[check.checkType] ?? (
-                    <Shield className="h-4 w-4" />
+                    <CircleHelp className="h-4 w-4 text-muted-foreground" />
                   )}
                   <div>
                     <p className="font-medium text-sm">
@@ -277,7 +278,7 @@ export default function DevViewPage() {
                   key={`${proof.proofType}-${proof.proofHash.slice(0, 8)}`}
                 >
                   <div className="flex items-center gap-3">
-                    <Shield className="h-4 w-4 text-info" />
+                    <FileKey className="h-4 w-4 text-info" />
                     <div>
                       <p className="font-medium text-sm">
                         {PROOF_TYPE_LABELS[proof.proofType] ?? proof.proofType}

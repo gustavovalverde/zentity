@@ -15,7 +15,7 @@ import {
   ExternalLink,
   Lock,
   RefreshCw,
-  Shield,
+  Stamp,
   Wallet,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
@@ -257,7 +257,7 @@ export function OnChainAttestation({
       <Card className="border-dashed">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Shield className="h-5 w-5" />
+            <Stamp className="h-5 w-5" />
             On-Chain Attestation
           </CardTitle>
           <CardDescription>
@@ -283,7 +283,7 @@ export function OnChainAttestation({
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-primary" />
+              <Stamp className="h-5 w-5 text-primary" />
               <CardTitle className="text-lg">On-Chain Attestation</CardTitle>
               {confirmedCount > 0 && (
                 <Badge className="ml-2" variant="secondary">
@@ -919,7 +919,7 @@ const NetworkActions = memo(function NetworkActions({
         {isSubmitting ? (
           <Spinner aria-hidden="true" className="mr-2" />
         ) : (
-          <Shield className="mr-2 h-4 w-4" />
+          <Stamp className="mr-2 h-4 w-4" />
         )}
         Register on {network.name}
       </Button>

@@ -2,15 +2,16 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  AppWindow,
   Bot,
   BotMessageSquare,
-  Code,
   Coins,
   FileCheck2,
-  Key,
+  IdCard,
   LogOut,
   Settings,
-  Shield,
+  SquareTerminal,
+  Stamp,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -53,7 +54,7 @@ const identityNavItems: NavItem[] = [
   {
     title: "My Identity",
     url: "/dashboard",
-    icon: Shield,
+    icon: IdCard,
   },
   {
     title: "Credentials",
@@ -71,7 +72,7 @@ const blockchainNavItems: NavItem[] = [
   {
     title: "On-Chain Attestation",
     url: "/dashboard/attestation",
-    icon: Shield,
+    icon: Stamp,
   },
   {
     title: "DeFi Demo",
@@ -84,7 +85,7 @@ const developerNavItems: NavItem[] = [
   {
     title: "Applications",
     url: "/dashboard/developer/applications",
-    icon: Key,
+    icon: AppWindow,
   },
   {
     title: "Agent Requests",
@@ -99,7 +100,7 @@ const developerNavItems: NavItem[] = [
   {
     title: "Debug Tools",
     url: "/dashboard/developer/inspector",
-    icon: Code,
+    icon: SquareTerminal,
   },
 ];
 

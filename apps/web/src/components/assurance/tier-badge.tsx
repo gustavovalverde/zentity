@@ -1,6 +1,6 @@
 import type { AccountTier, TierName } from "@/lib/assurance/types";
 
-import { CheckCircle2, Shield, ShieldCheck, User } from "lucide-react";
+import { CheckCircle2, CircleUser, ShieldCheck, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils/classname";
@@ -14,7 +14,7 @@ interface TierBadgeProps {
 }
 
 const TIER_ICONS = {
-  0: Shield,
+  0: CircleUser,
   1: User,
   2: CheckCircle2,
   3: ShieldCheck,

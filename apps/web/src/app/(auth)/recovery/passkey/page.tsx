@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, KeyRound, Mail, TriangleAlert } from "lucide-react";
+import { Check, Fingerprint, Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -299,7 +299,7 @@ export default function RecoverPasskeyPage() {
           <div className="space-y-4">
             <div className="space-y-3 rounded-lg border p-4">
               <div className="flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-muted-foreground" />
+                <Fingerprint className="h-5 w-5 text-muted-foreground" />
                 <span className="font-medium">Register New Passkey</span>
               </div>
               <p className="text-muted-foreground text-sm">
@@ -333,7 +333,7 @@ export default function RecoverPasskeyPage() {
               onClick={handleRegisterPasskey}
               size="lg"
             >
-              <KeyRound className="mr-2 h-4 w-4" />
+              <Fingerprint className="mr-2 h-4 w-4" />
               Create New Passkey
             </Button>
           </div>

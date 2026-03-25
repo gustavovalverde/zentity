@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { Bot, Mail, ShieldCheck } from "lucide-react";
+import { BadgeCheck, Bot, Mail } from "lucide-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 
@@ -174,7 +174,7 @@ export default async function CibaListPage() {
                         {(req.approvalMethod === "capability_grant" ||
                           req.approvalMethod === "boundary") && (
                           <Badge className="gap-1" variant="secondary">
-                            <ShieldCheck className="size-3" />
+                            <BadgeCheck className="size-3" />
                             Auto-approved
                           </Badge>
                         )}

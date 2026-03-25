@@ -3,7 +3,7 @@
 import {
   Check,
   Edit2,
-  KeyRound,
+  Fingerprint,
   Monitor,
   Plus,
   Smartphone,
@@ -372,7 +372,7 @@ export function PasskeyManagementSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <KeyRound className="h-5 w-5" />
+          <Fingerprint className="h-5 w-5" />
           Passkeys
         </CardTitle>
         <CardDescription>
@@ -401,7 +401,7 @@ export function PasskeyManagementSection() {
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <KeyRound />
+                    <Fingerprint />
                   </EmptyMedia>
                   <EmptyTitle>No Passkeys Registered</EmptyTitle>
                   <EmptyDescription>

@@ -1,12 +1,6 @@
 import type { SecurityPosture } from "@/lib/assurance/types";
 
-import {
-  ArrowRight,
-  FileCheck2,
-  Link as LinkIcon,
-  Lock,
-  Shield,
-} from "lucide-react";
+import { ArrowRight, FileCheck2, Lock, Stamp, Zap } from "lucide-react";
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
@@ -53,7 +47,7 @@ export function IdentityActionsCard({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <Shield className="h-5 w-5 text-success" />
+          <Zap className="h-5 w-5 text-success" />
           What You Can Do
         </CardTitle>
         <CardDescription>
@@ -84,7 +78,7 @@ export function IdentityActionsCard({
               actionLabel="Go On-Chain"
               badge="Web3"
               description="Publish encrypted identity proofs on-chain for DeFi and Web3 compliance."
-              icon={LinkIcon}
+              icon={Stamp}
               locked={!canAttest}
               passkeyAction={attestationPasskeyAction}
               requiredTier={2}

@@ -5,10 +5,10 @@ import crypto from "node:crypto";
 import {
   AlertTriangle,
   ArrowRight,
+  BadgeCheck,
   Calendar,
   CheckCircle,
-  Shield,
-  ShieldCheck,
+  ScanSearch,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -62,7 +62,7 @@ function IdentityCardHeader({
     <CardHeader className="pb-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <ShieldCheck className="h-5 w-5 text-muted-foreground" />
+          <BadgeCheck className="h-5 w-5 text-muted-foreground" />
           Identity Status
         </CardTitle>
         {assurance && <TierBadge tier={tier} />}
@@ -163,7 +163,7 @@ export async function IdentityCard({
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <Shield />
+                <ScanSearch />
               </EmptyMedia>
               <EmptyTitle>Ready to Verify</EmptyTitle>
               <EmptyDescription>

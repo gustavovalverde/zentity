@@ -1,7 +1,7 @@
 "use client";
 
 import { useForm } from "@tanstack/react-form";
-import { Plus } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -169,7 +169,7 @@ export function SetPasswordSection({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Plus className="h-5 w-5" />
+          <KeyRound className="h-5 w-5" />
           Set Password
         </CardTitle>
         <CardDescription>
