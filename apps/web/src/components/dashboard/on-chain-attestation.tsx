@@ -8,7 +8,13 @@ import { useAppKitAccount, useDisconnect } from "@reown/appkit/react";
  * multiple blockchain networks. Supports fhEVM (encrypted) and
  * standard EVM networks.
  */
-import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
+import {
+  ATTR,
+  CONSENT_TYPES,
+  getAttestPermitDomain,
+  getConsentRevision,
+  IdentityRegistryABI,
+} from "@zentity/fhevm-contracts";
 import {
   AlertTriangle,
   CheckCircle,
@@ -21,7 +27,13 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { toHex } from "viem";
-import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
+import {
+  useChainId,
+  useReadContract,
+  useSignTypedData,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 
 import { ComplianceAccessCard } from "@/components/dashboard/compliance-access-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -151,6 +163,14 @@ export function OnChainAttestation({
     contractAddress: registryAddress,
   });
   const { writeContractAsync } = useWriteContract();
+  const { data: currentRevision } = useReadContract({
+    address: registryAddress,
+    abi: IdentityRegistryABI,
+    functionName: "revisions",
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: Boolean(registryAddress && address) },
+  });
+  const { signTypedDataAsync } = useSignTypedData();
 
   const isSubmitting =
     createPermitMutation.isPending || recordSubmissionMutation.isPending;
@@ -240,10 +260,13 @@ export function OnChainAttestation({
     }
 
     try {
+      const attributeMask = ATTR.ALL; // 0x0F — all 4 attributes
+
       // 1. Server signs the EIP-712 permit
       const result = await createPermitMutation.mutateAsync({
         networkId: selectedNetwork,
         walletAddress: address,
+        consentScope: `0x${attributeMask.toString(16).padStart(2, "0")}`,
       });
 
       const { permit, identityData } = result;
@@ -251,7 +274,38 @@ export function OnChainAttestation({
         return;
       }
 
-      // 2. Client-side FHE encryption
+      // 2. User signs consent receipt
+      const isCurrentlyAttested =
+        selectedNetworkData.attestation?.status === "confirmed";
+      const targetRevision = getConsentRevision(
+        Number(currentRevision ?? 0n),
+        isCurrentlyAttested
+      );
+      const consentDomain = {
+        ...getAttestPermitDomain(selectedNetworkData.chainId, registryAddress),
+        verifyingContract: registryAddress,
+      };
+      const consentDeadline = Math.floor(Date.now() / 1000) + 3600;
+
+      const consentSig = await signTypedDataAsync({
+        domain: consentDomain,
+        types: CONSENT_TYPES,
+        primaryType: "UserConsent",
+        message: {
+          user: address as `0x${string}`,
+          attributeMask,
+          chainId: BigInt(selectedNetworkData.chainId),
+          revision: BigInt(targetRevision),
+          deadline: BigInt(consentDeadline),
+        },
+      });
+
+      const sigHex = consentSig.slice(2);
+      const consentR = `0x${sigHex.slice(0, 64)}` as `0x${string}`;
+      const consentS = `0x${sigHex.slice(64, 128)}` as `0x${string}`;
+      const consentV = Number.parseInt(sigHex.slice(128, 130), 16);
+
+      // 3. Client-side FHE encryption
       const encrypted = await encryptWith((builder) => {
         builder.add8(identityData.birthYearOffset);
         builder.add16(identityData.countryCode);
@@ -265,7 +319,7 @@ export function OnChainAttestation({
         );
       }
 
-      // 3. Submit attestWithPermit from user's wallet
+      // 4. Submit attestWithPermit from user's wallet
       const txHash = await writeContractAsync({
         chainId: selectedNetworkData.chainId,
         address: registryAddress,
@@ -284,12 +338,11 @@ export function OnChainAttestation({
             r: permit.r as `0x${string}`,
             s: permit.s as `0x${string}`,
           },
-          // Consent signature (v=0 skips verification)
-          0,
-          "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
-          "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
-          0,
-          BigInt(0),
+          consentV,
+          consentR,
+          consentS,
+          attributeMask,
+          BigInt(consentDeadline),
           toHex(encrypted.handles[0] as Uint8Array),
           toHex(encrypted.handles[1] as Uint8Array),
           toHex(encrypted.handles[2] as Uint8Array),
@@ -299,7 +352,7 @@ export function OnChainAttestation({
         ...getFheWriteOverrides(selectedNetworkData.chainId),
       });
 
-      // 4. Record tx on server
+      // 5. Record tx on server
       await recordSubmissionMutation.mutateAsync({
         networkId: selectedNetwork,
         txHash,
@@ -315,7 +368,9 @@ export function OnChainAttestation({
     activeChainId,
     registryAddress,
     selectedNetworkData,
+    currentRevision,
     createPermitMutation,
+    signTypedDataAsync,
     encryptWith,
     writeContractAsync,
     recordSubmissionMutation,
