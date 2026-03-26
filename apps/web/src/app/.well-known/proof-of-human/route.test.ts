@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { GET } from "./route";
 
-describe("GET /.well-known/poh-issuer", () => {
+describe("GET /.well-known/proof-of-human", () => {
   it("returns valid discovery metadata", async () => {
     const response = GET();
     expect(response.status).toBe(200);

@@ -28,7 +28,7 @@ export function buildRouteConfig(resource: X402Resource): X402RouteConfig {
   if (resource.requiredTier > 0) {
     extensions.zentity = {
       minComplianceLevel: resource.requiredTier,
-      pohIssuer: `${env.ZENTITY_URL}/.well-known/poh-issuer`,
+      pohIssuer: `${env.ZENTITY_URL}/.well-known/proof-of-human`,
       ...(resource.requireOnChain && getRegistryAddress()
         ? { identityRegistry: getRegistryAddress() }
         : {}),

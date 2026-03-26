@@ -73,7 +73,7 @@ export function enrichDiscoveryMetadata(
     ...(issuer
       ? {
           poh_endpoint: `${issuer}/api/auth/oauth2/proof-of-human`,
-          poh_issuer_uri: `${issuer}/.well-known/poh-issuer`,
+          poh_issuer_uri: `${issuer}/.well-known/proof-of-human`,
         }
       : {}),
   };
