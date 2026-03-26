@@ -30,6 +30,7 @@ export function GET() {
       "compliance:key:write",
       ...IDENTITY_SCOPES,
       "identity_verification",
+      "poh",
     ],
     bearer_methods_supported: ["header", "dpop"],
     resource_signing_alg_values_supported: ["EdDSA"],

@@ -35,6 +35,9 @@ export const env = createEnv({
     VERIFIER_CA_PEM: z.string().optional(),
     VERIFIER_LEAF_KEY_PEM: z.string().optional(),
     ZENTITY_JWKS_URL: z.string().optional(),
+
+    CHAIN_RPC_URL: z.string().default("http://127.0.0.1:8545"),
+    IDENTITY_REGISTRY_ADDRESS: z.string().optional(),
   },
 
   client: {
@@ -60,6 +63,8 @@ export const env = createEnv({
     VERIFIER_CA_PEM: process.env.VERIFIER_CA_PEM,
     VERIFIER_LEAF_KEY_PEM: process.env.VERIFIER_LEAF_KEY_PEM,
     ZENTITY_JWKS_URL: process.env.ZENTITY_JWKS_URL,
+    CHAIN_RPC_URL: process.env.CHAIN_RPC_URL,
+    IDENTITY_REGISTRY_ADDRESS: process.env.IDENTITY_REGISTRY_ADDRESS,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_ZENTITY_URL: process.env.NEXT_PUBLIC_ZENTITY_URL,
   },

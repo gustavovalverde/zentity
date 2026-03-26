@@ -69,6 +69,13 @@ export function enrichDiscoveryMetadata(
     // MCP authorization compatibility (RFC 9728, CIMD)
     client_id_metadata_document_supported: true,
     resource_indicators_supported: true,
+    // Proof-of-Human (PRD-22)
+    ...(issuer
+      ? {
+          poh_endpoint: `${issuer}/api/auth/oauth2/proof-of-human`,
+          poh_issuer_uri: `${issuer}/.well-known/poh-issuer`,
+        }
+      : {}),
   };
 }
 

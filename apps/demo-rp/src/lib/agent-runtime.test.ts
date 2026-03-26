@@ -212,7 +212,10 @@ async function createRuntimeRow(
       crv: "Ed25519",
       d: "session-private-old",
     }),
-    sessionPublicJwk: JSON.stringify({ crv: "Ed25519", x: "session-public-old" }),
+    sessionPublicJwk: JSON.stringify({
+      crv: "Ed25519",
+      x: "session-public-old",
+    }),
     updatedAt: new Date(),
     userId: "user-1",
     version: "1.0",
@@ -249,15 +252,15 @@ describe("prepareAgentAssertionForProvider", () => {
         )
       )
       .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          attestation_tier: "unverified",
-          hostId: "host-1",
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 200,
-        }
+        new Response(
+          JSON.stringify({
+            attestation_tier: "unverified",
+            hostId: "host-1",
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 200,
+          }
         )
       );
 
@@ -309,10 +312,13 @@ describe("prepareAgentAssertionForProvider", () => {
         )
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "Bootstrap access token required" }), {
-          headers: { "Content-Type": "application/json" },
-          status: 401,
-        })
+        new Response(
+          JSON.stringify({ error: "Bootstrap access token required" }),
+          {
+            headers: { "Content-Type": "application/json" },
+            status: 401,
+          }
+        )
       );
 
     await expect(

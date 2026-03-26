@@ -1,6 +1,7 @@
 import {
   AiChat02Icon,
   BankIcon,
+  BlockchainIcon,
   FlashIcon,
   Globe02Icon,
   Wallet01Icon,
@@ -72,6 +73,14 @@ const LANDING_UI: LandingScenario[] = [
     brandFont: "font-bold tracking-tight",
     title: "Agent Authorization",
   },
+  {
+    id: "x402",
+    icon: BlockchainIcon,
+    brandName: "x402",
+    brandSub: "Machine Commerce",
+    brandFont: "font-mono tracking-tight font-bold",
+    title: "Compliance Oracle",
+  },
 ];
 
 const SCENARIOS = LANDING_UI.map((ui) => {
@@ -133,7 +142,7 @@ export default function Page() {
           </h1>
 
           <p className="landing-copy mx-auto max-w-2xl text-lg md:text-xl">
-            Six real-world scenarios, one cryptographic answer. Each demo
+            Seven real-world scenarios, one cryptographic answer. Each demo
             satisfies a different compliance obligation through the same
             architecture: zero-knowledge proofs, FHE encryption, and decoupled
             authorization — with no personal data stored.

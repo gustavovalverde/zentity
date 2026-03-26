@@ -75,7 +75,7 @@ RAILWAY_DOCKERFILE_PATH=Dockerfile.coordinator
 Optional coordinator variables:
 
 ```env
-GUARDIAN_ASSERTION_JWKS_URL=https://app.zentity.xyz/api/auth/pq-jwks  # JWKS for guardian assertion JWT verification
+GUARDIAN_ASSERTION_JWKS_URL=https://app.zentity.xyz/api/auth/jwks  # JWKS for guardian assertion JWT verification
 ```
 
 ### Signer Info Endpoint

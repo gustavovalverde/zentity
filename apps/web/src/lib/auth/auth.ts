@@ -358,6 +358,7 @@ const defaultClientScopes = [
 const allowedClientScopes = [
   ...defaultClientScopes,
   "email",
+  "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
 ];

@@ -338,6 +338,51 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
     };
   })(),
+  x402: (() => {
+    const signInScopes = ["openid", "email", "poh"];
+    const stepUpScopes: string[] = [];
+    return {
+      id: "x402",
+      name: "x402 Protocol",
+      tagline: "Machine Commerce",
+      description:
+        "HTTP 402 enables machine-to-machine payments with built-in compliance. Resource servers declare requirements, agents prove humanity through Zentity's compliance oracle, and on-chain FHE-encrypted checks gate settlement — all without revealing identity data.",
+      providerId: "zentity-x402",
+      signInScopes,
+      stepUpScopes,
+      stepUpClaimKeys: [],
+      dcr: {
+        clientName: "x402 Demo",
+        defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
+      },
+      compliance: [
+        {
+          label: "x402",
+          detail:
+            "HTTP 402 Payment Required protocol for machine commerce. Resource servers advertise compliance requirements in structured responses; agents negotiate access automatically.",
+          variant: "mechanism" as const,
+        },
+        {
+          label: "FHE Oracle",
+          detail:
+            "On-chain compliance checks using fully homomorphic encryption. The smart contract evaluates encrypted identity attributes without decryption.",
+          variant: "mechanism" as const,
+        },
+        {
+          label: "Proof-of-Human",
+          detail:
+            "Compact JWTs asserting verification tier and sybil resistance. No personal data disclosed — just a cryptographic yes/no.",
+          variant: "mechanism" as const,
+        },
+      ],
+      notShared: [
+        "Your identity documents",
+        "Your exact date of birth",
+        "Your face or biometric data",
+        "Your compliance level to unrelated services",
+      ],
+    };
+  })(),
 } as const;
 
 export function getScenario(id: string): Scenario {

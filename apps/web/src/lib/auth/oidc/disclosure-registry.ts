@@ -150,6 +150,16 @@ const SYBIL_ENTRY = {
   description: "A unique, anonymous ID for this app",
 } as const satisfies ScopeEntry;
 
+const POH_ENTRY = {
+  scope: "poh",
+  family: "proof",
+  claims: [],
+  delivery: [],
+  vaultRequired: false,
+  exactBindingRequired: false,
+  description: "Request proof-of-human tokens",
+} as const satisfies ScopeEntry;
+
 const PROOF_UMBRELLA = {
   scope: "proof:identity",
   family: "proof",
@@ -308,6 +318,7 @@ const ALL_ENTRIES: readonly ScopeEntry[] = [
   PROOF_UMBRELLA,
   ...PROOF_ENTRIES,
   SYBIL_ENTRY,
+  POH_ENTRY,
   ...IDENTITY_ENTRIES,
   ...OPERATIONAL_ENTRIES,
 ];
@@ -348,6 +359,7 @@ export const HIDDEN_SCOPES = new Set([
   "compliance:key:read",
   "compliance:key:write",
   "identity_verification",
+  "poh",
 ]);
 
 // ---------------------------------------------------------------------------

@@ -103,7 +103,11 @@ function validateAtHash(accessToken: string, idToken: string, atHash: string) {
 }
 
 function toExpiryDate(seconds: unknown): Date | undefined {
-  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+  if (
+    typeof seconds !== "number" ||
+    !Number.isFinite(seconds) ||
+    seconds <= 0
+  ) {
     return undefined;
   }
 
@@ -371,6 +375,7 @@ const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
   aid: ["openid", "email", "proof:verification"],
   veripass: ["openid", "proof:verification"],
   aether: ["openid", "email", ...AETHER_BOOTSTRAP_SCOPES],
+  x402: ["openid", "email", "poh"],
 };
 
 function createAuth(clientIds: Partial<Record<ProviderId, string>>) {

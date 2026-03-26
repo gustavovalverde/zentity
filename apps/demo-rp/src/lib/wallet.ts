@@ -56,7 +56,9 @@ export async function getPresentableKeys(
   credential: string
 ): Promise<string[]> {
   const keys = Array.from(
-    createVeripassDisclosureKeyMap(await sdjwt.presentableKeys(credential)).keys()
+    createVeripassDisclosureKeyMap(
+      await sdjwt.presentableKeys(credential)
+    ).keys()
   );
   // Filter out JWT metadata keys
   const metaKeys = new Set([

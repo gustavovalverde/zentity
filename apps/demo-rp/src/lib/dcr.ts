@@ -10,6 +10,7 @@ const PROVIDER_IDS = [
   "aid",
   "veripass",
   "aether",
+  "x402",
 ] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 

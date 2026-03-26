@@ -22,8 +22,7 @@ const HOST_NAME = "Aether Demo RP";
 const AGENT_BOOTSTRAP_SCOPE = "agent:host.register agent:session.register";
 const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
-const TOKEN_TYPE_ACCESS_TOKEN =
-  "urn:ietf:params:oauth:token-type:access_token";
+const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const DISPLAY = {
   model: "gpt-4",
   name: "Aether AI",
@@ -89,7 +88,9 @@ function isExpired(timestamp: string | null | undefined): boolean {
 }
 
 function buildReauthError() {
-  return new Error("OAuth access token expired or is no longer valid. Sign in again.");
+  return new Error(
+    "OAuth access token expired or is no longer valid. Sign in again."
+  );
 }
 
 async function getAccountForProvider(userId: string, providerId: ProviderId) {
@@ -216,7 +217,10 @@ async function exchangeBootstrapAccessToken(
   }
 
   const subjectToken = authAccount.accessToken;
-  const dpop = await getPersistedDpopClient(providerId, authAccount.accessToken);
+  const dpop = await getPersistedDpopClient(
+    providerId,
+    authAccount.accessToken
+  );
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
 
   const { response, result } = await dpop.withNonceRetry(async (nonce) => {
@@ -428,30 +432,24 @@ export async function prepareAgentAssertionForProvider(params: {
       env.NEXT_PUBLIC_APP_URL,
       env.ZENTITY_URL
     );
-    runtime = await ensureHostRegistered(
-      runtime,
-      bootstrap,
-      {
-        attestationHeaders: {
-          "OAuth-Client-Attestation": attestation,
-          "OAuth-Client-Attestation-PoP": attestationPop,
-        },
-        requiredAttestationTier: "attested",
-      }
-    );
+    runtime = await ensureHostRegistered(runtime, bootstrap, {
+      attestationHeaders: {
+        "OAuth-Client-Attestation": attestation,
+        "OAuth-Client-Attestation-PoP": attestationPop,
+      },
+      requiredAttestationTier: "attested",
+    });
 
     // Agent sessions inherit host policies at registration time. Re-register
     // attested runtimes so a session created before attestation succeeded
     // cannot stay pinned to the weaker default policy set.
-    runtime = await registerAgentSession(
-      runtime,
-      bootstrap,
-      { force: hadRegisteredSession }
-    );
-  } else if (!runtime.hostId) {
-    runtime = await ensureHostRegistered(runtime, bootstrap);
+    runtime = await registerAgentSession(runtime, bootstrap, {
+      force: hadRegisteredSession,
+    });
+  } else if (runtime.hostId) {
     runtime = await registerAgentSession(runtime, bootstrap);
   } else {
+    runtime = await ensureHostRegistered(runtime, bootstrap);
     runtime = await registerAgentSession(runtime, bootstrap);
   }
 

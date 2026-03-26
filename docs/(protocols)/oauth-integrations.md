@@ -35,7 +35,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
 | `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
 | `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
-| `GET /api/auth/pq-jwks` | (custom) | Post-quantum signing keys (ML-DSA-65) |
+| `GET /api/auth/jwks` | (custom) | Post-quantum signing keys (ML-DSA-65) |
 
 ### User data
 

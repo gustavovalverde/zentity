@@ -20,7 +20,10 @@ describe("parseOAuthJsonResponse", () => {
   });
 
   it("throws a useful error for empty bodies", async () => {
-    const response = new Response("", { status: 400, statusText: "Bad Request" });
+    const response = new Response("", {
+      status: 400,
+      statusText: "Bad Request",
+    });
 
     await expect(
       parseOAuthJsonResponse(response, "OAuth token exchange")
