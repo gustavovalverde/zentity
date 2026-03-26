@@ -40,10 +40,16 @@ if (typeof window === "undefined") {
       return;
     }
 
-    // Bypass API routes - they don't need COEP headers and may use streaming
     const url = new URL(r.url);
-    if (url.pathname.startsWith("/api/")) {
-      return; // Let browser handle normally
+
+    // Bypass routes that don't need cross-origin isolation headers.
+    // API routes may use streaming; wallet pages need unsafe-none COEP for MetaMask.
+    if (
+      url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/dashboard/attestation") ||
+      url.pathname.startsWith("/dashboard/defi-demo")
+    ) {
+      return;
     }
 
     const request =
@@ -67,7 +73,14 @@ if (typeof window === "undefined") {
           if (!coepCredentialless) {
             newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
           }
-          newHeaders.set("Cross-Origin-Opener-Policy", coopHeader);
+          // Preserve the server's COOP header if it's a valid isolation value
+          // (e.g., same-origin-allow-popups for MetaMask on attestation pages).
+          const serverCoop = response.headers.get("Cross-Origin-Opener-Policy");
+          if (serverCoop && allowedCoopHeaders.has(serverCoop)) {
+            newHeaders.set("Cross-Origin-Opener-Policy", serverCoop);
+          } else {
+            newHeaders.set("Cross-Origin-Opener-Policy", coopHeader);
+          }
 
           return new Response(response.body, {
             status: response.status,

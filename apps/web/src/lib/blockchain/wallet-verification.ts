@@ -3,12 +3,15 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
+import { blockchainAttestations } from "@/lib/db/schema/attestation";
 import { accounts, walletAddresses } from "@/lib/db/schema/auth";
 
 /**
  * Verifies that a wallet address is associated with the given user.
- * Checks both the wallet_address table (SIWE registrations) and the
- * accounts table (wallet-based OAuth logins).
+ * Checks:
+ * 1. wallet_address table (SIWE registrations)
+ * 2. accounts table (wallet-based OAuth logins)
+ * 3. blockchain_attestations table (wallets used for prior attestations)
  */
 export async function verifyWalletOwnership(
   userId: string,
@@ -17,21 +20,14 @@ export async function verifyWalletOwnership(
   const normalizedAddress = walletAddress.toLowerCase();
 
   // Check wallet_address table (SIWE-registered wallets)
-  const walletRow = await db
-    .select({ id: walletAddresses.id })
+  const walletRows = await db
+    .select({ address: walletAddresses.address })
     .from(walletAddresses)
     .where(eq(walletAddresses.userId, userId))
-    .limit(10)
     .all();
 
-  for (const row of walletRow) {
-    // walletAddresses stores mixed-case; compare lowercased
-    const wa = await db
-      .select({ address: walletAddresses.address })
-      .from(walletAddresses)
-      .where(eq(walletAddresses.id, row.id))
-      .get();
-    if (wa && wa.address.toLowerCase() === normalizedAddress) {
+  for (const row of walletRows) {
+    if (row.address.toLowerCase() === normalizedAddress) {
       return true;
     }
   }
@@ -45,6 +41,19 @@ export async function verifyWalletOwnership(
 
   for (const row of accountRows) {
     if (row.accountId.toLowerCase() === normalizedAddress) {
+      return true;
+    }
+  }
+
+  // Check blockchain_attestations for wallets previously used by this user
+  const attestationRows = await db
+    .select({ walletAddress: blockchainAttestations.walletAddress })
+    .from(blockchainAttestations)
+    .where(eq(blockchainAttestations.userId, userId))
+    .all();
+
+  for (const row of attestationRows) {
+    if (row.walletAddress.toLowerCase() === normalizedAddress) {
       return true;
     }
   }

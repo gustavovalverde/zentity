@@ -154,7 +154,8 @@ const nextConfig: NextConfig = {
           ].join("; ")
         : [
             "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
-            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
+            // http://127.0.0.1:8545 for local Hardhat RPC (127.0.0.1 !== localhost in CSP)
+            `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${zkPassportDomains} ${web3Domains}`,
             "worker-src 'self' blob:",
           ].join("; ");
 
@@ -236,6 +237,29 @@ const nextConfig: NextConfig = {
       },
       // All other routes: standard security headers (no COOP restriction)
       { source: "/(.*)", headers: securityHeaders },
+      // Web3 wallet pages — MUST be last so they override both catch-alls.
+      // Relaxed COOP (same-origin-allow-popups) for MetaMask popup signing.
+      // COEP: unsafe-none because these pages don't need SharedArrayBuffer
+      // and credentialless COEP can interfere with extension port messaging.
+      ...(
+        [
+          "/dashboard/attestation",
+          "/dashboard/defi-demo",
+          "/dashboard/defi-demo/:path*",
+        ] as const
+      ).map((source) => ({
+        source,
+        headers: [
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
+          },
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "unsafe-none",
+          },
+        ],
+      })),
     ];
   },
 };

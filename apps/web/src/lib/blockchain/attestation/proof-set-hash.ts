@@ -34,7 +34,12 @@ export async function computeProofSetHash(
     return null;
   }
 
-  const sortedHashes = rows.map((r) => r.proofHash).sort();
+  const sortedHashes = rows
+    .map((r) => {
+      const h = r.proofHash;
+      return h.startsWith("0x") ? h : `0x${h}`;
+    })
+    .sort();
 
   return keccak256(
     encodePacked(

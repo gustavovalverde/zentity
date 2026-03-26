@@ -24,6 +24,7 @@
   ],
   "ignoreDependencies": [
     "@vladmandic/human-models",
+    "@zentity/fhevm-contracts",
     "tfhe",
     "buffer",
     "tailwindcss",

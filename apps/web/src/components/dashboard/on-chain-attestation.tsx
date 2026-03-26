@@ -284,6 +284,12 @@ export function OnChainAttestation({
             r: permit.r as `0x${string}`,
             s: permit.s as `0x${string}`,
           },
+          // Consent signature (v=0 skips verification)
+          0,
+          "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+          "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+          0,
+          BigInt(0),
           toHex(encrypted.handles[0] as Uint8Array),
           toHex(encrypted.handles[1] as Uint8Array),
           toHex(encrypted.handles[2] as Uint8Array),
