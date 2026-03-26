@@ -76,6 +76,52 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
     };
   })(),
+  wine: (() => {
+    const signInScopes = ["openid", "proof:age"];
+    const stepUpScopes = ["identity.name", "identity.address"];
+    return {
+      id: "wine",
+      name: "Vino Delivery",
+      tagline: "Fine wine at your door",
+      description:
+        "French law requires age verification with double anonymity: the site learns only a yes/no age result, and the verification provider never learns which site was visited.",
+      providerId: "zentity-wine",
+      signInScopes,
+      stepUpScopes,
+      stepUpClaimKeys: ["name", "address"],
+      stepUpAction: "Complete Purchase",
+      dcr: {
+        clientName: "Vino Delivery",
+        defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
+      },
+      compliance: [
+        {
+          label: "ARCOM",
+          detail:
+            "French regulatory standard mandates double anonymity: the site cannot identify the user, and the provider cannot identify the site. Mandatory since April 2025.",
+          variant: "regulation",
+        },
+        {
+          label: "Loi SREN",
+          detail:
+            "French law (No. 2024-449) empowers ARCOM to enforce age verification standards on restricted-goods platforms. Penalties up to 4% of worldwide turnover.",
+          variant: "regulation",
+        },
+        {
+          label: "Pairwise Pseudonymity",
+          detail:
+            "Each session uses a unique, unlinkable identifier. No cross-session correlation is possible.",
+          variant: "mechanism",
+        },
+      ],
+      notShared: [
+        "Your email address",
+        "Your exact date of birth",
+        "Your document details",
+        "Your nationality",
+      ],
+    };
+  })(),
   exchange: (() => {
     const signInScopes = ["openid", "email", "proof:verification"];
     const stepUpScopes = ["identity.nationality"];
@@ -135,89 +181,48 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
     };
   })(),
-  wine: (() => {
-    const signInScopes = ["openid", "proof:age"];
-    const stepUpScopes = ["identity.name", "identity.address"];
+  x402: (() => {
+    const signInScopes = ["openid", "email", "poh"];
+    const stepUpScopes: string[] = [];
     return {
-      id: "wine",
-      name: "Vino Delivery",
-      tagline: "Fine wine at your door",
+      id: "x402",
+      name: "x402 Protocol",
+      tagline: "Machine Commerce",
       description:
-        "French law requires age verification with double anonymity: the site learns only a yes/no age result, and the verification provider never learns which site was visited.",
-      providerId: "zentity-wine",
+        "Machines need to pay machines, but compliance rules still apply. An agent proves it represents a verified human, and an on-chain encrypted check confirms eligibility before settlement. No identity data is revealed to any party.",
+      providerId: "zentity-x402",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: ["name", "address"],
-      stepUpAction: "Complete Purchase",
+      stepUpClaimKeys: [],
       dcr: {
-        clientName: "Vino Delivery",
+        clientName: "x402 Demo",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
       compliance: [
         {
-          label: "ARCOM",
+          label: "x402",
           detail:
-            "French regulatory standard mandates double anonymity: the site cannot identify the user, and the provider cannot identify the site. Mandatory since April 2025.",
-          variant: "regulation",
+            "HTTP 402 Payment Required protocol for machine commerce. Services advertise compliance requirements in structured responses; agents negotiate access automatically.",
+          variant: "mechanism" as const,
         },
         {
-          label: "Loi SREN",
+          label: "FHE Oracle",
           detail:
-            "French law (No. 2024-449) empowers ARCOM to enforce age verification standards on restricted-goods platforms. Penalties up to 4% of worldwide turnover.",
-          variant: "regulation",
+            "On-chain compliance checks using fully homomorphic encryption. The smart contract evaluates encrypted identity attributes without decryption.",
+          variant: "mechanism" as const,
         },
         {
-          label: "Pairwise Pseudonymity",
+          label: "Proof-of-Human",
           detail:
-            "Each session uses a unique, unlinkable identifier. No cross-session correlation is possible.",
-          variant: "mechanism",
+            "Compact JWTs asserting verification tier and sybil resistance. No personal data is disclosed, only a cryptographic yes or no.",
+          variant: "mechanism" as const,
         },
       ],
       notShared: [
-        "Your email address",
+        "Your identity documents",
         "Your exact date of birth",
-        "Your document details",
-        "Your nationality",
-      ],
-    };
-  })(),
-  aid: (() => {
-    const signInScopes = ["openid", "email", "proof:verification"];
-    const stepUpScopes = ["identity.name", "identity.nationality"];
-    return {
-      id: "aid",
-      name: "Relief Global",
-      tagline: "Emergency Aid Distribution",
-      description:
-        "Humanitarian aid requires identity verification to prevent duplicate claims, but centralized databases endanger vulnerable populations. Zentity proves eligibility with minimal disclosure and zero data retention.",
-      providerId: "zentity-aid",
-      signInScopes,
-      stepUpScopes,
-      stepUpClaimKeys: ["name", "nationality"],
-      stepUpAction: "Claim Aid",
-      dcr: {
-        clientName: "Relief Global",
-        defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
-      },
-      compliance: [
-        {
-          label: "GDPR Art. 9",
-          detail:
-            "Processing identity data of vulnerable populations requires a vital-interests legal basis, not consent, making data minimization structurally mandatory.",
-          variant: "regulation",
-        },
-        {
-          label: "Data Minimization",
-          detail:
-            "Only name and nationality shared. No biometrics retained, no centralized identity database created.",
-          variant: "mechanism",
-        },
-      ],
-      notShared: [
-        "Your biometric data",
-        "Your full address history",
-        "Your family connections",
-        "Your exact location",
+        "Your face or biometric data",
+        "Your compliance level to unrelated services",
       ],
     };
   })(),
@@ -229,7 +234,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       name: "VeriPass",
       tagline: "Digital Credential Wallet",
       description:
-        "eIDAS 2.0 mandates that users control exactly which attributes they share. Receive one verifiable credential, then selectively disclose different claims to different verifiers.",
+        "eIDAS 2.0 mandates that users control which attributes they share. Receive one credential from Zentity, then reveal only the specific fields each verifier needs. One issuance, many presentations, no over-sharing.",
       providerId: "zentity-veripass",
       signInScopes,
       stepUpScopes,
@@ -291,7 +296,7 @@ export const SCENARIOS: Record<string, Scenario> = {
       name: "Aether AI",
       tagline: "Personal Shopping Agent",
       description:
-        "AI agents act on your behalf but need explicit authorization for sensitive actions. CIBA lets the agent request approval via a backchannel — you approve on your own device, and the agent completes the purchase.",
+        "AI agents act on your behalf but need explicit authorization for sensitive actions. The agent requests approval through a secure backchannel; you confirm on your own device, and it completes the purchase. Your credentials never touch the agent.",
       providerId: "zentity-aether",
       signInScopes,
       stepUpScopes,
@@ -314,7 +319,7 @@ export const SCENARIOS: Record<string, Scenario> = {
         {
           label: "CIBA",
           detail:
-            "OpenID Client Initiated Backchannel Authentication enables decoupled authorization — the agent requests access, the user approves from a separate device.",
+            "OpenID Client Initiated Backchannel Authentication enables decoupled authorization: the agent requests access, and the user approves from a separate device.",
           variant: "mechanism" as const,
         },
         {
@@ -338,48 +343,43 @@ export const SCENARIOS: Record<string, Scenario> = {
       ],
     };
   })(),
-  x402: (() => {
-    const signInScopes = ["openid", "email", "poh"];
-    const stepUpScopes: string[] = [];
+  aid: (() => {
+    const signInScopes = ["openid", "email", "proof:verification"];
+    const stepUpScopes = ["identity.name", "identity.nationality"];
     return {
-      id: "x402",
-      name: "x402 Protocol",
-      tagline: "Machine Commerce",
+      id: "aid",
+      name: "Relief Global",
+      tagline: "Emergency Aid Distribution",
       description:
-        "HTTP 402 enables machine-to-machine payments with built-in compliance. Resource servers declare requirements, agents prove humanity through Zentity's compliance oracle, and on-chain FHE-encrypted checks gate settlement — all without revealing identity data.",
-      providerId: "zentity-x402",
+        "Humanitarian aid must verify identity to prevent duplicate claims, but centralized databases endanger vulnerable populations. Zentity proves eligibility through minimal disclosure with zero data retention.",
+      providerId: "zentity-aid",
       signInScopes,
       stepUpScopes,
-      stepUpClaimKeys: [],
+      stepUpClaimKeys: ["name", "nationality"],
+      stepUpAction: "Claim Aid",
       dcr: {
-        clientName: "x402 Demo",
+        clientName: "Relief Global",
         defaultScopes: buildDcrScopes(signInScopes, stepUpScopes),
       },
       compliance: [
         {
-          label: "x402",
+          label: "GDPR Art. 9",
           detail:
-            "HTTP 402 Payment Required protocol for machine commerce. Resource servers advertise compliance requirements in structured responses; agents negotiate access automatically.",
-          variant: "mechanism" as const,
+            "Processing identity data of vulnerable populations requires a vital-interests legal basis, not consent, making data minimization structurally mandatory.",
+          variant: "regulation",
         },
         {
-          label: "FHE Oracle",
+          label: "Data Minimization",
           detail:
-            "On-chain compliance checks using fully homomorphic encryption. The smart contract evaluates encrypted identity attributes without decryption.",
-          variant: "mechanism" as const,
-        },
-        {
-          label: "Proof-of-Human",
-          detail:
-            "Compact JWTs asserting verification tier and sybil resistance. No personal data disclosed — just a cryptographic yes/no.",
-          variant: "mechanism" as const,
+            "Only name and nationality shared. No biometrics retained, no centralized identity database created.",
+          variant: "mechanism",
         },
       ],
       notShared: [
-        "Your identity documents",
-        "Your exact date of birth",
-        "Your face or biometric data",
-        "Your compliance level to unrelated services",
+        "Your biometric data",
+        "Your full address history",
+        "Your family connections",
+        "Your exact location",
       ],
     };
   })(),

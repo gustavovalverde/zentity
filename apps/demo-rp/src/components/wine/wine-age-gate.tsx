@@ -84,8 +84,9 @@ export function WineAgeGate({
             </h1>
             <p className="mx-auto max-w-sm font-sans text-lg text-muted-foreground leading-relaxed">
               You must be 18 or older to browse and purchase alcohol. Verify
-              your age privately — your birthdate is never shared, and neither
-              party learns more than necessary.
+              your age privately: this site receives only a boolean result, and
+              the verification provider never learns which site you visited.
+              Neither party can identify the other.
             </p>
           </div>
 

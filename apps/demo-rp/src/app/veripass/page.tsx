@@ -273,10 +273,10 @@ export default function VeriPassPage() {
                 Digital Credential Wallet
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                eIDAS 2.0 requires that users control which attributes they
-                share with each verifier. Receive one verifiable credential,
-                then selectively disclose different claims to different parties.
-                Only disclosed claims are visible; everything else remains
+                One verification, many uses. A border agent sees nationality;
+                an employer sees document verification; a venue sees only age.
+                Receive one credential from Zentity, then choose exactly which
+                attributes each verifier gets. Undisclosed fields stay
                 cryptographically hidden.
               </p>
             </div>

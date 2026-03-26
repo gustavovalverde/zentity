@@ -103,8 +103,10 @@ export default function BankPage() {
                 <span className="text-success italic">measure.</span>
               </h1>
               <p className="mx-auto max-w-sm font-light text-lg text-white/60 leading-relaxed">
-                Exclusive banking services tailored for the distinguished few.
-                Access your portfolio with uncompromising security.
+                EU anti-money laundering rules require identity verification
+                before opening an account. Sign in to confirm your verification
+                status, then share only your name when the regulation demands
+                it. No document uploads, no passport scans.
               </p>
             </div>
 

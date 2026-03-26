@@ -151,8 +151,10 @@ export default function ExchangePage() {
                 </span>
               </div>
               <p className="text-muted-foreground text-xs">
-                MiCA requires identity verification for all trading accounts.
-                Connect with Zentity for privacy-preserving KYC.
+                MiCA and the Travel Rule require identity verification and
+                nationality screening for all trading accounts. Zentity proves
+                jurisdiction eligibility through zero-knowledge proofs; the
+                exchange never sees the underlying document.
               </p>
               <DcrRegistration
                 clientName={scenario.dcr.clientName}

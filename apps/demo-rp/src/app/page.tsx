@@ -34,6 +34,14 @@ const LANDING_UI: LandingScenario[] = [
     title: "Customer Due Diligence",
   },
   {
+    id: "wine",
+    icon: null,
+    brandName: "Vino Delivery",
+    brandSub: "Fine Goods",
+    brandFont: "font-serif tracking-tight text-xl italic",
+    title: "Age-Gated Delivery",
+  },
+  {
     id: "exchange",
     icon: FlashIcon,
     brandName: "NOVAX",
@@ -42,20 +50,12 @@ const LANDING_UI: LandingScenario[] = [
     title: "Crypto-Asset KYC",
   },
   {
-    id: "wine",
-    icon: null,
-    brandName: "Vino Delivery",
-    brandSub: "Fine Goods",
-    brandFont: "font-serif tracking-tight text-xl italic",
-    title: "Double Anonymity",
-  },
-  {
-    id: "aid",
-    icon: Globe02Icon,
-    brandName: "Relief Global",
-    brandSub: "Humanitarian Aid",
-    brandFont: "font-bold tracking-tight",
-    title: "Humanitarian Verification",
+    id: "x402",
+    icon: BlockchainIcon,
+    brandName: "x402",
+    brandSub: "Machine Commerce",
+    brandFont: "font-mono tracking-tight font-bold",
+    title: "Machine-to-Machine Compliance",
   },
   {
     id: "veripass",
@@ -71,15 +71,15 @@ const LANDING_UI: LandingScenario[] = [
     brandName: "Aether AI",
     brandSub: "Personal Shopping Agent",
     brandFont: "font-bold tracking-tight",
-    title: "Agent Authorization",
+    title: "AI Agent Checkout",
   },
   {
-    id: "x402",
-    icon: BlockchainIcon,
-    brandName: "x402",
-    brandSub: "Machine Commerce",
-    brandFont: "font-mono tracking-tight font-bold",
-    title: "Compliance Oracle",
+    id: "aid",
+    icon: Globe02Icon,
+    brandName: "Relief Global",
+    brandSub: "Humanitarian Aid",
+    brandFont: "font-bold tracking-tight",
+    title: "Humanitarian Verification",
   },
 ];
 
@@ -142,10 +142,12 @@ export default function Page() {
           </h1>
 
           <p className="landing-copy mx-auto max-w-2xl text-lg md:text-xl">
-            Seven real-world scenarios, one cryptographic answer. Each demo
-            satisfies a different compliance obligation through the same
-            architecture: zero-knowledge proofs, FHE encryption, and decoupled
-            authorization — with no personal data stored.
+            Every demo below solves a real compliance obligation: age gates,
+            KYC, sanctions screening, humanitarian aid. The user controls what
+            is shared and when. A wine shop receives only &ldquo;yes, over
+            18.&rdquo; A bank receives the name it needs for CDD. Each
+            attribute requires explicit consent at the moment the obligation
+            arises.
           </p>
 
           <div className="flex flex-col justify-center gap-3 pt-4 sm:flex-row">
@@ -240,78 +242,6 @@ export default function Page() {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section className="bg-muted/30 px-4 py-14 md:px-6 md:py-16">
-        <div className="mx-auto max-w-4xl text-center">
-          <h2 className="landing-section-title mb-10">How it works</h2>
-
-          <div className="relative grid gap-8 md:grid-cols-3">
-            <div className="absolute top-8 left-0 -z-10 hidden h-0.5 w-full bg-border md:block" />
-
-            {[
-              {
-                step: "1",
-                title: "Connect",
-                desc: "The user signs in with their Zentity identity.",
-              },
-              {
-                step: "2",
-                title: "Verify",
-                desc: "Zentity verifies the requested claims cryptographically.",
-              },
-              {
-                step: "3",
-                title: "Access",
-                desc: "The user gains access, and no personal data touches your servers.",
-              },
-            ].map((item) => (
-              <div className="group relative" key={item.step}>
-                <div className="z-10 mx-auto mb-4 flex size-16 items-center justify-center rounded-full border bg-card transition-all group-hover:border-primary/50">
-                  <span className="font-bold text-muted-foreground/50 text-xl transition-colors group-hover:text-primary">
-                    {item.step}
-                  </span>
-                </div>
-                <h3 className="mb-2 font-bold text-lg">{item.title}</h3>
-                <p className="landing-body">{item.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="landing-section">
-        <div className="landing-container">
-          <Card>
-            <CardContent className="p-7 text-center md:p-10">
-              <h2 className="landing-section-title">Get started</h2>
-              <p className="landing-copy mx-auto mt-3 max-w-xl">
-                Each scenario authenticates through your Zentity account via
-                OAuth. Sign up once, then explore all six demos.
-              </p>
-              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <a
-                  className="inline-flex h-11 items-center justify-center rounded-lg bg-primary px-7 font-medium text-base text-primary-foreground transition-colors hover:bg-primary/80"
-                  href={`${env.NEXT_PUBLIC_ZENTITY_URL}/sign-up?fresh=1`}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Sign Up for Zentity
-                </a>
-                <a
-                  className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background px-7 font-medium text-base transition-colors hover:bg-muted hover:text-foreground"
-                  href="https://zentity.xyz"
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Learn More
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="border-border border-t bg-muted/30">
         <div className="mx-auto max-w-6xl px-4 py-12">
@@ -319,7 +249,8 @@ export default function Page() {
             <div className="col-span-2 md:col-span-1">
               <span className="font-bold text-xl">Zentity</span>
               <p className="mt-4 text-muted-foreground text-sm">
-                Identity verification demos built on ZK and FHE cryptography.
+                Verify facts, not identity. Powered by zero-knowledge proofs
+                and fully homomorphic encryption.
               </p>
               <a
                 aria-label="GitHub"

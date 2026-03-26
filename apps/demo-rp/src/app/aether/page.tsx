@@ -200,9 +200,11 @@ function LandingView({
             Your AI Shopping Assistant
           </h1>
           <p className="mx-auto max-w-md text-base text-white/60 leading-relaxed sm:text-lg">
-            Aether searches, compares, and purchases on your behalf. When it's
-            time to pay, you approve from your own device — the agent never
-            touches your credentials.
+            Aether searches, compares, and purchases on your behalf. When it
+            is time to pay, the agent requests your authorization through a
+            separate channel; you approve on your own device. The service
+            knows a verified human authorized the action, enabling per-human
+            trust rather than per-agent guesswork.
           </p>
         </div>
 
