@@ -13,6 +13,7 @@ import z from "zod";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
+import { computeProofSetHash } from "@/lib/blockchain/attestation/proof-set-hash";
 import {
   getEnabledNetworks,
   getExplorerTxUrl,
@@ -22,9 +23,9 @@ import {
   canCreateProvider,
   createProvider,
 } from "@/lib/blockchain/providers/factory";
+import { verifyWalletOwnership } from "@/lib/blockchain/wallet-verification";
 import {
   createBlockchainAttestation,
-  getAttestationEvidenceByUserAndVerification,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
   resetBlockchainAttestation,
@@ -34,6 +35,7 @@ import {
   updateBlockchainAttestationWallet,
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
+import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 
@@ -114,6 +116,10 @@ export const attestationRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+        consentScope: z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{1,2}$/)
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -156,6 +162,19 @@ export const attestationRouter = router({
         });
       }
 
+      // Verify wallet ownership
+      const isOwner = await verifyWalletOwnership(
+        ctx.userId,
+        input.walletAddress
+      );
+      if (!isOwner) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "This wallet is not linked to your account. Connect it first via Settings.",
+        });
+      }
+
       // Check on-chain status
       const chainStatus = await provider.getAttestationStatus(
         input.walletAddress
@@ -184,11 +203,17 @@ export const attestationRouter = router({
         });
       }
 
+      // Derive blacklist status from PEP/sanctions screening
+      const bundle = await getIdentityBundleByUserId(ctx.userId);
+      const isBlacklisted =
+        bundle?.pepScreeningResult === "match" ||
+        bundle?.sanctionsScreeningResult === "match";
+
       const identityData = {
         birthYearOffset: model.compliance.birthYearOffset,
         countryCode: countryCodeToNumeric(model.issuerCountry || ""),
         complianceLevel: model.compliance.numericLevel,
-        isBlacklisted: false,
+        isBlacklisted,
       };
 
       // Create or reset DB record
@@ -217,12 +242,9 @@ export const attestationRouter = router({
         }
       }
 
-      const attestationEvidence =
-        await getAttestationEvidenceByUserAndVerification(
-          ctx.userId,
-          model.verificationId
-        );
-      const proofSetHash = attestationEvidence?.proofSetHash ?? undefined;
+      const proofSetHash =
+        (await computeProofSetHash(ctx.userId, model.verificationId)) ??
+        undefined;
 
       // Sign EIP-712 permit
       const permitResult = await provider.signPermit({
@@ -231,13 +253,13 @@ export const attestationRouter = router({
         ...(proofSetHash ? { proofSetHash } : {}),
       });
 
-      // Wire attestation evidence (activates previously dead code)
       await upsertAttestationEvidence({
         userId: ctx.userId,
         verificationId: model.verificationId,
         policyVersion: POLICY_VERSION,
         policyHash: POLICY_HASH,
         proofSetHash,
+        consentScope: input.consentScope,
       });
 
       return {

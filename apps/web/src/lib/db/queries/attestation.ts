@@ -17,12 +17,15 @@ import {
 } from "../schema/attestation";
 
 export async function upsertAttestationEvidence(args: {
+  consentScope?: string | undefined;
+  policyHash: string | null;
+  policyVersion: string | null;
+  proofSetHash: string | null | undefined;
   userId: string;
   verificationId: string;
-  policyVersion: string | null;
-  policyHash: string | null;
-  proofSetHash: string | null | undefined;
 }): Promise<void> {
+  const now = new Date().toISOString();
+
   await db
     .insert(attestationEvidence)
     .values({
@@ -32,6 +35,8 @@ export async function upsertAttestationEvidence(args: {
       policyVersion: args.policyVersion,
       policyHash: args.policyHash,
       proofSetHash: args.proofSetHash ?? null,
+      consentScope: args.consentScope ?? null,
+      consentedAt: args.consentScope ? now : null,
     })
     .onConflictDoUpdate({
       target: [attestationEvidence.userId, attestationEvidence.verificationId],
@@ -41,6 +46,9 @@ export async function upsertAttestationEvidence(args: {
         ...(args.proofSetHash === undefined
           ? {}
           : { proofSetHash: args.proofSetHash }),
+        ...(args.consentScope
+          ? { consentScope: args.consentScope, consentedAt: now }
+          : {}),
         updatedAt: sql`datetime('now')`,
       },
     })
