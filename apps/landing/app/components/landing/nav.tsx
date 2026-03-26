@@ -36,8 +36,8 @@ const navLinks = [
   { href: "/", label: "Home" },
   { href: "/capabilities", label: "Capabilities" },
   { href: "/agents", label: "Agents" },
+  { href: "/payments", label: "Payments" },
   { href: "/zk-auth", label: "ZK-Auth" },
-  { href: "/whitepaper", label: "White Paper" },
   { href: "/docs/architecture", label: "Docs" },
 ];
 
