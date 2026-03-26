@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { whitepaper } from "virtual:markdown-content";
 import type { MetaFunction } from "react-router";
 import { useLoaderData } from "react-router";
-
 import { BreachTimeline } from "@/components/docs/breach-timeline";
 import { Footer } from "@/components/landing/footer";
 import { Nav } from "@/components/landing/nav";
@@ -22,12 +20,7 @@ export const meta: MetaFunction = () => [
 ];
 
 export async function loader() {
-  const filePath = resolve(
-    import.meta.dirname,
-    "../../../../docs/papers/whitepapers/verification-without-collection/WHITEPAPER.md",
-  );
-  const rawContent = await readFile(filePath, "utf-8");
-  const stripped = rawContent.replace(/^#[^\n]*\n\n\*\*[^\n]*\*\*\n\n/, "");
+  const stripped = whitepaper.replace(/^#[^\n]*\n\n\*\*[^\n]*\*\*\n\n/, "");
   const [beforeTimeline, timelineMarkdown, afterTimeline] = stripped.split(
     /<!--\s*\/?BREACH_TIMELINE\s*-->/,
   );

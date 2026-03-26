@@ -1,8 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { terms } from "virtual:markdown-content";
 import type { MetaFunction } from "react-router";
 import { useLoaderData } from "react-router";
-
 import { LegalLayout, stripH1 } from "@/components/legal-layout";
 
 export const meta: MetaFunction = () => [
@@ -14,12 +12,7 @@ export const meta: MetaFunction = () => [
 ];
 
 export async function loader() {
-  const filePath = resolve(
-    import.meta.dirname,
-    "../../../../docs/legal/terms-of-service.md",
-  );
-  const raw = await readFile(filePath, "utf-8");
-  return { content: stripH1(raw) };
+  return { content: stripH1(terms) };
 }
 
 export default function TermsPage() {

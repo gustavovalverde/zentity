@@ -1,4 +1,6 @@
-# Zentity OIDC Disclosure Profile
+---
+title: OIDC Disclosure Profile
+---
 
 The Zentity disclosure profile defines how identity claims are requested, authorized, and delivered across all channels. It builds on standard OAuth 2.0, OpenID Connect, CIBA, and OIDC4IDA, adding privacy-preserving semantics for vault-gated PII.
 
