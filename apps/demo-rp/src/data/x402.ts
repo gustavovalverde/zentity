@@ -49,9 +49,9 @@ export const RESOURCES: X402Resource[] = [
     },
   },
   {
-    id: "age-gated",
-    name: "Age-Gated Content",
-    description: "Financial analytics — requires Tier 2+ (age verified)",
+    id: "verified-identity",
+    name: "Verified Identity",
+    description: "Financial analytics — requires Tier 2+ (verified human)",
     endpoint: "/api/analytics/market",
     icon: DashboardSquare01Icon,
     price: "$0.000001",

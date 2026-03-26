@@ -326,11 +326,11 @@ const TIERS = [
     payerProves: "Valid USDC authorization",
   },
   {
-    title: "Age-Gated Content",
+    title: "Verified Identity",
     tier: "Tier 2+",
     tierColor: "pink" as SemanticColor,
     icon: IconUserCheck,
-    example: "Market analytics, licensed content, age-restricted goods",
+    example: "Licensed content, KYC-gated APIs, professional services",
     check: "JWKS verification of PoH JWT + tier ≥ 2",
     payerProves: "Payment + Proof-of-Human token",
   },
@@ -664,8 +664,9 @@ export default function PaymentsPage() {
           <p className="landing-body mt-2 max-w-2xl">
             All 3 tiers share the same HTTP extension mechanism. What varies is
             the <strong>required evidence</strong>: payment-only resources need
-            no identity proof, age-gated resources verify a Proof-of-Human tier,
-            and regulated resources add an on-chain attestation check.
+            no identity proof, identity-gated resources verify a Proof-of-Human
+            tier, and regulated resources add on-chain attribute checks via
+            FHEVM.
           </p>
           <div className="mt-6">
             <TierCards />
