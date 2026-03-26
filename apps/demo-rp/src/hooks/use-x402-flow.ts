@@ -11,6 +11,7 @@ import type {
   X402FlowState,
   X402Resource,
 } from "@/data/x402";
+import { getExplorerUrl } from "@/data/x402";
 import { wagmiConfig } from "@/lib/wagmi-config";
 import { createX402PaymentClient } from "@/lib/x402-client";
 
@@ -340,6 +341,21 @@ export function useX402Flow(): UseX402FlowReturn {
           );
 
           if (retryRes.ok) {
+            const txHash = retryBody.settlement?.transaction as string | undefined;
+            const txNetwork = retryBody.settlement?.network as string | undefined;
+            if (txHash && txNetwork) {
+              const explorerUrl = getExplorerUrl(txNetwork, txHash);
+              if (explorerUrl) {
+                push(
+                  entry({
+                    type: "action",
+                    label: "Payment settled on-chain",
+                    detail: `Transaction: ${txHash.substring(0, 18)}...`,
+                    link: { href: explorerUrl, text: "Verify on Base Sepolia Explorer" },
+                  })
+                );
+              }
+            }
             setAccessOutcome({
               granted: true,
               onChain: retryBody.onChain as { status: string } | undefined,
@@ -381,14 +397,14 @@ export function useX402Flow(): UseX402FlowReturn {
                   ? { "PAYMENT-SIGNATURE": "(base64 signed)" }
                   : {}),
               },
-              body: { resourceId: resource.id, paid: true },
+              body: { resourceId: resource.id },
             })
           );
 
           const paidRes = await fetch("/api/x402/access", {
             method: "POST",
             headers: retryHeaders,
-            body: JSON.stringify({ resourceId: resource.id, paid: true }),
+            body: JSON.stringify({ resourceId: resource.id }),
           });
           const paidBody = await paidRes.json();
 
@@ -404,6 +420,24 @@ export function useX402Flow(): UseX402FlowReturn {
               body: paidBody,
             })
           );
+
+          if (paidRes.ok) {
+            const txHash = paidBody.settlement?.transaction as string | undefined;
+            const txNetwork = paidBody.settlement?.network as string | undefined;
+            if (txHash && txNetwork) {
+              const explorerUrl = getExplorerUrl(txNetwork, txHash);
+              if (explorerUrl) {
+                push(
+                  entry({
+                    type: "action",
+                    label: "Payment settled on-chain",
+                    detail: `Transaction: ${txHash.substring(0, 18)}...`,
+                    link: { href: explorerUrl, text: "Verify on Base Sepolia Explorer" },
+                  })
+                );
+              }
+            }
+          }
           setState(paidRes.ok ? "success" : "denied");
         }
       } catch (e) {

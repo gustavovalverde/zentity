@@ -31,6 +31,7 @@ function buildPaymentRequired(resource: X402Resource) {
   const body = {
     x402Version: 2,
     accepts,
+    resource: { url: resource.endpoint },
     description: routeConfig.description,
     ...(routeConfig.extensions ? { extensions: routeConfig.extensions } : {}),
   };

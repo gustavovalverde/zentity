@@ -6,7 +6,7 @@ import {
 import type { IconSvgElement } from "@hugeicons/react";
 
 export interface X402Resource {
-  amountUnits: string;
+  amount: string;
   asset: string;
   description: string;
   eip712Name: string;
@@ -30,8 +30,8 @@ export const RESOURCES: X402Resource[] = [
     description: "Weather data — payment only, no compliance",
     endpoint: "/api/weather/forecast",
     icon: CloudIcon,
-    price: "$0.001",
-    amountUnits: "1000",
+    price: "$0.000001",
+    amount: "1",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     eip712Name: "USDC",
     eip712Version: "2",
@@ -54,8 +54,8 @@ export const RESOURCES: X402Resource[] = [
     description: "Financial analytics — requires Tier 2+ (age verified)",
     endpoint: "/api/analytics/market",
     icon: DashboardSquare01Icon,
-    price: "$0.01",
-    amountUnits: "10000",
+    price: "$0.000001",
+    amount: "1",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     eip712Name: "USDC",
     eip712Version: "2",
@@ -76,8 +76,8 @@ export const RESOURCES: X402Resource[] = [
     description: "Cross-border settlement — Tier 3 + on-chain attestation",
     endpoint: "/api/defi/settle",
     icon: ShieldKeyIcon,
-    price: "$0.10",
-    amountUnits: "100000",
+    price: "$0.000001",
+    amount: "1",
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     eip712Name: "USDC",
     eip712Version: "2",
@@ -119,12 +119,26 @@ export interface TraceEntry {
   headers?: Record<string, string>;
   id: string;
   label?: string;
+  link?: { href: string; text: string } | undefined;
   method?: string;
   status?: number;
   statusText?: string;
   timestamp: number;
   type: "request" | "response" | "action";
   url?: string;
+}
+
+const EXPLORER_URLS: Record<string, string> = {
+  "eip155:84532": "https://sepolia.basescan.org/tx/",
+  "eip155:8453": "https://basescan.org/tx/",
+};
+
+export function getExplorerUrl(
+  network: string,
+  txHash: string,
+): string | null {
+  const base = EXPLORER_URLS[network];
+  return base ? `${base}${txHash}` : null;
 }
 
 export interface PohClaims {

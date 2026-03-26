@@ -31,6 +31,16 @@ function TraceItem({ item }: { item: TraceEntry }) {
             {item.detail}
           </p>
         )}
+        {item.link && (
+          <a
+            className="mt-1.5 inline-flex items-center gap-1 pl-3.5 font-mono text-[10px] text-emerald-700 underline transition-colors hover:text-emerald-900"
+            href={item.link.href}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {item.link.text} ↗
+          </a>
+        )}
       </div>
     );
   }

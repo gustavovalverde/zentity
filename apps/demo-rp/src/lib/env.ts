@@ -36,8 +36,12 @@ export const env = createEnv({
     VERIFIER_LEAF_KEY_PEM: z.string().optional(),
     ZENTITY_JWKS_URL: z.string().optional(),
 
-    CHAIN_RPC_URL: z.string().default("http://127.0.0.1:8545"),
-    IDENTITY_REGISTRY_ADDRESS: z.string().optional(),
+    CHAIN_RPC_URL: z
+      .string()
+      .default("https://ethereum-sepolia-rpc.publicnode.com"),
+    IDENTITY_REGISTRY_ADDRESS: z
+      .string()
+      .default("0xa90723A47A14437500645Ece6049d0128A2f256D"),
   },
 
   client: {

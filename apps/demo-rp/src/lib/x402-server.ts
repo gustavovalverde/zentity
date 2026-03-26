@@ -1,26 +1,26 @@
 import "server-only";
 
-// RouteConfig.accepts expects PaymentOption with `price`, but the x402 v2
-// wire format uses `maxAmountRequired` + `asset` (enriched by the server at
-// runtime). We build the enriched format directly.
-interface EnrichedAccepts {
+import type { X402Resource } from "@/data/x402";
+import { getRegistryAddress } from "@/lib/chain";
+import { env } from "@/lib/env";
+
+// The x402 v2 wire format for PaymentRequirements. Field names must match
+// what @x402/evm's ExactEvmScheme reads: `amount`, `maxTimeoutSeconds`.
+interface PaymentRequirements {
+  amount: string;
   asset: string;
   extra: Record<string, unknown>;
-  maxAmountRequired: string;
+  maxTimeoutSeconds: number;
   network: `${string}:${string}`;
   payTo: string;
   scheme: string;
 }
 
 export interface X402RouteConfig {
-  accepts: EnrichedAccepts | EnrichedAccepts[];
+  accepts: PaymentRequirements | PaymentRequirements[];
   description?: string;
   extensions?: Record<string, unknown>;
 }
-
-import type { X402Resource } from "@/data/x402";
-import { getRegistryAddress } from "@/lib/chain";
-import { env } from "@/lib/env";
 
 export function buildRouteConfig(resource: X402Resource): X402RouteConfig {
   const extensions: Record<string, unknown> = {};
@@ -35,11 +35,12 @@ export function buildRouteConfig(resource: X402Resource): X402RouteConfig {
     };
   }
 
-  const accepts = {
-    scheme: "exact" as const,
+  const accepts: PaymentRequirements = {
+    scheme: "exact",
     network: resource.network,
     payTo: resource.payTo,
-    maxAmountRequired: resource.amountUnits,
+    amount: resource.amount,
+    maxTimeoutSeconds: 300,
     asset: resource.asset,
     extra: {
       name: resource.eip712Name,
