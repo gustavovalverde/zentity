@@ -5,7 +5,7 @@ import {
   deleteBlockchainAttestationsByUserId,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
-  resetBlockchainAttestationForRetry,
+  resetBlockchainAttestation,
   updateBlockchainAttestationConfirmed,
   updateBlockchainAttestationFailed,
   updateBlockchainAttestationSubmitted,
@@ -40,10 +40,14 @@ describe("attestation queries", () => {
     expect(row?.errorMessage).toBe("boom");
     expect(row?.retryCount).toBe(1);
 
-    await resetBlockchainAttestationForRetry(attestation.id);
+    await resetBlockchainAttestation(attestation.id);
     row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");
     expect(row?.status).toBe("pending");
     expect(row?.errorMessage).toBeNull();
+    expect(row?.txHash).toBeNull();
+    expect(row?.blockNumber).toBeNull();
+    expect(row?.confirmedAt).toBeNull();
+    expect(row?.revokedAt).toBeNull();
 
     await updateBlockchainAttestationConfirmed(attestation.id, 123);
     row = await getBlockchainAttestationByUserAndNetwork(userId, "sepolia");

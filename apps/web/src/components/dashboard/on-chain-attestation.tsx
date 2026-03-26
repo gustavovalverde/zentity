@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppKitAccount, useDisconnect } from "@reown/appkit/react";
 /**
  * On-Chain Attestation Component
  *
@@ -7,7 +8,7 @@
  * multiple blockchain networks. Supports fhEVM (encrypted) and
  * standard EVM networks.
  */
-import { useAppKitAccount, useDisconnect } from "@reown/appkit/react";
+import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
 import {
   AlertTriangle,
   CheckCircle,
@@ -19,6 +20,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { toHex } from "viem";
+import { useChainId, useSwitchChain, useWriteContract } from "wagmi";
 
 import { ComplianceAccessCard } from "@/components/dashboard/compliance-access-card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -52,6 +55,9 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
+import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
+import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
 import { getUserFriendlyError } from "@/lib/utils/error-messages";
@@ -81,10 +87,21 @@ interface OnChainAttestationProps {
   isVerified: boolean;
 }
 
+function getFheWriteOverrides(chainId: number | undefined) {
+  if (chainId === 31_337) {
+    return { gas: BigInt(500_000) };
+  }
+  if (chainId === 11_155_111) {
+    return { gas: BigInt(1_000_000) };
+  }
+  return undefined;
+}
+
 export function OnChainAttestation({
   isVerified,
 }: Readonly<OnChainAttestationProps>) {
   const { address, isConnected } = useAppKitAccount();
+  const activeChainId = useChainId();
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
   const [clientError, setClientError] = useState<string | null>(null);
@@ -101,16 +118,44 @@ export function OnChainAttestation({
 
   const networks = networksData?.networks;
 
-  // Submit attestation mutation
-  const submitMutation = trpcReact.attestation.submit.useMutation({
-    onSuccess: () => {
-      refetchNetworks();
-    },
+  // Permit-based attestation mutations
+  const createPermitMutation = trpcReact.attestation.createPermit.useMutation();
+  const recordSubmissionMutation =
+    trpcReact.attestation.recordSubmission.useMutation({
+      onSuccess: () => refetchNetworks(),
+    });
+
+  // Compute selected network early so FHEVM hooks get reactive values
+  const selectedNetworkData = useMemo(
+    () => networks?.find((n) => n.id === selectedNetwork),
+    [networks, selectedNetwork]
+  );
+  const registryAddress = selectedNetworkData?.identityRegistry as
+    | `0x${string}`
+    | undefined;
+
+  // FHEVM SDK — initialize when connected for permit-based attestation
+
+  const ethersSigner = useEthersSigner();
+  const { instance: fhevmInstance } = useFhevmSdk({
+    provider:
+      typeof globalThis.window === "undefined"
+        ? undefined
+        : globalThis.window.ethereum,
+    chainId: selectedNetworkData?.chainId,
+    enabled: isConnected && Boolean(registryAddress),
   });
+  const { encryptWith } = useFHEEncryption({
+    instance: fhevmInstance,
+    ethersSigner: ethersSigner ?? undefined,
+    contractAddress: registryAddress,
+  });
+  const { writeContractAsync } = useWriteContract();
+
+  const isSubmitting =
+    createPermitMutation.isPending || recordSubmissionMutation.isPending;
 
   // Refresh attestation status mutation
-  // This endpoint actively checks the blockchain via provider.checkTransaction()
-  // and updates the database - not just a cache refresh
   const refreshMutation = trpcReact.attestation.refresh.useMutation({
     onSuccess: () => {
       refetchNetworks();
@@ -137,23 +182,6 @@ export function OnChainAttestation({
     return () => clearInterval(interval);
   }, [networks, refreshMutation]);
 
-  // Track initial wallet for change detection
-  const [initialWallet, setInitialWallet] = useState<string | undefined>();
-
-  useEffect(() => {
-    if (address && !initialWallet) {
-      setInitialWallet(address);
-    }
-  }, [address, initialWallet]);
-
-  const walletChanged = initialWallet && address && address !== initialWallet;
-
-  // Get selected network data - memoized to prevent recalculation
-  const selectedNetworkData = useMemo(
-    () => networks?.find((n) => n.id === selectedNetwork),
-    [networks, selectedNetwork]
-  );
-
   // Derived state - memoized for performance
   const showComplianceAccess = useMemo(
     () =>
@@ -164,33 +192,7 @@ export function OnChainAttestation({
       ),
     [selectedNetworkData]
   );
-
-  // Verify on-chain attestation status (catches stale DB records after contract redeployment)
-  const { data: onChainStatus, isLoading: isCheckingOnChain } =
-    trpcReact.compliantToken.isAttested.useQuery(
-      {
-        networkId: selectedNetworkData?.id ?? "",
-        address: address ?? "",
-      },
-      {
-        enabled: Boolean(
-          showComplianceAccess && selectedNetworkData?.id && address
-        ),
-        staleTime: 30_000,
-      }
-    );
-
-  // If DB says attested but on-chain says not, user needs to re-attest
-  const needsReAttestation = useMemo(
-    () => showComplianceAccess && onChainStatus && !onChainStatus.isAttested,
-    [showComplianceAccess, onChainStatus]
-  );
-
-  // Only show compliance card if actually attested on-chain (or still loading)
-  const showComplianceCard = useMemo(
-    () => showComplianceAccess && !needsReAttestation && !isCheckingOnChain,
-    [showComplianceAccess, needsReAttestation, isCheckingOnChain]
-  );
+  const showComplianceCard = showComplianceAccess;
 
   const { data: complianceAccess } =
     trpcReact.compliantToken.complianceAccess.useQuery(
@@ -221,22 +223,97 @@ export function OnChainAttestation({
     }
   }, [networks, selectedNetwork]);
 
-  const handleSubmit = useCallback(
-    async (forceUpdate = false) => {
-      if (!(selectedNetwork && address)) {
+  const handleSubmit = useCallback(async () => {
+    if (
+      !(selectedNetwork && address && registryAddress && selectedNetworkData)
+    ) {
+      return;
+    }
+
+    setClientError(null);
+
+    if (activeChainId !== selectedNetworkData.chainId) {
+      setClientError(
+        `Switch your wallet to ${selectedNetworkData.name} before submitting an attestation.`
+      );
+      return;
+    }
+
+    try {
+      // 1. Server signs the EIP-712 permit
+      const result = await createPermitMutation.mutateAsync({
+        networkId: selectedNetwork,
+        walletAddress: address,
+      });
+
+      const { permit, identityData } = result;
+      if (!(permit && identityData)) {
         return;
       }
 
-      setClientError(null);
-
-      await submitMutation.mutateAsync({
-        networkId: selectedNetwork,
-        walletAddress: address,
-        forceUpdate,
+      // 2. Client-side FHE encryption
+      const encrypted = await encryptWith((builder) => {
+        builder.add8(identityData.birthYearOffset);
+        builder.add16(identityData.countryCode);
+        builder.add8(identityData.complianceLevel);
+        builder.addBool(identityData.isBlacklisted);
       });
-    },
-    [selectedNetwork, address, submitMutation]
-  );
+
+      if (!encrypted || encrypted.handles.length < 4) {
+        throw new Error(
+          "FHE encryption failed. Ensure your wallet is connected."
+        );
+      }
+
+      // 3. Submit attestWithPermit from user's wallet
+      const txHash = await writeContractAsync({
+        chainId: selectedNetworkData.chainId,
+        address: registryAddress,
+        abi: IdentityRegistryABI,
+        functionName: "attestWithPermit",
+        args: [
+          {
+            birthYearOffset: permit.birthYearOffset,
+            countryCode: permit.countryCode,
+            complianceLevel: permit.complianceLevel,
+            isBlacklisted: permit.isBlacklisted,
+            proofSetHash: permit.proofSetHash as `0x${string}`,
+            policyVersion: permit.policyVersion,
+            deadline: BigInt(permit.deadline),
+            v: permit.v,
+            r: permit.r as `0x${string}`,
+            s: permit.s as `0x${string}`,
+          },
+          toHex(encrypted.handles[0] as Uint8Array),
+          toHex(encrypted.handles[1] as Uint8Array),
+          toHex(encrypted.handles[2] as Uint8Array),
+          toHex(encrypted.handles[3] as Uint8Array),
+          toHex(encrypted.inputProof),
+        ],
+        ...getFheWriteOverrides(selectedNetworkData.chainId),
+      });
+
+      // 4. Record tx on server
+      await recordSubmissionMutation.mutateAsync({
+        networkId: selectedNetwork,
+        txHash,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Attestation failed";
+      setClientError(message);
+    }
+  }, [
+    selectedNetwork,
+    address,
+    activeChainId,
+    registryAddress,
+    selectedNetworkData,
+    createPermitMutation,
+    encryptWith,
+    writeContractAsync,
+    recordSubmissionMutation,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     if (!selectedNetwork) {
@@ -320,7 +397,9 @@ export function OnChainAttestation({
               complianceExplorerUrl={complianceExplorerUrl ?? null}
               complianceGranted={complianceGranted}
               complianceTxHash={complianceTxHash}
-              error={submitMutation.error?.message ?? clientError ?? undefined}
+              error={
+                createPermitMutation.error?.message ?? clientError ?? undefined
+              }
               invalidateComplianceAccess={() => {
                 if (selectedNetworkData?.id && address) {
                   utils.compliantToken.complianceAccess.invalidate({
@@ -329,11 +408,9 @@ export function OnChainAttestation({
                   });
                 }
               }}
-              isCheckingOnChain={isCheckingOnChain}
               isConnected={isConnected}
               isRefreshing={refreshMutation.isPending}
-              isSubmitting={submitMutation.isPending}
-              needsReAttestation={needsReAttestation ?? false}
+              isSubmitting={isSubmitting}
               networks={networks}
               networksLoading={networksLoading}
               onNetworkSelect={setSelectedNetwork}
@@ -343,9 +420,7 @@ export function OnChainAttestation({
               selectedNetworkData={
                 selectedNetworkData as NetworkStatus | undefined
               }
-              showComplianceAccess={showComplianceAccess}
               showComplianceCard={showComplianceCard}
-              walletChanged={Boolean(walletChanged)}
             />
           </CardContent>
         </CollapsibleContent>
@@ -401,21 +476,17 @@ interface AttestationContentBodyProps {
   complianceTxHash: string | null;
   error: string | undefined;
   invalidateComplianceAccess: () => void;
-  isCheckingOnChain: boolean;
   isConnected: boolean;
   isRefreshing: boolean;
   isSubmitting: boolean;
-  needsReAttestation: boolean;
   networks: ApiNetworkStatus[] | undefined;
   networksLoading: boolean;
   onNetworkSelect: (networkId: string) => void;
   onRefresh: () => void;
-  onSubmit: (forceUpdate?: boolean) => void;
+  onSubmit: () => void;
   selectedNetwork: string | null;
   selectedNetworkData: NetworkStatus | undefined;
-  showComplianceAccess: boolean;
   showComplianceCard: boolean;
-  walletChanged: boolean;
 }
 
 /**
@@ -426,7 +497,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
   isConnected,
   networksLoading,
   networks,
-  walletChanged,
   address,
   selectedNetwork,
   selectedNetworkData,
@@ -436,9 +506,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
   isSubmitting,
   isRefreshing,
   error,
-  needsReAttestation,
-  showComplianceAccess,
-  isCheckingOnChain,
   showComplianceCard,
   complianceGranted,
   complianceTxHash,
@@ -488,18 +555,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
   // Main content: Networks loaded and available
   return (
     <>
-      {walletChanged ? (
-        <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Wallet Changed.</strong> Attestation will be linked to:{" "}
-            <code className="rounded bg-warning/10 px-1.5 py-0.5 font-mono text-xs">
-              {address?.slice(0, 6)}…{address?.slice(-4)}
-            </code>
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       <fieldset className="space-y-3">
         <Label asChild>
           <legend>Select Network</legend>
@@ -527,25 +582,6 @@ const AttestationContentBody = memo(function AttestationContentBody({
           onSubmit={onSubmit}
           walletAddress={address}
         />
-      ) : null}
-
-      {needsReAttestation ? (
-        <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription>
-            <strong>Re-attestation Required.</strong> The identity contracts
-            have been updated. Click &quot;Update Attestation&quot; above to
-            re-register your identity on-chain before granting compliance
-            access.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {showComplianceAccess && isCheckingOnChain ? (
-        <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Spinner size="sm" />
-          <span>Verifying on-chain attestation…</span>
-        </div>
       ) : null}
 
       {showComplianceCard ? (
@@ -658,22 +694,40 @@ const NetworkActions = memo(function NetworkActions({
   network: NetworkStatus;
   walletAddress: string;
   attestedWalletAddress?: string | undefined;
-  onSubmit: (forceUpdate?: boolean) => void;
+  onSubmit: () => void;
   onRefresh: () => void;
   isSubmitting: boolean;
   isRefreshing: boolean;
   error?: string | undefined;
 }>) {
   const { disconnect } = useDisconnect();
-  const [confirmingUpdate, setConfirmingUpdate] = useState(false);
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
   const attestation = network.attestation;
+  const isChainMismatch = chainId !== network.chainId;
+  const chainMismatchNotice = isChainMismatch ? (
+    <Alert variant="warning">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertDescription className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <span>
+          Switch your wallet to <strong>{network.name}</strong> before sending
+          an attestation transaction.
+        </span>
+        <Button
+          disabled={isSwitching}
+          onClick={() => switchChain({ chainId: network.chainId })}
+          size="sm"
+          variant="outline"
+        >
+          {isSwitching ? <Spinner className="mr-2" /> : null}
+          Switch Network
+        </Button>
+      </AlertDescription>
+    </Alert>
+  ) : null;
 
   // Already confirmed
   if (attestation?.status === "confirmed") {
-    const walletMismatch =
-      attestedWalletAddress &&
-      walletAddress.toLowerCase() !== attestedWalletAddress.toLowerCase();
-
     return (
       <div className="space-y-3">
         <Alert variant="success">
@@ -716,74 +770,7 @@ const NetworkActions = memo(function NetworkActions({
           </Item>
         ) : null}
 
-        {/* Wallet mismatch warning */}
-        {walletMismatch ? (
-          <Alert variant="warning">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              <strong>Different Wallet Connected</strong>
-              <div className="mt-1 text-xs">
-                Connected: {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}
-                <br />
-                Attested: {attestedWalletAddress.slice(0, 6)}…
-                {attestedWalletAddress.slice(-4)}
-              </div>
-              <div className="mt-2 text-xs">
-                Updating will link attestation to the new wallet and require
-                re-granting compliance access.
-              </div>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
-        {confirmingUpdate ? (
-          <Alert variant="warning">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              This will revoke your on-chain attestation and re-submit.
-              Compliance access grants will be reset.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-
         <div className="flex gap-2">
-          {confirmingUpdate ? (
-            <>
-              <Button
-                disabled={isSubmitting}
-                onClick={() => {
-                  setConfirmingUpdate(false);
-                  onSubmit(true);
-                }}
-                size="sm"
-                variant="destructive"
-              >
-                {isSubmitting ? (
-                  <Spinner className="mr-2" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Confirm Revoke &amp; Update
-              </Button>
-              <Button
-                onClick={() => setConfirmingUpdate(false)}
-                size="sm"
-                variant="outline"
-              >
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <Button
-              disabled={isSubmitting}
-              onClick={() => setConfirmingUpdate(true)}
-              size="sm"
-              variant="outline"
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Update Attestation
-            </Button>
-          )}
           {attestation.explorerUrl ? (
             <Button asChild size="sm" variant="outline">
               <a
@@ -853,6 +840,8 @@ const NetworkActions = memo(function NetworkActions({
   if (attestation?.status === "failed") {
     return (
       <div className="space-y-3">
+        {chainMismatchNotice}
+
         <Alert variant="destructive">
           <AlertTriangle className="h-5 w-5" />
           <AlertTitle>Attestation Failed</AlertTitle>
@@ -868,7 +857,11 @@ const NetworkActions = memo(function NetworkActions({
             <span className="break-all">{attestation.txHash}</span>
           </div>
         ) : null}
-        <Button disabled={isSubmitting} onClick={() => onSubmit()} size="sm">
+        <Button
+          disabled={isSubmitting || isChainMismatch}
+          onClick={() => onSubmit()}
+          size="sm"
+        >
           {isSubmitting ? (
             <Spinner className="mr-2" />
           ) : (
@@ -883,6 +876,8 @@ const NetworkActions = memo(function NetworkActions({
   // Not attested - show submit button
   return (
     <div className="space-y-3">
+      {chainMismatchNotice}
+
       <Item size="sm" variant="outline">
         <ItemContent>
           <ItemDescription>Connected Wallet</ItemDescription>
@@ -913,7 +908,7 @@ const NetworkActions = memo(function NetworkActions({
 
       <Button
         className="w-full"
-        disabled={isSubmitting}
+        disabled={isSubmitting || isChainMismatch}
         onClick={() => onSubmit()}
       >
         {isSubmitting ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppKitAccount } from "@reown/appkit/react";
-import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
+import { ATTR, IdentityRegistryABI, Purpose } from "@zentity/fhevm-contracts";
 /**
  * Compliance Access Card
  *
@@ -138,11 +138,13 @@ export function ComplianceAccessCard({
         return undefined;
       })();
 
+      // biome-ignore lint/suspicious/noBitwiseOperators: attribute bitmask is intentional
+      const attributeMask = ATTR.COMPLIANCE | ATTR.BLACKLIST;
       await writeContractAsync({
         address: identityRegistry,
         abi: IdentityRegistryABI,
-        functionName: "grantAccessTo",
-        args: [complianceRules],
+        functionName: "grantAttributeAccess",
+        args: [complianceRules, attributeMask, Purpose.TRANSFER_GATING],
         ...txOverrides,
       });
     } finally {

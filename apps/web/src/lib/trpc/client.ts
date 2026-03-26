@@ -12,7 +12,7 @@
  * @example React hooks (for components with useQuery/useMutation):
  * ```ts
  * const { data } = trpcReact.attestation.networks.useQuery();
- * const mutation = trpcReact.attestation.submit.useMutation();
+ * const mutation = trpcReact.attestation.createPermit.useMutation();
  * ```
  */
 "use client";

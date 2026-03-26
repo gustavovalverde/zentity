@@ -479,7 +479,7 @@ const CRITICAL_PATHS = new Set([
   "identity.livenessStatus",
   "identity.finalize",
   "identity.finalizeStatus",
-  "attestation.submit",
+  "attestation.createPermit",
   "crypto.storeProof",
   "crypto.verifyProof",
   "compliantToken.mint",

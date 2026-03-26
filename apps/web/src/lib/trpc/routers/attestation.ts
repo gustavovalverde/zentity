@@ -1,19 +1,18 @@
 /**
- * Attestation Router
+ * Attestation Router (v2 — permit-based)
  *
- * Handles on-chain identity attestation across multiple blockchain networks.
- * Uses a provider-agnostic architecture supporting fhEVM and standard EVM networks.
- *
- * Security model:
- * - User must be fully verified (OCR or NFC/chip verification) to attest
- * - Backend wallet acts as registrar (signs attestation transactions)
- * - Rate limited via DB retry count (survives restarts, works across instances)
+ * Handles on-chain identity attestation with the EIP-712 permit model:
+ * - Server signs permits (registrar authorization)
+ * - Client encrypts via FHEVM SDK and submits from their own wallet
+ * - Server records tx hashes and tracks confirmation
  */
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import {
   getEnabledNetworks,
   getExplorerTxUrl,
@@ -25,14 +24,15 @@ import {
 } from "@/lib/blockchain/providers/factory";
 import {
   createBlockchainAttestation,
+  getAttestationEvidenceByUserAndVerification,
   getBlockchainAttestationByUserAndNetwork,
   getBlockchainAttestationsByUserId,
-  resetBlockchainAttestationForRetry,
+  resetBlockchainAttestation,
   updateBlockchainAttestationConfirmed,
   updateBlockchainAttestationFailed,
-  updateBlockchainAttestationRevoked,
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
+  upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
@@ -100,20 +100,20 @@ export const attestationRouter = router({
 
       return {
         attested: attestation.status === "confirmed",
-        attestation: {
-          ...attestation,
-          explorerUrl,
-        },
+        attestation: { ...attestation, explorerUrl },
       };
     }),
 
-  submit: protectedProcedure
+  /**
+   * Sign an EIP-712 attestation permit.
+   * Returns the permit + identity data for client-side encryption.
+   */
+  createPermit: protectedProcedure
     .use(requireFeature("attestation"))
     .input(
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-        forceUpdate: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -127,8 +127,6 @@ export const attestationRouter = router({
         });
       }
 
-      const issuerCountry = model.issuerCountry || undefined;
-
       const network = getNetworkById(input.networkId);
       if (!network?.enabled) {
         throw new TRPCError({
@@ -140,18 +138,17 @@ export const attestationRouter = router({
       if (!canCreateProvider(input.networkId)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `Network ${input.networkId} is not configured. Check contract addresses.`,
+          message: `Network ${input.networkId} is not configured.`,
         });
       }
 
       const provider = await createProvider(input.networkId);
 
+      // Rate limiting
       const existing = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId
       );
-
-      // DB-based rate limiting
       if (existing && existing.retryCount >= RATE_LIMIT_MAX_ATTEMPTS) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
@@ -159,70 +156,15 @@ export const attestationRouter = router({
         });
       }
 
+      // Check on-chain status
       const chainStatus = await provider.getAttestationStatus(
         input.walletAddress
       );
-
-      // Already attested on-chain
       if (chainStatus.isAttested) {
-        // If forceUpdate requested, revoke first then proceed to re-attest
-        if (input.forceUpdate) {
-          try {
-            const revokeResult = await provider.revokeAttestation(
-              input.walletAddress
-            );
-            // Wait for revocation tx to confirm
-            if (revokeResult.txHash) {
-              await waitForConfirmation(provider, revokeResult.txHash);
-            }
-            if (existing) {
-              await updateBlockchainAttestationRevoked(existing.id);
-            }
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : "Revocation failed";
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Failed to revoke existing attestation: ${message}`,
-            });
-          }
-          // Fall through to submit new attestation below
-        } else {
-          // Sync DB and return early
-          let attestation = existing;
-          if (attestation) {
-            await updateBlockchainAttestationWallet(
-              attestation.id,
-              input.walletAddress,
-              network.chainId
-            );
-          } else {
-            attestation = await createBlockchainAttestation({
-              userId: ctx.userId,
-              walletAddress: input.walletAddress,
-              networkId: input.networkId,
-              chainId: network.chainId,
-            });
-          }
-
-          if (attestation.status !== "confirmed") {
-            await updateBlockchainAttestationConfirmed(
-              attestation.id,
-              chainStatus.blockNumber ?? null
-            );
-          }
-
-          const explorerUrl = chainStatus.txHash
-            ? getExplorerTxUrl(input.networkId, chainStatus.txHash)
-            : undefined;
-
-          return {
-            success: true,
-            status: "confirmed" as const,
-            txHash: chainStatus.txHash,
-            explorerUrl,
-          };
-        }
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Wallet is already attested on this network.",
+        });
       }
 
       // Block if there's a pending submission
@@ -233,7 +175,23 @@ export const attestationRouter = router({
         });
       }
 
-      // Create or reset attestation record
+      // Validate identity data
+      if (model.compliance.birthYearOffset === null) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Birth year offset not available. Please re-verify your identity.",
+        });
+      }
+
+      const identityData = {
+        birthYearOffset: model.compliance.birthYearOffset,
+        countryCode: countryCodeToNumeric(model.issuerCountry || ""),
+        complianceLevel: model.compliance.numericLevel,
+        isBlacklisted: false,
+      };
+
+      // Create or reset DB record
       const attestation =
         existing ??
         (await createBlockchainAttestation({
@@ -244,83 +202,126 @@ export const attestationRouter = router({
         }));
 
       if (existing) {
+        const walletChanged =
+          existing.walletAddress.toLowerCase() !==
+          input.walletAddress.toLowerCase();
+
         await updateBlockchainAttestationWallet(
           attestation.id,
           input.walletAddress,
           network.chainId
         );
-        if (
-          attestation.status === "failed" ||
-          attestation.status === "revoked"
-        ) {
-          await resetBlockchainAttestationForRetry(attestation.id);
+
+        if (walletChanged || attestation.status !== "pending") {
+          await resetBlockchainAttestation(attestation.id);
         }
       }
 
-      if (model.compliance.birthYearOffset === null) {
+      const attestationEvidence =
+        await getAttestationEvidenceByUserAndVerification(
+          ctx.userId,
+          model.verificationId
+        );
+      const proofSetHash = attestationEvidence?.proofSetHash ?? undefined;
+
+      // Sign EIP-712 permit
+      const permitResult = await provider.signPermit({
+        userAddress: input.walletAddress,
+        identityData,
+        ...(proofSetHash ? { proofSetHash } : {}),
+      });
+
+      // Wire attestation evidence (activates previously dead code)
+      await upsertAttestationEvidence({
+        userId: ctx.userId,
+        verificationId: model.verificationId,
+        policyVersion: POLICY_VERSION,
+        policyHash: POLICY_HASH,
+        proofSetHash,
+      });
+
+      return {
+        permit: permitResult.permit,
+        identityData: permitResult.identityData,
+        networkConfig: {
+          chainId: network.chainId,
+          registryAddress: network.contracts.identityRegistry,
+        },
+      };
+    }),
+
+  /**
+   * Record a client-submitted attestation transaction.
+   * Called after the client encrypts and submits attestWithPermit.
+   */
+  recordSubmission: protectedProcedure
+    .input(
+      z.object({
+        networkId: z.string(),
+        txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const attestation = await getBlockchainAttestationByUserAndNetwork(
+        ctx.userId,
+        input.networkId
+      );
+
+      if (!attestation) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No attestation record found. Call createPermit first.",
+        });
+      }
+
+      if (attestation.status === "submitted") {
+        if (attestation.txHash === input.txHash) {
+          return {
+            status: "submitted" as const,
+            txHash: input.txHash,
+            explorerUrl: getExplorerTxUrl(input.networkId, input.txHash),
+          };
+        }
+
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Attestation submission already recorded. Refresh status instead.",
+        });
+      }
+
+      if (attestation.status !== "pending") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "No pending attestation submission. Call createPermit first.",
+        });
+      }
+
+      const provider = await createProvider(input.networkId);
+      const validation = await provider.validateAttestationTransaction({
+        txHash: input.txHash,
+        userAddress: attestation.walletAddress,
+      });
+
+      if (validation === "invalid") {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
-            "Birth year offset not available. Please re-verify your identity.",
+            "Transaction hash does not match an attestation submitted from your wallet.",
         });
       }
-      const birthYearOffset = model.compliance.birthYearOffset;
-      const countryCode = countryCodeToNumeric(issuerCountry || "");
-      const complianceLevel = model.compliance.numericLevel;
 
-      try {
-        const result = await provider.submitAttestation({
-          userAddress: input.walletAddress,
-          identityData: {
-            birthYearOffset,
-            countryCode,
-            complianceLevel,
-            isBlacklisted: false,
-          },
-        });
+      await updateBlockchainAttestationSubmitted(attestation.id, input.txHash);
 
-        if (result.status === "failed") {
-          await updateBlockchainAttestationFailed(
-            attestation.id,
-            result.error || "Unknown error"
-          );
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: result.error || "Attestation transaction failed",
-          });
-        }
+      const explorerUrl = getExplorerTxUrl(input.networkId, input.txHash);
 
-        if (result.txHash) {
-          await updateBlockchainAttestationSubmitted(
-            attestation.id,
-            result.txHash
-          );
-        }
-
-        const explorerUrl = result.txHash
-          ? getExplorerTxUrl(input.networkId, result.txHash)
-          : undefined;
-
-        return {
-          success: true,
-          status: "submitted",
-          txHash: result.txHash,
-          explorerUrl,
-        };
-      } catch (error) {
-        if (error instanceof TRPCError) {
-          throw error;
-        }
-
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        await updateBlockchainAttestationFailed(attestation.id, message);
-
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `Attestation failed: ${message}`,
-        });
-      }
+      return {
+        status: "submitted" as const,
+        txHash: input.txHash,
+        explorerUrl,
+        validationPending: validation === "pending_lookup",
+      };
     }),
 
   refresh: protectedProcedure
@@ -350,10 +351,26 @@ export const attestationRouter = router({
         const provider = await createProvider(input.networkId);
         const txStatus = await provider.checkTransaction(attestation.txHash);
 
-        if (txStatus.confirmed && txStatus.blockNumber) {
+        if (txStatus.confirmed) {
+          const chainStatus = await provider.getAttestationStatus(
+            attestation.walletAddress
+          );
+
+          if (!chainStatus.isAttested) {
+            const errorMessage =
+              "Transaction confirmed without an active on-chain attestation";
+
+            await updateBlockchainAttestationFailed(
+              attestation.id,
+              errorMessage
+            );
+
+            return { status: "failed", error: errorMessage };
+          }
+
           await updateBlockchainAttestationConfirmed(
             attestation.id,
-            txStatus.blockNumber
+            txStatus.blockNumber ?? null
           );
           return { status: "confirmed", blockNumber: txStatus.blockNumber };
         }
@@ -364,22 +381,3 @@ export const attestationRouter = router({
       }
     }),
 });
-
-async function waitForConfirmation(
-  provider: Awaited<ReturnType<typeof createProvider>>,
-  txHash: string,
-  maxAttempts = 30,
-  intervalMs = 2000
-): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const status = await provider.checkTransaction(txHash);
-    if (status.confirmed) {
-      return;
-    }
-    if (status.failed) {
-      throw new Error(`Transaction reverted: ${txHash}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`Transaction not confirmed after ${maxAttempts} attempts`);
-}

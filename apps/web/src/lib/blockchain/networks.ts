@@ -41,8 +41,6 @@ export interface NetworkConfig {
   id: string;
   /** Display name for UI */
   name: string;
-  /** Provider implementation ID for FHEVM networks (e.g., "zama", "mock") */
-  providerId?: string | undefined;
   /** Registrar private key for this network (server-side only) */
   registrarPrivateKey?: string | undefined;
   /** RPC endpoint URL */
@@ -62,8 +60,6 @@ const FHEVM_NETWORK_ID = "fhevm_sepolia";
 const FHEVM_CHAIN_ID = 11_155_111;
 const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
 const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
-const FHEVM_PROVIDER_ID = "zama";
-
 function toOverrides(values: Record<ContractName, string | undefined>) {
   const overrides = Object.fromEntries(
     Object.entries(values).filter(([, value]) => Boolean(value?.trim()))
@@ -125,7 +121,6 @@ const NETWORKS: Record<string, NetworkConfig> = {
     registrarPrivateKey:
       env.FHEVM_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
-    providerId: FHEVM_PROVIDER_ID,
     features: ["encrypted"],
     contracts: {
       identityRegistry: FHEVM_CONTRACTS?.identityRegistry || "",
@@ -143,7 +138,6 @@ const NETWORKS: Record<string, NetworkConfig> = {
     registrarPrivateKey:
       env.LOCAL_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
-    providerId: "mock",
     features: ["encrypted"],
     contracts: {
       identityRegistry: LOCAL_CONTRACTS?.identityRegistry || "",

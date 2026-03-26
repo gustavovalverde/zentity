@@ -141,7 +141,7 @@ function TxHistoryContent({
       {data.transfers.map((tx) => (
         <div
           className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
-          key={tx.txHash}
+          key={`${tx.txHash}-${tx.type}`}
         >
           <div className="flex items-center gap-3">
             {getTypeIcon(tx.type)}

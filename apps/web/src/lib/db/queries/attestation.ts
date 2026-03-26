@@ -1,4 +1,7 @@
-import type { BlockchainAttestation } from "../schema/attestation";
+import type {
+  AttestationEvidenceRecord,
+  BlockchainAttestation,
+} from "../schema/attestation";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
@@ -18,7 +21,7 @@ export async function upsertAttestationEvidence(args: {
   verificationId: string;
   policyVersion: string | null;
   policyHash: string | null;
-  proofSetHash: string | null;
+  proofSetHash: string | null | undefined;
 }): Promise<void> {
   await db
     .insert(attestationEvidence)
@@ -28,18 +31,39 @@ export async function upsertAttestationEvidence(args: {
       verificationId: args.verificationId,
       policyVersion: args.policyVersion,
       policyHash: args.policyHash,
-      proofSetHash: args.proofSetHash,
+      proofSetHash: args.proofSetHash ?? null,
     })
     .onConflictDoUpdate({
       target: [attestationEvidence.userId, attestationEvidence.verificationId],
       set: {
         policyVersion: args.policyVersion,
         policyHash: args.policyHash,
-        proofSetHash: args.proofSetHash,
+        ...(args.proofSetHash === undefined
+          ? {}
+          : { proofSetHash: args.proofSetHash }),
         updatedAt: sql`datetime('now')`,
       },
     })
     .run();
+}
+
+export async function getAttestationEvidenceByUserAndVerification(
+  userId: string,
+  verificationId: string
+): Promise<AttestationEvidenceRecord | null> {
+  const row = await db
+    .select()
+    .from(attestationEvidence)
+    .where(
+      and(
+        eq(attestationEvidence.userId, userId),
+        eq(attestationEvidence.verificationId, verificationId)
+      )
+    )
+    .limit(1)
+    .get();
+
+  return row ?? null;
 }
 
 export async function createBlockchainAttestation(data: {
@@ -159,13 +183,15 @@ export async function updateBlockchainAttestationFailed(
     .run();
 }
 
-export async function resetBlockchainAttestationForRetry(
-  id: string
-): Promise<void> {
+export async function resetBlockchainAttestation(id: string): Promise<void> {
   await db
     .update(blockchainAttestations)
     .set({
       status: "pending",
+      txHash: null,
+      blockNumber: null,
+      confirmedAt: null,
+      revokedAt: null,
       errorMessage: null,
       updatedAt: sql`datetime('now')`,
     })
@@ -183,20 +209,6 @@ export async function updateBlockchainAttestationWallet(
     .set({
       walletAddress,
       chainId,
-      updatedAt: sql`datetime('now')`,
-    })
-    .where(eq(blockchainAttestations.id, id))
-    .run();
-}
-
-export async function updateBlockchainAttestationRevoked(
-  id: string
-): Promise<void> {
-  await db
-    .update(blockchainAttestations)
-    .set({
-      status: "revoked",
-      revokedAt: sql`datetime('now')`,
       updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))

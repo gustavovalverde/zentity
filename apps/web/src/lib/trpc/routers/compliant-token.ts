@@ -13,7 +13,11 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
-import { CompliantERC20ABI } from "@zentity/fhevm-contracts";
+import {
+  ATTR,
+  CompliantERC20ABI,
+  IdentityRegistryABI,
+} from "@zentity/fhevm-contracts";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { hardhat, sepolia } from "viem/chains";
 import { z } from "zod";
@@ -48,6 +52,8 @@ const MINT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 // We limit per-mint to 10 tokens to allow multiple mints before hitting cap.
 const MAX_MINT_AMOUNT = BigInt(10) * BigInt(10) ** BigInt(18); // 10 tokens
 const UINT64_MAX = BigInt(2) ** BigInt(64) - BigInt(1); // Max supply for euint64 balances
+// biome-ignore lint/suspicious/noBitwiseOperators: contract access is represented as a bitmask
+const REQUIRED_COMPLIANCE_ATTRIBUTES = ATTR.COMPLIANCE | ATTR.BLACKLIST;
 
 const mintAttemptTracker = new Map<
   string,
@@ -456,7 +462,7 @@ export const compliantTokenRouter = router({
 
   /**
    * Check if ComplianceRules has access to the user's encrypted identity data.
-   * Uses IdentityRegistry AccessGranted event logs.
+   * Uses IdentityRegistry AttributeAccessGranted event logs.
    */
   complianceAccess: protectedProcedure
     .input(
@@ -499,8 +505,32 @@ export const compliantTokenRouter = router({
       });
 
       try {
+        const grantedAttributes = await client.readContract({
+          address: identityRegistry as `0x${string}`,
+          abi: IdentityRegistryABI,
+          functionName: "getGrantedAttributes",
+          args: [
+            input.walletAddress as `0x${string}`,
+            complianceRules as `0x${string}`,
+          ],
+        });
+        const attributeMask = Number(grantedAttributes as bigint);
+        const hasRequiredAttributes =
+          // biome-ignore lint/suspicious/noBitwiseOperators: contract access is represented as a bitmask
+          (attributeMask & REQUIRED_COMPLIANCE_ATTRIBUTES) ===
+          REQUIRED_COMPLIANCE_ATTRIBUTES;
+
+        if (!hasRequiredAttributes) {
+          return {
+            granted: false,
+            txHash: null,
+            blockNumber: null,
+            explorerUrl: null,
+          };
+        }
+
         const accessGrantedEvent = parseAbiItem(
-          "event AccessGranted(address indexed user, address indexed grantee)"
+          "event AttributeAccessGranted(address indexed user, address indexed grantee, uint8 attributeMask, uint8 purpose)"
         );
 
         // Public RPCs limit block range to 50,000 blocks
@@ -541,7 +571,7 @@ export const compliantTokenRouter = router({
           : null;
 
         return {
-          granted: logs.length > 0,
+          granted: true,
           txHash,
           blockNumber,
           explorerUrl: txHash

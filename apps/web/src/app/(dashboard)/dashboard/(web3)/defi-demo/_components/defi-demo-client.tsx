@@ -75,23 +75,6 @@ export function DefiDemoClient({
       selectedNetworkData?.identityRegistry
   );
 
-  // Check on-chain attestation status (validates DB record against actual contract)
-  const { data: attestationStatus, isLoading: attestationLoading } =
-    trpcReact.compliantToken.isAttested.useQuery(
-      {
-        networkId: activeNetworkId ?? "",
-        address: address ?? "",
-      },
-      {
-        enabled: Boolean(activeNetworkId && address),
-        staleTime: 30_000,
-      }
-    );
-
-  // If DB says attested but on-chain says not, user needs to re-attest
-  const needsReAttestation =
-    attestedNetworkId && attestationStatus && !attestationStatus.isAttested;
-
   const { data: complianceAccess } =
     trpcReact.compliantToken.complianceAccess.useQuery(
       {
@@ -99,12 +82,7 @@ export function DefiDemoClient({
         walletAddress: address ?? "",
       },
       {
-        enabled: Boolean(
-          requiresAccessGrant &&
-            activeNetworkId &&
-            address &&
-            !needsReAttestation
-        ),
+        enabled: Boolean(requiresAccessGrant && activeNetworkId && address),
       }
     );
 
@@ -239,52 +217,6 @@ export function DefiDemoClient({
     );
   }
 
-  // Loading attestation status
-  if (attestationLoading) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center gap-3 py-8">
-          <Spinner size="lg" />
-          <p className="text-muted-foreground text-sm">
-            Verifying on-chain attestation…
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // On-chain attestation mismatch - contracts were redeployed
-  if (needsReAttestation) {
-    return (
-      <Card className="border-warning/30">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-warning">
-            <AlertTriangle className="h-5 w-5" />
-            Re-attestation Required
-          </CardTitle>
-          <CardDescription>
-            Your on-chain identity attestation needs to be renewed
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Alert variant="warning">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              The identity contracts have been updated. Please attest your
-              identity on-chain again to continue using compliant DeFi features.
-            </AlertDescription>
-          </Alert>
-          <Button asChild variant="outline">
-            <a href="/dashboard/attestation">
-              Attest On-Chain
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
   // Wallet mismatch warning
   if (walletMismatch) {
     return (
@@ -313,8 +245,7 @@ export function DefiDemoClient({
             </AlertDescription>
           </Alert>
           <p className="text-muted-foreground text-sm">
-            Please connect the wallet you registered on-chain, or update your
-            attestation with the new wallet.
+            Please connect the wallet you registered on-chain to continue.
           </p>
         </CardContent>
       </Card>
