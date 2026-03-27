@@ -41,6 +41,63 @@ function buildPaymentRequired(resource: X402Resource) {
   return response;
 }
 
+function buildSettlementFailedResponse(settlement: {
+  errorReason?: string;
+  success: boolean;
+}) {
+  return NextResponse.json(
+    {
+      error: "settlement_failed",
+      detail: settlement.errorReason ?? "Payment settlement failed",
+    },
+    { status: 402 }
+  );
+}
+
+function resolveVerifiedOnChainWallet(
+  verification: { payer?: string | undefined },
+  requestedWalletAddress: string | undefined
+):
+  | { ok: true; walletAddress: string }
+  | { ok: false; response: NextResponse } {
+  if (!verification.payer) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "payment_payer_unavailable",
+          detail:
+            "Payment verification did not return the payer address required for on-chain attestation.",
+        },
+        { status: 502 }
+      ),
+    };
+  }
+
+  if (
+    requestedWalletAddress &&
+    verification.payer.toLowerCase() !== requestedWalletAddress.toLowerCase()
+  ) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "wallet_address_mismatch",
+          detail:
+            "On-chain attestation must match the wallet that signed the payment.",
+          payer: verification.payer,
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    walletAddress: verification.payer,
+  };
+}
+
 async function resolveOnChain(
   walletAddress: string | undefined
 ): Promise<
@@ -188,20 +245,13 @@ export async function POST(request: Request) {
     );
   }
 
-  // Settle the payment on-chain via facilitator
-  const settlement = await settlePayment(paymentSignature, paymentRequirements);
-  if (!settlement.success) {
-    return NextResponse.json(
-      {
-        error: "settlement_failed",
-        detail: settlement.errorReason ?? "Payment settlement failed",
-      },
-      { status: 402 }
-    );
-  }
-
   // Payment-only resources: payment is sufficient
   if (resource.requiredTier === 0) {
+    const settlement = await settlePayment(paymentSignature, paymentRequirements);
+    if (!settlement.success) {
+      return buildSettlementFailedResponse(settlement);
+    }
+
     return buildSuccess(resource, {
       transaction: settlement.transaction,
       network: settlement.network,
@@ -247,22 +297,32 @@ export async function POST(request: Request) {
     );
   }
 
+  let onChain: Record<string, unknown> | undefined;
   if (resource.requireOnChain) {
-    const chain = await resolveOnChain(body.walletAddress);
+    const verifiedWallet = resolveVerifiedOnChainWallet(
+      verification,
+      body.walletAddress
+    );
+    if (!verifiedWallet.ok) {
+      return verifiedWallet.response;
+    }
+
+    const chain = await resolveOnChain(verifiedWallet.walletAddress);
     if (!chain.ok) {
       return chain.response;
     }
-    return buildSuccess(
-      resource,
-      { transaction: settlement.transaction, network: settlement.network },
-      verified.poh,
-      chain.data
-    );
+    onChain = chain.data;
+  }
+
+  const settlement = await settlePayment(paymentSignature, paymentRequirements);
+  if (!settlement.success) {
+    return buildSettlementFailedResponse(settlement);
   }
 
   return buildSuccess(
     resource,
     { transaction: settlement.transaction, network: settlement.network },
-    verified.poh
+    verified.poh,
+    onChain
   );
 }

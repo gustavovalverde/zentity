@@ -12,7 +12,6 @@ import {
   ATTR,
   CONSENT_TYPES,
   getAttestPermitDomain,
-  getConsentRevision,
   IdentityRegistryABI,
 } from "@zentity/fhevm-contracts";
 import {
@@ -69,6 +68,8 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
 import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
+import { resolveAttestationConsentRevision } from "@/lib/blockchain/attestation/consent-revision";
+import { resolveOnChainAttestationViewState } from "@/lib/blockchain/attestation/on-chain-attestation-view-state";
 import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
@@ -131,7 +132,11 @@ export function OnChainAttestation({
   const networks = networksData?.networks;
 
   // Permit-based attestation mutations
-  const createPermitMutation = trpcReact.attestation.createPermit.useMutation();
+  const createPermitMutation = trpcReact.attestation.createPermit.useMutation({
+    onSuccess: () => {
+      refetchNetworks();
+    },
+  });
   const recordSubmissionMutation =
     trpcReact.attestation.recordSubmission.useMutation({
       onSuccess: () => refetchNetworks(),
@@ -212,7 +217,38 @@ export function OnChainAttestation({
       ),
     [selectedNetworkData]
   );
-  const showComplianceCard = showComplianceAccess;
+
+  const confirmedAttestedWalletAddress =
+    selectedNetworkData?.attestation?.status === "confirmed"
+      ? selectedNetworkData.attestation.walletAddress
+      : null;
+  const attestationCheckAddress =
+    confirmedAttestedWalletAddress ?? address ?? "";
+
+  const { data: onChainStatus, isLoading: isCheckingOnChain } =
+    trpcReact.compliantToken.isAttested.useQuery(
+      {
+        networkId: selectedNetworkData?.id ?? "",
+        address: attestationCheckAddress,
+      },
+      {
+        enabled: Boolean(
+          showComplianceAccess &&
+            selectedNetworkData?.id &&
+            attestationCheckAddress
+        ),
+        staleTime: 30_000,
+      }
+    );
+
+  const { needsReAttestation, showComplianceCard } =
+    resolveOnChainAttestationViewState({
+      attestedWalletAddress: confirmedAttestedWalletAddress,
+      connectedWalletAddress: address ?? null,
+      isCheckingOnChain,
+      onChainStatus,
+      showComplianceAccess,
+    });
 
   const { data: complianceAccess } =
     trpcReact.compliantToken.complianceAccess.useQuery(
@@ -269,18 +305,24 @@ export function OnChainAttestation({
         consentScope: `0x${attributeMask.toString(16).padStart(2, "0")}`,
       });
 
-      const { permit, identityData } = result;
-      if (!(permit && identityData)) {
+      if ("status" in result && result.status === "confirmed") {
         return;
       }
 
+      if (!("permit" in result && "identityData" in result)) {
+        return;
+      }
+      const { permit, identityData } = result;
+
       // 2. User signs consent receipt
-      const isCurrentlyAttested =
-        selectedNetworkData.attestation?.status === "confirmed";
-      const targetRevision = getConsentRevision(
-        Number(currentRevision ?? 0n),
-        isCurrentlyAttested
-      );
+      const targetRevision = resolveAttestationConsentRevision({
+        walletAddress: address,
+        attestedWalletAddress:
+          selectedNetworkData.attestation?.walletAddress ?? null,
+        currentRevision: (currentRevision as bigint | undefined) ?? 0n,
+        status: selectedNetworkData.attestation?.status ?? null,
+        needsReAttestation,
+      });
       const consentDomain = {
         ...getAttestPermitDomain(selectedNetworkData.chainId, registryAddress),
         verifyingContract: registryAddress,
@@ -295,7 +337,7 @@ export function OnChainAttestation({
           user: address as `0x${string}`,
           attributeMask,
           chainId: BigInt(selectedNetworkData.chainId),
-          revision: BigInt(targetRevision),
+          revision: targetRevision,
           deadline: BigInt(consentDeadline),
         },
       });
@@ -369,6 +411,7 @@ export function OnChainAttestation({
     registryAddress,
     selectedNetworkData,
     currentRevision,
+    needsReAttestation,
     createPermitMutation,
     signTypedDataAsync,
     encryptWith,
@@ -469,9 +512,11 @@ export function OnChainAttestation({
                   });
                 }
               }}
+              isCheckingOnChain={isCheckingOnChain}
               isConnected={isConnected}
               isRefreshing={refreshMutation.isPending}
               isSubmitting={isSubmitting}
+              needsReAttestation={needsReAttestation}
               networks={networks}
               networksLoading={networksLoading}
               onNetworkSelect={setSelectedNetwork}
@@ -537,9 +582,11 @@ interface AttestationContentBodyProps {
   complianceTxHash: string | null;
   error: string | undefined;
   invalidateComplianceAccess: () => void;
+  isCheckingOnChain: boolean;
   isConnected: boolean;
   isRefreshing: boolean;
   isSubmitting: boolean;
+  needsReAttestation: boolean;
   networks: ApiNetworkStatus[] | undefined;
   networksLoading: boolean;
   onNetworkSelect: (networkId: string) => void;
@@ -572,6 +619,8 @@ const AttestationContentBody = memo(function AttestationContentBody({
   complianceTxHash,
   complianceExplorerUrl,
   invalidateComplianceAccess,
+  isCheckingOnChain,
+  needsReAttestation,
 }: Readonly<AttestationContentBodyProps>) {
   // Guard: Wallet not connected
   if (!isConnected) {
@@ -638,11 +687,31 @@ const AttestationContentBody = memo(function AttestationContentBody({
           error={error}
           isRefreshing={isRefreshing}
           isSubmitting={isSubmitting}
+          needsReAttestation={needsReAttestation}
           network={selectedNetworkData}
           onRefresh={onRefresh}
           onSubmit={onSubmit}
           walletAddress={address}
         />
+      ) : null}
+
+      {needsReAttestation ? (
+        <Alert variant="warning">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Re-attestation Required.</strong> The current wallet is no
+            longer attested on-chain for this network. Submit a new attestation
+            to restore compliance access.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {selectedNetworkData?.attestation?.status === "confirmed" &&
+      isCheckingOnChain ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Spinner size="sm" />
+          <span>Verifying on-chain attestation…</span>
+        </div>
       ) : null}
 
       {showComplianceCard ? (
@@ -751,6 +820,7 @@ const NetworkActions = memo(function NetworkActions({
   isSubmitting,
   isRefreshing,
   error,
+  needsReAttestation,
 }: Readonly<{
   network: NetworkStatus;
   walletAddress: string;
@@ -760,12 +830,16 @@ const NetworkActions = memo(function NetworkActions({
   isSubmitting: boolean;
   isRefreshing: boolean;
   error?: string | undefined;
+  needsReAttestation: boolean;
 }>) {
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain, isPending: isSwitching } = useSwitchChain();
   const attestation = network.attestation;
   const isChainMismatch = chainId !== network.chainId;
+  const walletMismatch =
+    Boolean(attestedWalletAddress) &&
+    walletAddress.toLowerCase() !== attestedWalletAddress?.toLowerCase();
   const chainMismatchNotice = isChainMismatch ? (
     <Alert variant="warning">
       <AlertTriangle className="h-4 w-4" />
@@ -791,6 +865,8 @@ const NetworkActions = memo(function NetworkActions({
   if (attestation?.status === "confirmed") {
     return (
       <div className="space-y-3">
+        {(needsReAttestation || walletMismatch) && chainMismatchNotice}
+
         <Alert variant="success">
           <CheckCircle className="h-5 w-5" />
           <AlertTitle>Attested on {network.name}</AlertTitle>
@@ -831,7 +907,32 @@ const NetworkActions = memo(function NetworkActions({
           </Item>
         ) : null}
 
+        {walletMismatch ? (
+          <Alert variant="warning">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription className="text-sm">
+              <strong>Different Wallet Connected.</strong> Re-attesting will
+              register the currently connected wallet on {network.name}.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         <div className="flex gap-2">
+          {needsReAttestation || walletMismatch ? (
+            <Button
+              disabled={isSubmitting || isChainMismatch}
+              onClick={onSubmit}
+              size="sm"
+              variant="outline"
+            >
+              {isSubmitting ? (
+                <Spinner className="mr-2" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {needsReAttestation ? "Re-attest" : "Update Attestation"}
+            </Button>
+          ) : null}
           {attestation.explorerUrl ? (
             <Button asChild size="sm" variant="outline">
               <a

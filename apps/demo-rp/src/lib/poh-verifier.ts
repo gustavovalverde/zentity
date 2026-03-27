@@ -24,7 +24,7 @@ export interface VerifiedPohToken {
 
 export async function verifyPohToken(token: string): Promise<VerifiedPohToken> {
   const { payload } = await jwtVerify(token, pohJwks, {
-    issuer: env.ZENTITY_URL,
+    issuer: env.NEXT_PUBLIC_ZENTITY_URL,
     algorithms: ["EdDSA"],
   });
 

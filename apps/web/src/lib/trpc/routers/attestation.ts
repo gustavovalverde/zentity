@@ -180,10 +180,51 @@ export const attestationRouter = router({
         input.walletAddress
       );
       if (chainStatus.isAttested) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Wallet is already attested on this network.",
-        });
+        const attestation =
+          existing ??
+          (await createBlockchainAttestation({
+            userId: ctx.userId,
+            walletAddress: input.walletAddress,
+            networkId: input.networkId,
+            chainId: network.chainId,
+          }));
+
+        if (existing) {
+          const walletChanged =
+            existing.walletAddress.toLowerCase() !==
+            input.walletAddress.toLowerCase();
+
+          await updateBlockchainAttestationWallet(
+            attestation.id,
+            input.walletAddress,
+            network.chainId
+          );
+
+          if (walletChanged || existing.status !== "pending") {
+            await resetBlockchainAttestation(attestation.id);
+          }
+        }
+
+        if (chainStatus.txHash) {
+          await updateBlockchainAttestationSubmitted(
+            attestation.id,
+            chainStatus.txHash
+          );
+        }
+
+        await updateBlockchainAttestationConfirmed(
+          attestation.id,
+          chainStatus.blockNumber ?? null
+        );
+
+        return {
+          status: "confirmed" as const,
+          alreadyAttested: true,
+          txHash: chainStatus.txHash,
+          explorerUrl: chainStatus.txHash
+            ? getExplorerTxUrl(input.networkId, chainStatus.txHash)
+            : undefined,
+        };
       }
 
       // Block if there's a pending submission

@@ -325,15 +325,20 @@ export const compliantTokenRouter = router({
     )
     .query(async ({ input }) => {
       if (!canCreateProvider(input.networkId)) {
-        return { isAttested: false };
+        return { isAttested: false, status: "unknown" as const };
       }
 
       try {
         const provider = await createProvider(input.networkId);
         const status = await provider.getAttestationStatus(input.address);
-        return { isAttested: status.isAttested };
+        return {
+          isAttested: status.isAttested,
+          status: status.isAttested
+            ? ("attested" as const)
+            : ("not_attested" as const),
+        };
       } catch {
-        return { isAttested: false };
+        return { isAttested: false, status: "unknown" as const };
       }
     }),
 

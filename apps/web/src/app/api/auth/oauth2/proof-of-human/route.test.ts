@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   signJwt: vi.fn(),
   getUnifiedVerificationModel: vi.fn(),
   resolveUserIdFromSub: vi.fn(),
+  loadOpaqueAccessToken: vi.fn(),
+  validateOpaqueAccessTokenDpop: vi.fn(),
 }));
 
 vi.mock("@/lib/trpc/jwt-session", () => ({
@@ -23,6 +25,11 @@ vi.mock("@/lib/identity/verification/unified-model", () => ({
 
 vi.mock("@/lib/auth/oidc/pairwise", () => ({
   resolveUserIdFromSub: mocks.resolveUserIdFromSub,
+}));
+
+vi.mock("@/lib/auth/oidc/opaque-access-token", () => ({
+  loadOpaqueAccessToken: mocks.loadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop: mocks.validateOpaqueAccessTokenDpop,
 }));
 
 import { POST } from "./route";
@@ -95,6 +102,7 @@ function setupVerifiedUser() {
 describe("POST /api/auth/oauth2/proof-of-human", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(true);
   });
 
   it("returns a PoH JWT with correct claims for a verified user", async () => {
@@ -188,6 +196,39 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(response.status).toBe(200);
     const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.cnf).toEqual({ jkt: dpopThumbprint });
+    expect(mocks.validateOpaqueAccessTokenDpop).toHaveBeenCalledOnce();
+  });
+
+  it("rejects DPoP-bound JWT access tokens sent with Bearer auth", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(
+      makeAccessTokenPayload({ cnf: { jkt: "sha256-dpop-key-thumbprint" } })
+    );
+
+    const response = await POST(
+      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.signJwt).not.toHaveBeenCalled();
+    expect(mocks.validateOpaqueAccessTokenDpop).not.toHaveBeenCalled();
+  });
+
+  it("rejects DPoP-bound JWT access tokens when proof validation fails", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(
+      makeAccessTokenPayload({ cnf: { jkt: "sha256-dpop-key-thumbprint" } })
+    );
+    mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(false);
+
+    const response = await POST(
+      makeRequest({
+        authorization: "DPoP eyJhbGciOiJFZERTQSJ9.test.sig",
+        dpop: "bad-proof",
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.signJwt).not.toHaveBeenCalled();
+    expect(mocks.validateOpaqueAccessTokenDpop).toHaveBeenCalledOnce();
   });
 
   it("omits cnf when access token has no DPoP binding", async () => {

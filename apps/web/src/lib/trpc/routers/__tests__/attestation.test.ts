@@ -38,17 +38,22 @@ vi.mock("@/lib/blockchain/providers/factory", () => ({
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));
 
-vi.mock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: (...args: unknown[]) =>
-    mockGetVerificationStatus(...args),
-  getSelectedVerification: (...args: unknown[]) =>
-    mockGetSelectedVerification(...args),
-}));
-
 const mockGetUnifiedVerificationModel = vi.fn();
+const mockGetIdentityBundleByUserId = vi.fn();
+const mockVerifyWalletOwnership = vi.fn();
+const mockComputeProofSetHash = vi.fn();
 vi.mock("@/lib/identity/verification/unified-model", () => ({
   getUnifiedVerificationModel: (...args: unknown[]) =>
     mockGetUnifiedVerificationModel(...args),
+}));
+
+vi.mock("@/lib/blockchain/wallet-verification", () => ({
+  verifyWalletOwnership: (...args: unknown[]) =>
+    mockVerifyWalletOwnership(...args),
+}));
+
+vi.mock("@/lib/blockchain/attestation/proof-set-hash", () => ({
+  computeProofSetHash: (...args: unknown[]) => mockComputeProofSetHash(...args),
 }));
 
 vi.mock("@/lib/db/queries/attestation", () => ({
@@ -77,6 +82,15 @@ vi.mock("@/lib/db/queries/attestation", () => ({
 
 vi.mock("@/lib/assurance/data", () => ({
   getSecurityPosture: (...args: unknown[]) => mockGetSecurityPosture(...args),
+}));
+
+vi.mock("@/lib/db/queries/identity", () => ({
+  getVerificationStatus: (...args: unknown[]) =>
+    mockGetVerificationStatus(...args),
+  getSelectedVerification: (...args: unknown[]) =>
+    mockGetSelectedVerification(...args),
+  getIdentityBundleByUserId: (...args: unknown[]) =>
+    mockGetIdentityBundleByUserId(...args),
 }));
 
 function createTier2Posture(): SecurityPosture {
@@ -259,6 +273,12 @@ describe("attestation router", () => {
     });
     // Default to Tier 2 + strong auth for most tests (attestation requirement)
     mockGetSecurityPosture.mockResolvedValue(createTier2Posture());
+    mockVerifyWalletOwnership.mockResolvedValue(true);
+    mockGetIdentityBundleByUserId.mockResolvedValue({
+      pepScreeningResult: "clear",
+      sanctionsScreeningResult: "clear",
+    });
+    mockComputeProofSetHash.mockResolvedValue(null);
     // Default unified model for submit flow
     mockGetUnifiedVerificationModel.mockResolvedValue({
       method: "ocr",
@@ -366,23 +386,10 @@ describe("attestation router", () => {
 
   it("passes stored proofSetHash into signed permits and preserves it in evidence", async () => {
     const provider = createProviderMock();
-    const proofSetHash = "a".repeat(64);
+    const proofSetHash = `0x${"a".repeat(64)}`;
 
     mockCreateProvider.mockReturnValue(provider);
-    mockGetAttestationEvidenceByUserAndVerification.mockResolvedValue({
-      id: "v-1",
-      userId: "test-user",
-      verificationId: "v-1",
-      policyVersion: "v1",
-      policyHash: "policy-hash",
-      proofSetHash,
-      consentReceipt: null,
-      consentScope: null,
-      consentedAt: null,
-      consentRpId: null,
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
+    mockComputeProofSetHash.mockResolvedValue(proofSetHash);
 
     const caller = await createCaller(authedSession);
     await caller.createPermit({
@@ -405,9 +412,13 @@ describe("attestation router", () => {
     );
   });
 
-  it("rejects createPermit when the wallet is already attested on-chain", async () => {
+  it("syncs local state when the wallet is already attested on-chain", async () => {
     const provider = createProviderMock({
-      getAttestationStatus: vi.fn().mockResolvedValue({ isAttested: true }),
+      getAttestationStatus: vi.fn().mockResolvedValue({
+        isAttested: true,
+        txHash: TX_HASH,
+        blockNumber: 321,
+      }),
     });
     mockCreateProvider.mockReturnValue(provider);
 
@@ -417,7 +428,21 @@ describe("attestation router", () => {
         networkId: "fhevm_sepolia",
         walletAddress: WALLET_A,
       })
-    ).rejects.toMatchObject({ code: "CONFLICT" });
+    ).resolves.toMatchObject({
+      status: "confirmed",
+      alreadyAttested: true,
+      txHash: TX_HASH,
+    });
+
+    expect(mockCreateBlockchainAttestation).toHaveBeenCalledOnce();
+    expect(mockUpdateBlockchainAttestationSubmitted).toHaveBeenCalledWith(
+      "att-1",
+      TX_HASH
+    );
+    expect(mockUpdateBlockchainAttestationConfirmed).toHaveBeenCalledWith(
+      "att-1",
+      321
+    );
   });
 
   it("resets non-pending attestations before issuing a new permit", async () => {

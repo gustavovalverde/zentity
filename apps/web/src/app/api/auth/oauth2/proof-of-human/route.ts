@@ -22,7 +22,11 @@ interface TokenPrincipal {
   userId: string;
 }
 
-async function resolveJwtToken(token: string): Promise<TokenPrincipal | null> {
+async function resolveJwtToken(
+  token: string,
+  request: Request,
+  scheme: string
+): Promise<TokenPrincipal | null> {
   const payload = await verifyAccessToken(token);
   if (!payload?.sub) {
     return null;
@@ -42,6 +46,17 @@ async function resolveJwtToken(token: string): Promise<TokenPrincipal | null> {
   }
 
   const cnf = payload.cnf as { jkt?: string } | undefined;
+
+  if (cnf?.jkt) {
+    if (scheme.toLowerCase() !== "dpop") {
+      return null;
+    }
+
+    const valid = await validateOpaqueAccessTokenDpop(request, cnf.jkt);
+    if (!valid) {
+      return null;
+    }
+  }
 
   return {
     sub: payload.sub,
@@ -132,7 +147,7 @@ async function resolveToken(request: Request): Promise<TokenPrincipal | null> {
   const token = match[2];
 
   if (token.startsWith("eyJ")) {
-    return await resolveJwtToken(token);
+    return await resolveJwtToken(token, request, scheme);
   }
 
   return await resolveOpaqueToken(token, request, scheme);
