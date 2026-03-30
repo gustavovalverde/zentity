@@ -14,18 +14,15 @@ function normalizeResource(value: string): string {
   return value.replace(TRAILING_SLASHES, "");
 }
 
-function dedupe(values: string[]): string[] {
-  return [...new Set(values)];
-}
-
 export function getProtectedResourceAudiences(
   config: ProtectedResourceConfig
 ): string[] {
-  return dedupe([
-    normalizeResource(config.appUrl),
-    normalizeResource(config.authIssuer),
-    normalizeResource(config.mcpPublicUrl),
-    normalizeResource(config.oidc4vciCredentialAudience),
-    normalizeResource(config.rpApiAudience),
-  ]);
+  const raw = [
+    config.appUrl,
+    config.authIssuer,
+    config.mcpPublicUrl,
+    config.oidc4vciCredentialAudience,
+    config.rpApiAudience,
+  ];
+  return [...new Set(raw.filter(Boolean).map(normalizeResource))];
 }
