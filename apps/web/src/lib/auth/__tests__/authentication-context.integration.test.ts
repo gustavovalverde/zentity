@@ -90,16 +90,14 @@ describe("session-backed authentication contexts", () => {
     const userId = await createTestUser();
     const sessionId = await insertSession(userId, "1774389934087.0");
 
-    await expect(
+    expect(() =>
       createSessionAuthenticationContext({
         userId,
         sessionId,
         loginMethod: "anonymous" as unknown,
         sourceKind: "better_auth",
       })
-    ).rejects.toThrow(
-      "Anonymous sessions cannot create authentication contexts"
-    );
+    ).toThrow("Anonymous sessions cannot create authentication contexts");
 
     const rows = await db
       .select({ id: authenticationContexts.id })

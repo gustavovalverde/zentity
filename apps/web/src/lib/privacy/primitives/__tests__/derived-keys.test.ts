@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+vi.mock("@/env", async (importOriginal) => importOriginal());
+
 const HEX_64_RE = /^[0-9a-f]{64}$/;
-
-const envMock = vi.hoisted(() => ({
-  env: {
-    CLAIM_SIGNING_SECRET: "claim-signing-secret-at-least-32-characters",
-    CIPHERTEXT_HMAC_SECRET: "ciphertext-hmac-secret-at-least-32-chars",
-    BETTER_AUTH_SECRET: "better-auth-secret-at-least-32-characters",
-  },
-}));
-
-vi.mock("@/env", () => envMock);
 
 import {
   getCiphertextHmacKey,

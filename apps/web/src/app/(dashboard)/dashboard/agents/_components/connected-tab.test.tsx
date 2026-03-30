@@ -7,12 +7,12 @@ const TOGGLE_DETAILS_RE = /toggle details/i;
 const REVOKE_ACCESS_RE = /revoke access/i;
 const REVOKE_ACCESS_EXACT_RE = /^Revoke access$/;
 const APPROVE_RE = /^Approve$/;
-const DEFAULT_RE = /Default/;
-const REQUESTED_RE = /Requested/;
+const DEFAULT_RE = /Granted by default/;
+const REQUESTED_RE = /Requested by agent/;
 const REGION_EU_RE = /region is EU/;
 const REVOKE_CONFIRM_RE = /Revoke access for Claude Code/;
-const REQUESTED_CLAUDE_RE = /Requested · Claude Code/;
-const DEFAULT_CURSOR_RE = /Default · Cursor · region is EU/;
+const REQUESTED_CLAUDE_RE = /Requested by agent · Claude Code/;
+const DEFAULT_CURSOR_RE = /Granted by default · Cursor · region is EU/;
 
 const trpcMocks = vi.hoisted(() => ({
   invalidate: vi.fn(),

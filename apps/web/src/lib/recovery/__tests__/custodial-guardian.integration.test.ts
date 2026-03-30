@@ -199,7 +199,8 @@ describe("custodial guardian integration", () => {
         userEmail: "user@example.com",
       });
 
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      const now = Date.now();
+      const expiresAt = new Date(now + 15 * 60 * 1000);
       const challenge = await createRecoveryChallenge({
         id: randomUUID(),
         userId,
@@ -210,8 +211,7 @@ describe("custodial guardian integration", () => {
       });
 
       const expiry = new Date(challenge.expiresAt);
-      const created = new Date(challenge.createdAt);
-      const diffMs = expiry.getTime() - created.getTime();
+      const diffMs = expiry.getTime() - now;
       expect(diffMs / (1000 * 60)).toBeCloseTo(15, 0);
     });
   });

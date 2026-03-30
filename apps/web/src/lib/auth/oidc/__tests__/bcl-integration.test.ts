@@ -8,7 +8,11 @@ import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 
 const BCL_URI = "https://rp.example.com/backchannel-logout";
 const BCL_CLIENT_ID = "bcl-test-client";
@@ -202,19 +206,12 @@ describe("back-channel logout", () => {
   });
 
   it("revokePendingCibaOnLogout does not affect non-pending requests", async () => {
-    const approvedId = crypto.randomUUID();
     await createBclClient(BCL_CLIENT_ID, {});
-    await db
-      .insert(cibaRequests)
-      .values({
-        authReqId: approvedId,
-        clientId: BCL_CLIENT_ID,
-        userId,
-        scope: "openid",
-        status: "approved",
-        expiresAt: new Date(Date.now() + 300_000),
-      })
-      .run();
+    const { authReqId: approvedId } = await createTestCibaRequest({
+      clientId: BCL_CLIENT_ID,
+      userId,
+      status: "approved",
+    });
 
     const { revokePendingCibaOnLogout } = await import(
       "@/lib/auth/oidc/backchannel-logout"

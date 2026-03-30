@@ -1,35 +1,39 @@
-import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createScopeHash,
-  verifyIdentityIntentToken,
-} from "@/lib/auth/oidc/identity-intent";
+// Imported dynamically in beforeEach to pick up mocked derived-keys
+let createScopeHash: typeof import("@/lib/auth/oidc/identity-intent").createScopeHash;
+let verifyIdentityIntentToken: typeof import("@/lib/auth/oidc/identity-intent").verifyIdentityIntentToken;
 
-const TEST_SECRET = "test-secret-at-least-32-characters-long";
+const STABLE_INTENT_KEY = "deadbeef".repeat(8);
 
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
 }));
 
-// Mock requireBrowserSession directly instead of @/lib/auth/auth.
-// This avoids vmThreads mock factory leaking from other test files
-// that also mock @/lib/auth/auth.
+vi.mock("@/lib/privacy/primitives/derived-keys", () => ({
+  getIdentityIntentKey: () => STABLE_INTENT_KEY,
+}));
+
+const { mockVerifySignedOAuthQuery } = vi.hoisted(() => ({
+  mockVerifySignedOAuthQuery: vi.fn<(q: string) => Promise<URLSearchParams>>(),
+}));
+
+vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+  verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
+  parseRequestedScopes: (params: URLSearchParams) =>
+    (params.get("scope") ?? "")
+      .split(" ")
+      .map((s) => s.trim())
+      .filter(Boolean),
+}));
+
+vi.mock("@/lib/utils/rate-limiters", () => ({
+  oauth2IdentityLimiter: { check: () => ({ limited: false }) },
+}));
+
 vi.mock("@/lib/auth/api-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
-
-import { requireBrowserSession } from "@/lib/auth/api-auth";
-
-import { POST } from "../route";
-
-async function makeSignedOAuthQuery(params: Record<string, string>) {
-  const query = new URLSearchParams(params);
-  query.set("exp", String(Math.floor(Date.now() / 1000) + 300));
-  const sig = await makeSignature(query.toString(), TEST_SECRET);
-  query.set("sig", sig);
-  return query.toString();
-}
 
 function makeRequest(body: unknown) {
   return new Request("http://localhost/api/oauth2/identity/intent", {
@@ -39,17 +43,36 @@ function makeRequest(body: unknown) {
   });
 }
 
+function oauthQuery(params: Record<string, string>) {
+  return new URLSearchParams(params).toString();
+}
+
 describe("oauth2 identity intent route", () => {
-  beforeEach(() => {
+  let POST: (req: Request) => Promise<Response>;
+  let requireBrowserSession: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const routeMod = await import("../route");
+    POST = routeMod.POST;
+    const intentMod = await import("@/lib/auth/oidc/identity-intent");
+    createScopeHash = intentMod.createScopeHash;
+    verifyIdentityIntentToken = intentMod.verifyIdentityIntentToken;
+    const authMod = await import("@/lib/auth/api-auth");
+    requireBrowserSession = vi.mocked(authMod.requireBrowserSession);
+
     vi.clearAllMocks();
-    vi.mocked(requireBrowserSession).mockResolvedValue({
+    requireBrowserSession.mockResolvedValue({
       ok: true,
       session: { user: { id: "user-1" } },
     } as never);
+    mockVerifySignedOAuthQuery.mockImplementation(
+      async (q: string) => new URLSearchParams(q)
+    );
   });
 
   it("rejects unauthenticated requests", async () => {
-    vi.mocked(requireBrowserSession).mockResolvedValueOnce({
+    requireBrowserSession.mockResolvedValueOnce({
       ok: false,
       response: new Response(
         JSON.stringify({ error: "Authentication required" }),
@@ -65,6 +88,10 @@ describe("oauth2 identity intent route", () => {
   });
 
   it("rejects invalid oauth query signature", async () => {
+    mockVerifySignedOAuthQuery.mockRejectedValueOnce(
+      new Error("invalid_signature")
+    );
+
     const response = await POST(
       makeRequest({
         oauth_query: "client_id=client-1&scope=openid%20identity.name&sig=bad",
@@ -79,14 +106,14 @@ describe("oauth2 identity intent route", () => {
   });
 
   it("rejects requests without identity scopes", async () => {
-    const oauthQuery = await makeSignedOAuthQuery({
+    const query = oauthQuery({
       client_id: "client-1",
       scope: "openid email",
     });
 
     const response = await POST(
       makeRequest({
-        oauth_query: oauthQuery,
+        oauth_query: query,
         scopes: ["openid", "email"],
       })
     );
@@ -99,14 +126,14 @@ describe("oauth2 identity intent route", () => {
 
   it("issues a signed identity intent token", async () => {
     const scopes = ["openid", "identity.name", "identity.dob"];
-    const oauthQuery = await makeSignedOAuthQuery({
+    const query = oauthQuery({
       client_id: "client-1",
       scope: scopes.join(" "),
     });
 
     const response = await POST(
       makeRequest({
-        oauth_query: oauthQuery,
+        oauth_query: query,
         scopes,
       })
     );

@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { createServer } from "node:http";
 
 import { makeSignature } from "better-auth/crypto";
@@ -7,10 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
-import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestSession,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 import { auth } from "../auth";
@@ -62,28 +65,6 @@ async function postBcAuthorize(
     }
   }
   return { status: response.status, json };
-}
-
-async function insertCibaRequest(
-  overrides: Partial<typeof cibaRequests.$inferInsert> = {}
-) {
-  const authReqId = overrides.authReqId ?? crypto.randomUUID();
-  await db
-    .insert(cibaRequests)
-    .values({
-      authReqId,
-      clientId: TEST_CLIENT_ID,
-      userId: overrides.userId ?? "test-user",
-      scope: "openid",
-      status: "pending",
-      deliveryMode: "ping",
-      clientNotificationToken: TEST_NOTIFICATION_TOKEN,
-      clientNotificationEndpoint: TEST_NOTIFICATION_ENDPOINT,
-      expiresAt: new Date(Date.now() + 300_000),
-      ...overrides,
-    })
-    .run();
-  return authReqId;
 }
 
 describe("CIBA ping mode", () => {
@@ -185,9 +166,13 @@ describe("CIBA ping mode", () => {
 
   describe("ping-mode token retrieval", () => {
     it("allows polling for tokens on ping-mode requests (unlike push)", async () => {
-      const authReqId = await insertCibaRequest({
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
         userId,
         status: "approved",
+        deliveryMode: "ping",
+        clientNotificationToken: TEST_NOTIFICATION_TOKEN,
+        clientNotificationEndpoint: TEST_NOTIFICATION_ENDPOINT,
       });
 
       const { status, json } = await postTokenWithDpop({
@@ -202,9 +187,13 @@ describe("CIBA ping mode", () => {
     });
 
     it("returns authorization_pending for pending ping-mode requests", async () => {
-      const authReqId = await insertCibaRequest({
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
         userId,
         status: "pending",
+        deliveryMode: "ping",
+        clientNotificationToken: TEST_NOTIFICATION_TOKEN,
+        clientNotificationEndpoint: TEST_NOTIFICATION_ENDPOINT,
       });
 
       const { status, json } = await postTokenWithDpop({
@@ -247,7 +236,8 @@ describe("CIBA ping mode", () => {
 
   describe("poll-mode regression", () => {
     it("poll-mode requests still work without notification fields", async () => {
-      const authReqId = await insertCibaRequest({
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
         userId,
         status: "approved",
         deliveryMode: "poll",
@@ -347,26 +337,10 @@ describe("CIBA ping mode", () => {
       });
     }
 
-    async function createTestSession(uid: string): Promise<string> {
-      const sessionToken = crypto.randomUUID();
-      const now = new Date().toISOString();
-      await db
-        .insert(sessions)
-        .values({
-          id: crypto.randomUUID(),
-          token: sessionToken,
-          userId: uid,
-          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-          createdAt: now,
-          updatedAt: now,
-        })
-        .run();
-      // better-auth requires signed cookies (value.signature)
-      const signature = await makeSignature(
-        sessionToken,
-        env.BETTER_AUTH_SECRET
-      );
-      return `${sessionToken}.${signature}`;
+    async function createSignedSessionCookie(uid: string): Promise<string> {
+      const { token } = await createTestSession(uid);
+      const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
+      return `${token}.${signature}`;
     }
 
     it("delivers ping callback to notification endpoint after approval", async () => {
@@ -386,7 +360,7 @@ describe("CIBA ping mode", () => {
       const authReqId = bcJson.auth_req_id as string;
 
       // Create a session so we can call the approve endpoint
-      const sessionToken = await createTestSession(userId);
+      const sessionToken = await createSignedSessionCookie(userId);
 
       // Approve the CIBA request through the plugin
       const approveUrl = "http://localhost:3000/api/auth/ciba/authorize";

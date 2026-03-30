@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,9 +7,12 @@ import {
   enrichDiscoveryMetadata,
 } from "@/lib/auth/well-known-utils";
 import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const BASE = "http://localhost:3000";
@@ -118,19 +119,12 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
     });
 
     it("issues JWT access token with aud + DPoP binding", async () => {
-      const authReqId = crypto.randomUUID();
-      await db
-        .insert(cibaRequests)
-        .values({
-          authReqId,
-          clientId: CIMD_CLIENT_ID,
-          userId,
-          scope: "openid",
-          status: "approved",
-          resource: BASE,
-          expiresAt: new Date(Date.now() + 300_000),
-        })
-        .run();
+      const { authReqId } = await createTestCibaRequest({
+        clientId: CIMD_CLIENT_ID,
+        userId,
+        status: "approved",
+        resource: BASE,
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,

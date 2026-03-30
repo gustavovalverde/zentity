@@ -1,5 +1,7 @@
+import type { ChildProcess } from "node:child_process";
 import type { AddressInfo } from "node:net";
 
+import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { once } from "node:events";
 import {
@@ -8,27 +10,33 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
+import { resolve } from "node:path";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
-import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
 } from "@/lib/auth/well-known-utils";
 import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
-const MCP_PUBLIC_URL = "http://localhost:3200";
-const MCP_SERVER_CLIENT_ID = "mcp-http-test-server";
+const MCP_PORT = 3300;
+const MCP_PUBLIC_URL = `http://localhost:${MCP_PORT}`;
 const REMOTE_CLIENT_ID = "mcp-http-test-client";
 const TRAILING_SLASHES = /\/+$/;
+
+const HEALTH_POLL_INTERVAL_MS = 100;
+const HEALTH_POLL_TIMEOUT_MS = 15_000;
 
 interface DpopKeyPair {
   jwk: JsonWebKey;
@@ -262,62 +270,118 @@ async function postTokenWithDpop(
   return { json: first.json, status: first.status };
 }
 
+function startMcpSubprocess(authBaseUrl: string): ChildProcess {
+  const tsxBin = resolve(
+    import.meta.dirname,
+    "../../../../node_modules/.bin/tsx"
+  );
+  const mcpEntry = resolve(
+    import.meta.dirname,
+    "../../../../../mcp/src/index.ts"
+  );
+
+  return spawn(
+    tsxBin,
+    [mcpEntry, "--transport", "http", "--port", String(MCP_PORT)],
+    {
+      env: {
+        ...process.env,
+        ZENTITY_URL: authBaseUrl,
+        MCP_PUBLIC_URL,
+        MCP_ALLOWED_ORIGINS: "*",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
+}
+
+async function waitForHealth(baseUrl: string): Promise<void> {
+  const deadline = Date.now() + HEALTH_POLL_TIMEOUT_MS;
+  const healthUrl = `${baseUrl}/health`;
+
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(healthUrl);
+      if (res.ok) {
+        return;
+      }
+    } catch {
+      // not ready yet
+    }
+    await new Promise((r) => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
+  }
+
+  throw new Error(
+    `MCP subprocess did not become healthy within ${HEALTH_POLL_TIMEOUT_MS}ms`
+  );
+}
+
+function killSubprocess(child: ChildProcess): void {
+  if (!child.killed) {
+    child.kill("SIGTERM");
+  }
+}
+
+/**
+ * Parse a JSON-RPC response from the MCP Streamable HTTP transport.
+ * When Accept includes text/event-stream, the response may be SSE.
+ */
+function parseJsonRpcResponse(
+  contentType: string | null,
+  body: string
+): unknown {
+  if (contentType?.includes("text/event-stream")) {
+    for (const line of body.split("\n")) {
+      if (line.startsWith("data:")) {
+        return JSON.parse(line.slice("data:".length).trim());
+      }
+    }
+    throw new Error(`No data line found in SSE response: ${body}`);
+  }
+  return JSON.parse(body);
+}
+
 describe("remote MCP HTTP auth integration", () => {
   let authHarness: { baseUrl: string; server: Server } | undefined;
+  let mcpProcess: ChildProcess | undefined;
 
   beforeEach(async () => {
     await resetDatabase();
   });
 
   afterEach(() => {
+    if (mcpProcess) {
+      killSubprocess(mcpProcess);
+      mcpProcess = undefined;
+    }
     authHarness?.server.close();
     authHarness = undefined;
-    process.env.ZENTITY_URL = undefined;
-    process.env.MCP_PUBLIC_URL = undefined;
-    vi.resetModules();
   });
 
   it("accepts initialize for the MCP resource and step-up challenges scoped tools", async () => {
     authHarness = await startAuthHarness();
 
     const userId = await createTestUser();
-    const authReqId = crypto.randomUUID();
 
     await db
       .insert(oauthClients)
-      .values([
-        {
-          clientId: REMOTE_CLIENT_ID,
-          grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
-          name: "Remote MCP Test Client",
-          public: true,
-          redirectUris: JSON.stringify(["https://mcp-http.test/callback"]),
-          subjectType: "pairwise",
-          tokenEndpointAuthMethod: "none",
-        },
-        {
-          clientId: MCP_SERVER_CLIENT_ID,
-          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
-          name: "MCP HTTP Test Server",
-          public: true,
-          redirectUris: JSON.stringify(["http://127.0.0.1/callback"]),
-          tokenEndpointAuthMethod: "none",
-        },
-      ])
-      .run();
-
-    await db
-      .insert(cibaRequests)
       .values({
-        authReqId,
         clientId: REMOTE_CLIENT_ID,
-        userId,
-        scope: "openid",
-        status: "approved",
-        resource: MCP_PUBLIC_URL,
-        expiresAt: new Date(Date.now() + 300_000),
+        grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
+        name: "Remote MCP Test Client",
+        public: true,
+        redirectUris: JSON.stringify(["https://mcp-http.test/callback"]),
+        subjectType: "pairwise",
+        tokenEndpointAuthMethod: "none",
       })
       .run();
+
+    const { authReqId } = await createTestCibaRequest({
+      clientId: REMOTE_CLIENT_ID,
+      userId,
+      status: "approved",
+      resource: MCP_PUBLIC_URL,
+    });
 
     const resourceKeyPair = await createDpopKeyPair();
     const tokenResult = await postTokenWithDpop(
@@ -336,50 +400,25 @@ describe("remote MCP HTTP auth integration", () => {
     const accessToken = tokenResult.json.access_token as string;
     expect(typeof accessToken).toBe("string");
 
-    const jwksResponse = await fetch(
-      `${authHarness.baseUrl}/api/auth/oauth2/jwks`
-    );
-    const jwksBody = await jwksResponse.text();
-    if (jwksResponse.status !== 200) {
-      throw new Error(`jwks failed: ${jwksResponse.status} ${jwksBody}`);
-    }
+    mcpProcess = startMcpSubprocess(authHarness.baseUrl);
+    await waitForHealth(MCP_PUBLIC_URL);
 
-    process.env.ZENTITY_URL = authHarness.baseUrl;
-    process.env.MCP_PUBLIC_URL = MCP_PUBLIC_URL;
-    vi.resetModules();
-
-    const { createApp, setServerCredentials } = await import(
-      "../../../../../mcp/src/transports/http"
-    );
-    const { clearDiscoveryCache, discover } = await import(
-      "../../../../../mcp/src/auth/discovery"
-    );
-    const { resetJwks } = await import(
-      "../../../../../mcp/src/auth/token-auth"
-    );
-
-    clearDiscoveryCache();
-    resetJwks();
-    await discover(authHarness.baseUrl);
-
-    const serverKeyPair = await createDpopKeyPair();
-    setServerCredentials({
-      clientId: MCP_SERVER_CLIENT_ID,
-      dpopKey: {
-        privateJwk: await exportJWK(serverKeyPair.privateKey),
-        publicJwk: serverKeyPair.jwk,
-      },
-    });
-
-    const app = createApp();
+    const mcpUrl = `${MCP_PUBLIC_URL}/mcp`;
 
     const initializeProof = await buildResourceDpopProof(
       resourceKeyPair,
       "POST",
-      `${MCP_PUBLIC_URL}/mcp`,
+      mcpUrl,
       accessToken
     );
-    const initializeResponse = await app.request(`${MCP_PUBLIC_URL}/mcp`, {
+    const initializeResponse = await fetch(mcpUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `DPoP ${accessToken}`,
+        "Content-Type": "application/json",
+        DPoP: initializeProof,
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         method: "initialize",
@@ -390,13 +429,6 @@ describe("remote MCP HTTP auth integration", () => {
           clientInfo: { name: "integration-test", version: "0.1.0" },
         },
       }),
-      headers: {
-        Accept: "application/json, text/event-stream",
-        Authorization: `DPoP ${accessToken}`,
-        "Content-Type": "application/json",
-        DPoP: initializeProof,
-      },
-      method: "POST",
     });
 
     const initializeBody = await initializeResponse.text();
@@ -405,16 +437,37 @@ describe("remote MCP HTTP auth integration", () => {
         `initialize failed: ${initializeResponse.status} ${initializeBody}`
       );
     }
+
+    const initializeData = parseJsonRpcResponse(
+      initializeResponse.headers.get("content-type"),
+      initializeBody
+    );
+    expect(initializeData).toEqual(
+      expect.objectContaining({
+        result: expect.objectContaining({
+          protocolVersion: expect.any(String),
+        }),
+      })
+    );
+
     const sessionId = initializeResponse.headers.get("mcp-session-id");
     expect(sessionId).toBeTruthy();
 
     const whoamiProof = await buildResourceDpopProof(
       resourceKeyPair,
       "POST",
-      `${MCP_PUBLIC_URL}/mcp`,
+      mcpUrl,
       accessToken
     );
-    const whoamiResponse = await app.request(`${MCP_PUBLIC_URL}/mcp`, {
+    const whoamiResponse = await fetch(mcpUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json, text/event-stream",
+        Authorization: `DPoP ${accessToken}`,
+        "Content-Type": "application/json",
+        DPoP: whoamiProof,
+        "mcp-session-id": sessionId ?? "",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         method: "tools/call",
@@ -424,19 +477,17 @@ describe("remote MCP HTTP auth integration", () => {
           arguments: {},
         },
       }),
-      headers: {
-        Accept: "application/json, text/event-stream",
-        Authorization: `DPoP ${accessToken}`,
-        "Content-Type": "application/json",
-        DPoP: whoamiProof,
-        "mcp-session-id": sessionId ?? "",
-      },
-      method: "POST",
     });
 
+    const whoamiBody = await whoamiResponse.text();
     expect(whoamiResponse.status).toBe(200);
     expect(whoamiResponse.headers.get("WWW-Authenticate")).toBeNull();
-    await expect(whoamiResponse.json()).resolves.toEqual(
+
+    const whoamiData = parseJsonRpcResponse(
+      whoamiResponse.headers.get("content-type"),
+      whoamiBody
+    ) as Record<string, unknown>;
+    expect(whoamiData).toEqual(
       expect.objectContaining({
         result: expect.objectContaining({
           structuredContent: expect.objectContaining({

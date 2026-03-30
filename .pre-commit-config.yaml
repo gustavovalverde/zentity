@@ -125,6 +125,18 @@ repos:
         language: system
         files: ^apps/web/.*\.(ts|tsx)$
         pass_filenames: false
+      - id: vitest-unit-web
+        name: vitest unit tests (web) — ~2 min timeout
+        entry: bash -c 'cd apps/web && pnpm test:unit'
+        language: system
+        files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: vitest-integration-web
+        name: vitest integration tests (web) — ~5 min timeout
+        entry: bash -c 'cd apps/web && pnpm test:integration'
+        language: system
+        files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false
       - id: tsc-check-landing
         name: TypeScript type-check (landing)
         entry: bash -c 'cd apps/landing && pnpm run type-check'
@@ -209,6 +221,6 @@ repos:
     hooks:
       - id: commitlint
         name: commitlint
-        entry: bash -c 'cd apps/web && pnpm exec commitlint --edit "$0"'
+        entry: bash -c 'NODE_PATH=apps/web/node_modules apps/web/node_modules/.bin/commitlint --edit "$0"'
         language: system
         stages: [commit-msg]

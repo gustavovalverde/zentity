@@ -14,7 +14,7 @@ describe("formatCapabilityName", () => {
     expect(formatCapabilityName("check_compliance")).toBe(
       "Check verification status"
     );
-    expect(formatCapabilityName("my_proofs")).toBe("View verification proofs");
+    expect(formatCapabilityName("my_proofs")).toBe("View verification records");
     expect(formatCapabilityName("my_profile")).toBe(
       "Read personal information"
     );
@@ -28,8 +28,8 @@ describe("formatCapabilityName", () => {
 
 describe("formatGrantSource", () => {
   it("returns human labels for known sources", () => {
-    expect(formatGrantSource("host_policy")).toBe("Default");
-    expect(formatGrantSource("session_elevation")).toBe("Requested");
+    expect(formatGrantSource("host_policy")).toBe("Granted by default");
+    expect(formatGrantSource("session_elevation")).toBe("Requested by agent");
     expect(formatGrantSource("session_once")).toBe("One-time");
   });
 

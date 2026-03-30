@@ -21,8 +21,9 @@ const {
 }));
 
 vi.mock("@zkpassport/registry", () => ({
-  RegistryClient() {
-    return mockRegistryClient;
+  RegistryClient: class {
+    isCertificateRootValid = mockRegistryClient.isCertificateRootValid;
+    isCircuitRootValid = mockRegistryClient.isCircuitRootValid;
   },
 }));
 

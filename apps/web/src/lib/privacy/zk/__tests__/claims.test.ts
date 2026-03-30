@@ -1,8 +1,22 @@
+import { hkdfSync } from "node:crypto";
+
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/env", () => ({
-  env: { CLAIM_SIGNING_SECRET: "test-claim-signing-secret-at-least-32-chars" },
-}));
+// vmThreads leaks vi.mock("@/env") factories across test files. A partial mock
+// from another file (e.g. only BETTER_AUTH_SECRET) leaves CLAIM_SIGNING_SECRET
+// undefined in derived-keys. Mock the leaf dependency directly to avoid this.
+vi.mock("@/lib/privacy/primitives/derived-keys", () => {
+  const key = Buffer.from(
+    hkdfSync(
+      "sha256",
+      "test-claim-signing-secret-at-least-32-chars",
+      "",
+      "zentity:claim-signing:v1",
+      32
+    )
+  );
+  return { getClaimSigningKey: () => key };
+});
 
 import {
   type FaceMatchClaimData,

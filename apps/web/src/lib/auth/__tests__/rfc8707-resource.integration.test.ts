@@ -1,15 +1,16 @@
-import crypto from "node:crypto";
-
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import { haipPushedRequests } from "@/lib/db/schema/haip";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
@@ -163,19 +164,12 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
     });
 
     it("does not reject CIBA grant without resource in body", async () => {
-      const authReqId = crypto.randomUUID();
       const userId = await createTestUser();
-      await db
-        .insert(cibaRequests)
-        .values({
-          authReqId,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          status: "approved",
-          expiresAt: new Date(Date.now() + 300_000),
-        })
-        .run();
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
+        userId,
+        status: "approved",
+      });
 
       const { status } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
@@ -195,19 +189,12 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
     });
 
     it("issues JWT access token with aud when CIBA request has resource", async () => {
-      const authReqId = crypto.randomUUID();
-      await db
-        .insert(cibaRequests)
-        .values({
-          authReqId,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          status: "approved",
-          resource: VALID_RESOURCE,
-          expiresAt: new Date(Date.now() + 300_000),
-        })
-        .run();
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
+        userId,
+        status: "approved",
+        resource: VALID_RESOURCE,
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
@@ -224,18 +211,11 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
     });
 
     it("issues opaque access token when CIBA request has no resource", async () => {
-      const authReqId = crypto.randomUUID();
-      await db
-        .insert(cibaRequests)
-        .values({
-          authReqId,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          scope: "openid",
-          status: "approved",
-          expiresAt: new Date(Date.now() + 300_000),
-        })
-        .run();
+      const { authReqId } = await createTestCibaRequest({
+        clientId: TEST_CLIENT_ID,
+        userId,
+        status: "approved",
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,

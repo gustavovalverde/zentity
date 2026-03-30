@@ -1,7 +1,7 @@
 import type { Session } from "@/lib/auth/auth";
 
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
@@ -83,9 +83,24 @@ async function createUserCaller() {
   });
 }
 
+function clearKeyCache() {
+  const sym = Symbol.for("zentity.jwt-signer-key-cache");
+  const cache = (globalThis as Record<symbol, unknown>)[sym] as
+    | Map<string, unknown>
+    | undefined;
+  cache?.clear();
+}
+
 describe("JWKS signing key rotation", () => {
   beforeEach(async () => {
+    clearKeyCache();
     await db.delete(jwks).run();
+  });
+
+  // Prevent stale keys from leaking to subsequent test files
+  afterAll(async () => {
+    await db.delete(jwks).run();
+    clearKeyCache();
   });
 
   describe("rotateSigningKey", () => {

@@ -14,10 +14,13 @@ import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import {
   buildDpopProof,
   createTestDpopKeyPair,
@@ -722,27 +725,6 @@ describe("Authorization Challenge Endpoint", () => {
         .run();
     }
 
-    async function insertApprovedCibaRequest(
-      userId: string,
-      acrValues: string,
-      clientId = FPA_CIBA_CLIENT_ID
-    ) {
-      const authReqId = crypto.randomUUID();
-      await db
-        .insert(cibaRequests)
-        .values({
-          authReqId,
-          clientId,
-          userId,
-          scope: "openid",
-          status: "approved",
-          acrValues,
-          expiresAt: new Date(Date.now() + 300_000),
-        })
-        .run();
-      return authReqId;
-    }
-
     async function seedTier1(userId: string) {
       await db
         .insert(identityBundles)
@@ -811,10 +793,12 @@ describe("Authorization Challenge Endpoint", () => {
       await createFpaCibaClient();
 
       // 1. CIBA token exchange → 403 + auth_session (tier-0 vs tier-1 required)
-      const authReqId = await insertApprovedCibaRequest(
+      const { authReqId } = await createTestCibaRequest({
+        clientId: FPA_CIBA_CLIENT_ID,
         userId,
-        "urn:zentity:assurance:tier-1"
-      );
+        status: "approved",
+        acrValues: "urn:zentity:assurance:tier-1",
+      });
 
       const tokenResult = await postTokenWithDpop({
         grant_type: CIBA_GRANT_TYPE,
@@ -918,10 +902,12 @@ describe("Authorization Challenge Endpoint", () => {
       const { userId } = await createUserWithOpaque(TEST_EMAIL);
       await createFpaCibaClient();
 
-      const authReqId = await insertApprovedCibaRequest(
+      const { authReqId } = await createTestCibaRequest({
+        clientId: FPA_CIBA_CLIENT_ID,
         userId,
-        "urn:zentity:assurance:tier-1"
-      );
+        status: "approved",
+        acrValues: "urn:zentity:assurance:tier-1",
+      });
 
       // Token request with DPoP key A → 403 + auth_session
       const tokenResult = await postTokenWithDpop({

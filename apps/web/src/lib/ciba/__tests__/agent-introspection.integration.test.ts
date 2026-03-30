@@ -6,9 +6,12 @@ import { getAuthIssuer } from "@/lib/auth/issuer";
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestCibaRequest,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import {
   buildDpopProof,
   type DpopKeyPair,
@@ -114,35 +117,29 @@ async function issueAgentToken(
   sessionId: string,
   hostId: string
 ) {
-  const authReqId = crypto.randomUUID();
-  await db
-    .insert(cibaRequests)
-    .values({
-      authReqId,
-      clientId: TEST_CLIENT_ID,
-      userId,
-      scope: "openid",
-      status: "approved",
-      resource: TEST_RESOURCE,
-      hostId,
-      agentSessionId: sessionId,
-      displayName: "Test Agent",
-      runtime: "test-runner",
-      model: "gpt-4",
-      version: "1.0.0",
-      taskId: "task-123",
-      assertionVerified: true,
-      approvedCapabilityName: "purchase",
-      approvedConstraints: JSON.stringify([
-        { field: "merchant", op: "eq", value: "Test Store" },
-      ]),
-      approvedGrantId: "grant-123",
-      approvalStrength: "session",
-      attestationProvider: "AgentPass",
-      attestationTier: "attested",
-      expiresAt: new Date(Date.now() + 300_000),
-    })
-    .run();
+  const { authReqId } = await createTestCibaRequest({
+    clientId: TEST_CLIENT_ID,
+    userId,
+    scope: "openid",
+    status: "approved",
+    resource: TEST_RESOURCE,
+    hostId,
+    agentSessionId: sessionId,
+    displayName: "Test Agent",
+    runtime: "test-runner",
+    model: "gpt-4",
+    version: "1.0.0",
+    taskId: "task-123",
+    assertionVerified: true,
+    approvedCapabilityName: "purchase",
+    approvedConstraints: JSON.stringify([
+      { field: "merchant", op: "eq", value: "Test Store" },
+    ]),
+    approvedGrantId: "grant-123",
+    approvalStrength: "session",
+    attestationProvider: "AgentPass",
+    attestationTier: "attested",
+  });
 
   const { status, json } = await postTokenWithDpop({
     grant_type: CIBA_GRANT_TYPE,

@@ -47,6 +47,7 @@ const DEFAULT_PARAMS = {
 
 describe("ciba-mailer", () => {
   beforeEach(() => {
+    vi.resetModules();
     vi.clearAllMocks();
     vi.stubEnv("NODE_ENV", "development");
     mockIsResendConfigured.mockReturnValue(false);

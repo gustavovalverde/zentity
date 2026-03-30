@@ -9,7 +9,11 @@ import {
   oauthClients,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  createTestAuthContext,
+  createTestUser,
+  resetDatabase,
+} from "@/test/db-test-utils";
 import { postTokenWithDpop } from "@/test/dpop-test-utils";
 
 const REDIRECT_URI = "http://127.0.0.1/callback";
@@ -51,6 +55,7 @@ describe("oauth token auth_time normalization", () => {
     const createdAtMillisText = `${now - 60_000}.0`;
     const codeVerifier = "pkce-verifier-auth-time";
     const { challenge } = await createPkceChallenge(codeVerifier);
+    const authContextId = await createTestAuthContext(userId);
 
     await db
       .insert(oauthClients)
@@ -74,6 +79,7 @@ describe("oauth token auth_time normalization", () => {
         id: sessionId,
         token: "session-token-auth-time",
         userId,
+        authContextId,
         createdAt: createdAtMillisText,
         updatedAt: createdAtMillisText,
         expiresAt: `${now + 60 * 60 * 1000}.0`,

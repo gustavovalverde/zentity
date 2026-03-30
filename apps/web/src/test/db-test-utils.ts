@@ -1,5 +1,8 @@
+import type { NewCibaRequest } from "@/lib/db/schema/ciba";
+
 import crypto from "node:crypto";
 
+import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -14,6 +17,7 @@ import {
   verifications,
 } from "@/lib/db/schema/auth";
 import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
+import { authenticationContexts } from "@/lib/db/schema/authentication-context";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
 import {
@@ -107,6 +111,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oauthClients).run();
     await tx.delete(accounts).run();
     await tx.delete(sessions).run();
+    await tx.delete(authenticationContexts).run();
     await tx.delete(verifications).run();
     await tx.delete(passkeys).run();
     await tx.delete(users).run();
@@ -140,4 +145,101 @@ export async function createTestUser(
     .run();
 
   return id;
+}
+
+// ---------------------------------------------------------------------------
+// Auth context helpers
+// ---------------------------------------------------------------------------
+
+export async function createTestAuthContext(userId: string): Promise<string> {
+  const ctx = await createAuthenticationContext({
+    userId,
+    loginMethod: "passkey",
+    authenticatedAt: new Date(),
+    sourceKind: "better_auth",
+    referenceType: "session",
+  });
+  return ctx.id;
+}
+
+// ---------------------------------------------------------------------------
+// Session helpers
+// ---------------------------------------------------------------------------
+
+interface TestSessionResult {
+  authContextId: string;
+  sessionId: string;
+  token: string;
+}
+
+export async function createTestSession(
+  userId: string,
+  authContextId?: string
+): Promise<TestSessionResult> {
+  const resolvedAuthContextId =
+    authContextId ?? (await createTestAuthContext(userId));
+  const sessionId = crypto.randomUUID();
+  const token = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db
+    .insert(sessions)
+    .values({
+      id: sessionId,
+      token,
+      userId,
+      authContextId: resolvedAuthContextId,
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run();
+
+  return { sessionId, token, authContextId: resolvedAuthContextId };
+}
+
+// ---------------------------------------------------------------------------
+// CIBA request helpers
+// ---------------------------------------------------------------------------
+
+type CibaRequestOverrides = Partial<NewCibaRequest> & {
+  clientId: string;
+  userId: string;
+};
+
+interface TestCibaRequestResult {
+  authContextId: string | null;
+  authReqId: string;
+}
+
+/**
+ * Creates a CIBA request for testing. When status is "approved" and no
+ * authContextId is provided, one is auto-created — mirroring the production
+ * invariant that every approved CIBA request always has an auth context.
+ */
+export async function createTestCibaRequest(
+  input: CibaRequestOverrides
+): Promise<TestCibaRequestResult> {
+  const authReqId = input.authReqId ?? crypto.randomUUID();
+  const status = input.status ?? "pending";
+
+  let authContextId: string | null = input.authContextId ?? null;
+
+  if (status === "approved" && !authContextId) {
+    authContextId = await createTestAuthContext(input.userId);
+  }
+
+  await db
+    .insert(cibaRequests)
+    .values({
+      scope: "openid",
+      expiresAt: new Date(Date.now() + 300_000),
+      ...input,
+      authReqId,
+      status,
+      authContextId,
+    })
+    .run();
+
+  return { authReqId, authContextId };
 }

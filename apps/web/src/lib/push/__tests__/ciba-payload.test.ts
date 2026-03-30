@@ -95,7 +95,7 @@ describe("buildCibaPushPayload", () => {
       ORIGIN
     );
 
-    expect(payload.title).toBe("Authorization Request");
+    expect(payload.title).toBe("An application is requesting access");
   });
 
   it("uses agentName in title when provided", () => {

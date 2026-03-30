@@ -13,7 +13,10 @@ const mockDedupKeyExistsForOtherUser = vi.fn();
 const mockHasProfileSecret = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 const mockInsertSignedClaim = vi.fn();
+const mockInsertProofArtifact = vi.fn();
 const mockSignAttestationClaim = vi.fn();
+const mockUpsertAttestationEvidence = vi.fn();
+const mockMaterializeVerificationChecks = vi.fn();
 const mockLoggerWarn = vi.fn();
 
 // --- Module mocks ---
@@ -49,6 +52,7 @@ vi.mock("@/lib/privacy/fhe/encryption", () => ({
 
 vi.mock("@/lib/db/queries/crypto", () => ({
   insertSignedClaim: (...args: unknown[]) => mockInsertSignedClaim(...args),
+  insertProofArtifact: (...args: unknown[]) => mockInsertProofArtifact(...args),
 }));
 
 vi.mock("@/lib/privacy/zk/claims", () => ({
@@ -56,14 +60,29 @@ vi.mock("@/lib/privacy/zk/claims", () => ({
     mockSignAttestationClaim(...args),
 }));
 
-vi.mock("@/lib/logging/logger", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/logging/logger")>();
+vi.mock("@/lib/db/queries/attestation", () => ({
+  upsertAttestationEvidence: (...args: unknown[]) =>
+    mockUpsertAttestationEvidence(...args),
+}));
+
+vi.mock("@/lib/identity/verification/materialize", () => ({
+  materializeVerificationChecks: (...args: unknown[]) =>
+    mockMaterializeVerificationChecks(...args),
+}));
+
+vi.mock("@/lib/logging/logger", () => {
+  const noop = vi.fn();
+  const mockLogger = {
+    info: noop,
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    error: noop,
+    debug: noop,
+    child: () => mockLogger,
+  };
   return {
-    ...actual,
-    logger: {
-      ...actual.logger,
-      warn: (...args: unknown[]) => mockLoggerWarn(...args),
-    },
+    logger: mockLogger,
+    createRequestLogger: () => mockLogger,
+    isDebugEnabled: () => false,
   };
 });
 
