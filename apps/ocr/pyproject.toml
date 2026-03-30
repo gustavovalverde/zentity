@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Privacy-preserving OCR service for document processing"
 requires-python = ">=3.10"
 dependencies = [
-    "fastapi==0.135.1",
+    "fastapi==0.135.2",
     "iso3166==2.1.1",
     "mrz==0.6.2",
     "numpy==2.4.3",
