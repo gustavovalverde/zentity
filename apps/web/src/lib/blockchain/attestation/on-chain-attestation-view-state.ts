@@ -1,4 +1,4 @@
-export type OnChainAttestationStatus = "attested" | "not_attested" | "unknown";
+type OnChainAttestationStatus = "attested" | "not_attested" | "unknown";
 
 interface ResolveOnChainAttestationViewStateOptions {
   attestedWalletAddress?: string | null;

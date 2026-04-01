@@ -1,13 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["server.mjs!"],
-  "rules": {
-    "types": "warn"
-  },
+  "entry": ["server.mjs", "src/lib/identity/liveness/socket/*.ts"],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
     "src/lib/copy-constants.ts": ["exports"],
-    "src/lib/db/queries/attestation.ts": ["exports"]
+    "src/lib/db/queries/attestation.ts": ["exports"],
+    "src/lib/identity/liveness/human-server.ts": ["exports"]
   },
   "ignore": [
     "scripts/**",
@@ -16,18 +14,19 @@
     "public/push-sw.js",
     "e2e/**",
     "src/test/**",
-    "**/__tests__/**",
-    "**/*.test.ts",
-    "**/*.test.tsx",
     "vitest.global-setup.ts",
     "vitest.setup.mts"
   ],
   "ignoreDependencies": [
+    "@commitlint/cli",
+    "@commitlint/config-conventional",
     "@vladmandic/human-models",
-    "@zentity/fhevm-contracts",
-    "tfhe",
+    "@synthetixio/synpress-cache",
     "buffer",
+    "pino-pretty",
+    "socket.io",
     "tailwindcss",
+    "tfhe",
     "tw-animate-css"
   ],
   "ignoreBinaries": ["nargo"],
