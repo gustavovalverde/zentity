@@ -10,6 +10,7 @@ import { ExchangePortfolio } from "@/components/exchange/exchange-portfolio";
 import { ExchangeTrade } from "@/components/exchange/exchange-trade";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
+import { Redacted } from "@/components/ui/redacted";
 import { MARKET_DATA } from "@/data/exchange";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
@@ -101,11 +102,13 @@ export default function ExchangePage() {
               </h3>
               <div className="mb-4 flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-full bg-primary/20 font-bold text-primary">
-                  {session?.user.email?.substring(0, 2).toUpperCase()}
+                  <Redacted length={2}>
+                    {session?.user.email?.substring(0, 2).toUpperCase()}
+                  </Redacted>
                 </div>
                 <div className="overflow-hidden">
                   <p className="truncate font-bold text-foreground">
-                    {session?.user.email}
+                    <Redacted>{session?.user.email}</Redacted>
                   </p>
                   <p className="text-primary text-xs">
                     {isSteppedUp ? "Level 2 Verified" : "Level 1 Verified"}
@@ -133,7 +136,7 @@ export default function ExchangePage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Nationality</span>
                     <span className="text-foreground">
-                      {String(claims.nationality)}
+                      <Redacted>{String(claims.nationality)}</Redacted>
                     </span>
                   </div>
                 )}

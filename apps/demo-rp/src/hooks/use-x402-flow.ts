@@ -341,8 +341,12 @@ export function useX402Flow(): UseX402FlowReturn {
           );
 
           if (retryRes.ok) {
-            const txHash = retryBody.settlement?.transaction as string | undefined;
-            const txNetwork = retryBody.settlement?.network as string | undefined;
+            const txHash = retryBody.settlement?.transaction as
+              | string
+              | undefined;
+            const txNetwork = retryBody.settlement?.network as
+              | string
+              | undefined;
             if (txHash && txNetwork) {
               const explorerUrl = getExplorerUrl(txNetwork, txHash);
               if (explorerUrl) {
@@ -351,7 +355,10 @@ export function useX402Flow(): UseX402FlowReturn {
                     type: "action",
                     label: "Payment settled on-chain",
                     detail: `Transaction: ${txHash.substring(0, 18)}...`,
-                    link: { href: explorerUrl, text: "Verify on Base Sepolia Explorer" },
+                    link: {
+                      href: explorerUrl,
+                      text: "Verify on Base Sepolia Explorer",
+                    },
                   })
                 );
               }
@@ -422,8 +429,12 @@ export function useX402Flow(): UseX402FlowReturn {
           );
 
           if (paidRes.ok) {
-            const txHash = paidBody.settlement?.transaction as string | undefined;
-            const txNetwork = paidBody.settlement?.network as string | undefined;
+            const txHash = paidBody.settlement?.transaction as
+              | string
+              | undefined;
+            const txNetwork = paidBody.settlement?.network as
+              | string
+              | undefined;
             if (txHash && txNetwork) {
               const explorerUrl = getExplorerUrl(txNetwork, txHash);
               if (explorerUrl) {
@@ -432,7 +443,10 @@ export function useX402Flow(): UseX402FlowReturn {
                     type: "action",
                     label: "Payment settled on-chain",
                     detail: `Transaction: ${txHash.substring(0, 18)}...`,
-                    link: { href: explorerUrl, text: "Verify on Base Sepolia Explorer" },
+                    link: {
+                      href: explorerUrl,
+                      text: "Verify on Base Sepolia Explorer",
+                    },
                   })
                 );
               }

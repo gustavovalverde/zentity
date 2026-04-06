@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { isSyntheticEmail } from "@/lib/auth/email-classification";
@@ -223,7 +224,9 @@ export function EmailSection() {
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
-                <span className="font-medium text-sm">{email}</span>
+                <span className="font-medium text-sm">
+                  <Redacted>{email}</Redacted>
+                </span>
                 {state === "verified" ? (
                   <Badge variant="success">
                     <CheckCircle2 className="mr-1 h-3 w-3" />

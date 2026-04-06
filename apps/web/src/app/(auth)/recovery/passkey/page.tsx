@@ -21,6 +21,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Redacted } from "@/components/ui/redacted";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
@@ -276,7 +277,10 @@ export default function RecoverPasskeyPage() {
             <div className="space-y-2">
               <p className="font-medium">Check your email</p>
               <p className="text-muted-foreground text-sm">
-                We sent a recovery link to <strong>{email}</strong>
+                We sent a recovery link to{" "}
+                <strong>
+                  <Redacted>{email}</Redacted>
+                </strong>
               </p>
               <p className="text-muted-foreground text-sm">
                 Click the link in the email to continue setting up your new

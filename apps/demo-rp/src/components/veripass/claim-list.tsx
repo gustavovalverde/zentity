@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Redacted } from "@/components/ui/redacted";
 import { CLAIM_LABELS } from "@/data/veripass";
 
 interface ClaimListProps {
@@ -53,7 +54,7 @@ export function ClaimList({
                 )}
               </div>
               <div className="truncate font-mono text-muted-foreground text-xs">
-                {formatClaimValue(value)}
+                <Redacted>{formatClaimValue(value)}</Redacted>
               </div>
             </div>
           </label>

@@ -18,6 +18,7 @@ import { useCallback, useRef } from "react";
 import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { Logo } from "@/components/logo";
 import { usePasskeyAuth } from "@/components/providers/passkey-auth-provider";
+import { Redacted } from "@/components/ui/redacted";
 import {
   Sidebar,
   SidebarContent,
@@ -233,7 +234,7 @@ export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
                     <ProfileGreetingName fallback={user.name || "User"} />
                   </span>
                   <span className="truncate text-muted-foreground text-xs">
-                    {user.email}
+                    <Redacted>{user.email}</Redacted>
                   </span>
                 </div>
               </Link>

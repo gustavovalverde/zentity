@@ -57,9 +57,7 @@ function buildSettlementFailedResponse(settlement: {
 function resolveVerifiedOnChainWallet(
   verification: { payer?: string | undefined },
   requestedWalletAddress: string | undefined
-):
-  | { ok: true; walletAddress: string }
-  | { ok: false; response: NextResponse } {
+): { ok: true; walletAddress: string } | { ok: false; response: NextResponse } {
   if (!verification.payer) {
     return {
       ok: false,
@@ -247,7 +245,10 @@ export async function POST(request: Request) {
 
   // Payment-only resources: payment is sufficient
   if (resource.requiredTier === 0) {
-    const settlement = await settlePayment(paymentSignature, paymentRequirements);
+    const settlement = await settlePayment(
+      paymentSignature,
+      paymentRequirements
+    );
     if (!settlement.success) {
       return buildSettlementFailedResponse(settlement);
     }

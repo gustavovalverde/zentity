@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { Redacted } from "@/components/ui/redacted";
 import {
   getCachedGreetingName,
   getProfileSnapshot,
@@ -39,5 +40,9 @@ export function ProfileGreetingName({
   const firstName = profile?.firstName ?? greetingName;
   const givenName = firstName?.split(WHITESPACE_RE)[0] || fallback;
 
-  return <span>{givenName}</span>;
+  return (
+    <span>
+      <Redacted>{givenName}</Redacted>
+    </span>
+  );
 }

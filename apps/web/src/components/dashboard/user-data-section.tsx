@@ -21,6 +21,7 @@ import {
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item";
+import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { getStoredProfile } from "@/lib/privacy/secrets/profile";
 import { trpcReact } from "@/lib/trpc/client";
@@ -178,7 +179,9 @@ export function UserDataSection() {
             <ItemContent>
               <ItemDescription>First Name</ItemDescription>
               {profileName ? (
-                <ItemTitle>{profileName}</ItemTitle>
+                <ItemTitle>
+                  <Redacted>{profileName}</Redacted>
+                </ItemTitle>
               ) : (
                 <div className="flex items-center gap-2">
                   <Button

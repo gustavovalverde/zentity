@@ -30,6 +30,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { trpc } from "@/lib/trpc/client";
 
@@ -143,7 +144,9 @@ export function DeleteAccountSection({
                     <Field data-invalid={Boolean(emailError)}>
                       <FieldLabel htmlFor="confirm-email">
                         Type{" "}
-                        <span className="font-mono font-semibold">{email}</span>{" "}
+                        <span className="font-mono font-semibold">
+                          <Redacted>{email}</Redacted>
+                        </span>{" "}
                         to confirm
                       </FieldLabel>
                       <Input

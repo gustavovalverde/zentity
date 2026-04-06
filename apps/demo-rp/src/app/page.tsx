@@ -145,9 +145,8 @@ export default function Page() {
             Every demo below solves a real compliance obligation: age gates,
             KYC, sanctions screening, humanitarian aid. The user controls what
             is shared and when. A wine shop receives only &ldquo;yes, over
-            18.&rdquo; A bank receives the name it needs for CDD. Each
-            attribute requires explicit consent at the moment the obligation
-            arises.
+            18.&rdquo; A bank receives the name it needs for CDD. Each attribute
+            requires explicit consent at the moment the obligation arises.
           </p>
 
           <div className="flex flex-col justify-center gap-3 pt-4 sm:flex-row">
@@ -249,8 +248,8 @@ export default function Page() {
             <div className="col-span-2 md:col-span-1">
               <span className="font-bold text-xl">Zentity</span>
               <p className="mt-4 text-muted-foreground text-sm">
-                Verify facts, not identity. Powered by zero-knowledge proofs
-                and fully homomorphic encryption.
+                Verify facts, not identity. Powered by zero-knowledge proofs and
+                fully homomorphic encryption.
               </p>
               <a
                 aria-label="GitHub"

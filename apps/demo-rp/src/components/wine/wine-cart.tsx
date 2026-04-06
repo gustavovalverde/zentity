@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Redacted } from "@/components/ui/redacted";
 import type { Wine } from "@/data/wine";
 
 interface CartItem {
@@ -135,11 +136,13 @@ export function WineCart({
                   Ship To
                 </h4>
                 {claims.name != null && (
-                  <p className="font-medium text-sm">{String(claims.name)}</p>
+                  <p className="font-medium text-sm">
+                    <Redacted>{String(claims.name)}</Redacted>
+                  </p>
                 )}
                 {claims.address != null && (
                   <p className="text-muted-foreground text-sm">
-                    {String(claims.address)}
+                    <Redacted>{String(claims.address)}</Redacted>
                   </p>
                 )}
               </div>

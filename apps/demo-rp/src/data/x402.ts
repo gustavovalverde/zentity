@@ -133,10 +133,7 @@ const EXPLORER_URLS: Record<string, string> = {
   "eip155:8453": "https://basescan.org/tx/",
 };
 
-export function getExplorerUrl(
-  network: string,
-  txHash: string,
-): string | null {
+export function getExplorerUrl(network: string, txHash: string): string | null {
   const base = EXPLORER_URLS[network];
   return base ? `${base}${txHash}` : null;
 }

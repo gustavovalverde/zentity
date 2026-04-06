@@ -1,6 +1,5 @@
-import type { X402Resource } from "@/data/x402";
-
 import { describe, expect, it, vi } from "vitest";
+import type { X402Resource } from "@/data/x402";
 
 vi.mock("server-only", () => ({}));
 

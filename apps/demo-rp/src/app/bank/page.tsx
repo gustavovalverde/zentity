@@ -15,6 +15,7 @@ import { BankProspect } from "@/components/bank/bank-prospect";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
+import { Redacted } from "@/components/ui/redacted";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
 
@@ -219,11 +220,13 @@ export default function BankPage() {
         <div className="border-t p-4">
           <div className="mb-4 flex items-center gap-3 px-2">
             <div className="flex size-8 items-center justify-center rounded-full bg-accent font-bold text-accent-foreground text-xs">
-              {session?.user.email?.substring(0, 2).toUpperCase() || "US"}
+              <Redacted length={2}>
+                {session?.user.email?.substring(0, 2).toUpperCase() || "US"}
+              </Redacted>
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium text-sm">
-                {session?.user.email}
+                <Redacted>{session?.user.email}</Redacted>
               </p>
               <p className="truncate text-muted-foreground text-xs">
                 {isSteppedUp ? "Private Client" : "Prospect"}

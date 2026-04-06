@@ -1,6 +1,8 @@
 import { Globe02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
+import { Redacted } from "@/components/ui/redacted";
+
 interface AidHeaderProps {
   isVerified?: boolean | undefined;
   onSignOut: () => void;
@@ -32,7 +34,9 @@ export function AidHeader({
         {userEmail && (
           <div className="flex items-center gap-4">
             <div className="hidden text-right md:block">
-              <div className="font-medium text-sm">{userEmail}</div>
+              <div className="font-medium text-sm">
+                <Redacted>{userEmail}</Redacted>
+              </div>
               <div className="flex items-center justify-end gap-1 font-bold text-[10px] text-success uppercase tracking-wider">
                 {isVerified && (
                   <span className="size-1.5 animate-pulse rounded-full bg-success" />

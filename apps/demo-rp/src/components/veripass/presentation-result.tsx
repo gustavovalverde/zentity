@@ -6,6 +6,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Redacted } from "@/components/ui/redacted";
 import type { VerifierScenario } from "@/data/veripass";
 import { CLAIM_LABELS } from "@/data/veripass";
 
@@ -79,7 +80,7 @@ export function PresentationResult({
                 className="max-w-[200px] truncate font-mono text-xs"
                 variant="secondary"
               >
-                {formatValue(value)}
+                <Redacted>{formatValue(value)}</Redacted>
               </Badge>
             </div>
           ))}

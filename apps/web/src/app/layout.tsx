@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { PrivacyModeProvider } from "@/components/providers/privacy-mode-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { env } from "@/env";
@@ -72,15 +73,17 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableSystem
         >
-          {/* Skip to main content link for keyboard users */}
-          <a
-            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            href="#main-content"
-          >
-            Skip to main content
-          </a>
-          {children}
-          <Toaster />
+          <PrivacyModeProvider>
+            {/* Skip to main content link for keyboard users */}
+            <a
+              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              href="#main-content"
+            >
+              Skip to main content
+            </a>
+            {children}
+            <Toaster />
+          </PrivacyModeProvider>
         </ThemeProvider>
       </body>
     </html>

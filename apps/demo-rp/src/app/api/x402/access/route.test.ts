@@ -1,6 +1,5 @@
-import type { X402Resource } from "@/data/x402";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { X402Resource } from "@/data/x402";
 
 const mocks = vi.hoisted(() => ({
   buildRouteConfig: vi.fn(),
@@ -155,7 +154,8 @@ describe("/api/x402/access POST", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
       error: "wallet_address_mismatch",
-      detail: "On-chain attestation must match the wallet that signed the payment.",
+      detail:
+        "On-chain attestation must match the wallet that signed the payment.",
       payer: WALLET_A,
     });
     expect(mocks.checkOnChainAttestation).not.toHaveBeenCalled();

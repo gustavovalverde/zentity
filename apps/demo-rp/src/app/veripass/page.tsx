@@ -273,8 +273,8 @@ export default function VeriPassPage() {
                 Digital Credential Wallet
               </h1>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                One verification, many uses. A border agent sees nationality;
-                an employer sees document verification; a venue sees only age.
+                One verification, many uses. A border agent sees nationality; an
+                employer sees document verification; a venue sees only age.
                 Receive one credential from Zentity, then choose exactly which
                 attributes each verifier gets. Undisclosed fields stay
                 cryptographically hidden.

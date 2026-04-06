@@ -13,6 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { Button } from "@/components/ui/button";
+import { Redacted } from "@/components/ui/redacted";
 import type { Product, ShoppingTask } from "@/data/aether";
 import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
@@ -743,7 +744,9 @@ function CibaResult({
                     Privacy claims — privacy-preserving proofs (no PII in token)
                   </p>
                   <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-fuchsia-300/80 text-xs">
-                    {JSON.stringify(extractProofClaims(userInfo), null, 2)}
+                    <Redacted>
+                      {JSON.stringify(extractProofClaims(userInfo), null, 2)}
+                    </Redacted>
                   </pre>
                 </div>
               )}
@@ -756,7 +759,7 @@ function CibaResult({
                       Userinfo — full response (via GET /userinfo)
                     </p>
                     <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-purple-300/80 text-xs">
-                      {JSON.stringify(userInfo, null, 2)}
+                      <Redacted>{JSON.stringify(userInfo, null, 2)}</Redacted>
                     </pre>
                   </div>
                 )}

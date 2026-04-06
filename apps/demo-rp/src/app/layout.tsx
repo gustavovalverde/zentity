@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 
+import { PrivacyToggle } from "@/components/privacy-toggle";
+import { PrivacyModeProvider } from "@/components/providers/privacy-mode-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
@@ -36,7 +38,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} antialiased`}
       >
-        <TooltipProvider>{children}</TooltipProvider>
+        <PrivacyModeProvider>
+          <TooltipProvider>
+            {children}
+            <PrivacyToggle />
+          </TooltipProvider>
+        </PrivacyModeProvider>
       </body>
     </html>
   );

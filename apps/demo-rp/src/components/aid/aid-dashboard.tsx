@@ -9,6 +9,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Redacted } from "@/components/ui/redacted";
 import { COLLECTION_HISTORY, PROGRAMS } from "@/data/aid";
 
 interface AidDashboardProps {
@@ -40,12 +41,16 @@ export function AidDashboard({
         <CardContent className="space-y-4">
           {isSteppedUp && name ? (
             <p className="text-muted-foreground">
-              <strong className="text-foreground">{name}</strong>
+              <strong className="text-foreground">
+                <Redacted>{name}</Redacted>
+              </strong>
               {nationality && (
                 <>
                   {" "}
                   &middot;{" "}
-                  <span className="text-foreground">{nationality}</span>
+                  <span className="text-foreground">
+                    <Redacted>{nationality}</Redacted>
+                  </span>
                 </>
               )}
             </p>
@@ -101,8 +106,13 @@ export function AidDashboard({
               </div>
               {name && (
                 <p className="text-center font-medium text-sm">
-                  {name}
-                  {nationality && ` \u00B7 ${nationality}`}
+                  <Redacted>{name}</Redacted>
+                  {nationality && (
+                    <>
+                      {" "}
+                      <Redacted>{`\u00B7 ${nationality}`}</Redacted>
+                    </>
+                  )}
                 </p>
               )}
               <Badge className="border-white/30 bg-white/20 text-white">
