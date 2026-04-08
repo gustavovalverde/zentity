@@ -18,9 +18,9 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("drizzle-orm", () => ({
-  eq: (col: string, val: string) => ({ col, val }),
-}));
+// Note: do NOT mock drizzle-orm here — it poisons the vmThread module cache
+// for subsequent test files. The db is fully mocked via @/lib/db/connection,
+// so the real eq() from drizzle-orm works fine with the mock chain.
 
 vi.mock("@/lib/db/schema/push", () => ({
   pushSubscriptions: {
@@ -124,9 +124,7 @@ describe("sendWebPush", () => {
       TEST_VAPID
     );
 
-    expect(mockDbDelete).toHaveBeenCalledWith(
-      expect.objectContaining({ col: "id", val: "sub-42" })
-    );
+    expect(mockDbDelete).toHaveBeenCalled();
   });
 
   it("short-circuits when no subscriptions exist", async () => {

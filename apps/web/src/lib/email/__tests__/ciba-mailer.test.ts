@@ -34,9 +34,9 @@ vi.mock("@/lib/db/schema/auth", () => ({
   users: { email: "email", emailVerified: "emailVerified", id: "id" },
 }));
 
-vi.mock("drizzle-orm", () => ({
-  eq: (...args: unknown[]) => args,
-}));
+// Note: do NOT mock drizzle-orm here — it poisons the vmThread module cache
+// for subsequent test files. The db is fully mocked via @/lib/db/connection,
+// so the real eq() from drizzle-orm works fine with the mock chain.
 
 const DEFAULT_PARAMS = {
   userId: "user-1",

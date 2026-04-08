@@ -6,9 +6,9 @@
  * - /.well-known/oauth-authorization-server
  * - /.well-known/openid-credential-issuer
  *
- * HAIP metadata (PAR, DPoP) is added here rather than relying on
- * plugin after-hooks, because Next.js route handlers call
- * auth.api.getOpenIdConfig() directly — bypassing the HTTP hook chain.
+ * HAIP and CIBA metadata (PAR, DPoP, backchannel auth) are now contributed
+ * by their respective plugins via the Plugin Extension Protocol.
+ * This function only adds Zentity-specific fields not covered by extensions.
  */
 
 import { ACR_VALUES_SUPPORTED } from "@/lib/assurance/oidc-claims";
@@ -33,25 +33,17 @@ export function enrichDiscoveryMetadata(
     ...metadata,
     subject_types_supported: ["public", "pairwise"],
     id_token_signing_alg_values_supported: [...ID_TOKEN_SIGNING_ALGS],
-    // HAIP §5.1: PAR and DPoP metadata
+    // Zentity-specific endpoint metadata not covered by plugin extensions
     ...(issuer
       ? {
           jwks_uri: `${issuer}/oauth2/jwks`,
-          pushed_authorization_request_endpoint: `${issuer}/oauth2/par`,
-          backchannel_authentication_endpoint: `${issuer}/oauth2/bc-authorize`,
           authorization_challenge_endpoint: new URL(
             "/api/oauth2/authorize-challenge",
             issuer
           ).toString(),
         }
       : {}),
-    require_pushed_authorization_requests: true,
-    dpop_signing_alg_values_supported: ["ES256"],
-    authorization_details_types_supported: ["openid_credential"],
-    // CIBA metadata (OpenID CIBA Core §4)
-    backchannel_token_delivery_modes_supported: ["poll", "ping"],
-    backchannel_user_code_parameter_supported: false,
-    // OIDC Back-Channel Logout 1.0
+    // OIDC Back-Channel Logout 1.0 (not in upstream plugins)
     backchannel_logout_supported: true,
     backchannel_logout_session_supported: true,
     ...(issuer ? { end_session_endpoint: `${issuer}/oauth2/end-session` } : {}),

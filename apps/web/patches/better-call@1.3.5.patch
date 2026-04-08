@@ -1,0 +1,13 @@
+diff --git a/dist/endpoint.d.mts b/dist/endpoint.d.mts
+index ac9cbd38cb0265fa0ee7cfec56d4184b031eb349..a2f74cf540a7e7444a85c3b8ff54c2825b703faa 100644
+--- a/dist/endpoint.d.mts
++++ b/dist/endpoint.d.mts
+@@ -163,7 +163,7 @@ interface EndpointBaseOptions {
+   /**
+    * List of middlewares to use
+    */
+-  use?: Middleware[];
++  use?: Middleware[] | undefined;
+   /**
+    * A callback to run before any API error is throw or returned
+    *

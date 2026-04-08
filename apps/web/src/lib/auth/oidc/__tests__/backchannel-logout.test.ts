@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Ensure drizzle-orm sql tag is available even if a prior vmThread file
+// replaced the module cache with an incomplete mock.
+vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
 
 /**
  * BCL logout token structure validation.

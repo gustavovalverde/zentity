@@ -252,8 +252,7 @@ describe("CIBA token endpoint", () => {
     const tokenShape = await inspectCibaAccessToken(
       refreshed.json.access_token as string,
       authReqId,
-      userId,
-      defaultAuthContextId
+      userId
     );
     if (tokenShape.kind === "jwt") {
       expect(tokenShape.payload.aud).toContain(TEST_RESOURCE);

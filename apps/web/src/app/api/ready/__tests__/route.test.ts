@@ -11,6 +11,10 @@ vi.mock("@/lib/observability/warmup-state", () => ({
   isWarmupComplete: () => mockIsWarmupComplete(),
 }));
 
+// Ensure drizzle-orm sql tag is available even if a prior vmThread file
+// replaced the module cache with an incomplete mock.
+vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
+
 import { GET } from "../route";
 
 describe("GET /api/ready", () => {

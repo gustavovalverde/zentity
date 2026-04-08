@@ -6,6 +6,10 @@ vi.mock("@/lib/db/connection", () => ({
   db: { run: (...args: unknown[]) => mockDbRun(...args) },
 }));
 
+// Ensure drizzle-orm sql tag is available even if a prior vmThread file
+// replaced the module cache with an incomplete mock.
+vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
+
 import { GET } from "../route";
 
 describe("GET /api/health", () => {

@@ -880,7 +880,24 @@ async function buildIdTokenDisclosureClaims(input: {
 
   let assuranceClaims: Record<string, unknown> = {};
   if (scopeList.includes("openid")) {
-    if (!auth) {
+    // For refresh-token grants the original CIBA request may have been
+    // deleted. Fall back to the refresh token's stored authContextId.
+    let resolvedAuth = auth;
+    if (!resolvedAuth && input.referenceId) {
+      const refreshRow = await db
+        .select({ authContextId: oauthRefreshTokens.authContextId })
+        .from(oauthRefreshTokens)
+        .where(eq(oauthRefreshTokens.referenceId, input.referenceId))
+        .limit(1)
+        .get();
+      if (refreshRow?.authContextId) {
+        resolvedAuth = await resolveAuthenticationContext({
+          authContextId: refreshRow.authContextId,
+          sessionId: null,
+        });
+      }
+    }
+    if (!resolvedAuth) {
       throw invalidGrantDisclosureError(
         "Authentication context required for ID token issuance"
       );
@@ -889,7 +906,7 @@ async function buildIdTokenDisclosureClaims(input: {
       isAuthenticated: true,
     });
     assuranceClaims = {
-      ...buildOidcAssuranceClaims(assurance, auth),
+      ...buildOidcAssuranceClaims(assurance, resolvedAuth),
     };
   }
 
@@ -1235,6 +1252,10 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
   }
 }
 
+// Stashed by CIBA buildAccessTokenClaims (while request still exists)
+// for the after-hook to persist onto the opaque token record.
+const pendingCibaAuthContext = new Map<string, string>();
+
 async function afterTokenPersistOpaqueDpopBinding(ctx: HookCtx) {
   const returned = (ctx as HookCtx & { returned?: unknown }).returned as
     | { access_token?: unknown }
@@ -1574,6 +1595,28 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/token") {
         await afterTokenPersistOpaqueDpopBinding(ctx);
+        // For CIBA tokens, persist authContextId on access + refresh token
+        // records. The upstream createUserTokens stores only standard fields;
+        // authContextId is a Zentity extension column.
+        const authReqId = ctx.body?.auth_req_id as string | undefined;
+        if (authReqId) {
+          const authCtxId = pendingCibaAuthContext.get(authReqId);
+          pendingCibaAuthContext.delete(authReqId);
+          if (authCtxId) {
+            await Promise.all([
+              db
+                .update(oauthAccessTokens)
+                .set({ authContextId: authCtxId })
+                .where(eq(oauthAccessTokens.referenceId, authReqId))
+                .run(),
+              db
+                .update(oauthRefreshTokens)
+                .set({ authContextId: authCtxId })
+                .where(eq(oauthRefreshTokens.referenceId, authReqId))
+                .run(),
+            ]);
+          }
+        }
         return;
       }
       if (ctx.path === "/ciba/authorize") {
@@ -1977,6 +2020,13 @@ export const auth = betterAuth({
         );
       },
       buildAccessTokenClaims: async (cibaRequest) => {
+        // Stash authContextId while the CIBA request still exists —
+        // the after-hook needs it to persist on the opaque token record.
+        const authCtxId = (cibaRequest as { authContextId?: string })
+          .authContextId;
+        if (authCtxId) {
+          pendingCibaAuthContext.set(cibaRequest.authReqId, authCtxId);
+        }
         const accessTokenClaims = await persistAapSnapshotForCibaToken(
           cibaRequest.authReqId,
           cibaRequest.clientId

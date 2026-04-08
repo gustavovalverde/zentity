@@ -96,9 +96,16 @@ describe("oidc discovery — signing algorithm advertisement", () => {
 });
 
 describe("oidc discovery — HAIP metadata fields", () => {
-  it("enrichDiscoveryMetadata adds PAR endpoint derived from issuer", () => {
+  it("enrichDiscoveryMetadata preserves HAIP fields from extension metadata", () => {
+    // HAIP fields are now contributed by the haip plugin extension.
+    // enrichDiscoveryMetadata should not overwrite or remove them.
     const enriched = enrichDiscoveryMetadata({
       issuer: "https://example.com/api/auth",
+      pushed_authorization_request_endpoint:
+        "https://example.com/api/auth/oauth2/par",
+      require_pushed_authorization_requests: true,
+      dpop_signing_alg_values_supported: ["ES256"],
+      authorization_details_types_supported: ["openid_credential"],
     });
 
     expect(enriched.pushed_authorization_request_endpoint).toBe(
@@ -142,9 +149,15 @@ describe("oidc discovery — HAIP metadata fields", () => {
 });
 
 describe("oidc discovery — CIBA metadata fields", () => {
-  it("enriched metadata includes backchannel_authentication_endpoint", () => {
+  it("enriched metadata preserves CIBA fields from extension metadata", () => {
+    // CIBA fields are now contributed by the ciba plugin extension.
+    // enrichDiscoveryMetadata should not overwrite or remove them.
     const enriched = enrichDiscoveryMetadata({
       issuer: "https://example.com/api/auth",
+      backchannel_authentication_endpoint:
+        "https://example.com/api/auth/oauth2/bc-authorize",
+      backchannel_token_delivery_modes_supported: ["poll", "ping"],
+      backchannel_user_code_parameter_supported: false,
     });
 
     expect(enriched.backchannel_authentication_endpoint).toBe(
