@@ -809,8 +809,29 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     });
   } catch (error) {
     if (error instanceof DisclosureBindingError) {
+      identityReleaseLog.error(
+        {
+          event: "token_exchange_disclosure_failure",
+          reason: error.reason,
+          oauthError: error.oauthError,
+          userId: stored.userId,
+          clientId: stored.query?.client_id,
+          hasReferenceId: Boolean(stored.referenceId),
+          scopes: stored.query?.scope,
+        },
+        "Disclosure binding failed during token exchange"
+      );
       throw toDisclosureApiError(error);
     }
+    identityReleaseLog.error(
+      {
+        event: "token_exchange_unexpected_error",
+        userId: stored.userId,
+        clientId: stored.query?.client_id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Unexpected error during disclosure finalization"
+    );
     throw error;
   }
 }
@@ -1678,6 +1699,19 @@ export const auth = betterAuth({
           : undefined,
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
+      postLogin: {
+        page: "/oauth/consent",
+        consentReferenceId: ({ user, session, scopes }) => {
+          // Must be deterministic: the consent handler and the authorize
+          // endpoint it re-invokes both call this callback and must get
+          // the same value so the consent can be found on the second call.
+          const sorted = [...scopes].sort().join(" ");
+          return createHash("sha256")
+            .update(`${user.id}:${session.id}:${sorted}`)
+            .digest("base64url");
+        },
+        shouldRedirect: () => false,
+      },
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },

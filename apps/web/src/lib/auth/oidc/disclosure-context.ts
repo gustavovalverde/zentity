@@ -28,6 +28,9 @@ import {
   oauthPendingDisclosures,
   oidcReleaseContexts,
 } from "@/lib/db/schema/oauth-provider";
+import { logger as rootLogger } from "@/lib/logging/logger";
+
+const log = rootLogger.child({ component: "disclosure-context" });
 
 export const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
@@ -326,7 +329,16 @@ export async function stagePendingOauthDisclosure(input: {
         .run();
       return { ok: false, reason: "intent_reused" };
     }
-  } catch {
+  } catch (err) {
+    log.error(
+      {
+        event: "pending_oauth_stage_failed",
+        userId: input.userId,
+        clientId: input.clientId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to atomically mark intent JTI — rolling back staged disclosure"
+    );
     clearIdentityPayload(payloadKey);
     await db
       .delete(oauthPendingDisclosures)
@@ -371,6 +383,16 @@ export async function finalizeOauthDisclosureFromVerification(input: {
   const clientId =
     typeof input.query.client_id === "string" ? input.query.client_id : null;
   if (!(referenceId && clientId)) {
+    log.error(
+      {
+        event: "oauth_binding_metadata_missing",
+        userId: input.userId,
+        hasReferenceId: Boolean(referenceId),
+        hasClientId: Boolean(clientId),
+        hasPending: Boolean(pending),
+      },
+      "Token exchange missing referenceId or clientId — identity disclosure cannot be bound (is postLogin.consentReferenceId configured?)"
+    );
     throw new DisclosureBindingError(
       "invalid_grant",
       "oauth_binding_metadata_missing"
@@ -381,6 +403,15 @@ export async function finalizeOauthDisclosureFromVerification(input: {
     pending &&
     !hasIdentityPayload(pendingOAuthIdentityKey(oauthRequestKey))
   ) {
+    log.error(
+      {
+        event: "oauth_identity_payload_missing",
+        userId: input.userId,
+        clientId,
+        referenceId,
+      },
+      "Pending disclosure exists in DB but ephemeral payload not found in memory (TTL expired or different process instance)"
+    );
     throw new DisclosureBindingError(
       "invalid_grant",
       "oauth_identity_payload_missing"
@@ -426,6 +457,16 @@ export async function finalizeOauthDisclosureFromVerification(input: {
       finalReleaseIdentityKey(referenceId)
     );
     if (!promoted.ok) {
+      log.error(
+        {
+          event: "oauth_payload_promote_failed",
+          reason: promoted.reason,
+          userId: input.userId,
+          clientId,
+          referenceId,
+        },
+        "Failed to promote ephemeral identity payload from pending to release"
+      );
       throw new DisclosureBindingError(
         "invalid_grant",
         promoted.reason === "missing_source"
@@ -521,7 +562,16 @@ export async function stageFinalCibaDisclosure(input: {
         .run();
       return { ok: false, reason: "intent_reused" };
     }
-  } catch {
+  } catch (err) {
+    log.error(
+      {
+        event: "ciba_stage_failed",
+        releaseId: input.releaseId,
+        clientId: input.clientId,
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "CIBA disclosure staging failed — rolling back release context"
+    );
     clearIdentityPayload(finalReleaseIdentityKey(input.releaseId));
     await db
       .delete(oidcReleaseContexts)
@@ -608,6 +658,15 @@ export async function validateReleaseContextForSubject(input: {
 }): Promise<ReleaseContext> {
   const releaseContext = await loadReleaseContext(input.releaseId);
   if (!releaseContext) {
+    log.warn(
+      {
+        event: "release_context_missing",
+        releaseId: input.releaseId,
+        userId: input.userId,
+        clientId: input.clientId,
+      },
+      "Release context not found — may have expired or was never created"
+    );
     throw new DisclosureBindingError(
       "invalid_token",
       "release_context_missing"
@@ -617,6 +676,17 @@ export async function validateReleaseContextForSubject(input: {
     releaseContext.clientId !== input.clientId ||
     releaseContext.userId !== input.userId
   ) {
+    log.warn(
+      {
+        event: "release_context_mismatch",
+        releaseId: input.releaseId,
+        expectedClient: releaseContext.clientId,
+        actualClient: input.clientId,
+        expectedUser: releaseContext.userId,
+        actualUser: input.userId,
+      },
+      "Release context client/user mismatch — possible token reuse across clients"
+    );
     throw new DisclosureBindingError(
       "invalid_token",
       "release_context_mismatch"
