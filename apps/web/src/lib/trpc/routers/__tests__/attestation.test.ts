@@ -40,16 +40,10 @@ vi.mock("@/lib/blockchain/providers/factory", () => ({
 
 const mockGetUnifiedVerificationModel = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
-const mockVerifyWalletOwnership = vi.fn();
 const mockComputeProofSetHash = vi.fn();
 vi.mock("@/lib/identity/verification/unified-model", () => ({
   getUnifiedVerificationModel: (...args: unknown[]) =>
     mockGetUnifiedVerificationModel(...args),
-}));
-
-vi.mock("@/lib/blockchain/wallet-verification", () => ({
-  verifyWalletOwnership: (...args: unknown[]) =>
-    mockVerifyWalletOwnership(...args),
 }));
 
 vi.mock("@/lib/blockchain/attestation/proof-set-hash", () => ({
@@ -273,7 +267,6 @@ describe("attestation router", () => {
     });
     // Default to Tier 2 + strong auth for most tests (attestation requirement)
     mockGetSecurityPosture.mockResolvedValue(createTier2Posture());
-    mockVerifyWalletOwnership.mockResolvedValue(true);
     mockGetIdentityBundleByUserId.mockResolvedValue({
       pepScreeningResult: "clear",
       sanctionsScreeningResult: "clear",

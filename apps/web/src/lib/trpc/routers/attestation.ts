@@ -23,7 +23,6 @@ import {
   canCreateProvider,
   createProvider,
 } from "@/lib/blockchain/providers/factory";
-import { verifyWalletOwnership } from "@/lib/blockchain/wallet-verification";
 import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,
@@ -159,19 +158,6 @@ export const attestationRouter = router({
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
           message: `Too many attestation attempts (${RATE_LIMIT_MAX_ATTEMPTS}). Contact support.`,
-        });
-      }
-
-      // Verify wallet ownership
-      const isOwner = await verifyWalletOwnership(
-        ctx.userId,
-        input.walletAddress
-      );
-      if (!isOwner) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message:
-            "This wallet is not linked to your account. Connect it first via Settings.",
         });
       }
 

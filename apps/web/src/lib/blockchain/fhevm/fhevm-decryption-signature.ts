@@ -98,11 +98,11 @@ function isValidEIP712Structure(value: unknown): boolean {
 }
 
 function isValidSigningDomain(domain: EIP712Type["domain"]): boolean {
-  return (
-    Number.isInteger(domain.chainId) &&
-    domain.chainId > 0 &&
-    ethers.isAddress(domain.verifyingContract)
-  );
+  const chainId = domain.chainId;
+  const isValidChainId =
+    (typeof chainId === "bigint" && chainId > 0n) ||
+    (Number.isInteger(chainId) && (chainId as number) > 0);
+  return isValidChainId && ethers.isAddress(domain.verifyingContract);
 }
 
 /**

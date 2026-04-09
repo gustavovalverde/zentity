@@ -1,6 +1,5 @@
 "use client";
 
-import { useAppKitAccount } from "@reown/appkit/react";
 /**
  * ViewIdentityData Component
  *
@@ -9,7 +8,20 @@ import { useAppKitAccount } from "@reown/appkit/react";
  * Self-contained: fetches attestation status via tRPC to determine which
  * contract to read from.
  */
-import { Eye, EyeOff, KeyRound, Lock, RefreshCw } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { useAppKitAccount } from "@reown/appkit/react";
+import {
+  CalendarDays,
+  Eye,
+  EyeOff,
+  Flag,
+  Globe,
+  KeyRound,
+  Lock,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 
 /** Matches a valid hex string with 0x prefix */
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
@@ -200,70 +212,56 @@ export function ViewIdentityData() {
   // Check if user is attested on-chain
   const readEnabled = Boolean(contractAddress && address);
 
-  const {
-    data: rawIsAttested,
-    isLoading: isAttestedLoading,
-    refetch: refetchIsAttested,
-  } = useReadContract({
-    address: contractAddress,
-    abi: IdentityRegistryABI,
-    functionName: "isAttested",
-    args: address ? [address] : undefined,
-    account: address,
-    query: { enabled: readEnabled },
-  });
+  const { data: rawIsAttested, isLoading: isAttestedLoading } = useReadContract(
+    {
+      address: contractAddress,
+      abi: IdentityRegistryABI,
+      functionName: "isAttested",
+      args: address ? [address] : undefined,
+      account: address,
+      query: { enabled: readEnabled },
+    }
+  );
 
-  const {
-    data: rawBirthYearHandle,
-    isLoading: isBirthYearLoading,
-    refetch: refetchBirthYear,
-  } = useReadContract({
-    address: contractAddress,
-    abi: IdentityRegistryABI,
-    functionName: "getBirthYearOffset",
-    args: address ? [address] : undefined,
-    account: address,
-    query: { enabled: readEnabled },
-  });
+  const { data: rawBirthYearHandle, isLoading: isBirthYearLoading } =
+    useReadContract({
+      address: contractAddress,
+      abi: IdentityRegistryABI,
+      functionName: "getBirthYearOffset",
+      args: address ? [address] : undefined,
+      account: address,
+      query: { enabled: readEnabled },
+    });
 
-  const {
-    data: rawCountryCodeHandle,
-    isLoading: isCountryLoading,
-    refetch: refetchCountry,
-  } = useReadContract({
-    address: contractAddress,
-    abi: IdentityRegistryABI,
-    functionName: "getCountryCode",
-    args: address ? [address] : undefined,
-    account: address,
-    query: { enabled: readEnabled },
-  });
+  const { data: rawCountryCodeHandle, isLoading: isCountryLoading } =
+    useReadContract({
+      address: contractAddress,
+      abi: IdentityRegistryABI,
+      functionName: "getCountryCode",
+      args: address ? [address] : undefined,
+      account: address,
+      query: { enabled: readEnabled },
+    });
 
-  const {
-    data: rawComplianceLevelHandle,
-    isLoading: isComplianceLoading,
-    refetch: refetchCompliance,
-  } = useReadContract({
-    address: contractAddress,
-    abi: IdentityRegistryABI,
-    functionName: "getComplianceLevel",
-    args: address ? [address] : undefined,
-    account: address,
-    query: { enabled: readEnabled },
-  });
+  const { data: rawComplianceLevelHandle, isLoading: isComplianceLoading } =
+    useReadContract({
+      address: contractAddress,
+      abi: IdentityRegistryABI,
+      functionName: "getComplianceLevel",
+      args: address ? [address] : undefined,
+      account: address,
+      query: { enabled: readEnabled },
+    });
 
-  const {
-    data: rawBlacklistHandle,
-    isLoading: isBlacklistLoading,
-    refetch: refetchBlacklist,
-  } = useReadContract({
-    address: contractAddress,
-    abi: IdentityRegistryABI,
-    functionName: "getBlacklistStatus",
-    args: address ? [address] : undefined,
-    account: address,
-    query: { enabled: readEnabled },
-  });
+  const { data: rawBlacklistHandle, isLoading: isBlacklistLoading } =
+    useReadContract({
+      address: contractAddress,
+      abi: IdentityRegistryABI,
+      functionName: "getBlacklistStatus",
+      args: address ? [address] : undefined,
+      account: address,
+      query: { enabled: readEnabled },
+    });
 
   const isAttested = rawIsAttested as boolean | undefined;
   const birthYearHandle = rawBirthYearHandle as `0x${string}` | undefined;
@@ -279,22 +277,6 @@ export function ViewIdentityData() {
     isCountryLoading ||
     isComplianceLoading ||
     isBlacklistLoading;
-
-  const refetch = useCallback(async () => {
-    await Promise.all([
-      refetchIsAttested(),
-      refetchBirthYear(),
-      refetchCountry(),
-      refetchCompliance(),
-      refetchBlacklist(),
-    ]);
-  }, [
-    refetchIsAttested,
-    refetchBirthYear,
-    refetchCountry,
-    refetchCompliance,
-    refetchBlacklist,
-  ]);
 
   // Build decrypt requests from handles
   const decryptRequests = useMemo(() => {
@@ -527,19 +509,19 @@ export function ViewIdentityData() {
         {/* Identity Data Display */}
         <div className="space-y-3">
           <IdentityField
-            icon="calendar"
+            icon={CalendarDays}
             isVisible={isVisible}
             label="Birth Year"
             value={birthYear?.toString()}
           />
           <IdentityField
-            icon="globe"
+            icon={Globe}
             isVisible={isVisible}
             label="Country"
             value={countryName}
           />
           <IdentityField
-            icon="shield"
+            icon={ShieldCheck}
             isVisible={isVisible}
             label="Compliance Level"
             value={
@@ -549,7 +531,7 @@ export function ViewIdentityData() {
             }
           />
           <IdentityField
-            icon="flag"
+            icon={Flag}
             isVisible={isVisible}
             label="Blacklist Status"
             value={getBlacklistStatusLabel(decryptedData?.isBlacklisted)}
@@ -583,18 +565,6 @@ export function ViewIdentityData() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
-          <Button
-            aria-label="Refresh identity data"
-            disabled={isLoadingContract}
-            onClick={() => refetch()}
-            size="icon"
-            variant="ghost"
-          >
-            <RefreshCw
-              className={cn("size-4", isLoadingContract && "animate-spin")}
-            />
-          </Button>
         </div>
 
         {/* Info */}
@@ -613,13 +583,6 @@ const VARIANT_CLASSES = {
   success: "text-success",
 } as const;
 
-const ICON_MAP: Record<string, string> = {
-  calendar: "📅",
-  globe: "🌍",
-  shield: "🛡️",
-  flag: "🚩",
-};
-
 /**
  * Individual identity field display.
  * Memoized to prevent re-renders when other fields change.
@@ -628,28 +591,26 @@ const IdentityField = memo(function IdentityField({
   label,
   value,
   isVisible,
-  icon,
+  icon: Icon,
   variant = "default",
 }: Readonly<{
   label: string;
   value: string | undefined;
   isVisible: boolean;
-  icon: string;
+  icon: LucideIcon;
   variant?: "default" | "destructive" | "success";
 }>) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b py-2 last:border-0">
       <span className="flex items-center gap-2 text-muted-foreground text-sm">
-        <span className="h-4 w-4 text-muted-foreground">
-          {ICON_MAP[icon] ?? ""}
-        </span>
+        <Icon className="h-4 w-4" />
         {label}
       </span>
       <span className={cn("font-medium text-sm", VARIANT_CLASSES[variant])}>
         {isVisible && value ? (
           value
         ) : (
-          <span className="text-muted-foreground">•••••••</span>
+          <span className="font-mono text-muted-foreground">•••••••</span>
         )}
       </span>
     </div>

@@ -20,6 +20,8 @@ import {
 } from "@zkpassport/utils";
 import countries from "i18n-iso-countries";
 
+import { ISO_3166_ALPHA3_TO_NUMERIC } from "@/lib/identity/verification/iso-3166-numeric";
+
 type HashFn = (values: bigint[]) => Promise<bigint>;
 
 export const TREE_DEPTH = 8;
@@ -128,12 +130,26 @@ const PASSPORT_CODE_TO_ALPHA3: Record<string, string> = {
 
 const ALL_COUNTRIES_SET = new Set(ALL_COUNTRIES);
 
+/** Reverse map: ISO 3166-1 numeric → alpha-3 (built from the existing forward map) */
+const ISO_3166_NUMERIC_TO_ALPHA3 = new Map<number, string>(
+  Object.entries(ISO_3166_ALPHA3_TO_NUMERIC).map(([alpha3, num]) => [
+    num,
+    alpha3,
+  ])
+);
+
 function isValidAlpha3(code: string): boolean {
   return ALL_COUNTRIES_SET.has(code);
 }
 
 function toAlpha3(code: string | number): string | undefined {
   if (typeof code === "number") {
+    // Try ISO 3166-1 numeric first (used by on-chain attestation)
+    const fromIso = ISO_3166_NUMERIC_TO_ALPHA3.get(code);
+    if (fromIso) {
+      return fromIso;
+    }
+    // Fall back to zkpassport weighted-sum encoding (used by ZK circuits)
     const alpha3 = getCountryFromWeightedSum(code);
     return isValidAlpha3(alpha3) ? alpha3 : undefined;
   }
