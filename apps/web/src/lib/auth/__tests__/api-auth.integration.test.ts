@@ -42,7 +42,7 @@ vi.mock("@/lib/auth/jwt-verify", () => ({
   verifyAuthIssuedJwt: mockVerifyAuthIssuedJwt,
 }));
 
-vi.mock("../auth", () => ({
+vi.mock("../auth-config", () => ({
   auth: {
     api: {
       getSession: vi.fn(),
