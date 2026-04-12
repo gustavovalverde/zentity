@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { TierBadge } from "@/components/assurance/tier-badge";
+import { TierBadge } from "@/components/tier-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,16 +32,16 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import {
-  getEncryptedAttributeTypesByUserId,
-  getLatestEncryptedAttributeByUserAndType,
-  getProofTypesByUserAndVerification,
-  getSignedClaimTypesByUserAndVerification,
-} from "@/lib/db/queries/crypto";
-import {
   getIdentityBundleByUserId,
   getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
+import {
+  getEncryptedAttributeTypesByUserId,
+  getLatestEncryptedAttributeByUserAndType,
+  getProofTypesByUserAndVerification,
+  getSignedClaimTypesByUserAndVerification,
+} from "@/lib/db/queries/privacy";
 
 import { VerificationFinalizationNotice } from "../verify/_components/verification-finalization-notice";
 import { FheStatusPoller } from "./fhe-status-poller";

@@ -23,14 +23,14 @@ import { hardhat, sepolia } from "viem/chains";
 import { z } from "zod";
 
 import {
+  canCreateProvider,
+  createProvider,
+} from "@/lib/blockchain/attestation-providers/factory";
+import {
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
 } from "@/lib/blockchain/networks";
-import {
-  canCreateProvider,
-  createProvider,
-} from "@/lib/blockchain/providers/factory";
 import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
 
 import { protectedProcedure, requireFeature, router } from "../server";

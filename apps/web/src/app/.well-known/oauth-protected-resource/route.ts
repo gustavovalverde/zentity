@@ -3,7 +3,7 @@ import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure-registry";
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 /**
  * RFC 9728 — OAuth 2.0 Protected Resource Metadata

@@ -13,7 +13,6 @@ import {
 } from "@/lib/blockchain/attestation/claim-hash";
 import { ISSUER_ID, POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
-import { insertSignedClaim } from "@/lib/db/queries/crypto";
 import {
   dedupKeyExistsForOtherUser,
   deleteIdentityDraft,
@@ -26,6 +25,7 @@ import {
   upsertIdentityBundle,
   upsertVerification,
 } from "@/lib/db/queries/identity";
+import { insertSignedClaim } from "@/lib/db/queries/privacy";
 import { identityVerificationJobs } from "@/lib/db/schema/identity";
 import {
   ANTISPOOF_LIVE_THRESHOLD,

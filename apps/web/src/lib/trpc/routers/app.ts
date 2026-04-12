@@ -6,15 +6,19 @@
  *
  * Routers:
  * - account: Account management and GDPR deletion
+ * - admin: JWKS key rotation, cleanup, on-chain revocation retry (admin-only)
+ * - agent: Agent host/session registration and capability discovery
  * - assurance: Tier profile and feature gating
  * - attestation: On-chain identity attestation (multi-network)
- * - credentials: Verifiable credential issuance (OIDC4VCI)
- * - crypto: FHE encryption, ZK proof verification, challenge management
- * - identity: Full identity verification (document + selfie + liveness)
- * - liveness: Multi-gesture liveness detection sessions
- * - signUp: Account creation wizard state management
- * - secrets: Passkey-wrapped secret storage
  * - compliantToken: CompliantERC20 token operations (DeFi demo)
+ * - credentials: Verifiable credential issuance (OIDC4VCI)
+ * - identity: Identity verification (document OCR, proofs, revocation)
+ * - liveness: Multi-gesture liveness detection sessions
+ * - passportChip: ZKPassport NFC chip verification
+ * - recovery: FROST guardian-based key recovery
+ * - secrets: Passkey-wrapped secret storage
+ * - signUp: Account creation wizard state management
+ * - zk: ZK proof verification, storage, BBS+ credentials, challenge management
  */
 import "server-only";
 

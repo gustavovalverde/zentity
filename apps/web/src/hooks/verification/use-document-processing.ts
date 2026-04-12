@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { useVerificationStore } from "@/hooks/verification/verification-store";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
+import { useVerificationStore } from "@/lib/identity/verification/store";
 import { trpc } from "@/lib/trpc/client";
 import { resizeImageFile } from "@/lib/utils/image";
 

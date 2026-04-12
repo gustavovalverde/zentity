@@ -12,8 +12,8 @@ import { Bot, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
-import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
-import { PageHeader } from "@/components/layouts/page-header";
+import { CibaApproveClient } from "@/components/ciba-approve-client";
+import { PageHeader } from "@/components/page-header";
 import { Web3Provider } from "@/components/providers/web3-provider";
 import {
   Sheet,

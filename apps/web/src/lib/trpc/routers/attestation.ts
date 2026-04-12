@@ -11,18 +11,20 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
-import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
+import {
+  POLICY_HASH,
+  POLICY_VERSION,
+} from "@/lib/blockchain/attestation/policy";
 import { computeProofSetHash } from "@/lib/blockchain/attestation/proof-set-hash";
+import {
+  canCreateProvider,
+  createProvider,
+} from "@/lib/blockchain/attestation-providers/factory";
 import {
   getEnabledNetworks,
   getExplorerTxUrl,
   getNetworkById,
 } from "@/lib/blockchain/networks";
-import {
-  canCreateProvider,
-  createProvider,
-} from "@/lib/blockchain/providers/factory";
 import {
   createBlockchainAttestation,
   getBlockchainAttestationByUserAndNetwork,

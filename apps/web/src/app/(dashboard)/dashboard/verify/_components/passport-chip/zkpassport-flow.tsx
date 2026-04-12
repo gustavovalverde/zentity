@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { env } from "@/env";
-import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
+import { useVerificationBindingAuth } from "@/hooks/verification/use-verification";
 import { useSession } from "@/lib/auth/auth-client";
 import {
   buildProfileSecretDataFromPassportDisclosure,

@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 
-import { StandaloneLayout } from "@/components/layouts/standalone-layout";
 import { Web3Provider } from "@/components/providers/web3-provider";
+import { StandaloneLayout } from "@/components/standalone-layout";
 
 export default async function ApproveLayout({
   children,

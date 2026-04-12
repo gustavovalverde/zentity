@@ -11,7 +11,7 @@ import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "@/lib/auth/well-known";
+} from "@/lib/auth/oidc/well-known";
 
 const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
 

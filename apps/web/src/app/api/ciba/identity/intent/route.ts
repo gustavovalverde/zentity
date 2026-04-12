@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleIdentityIntent } from "@/lib/auth/oidc/identity-handler";
+import { handleIdentityIntent } from "@/lib/auth/oidc/identity-delivery";
 import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
 
 const IntentSchema = z.object({

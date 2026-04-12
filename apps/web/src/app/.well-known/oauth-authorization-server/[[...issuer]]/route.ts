@@ -6,7 +6,7 @@ import {
   enrichDiscoveryMetadata,
   issuerPathMatches,
   unwrapMetadata,
-} from "@/lib/auth/well-known";
+} from "@/lib/auth/oidc/well-known";
 
 export async function GET(
   _request: Request,

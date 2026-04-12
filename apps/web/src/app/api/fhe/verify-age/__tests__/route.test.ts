@@ -20,7 +20,7 @@ const dbMocks = vi.hoisted(() => ({
   getLatestEncryptedAttributeByUserAndType: vi.fn(),
 }));
 
-vi.mock("@/lib/db/queries/crypto", () => dbMocks);
+vi.mock("@/lib/db/queries/privacy", () => dbMocks);
 
 import { POST } from "../route";
 

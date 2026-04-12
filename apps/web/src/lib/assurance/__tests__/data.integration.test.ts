@@ -19,15 +19,15 @@ import {
   updateBlockchainAttestationConfirmed,
 } from "@/lib/db/queries/attestation";
 import {
+  createVerification,
+  upsertIdentityBundle,
+} from "@/lib/db/queries/identity";
+import {
   createProofSession,
   insertEncryptedAttribute,
   insertProofArtifact,
   insertSignedClaim,
-} from "@/lib/db/queries/crypto";
-import {
-  createVerification,
-  upsertIdentityBundle,
-} from "@/lib/db/queries/identity";
+} from "@/lib/db/queries/privacy";
 import { passkeys, sessions } from "@/lib/db/schema/auth";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";

@@ -50,7 +50,7 @@ vi.mock("@/lib/privacy/fhe/encryption", () => ({
     mockScheduleFheEncryption(...args),
 }));
 
-vi.mock("@/lib/db/queries/crypto", () => ({
+vi.mock("@/lib/db/queries/privacy", () => ({
   insertSignedClaim: (...args: unknown[]) => mockInsertSignedClaim(...args),
   insertProofArtifact: (...args: unknown[]) => mockInsertProofArtifact(...args),
 }));

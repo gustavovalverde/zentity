@@ -8,13 +8,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
-import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  insertProofArtifact,
-  insertSignedClaim,
-} from "@/lib/db/queries/crypto";
+  POLICY_HASH,
+  POLICY_VERSION,
+} from "@/lib/blockchain/attestation/policy";
+import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
@@ -24,6 +22,10 @@ import {
   isChipVerified,
   isNullifierUsedByOtherUser,
 } from "@/lib/db/queries/identity";
+import {
+  insertProofArtifact,
+  insertSignedClaim,
+} from "@/lib/db/queries/privacy";
 import { computeDedupKey } from "@/lib/identity/dedup";
 import {
   calculateBirthYearOffsetFromYear,

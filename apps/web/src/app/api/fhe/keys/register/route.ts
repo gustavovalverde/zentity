@@ -4,7 +4,7 @@ import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
-} from "@/lib/db/queries/crypto";
+} from "@/lib/db/queries/privacy";
 import { registerFheKey } from "@/lib/privacy/fhe/service";
 import {
   jsonError,

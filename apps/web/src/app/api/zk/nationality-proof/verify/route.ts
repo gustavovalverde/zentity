@@ -8,7 +8,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getProofSessionById } from "@/lib/db/queries/crypto";
+import { getProofSessionById } from "@/lib/db/queries/privacy";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {

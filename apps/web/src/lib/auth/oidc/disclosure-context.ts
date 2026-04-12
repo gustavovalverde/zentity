@@ -3,12 +3,12 @@ import "server-only";
 import type {
   ClaimsRequest,
   ParsedClaimsParameter,
-} from "@/lib/auth/oidc/claims-parameter";
+} from "@/lib/auth/oidc/claims";
 import type { IdentityFields } from "@/lib/auth/oidc/disclosure-registry";
 
 import { eq, lt } from "drizzle-orm";
 
-import { parseClaimsParameter } from "@/lib/auth/oidc/claims-parameter";
+import { parseClaimsParameter } from "@/lib/auth/oidc/claims";
 import {
   CIBA_EPHEMERAL_TTL_MS,
   clearIdentityPayload,
@@ -19,7 +19,7 @@ import {
   pendingOAuthIdentityKey,
   promoteIdentityPayload,
   storeIdentityPayload,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
+} from "@/lib/auth/oidc/identity-delivery";
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-query";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";

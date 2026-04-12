@@ -10,7 +10,7 @@ import {
   getLatestSignedClaimByUserTypeAndVerification,
   insertEncryptedAttribute,
   insertSignedClaim,
-} from "@/lib/db/queries/crypto";
+} from "@/lib/db/queries/privacy";
 import { encryptedAttributes } from "@/lib/db/schema/privacy";
 import { encodeAad } from "@/lib/privacy/primitives/aad";
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";

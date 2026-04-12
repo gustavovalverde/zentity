@@ -13,14 +13,14 @@ vi.mock("@/lib/logging/logger", () => ({
 import {
   clearIdentityPayload,
   consumeIdentityPayload,
+  createScopeHash,
   EPHEMERAL_TTL_MS,
   finalReleaseIdentityKey,
   hasIdentityPayload,
   pendingOAuthIdentityKey,
   promoteIdentityPayload,
   storeIdentityPayload,
-} from "../ephemeral-identity-claims";
-import { createScopeHash } from "../identity-intent";
+} from "../identity-delivery";
 
 function clearIdentityPayloadStore(): void {
   const store = (

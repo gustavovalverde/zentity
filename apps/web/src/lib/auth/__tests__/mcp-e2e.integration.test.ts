@@ -2,7 +2,10 @@ import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth";
-import { callAuthApi, enrichDiscoveryMetadata } from "@/lib/auth/well-known";
+import {
+  callAuthApi,
+  enrichDiscoveryMetadata,
+} from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {

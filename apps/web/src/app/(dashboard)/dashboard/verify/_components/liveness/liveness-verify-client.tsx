@@ -1,6 +1,6 @@
 "use client";
 
-import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
+import type { FaceMatchResult } from "@/lib/identity/liveness/challenges";
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
 
 import { useRouter } from "next/navigation";
@@ -17,14 +17,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
-import { useVerificationStore } from "@/hooks/verification/verification-store";
+import { useVerificationBindingAuth } from "@/hooks/verification/use-verification";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
 import {
   buildProfileSecretDataFromOcrSnapshot,
   storeProfileSecretWithMaterial,
 } from "@/lib/identity/verification/profile-vault";
+import { useVerificationStore } from "@/lib/identity/verification/store";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,

@@ -19,7 +19,7 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/providers/factory";
+} from "@/lib/blockchain/attestation-providers/factory";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
@@ -41,7 +41,7 @@ import {
   zkChallenges,
 } from "../schema/privacy";
 import { pushSubscriptions } from "../schema/push";
-import { getSignedClaimTypesByUserAndVerification } from "./crypto";
+import { getSignedClaimTypesByUserAndVerification } from "./privacy";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";

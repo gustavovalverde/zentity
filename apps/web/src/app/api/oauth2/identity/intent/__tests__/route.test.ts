@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Imported dynamically in beforeEach to pick up mocked derived-keys
-let createScopeHash: typeof import("@/lib/auth/oidc/identity-intent").createScopeHash;
-let verifyIdentityIntentToken: typeof import("@/lib/auth/oidc/identity-intent").verifyIdentityIntentToken;
+let createScopeHash: typeof import("@/lib/auth/oidc/identity-delivery").createScopeHash;
+let verifyIdentityIntentToken: typeof import("@/lib/auth/oidc/identity-delivery").verifyIdentityIntentToken;
 
 const STABLE_INTENT_KEY = "deadbeef".repeat(8);
 
@@ -55,7 +55,7 @@ describe("oauth2 identity intent route", () => {
     vi.resetModules();
     const routeMod = await import("../route");
     POST = routeMod.POST;
-    const intentMod = await import("@/lib/auth/oidc/identity-intent");
+    const intentMod = await import("@/lib/auth/oidc/identity-delivery");
     createScopeHash = intentMod.createScopeHash;
     verifyIdentityIntentToken = intentMod.verifyIdentityIntentToken;
     const authMod = await import("@/lib/auth/api-auth");

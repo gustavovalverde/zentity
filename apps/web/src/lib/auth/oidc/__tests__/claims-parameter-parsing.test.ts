@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  filterClaimsByRequest,
-  parseClaimsParameter,
-} from "../claims-parameter";
+import { filterClaimsByRequest, parseClaimsParameter } from "../claims";
 
 describe("parseClaimsParameter", () => {
   it("parses valid claims JSON", () => {

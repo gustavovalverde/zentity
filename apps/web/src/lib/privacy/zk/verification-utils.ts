@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { TRPCError } from "@trpc/server";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getLatestSignedClaimByUserTypeAndVerification } from "@/lib/db/queries/crypto";
+import { getLatestSignedClaimByUserTypeAndVerification } from "@/lib/db/queries/privacy";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 
 export function parseFieldToBigInt(value: string): bigint {

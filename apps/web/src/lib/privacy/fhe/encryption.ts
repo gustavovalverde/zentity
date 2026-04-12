@@ -6,16 +6,16 @@ import { after } from "next/server";
 
 import { isFheComplete } from "@/lib/assurance/compute";
 import {
-  getEncryptedAttributeTypesByUserId,
-  getLatestEncryptedAttributeByUserAndType,
-  insertEncryptedAttribute,
-} from "@/lib/db/queries/crypto";
-import {
   getIdentityBundleByUserId,
   getSelectedVerification,
   getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
+import {
+  getEncryptedAttributeTypesByUserId,
+  getLatestEncryptedAttributeByUserAndType,
+  insertEncryptedAttribute,
+} from "@/lib/db/queries/privacy";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 

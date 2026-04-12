@@ -3,8 +3,8 @@ import { z } from "zod";
 
 import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
+import { handleIdentityStage } from "@/lib/auth/oidc/identity-delivery";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
-import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
 import {
   computeOAuthRequestKey,
   parseRequestedScopes,

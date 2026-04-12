@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { TierBadge } from "@/components/assurance/tier-badge";
-import { PageHeader } from "@/components/layouts/page-header";
+import { PageHeader } from "@/components/page-header";
+import { TierBadge } from "@/components/tier-badge";
 import { env } from "@/env";
 import { getSecurityPostureForSession } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";

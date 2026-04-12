@@ -40,7 +40,7 @@ import {
   getPreGeneratedKeys,
   startBackgroundKeygen,
 } from "@/lib/privacy/fhe/background-keygen";
-import { generateFheKeyMaterialForStorage } from "@/lib/privacy/fhe/client";
+import { generateFheKeyMaterialForStorage } from "@/lib/privacy/fhe/browser";
 import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import {
   getStoredFheKeys,

@@ -17,7 +17,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint } from "jose";
 
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";

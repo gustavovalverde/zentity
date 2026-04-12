@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 // Mock server-only
 vi.mock("server-only", () => ({}));

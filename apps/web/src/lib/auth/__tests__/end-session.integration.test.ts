@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET } from "@/app/api/auth/oauth2/end-session/route";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";

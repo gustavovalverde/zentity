@@ -51,14 +51,13 @@ import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
-import { resolveCimdClient } from "@/lib/auth/oidc/cimd";
-import { isUrlClientId } from "@/lib/auth/oidc/cimd-validation";
+import { isUrlClientId, resolveCimdClient } from "@/lib/auth/oidc/cimd";
 import {
   buildOidcVerifiedClaims,
   buildProofClaims,
+  filterClaimsByRequest,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import { filterClaimsByRequest } from "@/lib/auth/oidc/claims-parameter";
 import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
 import {
   ACCESS_TOKEN_EXPIRES_IN_SECONDS,
@@ -84,10 +83,6 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure-registry";
 import { getDpopNonceStore } from "@/lib/auth/oidc/dpop-nonce-store";
-import {
-  finalReleaseIdentityKey,
-  hasIdentityPayload,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/protected-resources";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
@@ -95,6 +90,10 @@ import {
   loadX5cChain,
   validateX509Chain,
 } from "@/lib/auth/oidc/haip/x509-validation";
+import {
+  finalReleaseIdentityKey,
+  hasIdentityPayload,
+} from "@/lib/auth/oidc/identity-delivery";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jwt/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt/jwt-signer";
 import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt/jwt-signing-keys";
@@ -102,14 +101,14 @@ import { validateResourceUri } from "@/lib/auth/oidc/resource";
 import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
-} from "@/lib/auth/oidc/step-up-ciba";
-import { enforceStepUp } from "@/lib/auth/oidc/step-up-hook";
+  enforceStepUp,
+} from "@/lib/auth/oidc/step-up";
 import {
   TOKEN_EXCHANGE_GRANT_TYPE,
   tokenExchangePlugin,
 } from "@/lib/auth/oidc/token-exchange";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
 import {
   loadAapProfileForCibaRequest,
   persistAapSnapshotForCibaToken,

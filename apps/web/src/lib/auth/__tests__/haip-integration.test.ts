@@ -21,7 +21,7 @@ import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "../well-known";
+} from "../oidc/well-known";
 
 let signJwt: typeof import("../oidc/jwt/jwt-signer").signJwt;
 

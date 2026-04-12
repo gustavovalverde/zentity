@@ -3,7 +3,7 @@
 /**
  * UI for face match results during dashboard verification.
  */
-import type { FaceMatchResult } from "@/lib/identity/liveness/face-match";
+import type { FaceMatchResult } from "@/lib/identity/liveness/challenges";
 
 import { ArrowLeftRight, Check, UserCheck, XCircle } from "lucide-react";
 import Image from "next/image";

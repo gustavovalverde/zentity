@@ -16,7 +16,7 @@ const dbMocks = vi.hoisted(() => ({
   updateEncryptedSecretMetadata: vi.fn(),
 }));
 
-vi.mock("@/lib/db/queries/crypto", () => dbMocks);
+vi.mock("@/lib/db/queries/privacy", () => dbMocks);
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 

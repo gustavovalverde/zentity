@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";

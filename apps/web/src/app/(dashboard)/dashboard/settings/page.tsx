@@ -9,7 +9,7 @@ import {
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { PageHeader } from "@/components/layouts/page-header";
+import { PageHeader } from "@/components/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/cached-session";

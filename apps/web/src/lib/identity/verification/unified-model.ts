@@ -15,15 +15,15 @@ import { cache } from "react";
 import { db } from "@/lib/db/connection";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
-  getEncryptedAttributeTypesByUserId,
-  getLatestSignedClaimByUserTypeAndVerification,
-} from "@/lib/db/queries/crypto";
-import {
   getIdentityBundleByUserId,
   getSelectedVerification,
   hasProfileSecret,
   isChipVerified,
 } from "@/lib/db/queries/identity";
+import {
+  getEncryptedAttributeTypesByUserId,
+  getLatestSignedClaimByUserTypeAndVerification,
+} from "@/lib/db/queries/privacy";
 import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 
 import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";

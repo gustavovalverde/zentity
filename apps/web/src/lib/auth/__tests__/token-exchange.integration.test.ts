@@ -16,7 +16,7 @@ import {
 } from "@/lib/auth/authentication-context";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
   "urn:zentity:token-type:purchase-authorization";

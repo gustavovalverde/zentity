@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
-import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-handler";
+import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-delivery";
 import {
   computeOAuthRequestKey,
   verifySignedOAuthQuery,

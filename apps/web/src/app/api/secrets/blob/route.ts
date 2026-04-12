@@ -4,7 +4,7 @@ import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
-} from "@/lib/db/queries/crypto";
+} from "@/lib/db/queries/privacy";
 import { withSpan } from "@/lib/observability/telemetry";
 import {
   computeSecretBlobRef,

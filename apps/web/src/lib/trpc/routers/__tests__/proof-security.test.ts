@@ -52,9 +52,9 @@ vi.mock("@/lib/privacy/zk/challenge-store", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
+vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/db/queries/crypto")>();
+    await importOriginal<typeof import("@/lib/db/queries/privacy")>();
   return {
     ...actual,
     getProofSessionById: (...args: unknown[]) =>

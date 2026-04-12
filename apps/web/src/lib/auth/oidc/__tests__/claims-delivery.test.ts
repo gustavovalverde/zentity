@@ -7,7 +7,7 @@ import {
   hasIdentityPayload,
   pendingOAuthIdentityKey,
   storeIdentityPayload,
-} from "../ephemeral-identity-claims";
+} from "../identity-delivery";
 
 function clearIdentityPayloadStore(): void {
   const store = (

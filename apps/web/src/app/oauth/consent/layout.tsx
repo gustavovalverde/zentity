@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 
-import { StandaloneLayout } from "@/components/layouts/standalone-layout";
+import { StandaloneLayout } from "@/components/standalone-layout";
 
 export default async function ConsentLayout({
   children,

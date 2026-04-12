@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-intent";
+import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-delivery";
 
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },

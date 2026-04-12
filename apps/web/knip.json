@@ -8,11 +8,14 @@
   ],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
+    "src/lib/auth/oidc/cimd.ts": ["exports", "types"],
+    "src/lib/auth/oidc/identity-delivery.ts": ["exports"],
+    "src/lib/auth/oidc/step-up.ts": ["exports"],
     "src/lib/copy-constants.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
     "src/lib/identity/liveness/human-server.ts": ["exports"],
-    "src/lib/trpc/routers/zk.ts": ["exports"],
-    "src/lib/trpc/routers/recovery.ts": ["exports"]
+    "src/lib/trpc/routers/recovery.ts": ["exports"],
+    "src/lib/trpc/routers/zk.ts": ["exports"]
   },
   "ignore": [
     "scripts/**",

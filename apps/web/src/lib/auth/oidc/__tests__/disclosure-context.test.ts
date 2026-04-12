@@ -10,10 +10,10 @@ import {
 } from "@/lib/auth/oidc/disclosure-context";
 import {
   consumeIdentityPayload,
+  createScopeHash,
   hasIdentityPayload,
   pendingOAuthIdentityKey,
-} from "@/lib/auth/oidc/ephemeral-identity-claims";
-import { createScopeHash } from "@/lib/auth/oidc/identity-intent";
+} from "@/lib/auth/oidc/identity-delivery";
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-query";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

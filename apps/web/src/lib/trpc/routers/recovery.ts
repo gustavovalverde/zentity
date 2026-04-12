@@ -13,7 +13,7 @@ import {
   getEncryptedSecretById,
   listEncryptedSecretsByUserId,
   upsertSecretWrapper,
-} from "@/lib/db/queries/crypto";
+} from "@/lib/db/queries/privacy";
 import {
   completeRecoveryChallenge,
   countRecentRecoveryChallenges,

@@ -6,7 +6,7 @@ import {
   getAuthIssuer,
   issuerPathMatches,
   unwrapMetadata,
-} from "@/lib/auth/well-known";
+} from "@/lib/auth/oidc/well-known";
 
 /**
  * OIDC4VCI credential issuer metadata endpoint.

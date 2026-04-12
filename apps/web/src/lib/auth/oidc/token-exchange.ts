@@ -43,7 +43,7 @@ import {
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import {
   buildAapProfile,
   buildDelegationClaim,

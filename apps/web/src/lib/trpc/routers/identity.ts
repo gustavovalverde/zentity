@@ -41,15 +41,15 @@ import {
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/identity/liveness/thresholds";
 import { dobDaysToBirthYearOffset } from "@/lib/identity/verification/birth-year";
+import {
+  scheduleIdentityJob,
+  type VerifyIdentityResponse,
+} from "@/lib/identity/verification/job-processor";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
 import { adminProcedure, protectedProcedure, router } from "../server";
-import {
-  scheduleIdentityJob,
-  type VerifyIdentityResponse,
-} from "./identity-job-processor";
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof Error)) {

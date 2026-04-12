@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { CibaApproveClient } from "@/components/ciba/ciba-approve-client";
+import { CibaApproveClient } from "@/components/ciba-approve-client";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { getFreshSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";

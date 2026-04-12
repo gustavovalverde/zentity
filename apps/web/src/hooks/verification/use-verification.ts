@@ -7,6 +7,10 @@ import {
   type VerificationStep,
 } from "@/lib/identity/verification/steps";
 
+// ---------------------------------------------------------------------------
+// Step transitions for the verification flow
+// ---------------------------------------------------------------------------
+
 interface VerificationStepper {
   canGoTo: (target: VerificationStep) => boolean;
   currentStep: VerificationStep;
@@ -58,4 +62,35 @@ export function useVerificationStepper(
     }),
     [currentStep, visitedSteps, canGoTo, goTo, reset]
   );
+}
+
+// ---------------------------------------------------------------------------
+// OPAQUE / wallet re-auth dialog state
+// ---------------------------------------------------------------------------
+
+type VerificationBindingAuthMode = "opaque" | "wallet";
+
+/**
+ * Shared dialog state for verification flows that need OPAQUE or wallet
+ * re-authentication before continuing.
+ */
+export function useVerificationBindingAuth() {
+  const [bindingAuthOpen, setBindingAuthOpen] = useState(false);
+  const [bindingAuthMode, setBindingAuthMode] =
+    useState<VerificationBindingAuthMode>("opaque");
+
+  const requestBindingAuth = useCallback(
+    (mode: VerificationBindingAuthMode) => {
+      setBindingAuthMode(mode);
+      setBindingAuthOpen(true);
+    },
+    []
+  );
+
+  return {
+    bindingAuthMode,
+    bindingAuthOpen,
+    requestBindingAuth,
+    setBindingAuthOpen,
+  };
 }

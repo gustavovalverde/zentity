@@ -7,7 +7,7 @@ import {
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
 import { resolveUserIdFromSubForClient } from "@/lib/auth/oidc/pairwise";
-import { getAuthIssuer } from "@/lib/auth/well-known";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";

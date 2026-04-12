@@ -6,7 +6,7 @@ import {
   isUrlClientId,
   validateCimdMetadata,
   validateFetchUrl,
-} from "../cimd-validation";
+} from "../cimd";
 
 describe("isUrlClientId", () => {
   it("accepts https:// URLs", () => {

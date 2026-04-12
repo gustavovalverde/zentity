@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getCachedSession } from "@/lib/auth/cached-session";
 
-import { BackupCodesClient } from "./backup-codes-client";
+import { BackupCodesClient } from "./_components/backup-codes-client";
 
 export default async function BackupCodesPage() {
   const headersObj = await headers();

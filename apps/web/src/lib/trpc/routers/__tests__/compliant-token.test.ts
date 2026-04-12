@@ -11,7 +11,7 @@ vi.mock("@/lib/blockchain/networks", () => ({
   getNetworkById: vi.fn(),
 }));
 
-vi.mock("@/lib/blockchain/providers/factory", () => ({
+vi.mock("@/lib/blockchain/attestation-providers/factory", () => ({
   canCreateProvider: (...args: unknown[]) => mockCanCreateProvider(...args),
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));

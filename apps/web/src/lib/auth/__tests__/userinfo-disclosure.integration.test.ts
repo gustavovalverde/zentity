@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { auth } from "@/lib/auth/auth";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure-context";
-import { createScopeHash } from "@/lib/auth/oidc/identity-intent";
+import { createScopeHash } from "@/lib/auth/oidc/identity-delivery";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
