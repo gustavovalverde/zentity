@@ -30,11 +30,11 @@ import {
   getPrimaryFace,
   getRealScore,
   getYawDegrees,
-} from "@/lib/identity/liveness/human-metrics";
+} from "@/lib/identity/liveness/human/metrics";
 import {
   detectFromBase64,
   getHumanServer,
-} from "@/lib/identity/liveness/human-server";
+} from "@/lib/identity/liveness/human/server";
 import {
   createLivenessSession,
   getChallengeInfo,

@@ -11,7 +11,7 @@ export async function register() {
     // (warmupCRS depends on Barretenberg so it runs after BB completes)
     const [{ warmupHumanServer }, { warmupBarretenberg }, { warmupServices }] =
       await Promise.all([
-        import("@/lib/identity/liveness/human-server"),
+        import("@/lib/identity/liveness/human/server"),
         import("@/lib/privacy/primitives/barretenberg"),
         import("@/lib/observability/service-warmup"),
       ]);
