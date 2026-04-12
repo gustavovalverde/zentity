@@ -4,7 +4,7 @@ import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
 import type { BindingSecretResult } from "@/lib/privacy/zk/binding-secret";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import { clearCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
 import {
@@ -19,7 +19,19 @@ import {
   storeProof,
 } from "@/lib/privacy/zk/client";
 
-import { parseDateToInt } from "./date-utils";
+const NON_DIGIT_REGEX = /\D/g;
+
+function parseDateToInt(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const digits = value.replaceAll(NON_DIGIT_REGEX, "");
+  if (digits.length < 8) {
+    return null;
+  }
+  const dateInt = Number(digits.slice(0, 8));
+  return Number.isFinite(dateInt) ? dateInt : null;
+}
 
 /**
  * Context for identity binding proof generation.

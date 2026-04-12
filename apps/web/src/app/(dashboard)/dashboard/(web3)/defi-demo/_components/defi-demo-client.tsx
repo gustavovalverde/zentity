@@ -10,7 +10,6 @@ import { useAppKitAccount } from "@reown/appkit/react";
 import { AlertTriangle, ArrowRight, Lock, Wallet } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ComplianceAccessCard } from "@/components/dashboard/compliance-access-card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { trpcReact } from "@/lib/trpc/client";
 
+import { ComplianceAccessCard } from "../../attestation/_components/compliance-access-card";
 import { MintForm } from "./mint-form";
 import { TokenStatus } from "./token-status";
 import { TransferForm } from "./transfer-form";

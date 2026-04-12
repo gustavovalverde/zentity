@@ -11,7 +11,7 @@ import {
 import { dedupKeyExistsForOtherUser } from "@/lib/db/queries/identity";
 import { computeDedupKey } from "@/lib/identity/dedup";
 import { logger } from "@/lib/logging/logger";
-import { toNumericCode } from "@/lib/privacy/country";
+import { toNumericCode } from "@/lib/privacy/zk/country";
 
 import { dobToDaysSince1900 } from "../verification/birth-year";
 import { processDocumentOcr } from "./ocr-client";

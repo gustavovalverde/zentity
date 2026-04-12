@@ -33,7 +33,7 @@ import {
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
-import { signAttestationClaim } from "@/lib/privacy/zk/claims";
+import { signAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 import { computeProofSetHash } from "@/lib/privacy/zk/verification-utils";
 import { verifyZkPassportProofs } from "@/lib/privacy/zk/zkpassport-verifier";
 

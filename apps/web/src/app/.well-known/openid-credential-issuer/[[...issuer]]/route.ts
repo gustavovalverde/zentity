@@ -1,12 +1,12 @@
 import { auth } from "@/lib/auth/auth";
-import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   buildWellKnownResponse,
   callAuthApi,
   DEFAULT_AUTH_BASE_PATH,
+  getAuthIssuer,
   issuerPathMatches,
   unwrapMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/well-known";
 
 /**
  * OIDC4VCI credential issuer metadata endpoint.

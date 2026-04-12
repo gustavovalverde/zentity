@@ -23,11 +23,11 @@ import {
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-query";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { usedIntentJtis } from "@/lib/db/schema/crypto";
 import {
   oauthPendingDisclosures,
   oidcReleaseContexts,
 } from "@/lib/db/schema/oauth-provider";
+import { usedIntentJtis } from "@/lib/db/schema/privacy";
 import { logger as rootLogger } from "@/lib/logging/logger";
 
 const log = rootLogger.child({ component: "disclosure-context" });

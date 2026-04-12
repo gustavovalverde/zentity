@@ -6,7 +6,7 @@ import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
-} from "@/lib/identity/liveness/policy";
+} from "@/lib/identity/liveness/thresholds";
 
 import { MIN_AGE_POLICY, NATIONALITY_GROUP, POLICY_VERSION } from "./policy";
 

@@ -13,8 +13,8 @@ import {
   agentHosts,
   agentSessionGrants,
   agentSessions,
+  capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
-import { capabilityUsageLedger } from "@/lib/db/schema/usage-ledger";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

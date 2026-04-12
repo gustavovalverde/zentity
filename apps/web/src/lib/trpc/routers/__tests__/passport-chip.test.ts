@@ -55,7 +55,7 @@ vi.mock("@/lib/db/queries/crypto", () => ({
   insertProofArtifact: (...args: unknown[]) => mockInsertProofArtifact(...args),
 }));
 
-vi.mock("@/lib/privacy/zk/claims", () => ({
+vi.mock("@/lib/privacy/zk/attestation-claims", () => ({
   signAttestationClaim: (...args: unknown[]) =>
     mockSignAttestationClaim(...args),
 }));

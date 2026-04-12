@@ -14,7 +14,7 @@ import { authClient } from "@/lib/auth/auth-client";
 import {
   buildKekSignatureTypedData,
   signatureToBytes,
-} from "@/lib/privacy/credentials";
+} from "@/lib/privacy/credentials/wallet";
 import {
   getStoredProfileWithCredential,
   type ProfileSecretPayload,

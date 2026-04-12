@@ -16,7 +16,7 @@ const trpcMocks = vi.hoisted(() => ({
 }));
 
 // Apply mocks before any imports
-vi.mock("@/lib/privacy/secrets", () => secretsMocks);
+vi.mock("@/lib/privacy/secrets/vault", () => secretsMocks);
 vi.mock("@/lib/trpc/client", () => ({ trpc: trpcMocks }));
 vi.mock("@/lib/privacy/secrets/types", () => ({
   SECRET_TYPES: { FHE_KEYS: "fhe_keys" },

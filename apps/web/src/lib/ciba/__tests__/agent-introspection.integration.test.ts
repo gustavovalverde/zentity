@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/issuer";
+import { getAuthIssuer } from "@/lib/auth/well-known";
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";

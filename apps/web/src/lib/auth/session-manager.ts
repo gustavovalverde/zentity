@@ -2,9 +2,12 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 
-import { signOut as betterAuthSignOut } from "@/lib/auth/auth-client";
+import {
+  authClient,
+  signOut as betterAuthSignOut,
+} from "@/lib/auth/auth-client";
 import { resetFlowId } from "@/lib/observability/flow-client";
-import { clearAllCredentialCaches } from "@/lib/privacy/credentials";
+import { clearAllCredentialCaches } from "@/lib/privacy/credentials/cache";
 import { resetBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/store";
 import { resetProfileSecretCache } from "@/lib/privacy/secrets/profile";
@@ -139,4 +142,28 @@ export function invalidateSessionDataCache(): void {
 export function prepareForNewSession(): void {
   clearClientCaches();
   clearSessionCookies();
+}
+
+/**
+ * Ensures a session exists, creating an anonymous one if needed.
+ * Used during sign-up when passkey registration requires a user context.
+ */
+export async function ensureAuthSession() {
+  const existing = await authClient.getSession();
+  if (existing.data?.user?.id) {
+    return existing.data;
+  }
+
+  const anonymous = await authClient.signIn.anonymous();
+  if (anonymous?.error) {
+    throw new Error(
+      anonymous.error.message || "Unable to start anonymous session."
+    );
+  }
+
+  const updated = await authClient.getSession();
+  if (!updated.data?.user?.id) {
+    throw new Error("Unable to start anonymous session.");
+  }
+  return updated.data;
 }

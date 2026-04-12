@@ -3,7 +3,7 @@ import "server-only";
 import { createLocalJWKSet, type JWTPayload, jwtVerify } from "jose";
 
 import { env } from "@/env";
-import { getAuthIssuer } from "@/lib/auth/issuer";
+import { getAuthIssuer } from "@/lib/auth/well-known";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/jwks";
 

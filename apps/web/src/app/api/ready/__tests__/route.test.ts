@@ -7,7 +7,7 @@ vi.mock("@/lib/db/connection", () => ({
   db: { run: (...args: unknown[]) => mockDbRun(...args) },
 }));
 
-vi.mock("@/lib/observability/warmup-state", () => ({
+vi.mock("@/lib/observability/service-warmup", () => ({
   isWarmupComplete: () => mockIsWarmupComplete(),
 }));
 

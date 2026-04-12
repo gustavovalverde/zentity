@@ -31,7 +31,7 @@ import type {
 
 import { getCountryWeightedSum } from "@zkpassport/utils";
 
-import { COUNTRY_GROUPS, TREE_DEPTH } from "@/lib/privacy/country";
+import { COUNTRY_GROUPS, TREE_DEPTH } from "@/lib/privacy/zk/country";
 import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromHex,

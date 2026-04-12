@@ -15,8 +15,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { formatTokenAmount } from "@/lib/blockchain/token-utils";
 import { trpcReact } from "@/lib/trpc/client";
-import { formatTokenAmount } from "@/lib/utils/token";
 
 interface TokenStatusProps {
   networkId: string;

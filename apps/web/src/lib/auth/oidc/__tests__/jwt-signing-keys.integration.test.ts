@@ -4,7 +4,7 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 import { resetDatabase } from "@/test/db-test-utils";
 
-import { getJwtSigningKeys } from "../jwt-signing-keys";
+import { getJwtSigningKeys } from "../jwt/jwt-signing-keys";
 
 describe("getJwtSigningKeys", () => {
   beforeEach(async () => {

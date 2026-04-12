@@ -36,7 +36,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "../policy";
+} from "../thresholds";
 import { type Logger, socketLogger as logger } from "./logger";
 import {
   advanceChallenge,

@@ -2,12 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import {
-  CORRELATION_ID_HEADER,
-  FLOW_ID_HEADER,
-  REQUEST_ID_HEADER,
-} from "@/lib/observability/correlation-headers";
 import { currentSpan, hashIdentifier } from "@/lib/observability/telemetry";
+
+const REQUEST_ID_HEADER = "x-request-id";
+const CORRELATION_ID_HEADER = "x-correlation-id";
+const FLOW_ID_HEADER = "x-zentity-flow-id";
 
 type FlowIdSource = "header" | "cookie" | "query" | "none";
 type SpanAttributeValue = string | number | boolean | undefined;

@@ -7,7 +7,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/authentication-context";
-import { loadOpaqueAccessToken } from "@/lib/auth/oidc/opaque-access-token";
+import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";

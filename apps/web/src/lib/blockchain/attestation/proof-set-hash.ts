@@ -4,7 +4,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { encodePacked, keccak256 } from "viem";
 
 import { db } from "@/lib/db/connection";
-import { proofArtifacts } from "@/lib/db/schema/crypto";
+import { proofArtifacts } from "@/lib/db/schema/privacy";
 
 /**
  * Computes a deterministic hash of all verified proof artifacts for a

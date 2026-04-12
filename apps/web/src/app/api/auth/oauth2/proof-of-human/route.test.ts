@@ -15,7 +15,7 @@ vi.mock("@/lib/trpc/jwt-session", () => ({
   verifyAccessToken: mocks.verifyAccessToken,
 }));
 
-vi.mock("@/lib/auth/oidc/jwt-signer", () => ({
+vi.mock("@/lib/auth/oidc/jwt/jwt-signer", () => ({
   signJwt: mocks.signJwt,
 }));
 
@@ -27,7 +27,7 @@ vi.mock("@/lib/auth/oidc/pairwise", () => ({
   resolveUserIdFromSub: mocks.resolveUserIdFromSub,
 }));
 
-vi.mock("@/lib/auth/oidc/opaque-access-token", () => ({
+vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
   loadOpaqueAccessToken: mocks.loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop: mocks.validateOpaqueAccessTokenDpop,
 }));

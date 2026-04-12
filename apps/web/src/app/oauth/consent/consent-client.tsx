@@ -28,13 +28,13 @@ import {
 } from "@/components/vault-unlock/vault-unlock";
 import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
 import { authClient } from "@/lib/auth/auth-client";
-import { getSignedOAuthQuery } from "@/lib/auth/oauth-post-login";
 import {
   findMissingIdentityFields,
   HIDDEN_SCOPES,
   isIdentityScope,
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/disclosure-registry";
+import { getSignedOAuthQuery } from "@/lib/auth/oidc/oauth-post-login";
 import { groupScopes } from "@/lib/auth/oidc/scope-display";
 
 import { ClientSecurityBadges } from "./_components/client-security-badges";

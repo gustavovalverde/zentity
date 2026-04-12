@@ -22,7 +22,7 @@ import {
   getVerificationStatus,
   updateIdentityBundleStatus,
 } from "@/lib/db/queries/identity";
-import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/policy";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import {
   getTodayDobDays,
   minAgeYearsToDays,
@@ -31,8 +31,8 @@ import { materializeVerificationChecks } from "@/lib/identity/verification/mater
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 import { withSpan } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
+import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
-import { verifyAttestationClaim } from "@/lib/privacy/zk/claims";
 import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromString,

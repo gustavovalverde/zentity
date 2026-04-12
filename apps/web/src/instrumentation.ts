@@ -4,7 +4,7 @@ export async function register() {
     await initTelemetry();
 
     const { markWarmupComplete } = await import(
-      "@/lib/observability/warmup-state"
+      "@/lib/observability/service-warmup"
     );
 
     // Parallel group: Human.js models + Barretenberg + backend service checks

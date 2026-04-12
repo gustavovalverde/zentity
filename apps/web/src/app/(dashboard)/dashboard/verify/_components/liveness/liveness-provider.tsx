@@ -26,8 +26,8 @@ import {
 } from "react";
 
 import { type LivenessPhase, useLiveness } from "@/hooks/liveness/use-liveness";
+import { useLivenessCamera } from "@/hooks/liveness/use-liveness-camera";
 import { useLivenessFeedback } from "@/hooks/liveness/use-liveness-feedback";
-import { useLivenessCamera } from "@/hooks/use-liveness-camera";
 
 // ============================================================================
 // Types

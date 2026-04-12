@@ -22,7 +22,7 @@ vi.mock("@better-auth/haip", () => ({
   createDpopAccessTokenValidator: mockCreateDpopAccessTokenValidator,
 }));
 
-vi.mock("@/lib/auth/oauth-token-validation", () => ({
+vi.mock("@/lib/auth/oidc/oauth-token-validation", () => ({
   extractAccessToken: mockExtractAccessToken,
   validateOAuthAccessToken: mockValidateOAuthAccessToken,
 }));

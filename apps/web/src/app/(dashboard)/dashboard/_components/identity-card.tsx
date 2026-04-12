@@ -14,9 +14,6 @@ import {
 import Link from "next/link";
 
 import { TierBadge } from "@/components/assurance/tier-badge";
-import { FheStatusPoller } from "@/components/dashboard/fhe-status-poller";
-import { TransparencySection } from "@/components/dashboard/transparency-section";
-import { VerificationDetails } from "@/components/dashboard/verification-details";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +31,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
@@ -46,6 +42,11 @@ import {
   getSelectedVerification,
   getVerificationStatus,
 } from "@/lib/db/queries/identity";
+
+import { VerificationFinalizationNotice } from "../verify/_components/verification-finalization-notice";
+import { FheStatusPoller } from "./fhe-status-poller";
+import { TransparencySection } from "./transparency-section";
+import { VerificationDetails } from "./verification-details";
 
 interface IdentityCardProps {
   posture: SecurityPosture | null;

@@ -9,12 +9,6 @@ import {
   statusProcedure,
 } from "./challenge";
 import {
-  configProcedure,
-  identifierProcedure,
-  publicKeyProcedure,
-  setupProcedure,
-} from "./config";
-import {
   addGuardianCustodialEmailProcedure,
   addGuardianEmailProcedure,
   addGuardianTwoFactorProcedure,
@@ -23,6 +17,12 @@ import {
   storeSecretWrapperProcedure,
   wrappersStatusProcedure,
 } from "./guardian";
+import {
+  configProcedure,
+  identifierProcedure,
+  publicKeyProcedure,
+  setupProcedure,
+} from "./procedures";
 
 export const recoveryRouter = router({
   publicKey: publicKeyProcedure,

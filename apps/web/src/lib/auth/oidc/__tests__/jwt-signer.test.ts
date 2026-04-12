@@ -8,7 +8,7 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-let signJwt: typeof import("../jwt-signer").signJwt;
+let signJwt: typeof import("../jwt/jwt-signer").signJwt;
 
 describe("jwt-signer multi-algorithm dispatcher", () => {
   let edDsaKid: string;
@@ -59,7 +59,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       .run();
 
     // Dynamic import to reset module-level cache
-    const mod = await import("../jwt-signer");
+    const mod = await import("../jwt/jwt-signer");
     signJwt = mod.signJwt;
   });
 

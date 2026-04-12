@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  unwrapDekWithOpaqueExport,
-  wrapDekWithOpaqueExport,
-} from "@/lib/privacy/credentials";
-import {
   decryptWithDek,
   encryptWithDek,
   generateDek,
 } from "@/lib/privacy/secrets/envelope";
+
+import { unwrapDekWithOpaqueExport, wrapDekWithOpaqueExport } from "../opaque";
 
 describe("opaque credentials", () => {
   it("wraps and unwraps a DEK with OPAQUE export key", async () => {

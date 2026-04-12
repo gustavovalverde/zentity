@@ -24,7 +24,7 @@ import {
   hasProfileSecret,
   isChipVerified,
 } from "@/lib/db/queries/identity";
-import { proofArtifacts, verificationChecks } from "@/lib/db/schema/crypto";
+import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 
 import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";
 

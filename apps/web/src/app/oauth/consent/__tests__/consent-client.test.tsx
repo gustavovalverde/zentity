@@ -45,7 +45,7 @@ const oauthPostLoginMocks = vi.hoisted(() => ({
   getSignedOAuthQuery: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/oauth-post-login", () => ({
+vi.mock("@/lib/auth/oidc/oauth-post-login", () => ({
   getSignedOAuthQuery: oauthPostLoginMocks.getSignedOAuthQuery,
 }));
 

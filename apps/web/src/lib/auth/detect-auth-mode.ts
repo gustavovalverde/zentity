@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
-import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/crypto";
+import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 
 export type AuthMode = "passkey" | "opaque" | "wallet" | null;
 

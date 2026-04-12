@@ -2,12 +2,12 @@ import { eq } from "drizzle-orm";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
-import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
 import { resolveUserIdFromSubForClient } from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer } from "@/lib/auth/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";

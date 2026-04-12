@@ -16,7 +16,7 @@ import tfhe from "node-tfhe";
 import {
   generateNationalityProofInputs,
   toNumericCode,
-} from "@/lib/privacy/country";
+} from "@/lib/privacy/zk/country";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
 import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";

@@ -19,7 +19,7 @@ import {
   computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
-} from "@/lib/auth/oauth-token-validation";
+} from "@/lib/auth/oidc/oauth-token-validation";
 import {
   createRpEncryptionKey,
   getActiveRpEncryptionKey,

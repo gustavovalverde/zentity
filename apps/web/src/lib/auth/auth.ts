@@ -45,8 +45,6 @@ import {
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
-import { getDpopNonceStore } from "@/lib/auth/dpop-nonce-store";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent-scopes";
 import {
   revokePendingCibaOnLogout,
@@ -84,15 +82,21 @@ import {
   OAUTH_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure-registry";
+import { getDpopNonceStore } from "@/lib/auth/oidc/dpop-nonce-store";
 import {
   finalReleaseIdentityKey,
   hasIdentityPayload,
 } from "@/lib/auth/oidc/ephemeral-identity-claims";
-import { getJarmDecryptionKey } from "@/lib/auth/oidc/jarm-key";
-import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt-signing-keys";
-import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/opaque-access-token";
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/protected-resources";
+import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/protected-resources";
+import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
+import {
+  loadX5cChain,
+  validateX509Chain,
+} from "@/lib/auth/oidc/haip/x509-validation";
+import { getJarmDecryptionKey } from "@/lib/auth/oidc/jwt/jarm-key";
+import { signJwt } from "@/lib/auth/oidc/jwt/jwt-signer";
+import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt/jwt-signing-keys";
 import { validateResourceUri } from "@/lib/auth/oidc/resource";
 import {
   enforceCibaApprovalAcr,
@@ -103,12 +107,10 @@ import {
   TOKEN_EXCHANGE_GRANT_TYPE,
   tokenExchangePlugin,
 } from "@/lib/auth/oidc/token-exchange";
-import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/trusted-dcql-matcher";
-import { loadX5cChain } from "@/lib/auth/oidc/x5c-loader";
-import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
 import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
 import { opaque } from "@/lib/auth/plugins/opaque/server";
 import { validateSafeUrl } from "@/lib/auth/url-safety";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
 import {
   loadAapProfileForCibaRequest,
   persistAapSnapshotForCibaToken,
@@ -119,6 +121,8 @@ import {
   evaluateSessionGrants,
   normalizeAuthorizationDetails,
 } from "@/lib/ciba/grant-evaluation";
+import { buildCibaPushPayload } from "@/lib/ciba/push-payload";
+import { sendWebPush } from "@/lib/ciba/push-sender";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
@@ -160,8 +164,6 @@ import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
-import { buildCibaPushPayload } from "@/lib/push/ciba-payload";
-import { sendWebPush } from "@/lib/push/web-push";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 
 const betterAuthSchema = {

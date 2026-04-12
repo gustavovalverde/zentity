@@ -26,7 +26,7 @@ import {
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/opaque-access-token";
+} from "@/lib/auth/oidc/haip/opaque-access-token";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";

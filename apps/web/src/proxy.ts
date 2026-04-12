@@ -3,13 +3,12 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import {
-  CORRELATION_ID_HEADER,
-  FLOW_ID_HEADER,
-  REQUEST_ID_HEADER,
-  RESPONSE_FLOW_ID_HEADER,
-  RESPONSE_REQUEST_ID_HEADER,
-} from "@/lib/observability/correlation-headers";
+
+const REQUEST_ID_HEADER = "x-request-id";
+const CORRELATION_ID_HEADER = "x-correlation-id";
+const FLOW_ID_HEADER = "x-zentity-flow-id";
+const RESPONSE_REQUEST_ID_HEADER = "X-Request-Id";
+const RESPONSE_FLOW_ID_HEADER = "X-Flow-Id";
 
 const AUTH_PATH_PREFIX = "/api/auth";
 

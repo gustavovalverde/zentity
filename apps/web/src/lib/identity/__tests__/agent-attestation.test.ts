@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { verifyAgentAttestation } = await import("../agent-attestation");
+const { verifyAgentAttestation } = await import(
+  "../../agents/agent-attestation"
+);
 
 describe("verifyAgentAttestation", () => {
   it("returns unverified when no attesters configured", async () => {

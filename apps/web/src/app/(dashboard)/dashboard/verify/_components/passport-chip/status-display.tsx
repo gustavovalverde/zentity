@@ -11,7 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { VerificationFinalizationNotice } from "@/components/verification/verification-finalization-notice";
+
+import { VerificationFinalizationNotice } from "../verification-finalization-notice";
 
 export type FlowStage =
   | "connecting"

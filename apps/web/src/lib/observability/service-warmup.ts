@@ -14,6 +14,16 @@ import "server-only";
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 
+let ready = false;
+
+export function markWarmupComplete(): void {
+  ready = true;
+}
+
+export function isWarmupComplete(): boolean {
+  return ready;
+}
+
 interface ServiceHealth {
   durationMs: number;
   error?: string;

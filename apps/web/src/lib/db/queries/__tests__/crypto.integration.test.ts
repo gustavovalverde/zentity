@@ -11,7 +11,7 @@ import {
   insertEncryptedAttribute,
   insertSignedClaim,
 } from "@/lib/db/queries/crypto";
-import { encryptedAttributes } from "@/lib/db/schema/crypto";
+import { encryptedAttributes } from "@/lib/db/schema/privacy";
 import { encodeAad } from "@/lib/privacy/primitives/aad";
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";

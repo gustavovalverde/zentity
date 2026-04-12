@@ -26,7 +26,11 @@ import { db } from "../connection";
 import {
   attestationEvidence,
   blockchainAttestations,
-} from "../schema/attestation";
+  identityBundles,
+  identityVerificationDrafts,
+  identityVerificationJobs,
+  identityVerifications,
+} from "../schema/identity";
 import {
   encryptedAttributes,
   encryptedSecrets,
@@ -35,13 +39,7 @@ import {
   secretWrappers,
   signedClaims,
   zkChallenges,
-} from "../schema/crypto";
-import {
-  identityBundles,
-  identityVerificationDrafts,
-  identityVerificationJobs,
-  identityVerifications,
-} from "../schema/identity";
+} from "../schema/privacy";
 import { pushSubscriptions } from "../schema/push";
 import { getSignedClaimTypesByUserAndVerification } from "./crypto";
 

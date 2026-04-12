@@ -49,7 +49,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/identity/liveness/policy";
+} from "@/lib/identity/liveness/thresholds";
 import { createRateLimiter } from "@/lib/utils/rate-limit";
 
 import { protectedProcedure, router } from "../server";

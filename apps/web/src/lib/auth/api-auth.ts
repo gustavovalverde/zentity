@@ -3,16 +3,16 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import {
-  extractAccessToken,
-  type OAuthTokenValidationResult,
-  validateOAuthAccessToken,
-} from "@/lib/auth/oauth-token-validation";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent-scopes";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/opaque-access-token";
+} from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  extractAccessToken,
+  type OAuthTokenValidationResult,
+  validateOAuthAccessToken,
+} from "@/lib/auth/oidc/oauth-token-validation";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 

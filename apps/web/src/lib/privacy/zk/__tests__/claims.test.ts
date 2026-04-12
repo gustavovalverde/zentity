@@ -22,7 +22,7 @@ import {
   type FaceMatchClaimData,
   signAttestationClaim,
   verifyAttestationClaim,
-} from "../claims";
+} from "../attestation-claims";
 
 type AttestationClaimPayload = Parameters<typeof signAttestationClaim>[0];
 interface LivenessClaimData {

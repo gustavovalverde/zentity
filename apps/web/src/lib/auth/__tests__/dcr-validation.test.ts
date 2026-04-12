@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { joinAuthIssuerPath } from "../issuer";
 import { validateSafeUrl } from "../url-safety";
+import { joinAuthIssuerPath } from "../well-known";
 
 // These tests validate the DCR software_statement security logic
 // without importing auth.ts (which has heavy dependencies).

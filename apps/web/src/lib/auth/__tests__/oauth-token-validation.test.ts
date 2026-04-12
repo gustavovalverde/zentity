@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/issuer";
+import { getAuthIssuer } from "@/lib/auth/well-known";
 
 // Mock server-only
 vi.mock("server-only", () => ({}));
@@ -32,7 +32,7 @@ import {
   computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
-} from "../oauth-token-validation";
+} from "../oidc/oauth-token-validation";
 
 // Regex for validating SHA-256 hex fingerprint (64 hex characters)
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;

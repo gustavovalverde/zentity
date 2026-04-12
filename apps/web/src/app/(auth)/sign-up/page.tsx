@@ -1,7 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { SignUpForm } from "@/components/sign-up/sign-up-form";
 import {
   Card,
   CardContent,
@@ -11,6 +10,8 @@ import {
 } from "@/components/ui/card";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { hasCompletedSignUp } from "@/lib/db/queries/identity";
+
+import { SignUpForm } from "./_components/sign-up-form";
 
 export default async function SignUpPage() {
   const headersObj = await headers();

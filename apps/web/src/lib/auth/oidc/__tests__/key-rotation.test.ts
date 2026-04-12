@@ -10,9 +10,9 @@ import {
   cleanupExpiredKeys,
   getOrCreateSigningKey,
   rotateSigningKey,
-} from "../jwt-signer";
+} from "../jwt/jwt-signer";
 
-vi.mock("../key-vault", () => ({
+vi.mock("../jwt/key-vault", () => ({
   encryptPrivateKey: (v: string) => v,
   decryptPrivateKey: (v: string) => v,
 }));

@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
+import { verifyAgentAttestation } from "@/lib/agents/agent-attestation";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
-import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
-import { registerHostRequestSchema } from "@/lib/auth/oidc/agent-registration-contract";
+import { registerHostRequestSchema } from "@/lib/auth/oidc/agent-schemas";
 import { AGENT_HOST_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
+import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { verifyAgentAttestation } from "@/lib/identity/agent-attestation";
 
 export const runtime = "nodejs";
 

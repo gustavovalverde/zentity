@@ -25,25 +25,25 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/auth/oidc/agent-scopes";
 import {
-  getClientSigningAlg,
-  getOrCreateSigningKey,
-  signJwt,
-} from "@/lib/auth/oidc/jwt-signer";
-import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/opaque-access-token";
+} from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  getClientSigningAlg,
+  getOrCreateSigningKey,
+  signJwt,
+} from "@/lib/auth/oidc/jwt/jwt-signer";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
 import {
   buildAapProfile,
   buildDelegationClaim,

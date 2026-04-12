@@ -10,9 +10,9 @@ import {
   agentHosts,
   agentSessionGrants,
   agentSessions,
+  capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { capabilityUsageLedger } from "@/lib/db/schema/usage-ledger";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 const TEST_CLIENT_ID = "agent-router-client";

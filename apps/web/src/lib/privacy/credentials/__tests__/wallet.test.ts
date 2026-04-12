@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  unwrapDekWithWalletSignature,
-  wrapDekWithWalletSignature,
-} from "@/lib/privacy/credentials";
-import {
   decryptWithDek,
   encryptWithDek,
   generateDek,
 } from "@/lib/privacy/secrets/envelope";
+
+import {
+  unwrapDekWithWalletSignature,
+  wrapDekWithWalletSignature,
+} from "../wallet";
 
 describe("wallet credentials", () => {
   it("wraps and unwraps a DEK with a wallet signature-derived KEK", async () => {

@@ -4,7 +4,7 @@ import { z } from "zod";
 import {
   CLIENT_METRIC_DEFINITIONS,
   type ClientMetricName,
-} from "@/lib/observability/client-metric-definitions";
+} from "@/lib/observability/client-metrics";
 import {
   recordClientFheEnrollmentStageDuration,
   recordClientFheEnrollmentTotalDuration,

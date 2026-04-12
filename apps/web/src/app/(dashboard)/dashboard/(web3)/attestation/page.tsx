@@ -1,11 +1,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { OnChainAttestation } from "@/components/dashboard/on-chain-attestation";
-import { ViewIdentityData } from "@/components/dashboard/view-identity-data";
 import { isWeb3Enabled } from "@/env";
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
+
+import { OnChainAttestation } from "./_components/on-chain-attestation";
+import { ViewIdentityData } from "./_components/view-identity-data";
 
 export default async function AttestationPage() {
   // Redirect if Web3 is disabled

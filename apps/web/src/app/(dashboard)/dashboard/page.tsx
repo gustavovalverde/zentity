@@ -1,11 +1,11 @@
 import { headers } from "next/headers";
 import { Suspense } from "react";
 
-import { ProfileGreetingName } from "@/components/dashboard/profile-greeting";
 import { isWeb3Enabled } from "@/env";
 import { getSecurityPostureForSession } from "@/lib/assurance/data";
 import { getCachedSession } from "@/lib/auth/cached-session";
 
+import { ProfileGreetingName } from "../_components/profile-greeting";
 import { IdentityActionsCard } from "./_components/identity-actions-card";
 import {
   IdentityCard,

@@ -9,7 +9,7 @@
  */
 import type { FhevmInstance } from "../types";
 
-import { createMockInstance } from "./mock";
+import { createMockInstance } from "./mock-provider";
 import { createZamaRelayerInstance } from "./zama/relayer";
 
 // --- Types ---

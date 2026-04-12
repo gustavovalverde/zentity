@@ -6,10 +6,6 @@ import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
-  attestationEvidence,
-  blockchainAttestations,
-} from "@/lib/db/schema/attestation";
-import {
   accounts,
   passkeys,
   sessions,
@@ -20,18 +16,10 @@ import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { authenticationContexts } from "@/lib/db/schema/authentication-context";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
-import {
-  encryptedAttributes,
-  encryptedSecrets,
-  proofArtifacts,
-  secretWrappers,
-  signedClaims,
-  usedIntentJtis,
-  verificationChecks,
-  zkChallenges,
-} from "@/lib/db/schema/crypto";
 import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
 import {
+  attestationEvidence,
+  blockchainAttestations,
   identityBundles,
   identityVerificationDrafts,
   identityVerificationJobs,
@@ -49,6 +37,16 @@ import {
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
 } from "@/lib/db/schema/oidc4vci";
+import {
+  encryptedAttributes,
+  encryptedSecrets,
+  proofArtifacts,
+  secretWrappers,
+  signedClaims,
+  usedIntentJtis,
+  verificationChecks,
+  zkChallenges,
+} from "@/lib/db/schema/privacy";
 import { pushSubscriptions } from "@/lib/db/schema/push";
 import {
   recoveryChallenges,

@@ -1,5 +1,5 @@
 import { env } from "@/env";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
 
 /**
  * A2A Protocol — Agent Card Discovery

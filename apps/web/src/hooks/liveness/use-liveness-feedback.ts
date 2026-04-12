@@ -29,7 +29,7 @@ import {
   type HapticType,
   isHapticsSupported,
   vibrate,
-} from "@/lib/identity/liveness/haptics/patterns";
+} from "@/lib/identity/liveness/haptics";
 import { speechEngine } from "@/lib/identity/liveness/speech/engine";
 
 type FeedbackType = EarconType;

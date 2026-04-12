@@ -2,9 +2,8 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { AppSidebar } from "@/components/dashboard/app-sidebar";
-import { DynamicBreadcrumb } from "@/components/dashboard/dynamic-breadcrumb";
-import { HeaderActions } from "@/components/dashboard/header-actions";
+import { ModeToggle } from "@/components/mode-toggle";
+import { PrivacyToggle } from "@/components/privacy-toggle";
 import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";
@@ -17,6 +16,8 @@ import {
 import { getCachedSession } from "@/lib/auth/cached-session";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 
+import { AppSidebar } from "./_components/app-sidebar";
+import { DynamicBreadcrumb } from "./_components/dynamic-breadcrumb";
 import { EmailVerificationBanner } from "./_components/email-verification-banner";
 import { FheBackgroundKeygen } from "./_components/fhe-background-keygen";
 
@@ -47,7 +48,10 @@ export default async function DashboardLayout({
                 <SidebarTrigger className="-ml-1" />
                 <Separator className="mr-2 h-4" orientation="vertical" />
                 <DynamicBreadcrumb />
-                <HeaderActions />
+                <div className="ml-auto flex items-center gap-2">
+                  <PrivacyToggle />
+                  <ModeToggle />
+                </div>
               </header>
               <main className="flex-1 p-4 md:p-6" id="main-content">
                 <div className="mx-auto max-w-6xl">

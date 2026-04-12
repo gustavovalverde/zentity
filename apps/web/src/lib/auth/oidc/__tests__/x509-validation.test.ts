@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateX509Chain } from "@/lib/auth/oidc/x509-validation";
+import { validateX509Chain } from "@/lib/auth/oidc/haip/x509-validation";
 
 // Pre-generated test certificates (valid for 365 days from 2026-03-15)
 // CA: self-signed RSA 2048, CN=Test CA

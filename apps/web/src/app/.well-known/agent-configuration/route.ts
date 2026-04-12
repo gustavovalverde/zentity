@@ -2,7 +2,7 @@ import { env } from "@/env";
 import {
   type AgentConfiguration,
   agentConfigurationSchema,
-} from "@/lib/auth/oidc/agent-configuration";
+} from "@/lib/auth/oidc/agent-schemas";
 import {
   AGENT_BOOTSTRAP_SCOPES,
   AGENT_BOOTSTRAP_TOKEN_USE,

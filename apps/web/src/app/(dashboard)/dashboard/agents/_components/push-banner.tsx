@@ -9,7 +9,7 @@ import {
   getPushState,
   subscribeToPush,
   unsubscribeFromPush,
-} from "@/lib/push/client";
+} from "@/lib/ciba/push-client";
 
 type PushState =
   | "unsupported"

@@ -26,8 +26,8 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { parseTokenAmount } from "@/lib/blockchain/token-utils";
 import { trpcReact } from "@/lib/trpc/client";
-import { parseTokenAmount } from "@/lib/utils/token";
 
 interface MintFormProps {
   explorerUrl: string | null;

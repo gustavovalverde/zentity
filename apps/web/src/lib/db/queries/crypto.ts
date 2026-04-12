@@ -4,7 +4,7 @@ import type {
   ProofSessionRecord,
   SecretWrapperRecord,
   SignedClaimRecord,
-} from "../schema/crypto";
+} from "../schema/privacy";
 
 import crypto from "node:crypto";
 
@@ -21,7 +21,7 @@ import {
   proofSessions,
   secretWrappers,
   signedClaims,
-} from "../schema/crypto";
+} from "../schema/privacy";
 
 interface ProofArtifactInsert {
   generationTimeMs?: number | null | undefined;

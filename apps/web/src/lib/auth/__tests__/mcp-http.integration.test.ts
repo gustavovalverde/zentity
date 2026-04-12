@@ -20,7 +20,7 @@ import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {

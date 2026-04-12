@@ -17,8 +17,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
-import { FaceVerificationCard } from "@/components/verification/face-verification-card";
 import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
@@ -39,6 +37,8 @@ import {
 import { trpc } from "@/lib/trpc/client";
 import { useVerificationStore } from "@/store/verification";
 
+import { BindingAuthDialog } from "../binding-auth-dialog";
+import { FaceVerificationCard } from "../face-verification-card";
 import { LivenessFlow } from "./liveness-flow";
 import { LivenessProvider } from "./liveness-provider";
 

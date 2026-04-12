@@ -6,11 +6,6 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import {
-  consumeFheEnrollmentContext,
-  createFheEnrollmentContext,
-  getFheEnrollmentContext,
-} from "@/lib/auth/fhe-enrollment-tokens";
-import {
   listEncryptedSecretsByUserId,
   upsertSecretWrapper,
 } from "@/lib/db/queries/crypto";
@@ -40,6 +35,11 @@ import {
   sendCustodialRecoveryEmail,
   sendRecoveryGuardianEmails,
 } from "@/lib/email/recovery-mailer";
+import {
+  consumeFheEnrollmentContext,
+  createFheEnrollmentContext,
+  getFheEnrollmentContext,
+} from "@/lib/privacy/fhe/fhe-enrollment-tokens";
 import { wrappedDekSchema } from "@/lib/privacy/secrets/types";
 import {
   RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,

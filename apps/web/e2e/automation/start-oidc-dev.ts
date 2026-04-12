@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 const webRoot = process.cwd();
@@ -27,6 +27,7 @@ function toFilePath(dbUrlOrPath: string | undefined): string | null {
 }
 
 function resetSqliteFile(dbFile: string) {
+  mkdirSync(path.dirname(dbFile), { recursive: true });
   const extraFiles = [`${dbFile}-wal`, `${dbFile}-shm`, `${dbFile}-journal`];
   if (existsSync(dbFile)) {
     rmSync(dbFile, { force: true });

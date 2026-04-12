@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import { capabilityUsageLedger } from "@/lib/db/schema/usage-ledger";
+import { capabilityUsageLedger } from "@/lib/db/schema/agent";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

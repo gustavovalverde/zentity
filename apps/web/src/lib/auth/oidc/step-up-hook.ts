@@ -19,12 +19,12 @@ import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   buildOAuthErrorUrl,
   findSatisfiedAcr,
   isMaxAgeExceeded,
 } from "@/lib/auth/oidc/step-up";
+import { getAuthIssuer } from "@/lib/auth/well-known";
 import { haipPushedRequests } from "@/lib/db/schema/haip";
 
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";

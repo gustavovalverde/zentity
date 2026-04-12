@@ -4,12 +4,12 @@ import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
 
 import { decode, encode } from "@msgpack/msgpack";
 
+import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import {
   type EnrollmentCredential,
   loadSecret,
   storeSecretWithCredential,
-} from "@/lib/privacy/secrets";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+} from "@/lib/privacy/secrets/vault";
 import { trpc } from "@/lib/trpc/client";
 
 export interface StoredFheKeys {

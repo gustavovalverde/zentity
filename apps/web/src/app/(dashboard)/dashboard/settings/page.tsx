@@ -9,19 +9,6 @@ import {
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { ConnectedAppsCard } from "@/components/dashboard/connected-apps-card";
-import { DeleteAccountSection } from "@/components/dashboard/delete-account-section";
-import { EmailSection } from "@/components/dashboard/email-section";
-import { PasskeyManagementSection } from "@/components/dashboard/passkey-management-section";
-import { PasswordSection } from "@/components/dashboard/password-section";
-import { RecoverySetupSection } from "@/components/dashboard/recovery-setup-section";
-import {
-  ConnectedAccountsCard,
-  SessionsCard,
-} from "@/components/dashboard/security-cards";
-import { TwoFactorCard } from "@/components/dashboard/two-factor-card";
-import { UserDataSection } from "@/components/dashboard/user-data-section";
-import { WalletBindingSection } from "@/components/dashboard/wallet-binding-section";
 import { PageHeader } from "@/components/layouts/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,6 +16,21 @@ import { getCachedSession } from "@/lib/auth/cached-session";
 import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
+
+import { ConnectedAppsCard } from "./_components/connected-apps-card";
+import { DeleteAccountSection } from "./_components/delete-account-section";
+import { EmailSection } from "./_components/email-section";
+import { OpaqueChangePasswordSection } from "./_components/opaque-change-password-section";
+import { PasskeyManagementSection } from "./_components/passkey-management-section";
+import { RecoverySetupSection } from "./_components/recovery-setup-section";
+import {
+  ConnectedAccountsCard,
+  SessionsCard,
+} from "./_components/security-cards";
+import { SetPasswordSection } from "./_components/set-password-section";
+import { TwoFactorCard } from "./_components/two-factor-card";
+import { UserDataSection } from "./_components/user-data-section";
+import { WalletBindingSection } from "./_components/wallet-binding-section";
 
 type SettingsTab = "security" | "recovery" | "profile" | "account";
 
@@ -120,7 +122,11 @@ export default async function SettingsPage({
           />
           <PasskeyManagementSection />
           <TwoFactorCard hasPassword={hasPassword} />
-          <PasswordSection hasPassword={hasPassword} />
+          {hasPassword ? (
+            <OpaqueChangePasswordSection />
+          ) : (
+            <SetPasswordSection />
+          )}
           <WalletBindingSection />
         </TabsContent>
 

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { BindingAuthDialog } from "@/components/verification/binding-auth-dialog";
 import { env } from "@/env";
 import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
 import { useSession } from "@/lib/auth/auth-client";
@@ -25,6 +24,7 @@ import {
 } from "@/lib/privacy/zk/binding-context";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 
+import { BindingAuthDialog } from "../binding-auth-dialog";
 import { QrDisplay } from "./qr-display";
 import { StatusDisplay } from "./status-display";
 

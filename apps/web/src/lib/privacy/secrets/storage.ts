@@ -7,7 +7,7 @@
  * Blobs are stored separately from metadata for efficient large payload handling.
  */
 
-import { fetchBinary } from "@/lib/privacy/utils/binary-transport";
+import { fetchBinary } from "@/lib/utils/binary-transport";
 
 const textEncoder = new TextEncoder();
 

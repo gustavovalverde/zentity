@@ -8,8 +8,8 @@ import {
   getLatestVerification,
   revokeIdentity,
 } from "@/lib/db/queries/identity";
-import { blockchainAttestations } from "@/lib/db/schema/attestation";
 import {
+  blockchainAttestations,
   identityBundles,
   identityVerifications,
 } from "@/lib/db/schema/identity";

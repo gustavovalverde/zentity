@@ -12,14 +12,14 @@ import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
+import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
 import {
   generateNationalityProofInputs,
   getCountriesInGroup,
   getMerkleRoot,
   isCountryInGroup,
   listCountryGroups,
-} from "@/lib/privacy/country";
-import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
+} from "@/lib/privacy/zk/country";
 import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
 import { rateLimitResponse } from "@/lib/utils/rate-limit";
 import { zkLimiter } from "@/lib/utils/rate-limiters";

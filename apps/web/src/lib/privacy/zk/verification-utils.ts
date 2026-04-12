@@ -4,7 +4,7 @@ import { TRPCError } from "@trpc/server";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getLatestSignedClaimByUserTypeAndVerification } from "@/lib/db/queries/crypto";
-import { verifyAttestationClaim } from "@/lib/privacy/zk/claims";
+import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 
 export function parseFieldToBigInt(value: string): bigint {
   try {
@@ -96,4 +96,4 @@ export function computeProofSetHash(args: {
 export type {
   FaceMatchClaimData,
   OcrClaimData,
-} from "@/lib/privacy/zk/claims";
+} from "@/lib/privacy/zk/attestation-claims";

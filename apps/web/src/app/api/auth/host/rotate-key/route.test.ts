@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { computeJwkThumbprint } from "@/lib/auth/oauth-token-validation";
+import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
