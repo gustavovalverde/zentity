@@ -10,7 +10,7 @@ import {
 import {
   AGENT_SESSION_REGISTER_SCOPE,
   registerSessionRequestSchema,
-} from "@/lib/agents/oidc-agent";
+} from "@/lib/agents/agent-identity";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";

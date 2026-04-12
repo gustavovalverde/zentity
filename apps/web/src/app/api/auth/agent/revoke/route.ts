@@ -5,7 +5,7 @@ import {
   AgentManagementError,
   revokeSessionForActor,
 } from "@/lib/agents/management";
-import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/oidc-agent";
+import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/agent-identity";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 
 export const runtime = "nodejs";

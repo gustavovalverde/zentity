@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/oidc-agent";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/agent-identity";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";

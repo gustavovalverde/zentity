@@ -6,7 +6,7 @@ import { verifyAgentAttestation } from "@/lib/agents/agent-attestation";
 import {
   AGENT_HOST_REGISTER_SCOPE,
   registerHostRequestSchema,
-} from "@/lib/agents/oidc-agent";
+} from "@/lib/agents/agent-identity";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";

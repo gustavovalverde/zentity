@@ -27,7 +27,7 @@ import {
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/agents/oidc-agent";
+} from "@/lib/agents/agent-identity";
 import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,

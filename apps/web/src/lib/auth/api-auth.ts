@@ -3,7 +3,7 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/oidc-agent";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/agent-identity";
 import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
 import {
   loadOpaqueAccessToken,
