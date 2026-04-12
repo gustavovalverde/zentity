@@ -26,8 +26,8 @@ import {
   getPrimaryFace,
   getRealScore,
   getYawDegrees,
-} from "./human-metrics";
-import { detectFromBuffer } from "./human-server";
+} from "./human/metrics";
+import { detectFromBuffer } from "./human/server";
 import { type Logger, socketLogger as logger } from "./socket-logger";
 import {
   advanceChallenge,

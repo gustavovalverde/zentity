@@ -515,7 +515,7 @@ describe("RP contract — id_token signing", () => {
   }
 
   beforeAll(async () => {
-    const mod = await import("../jwt-signer");
+    const mod = await import("../../jwt-signer");
     signJwt = mod.signJwt;
     await signJwt({ aud: "warmup", sub: "warmup" });
     await signJwt({ scope: "openid", sub: "warmup" });

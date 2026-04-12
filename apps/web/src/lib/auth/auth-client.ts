@@ -29,7 +29,7 @@ const getAuthBaseURL = () => {
   return new URL("/api/auth", base).toString();
 };
 
-type ServerAuth = typeof import("./auth").auth;
+type ServerAuth = typeof import("./auth-config").auth;
 
 export const authClient = createAuthClient({
   baseURL: getAuthBaseURL(),
