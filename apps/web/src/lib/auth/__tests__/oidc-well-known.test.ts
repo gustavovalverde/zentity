@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/auth";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import {
   buildWellKnownResponse,
   callAuthApi,

@@ -4,7 +4,7 @@ import { computeSessionState } from "@/lib/agents/agent-identity";
 import {
   extractProofScopes,
   isIdentityScope,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import {
   agentCapabilities,

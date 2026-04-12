@@ -2,7 +2,7 @@ import { env } from "@/env";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 /**

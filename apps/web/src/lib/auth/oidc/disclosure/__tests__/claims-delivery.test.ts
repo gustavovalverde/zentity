@@ -7,7 +7,7 @@ import {
   hasIdentityPayload,
   pendingOAuthIdentityKey,
   storeIdentityPayload,
-} from "../identity-delivery";
+} from "../delivery";
 
 function clearIdentityPayloadStore(): void {
   const store = (

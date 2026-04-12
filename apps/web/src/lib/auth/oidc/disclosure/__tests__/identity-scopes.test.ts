@@ -8,7 +8,7 @@ import {
   IDENTITY_SCOPES,
   type IdentityFields,
   isIdentityScope,
-} from "../disclosure-registry";
+} from "../registry";
 
 describe("identity scopes", () => {
   describe("isIdentityScope", () => {

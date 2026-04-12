@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import webpush from "web-push";
 
 import { env } from "@/env";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/ciba";
 import { logWarn } from "@/lib/logging/error-logger";

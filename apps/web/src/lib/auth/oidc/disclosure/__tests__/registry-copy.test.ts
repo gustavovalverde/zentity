@@ -4,7 +4,7 @@ import {
   HIDDEN_SCOPES,
   OAUTH_SCOPES,
   SCOPE_DESCRIPTIONS,
-} from "../disclosure-registry";
+} from "../registry";
 
 describe("disclosure registry — copy and visibility", () => {
   describe("scope descriptions", () => {

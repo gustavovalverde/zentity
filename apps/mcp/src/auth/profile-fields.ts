@@ -3,7 +3,7 @@
  *
  * Maps MCP tool field names to the Zentity OIDC Disclosure Profile scopes.
  * The source of truth for scope → claim mapping is the disclosure registry
- * at `apps/web/src/lib/auth/oidc/disclosure-registry.ts`.
+ * at `apps/web/src/lib/auth/oidc/disclosure/registry.ts`.
  *
  * Exposed fields: name, address, birthdate.
  * Intentionally excluded: identity.document, identity.nationality — these

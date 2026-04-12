@@ -14,7 +14,7 @@ import { env } from "@/env";
 import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
-} from "@/lib/auth/oidc/claims";
+} from "@/lib/auth/oidc/disclosure/claims";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 
 import { protectedProcedure, router } from "../server";

@@ -69,7 +69,7 @@ import {
   computeConsentHmac,
   filterClaimsByRequest,
   PROOF_DISCLOSURE_KEYS,
-} from "@/lib/auth/oidc/claims";
+} from "@/lib/auth/oidc/disclosure/claims";
 import {
   claimsRequestForEndpoint,
   consumeReleaseIdentityPayload,
@@ -80,7 +80,7 @@ import {
   type ReleaseContext,
   touchReleaseContext,
   validateReleaseContextForSubject,
-} from "@/lib/auth/oidc/disclosure-context";
+} from "@/lib/auth/oidc/disclosure/context";
 import {
   extractIdentityScopes,
   filterIdentityByScopes,
@@ -91,7 +91,7 @@ import {
   isIdentityScope,
   OAUTH_SCOPES,
   PROOF_SCOPES,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
@@ -104,7 +104,7 @@ import {
 import {
   finalReleaseIdentityKey,
   hasIdentityPayload,
-} from "@/lib/auth/oidc/identity-delivery";
+} from "@/lib/auth/oidc/disclosure/delivery";
 import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {

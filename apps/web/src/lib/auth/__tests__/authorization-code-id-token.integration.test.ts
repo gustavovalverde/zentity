@@ -10,7 +10,7 @@ import {
 import {
   claimsRequestForEndpoint,
   loadReleaseContext,
-} from "@/lib/auth/oidc/disclosure-context";
+} from "@/lib/auth/oidc/disclosure/context";
 import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

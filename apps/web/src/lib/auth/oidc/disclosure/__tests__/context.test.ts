@@ -7,13 +7,13 @@ import {
   finalizeOauthDisclosureFromVerification,
   loadReleaseContext,
   stagePendingOauthDisclosure,
-} from "@/lib/auth/oidc/disclosure-context";
+} from "@/lib/auth/oidc/disclosure/context";
 import {
   consumeIdentityPayload,
   createScopeHash,
   hasIdentityPayload,
   pendingOAuthIdentityKey,
-} from "@/lib/auth/oidc/identity-delivery";
+} from "@/lib/auth/oidc/disclosure/delivery";
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

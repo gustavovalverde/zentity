@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleIdentityIntent } from "@/lib/auth/oidc/identity-delivery";
+import { handleIdentityIntent } from "@/lib/auth/oidc/disclosure/delivery";
 import {
   parseRequestedScopes,
   verifySignedOAuthQuery,
