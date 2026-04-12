@@ -11,7 +11,7 @@ import {
   networks,
   projectId,
   wagmiAdapter,
-} from "@/lib/blockchain/wagmi/config";
+} from "@/lib/blockchain/wagmi";
 
 import { Eip712Bridge } from "./eip712-bridge";
 import { FhevmProvider } from "./fhevm-provider";

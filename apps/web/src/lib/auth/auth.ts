@@ -1,5 +1,5 @@
 import type { LoginMethod } from "@/lib/assurance/types";
-import type { OpaqueEndpointContext } from "@/lib/auth/plugins/opaque/types";
+import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
 import { createHash } from "node:crypto";
 
@@ -45,6 +45,7 @@ import {
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
+import { eip712Auth } from "@/lib/auth/eip712/server";
 import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent-scopes";
 import {
   revokePendingCibaOnLogout,
@@ -107,9 +108,7 @@ import {
   TOKEN_EXCHANGE_GRANT_TYPE,
   tokenExchangePlugin,
 } from "@/lib/auth/oidc/token-exchange";
-import { eip712Auth } from "@/lib/auth/plugins/eip712/server";
-import { opaque } from "@/lib/auth/plugins/opaque/server";
-import { validateSafeUrl } from "@/lib/auth/url-safety";
+import { opaque } from "@/lib/auth/opaque/server";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/well-known";
 import {
   loadAapProfileForCibaRequest,
@@ -160,11 +159,12 @@ import {
   members,
   organizations,
 } from "@/lib/db/schema/organization";
+import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
-import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
+import { validateSafeUrl } from "@/lib/utils/url-safety";
 
 const betterAuthSchema = {
   user: users,

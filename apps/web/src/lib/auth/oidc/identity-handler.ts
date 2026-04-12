@@ -11,8 +11,10 @@ import {
   createScopeHash,
   verifyIdentityIntentToken,
 } from "@/lib/auth/oidc/identity-intent";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { oauth2IdentityLimiter } from "@/lib/utils/rate-limiters";
+import {
+  oauth2IdentityLimiter,
+  rateLimitResponse,
+} from "@/lib/utils/rate-limit";
 
 // ── Types ──────────────────────────────────────────────────
 

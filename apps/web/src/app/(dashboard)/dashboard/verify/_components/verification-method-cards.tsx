@@ -1,6 +1,6 @@
 "use client";
 
-import type { CountryDocumentEntry } from "@/lib/zkpassport/document-support";
+import type { CountryDocumentEntry } from "@/lib/identity/document/zkpassport-support";
 
 import { Camera, FileText, ImageUp, Nfc, SmartphoneNfc } from "lucide-react";
 import Link from "next/link";

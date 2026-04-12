@@ -1,18 +1,125 @@
 /**
- * Web Speech API wrapper for liveness detection TTS.
+ * Liveness TTS feedback via the Web Speech API.
  *
- * Privacy: Web Speech API runs entirely in the browser using
- * the device's built-in TTS engine. No data leaves the device.
- * This is safe for privacy-preserving applications.
+ * - Localized speech texts (EN/ES/PT)
+ * - Singleton engine that wraps the browser's speechSynthesis
+ *
+ * Privacy: Web Speech API runs entirely in the browser using the device's
+ * built-in TTS engine. No data leaves the device.
  */
 
-import {
-  detectLanguage,
-  getLocaleCode,
-  getSpeechText,
-  type SpeechKey,
-  type SupportedLanguage,
-} from "./texts";
+// ---------------------------------------------------------------------------
+// Speech texts (EN/ES/PT)
+// ---------------------------------------------------------------------------
+
+export type SpeechKey =
+  | "positionFace"
+  | "holdStill"
+  | "smile"
+  | "turnLeft"
+  | "turnRight"
+  | "faceDetected"
+  | "faceLost"
+  | "challengePassed"
+  | "verificationComplete"
+  | "verifying"
+  | "tryAgain"
+  | "countdown3"
+  | "countdown2"
+  | "countdown1";
+
+export type SupportedLanguage = "en" | "es" | "pt";
+
+const SPEECH_TEXTS: Record<SupportedLanguage, Record<SpeechKey, string>> = {
+  en: {
+    positionFace: "Position your face in the oval",
+    holdStill: "Hold still",
+    smile: "Please smile",
+    turnLeft: "Turn your head left",
+    turnRight: "Turn your head right",
+    faceDetected: "Face detected",
+    faceLost: "Face lost, please reposition",
+    challengePassed: "Perfect",
+    verificationComplete: "Verification complete",
+    verifying: "Verifying",
+    tryAgain: "Let's try again",
+    countdown3: "Three",
+    countdown2: "Two",
+    countdown1: "One",
+  },
+
+  es: {
+    positionFace: "Posicione su rostro en el óvalo",
+    holdStill: "Quédese quieto",
+    smile: "Por favor sonría",
+    turnLeft: "Gire la cabeza a la izquierda",
+    turnRight: "Gire la cabeza a la derecha",
+    faceDetected: "Rostro detectado",
+    faceLost: "Rostro perdido, reposicione",
+    challengePassed: "Perfecto",
+    verificationComplete: "Verificación completada",
+    verifying: "Verificando",
+    tryAgain: "Intentemos de nuevo",
+    countdown3: "Tres",
+    countdown2: "Dos",
+    countdown1: "Uno",
+  },
+
+  pt: {
+    positionFace: "Posicione seu rosto no oval",
+    holdStill: "Fique parado",
+    smile: "Por favor sorria",
+    turnLeft: "Vire a cabeça para a esquerda",
+    turnRight: "Vire a cabeça para a direita",
+    faceDetected: "Rosto detectado",
+    faceLost: "Rosto perdido, reposicione",
+    challengePassed: "Perfeito",
+    verificationComplete: "Verificação completa",
+    verifying: "Verificando",
+    tryAgain: "Vamos tentar novamente",
+    countdown3: "Três",
+    countdown2: "Dois",
+    countdown1: "Um",
+  },
+};
+
+/** Get the language code for Web Speech API from browser locale. */
+function detectLanguage(): SupportedLanguage {
+  if (typeof navigator === "undefined") {
+    return "en";
+  }
+
+  const browserLang = navigator.language.toLowerCase();
+
+  if (browserLang.startsWith("es")) {
+    return "es";
+  }
+  if (browserLang.startsWith("pt")) {
+    return "pt";
+  }
+
+  return "en";
+}
+
+/** Get speech text for a key in the specified or detected language. */
+function getSpeechText(key: SpeechKey, lang?: SupportedLanguage): string {
+  const language = lang ?? detectLanguage();
+  return SPEECH_TEXTS[language][key];
+}
+
+/** Get the full locale code for Web Speech API. */
+function getLocaleCode(lang: SupportedLanguage): string {
+  const localeMap: Record<SupportedLanguage, string> = {
+    en: "en-US",
+    es: "es-ES",
+    pt: "pt-BR",
+  };
+  return localeMap[lang];
+}
+
+// ---------------------------------------------------------------------------
+// Speech engine (singleton)
+// ---------------------------------------------------------------------------
 
 interface SpeechOptions {
   lang?: SupportedLanguage;
@@ -44,7 +151,6 @@ class LivenessSpeechEngine {
 
     const synth = globalThis.window.speechSynthesis;
 
-    // Trigger voice loading (Chrome loads voices async)
     synth.getVoices();
 
     // Chrome workaround: speak silent utterance to activate synthesis
@@ -53,9 +159,7 @@ class LivenessSpeechEngine {
     synth.speak(utterance);
   }
 
-  /**
-   * Cancel all pending polling intervals (queued low-priority speech).
-   */
+  /** Cancel all pending polling intervals (queued low-priority speech). */
   private cancelAllPending(): void {
     for (const interval of this.pendingIntervals) {
       clearInterval(interval);
@@ -76,7 +180,6 @@ class LivenessSpeechEngine {
 
       const synth = globalThis.window.speechSynthesis;
 
-      // Handle priority - cancel ALL pending AND current speech if high priority
       if (options.priority === "high") {
         this.cancelAllPending();
         if (synth.speaking || synth.pending) {
@@ -84,9 +187,7 @@ class LivenessSpeechEngine {
         }
       }
 
-      // Wait for any current/pending speech to finish if low priority
       if (options.priority !== "high" && (synth.speaking || synth.pending)) {
-        // Queue for later with tracked interval
         const checkInterval = setInterval(() => {
           if (!(synth.speaking || synth.pending)) {
             this.pendingIntervals.delete(checkInterval);
@@ -117,7 +218,6 @@ class LivenessSpeechEngine {
     utterance.pitch = options.pitch ?? 1;
     utterance.volume = options.volume ?? 1;
 
-    // Try to find a voice for the language (prefer local/offline voices)
     const voices = synth.getVoices();
     const langPrefix = lang.toLowerCase();
     const matchesLang = (voice: SpeechSynthesisVoice) =>
@@ -138,7 +238,6 @@ class LivenessSpeechEngine {
     };
 
     utterance.onerror = (event) => {
-      // Don't reject for interrupted - that's expected behavior
       if (event.error === "interrupted" || event.error === "canceled") {
         resolve();
       } else {
@@ -150,18 +249,14 @@ class LivenessSpeechEngine {
     synth.speak(utterance);
   }
 
-  /**
-   * Speak a predefined speech key.
-   */
+  /** Speak a predefined speech key. */
   speakKey(key: SpeechKey, options: SpeechOptions = {}): Promise<void> {
     const lang = options.lang ?? this.language;
     const text = getSpeechText(key, lang);
     return this.speak(text, options);
   }
 
-  /**
-   * Cancel any ongoing speech AND all pending queued speech.
-   */
+  /** Cancel any ongoing speech AND all pending queued speech. */
   cancel(): void {
     this.cancelAllPending();
     if (this.isSupported()) {
@@ -169,9 +264,6 @@ class LivenessSpeechEngine {
     }
   }
 
-  /**
-   * Check if speech is currently in progress.
-   */
   isSpeaking(): boolean {
     if (!this.isSupported()) {
       return false;
@@ -179,9 +271,6 @@ class LivenessSpeechEngine {
     return globalThis.window.speechSynthesis.speaking;
   }
 
-  /**
-   * Enable or disable speech output.
-   */
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!enabled) {
@@ -189,37 +278,23 @@ class LivenessSpeechEngine {
     }
   }
 
-  /**
-   * Check if speech is currently enabled.
-   */
   isEnabled(): boolean {
     return this.enabled;
   }
 
-  /**
-   * Set the default language.
-   */
   setLanguage(lang: SupportedLanguage): void {
     this.language = lang;
   }
 
-  /**
-   * Get the current language.
-   */
   getLanguage(): SupportedLanguage {
     return this.language;
   }
 
-  /**
-   * Check if Web Speech API is supported.
-   */
   isSupported(): boolean {
     return globalThis.window !== undefined && "speechSynthesis" in globalThis;
   }
 
-  /**
-   * Get available voices for the current language.
-   */
+  /** Get available voices for the current language. */
   getVoices(): SpeechSynthesisVoice[] {
     if (!this.isSupported()) {
       return [];
@@ -230,5 +305,5 @@ class LivenessSpeechEngine {
   }
 }
 
-// Singleton instance
+/** Singleton instance for the liveness speech engine. */
 export const speechEngine = new LivenessSpeechEngine();

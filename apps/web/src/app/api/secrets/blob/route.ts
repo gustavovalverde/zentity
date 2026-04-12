@@ -13,9 +13,8 @@ import {
   SecretBlobTooLargeError,
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { secretsBlobLimiter } from "@/lib/utils/rate-limiters";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-utils";
+import { rateLimitResponse, secretsBlobLimiter } from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

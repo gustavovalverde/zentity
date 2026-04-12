@@ -2,7 +2,7 @@
 // Implements draft-ietf-oauth-client-id-metadata-document-01 §3 and §4.1.
 // No side-effectful imports — safe for unit testing.
 
-import { isPrivateHost as _isPrivateHost } from "@/lib/auth/url-safety";
+import { isPrivateHost as _isPrivateHost } from "@/lib/utils/url-safety";
 
 const isPrivateHost = _isPrivateHost;
 

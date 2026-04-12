@@ -3,6 +3,7 @@ import "server-only";
 import type { FheStatus } from "@/lib/db/schema/identity";
 
 import { and, eq, sql } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
@@ -36,7 +37,17 @@ import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 import { signAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 
-import { invalidateVerificationCache } from "./verification-cache";
+/**
+ * Invalidate cached verification status for a user. Call after successful
+ * verification or proof storage. Uses 'max' profile for stale-while-revalidate.
+ */
+export function invalidateVerificationCache(userId: string) {
+  try {
+    revalidateTag(`user-verification-${userId}`, "max");
+  } catch {
+    // Ignore when running outside Next.js request/route context (tests, scripts).
+  }
+}
 
 export interface VerifyIdentityResponse {
   error?: string;

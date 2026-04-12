@@ -24,8 +24,11 @@ import {
   recordClientTfheLoadRetry,
   recordClientWalletSignDuration,
 } from "@/lib/observability/metrics";
-import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
-import { publicLimiter } from "@/lib/utils/rate-limiters";
+import {
+  getClientIp,
+  publicLimiter,
+  rateLimitResponse,
+} from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

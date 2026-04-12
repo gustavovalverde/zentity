@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRecoveryMessage } from "@/lib/trpc/routers/recovery/verification";
+import { buildRecoveryMessage } from "@/lib/trpc/routers/recovery";
 
 describe("recovery signing intent format", () => {
   it("builds a canonical v1 recovery intent message", () => {

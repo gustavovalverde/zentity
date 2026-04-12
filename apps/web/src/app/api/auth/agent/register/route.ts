@@ -17,7 +17,7 @@ import {
   ATTESTED_HOST_POLICY_CAPABILITIES,
   DEFAULT_HOST_POLICY_CAPABILITIES,
   ensureCapabilitiesSeeded,
-} from "@/lib/db/seed/capabilities";
+} from "@/lib/db/seed";
 
 export const runtime = "nodejs";
 

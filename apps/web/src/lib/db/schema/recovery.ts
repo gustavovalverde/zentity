@@ -9,6 +9,11 @@ import {
 
 import { users } from "./auth";
 
+/** Allowed values for recoveryGuardians.guardianType. */
+export const RECOVERY_GUARDIAN_TYPE_EMAIL = "email";
+export const RECOVERY_GUARDIAN_TYPE_TWO_FACTOR = "twoFactor";
+export const RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL = "custodialEmail";
+
 export const recoveryConfigs = sqliteTable(
   "recovery_configs",
   {

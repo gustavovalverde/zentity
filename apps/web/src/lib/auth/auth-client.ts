@@ -15,8 +15,8 @@ import {
 import { createAuthClient } from "better-auth/react";
 
 import { env } from "@/env";
-import { eip712AuthClient } from "@/lib/auth/plugins/eip712/client";
-import { opaqueClient } from "@/lib/auth/plugins/opaque/client";
+import { eip712AuthClient } from "@/lib/auth/eip712/client";
+import { opaqueClient } from "@/lib/auth/opaque/client";
 import { getSafeRedirectPath } from "@/lib/utils/navigation";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch

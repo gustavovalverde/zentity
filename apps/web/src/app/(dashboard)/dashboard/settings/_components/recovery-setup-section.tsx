@@ -16,9 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth/auth-client";
+import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { addRecoveryWrapperForSecretType } from "@/lib/privacy/secrets/vault";
-import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/recovery/constants";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 
 const SECRET_LABELS: Record<string, string> = {

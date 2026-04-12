@@ -15,10 +15,9 @@ import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
-import { resolveAudience } from "@/lib/trpc/routers/zk/audience";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { zkLimiter } from "@/lib/utils/rate-limiters";
+import { toServiceErrorPayload } from "@/lib/utils/api-utils";
+import { resolveAudience } from "@/lib/utils/http";
+import { rateLimitResponse, zkLimiter } from "@/lib/utils/rate-limit";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

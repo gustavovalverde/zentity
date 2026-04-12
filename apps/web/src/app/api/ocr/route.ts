@@ -5,10 +5,13 @@ import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
+import { sanitizeAndLogApiError } from "@/lib/utils/api-utils";
 import { HttpError } from "@/lib/utils/http";
-import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
-import { ocrLimiter } from "@/lib/utils/rate-limiters";
+import {
+  getClientIp,
+  ocrLimiter,
+  rateLimitResponse,
+} from "@/lib/utils/rate-limit";
 
 interface OCRRequest {
   image: string;

@@ -70,7 +70,7 @@ import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { resolveAttestationConsentRevision } from "@/lib/blockchain/attestation/consent-revision";
 import { resolveOnChainAttestationViewState } from "@/lib/blockchain/attestation/on-chain-attestation-view-state";
 import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
-import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
+import { useEthersSigner } from "@/lib/blockchain/wagmi";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";
 

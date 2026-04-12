@@ -9,7 +9,7 @@ import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { ensureCapabilitiesSeeded } from "@/lib/db/seed/capabilities";
+import { ensureCapabilitiesSeeded } from "@/lib/db/seed";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 const TEST_CLIENT_ID = "ciba-agent-binding-client";

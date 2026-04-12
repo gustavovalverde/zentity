@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
-import { publicLimiter } from "@/lib/utils/rate-limiters";
+import {
+  getClientIp,
+  publicLimiter,
+  rateLimitResponse,
+} from "@/lib/utils/rate-limit";
 /**
  * Breached password check endpoint (UX-only).
  *

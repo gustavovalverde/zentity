@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { useVerificationBindingAuth } from "@/hooks/verification/use-verification-binding-auth";
+import { useVerificationStore } from "@/hooks/verification/verification-store";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
 import {
@@ -35,7 +36,6 @@ import {
   getBindingContext,
 } from "@/lib/privacy/zk/binding-context";
 import { trpc } from "@/lib/trpc/client";
-import { useVerificationStore } from "@/store/verification";
 
 import { BindingAuthDialog } from "../binding-auth-dialog";
 import { FaceVerificationCard } from "../face-verification-card";

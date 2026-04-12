@@ -1,6 +1,6 @@
 "use client";
 
-import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 
 import { useAppKitAccount } from "@reown/appkit/react";
 import { usePathname } from "next/navigation";

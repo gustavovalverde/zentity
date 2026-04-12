@@ -26,13 +26,13 @@ import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
 import { compliantTokenRouter } from "./compliant-token";
 import { credentialsRouter } from "./credentials";
-import { identityRouter } from "./identity/router";
+import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
 import { passportChipRouter } from "./passport-chip";
-import { recoveryRouter } from "./recovery/router";
+import { recoveryRouter } from "./recovery";
 import { secretsRouter } from "./secrets";
 import { signUpRouter } from "./sign-up";
-import { zkRouter } from "./zk/router";
+import { zkRouter } from "./zk";
 
 export const appRouter = router({
   account: accountRouter,

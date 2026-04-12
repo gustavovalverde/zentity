@@ -11,11 +11,11 @@ import {
   userHasPassword,
 } from "@/lib/db/queries/auth";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
+import { buildCountryDocumentList } from "@/lib/identity/document/zkpassport-support";
 import {
   computeInitialStep,
   type VerificationStep,
 } from "@/lib/identity/verification/steps";
-import { buildCountryDocumentList } from "@/lib/zkpassport/document-support";
 
 import { VerificationFlow } from "./_components/verification-flow";
 

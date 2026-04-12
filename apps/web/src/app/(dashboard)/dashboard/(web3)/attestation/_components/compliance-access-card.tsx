@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
-import { useDevFaucet } from "@/lib/blockchain/wagmi/use-dev-faucet";
+import { useDevFaucet } from "@/lib/blockchain/wagmi";
 
 interface ComplianceAccessCardProps {
   complianceRules: `0x${string}` | null | undefined;

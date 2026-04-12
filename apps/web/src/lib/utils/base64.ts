@@ -24,3 +24,23 @@ export function base64ToBytes(base64: string): Uint8Array {
   }
   return bytes;
 }
+
+function normalizeBase64(base64: string): string {
+  const normalized = base64.replaceAll("-", "+").replaceAll("_", "/");
+  const padLength = normalized.length % 4;
+  if (padLength === 0) {
+    return normalized;
+  }
+  return `${normalized}${"=".repeat(4 - padLength)}`;
+}
+
+export function bytesToBase64Url(bytes: Uint8Array): string {
+  return bytesToBase64(bytes)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll(/=+$/g, "");
+}
+
+export function base64UrlToBytes(base64Url: string): Uint8Array {
+  return base64ToBytes(normalizeBase64(base64Url));
+}

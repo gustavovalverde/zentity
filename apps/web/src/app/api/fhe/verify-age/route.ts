@@ -4,10 +4,12 @@ import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/crypto";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { fheLimiter } from "@/lib/utils/rate-limiters";
+import {
+  jsonError,
+  msgpackResponse,
+  sanitizeAndLogApiError,
+} from "@/lib/utils/api-utils";
+import { fheLimiter, rateLimitResponse } from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

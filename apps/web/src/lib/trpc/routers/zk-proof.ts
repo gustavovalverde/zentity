@@ -56,11 +56,18 @@ import {
   type OcrClaimData,
   parseFieldToBigInt,
 } from "@/lib/privacy/zk/verification-utils";
+import { resolveAudience } from "@/lib/utils/http";
 
-import { protectedProcedure } from "../../server";
-import { invalidateVerificationCache } from "../identity/helpers/verification-cache";
-import { resolveAudience } from "./audience";
-import { circuitTypeSchema } from "./challenge";
+import { protectedProcedure } from "../server";
+import { invalidateVerificationCache } from "./identity-job-processor";
+
+export const circuitTypeSchema = z.enum([
+  "age_verification",
+  "doc_validity",
+  "nationality_membership",
+  "face_match",
+  "identity_binding",
+]);
 
 const MIN_FACE_MATCH_THRESHOLD = Math.round(FACE_MATCH_MIN_CONFIDENCE * 10_000);
 const MIN_FACE_MATCH_PERCENT = Math.round(FACE_MATCH_MIN_CONFIDENCE * 100);

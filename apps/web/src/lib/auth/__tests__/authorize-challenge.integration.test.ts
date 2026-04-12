@@ -1,4 +1,4 @@
-import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 
 import crypto from "node:crypto";
 

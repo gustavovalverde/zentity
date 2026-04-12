@@ -20,9 +20,8 @@ import {
   isCountryInGroup,
   listCountryGroups,
 } from "@/lib/privacy/zk/country";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { zkLimiter } from "@/lib/utils/rate-limiters";
+import { toServiceErrorPayload } from "@/lib/utils/api-utils";
+import { rateLimitResponse, zkLimiter } from "@/lib/utils/rate-limit";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership

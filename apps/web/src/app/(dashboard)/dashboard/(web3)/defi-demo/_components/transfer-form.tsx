@@ -43,7 +43,7 @@ import { Input } from "@/components/ui/input";
 import { useFheTransfer } from "@/hooks/fhevm/use-fhe-transfer";
 import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
 import { parseTokenAmount } from "@/lib/blockchain/token-utils";
-import { useDevFaucet } from "@/lib/blockchain/wagmi/use-dev-faucet";
+import { useDevFaucet } from "@/lib/blockchain/wagmi";
 import { trpcReact } from "@/lib/trpc/client";
 
 interface TransferFormProps {

@@ -50,7 +50,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
-import { useEthersSigner } from "@/lib/blockchain/wagmi/use-ethers-signer";
+import { useEthersSigner } from "@/lib/blockchain/wagmi";
 import { getCountryName } from "@/lib/privacy/zk/country";
 import { trpcReact } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils/classname";

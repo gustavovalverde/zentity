@@ -15,19 +15,19 @@ import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/authentication-context";
-import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   buildDefaultTypedData,
   nonceIdentifier,
   verifyEip712Signature,
-} from "@/lib/auth/plugins/eip712/utils";
+} from "@/lib/auth/eip712/utils";
+import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   createDummyRegistrationRecord,
   decryptServerLoginState,
   encryptServerLoginState,
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
-} from "@/lib/auth/plugins/opaque/utils";
+} from "@/lib/auth/opaque/utils";
 import { db } from "@/lib/db/connection";
 import {
   accounts,

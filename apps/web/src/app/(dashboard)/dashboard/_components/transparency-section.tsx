@@ -20,11 +20,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+
 import {
   getAttributeLabel,
   getClaimTypeLabel,
   getProofTypeLabel,
-} from "@/lib/identity/labels";
+} from "./verification-labels";
 
 const NEVER_STORED_ITEMS = [
   "ID Document Image",

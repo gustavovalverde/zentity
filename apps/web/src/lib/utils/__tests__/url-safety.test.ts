@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPrivateHost, validateSafeUrl } from "../url-safety";
+import { isPrivateHost, validateSafeUrl } from "@/lib/utils/url-safety";
 
 describe("isPrivateHost", () => {
   it.each([

@@ -5,8 +5,7 @@ import { z } from "zod";
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/push";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { cibaLimiter } from "@/lib/utils/rate-limiters";
+import { cibaLimiter, rateLimitResponse } from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

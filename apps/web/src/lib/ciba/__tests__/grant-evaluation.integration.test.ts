@@ -14,7 +14,7 @@ import {
   agentSessions,
 } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { ensureCapabilitiesSeeded } from "@/lib/db/seed/capabilities";
+import { ensureCapabilitiesSeeded } from "@/lib/db/seed";
 import { createTestUser, resetDatabase } from "@/test/db-test-utils";
 
 const TEST_CLIENT_ID = "grant-evaluation-client";

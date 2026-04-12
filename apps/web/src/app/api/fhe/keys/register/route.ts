@@ -6,10 +6,12 @@ import {
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/crypto";
 import { registerFheKey } from "@/lib/privacy/fhe/service";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { fheLimiter } from "@/lib/utils/rate-limiters";
+import {
+  jsonError,
+  msgpackResponse,
+  sanitizeAndLogApiError,
+} from "@/lib/utils/api-utils";
+import { fheLimiter, rateLimitResponse } from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 
