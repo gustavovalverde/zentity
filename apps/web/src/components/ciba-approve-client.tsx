@@ -39,7 +39,7 @@ import {
   isProofScope,
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import { formatAcrValue } from "@/lib/terminology";
 
 type PageState =

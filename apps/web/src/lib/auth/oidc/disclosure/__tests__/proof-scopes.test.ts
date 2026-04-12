@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { filterProofClaimsByScopes } from "../disclosure-registry";
+import { filterProofClaimsByScopes } from "../registry";
 
 describe("proof scopes", () => {
   const proofClaims = {

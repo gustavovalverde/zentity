@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-delivery";
+import { createIdentityIntentToken } from "@/lib/auth/oidc/disclosure/delivery";
 
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
@@ -16,7 +16,7 @@ const { mockComputeOAuthRequestKey, mockVerifySignedOAuthQuery } = vi.hoisted(
   })
 );
 
-vi.mock("@/lib/auth/oidc/disclosure-context", () => ({
+vi.mock("@/lib/auth/oidc/disclosure/context", () => ({
   stagePendingOauthDisclosure: mockStagePendingOauthDisclosure,
 }));
 vi.mock("@/lib/auth/oidc/oauth-request", () => ({

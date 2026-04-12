@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { computeConsentHmac } from "@/lib/auth/oidc/claims";
+import { computeConsentHmac } from "@/lib/auth/oidc/disclosure/claims";
 import { db } from "@/lib/db/connection";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";

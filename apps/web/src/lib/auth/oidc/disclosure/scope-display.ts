@@ -9,10 +9,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { BadgeCheck, KeyRound, Lock } from "lucide-react";
 
-import {
-  isIdentityScope,
-  isProofScope,
-} from "@/lib/auth/oidc/disclosure-registry";
+import { isIdentityScope, isProofScope } from "./registry";
 import { SCOPE_GROUP_LABELS } from "@/lib/terminology";
 
 interface ScopeGroup {

@@ -14,7 +14,7 @@ import "server-only";
  *    `handleIdentityUnstage`): shared route logic across /oauth2/identity/*
  *    and /ciba/identity/*.
  */
-import type { IdentityFields } from "./disclosure-registry";
+import type { IdentityFields } from "./registry";
 
 import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
@@ -27,7 +27,7 @@ import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
   extractIdentityScopes,
   filterIdentityByScopes,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "./registry";
 import {
   oauth2IdentityLimiter,
   rateLimitResponse,

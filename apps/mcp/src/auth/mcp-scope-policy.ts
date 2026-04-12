@@ -5,7 +5,7 @@
  * HTTP transport layer. These are transport-level gates; the actual
  * disclosure semantics (vault unlock, exact binding, delivery surface)
  * are enforced by the Zentity auth server per the disclosure registry
- * at `apps/web/src/lib/auth/oidc/disclosure-registry.ts`.
+ * at `apps/web/src/lib/auth/oidc/disclosure/registry.ts`.
  *
  * Identity scopes (identity.*) are NOT listed here because they are
  * negotiated per-request via CIBA inside the tool handler, not at the

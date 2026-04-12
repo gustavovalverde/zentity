@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { clearReleaseContext } from "@/lib/auth/oidc/disclosure-context";
-import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-delivery";
+import { clearReleaseContext } from "@/lib/auth/oidc/disclosure/context";
+import { handleIdentityUnstage } from "@/lib/auth/oidc/disclosure/delivery";
 import { validateCibaRequestOwnership } from "@/lib/db/queries/ciba";
 
 const UnstageSchema = z.object({

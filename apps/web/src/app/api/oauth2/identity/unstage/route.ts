@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
-import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-delivery";
+import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
+import { handleIdentityUnstage } from "@/lib/auth/oidc/disclosure/delivery";
 import {
   computeOAuthRequestKey,
   verifySignedOAuthQuery,

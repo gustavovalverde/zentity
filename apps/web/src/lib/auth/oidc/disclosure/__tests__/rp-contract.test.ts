@@ -26,16 +26,16 @@ import {
   IDENTITY_SCOPES,
   OAUTH_SCOPES,
   PROOF_SCOPES,
-} from "../disclosure-registry";
+} from "../registry";
 
-let signJwt: typeof import("../jwt-signer").signJwt;
+let signJwt: typeof import("../../jwt-signer").signJwt;
 
 // ---------------------------------------------------------------------------
 // Source file readers — no mirrors, no stale copies
 // ---------------------------------------------------------------------------
 
-const MCP_ROOT = "../../../../../../mcp/src";
-const DEMO_RP_ROOT = "../../../../../../demo-rp/src";
+const MCP_ROOT = "../../../../../../../mcp/src";
+const DEMO_RP_ROOT = "../../../../../../../demo-rp/src";
 
 // Top-level regexes (Biome: useTopLevelRegex)
 const PROVIDER_SCOPES_BLOCK_RE =

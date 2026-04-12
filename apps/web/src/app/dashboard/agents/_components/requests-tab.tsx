@@ -19,7 +19,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "@/components/ui/item";
-import { SCOPE_DESCRIPTIONS } from "@/lib/auth/oidc/disclosure-registry";
+import { SCOPE_DESCRIPTIONS } from "@/lib/auth/oidc/disclosure/registry";
 
 import { PushNotificationBanner } from "./push-banner";
 import { PwaInstallBanner } from "./pwa-install-banner";
