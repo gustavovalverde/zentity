@@ -1,10 +1,11 @@
 /**
  * Vitest configuration for integration tests.
  *
- * Integration tests use real database connections and run serially
- * to avoid conflicts. Use `pnpm test:integration` to run these tests.
+ * Integration tests hit real services (DB, HTTP, libSQL) and must run
+ * in isolated processes to prevent cross-file state bleed. Use
+ * `pnpm test:integration` to run these tests.
  *
- * For unit tests (parallel, no DB), use `pnpm test:unit`.
+ * For unit tests, see `vitest.unit.config.mts`.
  */
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,27 +38,27 @@ export default defineConfig({
     globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.mts"],
 
-    // Integration tests: only .integration.test.ts files
     include: ["src/**/*.integration.test.ts", "src/**/*.integration.test.tsx"],
     exclude: ["node_modules", ".next"],
 
-    // Integration tests run serially to avoid DB conflicts
-    pool: "threads",
+    pool: "forks",
+    execArgv: ["--max-old-space-size=2048"],
     fileParallelism: false,
     maxWorkers: 1,
     isolate: true,
 
-    // Longer timeouts for DB operations
     testTimeout: 30_000,
     hookTimeout: 10_000,
     teardownTimeout: 5000,
 
-    // Retry flaky tests in CI only
     retry: isCI ? 1 : 0,
 
-    // Clear mocks between tests
     clearMocks: true,
     restoreMocks: true,
+
+    reporters: isCI
+      ? ["default", "hanging-process", "github-actions"]
+      : ["default", "hanging-process"],
 
     coverage: {
       provider: "v8",

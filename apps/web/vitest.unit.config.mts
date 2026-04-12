@@ -29,7 +29,6 @@ export default defineConfig({
     globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.mts"],
 
-    // Unit tests: exclude integration tests
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: [
       "node_modules",
@@ -38,23 +37,36 @@ export default defineConfig({
       "src/**/*.integration.test.tsx",
     ],
 
-    pool: "vmThreads",
+    // `forks` = fresh Node process per file. With 115 files + heavy ESM graph
+    // (better-auth, drizzle, noble/post-quantum, noir-js), `vmThreads` accumulates
+    // module caches across VM contexts in a single worker until the heap dies
+    // silently mid-run. Process-per-file releases memory unconditionally.
+    //
+    // Vitest 4 flattened pool options to top-level: `execArgv`, `maxWorkers`,
+    // `isolate` live directly on `test` instead of under `poolOptions.forks.*`.
+    pool: "forks",
+    execArgv: ["--max-old-space-size=2048"],
+
+    // Serial execution: the shared SQLite test DB cannot tolerate parallel writes,
+    // and deterministic ordering makes cross-file state bugs reproducible.
     fileParallelism: false,
     maxWorkers: 1,
     isolate: true,
-    vmMemoryLimit: 0.8,
 
-    // Timeouts
     testTimeout: 15_000,
     hookTimeout: 10_000,
     teardownTimeout: 5000,
 
-    // Retry flaky tests in CI only
     retry: isCI ? 1 : 0,
 
-    // Clear mocks between tests
     clearMocks: true,
     restoreMocks: true,
+
+    // `default` reporter hides worker crashes (exits 0 without a summary).
+    // `verbose` + `hanging-process` surface both lost tests and stuck teardowns.
+    reporters: isCI
+      ? ["default", "hanging-process", "github-actions"]
+      : ["default", "hanging-process"],
 
     coverage: {
       provider: "v8",

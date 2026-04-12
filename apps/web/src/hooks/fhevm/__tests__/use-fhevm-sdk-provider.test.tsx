@@ -13,6 +13,16 @@ vi.mock("@/lib/blockchain/fhevm/providers", () => ({
   resolveFhevmProviderFactory: (...args: unknown[]) => resolveMock(...args),
 }));
 
+// Stable references — the hook's refresh callback depends on these, so fresh
+// object literals on every render would cause an infinite re-render loop.
+const HARDHAT_MOCK_CHAINS = { 31337: "http://localhost:8545" } as const;
+const HARDHAT_PROVIDER_RESPONSE = "0x7a69"; // chainId 31337
+const SEPOLIA_PROVIDER_RESPONSE = "0xaa36a7"; // chainId 11155111
+
+function makeProvider(chainIdHex: string) {
+  return { request: vi.fn(async () => chainIdHex) };
+}
+
 describe("useFhevmSdk provider selection", () => {
   beforeEach(() => {
     resolveMock.mockReset();
@@ -25,16 +35,14 @@ describe("useFhevmSdk provider selection", () => {
     };
     resolveMock.mockReturnValue(factory);
 
-    const provider = {
-      request: vi.fn(async () => "0x7a69"), // 31337
-    };
+    const provider = makeProvider(HARDHAT_PROVIDER_RESPONSE);
 
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
         chainId: 31_337,
         providerId: "mock",
-        initialMockChains: { 31337: "http://localhost:8545" },
+        initialMockChains: HARDHAT_MOCK_CHAINS,
       })
     );
 
@@ -45,9 +53,7 @@ describe("useFhevmSdk provider selection", () => {
   it("errors when provider is not registered", async () => {
     resolveMock.mockReturnValue(undefined);
 
-    const provider = {
-      request: vi.fn(async () => "0xaa36a7"), // 11155111
-    };
+    const provider = makeProvider(SEPOLIA_PROVIDER_RESPONSE);
 
     const { result } = renderHook(() =>
       useFhevmSdk({
@@ -70,9 +76,7 @@ describe("useFhevmSdk provider selection", () => {
     };
     resolveMock.mockReturnValue(factory);
 
-    const provider = {
-      request: vi.fn(async () => "0xaa36a7"), // 11155111
-    };
+    const provider = makeProvider(SEPOLIA_PROVIDER_RESPONSE);
 
     const { result } = renderHook(() =>
       useFhevmSdk({
@@ -93,16 +97,14 @@ describe("useFhevmSdk provider selection", () => {
     };
     resolveMock.mockReturnValue(factory);
 
-    const provider = {
-      request: vi.fn(async () => "0x7a69"), // 31337
-    };
+    const provider = makeProvider(HARDHAT_PROVIDER_RESPONSE);
 
     const { result } = renderHook(() =>
       useFhevmSdk({
         provider,
         chainId: 31_337,
         providerId: "zama",
-        initialMockChains: { 31337: "http://localhost:8545" },
+        initialMockChains: HARDHAT_MOCK_CHAINS,
       })
     );
 

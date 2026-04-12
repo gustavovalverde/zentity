@@ -1,20 +1,25 @@
 /**
- * Vitest setup file - runs before each test file
+ * Vitest setup file — runs before each test file.
  *
  * Responsibilities:
  * 1. Set default environment variables
  * 2. Configure React act() environment
- * 3. Set up global mocks (auth, Next.js)
- * 4. Register global cleanup hooks
+ * 3. Register cross-cutting module mocks (auth stub, server-only, next/headers)
+ * 4. Register global afterEach hooks Vitest can't express via config
+ *
+ * Mock lifecycle: `clearMocks` + `restoreMocks` in vitest.unit.config.mts
+ * already run `vi.clearAllMocks()` / `vi.restoreAllMocks()` before each test.
+ * Per Vitest 4.x docs, `restoreAllMocks` only affects `vi.spyOn` spies — it
+ * does NOT touch `vi.fn()` implementations inside `vi.mock()` factories — so
+ * the config-driven path is safe for factory-declared mocks.
  */
-import { afterAll, afterEach, vi } from "vitest";
+import { afterEach, vi } from "vitest";
 
-// === Environment Variables ===
-// Use file-based test database (schema pushed by globalSetup)
 process.env.TURSO_DATABASE_URL ||= "file:./.data/test.db";
 process.env.BETTER_AUTH_SECRET ||= "test-secret-32-chars-minimum........";
-// Generate a valid OPAQUE server setup for tests that need real OPAQUE operations.
-// The placeholder string would fail in @serenity-kit/opaque calls.
+
+// Some tests exercise real OPAQUE flows; the placeholder value fails hard
+// inside @serenity-kit/opaque, so regenerate once per worker.
 if (
   !process.env.OPAQUE_SERVER_SETUP ||
   process.env.OPAQUE_SERVER_SETUP === "test-opaque-server-setup-placeholder"
@@ -27,33 +32,17 @@ process.env.DEDUP_HMAC_SECRET ||= "test-dedup-hmac-secret-minimum-32-chars";
 process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 process.env.CLAIM_SIGNING_SECRET ||= "test-claim-signing-secret-min-32-chars";
 process.env.CIPHERTEXT_HMAC_SECRET ||= "test-ciphertext-hmac-secret-min-32ch";
-
-// Disable logging in tests unless explicitly enabled
 process.env.DRIZZLE_LOG ||= "false";
 
-// === React act() Environment ===
-// Prevents act() warnings in jsdom tests
-const actEnv = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean;
-};
-actEnv.IS_REACT_ACT_ENVIRONMENT = true;
-if (typeof window !== "undefined") {
-  (
-    window as typeof window & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
-}
-if (typeof global !== "undefined") {
-  (
-    global as typeof global & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true;
-}
+// React act() environment must be set on every realm where React runs.
+// Setting on globalThis covers both Node and jsdom environments.
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
-// === Global Mocks ===
-
-// Mock Better Auth - prevents real auth calls in tests
-// Uses bare "@/lib/auth" path intentionally: no index.ts exists, so this mock
-// only activates when a test explicitly imports from "@/lib/auth" (rare).
-// Tests that need auth mocking should mock "@/lib/auth/auth" per-file.
+// `@/lib/auth` has no index.ts, so this only activates for tests that import
+// the path directly. Tests that need richer auth mocking mock "@/lib/auth/auth"
+// per-file.
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {
@@ -62,10 +51,8 @@ vi.mock("@/lib/auth", () => ({
   },
 }));
 
-// Mock Next.js server-only module (no-op in tests)
 vi.mock("server-only", () => ({}));
 
-// Mock Next.js headers
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => Promise.resolve(new Headers())),
   cookies: vi.fn(() =>
@@ -76,33 +63,18 @@ vi.mock("next/headers", () => ({
   ),
 }));
 
-// === Global Cleanup Hooks ===
-
 afterEach(() => {
-  // Restore all mocks to their original state
-  vi.restoreAllMocks();
-
-  // Restore real timers if fake timers were used
+  // Restore real timers when a test leaves fake timers installed. Vitest's
+  // config-driven mock hygiene doesn't touch the timer flag.
   if (vi.isFakeTimers()) {
     vi.useRealTimers();
   }
 });
 
-afterAll(() => {
-  // Note: DB connection cleanup is handled by Vitest's isolation.
-  // Importing @/lib/db/connection in afterAll pulls in too many modules.
-  vi.restoreAllMocks();
-});
-
-// === Unhandled Rejection Handler ===
-// Log unhandled rejections for debugging
-// Note: Only register once to avoid EventEmitter memory leak warning
 const unhandledRejectionHandler = (reason: unknown) => {
   console.error("Unhandled Rejection in test:", reason);
 };
 
-// Check if we've already registered this listener (prevents duplicate listeners in isolate: false mode)
-const listenerCount = process.listenerCount("unhandledRejection");
-if (listenerCount === 0) {
+if (process.listenerCount("unhandledRejection") === 0) {
   process.on("unhandledRejection", unhandledRejectionHandler);
 }
