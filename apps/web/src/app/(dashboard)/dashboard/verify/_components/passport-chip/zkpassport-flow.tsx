@@ -13,7 +13,7 @@ import {
   buildProfileSecretDataFromPassportDisclosure,
   storeProfileSecretWithMaterial,
 } from "@/lib/identity/verification/profile-vault";
-import { useVerificationBindingAuth } from "@/lib/identity/verification/use-verification";
+import { useVerificationBindingAuth } from "@/lib/identity/verification/state";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveOnChainAttestationViewState } from "../on-chain-attestation-view-state";
+import { resolveOnChainAttestationViewState } from "../view";
 
 const WALLET_A = "0x0000000000000000000000000000000000000001";
 const WALLET_B = "0x0000000000000000000000000000000000000002";

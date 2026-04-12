@@ -18,18 +18,14 @@ import {
   audioEngine,
   EARCONS,
   type EarconType,
-} from "@/lib/identity/liveness/audio";
-import {
   HAPTIC_PATTERNS,
   type HapticType,
   isHapticsSupported,
-  vibrate,
-} from "@/lib/identity/liveness/haptics";
-import {
   type SpeechKey,
   type SupportedLanguage,
   speechEngine,
-} from "@/lib/identity/liveness/speech";
+  vibrate,
+} from "@/lib/identity/liveness/feedback";
 
 type FeedbackType = EarconType;
 

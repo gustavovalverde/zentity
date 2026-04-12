@@ -8,7 +8,7 @@ import {
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
 import { resizeImageFile } from "@/lib/identity/document/image-resize";
-import { useVerificationStore } from "@/lib/identity/verification/store";
+import { useVerificationStore } from "@/lib/identity/verification/state";
 import { trpc } from "@/lib/trpc/client";
 
 export type ProcessingState =

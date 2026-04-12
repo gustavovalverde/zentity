@@ -3,7 +3,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { useVerificationStepper } from "../use-verification";
+import { useVerificationStepper } from "../state";
 
 describe("useVerificationStepper", () => {
   it("initializes with the given step", () => {

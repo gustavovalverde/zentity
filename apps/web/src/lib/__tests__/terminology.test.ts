@@ -9,9 +9,9 @@ import {
   SCOPE_GROUP_LABELS,
   TERMINOLOGY,
   VERIFICATION_LEVEL_LABELS,
-} from "../copy-constants";
+} from "../terminology";
 
-describe("copy-constants", () => {
+describe("terminology", () => {
   describe("TERMINOLOGY", () => {
     it("maps every internal term to a non-empty user-facing label", () => {
       for (const [key, value] of Object.entries(TERMINOLOGY)) {

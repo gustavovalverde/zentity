@@ -19,7 +19,7 @@ import {
 } from "react";
 import { useChainId } from "wagmi";
 
-import { useIsMounted } from "@/hooks/use-is-mounted";
+import { useIsMounted } from "@/hooks/client-env";
 import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
 
 interface FhevmContextValue {

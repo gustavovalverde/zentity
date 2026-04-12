@@ -65,8 +65,10 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { resolveAttestationConsentRevision } from "@/lib/blockchain/attestation/consent-revision";
-import { resolveOnChainAttestationViewState } from "@/lib/blockchain/attestation/on-chain-attestation-view-state";
+import {
+  resolveAttestationConsentRevision,
+  resolveOnChainAttestationViewState,
+} from "@/lib/blockchain/attestation/view";
 import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
 import { useFHEEncryption } from "@/lib/blockchain/fhevm/use-fhe-encryption";
 import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";

@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useMobileDetect } from "@/hooks/use-device-detection";
+import { useMobileDetect } from "@/hooks/client-env";
 import { cn } from "@/lib/cn";
 
 import { CameraView } from "./camera-view";

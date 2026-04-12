@@ -1,11 +1,74 @@
 "use client";
 
+/**
+ * Verification client state.
+ *
+ * Zustand store + hooks that drive the identity verification flow in the
+ * browser. State is in-memory only: PII (DOB, document images, nationality)
+ * must never be written to sessionStorage, localStorage, or URL params.
+ * Client-side navigation preserves this state between verification steps;
+ * a page refresh resets the user to the initial step.
+ */
+
+import type { DocumentResult } from "@/lib/identity/document/document-ocr";
+
 import { useCallback, useMemo, useState } from "react";
+import { create } from "zustand";
 
 import {
   TRANSITIONS,
   type VerificationStep,
 } from "@/lib/identity/verification/steps";
+
+// ---------------------------------------------------------------------------
+// Transient verification store
+// ---------------------------------------------------------------------------
+
+interface VerificationStore {
+  bestSelfieFrame: string | null;
+  documentResult: DocumentResult | null;
+  draftId: string | null;
+  extractedDOB: string | null;
+  extractedDocNumber: string | null;
+  extractedExpirationDate: string | null;
+  extractedFirstName: string | null;
+  extractedLastName: string | null;
+  extractedName: string | null;
+  extractedNationality: string | null;
+  extractedNationalityCode: string | null;
+  idDocument: File | null;
+  idDocumentBase64: string | null;
+  reset: () => void;
+  selfieImage: string | null;
+  set: (data: Partial<Omit<VerificationStore, "set" | "reset">>) => void;
+  userSalt: string | null;
+  verificationId: string | null;
+}
+
+const initialState: Omit<VerificationStore, "set" | "reset"> = {
+  draftId: null,
+  verificationId: null,
+  idDocument: null,
+  idDocumentBase64: null,
+  documentResult: null,
+  selfieImage: null,
+  bestSelfieFrame: null,
+  extractedName: null,
+  extractedFirstName: null,
+  extractedLastName: null,
+  extractedDOB: null,
+  extractedDocNumber: null,
+  extractedNationality: null,
+  extractedNationalityCode: null,
+  extractedExpirationDate: null,
+  userSalt: null,
+};
+
+export const useVerificationStore = create<VerificationStore>()((set) => ({
+  ...initialState,
+  set: (data) => set(data),
+  reset: () => set(initialState),
+}));
 
 // ---------------------------------------------------------------------------
 // Step transitions for the verification flow

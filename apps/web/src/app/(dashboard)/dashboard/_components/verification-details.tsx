@@ -1,6 +1,6 @@
 "use client";
 
-import type { RouterOutputs } from "@/lib/trpc/types";
+import type { RouterOutputs } from "@/lib/trpc/client";
 
 import {
   CalendarCheck,

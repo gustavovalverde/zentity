@@ -10,9 +10,9 @@ import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { useVerificationStepper } from "@/lib/identity/verification/use-verification";
+import { useVerificationStepper } from "@/lib/identity/verification/state";
 
-import { DocumentUploadClient } from "./document/document-upload-client";
+import { DocumentUploadClient } from "./document-upload-client";
 import { FheEnrollmentDialog } from "./fhe-enrollment-dialog";
 import { LivenessVerifyClient } from "./liveness/liveness-verify-client";
 import { ZkPassportFlow } from "./passport-chip/zkpassport-flow";

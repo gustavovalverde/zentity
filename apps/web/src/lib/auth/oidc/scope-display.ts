@@ -13,7 +13,7 @@ import {
   isIdentityScope,
   isProofScope,
 } from "@/lib/auth/oidc/disclosure-registry";
-import { SCOPE_GROUP_LABELS } from "@/lib/copy-constants";
+import { SCOPE_GROUP_LABELS } from "@/lib/terminology";
 
 interface ScopeGroup {
   icon: LucideIcon;

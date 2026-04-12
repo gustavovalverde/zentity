@@ -40,7 +40,7 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure-registry";
-import { formatAcrValue } from "@/lib/copy-constants";
+import { formatAcrValue } from "@/lib/terminology";
 
 type PageState =
   | "loading"

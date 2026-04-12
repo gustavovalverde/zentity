@@ -12,7 +12,7 @@
     "src/lib/auth/oidc/identity-delivery.ts": ["exports"],
     "src/lib/auth/oidc/step-up.ts": ["exports"],
     "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],
-    "src/lib/copy-constants.ts": ["exports"],
+    "src/lib/terminology.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
     "src/lib/identity/liveness/human-server.ts": ["exports"],
     "src/lib/trpc/routers/recovery.ts": ["exports"],

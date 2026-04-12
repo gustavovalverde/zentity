@@ -17,6 +17,7 @@
  */
 "use client";
 
+import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
@@ -130,3 +131,9 @@ export function getTrpcClientConfig() {
     links,
   };
 }
+
+/**
+ * Inferred response type for any router procedure.
+ * Use `RouterOutputs["identity"]["verify"]` to derive component props.
+ */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;

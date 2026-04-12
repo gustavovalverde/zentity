@@ -23,8 +23,10 @@ import {
   buildProfileSecretDataFromOcrSnapshot,
   storeProfileSecretWithMaterial,
 } from "@/lib/identity/verification/profile-vault";
-import { useVerificationStore } from "@/lib/identity/verification/store";
-import { useVerificationBindingAuth } from "@/lib/identity/verification/use-verification";
+import {
+  useVerificationBindingAuth,
+  useVerificationStore,
+} from "@/lib/identity/verification/state";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,
