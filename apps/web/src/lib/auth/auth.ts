@@ -47,7 +47,7 @@ import {
   evaluateSessionGrants,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/approval-engine";
-import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/agents/oidc-agent";
+import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/agents/agent-identity";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
