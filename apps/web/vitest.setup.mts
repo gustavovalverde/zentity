@@ -41,8 +41,8 @@ process.env.DRIZZLE_LOG ||= "false";
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
 // `@/lib/auth` has no index.ts, so this only activates for tests that import
-// the path directly. Tests that need richer auth mocking mock "@/lib/auth/auth"
-// per-file.
+// the path directly. Tests that need richer auth mocking mock
+// "@/lib/auth/auth-config" per-file.
 vi.mock("@/lib/auth", () => ({
   auth: {
     api: {

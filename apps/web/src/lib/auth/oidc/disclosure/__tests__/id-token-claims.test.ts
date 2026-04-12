@@ -1,5 +1,5 @@
 /**
- * Tests for the ID token proof-claim projection used by auth.ts.
+ * Tests for the ID token proof-claim projection used by auth-config.ts.
  *
  * Identity PII is delivered through userinfo; this suite only verifies
  * the proof-claim projection that remains eligible for ID tokens.

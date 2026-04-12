@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,

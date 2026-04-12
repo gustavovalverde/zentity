@@ -1,7 +1,7 @@
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,

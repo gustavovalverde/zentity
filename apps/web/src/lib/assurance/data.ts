@@ -6,7 +6,7 @@
  */
 import "server-only";
 
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 import type { UnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 import type {
   AccountAssurance,

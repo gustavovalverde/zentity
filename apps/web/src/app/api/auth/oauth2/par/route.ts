@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 
 /**
  * PAR endpoint — RFC 9126 §2.1 requires application/x-www-form-urlencoded.

@@ -5,7 +5,7 @@ import { validateSafeUrl } from "@/lib/http/url-safety";
 import { joinAuthIssuerPath } from "../oidc/well-known";
 
 // These tests validate the DCR software_statement security logic
-// without importing auth.ts (which has heavy dependencies).
+// without importing auth-config.ts (which has heavy dependencies).
 // We test the building blocks directly.
 
 describe("DCR software_statement SSRF protection", () => {

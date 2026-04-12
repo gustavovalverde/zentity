@@ -18,7 +18,7 @@ import { eq } from "drizzle-orm";
 import { env } from "@/env";
 import { getSecurityPosture } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
-import { auth, type Session } from "@/lib/auth/auth";
+import { auth, type Session } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,

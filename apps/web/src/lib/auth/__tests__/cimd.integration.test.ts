@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { resetDatabase } from "@/test-utils/db-test-utils";

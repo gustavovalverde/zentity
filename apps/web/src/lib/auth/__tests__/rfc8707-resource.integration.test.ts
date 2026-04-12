@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import {
   haipPushedRequests,

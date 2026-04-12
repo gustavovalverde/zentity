@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";

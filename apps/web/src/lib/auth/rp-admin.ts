@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";

@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";

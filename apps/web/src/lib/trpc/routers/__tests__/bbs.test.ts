@@ -8,7 +8,7 @@
  * - Authorization checks
  */
 
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import {
   afterEach,

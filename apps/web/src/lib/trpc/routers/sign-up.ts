@@ -3,7 +3,7 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   clearAnonymousFlag,
   deleteStaleAnonymousUserByEmail,

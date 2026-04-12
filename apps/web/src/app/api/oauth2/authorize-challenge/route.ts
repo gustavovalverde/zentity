@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,

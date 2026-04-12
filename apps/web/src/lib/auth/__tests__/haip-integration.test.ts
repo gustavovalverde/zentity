@@ -16,7 +16,7 @@ import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-cre
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
-import { auth } from "../auth";
+import { auth } from "../auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,

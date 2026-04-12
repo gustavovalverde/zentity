@@ -16,7 +16,7 @@ import {
 } from "@/lib/auth/oidc/oauth-request";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 
-import { auth, type Session } from "./auth";
+import { auth, type Session } from "./auth-config";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });

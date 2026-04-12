@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 
 const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 

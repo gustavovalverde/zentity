@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { createHash } from "node:crypto";
 

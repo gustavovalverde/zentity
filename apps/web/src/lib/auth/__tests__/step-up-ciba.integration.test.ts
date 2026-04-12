@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";

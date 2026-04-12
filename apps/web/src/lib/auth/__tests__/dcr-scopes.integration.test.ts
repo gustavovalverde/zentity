@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { resetDatabase } from "@/test-utils/db-test-utils";
 
 const REGISTER_URL = "http://localhost:3000/api/auth/oauth2/register";

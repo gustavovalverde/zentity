@@ -3,7 +3,7 @@
  */
 
 import type { SecurityPosture } from "@/lib/assurance/types";
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 

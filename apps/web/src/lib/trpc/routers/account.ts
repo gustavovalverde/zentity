@@ -10,7 +10,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";

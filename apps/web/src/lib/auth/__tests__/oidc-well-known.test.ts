@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,

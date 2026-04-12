@@ -29,7 +29,7 @@ vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
 }));
 
-vi.mock("@/lib/auth/auth", () => ({
+vi.mock("@/lib/auth/auth-config", () => ({
   auth: { api: { getSession: vi.fn() } },
 }));
 
