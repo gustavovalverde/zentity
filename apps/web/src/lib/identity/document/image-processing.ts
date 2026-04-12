@@ -1,4 +1,4 @@
-import { stripDataUrl } from "@/lib/identity/liveness/human-server";
+import { stripDataUrl } from "@/lib/identity/liveness/human/server";
 
 /**
  * Crop face region from image and return as base64 data URL.

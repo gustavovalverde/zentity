@@ -7,7 +7,7 @@ import util from "node:util";
 import { logger } from "@/lib/logging/logger";
 import { recordLivenessDetectDuration } from "@/lib/observability/metrics";
 
-import { HUMAN_MODELS_URL } from "./human-models-path";
+import { HUMAN_MODELS_URL } from "./models-path";
 
 // Polyfill for util.isNullOrUndefined required by @tensorflow/tfjs-node
 const utilAny = util as unknown as {
