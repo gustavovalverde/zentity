@@ -14,16 +14,20 @@ const RECOVERY_LINK_RE =
   /https?:\/\/[^\s"]+\/recovery\/guardian\/approve\?token=[^\s"]+/g;
 const SHOW_MANUAL_LINKS_RE = /Show manual links/i;
 const TWO_FACTOR_DIALOG_RE = /Two-Factor/i;
-const BACKUP_CODES_DIALOG_RE = /Backup Codes/i;
+const SAVE_BACKUP_CODES_HEADING_RE = /Save your backup codes/i;
+const BACKUP_CODES_ERROR_RE =
+  /Failed to generate backup codes|Invalid password/i;
 const VERIFY_2FA_URL_RE = /\/verify-2fa/;
 const BACKUP_CODES_URL_RE = /\/backup-codes/;
 const SETTINGS_URL_RE = /\/dashboard\/settings/;
 const TRAILING_SLASH_RE = /\/$/;
 const TWO_FACTOR_HEADING_RE = /^Two-factor authentication/i;
+const CONFIRM_PASSWORD_HEADING_RE = /Confirm your password/i;
 const ENABLE_DISABLE_BUTTON_RE = /^(Enable|Disable)$/;
 const ENABLE_BUTTON_RE = /^Enable$/;
 const CONTINUE_BUTTON_RE = /^Continue$/;
 const BACKUP_ACK_BUTTON_RE = /Continue|Done|I.ve saved/i;
+const DOWNLOAD_BACKUP_BUTTON_RE = /Download Backup Codes/i;
 const MAILPIT_BASE_URL = (
   process.env.MAILPIT_BASE_URL || "http://localhost:8025"
 ).replace(TRAILING_SLASH_RE, "");
@@ -336,19 +340,70 @@ async function ensureTwoFactorEnabled(
   await fillOtpCode(page, totpCode);
   await page.getByRole("button", { name: "Verify" }).click();
 
-  // Step 3: /backup-codes — extract the codes from the page body
+  // Step 3: /backup-codes — may prompt for password confirmation first
+  // (better-auth requires password for generateBackupCodes when the user has
+  // a credential-provider password, regardless of allowPasswordless).
   await page.waitForURL(BACKUP_CODES_URL_RE, { timeout: 30_000 });
+
+  // CardTitle renders as a generic div (not heading role) so probe by text.
+  const confirmTitle = page.getByText(CONFIRM_PASSWORD_HEADING_RE).first();
+  if (await confirmTitle.isVisible({ timeout: 10_000 }).catch(() => false)) {
+    const passwordField = page.getByPlaceholder("Enter your password");
+    await passwordField.click();
+    await passwordField.fill(password);
+    // Verify the fill actually stuck before submitting — some React
+    // re-renders during auth bootstrap can drop the value otherwise.
+    await expect(passwordField).toHaveValue(password);
+    // Submit via Enter on the input (more reliable than button click when
+    // the form wrapper re-renders during getSession cache invalidation).
+    await passwordField.press("Enter");
+    // Wait for either transition to codes view OR a visible error.
+    await Promise.race([
+      page.waitForFunction(
+        () => !document.body.textContent?.includes("Confirm your password"),
+        null,
+        { timeout: 20_000 }
+      ),
+      page.getByText(BACKUP_CODES_ERROR_RE).waitFor({ timeout: 20_000 }),
+    ]);
+  }
+
+  // Save-codes view uses "Save your backup codes" as its CardTitle; probe on
+  // that specific phrase to avoid matching "generate your backup codes"
+  // in the password-prompt description.
   await expect(
-    page.getByRole("heading", { name: BACKUP_CODES_DIALOG_RE })
-  ).toBeVisible({ timeout: 10_000 });
-  const pageText = (await page.textContent("body")) ?? "";
-  const backupCodes = parseBackupCodes(pageText);
+    page.getByText(SAVE_BACKUP_CODES_HEADING_RE).first()
+  ).toBeVisible({
+    timeout: 15_000,
+  });
+  // Scope parsing to the codes grid so we don't accidentally capture
+  // word-like patterns elsewhere on the page (e.g. "foo-bar").
+  const codesContainer = page.locator(".grid.grid-cols-2").first();
+  await codesContainer.waitFor({ state: "visible", timeout: 10_000 });
+  const codesText = (await codesContainer.textContent()) ?? "";
+  const backupCodes = parseBackupCodes(codesText);
   if (backupCodes.length === 0) {
     throw new Error("No backup codes found on /backup-codes page.");
   }
 
-  // Navigate back to settings (the backup-codes page has a Continue button
-  // that routes back once the user acknowledges).
+  // The Continue button is disabled until the user clicks Download —
+  // UX gate to ensure the codes are saved before leaving the page.
+  // Wrap the click with waitForEvent('download') so Playwright accepts the
+  // triggered file download (handleDownload creates a blob + anchor click);
+  // without it, the download can block and setHasDownloaded(true) never fires.
+  const downloadButton = page.getByRole("button", {
+    name: DOWNLOAD_BACKUP_BUTTON_RE,
+  });
+  if (await downloadButton.isVisible().catch(() => false)) {
+    const [download] = await Promise.all([
+      page.waitForEvent("download", { timeout: 5000 }).catch(() => null),
+      downloadButton.click(),
+    ]);
+    if (download) {
+      await download.path().catch(() => null);
+    }
+  }
+
   const continueButton = page.getByRole("button", {
     name: BACKUP_ACK_BUTTON_RE,
   });
@@ -412,7 +467,7 @@ async function openRecoveryFlow(page: Page, identifier: string) {
   });
   await page.waitForLoadState("networkidle");
 
-  await page.getByLabel("Email or Recovery ID").fill(identifier);
+  await page.locator("#recovery-email").fill(identifier);
   await page.getByRole("button", { name: "Start guardian recovery" }).click();
   await expect(page.getByText("Step 2 of 3 · Guardian approvals")).toBeVisible({
     timeout: 30_000,
@@ -458,7 +513,7 @@ test.describe
         waitUntil: "domcontentloaded",
       });
       await page.waitForLoadState("networkidle");
-      const identifierInput = page.getByLabel("Email or Recovery ID");
+      const identifierInput = page.locator("#recovery-email");
       await expect(identifierInput).toBeEnabled();
       await page
         .getByRole("button", { name: "Start guardian recovery" })
