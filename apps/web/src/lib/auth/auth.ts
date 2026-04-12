@@ -302,6 +302,9 @@ const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
   if (path.includes("/eip712/")) {
     return "eip712";
   }
+  if (path.startsWith("/sign-in/email") || path.startsWith("/sign-up/email")) {
+    return "credential";
+  }
   return null;
 };
 
@@ -870,6 +873,7 @@ async function buildIdTokenDisclosureClaims(input: {
   const auth = await resolveAuthenticationContext({
     authContextId: input.authContextId ?? cibaAuth?.authContextId ?? null,
     sessionId: input.sessionId ?? null,
+    userId: input.user.id,
   });
 
   const proofClaims = hasAnyProofScope(scopeList)

@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -117,7 +116,9 @@ export function OpaqueSignInForm({
               : undefined;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={identifierId}>Email</FieldLabel>
+                <FieldLabel htmlFor={identifierId}>
+                  Email or Recovery ID
+                </FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   autoCapitalize="none"
@@ -131,7 +132,6 @@ export function OpaqueSignInForm({
                   spellCheck={false}
                   value={field.state.value}
                 />
-                <FieldDescription>Or use a Recovery ID</FieldDescription>
                 <FieldError>{errorMessage}</FieldError>
               </Field>
             );

@@ -10,7 +10,7 @@ import type {
   NewAuthenticationContext,
 } from "@/lib/db/schema/authentication-context";
 
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import {
   deriveAuthStrength,
@@ -330,10 +330,34 @@ async function getAuthenticationStateByCibaAuthReqId(
   return getAuthenticationStateById(row?.authContextId ?? null);
 }
 
+/**
+ * Fallback for grants that carry neither session nor explicit auth context
+ * (e.g. OIDC4VCI pre-authorized code). Returns the user's most recent session
+ * auth context, which reflects the authentication performed at offer time.
+ */
+async function getAuthenticationStateByUserId(
+  userId: string | null | undefined
+): Promise<AuthenticationState | null> {
+  if (!userId) {
+    return null;
+  }
+
+  const session = await db
+    .select({ authContextId: sessions.authContextId })
+    .from(sessions)
+    .where(eq(sessions.userId, userId))
+    .orderBy(desc(sessions.updatedAt))
+    .limit(1)
+    .get();
+
+  return getAuthenticationStateById(session?.authContextId ?? null);
+}
+
 export function resolveAuthenticationContext(input: {
   authContextId?: string | null | undefined;
   cibaAuthReqId?: string | null | undefined;
   sessionId?: string | null | undefined;
+  userId?: string | null | undefined;
 }): Promise<AuthenticationState | null> {
   if (input.authContextId) {
     return getAuthenticationStateById(input.authContextId);
@@ -343,6 +367,9 @@ export function resolveAuthenticationContext(input: {
   }
   if (input.cibaAuthReqId) {
     return getAuthenticationStateByCibaAuthReqId(input.cibaAuthReqId);
+  }
+  if (input.userId) {
+    return getAuthenticationStateByUserId(input.userId);
   }
   return Promise.resolve(null);
 }
