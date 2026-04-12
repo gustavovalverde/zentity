@@ -12,12 +12,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
+import { redirectTo } from "@/lib/auth/navigation";
 import {
   continueOAuthFlow,
   hasOAuthParams,
 } from "@/lib/auth/oidc/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { redirectTo } from "@/lib/utils/navigation";
 
 type SignInStatus = "idle" | "connecting" | "ready" | "signing";
 

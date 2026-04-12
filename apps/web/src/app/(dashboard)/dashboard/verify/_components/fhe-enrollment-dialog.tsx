@@ -29,6 +29,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+import { fetchMsgpack } from "@/lib/http/binary-transport";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
@@ -55,7 +56,6 @@ import {
 import { generateBaseCommitment } from "@/lib/privacy/zk/client";
 import { AuthMode } from "@/lib/privacy/zk/proof-types";
 import { trpc } from "@/lib/trpc/client";
-import { fetchMsgpack } from "@/lib/utils/binary-transport";
 
 type EnrollmentMethod = "passkey" | "wallet" | "password" | "create-password";
 type EnrollmentStage =
@@ -311,7 +311,7 @@ export function FheEnrollmentDialog({
       try {
         const existingKeys = await getStoredFheKeys();
         if (existingKeys) {
-          const { fetchMsgpack } = await import("@/lib/utils/binary-transport");
+          const { fetchMsgpack } = await import("@/lib/http/binary-transport");
           const keyId =
             existingKeys.keyId ||
             (
@@ -512,7 +512,7 @@ export function FheEnrollmentDialog({
         ? preGenerated.keyId
         : await (async () => {
             const { fetchMsgpack } = await import(
-              "@/lib/utils/binary-transport"
+              "@/lib/http/binary-transport"
             );
             return (
               await fetchMsgpack<{ keyId: string }>(
@@ -597,7 +597,7 @@ export function FheEnrollmentDialog({
         ? preGeneratedNew.keyId
         : await (async () => {
             const { fetchMsgpack } = await import(
-              "@/lib/utils/binary-transport"
+              "@/lib/http/binary-transport"
             );
             return (
               await fetchMsgpack<{ keyId: string }>(
@@ -710,7 +710,7 @@ export function FheEnrollmentDialog({
         ? preGeneratedWallet.keyId
         : await (async () => {
             const { fetchMsgpack } = await import(
-              "@/lib/utils/binary-transport"
+              "@/lib/http/binary-transport"
             );
             return (
               await fetchMsgpack<{ keyId: string }>(

@@ -15,7 +15,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 export type CredentialType = "passkey" | "password" | "wallet";
 

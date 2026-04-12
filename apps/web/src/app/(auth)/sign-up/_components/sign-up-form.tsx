@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { redirectTo } from "@/lib/auth/navigation";
 import {
   isPasskeyAlreadyRegistered,
   registerPasskeyWithPrf,
@@ -20,7 +21,6 @@ import {
 } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { trpc } from "@/lib/trpc/client";
-import { redirectTo } from "@/lib/utils/navigation";
 
 import { CredentialChoice, type CredentialType } from "./credential-choice";
 import { PasswordSignUpForm } from "./password-signup-form";

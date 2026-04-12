@@ -4,8 +4,10 @@ import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { verifyAgentAttestation } from "@/lib/agents/agent-attestation";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
-import { registerHostRequestSchema } from "@/lib/auth/oidc/agent-schemas";
-import { AGENT_HOST_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
+import {
+  AGENT_HOST_REGISTER_SCOPE,
+  registerHostRequestSchema,
+} from "@/lib/auth/oidc/agent";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";

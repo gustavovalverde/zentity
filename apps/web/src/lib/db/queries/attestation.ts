@@ -8,7 +8,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/attestation-providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 
 import { db } from "../connection";
 import {

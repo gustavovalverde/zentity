@@ -14,7 +14,7 @@
 
 import { z } from "zod";
 
-import { base64ToBytes } from "@/lib/utils/base64";
+import { base64ToBytes } from "@/lib/privacy/primitives/base64";
 
 /**
  * All valid secret types in the system.

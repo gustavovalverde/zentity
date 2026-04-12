@@ -19,7 +19,10 @@ import { useCallback, useMemo } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
 import { useFhevmContext } from "@/components/providers/fhevm-provider";
-import { toHex, useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
+import {
+  toHex,
+  useFHEEncryption,
+} from "@/lib/blockchain/fhevm/use-fhe-encryption";
 import { useEthersSigner } from "@/lib/blockchain/wagmi";
 
 interface UseFheTransferParams {

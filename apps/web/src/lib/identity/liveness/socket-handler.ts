@@ -18,7 +18,7 @@ import {
   updateIdentityDraft,
 } from "@/lib/db/queries/identity";
 
-import { LivenessErrorState } from "../errors";
+import { LivenessErrorState } from "./errors";
 import {
   getFacingDirection,
   getHappyScore,
@@ -26,18 +26,9 @@ import {
   getPrimaryFace,
   getRealScore,
   getYawDegrees,
-} from "../human-metrics";
-import { detectFromBuffer } from "../human-server";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "../thresholds";
-import { type Logger, socketLogger as logger } from "./logger";
+} from "./human-metrics";
+import { detectFromBuffer } from "./human-server";
+import { type Logger, socketLogger as logger } from "./socket-logger";
 import {
   advanceChallenge,
   createSession,
@@ -52,7 +43,16 @@ import {
   type SessionState,
   type SessionTimeouts,
   toClientState,
-} from "./session";
+} from "./socket-session";
+import {
+  ANTISPOOF_LIVE_THRESHOLD,
+  ANTISPOOF_REAL_THRESHOLD,
+  SMILE_DELTA_THRESHOLD,
+  SMILE_HIGH_THRESHOLD,
+  SMILE_SCORE_THRESHOLD,
+  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
+  TURN_YAW_SIGNIFICANT_DELTA_DEG,
+} from "./thresholds";
 
 // Thresholds
 const HEAD_CENTER_THRESHOLD = 5; // degrees

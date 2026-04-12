@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
-import type { FhevmProviderFactory } from "..";
+import type { FhevmProviderFactory } from "../provider-registry";
 
 import { describe, expect, it, vi } from "vitest";
 
 describe("fhevm provider registry", () => {
   it("resolves built-in providers", async () => {
-    const { resolveFhevmProviderFactory } = await import("..");
+    const { resolveFhevmProviderFactory } = await import(
+      "../provider-registry"
+    );
 
     const zama = resolveFhevmProviderFactory("zama");
     const mock = resolveFhevmProviderFactory("mock");
@@ -16,7 +18,9 @@ describe("fhevm provider registry", () => {
   });
 
   it("returns undefined for unknown providers", async () => {
-    const { resolveFhevmProviderFactory } = await import("..");
+    const { resolveFhevmProviderFactory } = await import(
+      "../provider-registry"
+    );
 
     const unknown = resolveFhevmProviderFactory("does-not-exist");
     expect(unknown).toBeUndefined();
@@ -37,7 +41,9 @@ describe("fhevm provider registry", () => {
 
     vi.resetModules();
 
-    const { resolveFhevmProviderFactory } = await import("..");
+    const { resolveFhevmProviderFactory } = await import(
+      "../provider-registry"
+    );
 
     expect(resolveFhevmProviderFactory("injected")).toBe(factory);
   });

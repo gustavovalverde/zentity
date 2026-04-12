@@ -5,7 +5,10 @@ import "client-only";
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
 
 import { recordClientMetric } from "@/lib/observability/client-metrics";
-import { base64UrlToBytes, bytesToBase64Url } from "@/lib/utils/base64";
+import {
+  base64UrlToBytes,
+  bytesToBase64Url,
+} from "@/lib/privacy/primitives/base64";
 
 export interface PrfSupportStatus {
   reason?: string | undefined;

@@ -3,7 +3,7 @@
 import { CheckCircleIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface ConfettiParticle {
   color: string;

@@ -1,5 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import {
+  getClientIp,
+  publicLimiter,
+  rateLimitResponse,
+} from "@/lib/http/rate-limit";
 import { createRequestLogger } from "@/lib/logging/logger";
 import { sanitizeLogMessage } from "@/lib/logging/redact";
 import {
@@ -7,11 +12,6 @@ import {
   getRequestLogBindings,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import {
-  getClientIp,
-  publicLimiter,
-  rateLimitResponse,
-} from "@/lib/utils/rate-limit";
 
 interface ClientErrorPayload {
   digest?: string;

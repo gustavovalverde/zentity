@@ -3,7 +3,7 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent-scopes";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,

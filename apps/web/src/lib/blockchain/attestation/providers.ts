@@ -1,25 +1,15 @@
 /**
  * Attestation Provider (v2)
  *
- * Handles server-side attestation operations:
- * - Signs EIP-712 permits for user-submitted attestations
- * - Registrar-initiated revocation via revokeIdentityFor
- * - Reads contract state (attestation status, tx confirmation)
+ * One provider class + factory for all networks (Hardhat + Sepolia).
+ * Server-side responsibilities:
+ * - Sign EIP-712 permits (registrar authorization)
+ * - Registrar-initiated revocation
+ * - Read contract state
  *
- * Encryption and tx submission happen client-side via FHEVM SDK + wagmi.
+ * Client-side (not in this module): FHEVM encryption, tx submission from user wallet.
  */
 import "server-only";
-
-import type { NetworkConfig } from "../networks";
-import type {
-  AttestationResult,
-  AttestationStatus,
-  AttestationTransactionValidation,
-  IAttestationProvider,
-  IdentityData,
-  PermitResult,
-  TransactionStatus,
-} from "./types";
 
 import {
   ATTEST_PERMIT_TYPES,
@@ -37,6 +27,90 @@ import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
 
 import { env } from "@/env";
+
+import {
+  getNetworkById,
+  isNetworkAvailable,
+  type NetworkConfig,
+} from "../networks";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** Identity data values for attestation */
+export interface IdentityData {
+  birthYearOffset: number;
+  complianceLevel: number;
+  countryCode: number;
+  isBlacklisted: boolean;
+}
+
+/** Result of signing an EIP-712 attestation permit */
+export interface PermitResult {
+  identityData: IdentityData;
+  permit: AttestPermitData;
+}
+
+export type AttestationErrorCode =
+  | "ALREADY_ATTESTED"
+  | "CONTRACT"
+  | "ENCRYPTION"
+  | "INSUFFICIENT_FUNDS"
+  | "NETWORK"
+  | "NOT_ATTESTED"
+  | "ONLY_REGISTRAR"
+  | "UNKNOWN";
+
+export interface AttestationResult {
+  error?: string;
+  errorCode?: AttestationErrorCode;
+  status: "submitted" | "failed";
+  txHash?: string;
+}
+
+export interface AttestationStatus {
+  attestationId?: number | undefined;
+  attestedAt?: string | undefined;
+  blockNumber?: number | undefined;
+  isAttested: boolean;
+  txHash?: string | undefined;
+}
+
+export interface TransactionStatus {
+  blockNumber?: number;
+  confirmed: boolean;
+  error?: string;
+  failed: boolean;
+}
+
+export type AttestationTransactionValidation =
+  | "valid"
+  | "invalid"
+  | "pending_lookup";
+
+export interface IAttestationProvider {
+  checkTransaction(txHash: string): Promise<TransactionStatus>;
+  readonly config: NetworkConfig;
+  getAttestationStatus(userAddress: string): Promise<AttestationStatus>;
+  readonly networkId: string;
+  readonly networkName: string;
+  revokeAttestation(userAddress: string): Promise<AttestationResult>;
+  signPermit(params: {
+    userAddress: string;
+    identityData: IdentityData;
+    proofSetHash?: string;
+    policyVersion?: number;
+  }): Promise<PermitResult>;
+  validateAttestationTransaction(params: {
+    txHash: string;
+    userAddress: string;
+  }): Promise<AttestationTransactionValidation>;
+}
+
+// ---------------------------------------------------------------------------
+// Provider implementation
+// ---------------------------------------------------------------------------
 
 const VIEM_CHAINS = {
   11155111: sepolia,
@@ -120,7 +194,6 @@ export class AttestationProvider implements IAttestationProvider {
       args: [userAddr],
     })) as bigint;
 
-    // Build deadline (1 hour from latest block)
     const block = await client.getBlock({ blockTag: "latest" });
     const deadline = block.timestamp + 3600n;
 
@@ -158,7 +231,6 @@ export class AttestationProvider implements IAttestationProvider {
       message,
     });
 
-    // Split signature into v, r, s
     const { v, r, s } = (() => {
       const sig = signature.slice(2);
       return {
@@ -314,4 +386,36 @@ export class AttestationProvider implements IAttestationProvider {
     });
     return { status: "submitted", txHash };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+const providerCache = new Map<string, IAttestationProvider>();
+
+export function createProvider(networkId: string): IAttestationProvider {
+  const cached = providerCache.get(networkId);
+  if (cached) {
+    return cached;
+  }
+
+  const network = getNetworkById(networkId);
+  if (!network) {
+    throw new Error(`Unknown network: ${networkId}`);
+  }
+
+  if (!isNetworkAvailable(networkId)) {
+    throw new Error(
+      `Network ${networkId} is not available. Check that it's enabled and contracts are configured.`
+    );
+  }
+
+  const provider = new AttestationProvider(network);
+  providerCache.set(networkId, provider);
+  return provider;
+}
+
+export function canCreateProvider(networkId: string): boolean {
+  return isNetworkAvailable(networkId);
 }

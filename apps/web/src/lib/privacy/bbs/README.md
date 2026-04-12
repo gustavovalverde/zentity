@@ -46,8 +46,8 @@ src/lib/bbs/
 ### Issuer: Create Credential
 
 ```typescript
-import { generateBbsKeyPair } from "@/lib/bbs/keygen";
-import { createWalletCredential } from "@/lib/bbs/signer";
+import { generateBbsKeyPair } from "@/lib/privacy/bbs/keygen";
+import { createWalletCredential } from "@/lib/privacy/bbs/signer";
 
 const issuerKeyPair = await generateBbsKeyPair();
 
@@ -70,7 +70,7 @@ const credential = await createWalletCredential(
 ### Holder: Create Presentation
 
 ```typescript
-import { createPresentation } from "@/lib/bbs/holder";
+import { createPresentation } from "@/lib/privacy/bbs/holder";
 
 // Reveal only network and tier (hide wallet commitment)
 const presentation = await createPresentation(
@@ -83,7 +83,7 @@ const presentation = await createPresentation(
 ### Verifier: Verify Presentation
 
 ```typescript
-import { verifyPresentation } from "@/lib/bbs/verifier";
+import { verifyPresentation } from "@/lib/privacy/bbs/verifier";
 
 const result = await verifyPresentation(presentation);
 if (result.verified) {

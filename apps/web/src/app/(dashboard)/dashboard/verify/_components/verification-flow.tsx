@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
-import { useVerificationStepper } from "@/hooks/verification/use-verification";
+import { useVerificationStepper } from "@/lib/identity/verification/use-verification";
 
 import { DocumentUploadClient } from "./document/document-upload-client";
 import { FheEnrollmentDialog } from "./fhe-enrollment-dialog";

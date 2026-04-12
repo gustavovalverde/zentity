@@ -8,6 +8,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { toServiceErrorPayload } from "@/lib/http/api-utils";
+import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
@@ -20,8 +22,6 @@ import {
   isCountryInGroup,
   listCountryGroups,
 } from "@/lib/privacy/zk/country";
-import { toServiceErrorPayload } from "@/lib/utils/api-utils";
-import { rateLimitResponse, zkLimiter } from "@/lib/utils/rate-limit";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership

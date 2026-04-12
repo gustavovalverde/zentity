@@ -8,7 +8,7 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 import { CountryDocumentSelector } from "./country-document-selector";
 import { DownloadZkPassportDialog } from "./download-zkpassport-dialog";

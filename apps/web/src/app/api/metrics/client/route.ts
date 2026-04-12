@@ -2,6 +2,11 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import {
+  getClientIp,
+  publicLimiter,
+  rateLimitResponse,
+} from "@/lib/http/rate-limit";
+import {
   CLIENT_METRIC_DEFINITIONS,
   type ClientMetricName,
 } from "@/lib/observability/client-metric-definitions";
@@ -24,11 +29,6 @@ import {
   recordClientTfheLoadRetry,
   recordClientWalletSignDuration,
 } from "@/lib/observability/metrics";
-import {
-  getClientIp,
-  publicLimiter,
-  rateLimitResponse,
-} from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

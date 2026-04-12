@@ -10,7 +10,7 @@ import {
   getPasswordRequirementStatus,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 /**
  * Live password requirements / strength UI.

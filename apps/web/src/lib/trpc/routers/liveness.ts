@@ -19,6 +19,7 @@ import {
   getIdentityDraftById,
   updateIdentityDraft,
 } from "@/lib/db/queries/identity";
+import { createRateLimiter } from "@/lib/http/rate-limit";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
   getEmbeddingVector,
@@ -50,7 +51,6 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "@/lib/identity/liveness/thresholds";
-import { createRateLimiter } from "@/lib/utils/rate-limit";
 
 import { protectedProcedure, router } from "../server";
 

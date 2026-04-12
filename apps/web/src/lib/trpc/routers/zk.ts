@@ -21,19 +21,6 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { createPresentation } from "@/lib/bbs/holder";
-import { deriveBbsKeyPair } from "@/lib/bbs/keygen";
-import {
-  deserializeCredential,
-  deserializePresentation,
-  type SerializedBbsCredential,
-  type SerializedBbsPresentation,
-  serializeCredential,
-  serializePresentation,
-} from "@/lib/bbs/serialization";
-import { createWalletCredential, verifyCredential } from "@/lib/bbs/signer";
-import { WALLET_CREDENTIAL_CLAIM_ORDER } from "@/lib/bbs/types";
-import { verifyPresentation as verifyBbsPresentation } from "@/lib/bbs/verifier";
 import {
   ISSUER_ID,
   MIN_AGE_POLICY,
@@ -56,6 +43,7 @@ import {
   getUserBaseCommitments,
   insertProofArtifact,
 } from "@/lib/db/queries/privacy";
+import { resolveAudience } from "@/lib/http/http";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import {
   getTodayDobDays,
@@ -65,7 +53,24 @@ import { invalidateVerificationCache } from "@/lib/identity/verification/job-pro
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
 import { withSpan } from "@/lib/observability/telemetry";
+import { createPresentation } from "@/lib/privacy/bbs/holder";
+import { deriveBbsKeyPair } from "@/lib/privacy/bbs/keygen";
+import {
+  deserializeCredential,
+  deserializePresentation,
+  type SerializedBbsCredential,
+  type SerializedBbsPresentation,
+  serializeCredential,
+  serializePresentation,
+} from "@/lib/privacy/bbs/serialization";
+import {
+  createWalletCredential,
+  verifyCredential,
+} from "@/lib/privacy/bbs/signer";
+import { WALLET_CREDENTIAL_CLAIM_ORDER } from "@/lib/privacy/bbs/types";
+import { verifyPresentation as verifyBbsPresentation } from "@/lib/privacy/bbs/verifier";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
+import { bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 import {
   consumeChallenge,
@@ -96,8 +101,6 @@ import {
   type OcrClaimData,
   parseFieldToBigInt,
 } from "@/lib/privacy/zk/verification-utils";
-import { bytesToBase64 } from "@/lib/utils/base64";
-import { resolveAudience } from "@/lib/utils/http";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 

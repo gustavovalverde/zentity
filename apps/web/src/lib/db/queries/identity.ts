@@ -19,7 +19,7 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/attestation-providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";

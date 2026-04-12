@@ -5,7 +5,7 @@
  * All state is in-memory (no Redis for now).
  */
 
-import type { ChallengeType } from "../challenges";
+import type { ChallengeType } from "./challenges";
 
 import { randomInt } from "node:crypto";
 

@@ -17,7 +17,7 @@ import { decode, encode } from "@msgpack/msgpack";
 
 import { encodeAad, SECRET_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
 import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
+import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
 
 const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 

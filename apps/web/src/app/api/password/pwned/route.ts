@@ -4,7 +4,7 @@ import {
   getClientIp,
   publicLimiter,
   rateLimitResponse,
-} from "@/lib/utils/rate-limit";
+} from "@/lib/http/rate-limit";
 /**
  * Breached password check endpoint (UX-only).
  *

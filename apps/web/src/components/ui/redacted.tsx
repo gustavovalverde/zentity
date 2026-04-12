@@ -1,7 +1,7 @@
 "use client";
 
 import { usePrivacyMode } from "@/components/providers/privacy-mode-provider";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface RedactedProps {
   children: React.ReactNode;

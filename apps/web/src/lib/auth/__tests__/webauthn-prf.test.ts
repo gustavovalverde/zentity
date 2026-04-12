@@ -4,7 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { bytesToBase64Url } from "@/lib/utils/base64";
+import { bytesToBase64Url } from "@/lib/privacy/primitives/base64";
 
 // We'll dynamically import to test with different global configurations
 let checkPrfSupport: typeof import("../webauthn-prf").checkPrfSupport;

@@ -12,7 +12,7 @@ import { memo } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 

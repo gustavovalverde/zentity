@@ -27,7 +27,7 @@ vi.mock("@/lib/auth/oidc/oauth-query", () => ({
       .filter(Boolean),
 }));
 
-vi.mock("@/lib/utils/rate-limiters", () => ({
+vi.mock("@/lib/http/rate-limiters", () => ({
   oauth2IdentityLimiter: { check: () => ({ limited: false }) },
 }));
 

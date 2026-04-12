@@ -3,8 +3,10 @@ import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
-import { registerSessionRequestSchema } from "@/lib/auth/oidc/agent-schemas";
-import { AGENT_SESSION_REGISTER_SCOPE } from "@/lib/auth/oidc/agent-scopes";
+import {
+  AGENT_SESSION_REGISTER_SCOPE,
+  registerSessionRequestSchema,
+} from "@/lib/auth/oidc/agent";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
 import {
   createPendingSessionGrants,

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface VisuallyHiddenProps extends React.HTMLAttributes<HTMLSpanElement> {
   /** Content to hide visually but keep accessible */

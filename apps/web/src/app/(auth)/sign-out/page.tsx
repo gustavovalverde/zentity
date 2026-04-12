@@ -1,4 +1,4 @@
-import { getSafeRedirectPath } from "@/lib/utils/navigation";
+import { getSafeRedirectPath } from "@/lib/auth/navigation";
 
 import { SignOutClient } from "./sign-out-client";
 

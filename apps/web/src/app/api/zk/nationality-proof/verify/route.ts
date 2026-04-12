@@ -9,15 +9,15 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getProofSessionById } from "@/lib/db/queries/privacy";
+import { toServiceErrorPayload } from "@/lib/http/api-utils";
+import { resolveAudience } from "@/lib/http/http";
+import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
-import { toServiceErrorPayload } from "@/lib/utils/api-utils";
-import { resolveAudience } from "@/lib/utils/http";
-import { rateLimitResponse, zkLimiter } from "@/lib/utils/rate-limit";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

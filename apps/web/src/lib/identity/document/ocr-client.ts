@@ -1,13 +1,13 @@
 import "server-only";
 
 import { env } from "@/env";
+import { fetchJson } from "@/lib/http/http";
 import {
   recordOcrDuration,
   recordOcrImageBytes,
   recordOcrPayloadBytes,
 } from "@/lib/observability/metrics";
 import { injectTraceHeaders, withSpan } from "@/lib/observability/telemetry";
-import { fetchJson } from "@/lib/utils/http";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,

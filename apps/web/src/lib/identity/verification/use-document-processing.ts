@@ -7,9 +7,9 @@ import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
+import { resizeImageFile } from "@/lib/identity/document/image-resize";
 import { useVerificationStore } from "@/lib/identity/verification/store";
 import { trpc } from "@/lib/trpc/client";
-import { resizeImageFile } from "@/lib/utils/image";
 
 export type ProcessingState =
   | "idle"

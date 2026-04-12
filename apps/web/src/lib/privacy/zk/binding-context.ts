@@ -22,9 +22,9 @@ import {
 } from "@/lib/privacy/credentials/cache";
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
 import { WALLET_CREDENTIAL_PREFIX } from "@/lib/privacy/credentials/wallet";
+import { base64ToBytes } from "@/lib/privacy/primitives/base64";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
-import { base64ToBytes } from "@/lib/utils/base64";
 
 import { deriveBindingSecret } from "./binding-secret";
 import { AuthMode } from "./proof-types";

@@ -5,6 +5,8 @@ import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/privacy";
+import { sanitizeAndLogApiError } from "@/lib/http/api-utils";
+import { rateLimitResponse, secretsBlobLimiter } from "@/lib/http/rate-limit";
 import { withSpan } from "@/lib/observability/telemetry";
 import {
   computeSecretBlobRef,
@@ -13,8 +15,6 @@ import {
   SecretBlobTooLargeError,
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-utils";
-import { rateLimitResponse, secretsBlobLimiter } from "@/lib/utils/rate-limit";
 
 export const runtime = "nodejs";
 

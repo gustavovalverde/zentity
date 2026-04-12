@@ -8,12 +8,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { env } from "@/env";
-import { useVerificationBindingAuth } from "@/hooks/verification/use-verification";
 import { useSession } from "@/lib/auth/auth-client";
 import {
   buildProfileSecretDataFromPassportDisclosure,
   storeProfileSecretWithMaterial,
 } from "@/lib/identity/verification/profile-vault";
+import { useVerificationBindingAuth } from "@/lib/identity/verification/use-verification";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,

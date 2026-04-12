@@ -2,14 +2,14 @@ import { decode } from "@msgpack/msgpack";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/privacy";
-import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
-import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 import {
   jsonError,
   msgpackResponse,
   sanitizeAndLogApiError,
-} from "@/lib/utils/api-utils";
-import { fheLimiter, rateLimitResponse } from "@/lib/utils/rate-limit";
+} from "@/lib/http/api-utils";
+import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
+import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
+import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 
 export const runtime = "nodejs";
 

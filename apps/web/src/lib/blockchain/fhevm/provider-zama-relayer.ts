@@ -1,5 +1,5 @@
-import type { FhevmInstance } from "../../types";
-import type { FhevmProviderFactory } from "..";
+import type { FhevmProviderFactory } from "./provider-registry";
+import type { FhevmInstance } from "./types";
 
 const ZAMA_SDK_URL = "/fhevm/relayer-sdk-js.umd.js";
 

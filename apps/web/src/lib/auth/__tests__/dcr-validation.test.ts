@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateSafeUrl } from "@/lib/utils/url-safety";
+import { validateSafeUrl } from "@/lib/http/url-safety";
 
 import { joinAuthIssuerPath } from "../oidc/well-known";
 

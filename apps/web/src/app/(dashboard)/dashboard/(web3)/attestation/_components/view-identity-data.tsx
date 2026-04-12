@@ -48,12 +48,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
-import { useInMemoryStorage } from "@/hooks/fhevm/use-in-memory-storage";
+import { useFHEDecrypt } from "@/lib/blockchain/fhevm/use-fhe-decrypt";
+import { useInMemoryStorage } from "@/lib/blockchain/fhevm/use-in-memory-storage";
 import { useEthersSigner } from "@/lib/blockchain/wagmi";
+import { cn } from "@/lib/cn";
 import { getCountryName } from "@/lib/privacy/zk/country";
 import { trpcReact } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils/classname";
 
 function normalizeHandle(handle: unknown): `0x${string}` | undefined {
   if (!handle) {

@@ -3,7 +3,7 @@ import type { AccountTier, TierName } from "@/lib/assurance/types";
 import { CheckCircle2, CircleUser, ShieldCheck, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface TierBadgeProps {
   className?: string;

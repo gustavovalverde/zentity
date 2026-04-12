@@ -1,15 +1,15 @@
 // @vitest-environment jsdom
 
-import type { FhevmProviderFactory } from "@/lib/blockchain/fhevm/providers";
+import type { FhevmProviderFactory } from "@/lib/blockchain/fhevm/provider-registry";
 
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
+import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
 
 const resolveMock = vi.fn();
 
-vi.mock("@/lib/blockchain/fhevm/providers", () => ({
+vi.mock("@/lib/blockchain/fhevm/provider-registry", () => ({
   resolveFhevmProviderFactory: (...args: unknown[]) => resolveMock(...args),
 }));
 

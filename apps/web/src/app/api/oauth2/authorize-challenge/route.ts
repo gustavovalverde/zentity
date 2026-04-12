@@ -58,7 +58,7 @@ import {
   createRealRateLimiter,
   getClientIp,
   rateLimitResponse,
-} from "@/lib/utils/rate-limit";
+} from "@/lib/http/rate-limit";
 
 export const fpaLimiter = createRealRateLimiter({ windowMs: 60_000, max: 10 });
 

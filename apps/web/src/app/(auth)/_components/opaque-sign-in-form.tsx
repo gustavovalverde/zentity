@@ -16,9 +16,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
+import { redirectTo } from "@/lib/auth/navigation";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { redirectTo } from "@/lib/utils/navigation";
 
 export function OpaqueSignInForm({
   callbackURL = "/dashboard",

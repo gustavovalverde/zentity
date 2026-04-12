@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { canAccessFeature } from "@/lib/assurance/features";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 import { CredentialsContent } from "./credentials-content";
 

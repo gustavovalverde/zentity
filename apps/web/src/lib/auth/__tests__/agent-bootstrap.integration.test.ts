@@ -4,7 +4,7 @@ import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent-scopes";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";

@@ -6,8 +6,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { type JsonRpcSigner, Wallet } from "ethers";
 import { describe, expect, it } from "vitest";
 
-import { useFHEDecrypt } from "@/hooks/fhevm/use-fhe-decrypt";
 import { GenericStringInMemoryStorage } from "@/lib/blockchain/fhevm/signature-cache";
+import { useFHEDecrypt } from "@/lib/blockchain/fhevm/use-fhe-decrypt";
 
 type HookProps = Parameters<typeof useFHEDecrypt>[0];
 

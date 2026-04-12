@@ -1,7 +1,7 @@
 import { CheckCircle2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface VerificationFinalizationNoticeProps {
   className?: string;

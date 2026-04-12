@@ -11,7 +11,7 @@ import {
   ZoomOutIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 type QualityIssue =
   | "low_light"

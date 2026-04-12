@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 export type OvalFrameStatus =
   | "searching"

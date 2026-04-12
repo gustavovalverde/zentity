@@ -10,8 +10,8 @@ import { eq } from "drizzle-orm";
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { isPrivateHost as _isPrivateHost } from "@/lib/http/url-safety";
 import { logger } from "@/lib/logging/logger";
-import { isPrivateHost as _isPrivateHost } from "@/lib/utils/url-safety";
 
 // ---------------------------------------------------------------------------
 // Pure validation (no side-effectful imports, safe for unit tests)

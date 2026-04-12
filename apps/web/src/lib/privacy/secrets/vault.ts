@@ -37,9 +37,9 @@ import {
   wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials/wallet";
 import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
+import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import { mlKemEncapsulate } from "@/lib/privacy/primitives/ml-kem";
 import { trpc } from "@/lib/trpc/client";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 import { decryptWithDek, encryptWithDek, generateDek } from "./envelope";
 import { downloadSecretBlob, uploadSecretBlob } from "./storage";

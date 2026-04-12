@@ -1,4 +1,4 @@
-import { getSafeRedirectPath } from "@/lib/utils/navigation";
+import { getSafeRedirectPath } from "@/lib/auth/navigation";
 
 import { VerifyTwoFactorClient } from "./verify-2fa-client";
 

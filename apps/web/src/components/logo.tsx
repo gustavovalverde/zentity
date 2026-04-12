@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 interface LogoProps {
   className?: string;

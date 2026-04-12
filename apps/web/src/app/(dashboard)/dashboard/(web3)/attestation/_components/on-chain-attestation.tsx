@@ -65,14 +65,14 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { useFHEEncryption } from "@/hooks/fhevm/use-fhe-encryption";
-import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
 import { resolveAttestationConsentRevision } from "@/lib/blockchain/attestation/consent-revision";
 import { resolveOnChainAttestationViewState } from "@/lib/blockchain/attestation/on-chain-attestation-view-state";
 import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
+import { useFHEEncryption } from "@/lib/blockchain/fhevm/use-fhe-encryption";
+import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
 import { useEthersSigner } from "@/lib/blockchain/wagmi";
+import { cn } from "@/lib/cn";
 import { trpcReact } from "@/lib/trpc/client";
-import { cn } from "@/lib/utils/classname";
 
 import { ComplianceAccessCard } from "./compliance-access-card";
 

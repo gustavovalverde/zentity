@@ -38,7 +38,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSession } from "@/lib/auth/auth-client";
-import { useBbsCredentials } from "@/lib/bbs/hooks";
+import { useBbsCredentials } from "@/lib/privacy/bbs/hooks";
 
 const CHAIN_NAMES: Record<number, string> = {
   1: "Ethereum Mainnet",

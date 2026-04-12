@@ -24,15 +24,15 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  type ProcessingState,
-  useDocumentProcessing,
-} from "@/hooks/verification/use-document-processing";
+import { cn } from "@/lib/cn";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
 } from "@/lib/identity/document/document-ocr";
-import { cn } from "@/lib/utils/classname";
+import {
+  type ProcessingState,
+  useDocumentProcessing,
+} from "@/lib/identity/verification/use-document-processing";
 
 const REDACTED = "●●●●●●●●";
 

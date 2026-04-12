@@ -5,7 +5,7 @@ vi.mock("server-only", () => ({}));
 
 const fetchJson = vi.fn();
 
-vi.mock("@/lib/utils/http", () => ({
+vi.mock("@/lib/http/http", () => ({
   fetchJson: (...args: unknown[]) => fetchJson(...args),
   HttpError: class HttpError extends Error {},
 }));

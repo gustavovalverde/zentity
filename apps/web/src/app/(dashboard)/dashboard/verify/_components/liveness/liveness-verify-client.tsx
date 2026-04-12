@@ -17,7 +17,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { useVerificationBindingAuth } from "@/hooks/verification/use-verification";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
 import {
@@ -25,6 +24,7 @@ import {
   storeProfileSecretWithMaterial,
 } from "@/lib/identity/verification/profile-vault";
 import { useVerificationStore } from "@/lib/identity/verification/store";
+import { useVerificationBindingAuth } from "@/lib/identity/verification/use-verification";
 import {
   getCachedBindingMaterial,
   setCachedBindingMaterial,

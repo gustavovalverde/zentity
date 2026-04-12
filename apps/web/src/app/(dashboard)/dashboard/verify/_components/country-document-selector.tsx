@@ -25,7 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 const DOC_TYPE_LABELS: Record<ZkPassportDocType, string> = {
   passport: "Passport",

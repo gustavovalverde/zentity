@@ -8,12 +8,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
+import { bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import {
   mlKemDecapsulate,
   mlKemEncapsulate,
   mlKemKeygen,
 } from "@/lib/privacy/primitives/ml-kem";
-import { bytesToBase64 } from "@/lib/utils/base64";
 
 import { deriveFrostUnwrapKey } from "../recovery-keys";
 

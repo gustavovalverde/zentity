@@ -5,6 +5,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { decode, encode } from "@msgpack/msgpack";
 
 import { env } from "@/env";
+import { HttpError } from "@/lib/http/http";
 import {
   recordFheDuration,
   recordFhePayloadBytes,
@@ -14,7 +15,6 @@ import {
   injectTraceHeaders,
   withSpan,
 } from "@/lib/observability/telemetry";
-import { HttpError } from "@/lib/utils/http";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,

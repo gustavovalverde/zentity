@@ -46,7 +46,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent-scopes";
+import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
@@ -97,7 +97,7 @@ import {
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/jwt/jarm-key";
 import { signJwt } from "@/lib/auth/oidc/jwt/jwt-signer";
 import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt/jwt-signing-keys";
-import { validateResourceUri } from "@/lib/auth/oidc/resource";
+import { validateResourceUri } from "@/lib/auth/oidc/oauth-query";
 import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
@@ -160,10 +160,10 @@ import {
 } from "@/lib/db/schema/organization";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { validateSafeUrl } from "@/lib/http/url-safety";
 import { computeRpNullifier } from "@/lib/identity/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
-import { validateSafeUrl } from "@/lib/utils/url-safety";
 
 const betterAuthSchema = {
   user: users,

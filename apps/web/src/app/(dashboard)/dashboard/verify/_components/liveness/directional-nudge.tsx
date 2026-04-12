@@ -7,7 +7,7 @@ import {
   ArrowUpIcon,
 } from "lucide-react";
 
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 type NudgeDirection = "left" | "right" | "up" | "down" | null;
 

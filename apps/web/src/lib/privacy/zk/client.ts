@@ -15,8 +15,8 @@ import {
   minAgeYearsToDays,
 } from "@/lib/identity/verification/birth-year";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
+import { bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import { trpc } from "@/lib/trpc/client";
-import { bytesToBase64 } from "@/lib/utils/base64";
 
 import {
   generateAgeProofNoir,

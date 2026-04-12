@@ -19,7 +19,7 @@ import { computeProofSetHash } from "@/lib/blockchain/attestation/proof-set-hash
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/attestation-providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 import {
   getEnabledNetworks,
   getExplorerTxUrl,

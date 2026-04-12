@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "server.mjs",
-    "src/lib/identity/liveness/socket/*.ts",
+    "src/lib/identity/liveness/socket-*.ts",
     "vitest.global-setup.ts",
     "vitest.setup.mts"
   ],
@@ -11,6 +11,7 @@
     "src/lib/auth/oidc/cimd.ts": ["exports", "types"],
     "src/lib/auth/oidc/identity-delivery.ts": ["exports"],
     "src/lib/auth/oidc/step-up.ts": ["exports"],
+    "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],
     "src/lib/copy-constants.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
     "src/lib/identity/liveness/human-server.ts": ["exports"],

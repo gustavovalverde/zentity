@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveAudience } from "@/lib/utils/http";
+import { resolveAudience } from "@/lib/http/http";
 
 describe("resolveAudience", () => {
   it("prefers Origin header when present", () => {

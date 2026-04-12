@@ -29,11 +29,11 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { getSafeRedirectPath, redirectTo } from "@/lib/auth/navigation";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
 import { signInWithPasskey } from "@/lib/auth/passkey";
 import { prepareForNewSession } from "@/lib/auth/session-manager";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { getSafeRedirectPath, redirectTo } from "@/lib/utils/navigation";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();

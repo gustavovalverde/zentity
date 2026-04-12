@@ -7,7 +7,7 @@
 
 import { Spinner } from "@/components/ui/spinner";
 import { useMobileDetect } from "@/hooks/use-device-detection";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 import { AudioToggle } from "./audio-toggle";
 import { ChallengeBanner, CountdownOverlay } from "./challenge-banner";

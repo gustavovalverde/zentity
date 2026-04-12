@@ -4,8 +4,11 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/jwks";
+import {
+  bytesToBase64,
+  bytesToBase64Url,
+} from "@/lib/privacy/primitives/base64";
 import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/ml-dsa";
-import { bytesToBase64, bytesToBase64Url } from "@/lib/utils/base64";
 
 import { decryptPrivateKey, encryptPrivateKey } from "./key-vault";
 

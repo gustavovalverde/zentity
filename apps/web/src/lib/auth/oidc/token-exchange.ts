@@ -28,7 +28,7 @@ import {
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/auth/oidc/agent-scopes";
+} from "@/lib/auth/oidc/agent";
 import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,

@@ -7,10 +7,10 @@
  * External providers can be registered via `window.__FHEVM_PROVIDER_FACTORIES__`
  * before this module loads, or via `registerFhevmProvider()` at runtime.
  */
-import type { FhevmInstance } from "../types";
+import type { FhevmInstance } from "./types";
 
-import { createMockInstance } from "./mock-provider";
-import { createZamaRelayerInstance } from "./zama/relayer";
+import { createMockInstance } from "./provider-mock";
+import { createZamaRelayerInstance } from "./provider-zama-relayer";
 
 // --- Types ---
 

@@ -1,12 +1,10 @@
 import { env } from "@/env";
 import {
-  type AgentConfiguration,
-  agentConfigurationSchema,
-} from "@/lib/auth/oidc/agent-schemas";
-import {
   AGENT_BOOTSTRAP_SCOPES,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/auth/oidc/agent-scopes";
+  type AgentConfiguration,
+  agentConfigurationSchema,
+} from "@/lib/auth/oidc/agent";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 
 /**

@@ -25,7 +25,7 @@ import { z } from "zod";
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/attestation-providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 import {
   getEnabledNetworks,
   getExplorerTxUrl,

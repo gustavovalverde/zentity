@@ -5,13 +5,13 @@ import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/privacy";
-import { registerFheKey } from "@/lib/privacy/fhe/service";
 import {
   jsonError,
   msgpackResponse,
   sanitizeAndLogApiError,
-} from "@/lib/utils/api-utils";
-import { fheLimiter, rateLimitResponse } from "@/lib/utils/rate-limit";
+} from "@/lib/http/api-utils";
+import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
+import { registerFheKey } from "@/lib/privacy/fhe/service";
 
 export const runtime = "nodejs";
 

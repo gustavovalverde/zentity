@@ -26,7 +26,7 @@ async function runBackgroundKeygen(): Promise<BackgroundKeygenResult | null> {
 
     const keygen = await generateFheKeyMaterialInWorker();
 
-    const { fetchMsgpack } = await import("@/lib/utils/binary-transport");
+    const { fetchMsgpack } = await import("@/lib/http/binary-transport");
     const registration = await fetchMsgpack<{ keyId: string }>(
       "/api/fhe/keys/register",
       {

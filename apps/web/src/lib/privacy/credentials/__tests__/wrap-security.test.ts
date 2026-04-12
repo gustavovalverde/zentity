@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { unwrapDek, wrapDek } from "@/lib/privacy/credentials/wrap";
+import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import { generateDek } from "@/lib/privacy/secrets/envelope";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 describe("wrap binding pitfall tests", () => {
   const createAesGcmKey = async (): Promise<CryptoKey> =>

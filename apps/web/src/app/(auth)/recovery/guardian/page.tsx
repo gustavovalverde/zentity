@@ -39,8 +39,8 @@ import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
 import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import { wrapDekWithPrf } from "@/lib/privacy/credentials/passkey";
+import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import { trpc, trpcReact } from "@/lib/trpc/client";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 type RecoveryPhase =
   | "email"

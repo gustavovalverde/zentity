@@ -39,7 +39,7 @@ import type { FhevmGoState, FhevmInstance } from "@/lib/blockchain/fhevm/types";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resolveFhevmProviderFactory } from "@/lib/blockchain/fhevm/providers";
+import { resolveFhevmProviderFactory } from "@/lib/blockchain/fhevm/provider-registry";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 type MetricAttributes = Record<string, string | number | boolean>;

@@ -1,4 +1,4 @@
-import type { FhevmProviderFactory } from ".";
+import type { FhevmProviderFactory } from "./provider-registry";
 
 export const createMockInstance: FhevmProviderFactory = async ({
   chainId,
