@@ -502,3 +502,4 @@ playwright/.cache/
 # Presentations
 presentations/
 .claude/
+.data/

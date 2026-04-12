@@ -13,11 +13,17 @@ const INVALID_CODE_RE = /Invalid authenticator or backup code/i;
 const RECOVERY_LINK_RE =
   /https?:\/\/[^\s"]+\/recovery\/guardian\/approve\?token=[^\s"]+/g;
 const SHOW_MANUAL_LINKS_RE = /Show manual links/i;
-const ENABLE_TWO_FACTOR_RE = /Enable Two-Factor/i;
 const TWO_FACTOR_DIALOG_RE = /Two-Factor/i;
 const BACKUP_CODES_DIALOG_RE = /Backup Codes/i;
 const VERIFY_2FA_URL_RE = /\/verify-2fa/;
+const BACKUP_CODES_URL_RE = /\/backup-codes/;
+const SETTINGS_URL_RE = /\/dashboard\/settings/;
 const TRAILING_SLASH_RE = /\/$/;
+const TWO_FACTOR_HEADING_RE = /^Two-factor authentication/i;
+const ENABLE_DISABLE_BUTTON_RE = /^(Enable|Disable)$/;
+const ENABLE_BUTTON_RE = /^Enable$/;
+const CONTINUE_BUTTON_RE = /^Continue$/;
+const BACKUP_ACK_BUTTON_RE = /Continue|Done|I.ve saved/i;
 const MAILPIT_BASE_URL = (
   process.env.MAILPIT_BASE_URL || "http://localhost:8025"
 ).replace(TRAILING_SLASH_RE, "");
@@ -210,7 +216,10 @@ async function ensureRecoveryEnabled(page: Page) {
     await enableButton.click();
     const guardianInput = page.getByPlaceholder("guardian@example.com");
     try {
-      await expect(guardianInput).toBeVisible();
+      // FROST DKG (1 coordinator + 3 signers, secp256k1) typically runs in
+      // 1-2 s locally but can take 30+ s on a cold server. Extend the timeout
+      // so the toBeVisible check survives the worst case.
+      await expect(guardianInput).toBeVisible({ timeout: 90_000 });
     } catch (error) {
       const stillEnabled = await enableButton.isVisible().catch(() => false);
       if (stillEnabled) {
@@ -280,20 +289,25 @@ async function ensureTwoFactorEnabled(
     await page.waitForLoadState("networkidle");
   }
 
-  const enableButton = page.getByRole("button", {
-    name: ENABLE_TWO_FACTOR_RE,
+  // Scope to the 2FA card — the card heading is "Two-factor authentication"
+  // and its toggle button simply reads "Enable" / "Disable" (PRD-20 copy).
+  const twoFactorCard = page
+    .locator("div", { hasText: TWO_FACTOR_HEADING_RE })
+    .filter({
+      has: page.getByRole("button", { name: ENABLE_DISABLE_BUTTON_RE }),
+    })
+    .first();
+  const enableButton = twoFactorCard.getByRole("button", {
+    name: ENABLE_BUTTON_RE,
   });
-  await enableButton.first().scrollIntoViewIfNeeded();
+  await enableButton.scrollIntoViewIfNeeded();
 
-  const canEnable = await enableButton
-    .first()
-    .isVisible()
-    .catch(() => false);
+  const canEnable = await enableButton.isVisible().catch(() => false);
   if (!canEnable) {
     throw new Error("Two-factor authentication is already enabled.");
   }
 
-  await enableButton.first().click();
+  await enableButton.click();
 
   const setupDialog = page
     .getByRole("dialog")
@@ -301,36 +315,54 @@ async function ensureTwoFactorEnabled(
     .first();
   await expect(setupDialog).toBeVisible();
 
-  const passwordInput = setupDialog.getByLabel("Password");
+  // Password input: FieldLabel isn't htmlFor-coupled to the Input, so
+  // getByLabel fails. Use placeholder as the stable locator.
+  const passwordInput = setupDialog.getByPlaceholder("Enter your password");
   if (await passwordInput.isVisible().catch(() => false)) {
     await passwordInput.fill(password);
   }
-  await setupDialog.getByRole("button", { name: ENABLE_TWO_FACTOR_RE }).click();
+  // PRD-20 rewrite: the setup dialog is a single-step wrapper. Clicking
+  // "Continue" fires authClient.twoFactor.enable() and navigates to
+  // /verify-2fa?totpURI=..., then post-verify to /backup-codes.
+  await setupDialog.getByRole("button", { name: CONTINUE_BUTTON_RE }).click();
 
-  const backupDialog = page
-    .getByRole("dialog")
-    .filter({ hasText: BACKUP_CODES_DIALOG_RE })
-    .first();
-  await expect(backupDialog).toBeVisible();
-
-  // UI no longer has download - codes are shown directly in dialog
-  // Extract backup codes from the dialog text content
-  const dialogText = await backupDialog.textContent();
-  const backupCodes = parseBackupCodes(dialogText ?? "");
-  if (backupCodes.length === 0) {
-    throw new Error("No backup codes found in dialog.");
-  }
-  await backupDialog.getByRole("button", { name: "Continue" }).click();
+  // Step 2: /verify-2fa — scan the QR and enter the TOTP code
   await page.waitForURL(VERIFY_2FA_URL_RE, { timeout: 30_000 });
   const totpUri = new URL(page.url()).searchParams.get("totpURI");
   if (!totpUri) {
     throw new Error("TOTP URI not found in verify flow.");
   }
-
   const totpCode = await computeTotpFromUri(totpUri);
   await fillOtpCode(page, totpCode);
   await page.getByRole("button", { name: "Verify" }).click();
-  await page.waitForURL("/dashboard/settings", { timeout: 30_000 });
+
+  // Step 3: /backup-codes — extract the codes from the page body
+  await page.waitForURL(BACKUP_CODES_URL_RE, { timeout: 30_000 });
+  await expect(
+    page.getByRole("heading", { name: BACKUP_CODES_DIALOG_RE })
+  ).toBeVisible({ timeout: 10_000 });
+  const pageText = (await page.textContent("body")) ?? "";
+  const backupCodes = parseBackupCodes(pageText);
+  if (backupCodes.length === 0) {
+    throw new Error("No backup codes found on /backup-codes page.");
+  }
+
+  // Navigate back to settings (the backup-codes page has a Continue button
+  // that routes back once the user acknowledges).
+  const continueButton = page.getByRole("button", {
+    name: BACKUP_ACK_BUTTON_RE,
+  });
+  if (
+    await continueButton
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await continueButton.first().click();
+  } else {
+    await page.goto("/dashboard/settings");
+  }
+  await page.waitForURL(SETTINGS_URL_RE, { timeout: 30_000 });
 
   return { totpUri, backupCodes };
 }

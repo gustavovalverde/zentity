@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, or } from "drizzle-orm";
 import { cache } from "react";
 import { getAddress } from "viem";
 
@@ -91,25 +91,49 @@ export const getUserCreatedAt = cache(async function getUserCreatedAt(
 });
 
 /**
- * Check if a user has a credential account with a password set.
+ * Check if a user has a password set via any provider that challenges
+ * with one at sensitive endpoints (2FA enable/disable, password change).
  * Users who signed up with passkey-only or OAuth won't have a password.
+ *
+ * Covers both the OPAQUE provider (our PAKE flow, stores in
+ * `registrationRecord`) and better-auth's built-in `credential` provider
+ * (stores in `password`). Either presence means the user can be password-
+ * challenged.
  */
 export const userHasPassword = cache(async function userHasPassword(
   userId: string
 ): Promise<boolean> {
   const row = await db
-    .select({ registrationRecord: accounts.registrationRecord })
+    .select({
+      providerId: accounts.providerId,
+      registrationRecord: accounts.registrationRecord,
+      password: accounts.password,
+    })
     .from(accounts)
     .where(
       and(
         eq(accounts.userId, userId),
-        eq(accounts.providerId, "opaque"),
-        isNotNull(accounts.registrationRecord)
+        or(
+          and(
+            eq(accounts.providerId, "opaque"),
+            isNotNull(accounts.registrationRecord)
+          ),
+          and(
+            eq(accounts.providerId, "credential"),
+            isNotNull(accounts.password)
+          )
+        )
       )
     )
     .get();
 
-  return !!row?.registrationRecord && row.registrationRecord.length > 0;
+  if (!row) {
+    return false;
+  }
+  if (row.providerId === "opaque") {
+    return Boolean(row.registrationRecord && row.registrationRecord.length > 0);
+  }
+  return Boolean(row.password && row.password.length > 0);
 });
 
 /**
