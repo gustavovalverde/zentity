@@ -7,7 +7,7 @@ const CRS_HOST_PREFIXES = [
 function rewriteWorkerFetchUrl(url: string, origin: string): string {
   for (const prefix of CRS_HOST_PREFIXES) {
     if (url.startsWith(prefix)) {
-      return `${origin}/api/bb-crs/${url.slice(prefix.length)}`;
+      return `${origin}/api/assets/bb-crs/${url.slice(prefix.length)}`;
     }
   }
 

@@ -13,8 +13,8 @@ import {
   identityBundles,
   identityVerifications,
 } from "@/lib/db/schema/identity";
-import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc4vci";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function seedVerifiedIdentity(userId: string) {
   const verificationId = crypto.randomUUID();

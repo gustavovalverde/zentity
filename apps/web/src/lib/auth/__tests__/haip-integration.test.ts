@@ -14,7 +14,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { auth } from "../auth";
 import {
@@ -23,7 +23,7 @@ import {
   unwrapMetadata,
 } from "../oidc/well-known";
 
-let signJwt: typeof import("../oidc/jwt/jwt-signer").signJwt;
+let signJwt: typeof import("../oidc/jwt-signer").signJwt;
 
 async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
   const allKeys = await db.select().from(jwks);
@@ -37,7 +37,7 @@ async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
 
 describe("HAIP — ES256 signing support", () => {
   beforeAll(async () => {
-    const mod = await import("../oidc/jwt/jwt-signer");
+    const mod = await import("../oidc/jwt-signer");
     signJwt = mod.signJwt;
 
     // Warm up: create ES256 key by inserting a client with ES256 preference
@@ -152,7 +152,7 @@ describe("HAIP — credential issuer metadata", () => {
 
 describe("HAIP — JARM key provisioning", () => {
   it("getJarmDecryptionKey creates and caches ECDH-ES key", async () => {
-    const { getJarmDecryptionKey } = await import("../oidc/jwt/jarm-key");
+    const { getJarmDecryptionKey } = await import("../oidc/haip/jarm-key");
     const jwk = await getJarmDecryptionKey();
 
     expect(jwk.kty).toBe("EC");

@@ -8,10 +8,8 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { env } from "@/env";
-import {
-  POLICY_HASH,
-  POLICY_VERSION,
-} from "@/lib/blockchain/attestation/policy";
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   createVerification,

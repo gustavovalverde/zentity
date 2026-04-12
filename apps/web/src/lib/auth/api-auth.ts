@@ -3,7 +3,8 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/oidc-agent";
+import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -12,9 +13,8 @@ import {
   extractAccessToken,
   type OAuthTokenValidationResult,
   validateOAuthAccessToken,
-} from "@/lib/auth/oidc/oauth-token-validation";
+} from "@/lib/auth/oidc/oauth-request";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
-import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 
 import { auth, type Session } from "./auth";
 

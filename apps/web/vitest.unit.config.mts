@@ -15,11 +15,11 @@ export default defineConfig({
       "@": resolve(fileURLToPath(new URL(".", import.meta.url)), "./src"),
       "client-only": resolve(
         fileURLToPath(new URL(".", import.meta.url)),
-        "./src/test/client-only.ts"
+        "./src/test-utils/client-only.ts"
       ),
       "server-only": resolve(
         fileURLToPath(new URL(".", import.meta.url)),
-        "./src/test/server-only.ts"
+        "./src/test-utils/server-only.ts"
       ),
     },
   },

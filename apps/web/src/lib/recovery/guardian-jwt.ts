@@ -3,7 +3,7 @@ import "server-only";
 import { SignJWT } from "jose";
 
 import { env } from "@/env";
-import { getOrCreateSigningKey } from "@/lib/auth/oidc/jwt/jwt-signer";
+import { getOrCreateSigningKey } from "@/lib/auth/oidc/jwt-signer";
 
 const GUARDIAN_JWT_TTL_SECONDS = 300; // 5 minutes (signing happens immediately)
 const GUARDIAN_JWT_SCOPE = "frost:sign";

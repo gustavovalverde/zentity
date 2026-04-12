@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/post-quantum";
 import {
   base64UrlToBytes,
   bytesToBase64Url,
-} from "@/lib/privacy/primitives/base64";
-import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/ml-dsa";
+} from "@/lib/privacy/primitives/symmetric";
 
 function buildJwt(
   header: Record<string, unknown>,

@@ -16,6 +16,22 @@ import {
 } from "jose";
 
 import { env } from "@/env";
+import {
+  buildAapProfile,
+  buildDelegationClaim,
+  loadAapProfileForTokenJti,
+  loadStoredAapSnapshotForTokenJti,
+  persistAapSnapshotForToken,
+  readAapProfileFromPayload,
+} from "@/lib/agents/aap-profile";
+import {
+  AGENT_BOOTSTRAP_SCOPE_SET,
+  AGENT_BOOTSTRAP_TOKEN_USE,
+} from "@/lib/agents/oidc-agent";
+import {
+  resolveAgentSessionIdFromPairwiseSub,
+  resolveAgentSubForClient,
+} from "@/lib/agents/pairwise-agent";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import {
   buildOidcAssuranceClaims,
@@ -26,10 +42,6 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
 import {
-  AGENT_BOOTSTRAP_SCOPE_SET,
-  AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/auth/oidc/agent";
-import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -38,28 +50,18 @@ import {
   getClientSigningAlg,
   getOrCreateSigningKey,
   signJwt,
-} from "@/lib/auth/oidc/jwt/jwt-signer";
+} from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
-import {
-  buildAapProfile,
-  buildDelegationClaim,
-  loadAapProfileForTokenJti,
-  loadStoredAapSnapshotForTokenJti,
-  persistAapSnapshotForToken,
-  readAapProfileFromPayload,
-} from "@/lib/ciba/aap-profile";
-import {
-  resolveAgentSessionIdFromPairwiseSub,
-  resolveAgentSubForClient,
-} from "@/lib/ciba/pairwise-agent";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  jwks as jwksTable,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";

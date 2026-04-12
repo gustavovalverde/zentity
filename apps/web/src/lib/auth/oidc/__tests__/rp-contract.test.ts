@@ -13,7 +13,7 @@ import { createLocalJWKSet, jwtVerify } from "jose";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { PROOF_DISCLOSURE_KEYS } from "../claims";
 
@@ -28,7 +28,7 @@ import {
   PROOF_SCOPES,
 } from "../disclosure-registry";
 
-let signJwt: typeof import("../jwt/jwt-signer").signJwt;
+let signJwt: typeof import("../jwt-signer").signJwt;
 
 // ---------------------------------------------------------------------------
 // Source file readers — no mirrors, no stale copies
@@ -515,7 +515,7 @@ describe("RP contract — id_token signing", () => {
   }
 
   beforeAll(async () => {
-    const mod = await import("../jwt/jwt-signer");
+    const mod = await import("../jwt-signer");
     signJwt = mod.signJwt;
     await signJwt({ aud: "warmup", sub: "warmup" });
     await signJwt({ scope: "openid", sub: "warmup" });

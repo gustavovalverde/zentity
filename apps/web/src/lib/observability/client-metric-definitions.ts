@@ -1,7 +1,7 @@
 /**
  * Shared client metric definitions. Shared between the browser emitter
  * (src/lib/observability/client-metrics.ts — "use client") and the server
- * ingestion route (src/app/api/metrics/client/route.ts). Kept separate from
+ * ingestion route (src/app/api/status/metrics/client/route.ts). Kept separate from
  * the emitter so server code can import it without pulling a client module.
  */
 

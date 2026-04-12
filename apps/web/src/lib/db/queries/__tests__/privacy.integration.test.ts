@@ -12,9 +12,9 @@ import {
   insertSignedClaim,
 } from "@/lib/db/queries/privacy";
 import { encryptedAttributes } from "@/lib/db/schema/privacy";
-import { encodeAad } from "@/lib/privacy/primitives/aad";
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { encodeAad } from "@/lib/privacy/primitives/symmetric";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 function expectedHash(
   ciphertext: Buffer,

@@ -17,7 +17,7 @@ interface ClientMetricEvent {
   value: number;
 }
 
-const ENDPOINT = "/api/metrics/client";
+const ENDPOINT = "/api/status/metrics/client";
 const MAX_BATCH_SIZE = 20;
 const MAX_QUEUE_SIZE = 100;
 const FLUSH_INTERVAL_MS = 5000;

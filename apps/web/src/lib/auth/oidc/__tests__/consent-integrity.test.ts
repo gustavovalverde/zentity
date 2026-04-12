@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
+import { computeConsentHmac } from "@/lib/auth/oidc/claims";
 
 const SECRET = "test-secret-at-least-32-characters-long";
 

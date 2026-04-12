@@ -10,7 +10,7 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { logError, logWarn } from "@/lib/logging/error-logger";
 
-import { signJwt } from "./jwt/jwt-signer";
+import { signJwt } from "./jwt-signer";
 import { resolveSubForClient } from "./pairwise";
 import { getAuthIssuer } from "./well-known";
 

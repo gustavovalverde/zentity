@@ -1,11 +1,11 @@
 "use client";
 
-import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 import type {
   AgentIdentitySummary,
   CibaRequestDetails,
   RegisteredAgentInfo,
-} from "@/lib/ciba/resolve-approval";
+} from "@/lib/agents/resolve-approval";
+import type { AuthMode } from "@/lib/auth/detect-auth-mode";
 
 import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";

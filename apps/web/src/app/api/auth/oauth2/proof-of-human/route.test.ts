@@ -11,11 +11,11 @@ const mocks = vi.hoisted(() => ({
   validateOpaqueAccessTokenDpop: vi.fn(),
 }));
 
-vi.mock("@/lib/trpc/jwt-session", () => ({
+vi.mock("@/lib/auth/jwt-verify", () => ({
   verifyAccessToken: mocks.verifyAccessToken,
 }));
 
-vi.mock("@/lib/auth/oidc/jwt/jwt-signer", () => ({
+vi.mock("@/lib/auth/oidc/jwt-signer", () => ({
   signJwt: mocks.signJwt,
 }));
 

@@ -39,9 +39,9 @@ import {
 import {
   type AuthChallengeSession,
   authChallengeSessions,
-} from "@/lib/db/schema/auth-challenge";
-import { haipPushedRequests } from "@/lib/db/schema/haip";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+  haipPushedRequests,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import { getOpaqueStateKey } from "@/lib/privacy/primitives/derived-keys";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;

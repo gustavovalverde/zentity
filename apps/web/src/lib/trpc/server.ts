@@ -23,6 +23,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
+import { verifyAccessToken } from "@/lib/auth/jwt-verify";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -39,7 +40,6 @@ import {
   resolveRequestContext,
 } from "@/lib/observability/request-context";
 import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
-import { verifyAccessToken } from "@/lib/trpc/jwt-session";
 
 type SpanAttributes = Record<string, string | number | boolean>;
 

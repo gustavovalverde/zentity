@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/oidc-agent";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/auth/oidc/agent";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -12,12 +12,12 @@ import {
   oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import {
   createTestDpopKeyPair,
   type DpopKeyPair,
   postTokenWithDpop,
-} from "@/test/dpop-test-utils";
+} from "@/test-utils/dpop-test-utils";
 
 const APP_URL = "http://localhost:3000";
 const CLIENT_ID = "pairwise-bootstrap-client";

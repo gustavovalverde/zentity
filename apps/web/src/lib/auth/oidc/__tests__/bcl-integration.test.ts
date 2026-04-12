@@ -6,13 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  jwks as jwksTable,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
+} from "@/test-utils/db-test-utils";
 
 const BCL_URI = "https://rp.example.com/backchannel-logout";
 const BCL_CLIENT_ID = "bcl-test-client";

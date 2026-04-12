@@ -24,7 +24,8 @@
     "public/coi-serviceworker.js",
     "public/push-sw.js",
     "e2e/**",
-    "src/test/**"
+    "src/test-utils/**",
+    "src/**/*.d.ts"
   ],
   "ignoreDependencies": [
     "@commitlint/cli",

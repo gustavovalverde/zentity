@@ -13,7 +13,7 @@ import {
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
 import { identityVerifications } from "@/lib/db/schema/identity";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("identity queries", () => {
   beforeEach(async () => {

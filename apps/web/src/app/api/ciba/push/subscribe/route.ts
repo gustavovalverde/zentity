@@ -4,7 +4,7 @@ import { z } from "zod";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { db } from "@/lib/db/connection";
-import { pushSubscriptions } from "@/lib/db/schema/push";
+import { pushSubscriptions } from "@/lib/db/schema/ciba";
 import { cibaLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 
 export const runtime = "nodejs";

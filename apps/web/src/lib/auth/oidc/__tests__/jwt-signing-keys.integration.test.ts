@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
-import { resetDatabase } from "@/test/db-test-utils";
+import { jwks } from "@/lib/db/schema/oauth-provider";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
-import { getJwtSigningKeys } from "../jwt/jwt-signing-keys";
+import { getJwtSigningKeys } from "../jwt-signer";
 
 describe("getJwtSigningKeys", () => {
   beforeEach(async () => {

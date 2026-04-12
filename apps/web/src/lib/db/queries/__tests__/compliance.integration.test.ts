@@ -3,9 +3,8 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import { rpEncryptionKeys } from "@/lib/db/schema/compliance";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { resetDatabase } from "@/test/db-test-utils";
+import { oauthClients, rpEncryptionKeys } from "@/lib/db/schema/oauth-provider";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
 import {
   createRpEncryptionKey,

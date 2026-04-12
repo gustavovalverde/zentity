@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AgentConfiguration,
   agentConfigurationSchema,
-} from "@/lib/auth/oidc/agent";
+} from "@/lib/agents/oidc-agent";
 
 /**
  * Agent Auth Protocol — Discovery Document Integration Tests

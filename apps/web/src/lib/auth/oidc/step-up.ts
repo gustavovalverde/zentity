@@ -21,10 +21,12 @@ import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
-import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { haipPushedRequests } from "@/lib/db/schema/haip";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  authChallengeSessions,
+  haipPushedRequests,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 
 // ---------------------------------------------------------------------------
 // Pure helpers

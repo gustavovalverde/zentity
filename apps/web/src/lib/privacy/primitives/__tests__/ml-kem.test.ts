@@ -7,7 +7,7 @@ import {
   mlKemEncapsulate,
   mlKemGetPublicKey,
   mlKemKeygen,
-} from "@/lib/privacy/primitives/ml-kem";
+} from "@/lib/privacy/primitives/post-quantum";
 
 const ML_KEM_PUBLIC_KEY_BYTES = 1184;
 const ML_KEM_CIPHERTEXT_BYTES = 1088;

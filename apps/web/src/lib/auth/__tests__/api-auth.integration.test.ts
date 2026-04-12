@@ -22,7 +22,7 @@ vi.mock("@better-auth/haip", () => ({
   createDpopAccessTokenValidator: mockCreateDpopAccessTokenValidator,
 }));
 
-vi.mock("@/lib/auth/oidc/oauth-token-validation", () => ({
+vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   extractAccessToken: mockExtractAccessToken,
   validateOAuthAccessToken: mockValidateOAuthAccessToken,
 }));
@@ -37,7 +37,7 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/trpc/jwt-session", () => ({
+vi.mock("@/lib/auth/jwt-verify", () => ({
   verifyAccessToken: mockVerifyAccessToken,
   verifyAuthIssuedJwt: mockVerifyAuthIssuedJwt,
 }));

@@ -13,7 +13,7 @@ vi.mock("@/lib/auth/auth", () => ({
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 import { POST as intentRoute } from "../intent/route";
 import { POST as stageRoute } from "../stage/route";

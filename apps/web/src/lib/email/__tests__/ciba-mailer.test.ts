@@ -6,12 +6,9 @@ const mockIsResendConfigured = vi.fn();
 const mockIsMailpitConfigured = vi.fn();
 const mockDbGet = vi.fn();
 
-vi.mock("@/lib/email/resend", () => ({
+vi.mock("@/lib/email/transport", () => ({
   isResendConfigured: () => mockIsResendConfigured(),
   sendResendMessage: (...args: unknown[]) => mockSendResendMessage(...args),
-}));
-
-vi.mock("@/lib/email/mailpit", () => ({
   isMailpitConfigured: () => mockIsMailpitConfigured(),
   sendMailpitMessage: (...args: unknown[]) => mockSendMailpitMessage(...args),
 }));

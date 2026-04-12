@@ -2,8 +2,12 @@ import "server-only";
 
 import { env } from "@/env";
 
-import { isMailpitConfigured, sendMailpitMessage } from "./mailpit";
-import { isResendConfigured, sendResendMessage } from "./resend";
+import {
+  isMailpitConfigured,
+  isResendConfigured,
+  sendMailpitMessage,
+  sendResendMessage,
+} from "./transport";
 
 interface GuardianApprovalToken {
   email: string;

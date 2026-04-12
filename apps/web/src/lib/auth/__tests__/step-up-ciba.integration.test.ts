@@ -9,8 +9,8 @@ import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";

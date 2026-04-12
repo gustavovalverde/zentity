@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { getSignerPin, pinSignerIdentity } from "@/lib/db/queries/recovery";
-import { resetDatabase } from "@/test/db-test-utils";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("recovery signer pin queries", () => {
   beforeEach(async () => {

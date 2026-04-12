@@ -14,10 +14,10 @@ import {
   hasIdentityPayload,
   pendingOAuthIdentityKey,
 } from "@/lib/auth/oidc/identity-delivery";
-import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-query";
+import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "oauth-disclosure-test-client";
 

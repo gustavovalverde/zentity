@@ -10,8 +10,8 @@ import crypto from "node:crypto";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { encodeAad } from "@/lib/privacy/primitives/aad";
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
+import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
 import { db } from "../connection";
 import {

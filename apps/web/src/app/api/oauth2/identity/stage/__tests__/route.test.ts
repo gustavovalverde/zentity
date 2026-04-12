@@ -19,7 +19,7 @@ const { mockComputeOAuthRequestKey, mockVerifySignedOAuthQuery } = vi.hoisted(
 vi.mock("@/lib/auth/oidc/disclosure-context", () => ({
   stagePendingOauthDisclosure: mockStagePendingOauthDisclosure,
 }));
-vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   computeOAuthRequestKey: mockComputeOAuthRequestKey,
   parseRequestedScopes: (queryParams: URLSearchParams) =>
     (queryParams.get("scope") ?? "")

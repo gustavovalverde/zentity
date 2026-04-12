@@ -9,7 +9,7 @@ import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 import {
   computePairwiseSub,

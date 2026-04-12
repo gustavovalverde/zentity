@@ -21,7 +21,7 @@ describe("key-vault", () => {
     it("encrypt/decrypt round-trip preserves plaintext", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
       const { encryptPrivateKey, decryptPrivateKey } = await import(
-        "../jwt/key-vault"
+        "../jwt-signer"
       );
 
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
@@ -34,7 +34,7 @@ describe("key-vault", () => {
 
     it("encrypted output is valid JSON envelope", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      const { encryptPrivateKey } = await import("../jwt/key-vault");
+      const { encryptPrivateKey } = await import("../jwt-signer");
 
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       const envelope = JSON.parse(encrypted);
@@ -45,7 +45,7 @@ describe("key-vault", () => {
 
     it("different encryptions produce different ciphertexts (random IV)", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      const { encryptPrivateKey } = await import("../jwt/key-vault");
+      const { encryptPrivateKey } = await import("../jwt-signer");
 
       const a = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       const b = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
@@ -54,7 +54,7 @@ describe("key-vault", () => {
 
     it("wrong KEK fails decryption", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      const { encryptPrivateKey } = await import("../jwt/key-vault");
+      const { encryptPrivateKey } = await import("../jwt-signer");
       const encrypted = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
 
       vi.stubEnv(
@@ -62,14 +62,14 @@ describe("key-vault", () => {
         "a-different-key-that-is-also-32-chars-long"
       );
       vi.resetModules();
-      const { decryptPrivateKey } = await import("../jwt/key-vault");
+      const { decryptPrivateKey } = await import("../jwt-signer");
 
       expect(() => decryptPrivateKey(encrypted)).toThrow();
     });
 
     it("plaintext keys are returned as-is by decrypt (migration support)", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      const { decryptPrivateKey } = await import("../jwt/key-vault");
+      const { decryptPrivateKey } = await import("../jwt-signer");
 
       const result = decryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
@@ -79,7 +79,7 @@ describe("key-vault", () => {
   describe("without KEY_ENCRYPTION_KEY", () => {
     it("encrypt returns plaintext unchanged", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
-      const { encryptPrivateKey } = await import("../jwt/key-vault");
+      const { encryptPrivateKey } = await import("../jwt-signer");
 
       const result = encryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
@@ -87,7 +87,7 @@ describe("key-vault", () => {
 
     it("decrypt returns plaintext unchanged", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
-      const { decryptPrivateKey } = await import("../jwt/key-vault");
+      const { decryptPrivateKey } = await import("../jwt-signer");
 
       const result = decryptPrivateKey(SAMPLE_PRIVATE_KEY);
       expect(result).toBe(SAMPLE_PRIVATE_KEY);
@@ -95,12 +95,12 @@ describe("key-vault", () => {
 
     it("decrypt throws if key is encrypted but no KEK is set", async () => {
       vi.stubEnv("KEY_ENCRYPTION_KEY", TEST_KEK);
-      const mod1 = await import("../jwt/key-vault");
+      const mod1 = await import("../jwt-signer");
       const encrypted = mod1.encryptPrivateKey(SAMPLE_PRIVATE_KEY);
 
       vi.stubEnv("KEY_ENCRYPTION_KEY", "");
       vi.resetModules();
-      const { decryptPrivateKey } = await import("../jwt/key-vault");
+      const { decryptPrivateKey } = await import("../jwt-signer");
 
       expect(() => decryptPrivateKey(encrypted)).toThrow(
         "KEY_ENCRYPTION_KEY is required"

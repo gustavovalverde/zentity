@@ -22,17 +22,17 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/trpc/jwt-session", () => ({
+vi.mock("@/lib/auth/jwt-verify", () => ({
   verifyAuthIssuedJwt: vi.fn(),
 }));
 
-import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
 
 import {
   computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
-} from "../oidc/oauth-token-validation";
+} from "../oidc/oauth-request";
 
 // Regex for validating SHA-256 hex fingerprint (64 hex characters)
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;

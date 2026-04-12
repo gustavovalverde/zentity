@@ -2,10 +2,8 @@ import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import { agentHosts, agentSessions } from "./agent";
-import { users } from "./auth";
-import { authenticationContexts } from "./authentication-context";
+import { authenticationContexts, defaultId, users } from "./auth";
 import { oauthClients } from "./oauth-provider";
-import { defaultId } from "./utils";
 
 export const cibaRequests = sqliteTable(
   "ciba_request",
@@ -74,3 +72,27 @@ export const cibaRequests = sqliteTable(
 
 export type CibaRequest = typeof cibaRequests.$inferSelect;
 export type NewCibaRequest = typeof cibaRequests.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Web Push subscriptions (used for CIBA approval notifications)
+// ---------------------------------------------------------------------------
+
+export const pushSubscriptions = sqliteTable(
+  "push_subscription",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("push_sub_user_id_idx").on(table.userId)]
+);
+
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;

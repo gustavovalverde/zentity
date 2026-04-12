@@ -37,6 +37,18 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
+import {
+  loadAapProfileForCibaRequest,
+  persistAapSnapshotForCibaToken,
+} from "@/lib/agents/aap-profile";
+import { bindAgentAssertionToCibaRequest } from "@/lib/agents/agent-identity";
+import {
+  deriveCapabilityName,
+  evaluateSessionGrants,
+  normalizeAuthorizationDetails,
+} from "@/lib/agents/approval-engine";
+import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/agents/oidc-agent";
+import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import {
@@ -46,7 +58,6 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/auth/oidc/agent";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
@@ -55,12 +66,11 @@ import { isUrlClientId, resolveCimdClient } from "@/lib/auth/oidc/cimd";
 import {
   buildOidcVerifiedClaims,
   buildProofClaims,
+  computeConsentHmac,
   filterClaimsByRequest,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/claims";
-import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
 import {
-  ACCESS_TOKEN_EXPIRES_IN_SECONDS,
   claimsRequestForEndpoint,
   consumeReleaseIdentityPayload,
   DisclosureBindingError,
@@ -82,9 +92,10 @@ import {
   OAUTH_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure-registry";
-import { getDpopNonceStore } from "@/lib/auth/oidc/dpop-nonce-store";
+import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
+import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/protected-resources";
+import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
 import {
   loadX5cChain,
@@ -94,10 +105,8 @@ import {
   finalReleaseIdentityKey,
   hasIdentityPayload,
 } from "@/lib/auth/oidc/identity-delivery";
-import { getJarmDecryptionKey } from "@/lib/auth/oidc/jwt/jarm-key";
-import { signJwt } from "@/lib/auth/oidc/jwt/jwt-signer";
-import { getJwtSigningKeys } from "@/lib/auth/oidc/jwt/jwt-signing-keys";
-import { validateResourceUri } from "@/lib/auth/oidc/oauth-query";
+import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
@@ -109,18 +118,6 @@ import {
 } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
-import {
-  loadAapProfileForCibaRequest,
-  persistAapSnapshotForCibaToken,
-} from "@/lib/ciba/aap-profile";
-import { bindAgentAssertionToCibaRequest } from "@/lib/ciba/agent-binding";
-import {
-  deriveCapabilityName,
-  evaluateSessionGrants,
-  normalizeAuthorizationDetails,
-} from "@/lib/ciba/grant-evaluation";
-import { buildCibaPushPayload } from "@/lib/ciba/push-payload";
-import { sendWebPush } from "@/lib/ciba/push-sender";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getLatestVerification } from "@/lib/db/queries/identity";
@@ -140,19 +137,20 @@ import {
   walletAddresses,
 } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { haipPushedRequests, haipVpSessions } from "@/lib/db/schema/haip";
-import { jwks } from "@/lib/db/schema/jwks";
 import {
+  haipPushedRequests,
+  haipVpSessions,
+  jwks,
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
-import { oidc4idaVerifiedClaims } from "@/lib/db/schema/oidc4ida";
 import {
+  oidc4idaVerifiedClaims,
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
-} from "@/lib/db/schema/oidc4vci";
+} from "@/lib/db/schema/oidc-credentials";
 import {
   invitations,
   members,
@@ -1710,7 +1708,7 @@ export const auth = betterAuth({
     }),
     oauthProvider({
       silenceWarnings: { oauthAuthServerConfig: true },
-      accessTokenExpiresIn: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+      accessTokenExpiresIn: 3600,
       tokenBinding: dpopTokenBinding,
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {
@@ -1824,10 +1822,7 @@ export const auth = betterAuth({
         }
 
         if (referenceId && (await hasReleaseContext(referenceId))) {
-          await touchReleaseContext(
-            referenceId,
-            Date.now() + ACCESS_TOKEN_EXPIRES_IN_SECONDS * 1000
-          );
+          await touchReleaseContext(referenceId, Date.now() + 3600 * 1000);
           claims.zentity_release_id = referenceId;
         }
 
@@ -2050,7 +2045,7 @@ export const auth = betterAuth({
         if (releaseContext) {
           await touchReleaseContext(
             cibaRequest.authReqId,
-            Date.now() + ACCESS_TOKEN_EXPIRES_IN_SECONDS * 1000
+            Date.now() + 3600 * 1000
           );
           claims.zentity_release_id = cibaRequest.authReqId;
         }

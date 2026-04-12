@@ -18,7 +18,7 @@ const { mockVerifySignedOAuthQuery } = vi.hoisted(() => ({
   mockVerifySignedOAuthQuery: vi.fn<(q: string) => Promise<URLSearchParams>>(),
 }));
 
-vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
   parseRequestedScopes: (params: URLSearchParams) =>
     (params.get("scope") ?? "")

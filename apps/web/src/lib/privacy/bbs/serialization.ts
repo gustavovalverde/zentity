@@ -13,7 +13,10 @@ import type {
   WalletIdentitySubject,
 } from "./types";
 
-import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
+import {
+  base64ToBytes,
+  bytesToBase64,
+} from "@/lib/privacy/primitives/symmetric";
 
 /**
  * Serialized BBS+ credential for storage/transport.

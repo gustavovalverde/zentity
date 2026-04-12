@@ -3,13 +3,13 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
+import { verifyAccessToken } from "@/lib/auth/jwt-verify";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { signJwt } from "@/lib/auth/oidc/jwt/jwt-signer";
+import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
-import { verifyAccessToken } from "@/lib/trpc/jwt-session";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const TRAILING_SLASHES = /\/+$/;

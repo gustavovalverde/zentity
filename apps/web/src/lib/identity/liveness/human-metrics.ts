@@ -4,7 +4,7 @@ import {
   type HumanDetectionResult,
   type HumanFaceResult,
   normalizeEmbedding,
-} from "@/types/human";
+} from "@/lib/identity/liveness/human";
 
 type FacingDirection = "left" | "right" | "center";
 

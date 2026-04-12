@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
   cleanupExpiredKeys,
   rotateSigningKey,
-} from "@/lib/auth/oidc/jwt/jwt-signer";
+} from "@/lib/auth/oidc/jwt-signer";
 import { reconcilePendingRevocations } from "@/lib/db/queries/attestation";
 
 import { adminProcedure, router } from "../server";

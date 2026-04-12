@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeOAuthRequestKey } from "../oauth-query";
+import { computeOAuthRequestKey } from "../oauth-request";
 
 describe("computeOAuthRequestKey", () => {
   it("normalizes equivalent OAuth queries to the same request key", () => {

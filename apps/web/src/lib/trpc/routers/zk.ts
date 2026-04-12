@@ -24,9 +24,9 @@ import { env } from "@/env";
 import {
   ISSUER_ID,
   MIN_AGE_POLICY,
-  POLICY_HASH,
   POLICY_VERSION,
 } from "@/lib/blockchain/attestation/policy";
+import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   getSelectedVerification,
@@ -70,7 +70,7 @@ import {
 import { WALLET_CREDENTIAL_CLAIM_ORDER } from "@/lib/privacy/bbs/types";
 import { verifyPresentation as verifyBbsPresentation } from "@/lib/privacy/bbs/verifier";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
-import { bytesToBase64 } from "@/lib/privacy/primitives/base64";
+import { bytesToBase64 } from "@/lib/privacy/primitives/symmetric";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
 import {
   consumeChallenge,

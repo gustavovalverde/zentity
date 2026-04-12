@@ -8,7 +8,7 @@ import type {
 import type {
   AuthenticationContext,
   NewAuthenticationContext,
-} from "@/lib/db/schema/authentication-context";
+} from "@/lib/db/schema/auth";
 
 import { desc, eq } from "drizzle-orm";
 
@@ -18,8 +18,7 @@ import {
 } from "@/lib/assurance/compute";
 import { loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { db } from "@/lib/db/connection";
-import { sessions } from "@/lib/db/schema/auth";
-import { authenticationContexts } from "@/lib/db/schema/authentication-context";
+import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
 export const AUTHENTICATION_CONTEXT_CLAIM = "zentity_auth_context_id";

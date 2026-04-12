@@ -11,7 +11,7 @@ import {
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("attestation queries", () => {
   beforeEach(async () => {

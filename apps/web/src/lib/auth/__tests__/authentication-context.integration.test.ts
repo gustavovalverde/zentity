@@ -8,9 +8,8 @@ import {
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
-import { sessions } from "@/lib/db/schema/auth";
-import { authenticationContexts } from "@/lib/db/schema/authentication-context";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function insertSession(userId: string, createdAt: string) {
   const sessionId = crypto.randomUUID();

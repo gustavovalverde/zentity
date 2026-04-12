@@ -11,14 +11,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { env } from "@/env";
-import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
-import { bytesToBase64 } from "@/lib/privacy/primitives/base64";
 import {
   ML_KEM_SECRET_KEY_BYTES,
   mlKemDecapsulate,
   mlKemGetPublicKey,
   mlKemKeygen,
-} from "@/lib/privacy/primitives/ml-kem";
+} from "@/lib/privacy/primitives/post-quantum";
+import {
+  bytesToBase64,
+  encodeAad,
+  RECOVERY_AAD_CONTEXT,
+} from "@/lib/privacy/primitives/symmetric";
 
 const KEY_ID = "v1";
 const KEY_PATH = join(process.cwd(), ".data/recovery-key.bin");

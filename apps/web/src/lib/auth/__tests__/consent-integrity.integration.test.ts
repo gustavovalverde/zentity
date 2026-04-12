@@ -3,11 +3,11 @@ import crypto from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { computeConsentHmac } from "@/lib/auth/oidc/consent-integrity";
+import { computeConsentHmac } from "@/lib/auth/oidc/claims";
 import { db } from "@/lib/db/connection";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function createTestClient(clientId: string) {
   await db

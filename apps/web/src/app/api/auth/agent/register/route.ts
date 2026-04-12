@@ -2,17 +2,17 @@ import { eq } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
-import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
-import {
-  AGENT_SESSION_REGISTER_SCOPE,
-  registerSessionRequestSchema,
-} from "@/lib/auth/oidc/agent";
-import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
 import {
   createPendingSessionGrants,
   ensureDefaultHostPolicies,
   seedSessionGrantsFromHostPolicies,
-} from "@/lib/ciba/grant-evaluation";
+} from "@/lib/agents/approval-engine";
+import {
+  AGENT_SESSION_REGISTER_SCOPE,
+  registerSessionRequestSchema,
+} from "@/lib/agents/oidc-agent";
+import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
+import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import {

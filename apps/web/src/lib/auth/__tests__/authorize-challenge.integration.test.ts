@@ -13,19 +13,21 @@ import { auth } from "@/lib/auth/auth";
 import { createAuthenticationContext } from "@/lib/auth/authentication-context";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
-import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { identityBundles } from "@/lib/db/schema/identity";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  authChallengeSessions,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
+} from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
   createTestDpopKeyPair,
   postTokenWithDpop,
-} from "@/test/dpop-test-utils";
+} from "@/test-utils/dpop-test-utils";
 
 const CHALLENGE_URL = "http://localhost:3000/api/oauth2/authorize-challenge";
 const TEST_CLIENT_ID = "fpa-test-client";

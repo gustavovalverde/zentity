@@ -23,6 +23,7 @@ import {
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
+import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -40,7 +41,6 @@ import {
   signedClaims,
   zkChallenges,
 } from "../schema/privacy";
-import { pushSubscriptions } from "../schema/push";
 import { getSignedClaimTypesByUserAndVerification } from "./privacy";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
@@ -867,7 +867,9 @@ export async function revokeIdentity(
       .run();
 
     // Step 3: Revoke OID4VCI issued credentials (status 0 → 1)
-    const { oidc4vciIssuedCredentials } = await import("../schema/oidc4vci");
+    const { oidc4vciIssuedCredentials } = await import(
+      "../schema/oidc-credentials"
+    );
     const credResult = await tx
       .update(oidc4vciIssuedCredentials)
       .set({

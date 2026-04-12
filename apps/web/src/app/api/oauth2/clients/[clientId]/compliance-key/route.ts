@@ -19,7 +19,7 @@ import {
   computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
-} from "@/lib/auth/oidc/oauth-token-validation";
+} from "@/lib/auth/oidc/oauth-request";
 import {
   createRpEncryptionKey,
   getActiveRpEncryptionKey,
@@ -28,7 +28,7 @@ import {
 } from "@/lib/db/queries/compliance";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
-import { isValidMlKemPublicKey } from "@/lib/privacy/primitives/ml-kem";
+import { isValidMlKemPublicKey } from "@/lib/privacy/primitives/post-quantum";
 
 // ML-KEM-768 public key: 1184 bytes raw → ~1580 chars base64
 const RegisterKeySchema = z.object({

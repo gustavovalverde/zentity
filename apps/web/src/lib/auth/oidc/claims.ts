@@ -1,16 +1,22 @@
 /**
- * OIDC Claims: proof claims construction and the OIDC `claims` parameter.
+ * OIDC Claims: proof claims construction, the OIDC `claims` parameter, and
+ * consent-scope HMAC integrity.
  *
- * Two concerns, one domain:
  * - buildProofClaims / buildOidcVerifiedClaims: pull verification state into
  *   OIDC claim objects for id_token and userinfo.
  * - parseClaimsParameter / filterClaimsByRequest: parse and apply the OIDC
  *   Core `claims` request parameter to selectively disclose per endpoint.
+ * - computeConsentHmac: HMAC-SHA256 over a consent record to detect scope
+ *   tampering between record creation and disclosure.
  */
+
 import type { ComplianceLevel } from "@/lib/identity/verification/compliance";
+
+import { createHmac } from "node:crypto";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
 // ---------------------------------------------------------------------------
 // Proof claims construction
@@ -228,4 +234,33 @@ export function filterClaimsByRequest(
   }
 
   return filtered;
+}
+
+// ---------------------------------------------------------------------------
+// Consent-scope HMAC integrity
+// ---------------------------------------------------------------------------
+
+const CONSENT_HMAC_CONTEXT = "zentity-consent-scope";
+
+/**
+ * HMAC-SHA256 over consent record fields. Length-prefixed via encodeAad to
+ * prevent field-concatenation collisions (clientId="ab"+userId="cd" vs
+ * "abc"+"d"). Scopes sorted so insertion order doesn't affect the tag.
+ */
+export function computeConsentHmac(
+  secret: string,
+  userId: string,
+  clientId: string,
+  referenceId: string | null,
+  scopes: string[]
+): string {
+  const sortedScopes = [...scopes].sort().join(" ");
+  const aad = encodeAad([
+    CONSENT_HMAC_CONTEXT,
+    userId,
+    clientId,
+    referenceId ?? "",
+    sortedScopes,
+  ]);
+  return createHmac("sha256", secret).update(aad).digest("hex");
 }

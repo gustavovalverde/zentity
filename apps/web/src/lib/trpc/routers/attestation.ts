@@ -11,10 +11,8 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import z from "zod";
 
-import {
-  POLICY_HASH,
-  POLICY_VERSION,
-} from "@/lib/blockchain/attestation/policy";
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { computeProofSetHash } from "@/lib/blockchain/attestation/proof-set-hash";
 import {
   canCreateProvider,

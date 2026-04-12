@@ -7,7 +7,7 @@ import {
   pinRecoveryKey,
   upsertRecoverySecretWrapper,
 } from "@/lib/db/queries/recovery";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 import { getRecoveryKeyFingerprint } from "../recovery-keys";
 

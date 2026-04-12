@@ -10,8 +10,8 @@ vi.mock("@/lib/auth/api-auth", () => ({
 }));
 
 import { db } from "@/lib/db/connection";
-import { pushSubscriptions } from "@/lib/db/schema/push";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { pushSubscriptions } from "@/lib/db/schema/ciba";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 import { POST as subscribe } from "../subscribe/route";
 import { POST as unsubscribe } from "../unsubscribe/route";

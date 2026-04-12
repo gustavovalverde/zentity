@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { auth } from "@/lib/auth/auth";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { resetDatabase } from "@/test/db-test-utils";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
 const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
 const CIMD_CLIENT_ID = "https://mcp-client.test/oauth";

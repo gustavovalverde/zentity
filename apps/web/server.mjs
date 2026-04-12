@@ -60,7 +60,7 @@ const { handleLivenessConnection } = await import(
 
 // Import OIDC4VCI wallet client setup
 const { ensureWalletClientExists } = await import(
-  "./src/lib/auth/oidc/wallet-client.ts"
+  "./src/lib/auth/oidc/wallet-client-registration.ts"
 );
 
 const dev = process.env.NODE_ENV !== "production";

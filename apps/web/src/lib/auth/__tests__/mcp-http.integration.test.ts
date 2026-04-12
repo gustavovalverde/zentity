@@ -27,7 +27,7 @@ import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
+} from "@/test-utils/db-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const MCP_PORT = 3300;

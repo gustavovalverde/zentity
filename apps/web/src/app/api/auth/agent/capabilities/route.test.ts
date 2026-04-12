@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resetDatabase } from "@/test/db-test-utils";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
 interface CapabilityRecord {
   description: string;

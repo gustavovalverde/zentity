@@ -30,7 +30,7 @@ export default function ErrorPage({
     };
 
     const flowId = getFlowId();
-    fetch("/api/log-client-error", {
+    fetch("/api/status/log-client-error", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

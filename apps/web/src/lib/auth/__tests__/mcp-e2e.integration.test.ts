@@ -12,8 +12,8 @@ import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+} from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const BASE = "http://localhost:3000";
 const PAR_URL = `${BASE}/api/auth/oauth2/par`;

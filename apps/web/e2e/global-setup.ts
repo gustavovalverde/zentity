@@ -48,7 +48,7 @@ async function postWithRetries(
 
 async function waitForServer(api: ApiContext) {
   for (let attempt = 0; attempt < 10; attempt++) {
-    const response = await api.get("/api/health");
+    const response = await api.get("/api/status/health");
     if (response.ok()) {
       return;
     }
@@ -56,7 +56,7 @@ async function waitForServer(api: ApiContext) {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  throw new Error("E2E global setup failed: /api/health not ready");
+  throw new Error("E2E global setup failed: /api/status/health not ready");
 }
 
 interface AuthSeed {

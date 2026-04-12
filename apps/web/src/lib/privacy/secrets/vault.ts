@@ -36,9 +36,13 @@ import {
   WALLET_CREDENTIAL_PREFIX,
   wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials/wallet";
-import { encodeAad, RECOVERY_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
-import { base64ToBytes, bytesToBase64 } from "@/lib/privacy/primitives/base64";
-import { mlKemEncapsulate } from "@/lib/privacy/primitives/ml-kem";
+import { mlKemEncapsulate } from "@/lib/privacy/primitives/post-quantum";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  encodeAad,
+  RECOVERY_AAD_CONTEXT,
+} from "@/lib/privacy/primitives/symmetric";
 import { trpc } from "@/lib/trpc/client";
 
 import { decryptWithDek, encryptWithDek, generateDek } from "./envelope";

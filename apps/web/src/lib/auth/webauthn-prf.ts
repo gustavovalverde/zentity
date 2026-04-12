@@ -8,7 +8,7 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   base64UrlToBytes,
   bytesToBase64Url,
-} from "@/lib/privacy/primitives/base64";
+} from "@/lib/privacy/primitives/symmetric";
 
 export interface PrfSupportStatus {
   reason?: string | undefined;

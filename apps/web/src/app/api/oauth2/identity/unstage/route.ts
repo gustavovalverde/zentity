@@ -7,7 +7,7 @@ import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-delivery";
 import {
   computeOAuthRequestKey,
   verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+} from "@/lib/auth/oidc/oauth-request";
 
 const UnstageSchema = z.object({
   oauth_query: z.string().min(1),

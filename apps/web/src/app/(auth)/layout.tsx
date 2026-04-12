@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 
-import { Logo } from "@/components/logo";
-import { ModeToggle } from "@/components/mode-toggle";
+import { Logo } from "@/components/chrome/logo";
+import { ModeToggle } from "@/components/chrome/mode-toggle";
 import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";

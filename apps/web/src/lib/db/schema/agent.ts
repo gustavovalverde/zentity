@@ -8,9 +8,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { users } from "./auth";
+import { defaultId, users } from "./auth";
 import { oauthClients } from "./oauth-provider";
-import { defaultId } from "./utils";
 
 export const agentHosts = sqliteTable(
   "agent_host",

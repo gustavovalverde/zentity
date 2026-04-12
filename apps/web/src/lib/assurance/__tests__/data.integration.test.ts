@@ -30,7 +30,7 @@ import {
 } from "@/lib/db/queries/privacy";
 import { passkeys, sessions } from "@/lib/db/schema/auth";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function createVerifiedDocument(docId: string, userId: string) {
   await createVerification({

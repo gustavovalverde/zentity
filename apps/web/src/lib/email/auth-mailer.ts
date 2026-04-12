@@ -2,8 +2,12 @@ import "server-only";
 
 import { logger } from "@/lib/logging/logger";
 
-import { isMailpitConfigured, sendMailpitMessage } from "./mailpit";
-import { isResendConfigured, sendResendMessage } from "./resend";
+import {
+  isMailpitConfigured,
+  isResendConfigured,
+  sendMailpitMessage,
+  sendResendMessage,
+} from "./transport";
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";

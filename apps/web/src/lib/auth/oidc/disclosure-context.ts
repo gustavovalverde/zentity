@@ -20,7 +20,7 @@ import {
   promoteIdentityPayload,
   storeIdentityPayload,
 } from "@/lib/auth/oidc/identity-delivery";
-import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-query";
+import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
@@ -32,7 +32,7 @@ import { logger as rootLogger } from "@/lib/logging/logger";
 
 const log = rootLogger.child({ component: "disclosure-context" });
 
-export const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
+const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export type ReleaseFlowType = "oauth" | "ciba";
 

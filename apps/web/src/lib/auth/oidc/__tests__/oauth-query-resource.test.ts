@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateResourceUri } from "@/lib/auth/oidc/oauth-query";
+import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 
 describe("validateResourceUri", () => {
   it("accepts a valid HTTPS URL", () => {

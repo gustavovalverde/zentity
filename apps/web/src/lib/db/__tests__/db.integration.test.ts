@@ -20,7 +20,7 @@ import {
   insertProofArtifact,
   insertSignedClaim,
 } from "@/lib/db/queries/privacy";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("Database Module", () => {
   beforeEach(async () => {

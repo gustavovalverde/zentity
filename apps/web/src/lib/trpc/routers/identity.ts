@@ -33,7 +33,7 @@ import {
   revokeIdentity,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
-import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc4vci";
+import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import { processDocumentWithOcr } from "@/lib/identity/document/process-document";
 import {
   ANTISPOOF_LIVE_THRESHOLD,

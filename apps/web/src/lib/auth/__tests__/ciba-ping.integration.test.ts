@@ -13,8 +13,8 @@ import {
   createTestSession,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+} from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 import { auth } from "../auth";
 

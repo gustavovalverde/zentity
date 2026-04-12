@@ -1,5 +1,5 @@
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
 const ENCRYPTION_ALGS = new Set([
   "ECDH-ES",

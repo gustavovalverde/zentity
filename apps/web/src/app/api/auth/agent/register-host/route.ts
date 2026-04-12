@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/env";
 import { verifyAgentAttestation } from "@/lib/agents/agent-attestation";
-import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import {
   AGENT_HOST_REGISTER_SCOPE,
   registerHostRequestSchema,
-} from "@/lib/auth/oidc/agent";
-import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-token-validation";
+} from "@/lib/agents/oidc-agent";
+import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
+import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

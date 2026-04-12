@@ -11,7 +11,7 @@ import {
   computeOAuthRequestKey,
   parseRequestedScopes,
   verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+} from "@/lib/auth/oidc/oauth-request";
 
 /**
  * The consent handler strips identity scopes AND deduplicates the scope

@@ -5,7 +5,7 @@ import {
   type NewRpEncryptionKey,
   type RpEncryptionKey,
   rpEncryptionKeys,
-} from "../schema/compliance";
+} from "../schema/oauth-provider";
 
 /**
  * Get the active encryption key for an RP client.

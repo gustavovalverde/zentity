@@ -5,8 +5,12 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 
-import { isMailpitConfigured, sendMailpitMessage } from "./mailpit";
-import { isResendConfigured, sendResendMessage } from "./resend";
+import {
+  isMailpitConfigured,
+  isResendConfigured,
+  sendMailpitMessage,
+  sendResendMessage,
+} from "./transport";
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";

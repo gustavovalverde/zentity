@@ -22,7 +22,7 @@ import {
 } from "@/lib/privacy/credentials/cache";
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
 import { WALLET_CREDENTIAL_PREFIX } from "@/lib/privacy/credentials/wallet";
-import { base64ToBytes } from "@/lib/privacy/primitives/base64";
+import { base64ToBytes } from "@/lib/privacy/primitives/symmetric";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { trpc } from "@/lib/trpc/client";
 

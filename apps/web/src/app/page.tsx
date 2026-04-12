@@ -1,8 +1,8 @@
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
-import { Logo } from "@/components/logo";
-import { ModeToggle } from "@/components/mode-toggle";
+import { Logo } from "@/components/chrome/logo";
+import { ModeToggle } from "@/components/chrome/mode-toggle";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,7 @@ export default function Home() {
           <p className="mt-2">
             <Link
               className="text-muted-foreground/70 hover:text-muted-foreground"
-              href="/api/build-info"
+              href="/api/status/build-info"
             >
               Verify build attestation
             </Link>

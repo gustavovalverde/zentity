@@ -6,7 +6,7 @@ import {
   type EffectiveSessionLifecycle,
   observeSessionLifecycle,
   observeSessionLifecycles,
-} from "@/lib/ciba/agent-lifecycle";
+} from "@/lib/agents/agent-identity";
 import { db } from "@/lib/db/connection";
 import {
   agentHostPolicies,
