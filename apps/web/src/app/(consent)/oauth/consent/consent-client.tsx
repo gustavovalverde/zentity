@@ -19,14 +19,12 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  fetchIntentFromEndpoint,
-  useVaultUnlock,
-} from "@/components/vault-unlock/use-vault-unlock";
-import {
   buildIdentityPayload,
   buildScopeKey,
-} from "@/components/vault-unlock/vault-unlock";
-import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
+  fetchIntentFromEndpoint,
+  useVaultUnlock,
+  VaultUnlockPanel,
+} from "@/components/vault-unlock";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   findMissingIdentityFields,

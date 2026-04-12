@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { CibaApproveClient } from "@/components/ciba-approve-client";
+import { AgentApprovalView } from "@/components/agent-approval-view";
 import {
   buildStandaloneApprovalPath,
   resolveCibaApprovalData,
@@ -47,7 +47,7 @@ export default async function ApprovePage({
 
   return (
     <div className="w-full max-w-md">
-      <CibaApproveClient
+      <AgentApprovalView
         agentIdentity={approval.agentIdentity}
         authMode={detected.authMode}
         authReqId={authReqId}

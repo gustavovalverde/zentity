@@ -23,14 +23,12 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import {
-  fetchIntentFromEndpoint,
-  useVaultUnlock,
-} from "@/components/vault-unlock/use-vault-unlock";
-import {
   buildIdentityPayload,
   buildScopeKey,
-} from "@/components/vault-unlock/vault-unlock";
-import { VaultUnlockPanel } from "@/components/vault-unlock/vault-unlock-panel";
+  fetchIntentFromEndpoint,
+  useVaultUnlock,
+  VaultUnlockPanel,
+} from "@/components/vault-unlock";
 import {
   findMissingIdentityFields,
   IDENTITY_SCOPE_DESCRIPTIONS,
@@ -133,7 +131,7 @@ function deriveInitialState(req?: CibaRequestDetails): {
   return { pageState: "ready", secondsLeft: Math.ceil(expiresMs / 1000) };
 }
 
-export function CibaApproveClient({
+export function AgentApprovalView({
   agentIdentity,
   authMode,
   authReqId,

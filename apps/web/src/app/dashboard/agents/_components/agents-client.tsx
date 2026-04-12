@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 import { PageHeader } from "@/components/chrome/page-header";
-import { CibaApproveClient } from "@/components/ciba-approve-client";
+import { AgentApprovalView } from "@/components/agent-approval-view";
 import { Web3Provider } from "@/components/providers/web3-provider";
 import {
   Sheet,
@@ -181,7 +181,7 @@ export function AgentsClient({
           </SheetHeader>
           {selectedRequest && (
             <Web3Provider cookies={cookies}>
-              <CibaApproveClient
+              <AgentApprovalView
                 agentIdentity={deriveAgentIdentity(selectedRequest)}
                 authMode={authMode}
                 authReqId={selectedAuthReqId}

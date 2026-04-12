@@ -37,12 +37,7 @@ const vaultMocks = vi.hoisted(() => ({
   vaultState: { status: "loaded" as const },
 }));
 
-vi.mock("@/components/vault-unlock/use-vault-unlock", () => ({
-  fetchIntentFromEndpoint: vi.fn(),
-  useVaultUnlock: () => vaultMocks,
-}));
-
-vi.mock("@/components/vault-unlock/vault-unlock", () => ({
+vi.mock("@/components/vault-unlock", () => ({
   buildIdentityPayload: vi.fn(() => ({
     firstName: "Ada",
     lastName: "Lovelace",
@@ -51,15 +46,14 @@ vi.mock("@/components/vault-unlock/vault-unlock", () => ({
   buildScopeKey: vi.fn(
     () => "identity.address identity.dob identity.name openid"
   ),
-}));
-
-vi.mock("@/components/vault-unlock/vault-unlock-panel", () => ({
+  fetchIntentFromEndpoint: vi.fn(),
+  useVaultUnlock: () => vaultMocks,
   VaultUnlockPanel: () => <div>Vault ready</div>,
 }));
 
-import { CibaApproveClient } from "../ciba-approve-client";
+import { AgentApprovalView } from "../agent-approval-view";
 
-describe("CibaApproveClient", () => {
+describe("AgentApprovalView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -88,7 +82,7 @@ describe("CibaApproveClient", () => {
 
   it("warns about missing fields but still allows partial profile disclosure", async () => {
     render(
-      <CibaApproveClient
+      <AgentApprovalView
         authMode="passkey"
         authReqId="req-1"
         initialRequest={{

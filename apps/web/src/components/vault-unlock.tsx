@@ -2,7 +2,13 @@
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { AlertTriangle, KeyRound, Lock, Wallet } from "lucide-react";
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 
@@ -16,8 +22,10 @@ import {
   signatureToBytes,
 } from "@/lib/privacy/credentials/wallet";
 import {
+  getStoredProfile,
   getStoredProfileWithCredential,
   type ProfileSecretPayload,
+  resetProfileSecretCache,
 } from "@/lib/privacy/secrets/profile";
 
 // ── Types ──────────────────────────────────────────────────
@@ -158,7 +166,7 @@ export function buildScopeKey(scopes: string[]): string {
     .join(" ");
 }
 
-// ── Components ─────────────────────────────────────────────
+// ── Error alert + credential-specific unlock controls ──────
 
 const RETRYABLE_CATEGORIES = new Set<VaultErrorCategory>([
   "cancelled",
@@ -399,4 +407,365 @@ export function OpaqueVaultUnlockForm({
       </Button>
     </div>
   );
+}
+
+// ── Hook ───────────────────────────────────────────────────
+
+export interface IdentityIntentState {
+  expiresAt: number;
+  scopeKey: string;
+  token: string;
+}
+
+interface UseVaultUnlockOptions {
+  active: boolean;
+  fetchIntentToken: () => Promise<{
+    intent_token: string;
+    expires_at: number;
+  }>;
+  logTag: string;
+  scopeKey: string;
+}
+
+export interface UseVaultUnlockReturn {
+  clearIntent: () => void;
+  fetchIdentityIntent: () => Promise<void>;
+  handleProfileLoaded: (profile: ProfileSecretPayload) => void;
+  handleVaultError: (err: unknown) => void;
+  hasValidIdentityIntent: boolean;
+  identityIntent: IdentityIntentState | null;
+  intentError: string | null;
+  intentLoading: boolean;
+  loadProfilePasskey: () => Promise<void>;
+  profileRef: React.RefObject<ProfileSecretPayload | null>;
+  resetToGesture: () => void;
+  vaultState: VaultState;
+}
+
+const INTENT_EXPIRY_GRACE_MS = 2000;
+
+export async function fetchIntentFromEndpoint(
+  url: string,
+  body: Record<string, unknown>
+): Promise<{ intent_token: string; expires_at: number }> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = (await response.json().catch(() => null)) as {
+    intent_token?: string;
+    expires_at?: number;
+    error?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(data?.error || "Unable to prepare identity consent.");
+  }
+
+  if (
+    !data ||
+    typeof data.intent_token !== "string" ||
+    typeof data.expires_at !== "number"
+  ) {
+    throw new Error("Identity consent token response was invalid.");
+  }
+
+  return { intent_token: data.intent_token, expires_at: data.expires_at };
+}
+
+export function useVaultUnlock({
+  logTag,
+  scopeKey,
+  active,
+  fetchIntentToken,
+}: UseVaultUnlockOptions): UseVaultUnlockReturn {
+  const [vaultState, setVaultState] = useState<VaultState>({ status: "idle" });
+  const profileRef = useRef<ProfileSecretPayload | null>(null);
+  const [identityIntent, setIdentityIntent] =
+    useState<IdentityIntentState | null>(null);
+  const [intentLoading, setIntentLoading] = useState(false);
+  const [intentError, setIntentError] = useState<string | null>(null);
+
+  const hasValidIdentityIntent = useMemo(() => {
+    if (!identityIntent) {
+      return false;
+    }
+    if (identityIntent.scopeKey !== scopeKey) {
+      return false;
+    }
+    return (
+      identityIntent.expiresAt * 1000 > Date.now() + INTENT_EXPIRY_GRACE_MS
+    );
+  }, [identityIntent, scopeKey]);
+
+  const handleProfileLoaded = useCallback((profile: ProfileSecretPayload) => {
+    profileRef.current = profile;
+    setIntentError(null);
+    setIdentityIntent(null);
+    setVaultState({ status: "loaded" });
+  }, []);
+
+  const handleVaultError = useCallback(
+    (err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      let name: string = typeof err;
+      if (err instanceof DOMException) {
+        name = `DOMException.${err.name}`;
+      } else if (err instanceof Error) {
+        name = err.constructor.name;
+      }
+      console.error(`[${logTag}] Vault unlock failed (${name}): ${msg}`);
+      profileRef.current = null;
+      setIdentityIntent(null);
+      setIntentError(null);
+      setVaultState({ status: "error", error: classifyVaultError(err) });
+    },
+    [logTag]
+  );
+
+  const loadProfilePasskey = useCallback(async () => {
+    setVaultState({ status: "loading" });
+    try {
+      const profile = await getStoredProfile();
+      if (profile) {
+        handleProfileLoaded(profile);
+      } else {
+        profileRef.current = null;
+        const { title, remedy } = VAULT_ERRORS.not_enrolled;
+        setVaultState({
+          status: "not_enrolled",
+          error: { category: "not_enrolled", title, remedy },
+        });
+      }
+    } catch (err) {
+      handleVaultError(err);
+    }
+  }, [handleProfileLoaded, handleVaultError]);
+
+  const fetchIdentityIntent = useCallback(async () => {
+    setIntentLoading(true);
+    setIntentError(null);
+    try {
+      const result = await fetchIntentToken();
+      setIdentityIntent({
+        token: result.intent_token,
+        expiresAt: result.expires_at,
+        scopeKey,
+      });
+    } catch (err) {
+      setIdentityIntent(null);
+      setIntentError(
+        err instanceof Error
+          ? err.message
+          : "Unable to prepare identity consent."
+      );
+    } finally {
+      setIntentLoading(false);
+    }
+  }, [fetchIntentToken, scopeKey]);
+
+  const resetToGesture = useCallback(() => {
+    setVaultState({ status: "gesture_required" });
+  }, []);
+
+  const clearIntent = useCallback(() => {
+    setIdentityIntent(null);
+  }, []);
+
+  useEffect(() => {
+    if (!active) {
+      profileRef.current = null;
+      setIdentityIntent(null);
+      setIntentError(null);
+      setIntentLoading(false);
+      setVaultState({ status: "idle" });
+      return;
+    }
+
+    resetProfileSecretCache();
+    profileRef.current = null;
+    setIdentityIntent(null);
+    setIntentError(null);
+    setIntentLoading(false);
+    setVaultState({ status: "gesture_required" });
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || vaultState.status !== "loaded") {
+      return;
+    }
+    if (hasValidIdentityIntent || intentLoading) {
+      return;
+    }
+    fetchIdentityIntent().catch(() => undefined);
+  }, [
+    active,
+    vaultState.status,
+    hasValidIdentityIntent,
+    intentLoading,
+    fetchIdentityIntent,
+  ]);
+
+  return {
+    vaultState,
+    profileRef,
+    identityIntent,
+    intentLoading,
+    intentError,
+    hasValidIdentityIntent,
+    handleProfileLoaded,
+    handleVaultError,
+    loadProfilePasskey,
+    fetchIdentityIntent,
+    resetToGesture,
+    clearIntent,
+  };
+}
+
+// ── Panel ──────────────────────────────────────────────────
+
+interface VaultUnlockPanelProps {
+  active: boolean;
+  authMode: "passkey" | "opaque" | "wallet" | null;
+  disabled: boolean;
+  vault: UseVaultUnlockReturn;
+  wallet: { address: string; chainId: number } | null;
+}
+
+export function VaultUnlockPanel({
+  active,
+  authMode,
+  disabled,
+  vault,
+  wallet,
+}: Readonly<VaultUnlockPanelProps>) {
+  if (!active) {
+    return null;
+  }
+
+  const {
+    vaultState,
+    intentError,
+    intentLoading,
+    hasValidIdentityIntent,
+    handleProfileLoaded,
+    handleVaultError,
+    loadProfilePasskey,
+    fetchIdentityIntent,
+    resetToGesture,
+  } = vault;
+
+  if (vaultState.status === "loading") {
+    return (
+      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+        <Spinner aria-hidden="true" size="sm" />
+        Unlocking your vault…
+      </div>
+    );
+  }
+
+  if (vaultState.status === "loaded") {
+    if (intentError) {
+      return (
+        <Alert variant="destructive">
+          <AlertDescription className="space-y-2">
+            <p>{intentError}</p>
+            <Button
+              disabled={disabled || intentLoading}
+              onClick={() => fetchIdentityIntent().catch(() => undefined)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              Retry secure consent
+            </Button>
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (intentLoading || !hasValidIdentityIntent) {
+      return (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+          <Spinner aria-hidden="true" size="sm" />
+          Preparing secure consent…
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  if (vaultState.status === "not_enrolled" || vaultState.status === "error") {
+    return (
+      <VaultErrorAlert
+        error={vaultState.error}
+        onRetry={
+          authMode === "passkey" || !authMode
+            ? loadProfilePasskey
+            : resetToGesture
+        }
+      />
+    );
+  }
+
+  if (vaultState.status !== "gesture_required") {
+    return null;
+  }
+
+  if (authMode === "passkey" || !authMode) {
+    return (
+      <Alert>
+        <Lock className="size-4" />
+        <AlertDescription className="space-y-2">
+          <p>Use your passkey to share your information.</p>
+          <Button
+            onClick={loadProfilePasskey}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            Unlock vault
+          </Button>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (authMode === "opaque") {
+    return (
+      <Alert>
+        <Lock className="size-4" />
+        <AlertDescription className="space-y-2">
+          <p>Enter your password to share your information.</p>
+          <OpaqueVaultUnlockForm
+            disabled={disabled}
+            onError={handleVaultError}
+            onSuccess={handleProfileLoaded}
+          />
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (authMode === "wallet" && wallet) {
+    return (
+      <Alert>
+        <Lock className="size-4" />
+        <AlertDescription className="space-y-2">
+          <p>Sign with your wallet to share your information.</p>
+          <WalletVaultUnlockButton
+            disabled={disabled}
+            onError={handleVaultError}
+            onSuccess={handleProfileLoaded}
+            wallet={wallet}
+          />
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return null;
 }

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { CibaApproveClient } from "@/components/ciba-approve-client";
+import { AgentApprovalView } from "@/components/agent-approval-view";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { getFreshSession } from "@/lib/auth/cached-session";
 import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
@@ -182,7 +182,7 @@ export default async function McpInteractivePage({
 
   return (
     <div className="w-full max-w-md">
-      <CibaApproveClient
+      <AgentApprovalView
         agentIdentity={agentIdentity}
         authMode={authMode}
         authReqId={authReqId}
