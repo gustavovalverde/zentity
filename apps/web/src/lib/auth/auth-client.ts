@@ -53,8 +53,8 @@ export const authClient = createAuthClient({
           ).get("redirectTo");
           const safeRedirect = getSafeRedirectPath(redirectTo, "");
           const url = safeRedirect
-            ? `/verify-2fa?redirectTo=${encodeURIComponent(safeRedirect)}`
-            : "/verify-2fa";
+            ? `/two-factor/verify?redirectTo=${encodeURIComponent(safeRedirect)}`
+            : "/two-factor/verify";
           globalThis.window.location.href = url;
         }
       },

@@ -126,7 +126,7 @@ function TwoFactorDialog({
 
         if (response.totpURI) {
           globalThis.window.location.assign(
-            `/verify-2fa?totpURI=${encodeURIComponent(response.totpURI)}`
+            `/two-factor/verify?totpURI=${encodeURIComponent(response.totpURI)}`
           );
         }
       }

@@ -1,6 +1,6 @@
 import { getSafeRedirectPath } from "@/lib/auth/redirect";
 
-import { VerifyTwoFactorClient } from "./verify-2fa-client";
+import { VerifyTwoFactorClient } from "./verify-client";
 
 interface VerifyTwoFactorPageProps {
   searchParams: Promise<{ redirectTo?: string; totpURI?: string }>;
@@ -13,7 +13,7 @@ export default async function VerifyTwoFactorPage({
   const isSetup = Boolean(totpURI);
   const safeRedirectTo = getSafeRedirectPath(
     redirectTo,
-    isSetup ? "/backup-codes" : "/dashboard"
+    isSetup ? "/two-factor/backup-codes" : "/dashboard"
   );
 
   return (

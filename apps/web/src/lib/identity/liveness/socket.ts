@@ -1,18 +1,27 @@
 /**
- * Socket.io handler for server-side liveness detection.
+ * Socket.io server-side liveness pipeline.
  *
- * Each connection is a liveness session. The client sends video frames,
- * and the server does all face detection and challenge evaluation.
+ * Runs outside of Next.js RSC context (via server.mjs); each connection is
+ * a liveness session. The client streams video frames; the server runs face
+ * detection, evaluates challenges, and (when linked to an identity draft)
+ * writes liveness results directly to the database so clients cannot forge
+ * them.
  *
- * For dashboard verification flow: When draftId is provided, liveness results
- * are written directly to the identity draft in the database. This ensures
- * server-side trust - clients cannot forge liveness results.
+ * Contains three concerns kept in one deep module because they're cohesive
+ * and share exactly one external entry point:
+ *   1. Pino logger configured for the socket context
+ *   2. Session state machine (pure functions + types)
+ *   3. Socket.io connection handler (event wiring + phase orchestration)
  */
 
 import type { Socket } from "socket.io";
+import type { ChallengeType } from "./challenges";
 
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 
+import pino from "pino";
+
+import { env } from "@/env";
 import {
   getIdentityDraftById,
   updateIdentityDraft,
@@ -28,22 +37,6 @@ import {
   getYawDegrees,
 } from "./human/metrics";
 import { detectFromBuffer } from "./human/server";
-import { type Logger, socketLogger as logger } from "./socket-logger";
-import {
-  advanceChallenge,
-  createSession,
-  hasStableChallengePass,
-  hasStableDetection,
-  isChallengeExpired,
-  isSessionExpired,
-  recordChallengePass,
-  recordFaceDetection,
-  resetChallengePass,
-  resetFaceDetection,
-  type SessionState,
-  type SessionTimeouts,
-  toClientState,
-} from "./socket-session";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
@@ -53,6 +46,275 @@ import {
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
 } from "./thresholds";
+
+// ---------------------------------------------------------------------------
+// Logger
+// ---------------------------------------------------------------------------
+// Standalone pino: no `server-only` import because this module runs outside
+// Next.js RSC context. Same configuration as the main logger.
+
+type Logger = import("pino").Logger;
+
+const isDev = env.NODE_ENV !== "production";
+const logLevel = env.LOG_LEVEL || (isDev ? "debug" : "info");
+
+const logger: Logger = pino({
+  level: logLevel,
+  base: {
+    service: "zentity-web",
+    component: "liveness-socket",
+    env: env.NODE_ENV,
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Session state machine
+// ---------------------------------------------------------------------------
+
+type SessionPhase =
+  | "connecting"
+  | "detecting" // Looking for face
+  | "countdown" // 3-2-1 before baseline
+  | "baseline" // Capturing neutral face
+  | "challenging" // Active challenge
+  | "capturing" // Storing challenge frame
+  | "verifying" // Final checks
+  | "completed" // Success
+  | "failed"; // Failure
+
+interface ChallengeState {
+  hint: string | null;
+  index: number;
+  progress: number; // 0-100
+  total: number;
+  type: ChallengeType;
+}
+
+interface FaceState {
+  box: { x: number; y: number; width: number; height: number } | null;
+  detected: boolean;
+}
+
+interface SessionState {
+  // Captured frames (base64)
+  baselineFrame: string | null;
+  baselineHappy: number | null;
+  challenge: ChallengeState | null;
+  challengeAwaitingClient: boolean;
+  challengeFrames: Map<ChallengeType, string>;
+  challengeRequestedAt: number | null;
+  challengeStartedAt: number | null;
+
+  // Internal tracking
+  challenges: ChallengeType[];
+  consecutiveChallengeDetections: number;
+  consecutiveFaceDetections: number;
+  countdown: number | null;
+  countdownAwaitingClient: boolean;
+  countdownRequestedAt: number | null;
+  currentIndex: number;
+
+  // Identity draft linkage (for dashboard verification flow)
+  draftId: string | null;
+  face: FaceState;
+  id: string;
+  lastFrameAt: number;
+  lastFrameDataUrl: string | null;
+  lastHappyScore: number | null;
+  pendingBaselineFrame: string | null;
+  phase: SessionPhase;
+
+  // Retry tracking
+  retryCount: number;
+
+  // Timing
+  startedAt: number;
+
+  // Configurable timeouts
+  timeouts: SessionTimeouts;
+  turnCentered: boolean;
+  turnStartYaw: number | null;
+  userId: string | null;
+}
+
+// Consecutive frames needed for stable detection.
+// Reduced from 3 to 2 for faster response (~200ms at 10 FPS).
+const STABILITY_FRAMES = 2;
+
+interface SessionTimeouts {
+  /** Maximum time per challenge in milliseconds */
+  challengeTimeoutMs: number;
+  /** Countdown duration in milliseconds */
+  countdownDurationMs: number;
+  /** Maximum session duration in milliseconds */
+  sessionTimeoutMs: number;
+}
+
+const DEFAULT_TIMEOUTS: SessionTimeouts = {
+  sessionTimeoutMs: 60_000, // 60 seconds max
+  challengeTimeoutMs: 15_000, // 15 seconds per challenge
+  countdownDurationMs: 2000, // 2 second countdown (reduced from 3)
+};
+
+// Challenge count bounds — cap to available unique challenges to avoid repeats
+// and prevent DoS via excessive challenges.
+const MIN_CHALLENGES = 1;
+const MAX_CHALLENGES = 3;
+
+function createSession(
+  numChallenges = 2,
+  timeouts: Partial<SessionTimeouts> = {},
+  options?: { draftId?: string | undefined; userId?: string | undefined }
+): SessionState {
+  // Silently clamp to valid range (security: prevent DoS)
+  const count = Math.max(
+    MIN_CHALLENGES,
+    Math.min(MAX_CHALLENGES, numChallenges)
+  );
+  const challenges = generateChallenges(count);
+  const now = Date.now();
+
+  return {
+    id: crypto.randomUUID(),
+    phase: "detecting",
+    challenge: null,
+    face: { detected: false, box: null },
+    countdown: null,
+
+    draftId: options?.draftId ?? null,
+    userId: options?.userId ?? null,
+
+    challenges,
+    currentIndex: 0,
+    consecutiveFaceDetections: 0,
+    consecutiveChallengeDetections: 0,
+    baselineHappy: null,
+    lastHappyScore: null,
+    turnStartYaw: null,
+    turnCentered: false,
+    countdownAwaitingClient: false,
+    countdownRequestedAt: null,
+    pendingBaselineFrame: null,
+    lastFrameDataUrl: null,
+    challengeAwaitingClient: false,
+    challengeRequestedAt: null,
+    challengeStartedAt: null,
+
+    baselineFrame: null,
+    challengeFrames: new Map(),
+
+    startedAt: now,
+    lastFrameAt: now,
+
+    retryCount: 0,
+    timeouts: { ...DEFAULT_TIMEOUTS, ...timeouts },
+  };
+}
+
+function generateChallenges(count: number): ChallengeType[] {
+  const pool: ChallengeType[] = ["smile", "turn_left", "turn_right"];
+
+  // Fisher-Yates shuffle with crypto.randomInt for unpredictability
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    const a = shuffled[i];
+    const b = shuffled[j];
+    if (a !== undefined && b !== undefined) {
+      shuffled[i] = b;
+      shuffled[j] = a;
+    }
+  }
+
+  const challenges = shuffled.slice(0, count);
+
+  // Ensure at least one turn for better security
+  if (!challenges.some((c) => c.startsWith("turn"))) {
+    const replaceIndex = randomInt(challenges.length);
+    challenges[replaceIndex] = randomInt(2) === 0 ? "turn_left" : "turn_right";
+  }
+
+  return challenges;
+}
+
+function isSessionExpired(session: SessionState): boolean {
+  const elapsed = Date.now() - session.startedAt;
+  return elapsed > session.timeouts.sessionTimeoutMs;
+}
+
+function isChallengeExpired(session: SessionState): boolean {
+  if (session.phase !== "challenging") {
+    return false;
+  }
+  if (!session.challengeStartedAt) {
+    return false;
+  }
+  const elapsed = Date.now() - session.challengeStartedAt;
+  return elapsed > session.timeouts.challengeTimeoutMs;
+}
+
+function recordFaceDetection(session: SessionState): number {
+  session.consecutiveFaceDetections++;
+  return session.consecutiveFaceDetections;
+}
+
+function resetFaceDetection(session: SessionState): void {
+  session.consecutiveFaceDetections = 0;
+}
+
+function recordChallengePass(session: SessionState): number {
+  session.consecutiveChallengeDetections++;
+  return session.consecutiveChallengeDetections;
+}
+
+function resetChallengePass(session: SessionState): void {
+  session.consecutiveChallengeDetections = 0;
+}
+
+function hasStableDetection(session: SessionState): boolean {
+  return session.consecutiveFaceDetections >= STABILITY_FRAMES;
+}
+
+function hasStableChallengePass(session: SessionState): boolean {
+  return session.consecutiveChallengeDetections >= STABILITY_FRAMES;
+}
+
+function advanceChallenge(session: SessionState): boolean {
+  session.currentIndex++;
+  session.consecutiveChallengeDetections = 0;
+  session.turnCentered = false;
+  session.turnStartYaw = null;
+
+  if (session.currentIndex >= session.challenges.length) {
+    session.phase = "verifying";
+    return true; // All challenges done
+  }
+
+  session.phase = "challenging";
+  return false; // More challenges remain
+}
+
+function toClientState(session: SessionState): {
+  id: string;
+  phase: SessionPhase;
+  challenge: ChallengeState | null;
+  face: FaceState;
+  countdown: number | null;
+} {
+  return {
+    id: session.id,
+    phase: session.phase,
+    // session.challenge has the actual progress and hint values
+    // that are updated during challenge evaluation
+    challenge: session.challenge,
+    face: session.face,
+    countdown: session.countdown,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Socket handler
+// ---------------------------------------------------------------------------
 
 // Thresholds
 const HEAD_CENTER_THRESHOLD = 5; // degrees
@@ -71,9 +333,6 @@ const COUNTDOWN_AUTO_ADVANCE_MS = 5000;
 // Client signals immediately now, so this is just a safety net for edge cases
 const CHALLENGE_READY_TIMEOUT_MS = 100;
 
-/**
- * Handle a new liveness socket connection.
- */
 export function handleLivenessConnection(socket: Socket): void {
   const log = logger.child({ socketId: socket.id });
   log.info("Liveness connection opened");
@@ -347,9 +606,6 @@ export function handleLivenessConnection(socket: Socket): void {
   });
 }
 
-/**
- * Process frame based on current session phase.
- */
 async function processPhase(
   socket: Socket,
   session: SessionState,
@@ -390,9 +646,6 @@ async function processPhase(
   }
 }
 
-/**
- * Handle detecting phase - looking for stable face.
- */
 function handleDetectingPhase(
   socket: Socket,
   session: SessionState,
@@ -426,9 +679,6 @@ function handleDetectingPhase(
   }
 }
 
-/**
- * Handle countdown phase - wait for client completion or fallback.
- */
 function handleCountdownPhase(
   socket: Socket,
   session: SessionState,
@@ -495,9 +745,6 @@ function advanceAfterCountdown(
   socket.emit("state", toClientState(session));
 }
 
-/**
- * Handle baseline phase (usually automatic after countdown).
- */
 function handleBaselinePhase(
   socket: Socket,
   session: SessionState,
@@ -528,9 +775,6 @@ function handleBaselinePhase(
   socket.emit("state", toClientState(session));
 }
 
-/**
- * Handle challenge phase - evaluate current challenge.
- */
 function handleChallengePhase(
   socket: Socket,
   session: SessionState,
@@ -642,10 +886,6 @@ function handleChallengePhase(
   }
 }
 
-/**
- * Handle verifying phase - final anti-spoof checks.
- * When draftId is linked, writes liveness results directly to the database.
- */
 async function handleVerifyingPhase(
   socket: Socket,
   session: SessionState,
@@ -750,9 +990,6 @@ async function handleVerifyingPhase(
     });
 }
 
-/**
- * Evaluate if current challenge is passed.
- */
 function evaluateChallenge(
   type: string,
   face: NonNullable<ReturnType<typeof getPrimaryFace>>,
@@ -765,9 +1002,6 @@ function evaluateChallenge(
   return evaluateTurn(type, face, result, session);
 }
 
-/**
- * Evaluate smile challenge.
- */
 function evaluateSmile(
   face: NonNullable<ReturnType<typeof getPrimaryFace>>,
   session: SessionState
@@ -791,9 +1025,6 @@ function evaluateSmile(
   return { passed, progress, hint };
 }
 
-/**
- * Evaluate turn challenge.
- */
 function evaluateTurn(
   type: string,
   face: NonNullable<ReturnType<typeof getPrimaryFace>>,
@@ -849,9 +1080,6 @@ function evaluateTurn(
   return { passed, progress, hint };
 }
 
-/**
- * Get initial hint for a challenge type.
- */
 function getHintForChallenge(type: string): string {
   switch (type) {
     case "smile":
@@ -864,7 +1092,3 @@ function getHintForChallenge(type: string): string {
       return "";
   }
 }
-
-/**
- * Simple sleep helper.
- */

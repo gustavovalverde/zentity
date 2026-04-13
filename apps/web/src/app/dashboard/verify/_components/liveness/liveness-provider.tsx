@@ -28,9 +28,9 @@ import {
 import {
   type LivenessPhase,
   useLiveness,
+  useLivenessCamera,
+  useLivenessFeedback,
 } from "@/lib/identity/liveness/use-liveness";
-import { useLivenessCamera } from "@/lib/identity/liveness/use-liveness-camera";
-import { useLivenessFeedback } from "@/lib/identity/liveness/use-liveness-feedback";
 
 // ============================================================================
 // Types

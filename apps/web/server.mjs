@@ -55,7 +55,7 @@ require.cache[require.resolve("server-only")] = {
 // Import liveness handler dynamically AFTER the server-only shim is installed.
 // This is required because static imports are hoisted before any code runs.
 const { handleLivenessConnection } = await import(
-  "./src/lib/identity/liveness/socket-handler.ts"
+  "./src/lib/identity/liveness/socket.ts"
 );
 
 // Import OIDC4VCI wallet client setup

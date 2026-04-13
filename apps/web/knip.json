@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
     "server.mjs",
-    "src/lib/identity/liveness/socket-*.ts",
+    "src/lib/identity/liveness/socket.ts",
     "vitest.global-setup.ts",
     "vitest.setup.mts"
   ],

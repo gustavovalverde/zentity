@@ -43,7 +43,7 @@ export function BackupCodesClient() {
     let active = true;
 
     const tryPasswordlessGenerate = async () => {
-      // /verify-2fa just flipped twoFactorEnabled=true in the DB. The
+      // /two-factor/verify just flipped twoFactorEnabled=true in the DB. The
       // session_data cookie still caches the old value — force a DB read
       // before any twoFactor endpoint call to avoid TWO_FACTOR_NOT_ENABLED.
       invalidateSessionDataCache();
