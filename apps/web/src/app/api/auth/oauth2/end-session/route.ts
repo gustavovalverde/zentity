@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
+import { reportRejection } from "@/lib/async-handler";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
@@ -154,8 +155,8 @@ export async function GET(request: Request): Promise<Response> {
   await db.delete(sessions).where(eq(sessions.userId, userId)).run();
 
   // Fire-and-forget: BCL delivery + CIBA revocation
-  sendBackchannelLogout(userId, sid);
-  revokePendingCibaOnLogout(userId);
+  sendBackchannelLogout(userId, sid).catch(reportRejection);
+  revokePendingCibaOnLogout(userId).catch(reportRejection);
 
   // Redirect or return success
   if (postLogoutRedirectUri) {

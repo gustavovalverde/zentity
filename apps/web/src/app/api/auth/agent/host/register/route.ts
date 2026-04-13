@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { env } from "@/env";
 import { verifyAgentAttestation } from "@/lib/agents/host-attestation";
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   const parsed = registerHostRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request body", details: parsed.error.flatten() },
+      { error: "Invalid request body", details: z.flattenError(parsed.error) },
       { status: 400 }
     );
   }

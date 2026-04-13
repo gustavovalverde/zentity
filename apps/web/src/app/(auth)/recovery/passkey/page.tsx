@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Redacted } from "@/components/ui/redacted";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
@@ -256,7 +257,7 @@ export default function RecoverPasskeyPage() {
             <Button
               className="w-full"
               disabled={phase === "sending"}
-              onClick={handleSendMagicLink}
+              onClick={asyncHandler(handleSendMagicLink)}
             >
               {phase === "sending" ? (
                 <Spinner aria-hidden="true" className="mr-2" />
@@ -334,7 +335,7 @@ export default function RecoverPasskeyPage() {
             <Button
               className="w-full"
               disabled={prfSupported === false}
-              onClick={handleRegisterPasskey}
+              onClick={asyncHandler(handleRegisterPasskey)}
               size="lg"
             >
               <Fingerprint className="mr-2 h-4 w-4" />

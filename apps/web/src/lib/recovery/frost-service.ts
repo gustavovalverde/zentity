@@ -44,13 +44,9 @@ function getAuthHeaders(): Record<string, string> {
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  const response = await fetch(url, { ...init, headers });
 
   if (!response.ok) {
     const bodyText = await response.text().catch(() => "");

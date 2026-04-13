@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import identityBindingArtifact from "@/noir-circuits/identity_binding/artifacts/identity_binding.json";
+import identityBindingArtifact from "@/noir-circuits/identity_binding/artifacts/identity_binding.json" with {
+  type: "json",
+};
 
 describe("identity_binding circuit artifact", () => {
   it("includes context-bound public inputs", () => {

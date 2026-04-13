@@ -28,6 +28,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
 
@@ -257,7 +258,7 @@ export function ComplianceAccessCard({
             <Button
               className="w-full"
               disabled={isActionDisabled}
-              onClick={handleGrant}
+              onClick={asyncHandler(handleGrant)}
             >
               {isPending || txHash ? (
                 <Spinner aria-hidden="true" className="mr-2" />
@@ -281,12 +282,12 @@ export function ComplianceAccessCard({
               <Button
                 className="w-full"
                 disabled={isFauceting}
-                onClick={async () => {
+                onClick={asyncHandler(async () => {
                   const toppedUp = await faucet(walletAddress);
                   if (toppedUp) {
                     await refetchBalance();
                   }
-                }}
+                })}
                 variant="outline"
               >
                 {isFauceting ? (

@@ -10,6 +10,8 @@ import type { BbsCredential } from "./types";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
+import { reportRejection } from "@/lib/async-handler";
+
 import {
   type CredentialMetadata,
   deleteBbsCredential,
@@ -177,7 +179,7 @@ export function useBbsCredentials(userId: string | null): BbsCredentialsState {
   );
 
   useEffect(() => {
-    refresh();
+    refresh().catch(reportRejection);
 
     return () => {
       abortControllerRef.current?.abort();

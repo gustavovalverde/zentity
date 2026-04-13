@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
@@ -598,7 +599,7 @@ export default function RecoverSocialPage() {
             <Button
               className="w-full"
               disabled={phase === "starting"}
-              onClick={handleStartRecovery}
+              onClick={asyncHandler(handleStartRecovery)}
             >
               {phase === "starting" ? (
                 <>
@@ -677,12 +678,12 @@ export default function RecoverSocialPage() {
                         <div className="flex items-center justify-between font-medium text-sm">
                           <span>Manual approval link</span>
                           <Button
-                            onClick={() =>
+                            onClick={asyncHandler(() =>
                               handleCopyLink(
                                 manualLink.guardianId,
                                 manualLink.url
                               )
-                            }
+                            )}
                             size="sm"
                             type="button"
                             variant="secondary"
@@ -704,7 +705,7 @@ export default function RecoverSocialPage() {
               })}
               {showManualLinks && emailApprovals.length > 1 ? (
                 <Button
-                  onClick={handleCopyAll}
+                  onClick={asyncHandler(handleCopyAll)}
                   type="button"
                   variant="secondary"
                 >
@@ -762,7 +763,7 @@ export default function RecoverSocialPage() {
                     <Button
                       className="w-full"
                       disabled={deviceSubmitting || deviceApproved}
-                      onClick={handleDeviceApprove}
+                      onClick={asyncHandler(handleDeviceApprove)}
                       type="button"
                     >
                       {deviceSubmitting ? (
@@ -808,7 +809,10 @@ export default function RecoverSocialPage() {
         {phase === "ready" && (
           <div className="space-y-3 text-center">
             <Badge variant="secondary">Approvals complete</Badge>
-            <Button className="w-full" onClick={handleRegisterPasskey}>
+            <Button
+              className="w-full"
+              onClick={asyncHandler(handleRegisterPasskey)}
+            >
               Register new passkey
             </Button>
           </div>

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/input-otp";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 
 interface VerifyTwoFactorClientProps {
@@ -257,7 +258,7 @@ export function VerifyTwoFactorClient({
           <Button
             className="w-full"
             disabled={isVerifying}
-            onClick={handleVerify}
+            onClick={asyncHandler(handleVerify)}
           >
             {isVerifying ? (
               <Spinner aria-hidden="true" className="mr-2" />

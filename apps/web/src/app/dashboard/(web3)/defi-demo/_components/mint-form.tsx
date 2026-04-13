@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { parseTokenAmount } from "@/lib/blockchain/token-utils";
 import { trpcReact } from "@/lib/trpc/client";
 
@@ -53,8 +54,15 @@ export function MintForm({
   const mintMutation = trpcReact.compliantToken.mint.useMutation({
     onSuccess: () => {
       // Refresh token info and history
-      utils.compliantToken.info.invalidate({ networkId });
-      utils.compliantToken.history.invalidate({ networkId, walletAddress });
+      utils.compliantToken.info
+        .invalidate({ networkId })
+        .catch(reportRejection);
+      utils.compliantToken.history
+        .invalidate({
+          networkId,
+          walletAddress,
+        })
+        .catch(reportRejection);
     },
   });
 
@@ -91,7 +99,7 @@ export function MintForm({
     setAmountError(null);
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     await handleMint();
   };
@@ -106,7 +114,7 @@ export function MintForm({
         <CardDescription>Request test tokens for your wallet</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <form className="space-y-2" onSubmit={handleSubmit}>
+        <form className="space-y-2" onSubmit={asyncHandler(handleSubmit)}>
           <FieldGroup>
             <Field data-invalid={Boolean(amountError)}>
               <FieldLabel htmlFor="mint-amount">Amount</FieldLabel>

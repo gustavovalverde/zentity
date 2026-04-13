@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { reportRejection } from "@/lib/async-handler";
 
 const MOBILE_UA_PATTERN = /iPhone|iPad|iPod|Android/i;
 
@@ -36,7 +37,9 @@ export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
     if (isMobile) {
       return;
     }
-    toDataURL(url, { width: 280, margin: 2 }).then(setQrDataUrl);
+    toDataURL(url, { width: 280, margin: 2 })
+      .then(setQrDataUrl)
+      .catch(reportRejection);
   }, [url, isMobile]);
 
   if (isMobile) {

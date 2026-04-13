@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import {
   createPendingSessionGrants,
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
   const parsed = registerSessionRequestSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request body", details: parsed.error.flatten() },
+      { error: "Invalid request body", details: z.flattenError(parsed.error) },
       { status: 400 }
     );
   }

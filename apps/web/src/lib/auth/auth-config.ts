@@ -41,11 +41,11 @@ import {
   loadAapProfileForCibaRequest,
   persistAapSnapshotForCibaToken,
 } from "@/lib/agents/act-claim";
+import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
   deriveCapabilityName,
-  evaluateSessionGrants,
   normalizeAuthorizationDetails,
-} from "@/lib/agents/approval-evaluate";
+} from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import {
   AGENT_BOOTSTRAP_SCOPES,
@@ -53,6 +53,7 @@ import {
 } from "@/lib/agents/session";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
+import { reportRejection } from "@/lib/async-handler";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
@@ -1643,8 +1644,8 @@ export const auth = betterAuth({
           sendBackchannelLogout(
             userId,
             typeof sessionId === "string" ? sessionId : undefined
-          );
-          revokePendingCibaOnLogout(userId);
+          ).catch(reportRejection);
+          revokePendingCibaOnLogout(userId).catch(reportRejection);
         }
       }
     }),

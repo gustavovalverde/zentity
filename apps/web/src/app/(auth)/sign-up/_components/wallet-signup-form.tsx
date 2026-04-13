@@ -10,6 +10,7 @@ import { useChainId, useSignTypedData } from "wagmi";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { ensureAuthSession } from "@/lib/auth/session-cleanup";
 
@@ -156,7 +157,7 @@ export function WalletSignUpForm({
           <Button
             className="w-full"
             disabled={disabled || isSigning}
-            onClick={handleSign}
+            onClick={asyncHandler(handleSign)}
             type="button"
           >
             {isSigning ? (

@@ -1,3 +1,5 @@
+import type { Session } from "./auth-config";
+
 import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
@@ -15,8 +17,6 @@ import {
   validateOAuthAccessToken,
 } from "@/lib/auth/oidc/oauth-request";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
-
-import { auth, type Session } from "./auth-config";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
@@ -230,6 +230,8 @@ export async function requireBrowserSession(
   requestHeaders?: Headers
 ): Promise<BrowserSessionSuccess | AuthFailure> {
   const hdrs = requestHeaders ?? (await nextHeaders());
+  // Lazy import breaks the import cycle: auth-config → disclosure → resource-auth → auth-config.
+  const { auth } = await import("./auth-config");
   const session = await auth.api.getSession({
     headers: hdrs,
   });

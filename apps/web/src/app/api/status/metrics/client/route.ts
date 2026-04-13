@@ -40,7 +40,7 @@ const MAX_BYTES = 50 * 1024 * 1024;
 
 const eventSchema = z.object({
   name: z.string(),
-  value: z.number().finite().nonnegative(),
+  value: z.number().nonnegative(),
   unit: z.enum(["ms", "By"]),
   attributes: z
     .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))

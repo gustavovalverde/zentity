@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { useSession } from "@/lib/auth/auth-client";
 import { generateAllProofs } from "@/lib/identity/verification/finalize-and-prove";
 import {
@@ -473,7 +474,7 @@ export function LivenessVerifyClient({
         key={livenessKey}
         onReset={handleReset}
         onSessionError={handleSessionError}
-        onVerified={handleVerified}
+        onVerified={asyncHandler(handleVerified)}
         userId={userId}
       >
         <LivenessFlow />
@@ -524,7 +525,7 @@ export function LivenessVerifyClient({
       <div className="flex justify-end gap-3">
         <Button
           disabled={!isReadyToComplete || isSubmitting}
-          onClick={handleContinue}
+          onClick={asyncHandler(handleContinue)}
         >
           {isSubmitting ? <Spinner className="mr-2 size-4" /> : null}
           Complete Verification
@@ -535,7 +536,7 @@ export function LivenessVerifyClient({
         <BindingAuthDialog
           authMode={bindingAuthMode}
           onOpenChange={handleBindingAuthOpenChange}
-          onSuccess={handleBindingAuthSuccess}
+          onSuccess={asyncHandler(handleBindingAuthSuccess)}
           open={bindingAuthOpen}
           userId={userId}
           wallet={wallet}

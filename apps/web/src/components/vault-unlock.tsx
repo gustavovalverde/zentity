@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   buildKekSignatureTypedData,
@@ -310,7 +311,7 @@ export function WalletVaultUnlockButton({
   return (
     <Button
       disabled={signing || disabled}
-      onClick={handleClick}
+      onClick={asyncHandler(handleClick)}
       size="sm"
       type="button"
       variant="outline"
@@ -378,7 +379,7 @@ export function OpaqueVaultUnlockForm({
         onChange={(e) => setPassword(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            handleSubmit();
+            handleSubmit().catch(reportRejection);
           }
         }}
         placeholder="Enter your password"
@@ -387,7 +388,7 @@ export function OpaqueVaultUnlockForm({
       />
       <Button
         disabled={verifying || disabled || !password.trim()}
-        onClick={handleSubmit}
+        onClick={asyncHandler(handleSubmit)}
         size="sm"
         type="button"
         variant="outline"
@@ -668,7 +669,9 @@ export function VaultUnlockPanel({
             <p>{intentError}</p>
             <Button
               disabled={disabled || intentLoading}
-              onClick={() => fetchIdentityIntent().catch(() => undefined)}
+              onClick={() => {
+                fetchIdentityIntent().catch(reportRejection);
+              }}
               size="sm"
               type="button"
               variant="outline"
@@ -716,7 +719,7 @@ export function VaultUnlockPanel({
         <AlertDescription className="space-y-2">
           <p>Use your passkey to share your information.</p>
           <Button
-            onClick={loadProfilePasskey}
+            onClick={asyncHandler(loadProfilePasskey)}
             size="sm"
             type="button"
             variant="outline"

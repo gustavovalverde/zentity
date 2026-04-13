@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
 import { redirectTo } from "@/lib/auth/redirect";
@@ -72,10 +73,10 @@ export function OpaqueSignInForm({
     },
   });
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    form.handleSubmit();
+    form.handleSubmit().catch(reportRejection);
   };
 
   const validateIdentifier = (value: string) => {

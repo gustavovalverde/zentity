@@ -3,7 +3,8 @@
     "ultracite/biome/core",
     "ultracite/biome/react",
     "ultracite/biome/next",
-    "ultracite/biome/vitest"
+    "ultracite/biome/vitest",
+    "ultracite/biome/type-aware"
   ],
   "assist": {
     "actions": {
@@ -33,7 +34,16 @@
     },
     "rules": {
       "complexity": {
-        "noExcessiveCognitiveComplexity": "off"
+        "noExcessiveCognitiveComplexity": "off",
+        "noVoid": "error"
+      },
+      "correctness": {
+        "useImportExtensions": "off",
+        "noUnresolvedImports": "off",
+        "useJsonImportAttributes": "error"
+      },
+      "suspicious": {
+        "noImportCycles": "error"
       }
     }
   },
@@ -65,6 +75,9 @@
         "rules": {
           "suspicious": {
             "noSkippedTests": "off"
+          },
+          "correctness": {
+            "noUndeclaredDependencies": "off"
           }
         }
       }

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
@@ -261,7 +262,9 @@ export function FheEnrollmentDialog({
   useEffect(() => {
     if (inline || open) {
       prewarmTfheWorker();
-      checkPrfSupport().then((r) => setPrfSupported(r.supported));
+      checkPrfSupport()
+        .then((r) => setPrfSupported(r.supported))
+        .catch(reportRejection);
     }
   }, [inline, open]);
 
@@ -868,7 +871,7 @@ export function FheEnrollmentDialog({
             <Button
               className="w-full justify-start gap-3"
               disabled={isRunning}
-              onClick={() => handleEnroll("passkey").catch(() => undefined)}
+              onClick={asyncHandler(() => handleEnroll("passkey"))}
               variant="outline"
             >
               <Fingerprint className="h-4 w-4" />
@@ -878,7 +881,7 @@ export function FheEnrollmentDialog({
 
           {wallet && availableMethods.includes("wallet") && (
             <WalletEnrollmentButton
-              onEnroll={handleEnroll}
+              onEnroll={asyncHandler(handleEnroll)}
               stage={stage}
               wallet={wallet}
             />
@@ -892,7 +895,7 @@ export function FheEnrollmentDialog({
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && password.trim()) {
-                    handleEnroll("password").catch(() => undefined);
+                    handleEnroll("password").catch(reportRejection);
                   }
                 }}
                 placeholder="Enter your password"
@@ -902,7 +905,7 @@ export function FheEnrollmentDialog({
               <Button
                 className="w-full justify-start gap-3"
                 disabled={isRunning || !password.trim()}
-                onClick={() => handleEnroll("password").catch(() => undefined)}
+                onClick={asyncHandler(() => handleEnroll("password"))}
                 variant="outline"
               >
                 <KeyRound className="h-4 w-4" />
@@ -924,7 +927,7 @@ export function FheEnrollmentDialog({
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && password.trim().length >= 10) {
-                    handleEnroll("create-password").catch(() => undefined);
+                    handleEnroll("create-password").catch(reportRejection);
                   }
                 }}
                 placeholder="Create a password (min 10 characters)"
@@ -934,9 +937,7 @@ export function FheEnrollmentDialog({
               <Button
                 className="w-full justify-start gap-3"
                 disabled={isRunning || password.trim().length < 10}
-                onClick={() =>
-                  handleEnroll("create-password").catch(() => undefined)
-                }
+                onClick={asyncHandler(() => handleEnroll("create-password"))}
                 variant="outline"
               >
                 <KeyRound className="h-4 w-4" />

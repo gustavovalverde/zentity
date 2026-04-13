@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { useSession } from "@/lib/auth/auth-client";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
@@ -96,7 +97,7 @@ const RecoveryIdSection = memo(function RecoveryIdSection({
         <Input readOnly value={recoveryId ?? "Loading..."} />
         <Button
           disabled={!recoveryId}
-          onClick={handleCopy}
+          onClick={asyncHandler(handleCopy)}
           type="button"
           variant="secondary"
         >
@@ -222,7 +223,7 @@ const GuardiansSection = memo(function GuardiansSection({
               aria-label="Remove guardian"
               className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               disabled={removingId === guardian.id}
-              onClick={() => handleRemove(guardian.id)}
+              onClick={asyncHandler(() => handleRemove(guardian.id))}
               size="sm"
               title="Remove guardian"
               variant="ghost"
@@ -242,7 +243,7 @@ const GuardiansSection = memo(function GuardiansSection({
         />
         <Button
           disabled={isAdding}
-          onClick={handleAdd}
+          onClick={asyncHandler(handleAdd)}
           type="button"
           variant="secondary"
         >
@@ -336,7 +337,7 @@ const TwoFactorGuardianSection = memo(function TwoFactorGuardianSection({
       )}
       <Button
         disabled={!isTwoFactorConfigured || hasTwoFactorGuardian || isLinking}
-        onClick={handleLink}
+        onClick={asyncHandler(handleLink)}
         type="button"
         variant="secondary"
       >
@@ -483,7 +484,7 @@ export function RecoverySetupSection() {
             <p className="text-muted-foreground text-sm">
               Guardians will authorize recovery for this account.
             </p>
-            <Button disabled={isEnabling} onClick={handleEnable}>
+            <Button disabled={isEnabling} onClick={asyncHandler(handleEnable)}>
               {isEnabling ? (
                 <>
                   <Spinner className="mr-2 size-4" />

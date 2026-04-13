@@ -147,7 +147,7 @@ export const attestationRouter = router({
         });
       }
 
-      const provider = await createProvider(input.networkId);
+      const provider = createProvider(input.networkId);
 
       // Rate limiting
       const existing = await getBlockchainAttestationByUserAndNetwork(
@@ -347,7 +347,7 @@ export const attestationRouter = router({
         });
       }
 
-      const provider = await createProvider(input.networkId);
+      const provider = createProvider(input.networkId);
       const validation = await provider.validateAttestationTransaction({
         txHash: input.txHash,
         userAddress: attestation.walletAddress,
@@ -397,7 +397,7 @@ export const attestationRouter = router({
       }
 
       try {
-        const provider = await createProvider(input.networkId);
+        const provider = createProvider(input.networkId);
         const txStatus = await provider.checkTransaction(attestation.txHash);
 
         if (txStatus.confirmed) {

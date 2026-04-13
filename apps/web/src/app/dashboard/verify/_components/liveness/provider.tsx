@@ -25,6 +25,7 @@ import {
   useState,
 } from "react";
 
+import { reportRejection } from "@/lib/async-handler";
 import {
   type LivenessPhase,
   useLiveness,
@@ -289,15 +290,15 @@ export function LivenessProvider({
 
       switch (currPhase) {
         case "detecting":
-          speak("positionFace");
+          speak("positionFace").catch(reportRejection);
           break;
         // countdown: handled by dedicated effect with beep sounds
         case "verifying":
-          speak("verifying");
+          speak("verifying").catch(reportRejection);
           break;
         case "completed":
           feedback("verificationComplete");
-          speak("verificationComplete");
+          speak("verificationComplete").catch(reportRejection);
           break;
         case "failed":
           feedback("error");
@@ -320,7 +321,7 @@ export function LivenessProvider({
         feedback("faceDetected");
       } else {
         feedback("faceLost");
-        speak("faceLost");
+        speak("faceLost").catch(reportRejection);
       }
     }
   }, [liveness.face.detected, liveness.phase, feedback, speak]);
@@ -352,7 +353,7 @@ export function LivenessProvider({
         turn_right: "turnRight",
       }[challenge.type] as "smile" | "turnLeft" | "turnRight";
 
-      speak(speechKey);
+      speak(speechKey).catch(reportRejection);
     }
   }, [liveness.challenge, speak, signalChallengeReady, debug]);
 
@@ -405,7 +406,7 @@ export function LivenessProvider({
 
   const start = useCallback(() => {
     initAudio(); // Initialize audio on user interaction
-    beginCamera();
+    beginCamera().catch(reportRejection);
   }, [beginCamera, initAudio]);
 
   const cancel = useCallback(() => {

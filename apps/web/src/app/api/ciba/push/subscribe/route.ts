@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 const MAX_SUBSCRIPTIONS = 5;
 
 const subscriptionSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: z.url(),
   keys: z.object({
     auth: z.string().min(1),
     p256dh: z.string().min(1),

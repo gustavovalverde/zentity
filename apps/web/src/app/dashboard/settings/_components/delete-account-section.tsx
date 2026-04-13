@@ -32,6 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { trpc } from "@/lib/trpc/client";
 
 interface DeleteAccountSectionProps {
@@ -177,7 +178,7 @@ export function DeleteAccountSection({
                 </DialogClose>
                 <Button
                   disabled={!isEmailMatch || isDeleting}
-                  onClick={handleDelete}
+                  onClick={asyncHandler(handleDelete)}
                   variant="destructive"
                 >
                   {isDeleting ? (

@@ -132,7 +132,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             address: z.string().min(1),
             chainId: z.number().int().positive(),
             nonce: z.string().min(1),
-            email: z.string().email().optional(),
+            email: z.email().optional(),
           }),
         },
         async (ctx) => {

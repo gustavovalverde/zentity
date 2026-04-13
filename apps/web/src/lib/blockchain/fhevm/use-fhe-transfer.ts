@@ -47,7 +47,7 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
 
   const {
     data: txHash,
-    writeContractAsync,
+    mutateAsync: writeContractAsync,
     isPending: isWritePending,
     error: writeError,
     reset: resetWrite,

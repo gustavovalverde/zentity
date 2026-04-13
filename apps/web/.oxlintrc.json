@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Intentionally NOT extending ultracite/oxlint/core — its preset enables
+  // 715+ rules across 8 plugins, which would create massive duplicate
+  // diagnostics with Biome (the primary linter). Oxlint is used here ONLY
+  // for type-aware rules Biome can't do (no-deprecated, no-floating-promises,
+  // etc). The narrow opt-in below IS the canonical hybrid-linter pattern.
+  // Doctor will warn about missing extend; that's a known cosmetic mismatch.
+  // See: https://docs.ultracite.ai/providers/oxlint
+  "plugins": ["typescript", "eslint"],
+  "categories": {
+    "correctness": "off",
+    "perf": "off",
+    "restriction": "off",
+    "suspicious": "off",
+    "pedantic": "off",
+    "style": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    "typescript/no-deprecated": "error",
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-misused-spread": "error",
+    "typescript/no-misused-new": "error",
+    "typescript/await-thenable": "error",
+    "no-void": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "e2e/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.integration.test.ts",
+        "**/*.integration.test.tsx",
+        "**/__tests__/**"
+      ],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/no-misused-promises": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    ".next",
+    "dist",
+    "coverage",
+    "playwright-report",
+    "test-results",
+    ".data",
+    "public",
+    "noir-circuits"
+  ]
+}

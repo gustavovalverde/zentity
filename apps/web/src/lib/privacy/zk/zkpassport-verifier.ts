@@ -1207,6 +1207,7 @@ function validateBindQueryResult(
   return { errors, isCorrect };
 }
 
+// biome-ignore lint/suspicious/useAwait: kept async for Promise<> return signature consumed by callers; the inner await was removed after oxlint await-thenable fix.
 async function validateSanctionsQueryResult(
   queryResult: QueryResult,
   sanctionsBuilder: SanctionsBuilder,
@@ -1219,7 +1220,7 @@ async function validateSanctionsQueryResult(
     return { errors, isCorrect };
   }
 
-  const rootHash = await sanctionsBuilder.getRoot();
+  const rootHash = sanctionsBuilder.getRoot();
   if (inputs.rootHash !== rootHash) {
     isCorrect = false;
     addStructuredError(

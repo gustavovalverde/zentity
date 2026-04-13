@@ -6,10 +6,18 @@ const HEX_NONCE_PATTERN = /^[0-9a-f]{32}$/;
 // Mock server-only
 vi.mock("server-only", () => ({}));
 
-import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
-import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
-import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
-import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
+import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json" with {
+  type: "json",
+};
+import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json" with {
+  type: "json",
+};
+import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json" with {
+  type: "json",
+};
+import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json" with {
+  type: "json",
+};
 
 import {
   isProofType,

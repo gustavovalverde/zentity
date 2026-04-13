@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 import {
   getPasswordLengthError,
@@ -123,10 +124,10 @@ export function SetPasswordSection({
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    form.handleSubmit();
+    form.handleSubmit().catch(reportRejection);
   };
 
   const triggerBreachCheckIfConfirmed = () => {

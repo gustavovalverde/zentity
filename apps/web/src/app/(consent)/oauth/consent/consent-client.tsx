@@ -25,6 +25,7 @@ import {
   useVaultUnlock,
   VaultUnlockPanel,
 } from "@/components/vault-unlock";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   findMissingIdentityFields,
@@ -482,7 +483,7 @@ export function OAuthConsentClient({
                     !vault.hasValidIdentityIntent ||
                     vault.intentLoading))
               }
-              onClick={() => handleConsent(true)}
+              onClick={asyncHandler(() => handleConsent(true))}
               type="button"
             >
               {isSubmitting ? (
@@ -492,7 +493,7 @@ export function OAuthConsentClient({
             </Button>
             <Button
               disabled={isSubmitting}
-              onClick={() => handleConsent(false)}
+              onClick={asyncHandler(() => handleConsent(false))}
               type="button"
               variant="outline"
             >

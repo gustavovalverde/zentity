@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 
 interface Org {
@@ -241,7 +242,9 @@ export default function ApplicationsPage() {
     onSuccess: () => {
       setNewOrgName("");
       setActionOk("Organization created.");
-      queryClient.invalidateQueries({ queryKey: ["organizations"] });
+      queryClient
+        .invalidateQueries({ queryKey: ["organizations"] })
+        .catch(reportRejection);
       globalThis.window.location.reload();
     },
     onError: (err) => {
@@ -287,7 +290,9 @@ export default function ApplicationsPage() {
     },
     onSuccess: () => {
       setActionOk("Client assigned to active organization.");
-      queryClient.invalidateQueries({ queryKey: ["rp-admin", "clients"] });
+      queryClient
+        .invalidateQueries({ queryKey: ["rp-admin", "clients"] })
+        .catch(reportRejection);
     },
     onError: (err) => {
       setActionError(
@@ -381,7 +386,11 @@ export default function ApplicationsPage() {
             <Button
               disabled={orgsQuery.isLoading || busy}
               onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ["organizations"] });
+                queryClient
+                  .invalidateQueries({
+                    queryKey: ["organizations"],
+                  })
+                  .catch(reportRejection);
               }}
               variant="outline"
             >
@@ -483,9 +492,11 @@ export default function ApplicationsPage() {
             <Button
               disabled={!activeOrgId || unownedQuery.isLoading || busy}
               onClick={() => {
-                queryClient.invalidateQueries({
-                  queryKey: ["rp-admin", "clients", "unowned"],
-                });
+                queryClient
+                  .invalidateQueries({
+                    queryKey: ["rp-admin", "clients", "unowned"],
+                  })
+                  .catch(reportRejection);
               }}
               variant="outline"
             >

@@ -52,6 +52,7 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   deletePasskey,
@@ -448,7 +449,7 @@ export function PasskeyManagementSection() {
                         <Button
                           aria-label="Save passkey name"
                           disabled={!editState.name.trim()}
-                          onClick={handleSaveEdit}
+                          onClick={asyncHandler(handleSaveEdit)}
                           size="sm"
                           variant="ghost"
                         >
@@ -517,7 +518,7 @@ export function PasskeyManagementSection() {
         <Button
           className="w-full"
           disabled={isAdding || prfSupported === false}
-          onClick={handleAddPasskey}
+          onClick={asyncHandler(handleAddPasskey)}
           variant="outline"
         >
           {isAdding ? (
@@ -607,9 +608,11 @@ export function PasskeyManagementSection() {
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() =>
-                  deleteConfirm && handleDeletePasskey(deleteConfirm)
-                }
+                onClick={() => {
+                  if (deleteConfirm) {
+                    handleDeletePasskey(deleteConfirm).catch(reportRejection);
+                  }
+                }}
               >
                 Remove Passkey
               </AlertDialogAction>

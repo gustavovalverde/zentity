@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import {
   isPasskeyAlreadyRegistered,
   registerPasskeyWithPrf,
@@ -52,11 +53,13 @@ export function SignUpForm() {
   // Check PRF support on mount
   useEffect(() => {
     let active = true;
-    checkPrfSupport().then((result) => {
-      if (active) {
-        setPrfStatus(result);
-      }
-    });
+    checkPrfSupport()
+      .then((result) => {
+        if (active) {
+          setPrfStatus(result);
+        }
+      })
+      .catch(reportRejection);
     return () => {
       active = false;
     };
@@ -204,7 +207,7 @@ export function SignUpForm() {
 
     if (type === "passkey") {
       setCredentialType("passkey");
-      handleCreatePasskey();
+      handleCreatePasskey().catch(reportRejection);
       return;
     }
 
@@ -303,7 +306,7 @@ export function SignUpForm() {
         <PasswordSignUpForm
           disabled={isSubmitting}
           email={email}
-          onSuccess={handlePasswordSignUp}
+          onSuccess={asyncHandler(handlePasswordSignUp)}
         />
       )}
 
@@ -311,7 +314,7 @@ export function SignUpForm() {
         <WalletSignUpForm
           disabled={isSubmitting}
           email={email}
-          onSuccess={handleWalletSignUp}
+          onSuccess={asyncHandler(handleWalletSignUp)}
         />
       )}
 

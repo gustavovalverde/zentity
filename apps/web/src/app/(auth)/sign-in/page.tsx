@@ -7,6 +7,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { asyncHandler } from "@/lib/async-handler";
+
 import { OpaqueSignInForm } from "../_components/opaque-sign-in-form";
 import { SocialLoginButtons } from "../_components/social-login-buttons";
 
@@ -123,7 +125,7 @@ export default function SignInPage() {
           <Button
             className="w-full"
             disabled={passkeyLoading}
-            onClick={handlePasskeySignIn}
+            onClick={asyncHandler(handlePasskeySignIn)}
             size="lg"
           >
             {passkeyLoading ? (

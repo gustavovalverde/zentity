@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/item";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import {
   resolveAttestationConsentRevision,
   resolveOnChainAttestationViewState,
@@ -137,7 +138,7 @@ export function OnChainAttestation({
   // Permit-based attestation mutations
   const createPermitMutation = trpcReact.attestation.createPermit.useMutation({
     onSuccess: () => {
-      refetchNetworks();
+      refetchNetworks().catch(reportRejection);
     },
   });
   const recordSubmissionMutation =
@@ -170,7 +171,7 @@ export function OnChainAttestation({
     ethersSigner: ethersSigner ?? undefined,
     contractAddress: registryAddress,
   });
-  const { writeContractAsync } = useWriteContract();
+  const { mutateAsync: writeContractAsync } = useWriteContract();
   const { data: currentRevision } = useReadContract({
     address: registryAddress,
     abi: IdentityRegistryABI,
@@ -178,7 +179,7 @@ export function OnChainAttestation({
     args: address ? [address as `0x${string}`] : undefined,
     query: { enabled: Boolean(registryAddress && address) },
   });
-  const { signTypedDataAsync } = useSignTypedData();
+  const { mutateAsync: signTypedDataAsync } = useSignTypedData();
 
   const isSubmitting =
     createPermitMutation.isPending || recordSubmissionMutation.isPending;
@@ -186,7 +187,7 @@ export function OnChainAttestation({
   // Refresh attestation status mutation
   const refreshMutation = trpcReact.attestation.refresh.useMutation({
     onSuccess: () => {
-      refetchNetworks();
+      refetchNetworks().catch(reportRejection);
     },
   });
 
@@ -509,10 +510,12 @@ export function OnChainAttestation({
               }
               invalidateComplianceAccess={() => {
                 if (selectedNetworkData?.id && address) {
-                  utils.compliantToken.complianceAccess.invalidate({
-                    networkId: selectedNetworkData.id,
-                    walletAddress: address,
-                  });
+                  utils.compliantToken.complianceAccess
+                    .invalidate({
+                      networkId: selectedNetworkData.id,
+                      walletAddress: address,
+                    })
+                    .catch(reportRejection);
                 }
               }}
               isCheckingOnChain={isCheckingOnChain}
@@ -523,8 +526,8 @@ export function OnChainAttestation({
               networks={networks}
               networksLoading={networksLoading}
               onNetworkSelect={setSelectedNetwork}
-              onRefresh={handleRefresh}
-              onSubmit={handleSubmit}
+              onRefresh={asyncHandler(handleRefresh)}
+              onSubmit={asyncHandler(handleSubmit)}
               selectedNetwork={selectedNetwork}
               selectedNetworkData={
                 selectedNetworkData as NetworkStatus | undefined
@@ -837,7 +840,7 @@ const NetworkActions = memo(function NetworkActions({
 }>) {
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
-  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const { mutate: switchChain, isPending: isSwitching } = useSwitchChain();
   const attestation = network.attestation;
   const isChainMismatch = chainId !== network.chainId;
   const walletMismatch =
@@ -902,7 +905,16 @@ const NetworkActions = memo(function NetworkActions({
               </ItemTitle>
             </ItemContent>
             <ItemActions>
-              <Button onClick={() => disconnect()} size="sm" variant="outline">
+              <Button
+                onClick={() => {
+                  // wagmi v2 useDisconnect returns void synchronously; tsgolint
+                  // sees the underlying mutation Promise. Explicit ignore.
+                  // oxlint-disable-next-line typescript/no-floating-promises
+                  disconnect();
+                }}
+                size="sm"
+                variant="outline"
+              >
                 <Wallet className="mr-2 h-3 w-3" />
                 Disconnect
               </Button>
@@ -1057,7 +1069,16 @@ const NetworkActions = memo(function NetworkActions({
           </p>
         </ItemContent>
         <ItemActions>
-          <Button onClick={() => disconnect()} size="sm" variant="outline">
+          <Button
+            onClick={() => {
+              // wagmi v2 useDisconnect returns void synchronously; tsgolint
+              // sees the underlying mutation Promise. Explicit ignore.
+              // oxlint-disable-next-line typescript/no-floating-promises
+              disconnect();
+            }}
+            size="sm"
+            variant="outline"
+          >
             <Wallet className="mr-2 h-3 w-3" />
             Change
           </Button>

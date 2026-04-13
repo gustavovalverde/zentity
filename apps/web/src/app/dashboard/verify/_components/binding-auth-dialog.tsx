@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import {
@@ -132,7 +133,7 @@ function WalletSignButton({
     <Button
       className="w-full"
       disabled={isRunning}
-      onClick={handleClick}
+      onClick={asyncHandler(handleClick)}
       size="lg"
     >
       {isRunning ? (
@@ -192,7 +193,7 @@ export function BindingAuthDialog({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !isRunning) {
-        handleOpaqueSubmit();
+        handleOpaqueSubmit().catch(reportRejection);
       }
     },
     [isRunning, handleOpaqueSubmit]
@@ -231,7 +232,7 @@ export function BindingAuthDialog({
               <Button
                 className="w-full"
                 disabled={isRunning || !password.trim()}
-                onClick={handleOpaqueSubmit}
+                onClick={asyncHandler(handleOpaqueSubmit)}
                 size="lg"
               >
                 {isRunning ? (

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 
 interface TwoFactorCardProps {
@@ -96,7 +97,7 @@ function TwoFactorDialog({
     return "Continue to set up two-factor authentication.";
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (hasPassword && !password.trim()) {
@@ -183,7 +184,7 @@ function TwoFactorDialog({
           <DialogDescription>{getDialogDescription()}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={asyncHandler(handleSubmit)}>
           <FieldGroup className="py-4">{renderFormContent()}</FieldGroup>
 
           <DialogFooter>

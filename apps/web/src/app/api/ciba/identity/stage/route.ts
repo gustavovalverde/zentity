@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
-import {
-  handleIdentityStage,
-  IdentityFieldsSchema,
-} from "@/lib/auth/oidc/disclosure/delivery";
+import { IdentityFieldsSchema } from "@/lib/auth/oidc/disclosure/delivery";
+import { handleIdentityStage } from "@/lib/auth/oidc/disclosure/route-handlers";
 import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
 
 const StageSchema = z.object({
@@ -30,7 +28,7 @@ export function POST(request: Request): Promise<Response> {
       const parsed = StageSchema.safeParse(body);
       if (!parsed.success) {
         return NextResponse.json(
-          { error: "Invalid request", details: parsed.error.flatten() },
+          { error: "Invalid request", details: z.flattenError(parsed.error) },
           { status: 400 }
         );
       }

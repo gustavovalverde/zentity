@@ -131,7 +131,7 @@ export async function POST(
   const parseResult = RegisterKeySchema.safeParse(body);
   if (!parseResult.success) {
     return NextResponse.json(
-      { error: "Invalid request", details: parseResult.error.flatten() },
+      { error: "Invalid request", details: z.flattenError(parseResult.error) },
       { status: 400 }
     );
   }

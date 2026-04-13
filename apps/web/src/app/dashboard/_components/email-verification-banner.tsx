@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 
 const SYNTHETIC_EMAIL_DOMAINS = ["anon.zentity.app", "wallet.zentity.app"];
@@ -74,7 +75,7 @@ export function EmailVerificationBanner({
             </p>
             <Button
               disabled={sending}
-              onClick={handleResend}
+              onClick={asyncHandler(handleResend)}
               size="sm"
               variant="outline"
             >

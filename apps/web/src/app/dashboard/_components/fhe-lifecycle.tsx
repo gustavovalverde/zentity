@@ -6,6 +6,7 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { reportRejection } from "@/lib/async-handler";
 import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 import { trpc } from "@/lib/trpc/client";
 
@@ -54,7 +55,9 @@ export function FheStatusPoller() {
         baseInterval * backoffFactor ** attemptRef.current,
         maxInterval
       );
-      timeoutRef.current = setTimeout(poll, interval);
+      timeoutRef.current = setTimeout(() => {
+        poll().catch(reportRejection);
+      }, interval);
     };
 
     const poll = async () => {

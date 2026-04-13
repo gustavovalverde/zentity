@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { invalidateSessionDataCache } from "@/lib/auth/session-cleanup";
 
@@ -65,14 +66,16 @@ export function BackupCodesClient() {
       }
     };
 
-    tryPasswordlessGenerate();
+    tryPasswordlessGenerate().catch(reportRejection);
 
     return () => {
       active = false;
     };
   }, []);
 
-  const handlePasswordSubmit = async (event: React.FormEvent) => {
+  const handlePasswordSubmit = async (
+    event: React.SubmitEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
     if (!password.trim()) {
       setError("Password is required");
@@ -137,7 +140,10 @@ export function BackupCodesClient() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={handlePasswordSubmit}>
+          <form
+            className="space-y-4"
+            onSubmit={asyncHandler(handlePasswordSubmit)}
+          >
             <FieldGroup>
               <Field data-invalid={Boolean(error)}>
                 <FieldLabel htmlFor={passwordId}>Password</FieldLabel>

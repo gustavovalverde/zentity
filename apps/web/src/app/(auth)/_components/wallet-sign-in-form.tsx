@@ -11,6 +11,7 @@ import { useChainId, useSignTypedData } from "wagmi";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   continueOAuthFlow,
@@ -121,7 +122,7 @@ export function WalletSignInButton() {
           <Button
             className="w-full"
             disabled={isLoading}
-            onClick={handleSignIn}
+            onClick={asyncHandler(handleSignIn)}
             variant="outline"
           >
             {isLoading ? (

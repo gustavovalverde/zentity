@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { trpc } from "@/lib/trpc/client";
 
 type ApprovalState = "idle" | "approving" | "approved";
@@ -101,7 +102,7 @@ export function RecoverGuardianClient() {
           <Button
             className="w-full"
             disabled={!(hydrated && token) || state === "approving"}
-            onClick={handleApprove}
+            onClick={asyncHandler(handleApprove)}
           >
             {state === "approving" ? (
               <>

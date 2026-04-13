@@ -249,7 +249,7 @@ const createChallengeProcedure = protectedProcedure
   .input(
     z.object({
       circuitType: circuitTypeSchema,
-      proofSessionId: z.string().uuid(),
+      proofSessionId: z.uuid(),
     })
   )
   .mutation(async ({ ctx, input }) => {
@@ -801,7 +801,7 @@ const verifyProofProcedure = protectedProcedure
       proof: z.string().min(1),
       publicInputs: z.array(z.string()),
       circuitType: circuitTypeSchema,
-      proofSessionId: z.string().uuid(),
+      proofSessionId: z.uuid(),
       verificationId: z.string().optional(),
     })
   )
@@ -955,7 +955,7 @@ const storeProofProcedure = protectedProcedure
       circuitType: circuitTypeSchema,
       proof: z.string().min(1),
       publicSignals: z.array(z.string()),
-      proofSessionId: z.string().uuid(),
+      proofSessionId: z.uuid(),
       generationTimeMs: z.number().optional(),
       verificationId: z.string().optional(),
     })

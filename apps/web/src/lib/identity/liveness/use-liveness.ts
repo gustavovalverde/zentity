@@ -19,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { toast } from "sonner";
 
+import { reportRejection } from "@/lib/async-handler";
 import {
   checkForVirtualCamera,
   filterPhysicalCameras,
@@ -200,7 +201,7 @@ export function useLivenessCamera(
         }
       }
     }
-    checkPermission();
+    checkPermission().catch(reportRejection);
     return () => {
       cancelled = true;
       permission?.removeEventListener("change", handleChange);
@@ -1210,7 +1211,9 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
       }
     };
 
-    frameIntervalRef.current = setInterval(sendFrame, FRAME_INTERVAL_MS);
+    frameIntervalRef.current = setInterval(() => {
+      sendFrame().catch(reportRejection);
+    }, FRAME_INTERVAL_MS);
   }, [videoRef]);
 
   // Stop frame streaming
@@ -1306,7 +1309,7 @@ export function useLiveness(args: UseLivenessArgs): UseLivenessResult {
     setErrorMessage(null);
 
     onResetRef.current();
-    beginCamera();
+    beginCamera().catch(reportRejection);
   }, [cleanup, stopCamera, beginCamera]);
 
   // Cancel session - reset to initial state WITHOUT restarting

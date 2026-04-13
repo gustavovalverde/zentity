@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleIdentityIntent } from "@/lib/auth/oidc/disclosure/delivery";
+import { handleIdentityIntent } from "@/lib/auth/oidc/disclosure/route-handlers";
 import {
   parseRequestedScopes,
   verifySignedOAuthQuery,
@@ -17,7 +17,7 @@ export function POST(request: Request): Promise<Response> {
     const parsed = IntentSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: parsed.error.flatten() },
+        { error: "Invalid request", details: z.flattenError(parsed.error) },
         { status: 400 }
       );
     }

@@ -7,7 +7,7 @@ import {
   type AuthorizationDetail,
   deriveCapabilityName,
   resolveCapabilityApprovalStrength,
-} from "@/lib/agents/approval-evaluate";
+} from "@/lib/agents/capability";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,
@@ -436,7 +436,7 @@ export const AGENT_BOOTSTRAP_TOKEN_USE = "agent_bootstrap";
 // ---------------------------------------------------------------------------
 
 const agentBootstrapTokenExchangeSchema = z.object({
-  audience: z.string().url(),
+  audience: z.url(),
   grant_type: z.string().min(1),
   requested_token_type: z.string().min(1),
   scopes_supported: z.array(z.string().min(1)),
@@ -445,15 +445,15 @@ const agentBootstrapTokenExchangeSchema = z.object({
 
 export const agentConfigurationSchema = z.object({
   approval_methods: z.array(z.string().min(1)),
-  approval_page_url_template: z.string().url(),
+  approval_page_url_template: z.url(),
   bootstrap_token_exchange: agentBootstrapTokenExchangeSchema,
-  capabilities_endpoint: z.string().url(),
-  host_registration_endpoint: z.string().url(),
-  introspection_endpoint: z.string().url(),
-  issuer: z.string().url(),
-  jwks_uri: z.string().url(),
-  registration_endpoint: z.string().url(),
-  revocation_endpoint: z.string().url(),
+  capabilities_endpoint: z.url(),
+  host_registration_endpoint: z.url(),
+  introspection_endpoint: z.url(),
+  issuer: z.url(),
+  jwks_uri: z.url(),
+  registration_endpoint: z.url(),
+  revocation_endpoint: z.url(),
   supported_algorithms: z.array(z.string().min(1)),
   supported_features: z.object({
     bootstrap_token_exchange: z.boolean(),

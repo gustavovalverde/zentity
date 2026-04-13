@@ -44,7 +44,7 @@ describe("compliantTokenRouter.isAttested", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCanCreateProvider.mockReturnValue(true);
-    mockCreateProvider.mockResolvedValue({
+    mockCreateProvider.mockReturnValue({
       getAttestationStatus: vi.fn().mockResolvedValue({ isAttested: true }),
     });
   });
@@ -64,7 +64,7 @@ describe("compliantTokenRouter.isAttested", () => {
   });
 
   it("returns a not_attested status when the chain reports no attestation", async () => {
-    mockCreateProvider.mockResolvedValue({
+    mockCreateProvider.mockReturnValue({
       getAttestationStatus: vi.fn().mockResolvedValue({ isAttested: false }),
     });
 

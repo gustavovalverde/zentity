@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { reportRejection } from "@/lib/async-handler";
 import { trpcReact } from "@/lib/trpc/client";
 
 import { ComplianceAccessCard } from "../../attestation/_components/compliance-access-card";
@@ -108,10 +109,12 @@ export function DefiDemoClient({
           explorerUrl: null,
         }
       );
-      utils.compliantToken.complianceAccess.invalidate({
-        networkId: activeNetworkId,
-        walletAddress: address,
-      });
+      utils.compliantToken.complianceAccess
+        .invalidate({
+          networkId: activeNetworkId,
+          walletAddress: address,
+        })
+        .catch(reportRejection);
     }
   };
 

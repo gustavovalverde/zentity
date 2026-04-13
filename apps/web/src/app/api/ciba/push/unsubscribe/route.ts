@@ -10,7 +10,7 @@ import { cibaLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 export const runtime = "nodejs";
 
 const unsubscribeSchema = z.object({
-  endpoint: z.string().url(),
+  endpoint: z.url(),
 });
 
 export async function POST(request: Request) {

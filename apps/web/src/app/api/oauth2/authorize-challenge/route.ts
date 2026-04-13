@@ -71,7 +71,7 @@ const InitialRequestSchema = z.object({
   code_challenge: z.string().min(43).optional(),
   code_challenge_method: z.string().default("S256").optional(),
   identifier: z.string().min(1),
-  resource: z.string().url().optional(),
+  resource: z.url().optional(),
   response_type: z.literal("code"),
   scope: z.string().min(1),
 });

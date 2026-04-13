@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = ApproveSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid request", details: parsed.error.flatten() },
+      { error: "Invalid request", details: z.flattenError(parsed.error) },
       { status: 400 }
     );
   }

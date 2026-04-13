@@ -32,6 +32,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { isWeb3Enabled } from "@/env";
+import { asyncHandler } from "@/lib/async-handler";
 import { completeSignOut } from "@/lib/auth/session-cleanup";
 
 import { ProfileGreetingName } from "./profile-greeting";
@@ -242,7 +243,10 @@ export function AppSidebar({ user }: Readonly<AppSidebarProps>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleSignOut} tooltip="Sign out">
+            <SidebarMenuButton
+              onClick={asyncHandler(handleSignOut)}
+              tooltip="Sign out"
+            >
               <LogOut className="h-4 w-4" />
               <span>Sign Out</span>
             </SidebarMenuButton>

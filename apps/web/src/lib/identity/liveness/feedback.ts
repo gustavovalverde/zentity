@@ -8,6 +8,8 @@
  * data leaves the device.
  */
 
+import { reportRejection } from "@/lib/async-handler";
+
 // ===========================================================================
 // Haptics (Vibration API)
 // ===========================================================================
@@ -328,7 +330,7 @@ class LivenessAudioEngine {
       }
 
       if (this.audioContext.state === "suspended") {
-        this.audioContext.resume();
+        this.audioContext.resume().catch(reportRejection);
       }
 
       this.initialized = true;
@@ -456,7 +458,7 @@ class LivenessAudioEngine {
   /** Clean up audio resources. */
   destroy(): void {
     if (this.audioContext) {
-      this.audioContext.close();
+      this.audioContext.close().catch(reportRejection);
       this.audioContext = null;
       this.masterGain = null;
       this.stereoPanner = null;

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
+import { reportRejection } from "@/lib/async-handler";
+
 /** Basic email format validation pattern */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,10 +65,10 @@ export function ForgotPasswordForm() {
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    form.handleSubmit();
+    form.handleSubmit().catch(reportRejection);
   };
 
   const validateIdentifier = (value: string) => {

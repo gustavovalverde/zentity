@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { env } from "@/env";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { useSession } from "@/lib/auth/auth-client";
 import {
   buildProfileSecretDataFromPassportDisclosure,
@@ -259,11 +260,13 @@ export function ZkPassportFlow({
   const handleRetryVault = useCallback(() => {
     const disclosed = disclosedRef.current;
     if (disclosed) {
-      storeVault(disclosed).then((stored) => {
-        if (stored === "stored") {
-          setStage("finalizing");
-        }
-      });
+      storeVault(disclosed)
+        .then((stored) => {
+          if (stored === "stored") {
+            setStage("finalizing");
+          }
+        })
+        .catch(reportRejection);
     }
   }, [storeVault]);
 
@@ -276,13 +279,15 @@ export function ZkPassportFlow({
 
   const submitResult = trpcReact.passportChip.submitResult.useMutation({
     onSuccess: (data) => {
-      storeVault(data.disclosed).then((stored) => {
-        // A successful vault write can move straight into finalizing.
-        // Pending states keep the user in the vault flow until they retry or skip.
-        if (stored === "stored") {
-          setStage("finalizing");
-        }
-      });
+      storeVault(data.disclosed)
+        .then((stored) => {
+          // A successful vault write can move straight into finalizing.
+          // Pending states keep the user in the vault flow until they retry or skip.
+          if (stored === "stored") {
+            setStage("finalizing");
+          }
+        })
+        .catch(reportRejection);
     },
     onError: (error: { message: string }) => {
       setErrorMessage(error.message);
@@ -344,10 +349,14 @@ export function ZkPassportFlow({
       }
 
       delay = Math.min(delay * 1.5, FHE_POLL_MAX_MS);
-      fhePollRef.current = setTimeout(poll, delay);
+      fhePollRef.current = setTimeout(() => {
+        poll().catch(reportRejection);
+      }, delay);
     }
 
-    fhePollRef.current = setTimeout(poll, delay);
+    fhePollRef.current = setTimeout(() => {
+      poll().catch(reportRejection);
+    }, delay);
 
     return () => {
       cancelled = true;
@@ -484,7 +493,7 @@ export function ZkPassportFlow({
       return;
     }
     startedRef.current = true;
-    startFlow();
+    startFlow().catch(reportRejection);
   }, [startFlow]);
 
   useEffect(() => {
@@ -527,7 +536,7 @@ export function ZkPassportFlow({
           <BindingAuthDialog
             authMode={bindingAuthMode}
             onOpenChange={handleBindingAuthOpenChange}
-            onSuccess={handleBindingAuthSuccess}
+            onSuccess={asyncHandler(handleBindingAuthSuccess)}
             open={bindingAuthOpen}
             userId={userId}
             wallet={wallet}
@@ -545,7 +554,7 @@ export function ZkPassportFlow({
           startedRef.current = false;
           setUrl(null);
           setErrorMessage(null);
-          startFlow();
+          startFlow().catch(reportRejection);
         }}
         stage={stage}
       />
@@ -565,7 +574,7 @@ export function ZkPassportFlow({
         <BindingAuthDialog
           authMode={bindingAuthMode}
           onOpenChange={handleBindingAuthOpenChange}
-          onSuccess={handleBindingAuthSuccess}
+          onSuccess={asyncHandler(handleBindingAuthSuccess)}
           open={bindingAuthOpen}
           userId={userId}
           wallet={wallet}

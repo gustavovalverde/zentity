@@ -29,6 +29,7 @@ import {
   useVaultUnlock,
   VaultUnlockPanel,
 } from "@/components/vault-unlock";
+import { asyncHandler } from "@/lib/async-handler";
 import {
   findMissingIdentityFields,
   IDENTITY_SCOPE_DESCRIPTIONS,
@@ -769,7 +770,7 @@ export function AgentApprovalView({
             <Button
               className="flex-1"
               disabled={isActing}
-              onClick={() => handleAction("reject")}
+              onClick={asyncHandler(() => handleAction("reject"))}
               variant="outline"
             >
               {state === "rejecting" ? "Denying..." : "Deny"}
@@ -784,7 +785,7 @@ export function AgentApprovalView({
                     !vault.hasValidIdentityIntent ||
                     vault.intentLoading))
               }
-              onClick={() => handleAction("authorize")}
+              onClick={asyncHandler(() => handleAction("authorize"))}
             >
               {state === "approving" ? "Approving..." : "Approve"}
             </Button>

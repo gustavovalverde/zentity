@@ -57,6 +57,7 @@ import {
   formatHostTier,
   formatUsageSummary,
 } from "@/lib/agents/labels";
+import { asyncHandler } from "@/lib/async-handler";
 import { trpcReact } from "@/lib/trpc/client";
 
 function statusVariant(
@@ -354,9 +355,9 @@ export function ConnectedTab() {
                               {grant.status === "pending" && (
                                 <Button
                                   disabled={isActing}
-                                  onClick={() =>
+                                  onClick={asyncHandler(() =>
                                     handleGrantAction(grant.id, "active")
-                                  }
+                                  )}
                                   size="sm"
                                   variant="outline"
                                 >
@@ -400,9 +401,9 @@ export function ConnectedTab() {
                                         Cancel
                                       </AlertDialogCancel>
                                       <AlertDialogAction
-                                        onClick={() =>
+                                        onClick={asyncHandler(() =>
                                           handleGrantAction(grant.id, "revoked")
-                                        }
+                                        )}
                                       >
                                         Revoke permission
                                       </AlertDialogAction>
@@ -496,9 +497,9 @@ export function ConnectedTab() {
                                         Cancel
                                       </AlertDialogCancel>
                                       <AlertDialogAction
-                                        onClick={() =>
+                                        onClick={asyncHandler(() =>
                                           handleRevokeSession(session.id)
-                                        }
+                                        )}
                                       >
                                         Revoke access
                                       </AlertDialogAction>

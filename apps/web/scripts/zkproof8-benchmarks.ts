@@ -17,11 +17,21 @@ import {
   generateNationalityProofInputs,
   toNumericCode,
 } from "@/lib/privacy/zk/country";
-import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json";
-import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json";
-import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
-import identityBindingCircuit from "@/noir-circuits/identity_binding/artifacts/identity_binding.json";
-import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
+import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json" with {
+  type: "json",
+};
+import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_validity.json" with {
+  type: "json",
+};
+import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json" with {
+  type: "json",
+};
+import identityBindingCircuit from "@/noir-circuits/identity_binding/artifacts/identity_binding.json" with {
+  type: "json",
+};
+import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json" with {
+  type: "json",
+};
 
 type CircuitName =
   | "age_verification"

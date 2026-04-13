@@ -34,7 +34,7 @@ repos:
         exclude: pnpm-lock\.yaml$
       - id: check-toml
       - id: check-json
-        exclude: (^\.vscode/|tsconfig.*\.json$)  # JSONC files (VSCode, TypeScript)
+        exclude: (^\.vscode/|tsconfig.*\.json$|/\.oxlintrc\.json$)  # JSONC files (VSCode, TypeScript, oxlint)
       - id: check-merge-conflict
       - id: check-added-large-files
         args: [--maxkb=1000]
@@ -110,6 +110,12 @@ repos:
         entry: bash -c 'cd apps/web && pnpm run knip'
         language: system
         files: ^apps/web/.*\.(ts|tsx)$
+        pass_filenames: false
+      - id: oxlint-type-aware-web
+        name: Oxlint type-aware (web) — catches @deprecated, floating promises, await-thenable
+        entry: bash -c 'cd apps/web && pnpm run lint:types'
+        language: system
+        files: ^apps/web/src/.*\.(ts|tsx)$
         pass_filenames: false
       - id: circuits-check-web
         name: Noir circuit version check (web)

@@ -137,7 +137,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           method: "POST",
           body: z.object({
             identifier: z.string().min(1),
-            loginRequest: z.string().base64url(),
+            loginRequest: z.base64url(),
           }),
         },
         async (ctx) => {
@@ -167,7 +167,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            loginResult: z.string().base64url(),
+            loginResult: z.base64url(),
             encryptedServerState: z.string(),
             rememberMe: z.boolean().optional(),
           }),
@@ -225,7 +225,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            registrationRequest: z.string().base64url(),
+            registrationRequest: z.base64url(),
           }),
           use: [sensitiveSessionMiddleware],
         },
@@ -256,7 +256,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            registrationRecord: z.string().base64url(),
+            registrationRecord: z.base64url(),
           }),
           use: [sensitiveSessionMiddleware],
         },
@@ -290,7 +290,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            loginRequest: z.string().base64url(),
+            loginRequest: z.base64url(),
           }),
           use: [sensitiveSessionMiddleware],
         },
@@ -340,7 +340,7 @@ export const opaque = (options: OpaquePluginOptions) => {
         {
           method: "POST",
           body: z.object({
-            loginResult: z.string().base64url(),
+            loginResult: z.base64url(),
             encryptedServerState: z.string(),
           }),
           use: [sensitiveSessionMiddleware],
@@ -482,7 +482,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           method: "POST",
           body: z.object({
             token: z.string().min(1),
-            registrationRequest: z.string().base64url(),
+            registrationRequest: z.base64url(),
           }),
         },
         async (ctx) => {
@@ -517,7 +517,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           method: "POST",
           body: z.object({
             token: z.string().min(1),
-            registrationRecord: z.string().base64url(),
+            registrationRecord: z.base64url(),
           }),
         },
         async (ctx) => {
@@ -573,7 +573,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           method: "POST",
           body: z.object({
             email: z.email(),
-            registrationRequest: z.string().base64url(),
+            registrationRequest: z.base64url(),
           }),
         },
         async (ctx) => {
@@ -662,7 +662,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           method: "POST",
           body: z.object({
             signupToken: z.string().min(1),
-            registrationRecord: z.string().base64url(),
+            registrationRecord: z.base64url(),
           }),
         },
         async (ctx) => {

@@ -10,6 +10,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "@/lib/agents/push-client";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 
 type PushState =
   | "unsupported"
@@ -55,7 +56,7 @@ export function PushNotificationBanner() {
   const isIOSInstallable = useIsIOSInstallable();
 
   useEffect(() => {
-    getPushState().then(setState);
+    getPushState().then(setState).catch(reportRejection);
   }, []);
 
   const handleEnable = useCallback(async () => {
@@ -103,7 +104,7 @@ export function PushNotificationBanner() {
           </span>
           <Button
             className="mt-1"
-            onClick={handleDisable}
+            onClick={asyncHandler(handleDisable)}
             size="sm"
             variant="ghost"
           >
@@ -140,7 +141,7 @@ export function PushNotificationBanner() {
         </span>
         <Button
           className="mt-1"
-          onClick={handleEnable}
+          onClick={asyncHandler(handleEnable)}
           size="sm"
           variant="outline"
         >

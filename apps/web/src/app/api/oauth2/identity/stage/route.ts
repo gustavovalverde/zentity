@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
-import {
-  handleIdentityStage,
-  IdentityFieldsSchema,
-} from "@/lib/auth/oidc/disclosure/delivery";
+import { IdentityFieldsSchema } from "@/lib/auth/oidc/disclosure/delivery";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
+import { handleIdentityStage } from "@/lib/auth/oidc/disclosure/route-handlers";
 import {
   computeOAuthRequestKey,
   parseRequestedScopes,
@@ -49,7 +47,7 @@ export function POST(request: Request): Promise<Response> {
       const parsed = StageSchema.safeParse(body);
       if (!parsed.success) {
         return NextResponse.json(
-          { error: "Invalid request", details: parsed.error.flatten() },
+          { error: "Invalid request", details: z.flattenError(parsed.error) },
           { status: 400 }
         );
       }

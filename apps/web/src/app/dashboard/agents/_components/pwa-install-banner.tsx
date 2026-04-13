@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { asyncHandler } from "@/lib/async-handler";
 
 const DISMISS_KEY = "pwa-install-banner-dismissed";
 const DISMISS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -160,7 +161,7 @@ export function PwaInstallBanner() {
       <AlertDescription>
         <span>Install the app for faster agent approvals.</span>
         <div className="mt-1 flex gap-2">
-          <Button onClick={handleInstall} size="sm">
+          <Button onClick={asyncHandler(handleInstall)} size="sm">
             Install
           </Button>
           <Button onClick={handleDismiss} size="sm" variant="ghost">

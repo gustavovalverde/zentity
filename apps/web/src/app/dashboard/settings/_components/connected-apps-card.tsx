@@ -40,6 +40,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   HIDDEN_SCOPES,
@@ -238,7 +239,9 @@ export function ConnectedAppsCard({
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
-                            onClick={() => handleRevoke(consent.consentId)}
+                            onClick={asyncHandler(() =>
+                              handleRevoke(consent.consentId)
+                            )}
                           >
                             Revoke access
                           </AlertDialogAction>

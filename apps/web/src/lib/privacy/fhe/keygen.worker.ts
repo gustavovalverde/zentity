@@ -113,7 +113,9 @@ function loadTfhe(): Promise<TfheModule> {
  * which is guaranteed to be same-origin. We still validate origin and message
  * structure for defense-in-depth.
  */
-self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
+async function handleWorkerMessage(
+  event: MessageEvent<WorkerRequest>
+): Promise<void> {
   // Verify origin: in dedicated workers, origin is "" (empty) since messages
   // can only come from the parent document. Reject unexpected origins.
   if (event.origin !== "" && event.origin !== self.location.origin) {
@@ -189,4 +191,19 @@ self.addEventListener("message", async (event: MessageEvent<WorkerRequest>) => {
     };
     self.postMessage(response);
   }
+}
+
+self.addEventListener("message", (event: MessageEvent<WorkerRequest>) => {
+  // Worker is standalone (no @/lib imports); post errors back to the parent
+  // for centralized reporting via the main thread's async-handler.
+  handleWorkerMessage(event).catch((error: unknown) => {
+    self.postMessage({
+      type: "error",
+      id: -1,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Worker message handler failed",
+    } satisfies WorkerError);
+  });
 });

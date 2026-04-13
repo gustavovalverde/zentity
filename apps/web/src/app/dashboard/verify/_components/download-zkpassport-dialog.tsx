@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { reportRejection } from "@/lib/async-handler";
 
 const STORE_URLS = {
   ios: "https://apps.apple.com/app/zkpassport/id6477371975",
@@ -55,7 +56,9 @@ function StoreQrCode({ url }: Readonly<{ url: string }>) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    toDataURL(url, { width: QR_SIZE, margin: 2 }).then(setQrDataUrl);
+    toDataURL(url, { width: QR_SIZE, margin: 2 })
+      .then(setQrDataUrl)
+      .catch(reportRejection);
   }, [url]);
 
   if (!qrDataUrl) {

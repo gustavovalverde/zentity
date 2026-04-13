@@ -19,6 +19,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient, useSession } from "@/lib/auth/auth-client";
 
 const SYNTHETIC_EMAIL_DOMAINS = ["anon.zentity.app", "wallet.zentity.app"];
@@ -90,10 +91,10 @@ function EmailForm({
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit: React.SubmitEventHandler<HTMLFormElement> = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    form.handleSubmit();
+    form.handleSubmit().catch(reportRejection);
   };
 
   return (
@@ -246,7 +247,7 @@ export function EmailSection() {
                   {state === "unverified" ? (
                     <Button
                       disabled={resending}
-                      onClick={handleResend}
+                      onClick={asyncHandler(handleResend)}
                       size="sm"
                       variant="outline"
                     >

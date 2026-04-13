@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
@@ -29,7 +30,7 @@ export function SocialLoginButtons() {
       <Button
         className="w-full"
         disabled={loadingProvider !== null}
-        onClick={() => handleSocialLogin("google")}
+        onClick={asyncHandler(() => handleSocialLogin("google"))}
         variant="outline"
       >
         {loadingProvider === "google" ? (
@@ -42,7 +43,7 @@ export function SocialLoginButtons() {
       <Button
         className="w-full"
         disabled={loadingProvider !== null}
-        onClick={() => handleSocialLogin("github")}
+        onClick={asyncHandler(() => handleSocialLogin("github"))}
         variant="outline"
       >
         {loadingProvider === "github" ? (

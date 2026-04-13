@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler, reportRejection } from "@/lib/async-handler";
 
 /** Matches a valid Ethereum address (0x followed by 40 hex characters) */
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
@@ -93,7 +94,9 @@ export function TransferForm({
   useEffect(() => {
     if (recipient && ETH_ADDRESS_PATTERN.test(recipient)) {
       setRecipientChecked(false);
-      checkRecipient().then(() => setRecipientChecked(true));
+      checkRecipient()
+        .then(() => setRecipientChecked(true))
+        .catch(reportRejection);
     }
   }, [recipient, checkRecipient]);
 
@@ -182,7 +185,7 @@ export function TransferForm({
     setAmountError(null);
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     await handleTransfer();
   };
@@ -225,12 +228,12 @@ export function TransferForm({
                   <Button
                     className="w-full"
                     disabled={isFauceting}
-                    onClick={async () => {
+                    onClick={asyncHandler(async () => {
                       const toppedUp = await faucet(walletAddress);
                       if (toppedUp) {
                         await refetchBalance();
                       }
-                    }}
+                    })}
                     variant="outline"
                   >
                     {isFauceting ? (
@@ -291,7 +294,7 @@ export function TransferForm({
           }
 
           return (
-            <form className="space-y-4" onSubmit={handleSubmit}>
+            <form className="space-y-4" onSubmit={asyncHandler(handleSubmit)}>
               <FieldGroup>
                 <Field data-invalid={Boolean(recipientError)}>
                   <FieldLabel htmlFor="recipient">Recipient Address</FieldLabel>

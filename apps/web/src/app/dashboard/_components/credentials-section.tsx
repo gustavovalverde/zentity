@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { asyncHandler } from "@/lib/async-handler";
 import { trpcReact } from "@/lib/trpc/client";
 
 const CLAIM_LABELS: Record<string, string> = {
@@ -285,7 +286,7 @@ export function CredentialsSection() {
           <Button
             className="w-full"
             disabled={createOfferMutation.isPending}
-            onClick={handleGetCredential}
+            onClick={asyncHandler(handleGetCredential)}
           >
             {createOfferMutation.isPending ? (
               <Spinner aria-hidden="true" className="mr-2" size="sm" />
@@ -339,13 +340,13 @@ export function CredentialsSection() {
 
             {/* Action buttons */}
             <div className="flex w-full flex-col gap-2">
-              <Button className="w-full" onClick={handleCopyUri}>
+              <Button className="w-full" onClick={asyncHandler(handleCopyUri)}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copy link
               </Button>
               <Button
                 className="w-full"
-                onClick={handleCopyOfferJson}
+                onClick={asyncHandler(handleCopyOfferJson)}
                 variant="outline"
               >
                 <Code className="mr-2 h-4 w-4" />
