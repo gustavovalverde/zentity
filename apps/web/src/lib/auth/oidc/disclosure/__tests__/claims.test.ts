@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.resetModules();
 
-const mockGetUnifiedVerificationModel = vi.fn();
+const mockGetVerificationReadModel = vi.fn();
 
-vi.doMock("@/lib/identity/verification/unified-model", () => ({
-  getUnifiedVerificationModel: mockGetUnifiedVerificationModel,
+vi.doMock("@/lib/identity/verification/read-model", () => ({
+  getVerificationReadModel: mockGetVerificationReadModel,
 }));
 
 const { buildOidcVerifiedClaims, buildProofClaims } = await import("../claims");
@@ -50,7 +50,7 @@ function makeModel(overrides: Record<string, unknown> = {}) {
 
 describe("oidc claim mapping", () => {
   beforeEach(() => {
-    mockGetUnifiedVerificationModel.mockResolvedValue(makeModel());
+    mockGetVerificationReadModel.mockResolvedValue(makeModel());
   });
 
   it("builds derived proof claims from verification data", async () => {
@@ -94,7 +94,7 @@ describe("oidc claim mapping", () => {
   });
 
   it("builds chip-verified claims with correct check mappings", async () => {
-    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+    mockGetVerificationReadModel.mockResolvedValueOnce(
       makeModel({
         method: "nfc_chip",
         compliance: {
@@ -134,7 +134,7 @@ describe("oidc claim mapping", () => {
   });
 
   it("builds chip-verified OIDC4IDA claims", async () => {
-    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+    mockGetVerificationReadModel.mockResolvedValueOnce(
       makeModel({
         method: "nfc_chip",
         compliance: {
@@ -173,7 +173,7 @@ describe("oidc claim mapping", () => {
   });
 
   it("returns null verified_claims when no assurance", async () => {
-    mockGetUnifiedVerificationModel.mockResolvedValueOnce(
+    mockGetVerificationReadModel.mockResolvedValueOnce(
       makeModel({
         method: null,
         verifiedAt: null,

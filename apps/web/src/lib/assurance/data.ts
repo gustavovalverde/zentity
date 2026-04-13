@@ -7,7 +7,7 @@
 import "server-only";
 
 import type { Session } from "@/lib/auth/auth-config";
-import type { UnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import type { VerificationReadModel } from "@/lib/identity/verification/read-model";
 import type {
   AccountAssurance,
   AccountCapabilities,
@@ -21,12 +21,12 @@ import { resolveAuthenticationContext } from "@/lib/auth/authentication-context"
 import { db } from "@/lib/db/connection";
 import { accounts, passkeys } from "@/lib/db/schema/auth";
 import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-proof-sessions";
-import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { computeAccountAssurance } from "./compute";
 
 function toAccountAssuranceInput(
-  model: UnifiedVerificationModel,
+  model: VerificationReadModel,
   isAuthenticated: boolean
 ) {
   const documentVerified = model.verifiedAt !== null;
@@ -55,7 +55,7 @@ export const getAccountAssurance = cache(async function getAccountAssurance(
   userId: string,
   options?: { isAuthenticated?: boolean }
 ): Promise<AccountAssurance> {
-  const model = await getUnifiedVerificationModel(userId);
+  const model = await getVerificationReadModel(userId);
   return computeAccountAssurance(
     toAccountAssuranceInput(model, options?.isAuthenticated ?? true)
   );

@@ -9,10 +9,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.resetModules();
 
-const mockGetUnifiedVerificationModel = vi.fn();
+const mockGetVerificationReadModel = vi.fn();
 
-vi.doMock("@/lib/identity/verification/unified-model", () => ({
-  getUnifiedVerificationModel: mockGetUnifiedVerificationModel,
+vi.doMock("@/lib/identity/verification/read-model", () => ({
+  getVerificationReadModel: mockGetVerificationReadModel,
 }));
 
 const { buildProofClaims } = await import("../claims");
@@ -36,7 +36,7 @@ async function simulateIdTokenProofClaims(
 }
 
 function setVerifiedUser() {
-  mockGetUnifiedVerificationModel.mockResolvedValue({
+  mockGetVerificationReadModel.mockResolvedValue({
     method: "ocr",
     verificationId: "verification-1",
     verifiedAt: "2026-01-02T00:00:00.000Z",

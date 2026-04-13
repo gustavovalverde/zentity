@@ -24,7 +24,7 @@ export async function register() {
 
     // CRS + ZK checks depend on the shared Barretenberg instance
     if (bbResult.status === "fulfilled") {
-      const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
+      const { warmupCRS } = await import("@/lib/privacy/zk/noir/verifier");
       await warmupCRS();
 
       // ZKPassport verifier shares the Barretenberg WASM instance

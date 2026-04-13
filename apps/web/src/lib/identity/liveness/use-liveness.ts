@@ -1,7 +1,7 @@
 /**
  * Liveness detection React hooks.
  *
- * Three cohesive hooks consumed together by liveness-provider.tsx:
+ * Three cohesive hooks consumed together by the liveness provider:
  *
  *   useLivenessCamera   - camera permissions, device selection, frame capture
  *   useLivenessFeedback - audio earcons, TTS speech, haptic vibration

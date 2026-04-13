@@ -24,7 +24,7 @@ import {
 import { canAccessFeature } from "@/lib/assurance/features";
 import { cn } from "@/lib/cn";
 
-import { CredentialsContent } from "./credentials-content";
+import { CredentialsSection } from "./credentials-section";
 
 interface IdentityActionsCardProps {
   posture: SecurityPosture | null;
@@ -108,7 +108,7 @@ export function IdentityActionsCard({
           <DialogHeader className="sr-only">
             <DialogTitle>Verifiable Credentials</DialogTitle>
           </DialogHeader>
-          <CredentialsContent />
+          <CredentialsSection />
         </DialogContent>
       </Dialog>
     </>

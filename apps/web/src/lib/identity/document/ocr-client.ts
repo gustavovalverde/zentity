@@ -1,7 +1,7 @@
 import "server-only";
 
 import { env } from "@/env";
-import { fetchJson } from "@/lib/http/http";
+import { fetchJson } from "@/lib/http/fetch";
 import {
   recordOcrDuration,
   recordOcrImageBytes,

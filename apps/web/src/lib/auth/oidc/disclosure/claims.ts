@@ -15,7 +15,7 @@ import type { ComplianceLevel } from "@/lib/identity/verification/compliance";
 import { createHmac } from "node:crypto";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
-import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
 // ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ function mapComplianceToClaims(compliance: {
 export async function buildProofClaims(
   userId: string
 ): Promise<Record<string, unknown>> {
-  const model = await getUnifiedVerificationModel(userId);
+  const model = await getVerificationReadModel(userId);
 
   const claims: VerificationClaims = mapComplianceToClaims(model.compliance);
   if (model.bundle.policyVersion) {
@@ -114,7 +114,7 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
   verification: Record<string, unknown>;
   claims: Record<string, unknown>;
 } | null> {
-  const model = await getUnifiedVerificationModel(userId);
+  const model = await getVerificationReadModel(userId);
 
   if (!model.compliance.verified) {
     return null;

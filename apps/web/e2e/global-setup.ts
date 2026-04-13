@@ -390,7 +390,7 @@ async function seedVerifiedIdentity(
 
   // Seed verification_checks to produce the "incomplete verification" state
   // (identity checks passed; ZK proofs still missing for nationality/identity_binding)
-  // check_type values match CHECK_TYPE_TO_COMPLIANCE_KEY in unified-model.ts
+  // check_type values match CHECK_TYPE_TO_COMPLIANCE_KEY in read-model.ts
   const verificationChecksSql = `
     INSERT OR REPLACE INTO verification_checks (
       id, user_id, verification_id, check_type, passed, source, created_at, updated_at

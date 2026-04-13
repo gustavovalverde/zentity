@@ -31,9 +31,9 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/privacy/zk/noir-verifier", async (importOriginal) => {
+vi.mock("@/lib/privacy/zk/noir/verifier", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/privacy/zk/noir-verifier")>();
+    await importOriginal<typeof import("@/lib/privacy/zk/noir/verifier")>();
   return {
     ...actual,
     verifyNoirProof: (...args: unknown[]) => mockVerifyNoirProof(...args),

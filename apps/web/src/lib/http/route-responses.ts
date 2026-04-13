@@ -5,7 +5,7 @@ import { encode } from "@msgpack/msgpack";
 import { logError } from "@/lib/logging/error-logger";
 import { resolveRequestContext } from "@/lib/observability/request-context";
 
-import { HttpError } from "./http";
+import { HttpError } from "./fetch";
 
 /**
  * Log an error with request tracking and return a short reference ID.

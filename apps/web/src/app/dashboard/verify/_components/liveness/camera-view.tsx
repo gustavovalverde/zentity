@@ -6,14 +6,14 @@
 "use client";
 
 import { Spinner } from "@/components/ui/spinner";
-import { useMobileDetect } from "@/lib/client-hooks";
+import { useMobileDetect } from "@/lib/browser-hooks";
 import { cn } from "@/lib/cn";
 
 import { AudioToggle } from "./audio-toggle";
 import { ChallengeBanner, CountdownOverlay } from "./challenge-banner";
 import { DirectionalNudge } from "./directional-nudge";
-import { useLiveness } from "./liveness-provider";
 import { OvalFrame, type OvalFrameStatus } from "./oval-frame";
+import { useLiveness } from "./provider";
 import { deriveQualityIssue, QualityAlert } from "./quality-alert";
 
 interface CameraViewProps {

@@ -5,7 +5,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { decode, encode } from "@msgpack/msgpack";
 
 import { env } from "@/env";
-import { HttpError } from "@/lib/http/http";
+import { HttpError } from "@/lib/http/fetch";
 import {
   recordFheDuration,
   recordFhePayloadBytes,

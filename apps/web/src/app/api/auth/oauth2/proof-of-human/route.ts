@@ -9,7 +9,7 @@ import {
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const TRAILING_SLASHES = /\/+$/;
@@ -176,7 +176,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
   }
 
-  const model = await getUnifiedVerificationModel(principal.userId);
+  const model = await getVerificationReadModel(principal.userId);
 
   if (!model.verificationId) {
     return NextResponse.json({ error: "not_verified" }, { status: 403 });

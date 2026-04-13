@@ -16,7 +16,7 @@ import {
   generateFaceMatchProofWorker,
   generateIdentityBindingProofWorker,
   generateNationalityProofClientWorker,
-} from "./noir-worker-manager";
+} from "./worker-manager";
 
 // Types for proof operations
 interface NoirProofResult {

@@ -20,7 +20,7 @@ import {
 import { useChainId } from "wagmi";
 
 import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
-import { useIsMounted } from "@/lib/client-hooks";
+import { useIsMounted } from "@/lib/browser-hooks";
 
 interface FhevmContextValue {
   /** Error if initialization failed */

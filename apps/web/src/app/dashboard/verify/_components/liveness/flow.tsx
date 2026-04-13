@@ -18,11 +18,11 @@ import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import { useMobileDetect } from "@/lib/client-hooks";
+import { useMobileDetect } from "@/lib/browser-hooks";
 import { cn } from "@/lib/cn";
 
 import { CameraView } from "./camera-view";
-import { useLiveness } from "./liveness-provider";
+import { useLiveness } from "./provider";
 import { ScreenReaderAnnouncer } from "./screen-reader-announcer";
 import { SuccessAnimation } from "./success-animation";
 

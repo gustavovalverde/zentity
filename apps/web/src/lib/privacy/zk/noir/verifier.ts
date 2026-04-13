@@ -7,7 +7,7 @@
 
 import "server-only";
 
-import type { ProofType } from "./proof-types";
+import type { ProofType } from "../proof-types";
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";

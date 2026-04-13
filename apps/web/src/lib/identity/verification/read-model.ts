@@ -1,5 +1,5 @@
 /**
- * Unified verification read model.
+ * Verification read model.
  *
  * Single function all consumers call to get a user's verification state.
  * Reads from the materialized verification_checks table plus supplementary
@@ -45,7 +45,7 @@ export interface ProofSummary {
   verified: boolean;
 }
 
-export interface UnifiedVerificationModel {
+export interface VerificationReadModel {
   bundle: {
     exists: boolean;
     fheKeyId: string | null;
@@ -125,7 +125,7 @@ function deriveComplianceFromChecks(
   rows: VerificationCheck[],
   method: "ocr" | "nfc_chip",
   birthYearOffset: number | null
-): UnifiedVerificationModel["compliance"] {
+): VerificationReadModel["compliance"] {
   if (rows.length === 0) {
     return {
       level: "none",
@@ -276,7 +276,7 @@ function buildEmptyModel(
   fheTypes: string[],
   profileExists: boolean,
   attested: boolean
-): UnifiedVerificationModel {
+): VerificationReadModel {
   return {
     method: null,
     verificationId: null,
@@ -301,10 +301,10 @@ function buildEmptyModel(
 
 // ─── Main read function ─────────────────────────────────────────────
 
-export const getUnifiedVerificationModel = cache(
-  async function getUnifiedVerificationModel(
+export const getVerificationReadModel = cache(
+  async function getVerificationReadModel(
     userId: string
-  ): Promise<UnifiedVerificationModel> {
+  ): Promise<VerificationReadModel> {
     // Batch 1: independent queries
     const [verification, bundle, fheTypes, profileExists, attested] =
       await Promise.all([

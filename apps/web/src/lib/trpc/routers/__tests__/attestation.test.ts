@@ -38,12 +38,12 @@ vi.mock("@/lib/blockchain/attestation/providers", () => ({
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));
 
-const mockGetUnifiedVerificationModel = vi.fn();
+const mockGetVerificationReadModel = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
 const mockComputeProofSetHash = vi.fn();
-vi.mock("@/lib/identity/verification/unified-model", () => ({
-  getUnifiedVerificationModel: (...args: unknown[]) =>
-    mockGetUnifiedVerificationModel(...args),
+vi.mock("@/lib/identity/verification/read-model", () => ({
+  getVerificationReadModel: (...args: unknown[]) =>
+    mockGetVerificationReadModel(...args),
 }));
 
 vi.mock("@/lib/blockchain/attestation/proof-set-hash", () => ({
@@ -273,7 +273,7 @@ describe("attestation router", () => {
     });
     mockComputeProofSetHash.mockResolvedValue(null);
     // Default unified model for submit flow
-    mockGetUnifiedVerificationModel.mockResolvedValue({
+    mockGetVerificationReadModel.mockResolvedValue({
       method: "ocr",
       verificationId: "v-1",
       verifiedAt: "2026-01-01T00:00:00.000Z",

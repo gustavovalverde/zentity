@@ -34,7 +34,7 @@ import { materializeVerificationChecks } from "@/lib/identity/verification/mater
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { signAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
-import { computeProofSetHash } from "@/lib/privacy/zk/verification-utils";
+import { computeProofSetHash } from "@/lib/privacy/zk/proof-verification";
 import { verifyZkPassportProofs } from "@/lib/privacy/zk/zkpassport-verifier";
 
 import { protectedProcedure, router } from "../server";

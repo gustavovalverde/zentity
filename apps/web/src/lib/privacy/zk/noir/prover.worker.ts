@@ -27,7 +27,7 @@ import type {
   WorkerInitMessage,
   WorkerRequest,
   WorkerResponse,
-} from "./noir-worker-manager";
+} from "./worker-manager";
 
 import { getCountryWeightedSum } from "@zkpassport/utils";
 

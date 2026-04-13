@@ -36,7 +36,7 @@ import {
 } from "@/lib/db/queries/attestation";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
-import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
@@ -122,7 +122,7 @@ export const attestationRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const model = await getUnifiedVerificationModel(ctx.userId);
+      const model = await getVerificationReadModel(ctx.userId);
 
       if (!model.verificationId) {
         throw new TRPCError({

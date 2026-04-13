@@ -43,7 +43,7 @@ import {
   getUserBaseCommitments,
   insertProofArtifact,
 } from "@/lib/db/queries/privacy";
-import { resolveAudience } from "@/lib/http/http";
+import { resolveAudience } from "@/lib/http/url-safety";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import {
   getTodayDobDays,
@@ -51,7 +51,7 @@ import {
 } from "@/lib/identity/verification/birth-year";
 import { invalidateVerificationCache } from "@/lib/identity/verification/job-processor";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
-import { getUnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 import { withSpan } from "@/lib/observability/telemetry";
 import { createPresentation } from "@/lib/privacy/bbs/holder";
 import { deriveBbsKeyPair } from "@/lib/privacy/bbs/keygen";
@@ -81,13 +81,13 @@ import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromString,
 } from "@/lib/privacy/zk/hash-to-field";
-import { getTodayAsInt } from "@/lib/privacy/zk/noir-prover";
+import { getTodayAsInt } from "@/lib/privacy/zk/noir/prover";
 import {
   getBbJsVersion,
   getCircuitMetadata,
   prewarmVerificationKeys,
   verifyNoirProof,
-} from "@/lib/privacy/zk/noir-verifier";
+} from "@/lib/privacy/zk/noir/verifier";
 import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
@@ -100,7 +100,7 @@ import {
   getVerifiedClaim,
   type OcrClaimData,
   parseFieldToBigInt,
-} from "@/lib/privacy/zk/verification-utils";
+} from "@/lib/privacy/zk/proof-verification";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 
@@ -851,7 +851,7 @@ const verifyProofProcedure = protectedProcedure
  * Works for both OCR and NFC chip verification paths.
  */
 const getChecksProcedure = protectedProcedure.query(async ({ ctx }) => {
-  const model = await getUnifiedVerificationModel(ctx.userId);
+  const model = await getVerificationReadModel(ctx.userId);
   return {
     method: model.method,
     level: model.compliance.level,
@@ -866,7 +866,7 @@ const getChecksProcedure = protectedProcedure.query(async ({ ctx }) => {
  * Covers both Noir/UltraHonk (OCR) and ZKPassport (NFC chip) proofs.
  */
 const getProofsProcedure = protectedProcedure.query(async ({ ctx }) => {
-  const model = await getUnifiedVerificationModel(ctx.userId);
+  const model = await getVerificationReadModel(ctx.userId);
   return {
     method: model.method,
     proofs: model.proofs,

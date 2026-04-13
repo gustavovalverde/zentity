@@ -71,7 +71,7 @@ interface CredentialOfferState {
   offerUri: string;
 }
 
-export function CredentialsContent() {
+export function CredentialsSection() {
   const [offerDialog, setOfferDialog] = useState<CredentialOfferState | null>(
     null
   );

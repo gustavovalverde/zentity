@@ -25,7 +25,7 @@ import {
   generateFaceMatchProofNoir,
   generateIdentityBindingProofNoir,
   generateNationalityProofNoir,
-} from "./noir-prover";
+} from "./noir/prover";
 
 type ZkOutputs = RouterOutputs["zk"];
 

@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { HttpError } from "@/lib/http/http";
+import { HttpError } from "@/lib/http/fetch";
 import { getOcrHealth } from "@/lib/identity/document/ocr-client";
 import {
   attachRequestContextToSpan,

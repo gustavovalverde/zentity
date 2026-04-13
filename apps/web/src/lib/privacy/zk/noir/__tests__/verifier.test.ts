@@ -11,14 +11,14 @@ import docValidityCircuit from "@/noir-circuits/doc_validity/artifacts/doc_valid
 import faceMatchCircuit from "@/noir-circuits/face_match/artifacts/face_match.json";
 import nationalityCircuit from "@/noir-circuits/nationality_membership/artifacts/nationality_membership.json";
 
-import { getBbJsVersion, getCircuitMetadata } from "../noir-verifier";
 import {
   isProofType,
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
-} from "../proof-types";
+} from "../../proof-types";
+import { getBbJsVersion, getCircuitMetadata } from "../verifier";
 
-describe("noir-verifier", () => {
+describe("verifier", () => {
   describe("getCircuitMetadata", () => {
     it.each([
       ["age_verification", ageCircuit],

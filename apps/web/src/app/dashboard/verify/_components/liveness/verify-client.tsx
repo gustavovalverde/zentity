@@ -41,8 +41,8 @@ import { trpc } from "@/lib/trpc/client";
 
 import { BindingAuthDialog } from "../binding-auth-dialog";
 import { FaceVerificationCard } from "../face-verification-card";
-import { LivenessFlow } from "./liveness-flow";
-import { LivenessProvider } from "./liveness-provider";
+import { LivenessFlow } from "./flow";
+import { LivenessProvider } from "./provider";
 
 const getStoreState = () => useVerificationStore.getState();
 

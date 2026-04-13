@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { HttpError } from "@/lib/http/http";
+import { HttpError } from "@/lib/http/fetch";
 import {
   getClientIp,
   ocrLimiter,

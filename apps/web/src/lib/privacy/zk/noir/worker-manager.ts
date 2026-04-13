@@ -184,10 +184,9 @@ function getDesiredWorkerCount(): number {
 }
 
 function createWorkerState(index: number): WorkerState {
-  const newWorker = new Worker(
-    new URL("./noir-prover.worker.ts", import.meta.url),
-    { type: "module" }
-  );
+  const newWorker = new Worker(new URL("./prover.worker.ts", import.meta.url), {
+    type: "module",
+  });
   if (globalThis.window !== undefined) {
     newWorker.postMessage({
       type: "init",
