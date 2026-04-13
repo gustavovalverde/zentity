@@ -3,7 +3,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { auth } from "@/lib/auth/auth-config";
 import { rewriteDpopForUserinfo } from "@/lib/auth/oidc/haip/dpop";
 import { getProtectedResourceMetadataUrl } from "@/lib/auth/oidc/haip/resource-metadata";
-import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-client-registration";
+import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-dcr";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,

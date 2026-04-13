@@ -7,7 +7,7 @@
 
 import type { BbsPresentation, BbsProof, BbsVerifyResult } from "./types";
 
-import { bbs } from "./crypto";
+import { bbs } from "./curve";
 import { getClaimOrder } from "./types";
 
 /**

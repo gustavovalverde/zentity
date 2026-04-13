@@ -13,7 +13,7 @@ import type {
   WalletCredentialClaimKey,
 } from "./types";
 
-import { bbs } from "./crypto";
+import { bbs } from "./curve";
 import { subjectToMessages } from "./signer";
 import { getClaimOrder } from "./types";
 

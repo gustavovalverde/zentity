@@ -1,10 +1,10 @@
 "use client";
 
-import type { CountryDocumentEntry } from "@/lib/identity/document/zkpassport-support";
 import type {
   InitialStepContext,
   VerificationStep,
 } from "@/lib/identity/verification/steps";
+import type { CountryDocumentEntry } from "@/lib/identity/verification/zkpassport-registry";
 
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";

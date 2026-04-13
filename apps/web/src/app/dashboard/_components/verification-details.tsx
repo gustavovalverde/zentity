@@ -28,7 +28,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
-import { getChecks, getProofs } from "@/lib/privacy/zk/client";
+import { getChecks, getProofs } from "@/lib/privacy/zk/prove";
 
 type ChecksData = RouterOutputs["zk"]["getChecks"];
 type ProofsData = RouterOutputs["zk"]["getProofs"];

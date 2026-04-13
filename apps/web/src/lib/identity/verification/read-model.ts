@@ -26,7 +26,7 @@ import {
 } from "@/lib/db/queries/privacy";
 import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 
-import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";
+import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
 
 // ─── Types ─────────────────────────────────────────────────────────
 

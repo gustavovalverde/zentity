@@ -20,7 +20,7 @@ import { cache } from "react";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { accounts, passkeys } from "@/lib/db/schema/auth";
-import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-proof-sessions";
+import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-completeness";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { computeAccountAssurance } from "./compute";

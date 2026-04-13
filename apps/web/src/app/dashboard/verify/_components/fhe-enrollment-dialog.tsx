@@ -55,8 +55,8 @@ import {
   deriveBindingSecret,
   prepareBindingProofInputs,
 } from "@/lib/privacy/zk/binding-secret";
-import { generateBaseCommitment } from "@/lib/privacy/zk/client";
 import { AuthMode } from "@/lib/privacy/zk/proof-types";
+import { generateBaseCommitment } from "@/lib/privacy/zk/prove";
 import { trpc } from "@/lib/trpc/client";
 
 type EnrollmentMethod = "passkey" | "wallet" | "password" | "create-password";

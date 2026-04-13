@@ -3,7 +3,7 @@
 import type {
   CountryDocumentEntry,
   ZkPassportDocType,
-} from "@/lib/identity/document/zkpassport-support";
+} from "@/lib/identity/verification/zkpassport-registry";
 
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";

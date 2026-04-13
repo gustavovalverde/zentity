@@ -23,7 +23,7 @@ import {
 } from "@/lib/db/schema/privacy";
 
 import { deriveComplianceStatus } from "./compliance";
-import { selectLatestCompleteOcrProofRows } from "./ocr-proof-sessions";
+import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
 
 // ─── Check type constants ────────────────────────────────────────────
 

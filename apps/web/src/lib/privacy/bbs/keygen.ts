@@ -7,7 +7,7 @@
 
 import type { BbsKeyPair } from "./types";
 
-import { bbs } from "./crypto";
+import { bbs } from "./curve";
 
 /**
  * Generate a new BBS+ keypair for signing credentials.

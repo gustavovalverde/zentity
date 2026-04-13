@@ -17,7 +17,7 @@ import {
   getProofChallenge,
   getSignedClaims,
   storeProof,
-} from "@/lib/privacy/zk/client";
+} from "@/lib/privacy/zk/prove";
 
 const NON_DIGIT_REGEX = /\D/g;
 
