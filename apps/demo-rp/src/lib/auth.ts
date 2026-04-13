@@ -59,15 +59,20 @@ function stripProviderFields(obj: Record<string, unknown>) {
   return obj;
 }
 
-const zentityJwks = createRemoteJWKSet(
-  new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
-);
+// Lazy JWKS init: see verify.ts for rationale (Next.js build skipValidation).
+let zentityJwksInstance: ReturnType<typeof createRemoteJWKSet> | undefined;
+function zentityJwks() {
+  zentityJwksInstance ??= createRemoteJWKSet(
+    new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
+  );
+  return zentityJwksInstance;
+}
 
 async function verifyIdToken(
   idToken: string
 ): Promise<Record<string, unknown>> {
   try {
-    const { payload } = await jwtVerify(idToken, zentityJwks);
+    const { payload } = await jwtVerify(idToken, zentityJwks());
     return payload as Record<string, unknown>;
   } catch {
     return {};

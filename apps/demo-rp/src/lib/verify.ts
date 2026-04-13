@@ -12,10 +12,16 @@ import { env } from "@/lib/env";
 
 const MAX_KB_JWT_AGE_SECONDS = 300;
 
-// Cached JWKS for Zentity issuer signature verification
-const zentityJwks = createRemoteJWKSet(
-  new URL(env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/oauth2/jwks`)
-);
+// Lazy JWKS init: module is imported during Next.js `collect page data`
+// where T3 Env's skipValidation returns raw process.env without defaults,
+// so `env.ZENTITY_URL` would be undefined and `new URL()` would throw.
+let zentityJwksInstance: ReturnType<typeof createRemoteJWKSet> | undefined;
+function zentityJwks() {
+  zentityJwksInstance ??= createRemoteJWKSet(
+    new URL(env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/oauth2/jwks`)
+  );
+  return zentityJwksInstance;
+}
 
 interface VerifyResult {
   claims: Record<string, unknown>;
@@ -113,7 +119,7 @@ export async function verifyVpToken(
   // 1. Verify issuer signature
   let issuerPayload: Record<string, unknown>;
   try {
-    const { payload } = await jwtVerify(issuerJwt, zentityJwks);
+    const { payload } = await jwtVerify(issuerJwt, zentityJwks());
     issuerPayload = payload as Record<string, unknown>;
   } catch {
     return { verified: false, claims: {} };
