@@ -9,7 +9,7 @@ import {
 } from "@/lib/agents/aap-profile";
 import { observeSessionLifecycle } from "@/lib/agents/identity";
 import { requireClientCredentials } from "@/lib/auth/api-auth";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,

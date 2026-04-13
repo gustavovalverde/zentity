@@ -8,8 +8,7 @@ import {
   resolveCibaApprovalData,
 } from "@/lib/agents/resolve-approval";
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { getFreshSession } from "@/lib/auth/cached-session";
-import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
 
 export default async function ApprovePage({
   params,

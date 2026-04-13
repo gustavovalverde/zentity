@@ -5,7 +5,7 @@ import type {
   CibaRequestDetails,
   RegisteredAgentInfo,
 } from "@/lib/agents/resolve-approval";
-import type { AuthMode } from "@/lib/auth/detect-auth-mode";
+import type { AuthMode } from "@/lib/auth/session";
 
 import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";

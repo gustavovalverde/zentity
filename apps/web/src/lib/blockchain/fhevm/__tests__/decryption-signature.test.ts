@@ -3,7 +3,7 @@ import type { FhevmInstance } from "@/lib/blockchain/fhevm/types";
 import { type JsonRpcSigner, verifyTypedData, Wallet } from "ethers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/fhevm-decryption-signature";
+import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/decryption-signature";
 import { GenericStringInMemoryStorage } from "@/lib/blockchain/fhevm/signature-cache";
 
 interface TestEip712 {

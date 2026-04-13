@@ -39,7 +39,7 @@ import {
   createLivenessSession,
   getChallengeInfo,
   getLivenessSession,
-} from "@/lib/identity/liveness/liveness-session-store";
+} from "@/lib/identity/liveness/session-store";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,

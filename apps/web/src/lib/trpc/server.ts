@@ -23,7 +23,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/authentication-context";
-import { verifyAccessToken } from "@/lib/auth/jwt-verify";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,

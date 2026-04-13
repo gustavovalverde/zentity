@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { getHardenedJWKSet } = await import("../jwks-fetcher");
+const { getHardenedJWKSet } = await import("../jwt");
 
 describe("getHardenedJWKSet", () => {
   it("returns a function for a valid HTTPS URL", () => {

@@ -9,7 +9,7 @@ import {
   getDocumentHashField,
 } from "@/lib/blockchain/attestation/claim-hash";
 import { dedupKeyExistsForOtherUser } from "@/lib/db/queries/identity";
-import { computeDedupKey } from "@/lib/identity/dedup";
+import { computeDedupKey } from "@/lib/identity/verification/dedup";
 import { logger } from "@/lib/logging/logger";
 import { toNumericCode } from "@/lib/privacy/zk/country";
 

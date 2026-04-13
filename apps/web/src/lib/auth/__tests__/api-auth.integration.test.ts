@@ -37,7 +37,7 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/auth/jwt-verify", () => ({
+vi.mock("@/lib/auth/jwt", () => ({
   verifyAccessToken: mockVerifyAccessToken,
   verifyAuthIssuedJwt: mockVerifyAuthIssuedJwt,
 }));

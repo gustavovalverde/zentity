@@ -16,7 +16,7 @@ import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint } from "jose";
 
 import { env } from "@/env";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";

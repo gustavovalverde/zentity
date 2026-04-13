@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { resizeImageFile } from "@/lib/identity/document/image-resize";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
-} from "@/lib/identity/document/document-ocr";
-import { resizeImageFile } from "@/lib/identity/document/image-resize";
+} from "@/lib/identity/document/ocr-schema";
 import { useVerificationStore } from "@/lib/identity/verification/state";
 import { trpc } from "@/lib/trpc/client";
 

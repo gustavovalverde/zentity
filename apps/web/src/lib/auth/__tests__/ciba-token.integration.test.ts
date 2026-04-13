@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveAgentSubForClient } from "@/lib/agents/pairwise";
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,

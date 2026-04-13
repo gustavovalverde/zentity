@@ -3,7 +3,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { verifyAccessToken } from "@/lib/auth/jwt-verify";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,

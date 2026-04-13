@@ -13,13 +13,13 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 
 import { AppSidebar } from "./_components/app-sidebar";
 import { DynamicBreadcrumb } from "./_components/dynamic-breadcrumb";
 import { EmailVerificationBanner } from "./_components/email-verification-banner";
-import { FheBackgroundKeygen } from "./_components/fhe-background-keygen";
+import { FheBackgroundKeygen } from "./_components/fhe-lifecycle";
 
 export default async function DashboardLayout({
   children,

@@ -56,7 +56,7 @@ import type {
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/fhevm-decryption-signature";
+import { FhevmDecryptionSignature } from "@/lib/blockchain/fhevm/decryption-signature";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 interface UseFHEDecryptParams {

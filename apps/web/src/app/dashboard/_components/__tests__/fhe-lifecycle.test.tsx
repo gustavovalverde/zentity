@@ -29,7 +29,7 @@ vi.mock("@/lib/trpc/client", () => ({
   },
 }));
 
-import { FheStatusPoller } from "../fhe-status-poller";
+import { FheStatusPoller } from "../fhe-lifecycle";
 
 async function flushAsyncWork() {
   await Promise.resolve();

@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 
 import { env } from "@/env";
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { getCachedSession } from "@/lib/auth/cached-session";
-import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { detectAuthMode, getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";

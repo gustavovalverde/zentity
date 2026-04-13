@@ -3,7 +3,7 @@ import { Suspense } from "react";
 
 import { isWeb3Enabled } from "@/env";
 import { getSecurityPostureForSession } from "@/lib/assurance/data";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 
 import { IdentityActionsCard } from "./_components/identity-actions-card";
 import {

@@ -28,7 +28,7 @@ import { cn } from "@/lib/cn";
 import {
   DOCUMENT_TYPE_LABELS,
   type DocumentResult,
-} from "@/lib/identity/document/document-ocr";
+} from "@/lib/identity/document/ocr-schema";
 import {
   type ProcessingState,
   useDocumentProcessing,

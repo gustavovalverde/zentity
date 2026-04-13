@@ -2,12 +2,12 @@ import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
 
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import {
   type AuthorizationDetail,
   deriveCapabilityName,
   resolveCapabilityApprovalStrength,
 } from "@/lib/agents/approval-engine";
-import { resolveAgentSubForClient } from "@/lib/agents/pairwise";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,

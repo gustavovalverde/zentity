@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   validateOpaqueAccessTokenDpop: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/jwt-verify", () => ({
+vi.mock("@/lib/auth/jwt", () => ({
   verifyAccessToken: mocks.verifyAccessToken,
 }));
 

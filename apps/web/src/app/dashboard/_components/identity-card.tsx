@@ -44,7 +44,7 @@ import {
 } from "@/lib/db/queries/privacy";
 
 import { VerificationFinalizationNotice } from "../verify/_components/verification-finalization-notice";
-import { FheStatusPoller } from "./fhe-status-poller";
+import { FheStatusPoller } from "./fhe-lifecycle";
 import { TransparencySection } from "./transparency-section";
 import { VerificationDetails } from "./verification-details";
 

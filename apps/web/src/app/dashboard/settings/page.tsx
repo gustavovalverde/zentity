@@ -12,7 +12,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/chrome/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";

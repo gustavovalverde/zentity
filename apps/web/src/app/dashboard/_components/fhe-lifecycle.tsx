@@ -6,15 +6,27 @@ import { startTransition, useEffect, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 import { trpc } from "@/lib/trpc/client";
+
+// Mounts a side effect that kicks off FHE key generation in the background
+// on dashboard load when the user has not yet enrolled. Renders nothing.
+export function FheBackgroundKeygen({
+  hasEnrollment,
+}: Readonly<{ hasEnrollment: boolean }>) {
+  useEffect(() => {
+    if (!hasEnrollment) {
+      startBackgroundKeygen();
+    }
+  }, [hasEnrollment]);
+
+  return null;
+}
 
 const MAX_POLL_ATTEMPTS = 60;
 
-/**
- * Poll for FHE completion after proofs are already stored.
- * Refreshes the current route once the assurance profile reports completion.
- * Stops after MAX_POLL_ATTEMPTS and shows a timeout error.
- */
+// Polls assurance.profile until FHE attributes are encrypted, then navigates
+// back to the dashboard. Used on verify landing after proofs are stored.
 export function FheStatusPoller() {
   const router = useRouter();
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,7 +105,6 @@ export function FheStatusPoller() {
   const handleRetry = () => {
     attemptRef.current = 0;
     setError(null);
-    // Re-trigger the effect by refreshing the page
     router.refresh();
   };
 

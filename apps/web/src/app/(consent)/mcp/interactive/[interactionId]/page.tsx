@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 
 import { AgentApprovalView } from "@/components/agent-approval-view";
 import { getAccountAssurance } from "@/lib/assurance/data";
-import { getFreshSession } from "@/lib/auth/cached-session";
-import { detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";

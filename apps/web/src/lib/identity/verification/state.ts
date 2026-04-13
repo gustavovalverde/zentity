@@ -10,7 +10,7 @@
  * a page refresh resets the user to the initial step.
  */
 
-import type { DocumentResult } from "@/lib/identity/document/document-ocr";
+import type { DocumentResult } from "@/lib/identity/document/ocr-schema";
 
 import { useCallback, useMemo, useState } from "react";
 import { create } from "zustand";

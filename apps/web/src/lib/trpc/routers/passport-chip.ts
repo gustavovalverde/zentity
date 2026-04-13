@@ -24,12 +24,12 @@ import {
   insertProofArtifact,
   insertSignedClaim,
 } from "@/lib/db/queries/privacy";
-import { computeDedupKey } from "@/lib/identity/dedup";
 import {
   calculateBirthYearOffsetFromYear,
   dobToDaysSince1900,
   parseBirthYearFromDob,
 } from "@/lib/identity/verification/birth-year";
+import { computeDedupKey } from "@/lib/identity/verification/dedup";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";

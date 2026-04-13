@@ -8,7 +8,7 @@ import {
 } from "jose";
 
 import { env } from "@/env";
-import { getHardenedJWKSet } from "@/lib/auth/jwks-fetcher";
+import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import { logger } from "@/lib/logging/logger";
 
 type AttestationTier = "attested" | "self-declared" | "unverified";

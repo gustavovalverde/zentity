@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 import { hasCompletedSignUp } from "@/lib/db/queries/identity";
 
 import { SignUpForm } from "./_components/sign-up-form";

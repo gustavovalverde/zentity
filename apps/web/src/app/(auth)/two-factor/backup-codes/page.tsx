@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 
 import { BackupCodesClient } from "./_components/backup-codes-client";
 

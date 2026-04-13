@@ -22,11 +22,11 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/auth/jwt-verify", () => ({
+vi.mock("@/lib/auth/jwt", () => ({
   verifyAuthIssuedJwt: vi.fn(),
 }));
 
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 
 import {
   computeKeyFingerprint,

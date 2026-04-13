@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { isWeb3Enabled } from "@/env";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getVerificationStatus } from "@/lib/db/queries/identity";
 

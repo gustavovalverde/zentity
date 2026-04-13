@@ -161,7 +161,7 @@ import {
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba-mailer";
 import { validateSafeUrl } from "@/lib/http/url-safety";
-import { computeRpNullifier } from "@/lib/identity/dedup";
+import { computeRpNullifier } from "@/lib/identity/verification/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 

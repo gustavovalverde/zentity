@@ -7,8 +7,11 @@ import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { env } from "@/env";
-import { getCachedSession } from "@/lib/auth/cached-session";
-import { type AuthMode, detectAuthMode } from "@/lib/auth/detect-auth-mode";
+import {
+  type AuthMode,
+  detectAuthMode,
+  getCachedSession,
+} from "@/lib/auth/session";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients, rpEncryptionKeys } from "@/lib/db/schema/oauth-provider";

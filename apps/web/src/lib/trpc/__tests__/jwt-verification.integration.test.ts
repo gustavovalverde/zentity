@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { verifyAccessToken } from "@/lib/auth/jwt-verify";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";

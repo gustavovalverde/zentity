@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/chrome/page-header";
 import { TierBadge } from "@/components/tier-badge";
 import { env } from "@/env";
 import { getSecurityPostureForSession } from "@/lib/assurance/data";
-import { getCachedSession } from "@/lib/auth/cached-session";
+import { getCachedSession } from "@/lib/auth/session";
 import {
   getPrimaryWalletAddress,
   userHasPassword,
