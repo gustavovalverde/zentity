@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
 import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
 import { redirectTo } from "@/lib/auth/redirect";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 export function OpaqueSignInForm({
   callbackURL = "/dashboard",

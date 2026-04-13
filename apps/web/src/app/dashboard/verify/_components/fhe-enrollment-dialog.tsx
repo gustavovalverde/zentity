@@ -41,13 +41,15 @@ import {
   getPreGeneratedKeys,
   startBackgroundKeygen,
 } from "@/lib/privacy/fhe/background-keygen";
-import { generateFheKeyMaterialForStorage } from "@/lib/privacy/fhe/browser";
-import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import {
   getStoredFheKeys,
   persistFheKeyId,
   storeFheKeysWithCredential,
-} from "@/lib/privacy/fhe/store";
+} from "@/lib/privacy/fhe/key-store";
+import {
+  generateFheKeyMaterialForStorage,
+  prewarmTfheWorker,
+} from "@/lib/privacy/fhe/keygen-client";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import {
   deriveBindingSecret,

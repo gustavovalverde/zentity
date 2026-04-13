@@ -36,11 +36,11 @@ vi.mock("@/lib/auth/auth-config", () => ({
 // Mock api-auth to prevent the real module from caching in vmThreads.
 // Without this, the real api-auth module (loaded transitively through the route)
 // persists in the VM cache and can't be overridden by subsequent test files.
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 
 import { POST } from "../route";
 

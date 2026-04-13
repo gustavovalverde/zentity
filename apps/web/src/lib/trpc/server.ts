@@ -16,13 +16,13 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { getSecurityPosture } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
+import { getSecurityPosture } from "@/lib/assurance/posture";
 import { auth, type Session } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import { verifyAccessToken } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,

@@ -74,7 +74,7 @@ vi.mock("@/lib/db/queries/attestation", () => ({
   deleteBlockchainAttestationsByUserId: vi.fn(),
 }));
 
-vi.mock("@/lib/assurance/data", () => ({
+vi.mock("@/lib/assurance/posture", () => ({
   getSecurityPosture: (...args: unknown[]) => mockGetSecurityPosture(...args),
 }));
 

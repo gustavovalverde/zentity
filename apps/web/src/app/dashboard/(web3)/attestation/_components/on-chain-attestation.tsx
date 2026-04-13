@@ -69,9 +69,9 @@ import {
   resolveAttestationConsentRevision,
   resolveOnChainAttestationViewState,
 } from "@/lib/blockchain/attestation/view";
-import { getUserFriendlyError } from "@/lib/blockchain/error-messages";
 import { useFHEEncryption } from "@/lib/blockchain/fhevm/use-fhe-encryption";
 import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
+import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useEthersSigner } from "@/lib/blockchain/wagmi";
 import { cn } from "@/lib/cn";
 import { trpcReact } from "@/lib/trpc/client";

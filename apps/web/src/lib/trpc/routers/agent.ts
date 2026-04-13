@@ -1,4 +1,4 @@
-import type { EffectiveSessionLifecycle } from "@/lib/agents/identity";
+import type { EffectiveSessionLifecycle } from "@/lib/agents/session";
 
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";

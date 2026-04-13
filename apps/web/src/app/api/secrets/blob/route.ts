@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,

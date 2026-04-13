@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AgentApprovalView } from "@/components/agent-approval-view";
-import { getAccountAssurance } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";

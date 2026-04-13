@@ -2,8 +2,8 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 

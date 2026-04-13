@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";

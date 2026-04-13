@@ -32,7 +32,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { isWeb3Enabled } from "@/env";
-import { completeSignOut } from "@/lib/auth/session-manager";
+import { completeSignOut } from "@/lib/auth/session-cleanup";
 
 import { ProfileGreetingName } from "./profile-greeting";
 

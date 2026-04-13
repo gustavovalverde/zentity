@@ -5,7 +5,7 @@ const authMocks = vi.hoisted(() => ({
   requireBrowserSession: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: authMocks.requireBrowserSession,
 }));
 

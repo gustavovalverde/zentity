@@ -18,7 +18,7 @@ import {
   RECOVERY_AAD_CONTEXT,
 } from "@/lib/privacy/primitives/symmetric";
 
-import { deriveFrostUnwrapKey } from "../recovery-keys";
+import { deriveFrostUnwrapKey } from "../keys";
 
 interface RecoveryEnvelope {
   alg: "ML-KEM-768";

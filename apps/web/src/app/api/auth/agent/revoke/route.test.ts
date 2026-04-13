@@ -15,7 +15,7 @@ const { mockRequireBootstrapAccessToken } = vi.hoisted(() => ({
   mockRequireBootstrapAccessToken: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBootstrapAccessToken: mockRequireBootstrapAccessToken,
 }));
 

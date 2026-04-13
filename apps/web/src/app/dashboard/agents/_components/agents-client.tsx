@@ -5,7 +5,7 @@ import type {
   AuthorizationDetail,
   CibaRequestDetails,
   RegisteredAgentInfo,
-} from "@/lib/agents/resolve-approval";
+} from "@/lib/agents/approval-resolve";
 import type { AuthMode } from "@/lib/auth/session";
 
 import { Bot, MessageSquare } from "lucide-react";

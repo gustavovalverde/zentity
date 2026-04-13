@@ -277,7 +277,7 @@ async function ensureHostRegistered(
   options?: EnsureHostRegistrationOptions
 ): Promise<AgentRuntimeRow> {
   const response = await postJsonWithDpop(
-    `${env.ZENTITY_URL}/api/auth/agent/register-host`,
+    `${env.ZENTITY_URL}/api/auth/agent/host/register`,
     bootstrap.accessToken,
     bootstrap.dpop,
     {

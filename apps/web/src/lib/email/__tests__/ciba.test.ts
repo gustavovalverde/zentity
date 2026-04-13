@@ -57,7 +57,7 @@ describe("ciba-mailer", () => {
       emailVerified: true,
     });
 
-    const { sendCibaNotification } = await import("../ciba-mailer");
+    const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
     expect(mockSendMailpitMessage).toHaveBeenCalledOnce();
@@ -71,7 +71,7 @@ describe("ciba-mailer", () => {
       emailVerified: false,
     });
 
-    const { sendCibaNotification } = await import("../ciba-mailer");
+    const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
     expect(mockSendMailpitMessage).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe("ciba-mailer", () => {
   it("does NOT send email when user has no email", async () => {
     mockDbGet.mockReturnValue({ email: null, emailVerified: false });
 
-    const { sendCibaNotification } = await import("../ciba-mailer");
+    const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
     expect(mockSendMailpitMessage).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe("ciba-mailer", () => {
   it("does NOT send email when user is not found", async () => {
     mockDbGet.mockReturnValue(undefined);
 
-    const { sendCibaNotification } = await import("../ciba-mailer");
+    const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
     expect(mockSendMailpitMessage).not.toHaveBeenCalled();

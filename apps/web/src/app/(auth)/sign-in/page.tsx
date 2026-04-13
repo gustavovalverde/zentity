@@ -33,7 +33,7 @@ import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
 import { signInWithPasskey } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { getSafeRedirectPath, redirectTo } from "@/lib/auth/redirect";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();

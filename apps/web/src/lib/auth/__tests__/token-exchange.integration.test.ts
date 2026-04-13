@@ -13,7 +13,7 @@ import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";

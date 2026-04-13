@@ -26,7 +26,7 @@ import {
   REGISTRATION_REQUEST_LENGTH,
   validateBase64Length,
   validateBase64LengthRange,
-} from "./utils";
+} from "./validation";
 
 const RESET_TOKEN_PREFIX = "opaque-reset";
 const SIGNUP_TOKEN_PREFIX = "opaque-signup";

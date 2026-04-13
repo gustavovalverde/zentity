@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import {
   claimsRequestForEndpoint,
   loadReleaseContext,

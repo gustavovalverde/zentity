@@ -7,10 +7,10 @@ import {
   signOut as betterAuthSignOut,
 } from "@/lib/auth/auth-client";
 import { redirectTo as navigateTo } from "@/lib/auth/redirect";
-import { resetFlowId } from "@/lib/observability/flow-client";
+import { resetFlowId } from "@/lib/observability/flow-id";
 import { clearAllCredentialCaches } from "@/lib/privacy/credentials/cache";
 import { resetBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
-import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/store";
+import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/key-store";
 import { resetProfileSecretCache } from "@/lib/privacy/secrets/profile";
 
 /**

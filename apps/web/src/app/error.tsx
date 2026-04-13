@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-id";
 
 export default function ErrorPage({
   error,

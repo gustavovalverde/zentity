@@ -518,9 +518,9 @@ FROST signature doesn't directly contain DEK - it authorizes the server to perfo
 | Category | Files |
 |----------|-------|
 | **Database** | `apps/web/src/lib/db/schema/recovery.ts`, `apps/web/src/lib/db/queries/recovery.ts` |
-| **Recovery keys** | `apps/web/src/lib/recovery/recovery-keys.ts`, `apps/web/src/lib/recovery/constants.ts` |
+| **Recovery keys** | `apps/web/src/lib/recovery/keys.ts`, `apps/web/src/lib/recovery/constants.ts` |
 | **Signer integration** | `apps/web/src/lib/recovery/frost-service.ts` |
-| **Email** | `apps/web/src/lib/email/recovery-mailer.ts`, `apps/web/src/lib/email/mailpit.ts`, `apps/web/src/lib/email/resend.ts` |
+| **Email** | `apps/web/src/lib/email/recovery.ts`, `apps/web/src/lib/email/transport.ts`, `apps/web/src/lib/email/transport.ts` |
 | **tRPC** | `apps/web/src/lib/trpc/routers/recovery.ts` |
 | **UI (User)** | `apps/web/src/components/dashboard/recovery-setup-section.tsx`, `apps/web/src/app/(auth)/recover-social/page.tsx`, `apps/web/src/app/(auth)/recover-guardian/page.tsx`, `apps/web/src/app/(auth)/verify-2fa/*` |
 | **Signer service** | `apps/signer/src/frost/*`, `apps/signer/src/routes/*`, `apps/signer/src/audit.rs` |

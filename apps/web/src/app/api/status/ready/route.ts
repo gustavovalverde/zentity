@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db/connection";
-import { isWarmupComplete } from "@/lib/observability/service-warmup";
+import { isWarmupComplete } from "@/lib/observability/warmup";
 
 const DB_TIMEOUT_MS = 2000;
 

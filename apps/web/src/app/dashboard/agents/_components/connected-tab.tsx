@@ -56,7 +56,7 @@ import {
   formatGrantSource,
   formatHostTier,
   formatUsageSummary,
-} from "@/lib/agents/display";
+} from "@/lib/agents/labels";
 import { trpcReact } from "@/lib/trpc/client";
 
 function statusVariant(

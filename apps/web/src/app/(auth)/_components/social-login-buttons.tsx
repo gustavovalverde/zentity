@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 export function SocialLoginButtons() {
   const [loadingProvider, setLoadingProvider] = useState<string | null>(null);

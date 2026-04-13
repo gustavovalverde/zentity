@@ -6,7 +6,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getProofSessionById } from "@/lib/db/queries/privacy";
 import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";

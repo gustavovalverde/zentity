@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
-import { invalidateSessionDataCache } from "@/lib/auth/session-manager";
+import { invalidateSessionDataCache } from "@/lib/auth/session-cleanup";
 
 // Better Auth's shouldRequirePassword (utils/password.mjs) returns true
 // whenever the user has a credential-provider account with a password — even

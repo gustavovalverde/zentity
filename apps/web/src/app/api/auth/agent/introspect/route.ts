@@ -6,14 +6,14 @@ import { NextResponse } from "next/server";
 import {
   loadAapProfileForTokenJti,
   readAapProfileFromPayload,
-} from "@/lib/agents/aap-profile";
-import { observeSessionLifecycle } from "@/lib/agents/identity";
-import { requireClientCredentials } from "@/lib/auth/api-auth";
+} from "@/lib/agents/act-claim";
+import { observeSessionLifecycle } from "@/lib/agents/session";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
+import { requireClientCredentials } from "@/lib/auth/resource-auth";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {

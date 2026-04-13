@@ -23,7 +23,7 @@ import type { AppRouter } from "@/lib/trpc/routers/app";
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 
-import { getFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-id";
 
 type LogMeta = Record<string, string | number | boolean>;
 

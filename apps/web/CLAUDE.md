@@ -6,9 +6,11 @@ Concise index for agents and humans. Deeper architecture lives in the repo root 
 
 1. **Glob before write.** Search `*{domain}*` in the target directory. If a file already owns the domain, read and extend it — don't create a sibling.
 2. **Deep modules win.** One cohesive 1000-line file beats ten 100-line files that must be understood together. Size is never a reason to split; directive/tree-shaking/history are.
-3. **`{domain}-{concern}.ts` naming.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. No `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`.
-4. **Sub-directory only with 4+ files.** A directory with one or two files is a shallow module at the directory level. Use a domain-prefixed filename at the parent level instead.
-5. **No barrel files.** Import from specific files directly.
+3. **`{domain}-{concern}.ts` naming, no stuttering.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. When the parent directory already owns the domain, drop the prefix: `email/auth.ts` not `email/auth-mailer.ts`, `recovery/keys.ts` not `recovery/recovery-keys.ts`.
+4. **Banned filename forms.** No `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, generic `service.ts` / `store.ts`. Rename by what the file actually does (`validation.ts`, `typed-data.ts`, `backend.ts`, `key-store.ts`, `posture.ts`, `labels.ts`).
+5. **Disambiguate cross-domain collisions.** "Attestation" means different things in three domains: on-chain (`blockchain/attestation/`), agent host (`agents/host-attestation.ts`), ZK signed claims (`privacy/zk/attestation-claims.ts`). Name by what each computes, not what it's called in the spec.
+6. **Sub-directory only with 4+ files.** A directory with one or two files is a shallow module at the directory level. Use a domain-prefixed filename at the parent level instead.
+7. **No barrel files.** Import from specific files directly.
 
 ## Where things live
 
@@ -31,9 +33,9 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 
 | Path | Bounded context |
 |---|---|
-| `agents/` | Agent host/session model, capabilities, pairwise IDs, approval engine, web push |
-| `assurance/` | Assurance tier computation, OIDC claims, feature gating |
-| `auth/` | Better-auth config, session management, auth modes + sub-dirs per method: `eip712/`, `opaque/`, `passkey/`, `oidc/` |
+| `agents/` | Agent host/session model, host attestation, capability grants, pairwise actor subject, approval evaluate/resolve, web push |
+| `assurance/` | Assurance tier computation, security posture queries, OIDC claims, feature gating |
+| `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, per-method sub-dirs: `eip712/`, `opaque/`, `passkey/`, `oidc/` |
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up |
 | `blockchain/` | FHEVM provider + hooks (`fhevm/`), on-chain attestation (`attestation/`), wagmi config |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |

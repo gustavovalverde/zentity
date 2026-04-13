@@ -19,7 +19,7 @@ import {
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
-import { encryptBatchFhe, FheServiceError } from "./service";
+import { encryptBatchFhe, FheServiceError } from "./backend";
 
 interface FheEncryptionSchedule {
   /** Full DOB as days since 1900-01-01 (UTC) */

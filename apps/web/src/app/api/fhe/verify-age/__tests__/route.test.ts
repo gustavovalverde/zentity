@@ -5,7 +5,7 @@ const authMocks = vi.hoisted(() => ({
   requireBrowserSession: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: authMocks.requireBrowserSession,
 }));
 
@@ -14,7 +14,7 @@ const fheMocks = vi.hoisted(() => ({
   verifyAgeFromDobFhe: vi.fn(),
 }));
 
-vi.mock("@/lib/privacy/fhe/service", () => fheMocks);
+vi.mock("@/lib/privacy/fhe/backend", () => fheMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getLatestEncryptedAttributeByUserAndType: vi.fn(),

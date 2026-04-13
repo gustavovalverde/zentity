@@ -12,7 +12,7 @@ const { mockRequireBrowserSession } = vi.hoisted(() => ({
   mockRequireBrowserSession: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: mockRequireBrowserSession,
 }));
 
@@ -40,7 +40,7 @@ async function createPublicKeyJwk() {
   return JSON.stringify(await exportJWK(publicKey));
 }
 
-describe("POST /api/auth/host/rotate-key", () => {
+describe("POST /api/auth/agent/host/rotate-key", () => {
   beforeEach(async () => {
     await resetDatabase();
     mockRequireBrowserSession.mockReset();
@@ -73,7 +73,7 @@ describe("POST /api/auth/host/rotate-key", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/auth/host/rotate-key", {
+      new Request("http://localhost/api/auth/agent/host/rotate-key", {
         method: "POST",
         body: JSON.stringify({ hostId: host.id, publicKey: newKey }),
       })
@@ -135,7 +135,7 @@ describe("POST /api/auth/host/rotate-key", () => {
 
     const { POST } = await import("./route");
     const response = await POST(
-      new Request("http://localhost/api/auth/host/rotate-key", {
+      new Request("http://localhost/api/auth/agent/host/rotate-key", {
         method: "POST",
         body: JSON.stringify({ hostId: firstHost.id, publicKey: secondKey }),
       })

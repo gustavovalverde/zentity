@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   ensureDefaultHostPolicies,
   evaluateSessionGrants,
-} from "@/lib/agents/approval-engine";
+} from "@/lib/agents/approval-evaluate";
 import { db } from "@/lib/db/connection";
 import {
   agentHostPolicies,

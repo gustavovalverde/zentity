@@ -50,7 +50,7 @@ vi.mock("../auth-config", () => ({
   },
 }));
 
-import { requireBootstrapAccessToken } from "../api-auth";
+import { requireBootstrapAccessToken } from "../resource-auth";
 
 describe("requireBootstrapAccessToken", () => {
   beforeEach(() => {
@@ -71,7 +71,7 @@ describe("requireBootstrapAccessToken", () => {
     mockResolveUserIdFromSub.mockResolvedValueOnce("raw-user-id");
 
     const request = new Request(
-      "http://localhost/api/auth/agent/register-host",
+      "http://localhost/api/auth/agent/host/register",
       {
         headers: {
           Authorization: "DPoP eyJ.bootstrap-token",
@@ -108,7 +108,7 @@ describe("requireBootstrapAccessToken", () => {
     });
 
     const request = new Request(
-      "http://localhost/api/auth/agent/register-host",
+      "http://localhost/api/auth/agent/host/register",
       {
         headers: {
           Authorization: "DPoP eyJ.bootstrap-token",

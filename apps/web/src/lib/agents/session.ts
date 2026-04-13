@@ -7,7 +7,7 @@ import {
   type AuthorizationDetail,
   deriveCapabilityName,
   resolveCapabilityApprovalStrength,
-} from "@/lib/agents/approval-engine";
+} from "@/lib/agents/approval-evaluate";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,

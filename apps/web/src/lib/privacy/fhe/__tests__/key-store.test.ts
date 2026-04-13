@@ -26,14 +26,14 @@ const makeBytes = (value: number, length: number) =>
   Uint8Array.from({ length }, () => value);
 
 describe("fhe-key-store", () => {
-  let storeFheKeysWithCredential: typeof import("../store").storeFheKeysWithCredential;
-  let getStoredFheKeys: typeof import("../store").getStoredFheKeys;
-  let persistFheKeyId: typeof import("../store").persistFheKeyId;
-  let resetFheKeyStoreCache: typeof import("../store").resetFheKeyStoreCache;
+  let storeFheKeysWithCredential: typeof import("../key-store").storeFheKeysWithCredential;
+  let getStoredFheKeys: typeof import("../key-store").getStoredFheKeys;
+  let persistFheKeyId: typeof import("../key-store").persistFheKeyId;
+  let resetFheKeyStoreCache: typeof import("../key-store").resetFheKeyStoreCache;
 
   beforeEach(async () => {
     vi.resetModules();
-    const storeModule = await import("../store");
+    const storeModule = await import("../key-store");
     storeFheKeysWithCredential = storeModule.storeFheKeysWithCredential;
     getStoredFheKeys = storeModule.getStoredFheKeys;
     persistFheKeyId = storeModule.persistFheKeyId;

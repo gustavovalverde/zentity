@@ -17,7 +17,7 @@ import {
   hasOAuthParams,
 } from "@/lib/auth/oidc/oauth-post-login";
 import { redirectTo } from "@/lib/auth/redirect";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 type SignInStatus = "idle" | "connecting" | "ready" | "signing";
 

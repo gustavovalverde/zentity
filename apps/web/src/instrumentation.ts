@@ -3,9 +3,7 @@ export async function register() {
     const { initTelemetry } = await import("@/lib/observability/telemetry");
     await initTelemetry();
 
-    const { markWarmupComplete } = await import(
-      "@/lib/observability/service-warmup"
-    );
+    const { markWarmupComplete } = await import("@/lib/observability/warmup");
 
     // Parallel group: Human.js models + Barretenberg + backend service checks
     // (warmupCRS depends on Barretenberg so it runs after BB completes)
@@ -13,7 +11,7 @@ export async function register() {
       await Promise.all([
         import("@/lib/identity/liveness/human/server"),
         import("@/lib/privacy/primitives/barretenberg"),
-        import("@/lib/observability/service-warmup"),
+        import("@/lib/observability/warmup"),
       ]);
 
     const [, bbResult] = await Promise.allSettled([

@@ -11,7 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
-import { ensureAuthSession } from "@/lib/auth/session-manager";
+import { ensureAuthSession } from "@/lib/auth/session-cleanup";
 
 interface WalletSignUpFormProps {
   disabled?: boolean;

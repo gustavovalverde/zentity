@@ -10,8 +10,8 @@ import {
   getSecurityPosture,
   getSecurityPostureForSession,
   getUnauthenticatedSecurityPosture,
-} from "@/lib/assurance/data";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+} from "@/lib/assurance/posture";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {

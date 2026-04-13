@@ -10,7 +10,7 @@ import {
   buildDefaultTypedData,
   nonceIdentifier,
   verifyEip712Signature,
-} from "./utils";
+} from "./typed-data";
 
 const DEFAULT_NONCE_TTL_SECONDS = 900; // 15 minutes
 

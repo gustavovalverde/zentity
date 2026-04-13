@@ -164,3 +164,27 @@ export function prewarmTfheWorker(): void {
     worker.postMessage({ type: "init" });
   }
 }
+
+export async function generateFheKeyMaterialForStorage(): Promise<FheKeygenResult> {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+
+  try {
+    const workerResult = await generateFheKeyMaterialInWorker();
+    recordClientMetric({
+      name: "client.tfhe.keygen.worker.duration",
+      value: workerResult.durationMs,
+      attributes: { result: "ok" },
+    });
+    return workerResult;
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    recordClientMetric({
+      name: "client.tfhe.keygen.duration",
+      value: performance.now() - start,
+      attributes: { result },
+    });
+  }
+}

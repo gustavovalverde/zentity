@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveCibaApprovalData } from "@/lib/agents/resolve-approval";
+import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";

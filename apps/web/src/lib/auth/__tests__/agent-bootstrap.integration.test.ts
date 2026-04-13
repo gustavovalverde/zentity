@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/identity";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -157,14 +157,14 @@ describe("agent bootstrap token exchange", () => {
       })
     );
 
-    const registerUrl = `${APP_URL}/api/auth/agent/register-host`;
+    const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
     const proof = await buildResourceDpopProof(
       dpopKeyPair,
       "POST",
       registerUrl,
       bootstrapToken
     );
-    const { POST } = await import("@/app/api/auth/agent/register-host/route");
+    const { POST } = await import("@/app/api/auth/agent/host/register/route");
     const response = await POST(
       new Request(registerUrl, {
         method: "POST",
@@ -208,9 +208,9 @@ describe("agent bootstrap token exchange", () => {
       })
       .run();
 
-    const { POST } = await import("@/app/api/auth/agent/register-host/route");
+    const { POST } = await import("@/app/api/auth/agent/host/register/route");
     const response = await POST(
-      new Request(`${APP_URL}/api/auth/agent/register-host`, {
+      new Request(`${APP_URL}/api/auth/agent/host/register`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${loginToken}`,

@@ -9,7 +9,7 @@ import {
   findOpaqueAccount,
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
-} from "./utils";
+} from "./validation";
 
 const normalizeIdentifier = (identifier: string) =>
   identifier.trim().toLowerCase();

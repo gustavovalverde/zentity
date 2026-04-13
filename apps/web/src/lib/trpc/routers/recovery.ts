@@ -56,7 +56,7 @@ import {
 import {
   sendCustodialRecoveryEmail,
   sendRecoveryGuardianEmails,
-} from "@/lib/email/recovery-mailer";
+} from "@/lib/email/recovery";
 import {
   consumeFheEnrollmentContext,
   createFheEnrollmentContext,
@@ -75,7 +75,7 @@ import {
   getRecoveryKeyFingerprint,
   getRecoveryPublicKey,
   wrapDekWithFrostKey,
-} from "@/lib/recovery/recovery-keys";
+} from "@/lib/recovery/keys";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 

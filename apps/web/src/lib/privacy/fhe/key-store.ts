@@ -14,7 +14,7 @@ import { trpc } from "@/lib/trpc/client";
 
 import { computePublicKeyFingerprint } from "./keygen-client";
 
-export interface StoredFheKeys {
+interface StoredFheKeys {
   clientKey: Uint8Array;
   createdAt: string;
   keyId?: string | undefined;

@@ -19,7 +19,7 @@ import {
   ensureAuthSession,
   invalidateSessionDataCache,
   prepareForNewSession,
-} from "@/lib/auth/session-manager";
+} from "@/lib/auth/session-cleanup";
 import { trpc } from "@/lib/trpc/client";
 
 import { CredentialChoice, type CredentialType } from "./credential-choice";

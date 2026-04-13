@@ -16,7 +16,7 @@ vi.mock("@/lib/logging/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-describe("auth-mailer", () => {
+describe("auth mailer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("NODE_ENV", "development");
@@ -27,7 +27,7 @@ describe("auth-mailer", () => {
   describe("sendResetPasswordEmail", () => {
     it("sends via Mailpit in dev when configured", async () => {
       mockIsMailpitConfigured.mockReturnValue(true);
-      const { sendResetPasswordEmail } = await import("../auth-mailer");
+      const { sendResetPasswordEmail } = await import("../auth");
 
       await sendResetPasswordEmail({
         user: { email: "test@example.com", name: "Alice" },
@@ -45,7 +45,7 @@ describe("auth-mailer", () => {
     it("sends via Resend in production", async () => {
       vi.stubEnv("NODE_ENV", "production");
       mockIsResendConfigured.mockReturnValue(true);
-      const { sendResetPasswordEmail } = await import("../auth-mailer");
+      const { sendResetPasswordEmail } = await import("../auth");
 
       await sendResetPasswordEmail({
         user: { email: "prod@example.com" },
@@ -61,7 +61,7 @@ describe("auth-mailer", () => {
 
     it("falls back to console when no transport configured", async () => {
       const { logger } = await import("@/lib/logging/logger");
-      const { sendResetPasswordEmail } = await import("../auth-mailer");
+      const { sendResetPasswordEmail } = await import("../auth");
 
       await sendResetPasswordEmail({
         user: { email: "no-transport@example.com" },
@@ -77,7 +77,7 @@ describe("auth-mailer", () => {
   describe("sendMagicLinkEmail", () => {
     it("sends via Mailpit in dev when configured", async () => {
       mockIsMailpitConfigured.mockReturnValue(true);
-      const { sendMagicLinkEmail } = await import("../auth-mailer");
+      const { sendMagicLinkEmail } = await import("../auth");
 
       await sendMagicLinkEmail({
         email: "magic@example.com",
@@ -94,7 +94,7 @@ describe("auth-mailer", () => {
 
     it("sends via Resend when configured and not in Mailpit mode", async () => {
       mockIsResendConfigured.mockReturnValue(true);
-      const { sendMagicLinkEmail } = await import("../auth-mailer");
+      const { sendMagicLinkEmail } = await import("../auth");
 
       await sendMagicLinkEmail({
         email: "resend@example.com",
@@ -109,7 +109,7 @@ describe("auth-mailer", () => {
 
     it("falls back to console when no transport configured", async () => {
       const { logger } = await import("@/lib/logging/logger");
-      const { sendMagicLinkEmail } = await import("../auth-mailer");
+      const { sendMagicLinkEmail } = await import("../auth");
 
       await sendMagicLinkEmail({
         email: "fallback@example.com",

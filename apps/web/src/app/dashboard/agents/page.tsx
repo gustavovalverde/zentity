@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { env } from "@/env";
-import { getAccountAssurance } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import { detectAuthMode, getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";

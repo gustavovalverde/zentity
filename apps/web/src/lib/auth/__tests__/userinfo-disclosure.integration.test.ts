@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
 import { createScopeHash } from "@/lib/auth/oidc/disclosure/delivery";
 import { db } from "@/lib/db/connection";

@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
@@ -11,7 +11,7 @@ import {
   msgpackResponse,
   sanitizeAndLogApiError,
 } from "@/lib/http/route-responses";
-import { registerFheKey } from "@/lib/privacy/fhe/service";
+import { registerFheKey } from "@/lib/privacy/fhe/backend";
 
 export const runtime = "nodejs";
 

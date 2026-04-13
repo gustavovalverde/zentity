@@ -2,7 +2,7 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 
 import crypto from "node:crypto";
 
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {

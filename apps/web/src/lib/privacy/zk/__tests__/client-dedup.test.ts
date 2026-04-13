@@ -10,7 +10,7 @@ vi.mock("@/lib/trpc/client", () => ({
   trpc: trpcMocks,
 }));
 
-describe("crypto-client FHE", () => {
+describe("zk client dedup", () => {
   it("dedupes concurrent proof challenge requests", async () => {
     const { getProofChallenge } = await import("@/lib/privacy/zk/client");
     const proofSessionId = "11111111-1111-4111-8111-111111111111";

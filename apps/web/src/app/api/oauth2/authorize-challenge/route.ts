@@ -9,17 +9,17 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { getAccountAssurance } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import { auth } from "@/lib/auth/auth-config";
 import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import {
   buildDefaultTypedData,
   nonceIdentifier,
   verifyEip712Signature,
-} from "@/lib/auth/eip712/utils";
+} from "@/lib/auth/eip712/typed-data";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   createDummyRegistrationRecord,
@@ -27,7 +27,7 @@ import {
   encryptServerLoginState,
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
-} from "@/lib/auth/opaque/utils";
+} from "@/lib/auth/opaque/validation";
 import { db } from "@/lib/db/connection";
 import {
   accounts,

@@ -19,7 +19,7 @@ import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
-import { getAccountAssurance } from "@/lib/assurance/data";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {

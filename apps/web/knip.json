@@ -9,7 +9,7 @@
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
     "src/components/vault-unlock.tsx": ["exports", "types"],
-    "src/lib/auth/oidc/cimd.ts": ["exports", "types"],
+    "src/lib/auth/oidc/client-id-metadata.ts": ["exports", "types"],
     "src/lib/auth/oidc/disclosure/delivery.ts": ["exports"],
     "src/lib/auth/oidc/step-up.ts": ["exports"],
     "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],

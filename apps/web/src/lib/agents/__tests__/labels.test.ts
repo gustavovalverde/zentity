@@ -6,7 +6,7 @@ import {
   formatGrantSource,
   formatHostTier,
   formatUsageSummary,
-} from "../display";
+} from "../labels";
 
 describe("formatCapabilityName", () => {
   it("returns human label for known capabilities", () => {

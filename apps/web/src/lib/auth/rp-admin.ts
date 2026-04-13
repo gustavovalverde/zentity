@@ -3,7 +3,7 @@ import type { Session } from "@/lib/auth/auth-config";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { members } from "@/lib/db/schema/organization";
 

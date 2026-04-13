@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { Suspense } from "react";
 
 import { isWeb3Enabled } from "@/env";
-import { getSecurityPostureForSession } from "@/lib/assurance/data";
+import { getSecurityPostureForSession } from "@/lib/assurance/posture";
 import { getCachedSession } from "@/lib/auth/session";
 
 import { IdentityActionsCard } from "./_components/identity-actions-card";

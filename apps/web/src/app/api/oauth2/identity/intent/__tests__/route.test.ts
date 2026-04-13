@@ -31,7 +31,7 @@ vi.mock("@/lib/http/rate-limiters", () => ({
   oauth2IdentityLimiter: { check: () => ({ limited: false }) },
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
 
@@ -58,7 +58,7 @@ describe("oauth2 identity intent route", () => {
     const intentMod = await import("@/lib/auth/oidc/disclosure/delivery");
     createScopeHash = intentMod.createScopeHash;
     verifyIdentityIntentToken = intentMod.verifyIdentityIntentToken;
-    const authMod = await import("@/lib/auth/api-auth");
+    const authMod = await import("@/lib/auth/resource-auth");
     requireBrowserSession = vi.mocked(authMod.requireBrowserSession);
 
     vi.clearAllMocks();

@@ -1,4 +1,4 @@
-import { getFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-id";
 
 // ── Policy constants and validation ──────────────────────
 

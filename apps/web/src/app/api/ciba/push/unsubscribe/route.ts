@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/ciba";
 import { cibaLimiter, rateLimitResponse } from "@/lib/http/rate-limit";

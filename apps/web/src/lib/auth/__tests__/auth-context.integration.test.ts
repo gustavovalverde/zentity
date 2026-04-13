@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   createSessionAuthenticationContext,
   getAuthenticationStateBySessionId,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";

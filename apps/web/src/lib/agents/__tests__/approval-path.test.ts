@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildStandaloneApprovalPath } from "@/lib/agents/resolve-approval";
+import { buildStandaloneApprovalPath } from "@/lib/agents/approval-resolve";
 
 describe("buildStandaloneApprovalPath", () => {
   it("returns the standalone approval path without query params", () => {

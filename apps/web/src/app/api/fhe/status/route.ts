@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { upsertIdentityBundle } from "@/lib/db/queries/identity";
 import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 import { withSpan } from "@/lib/observability/telemetry";

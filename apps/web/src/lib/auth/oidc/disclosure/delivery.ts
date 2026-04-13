@@ -23,7 +23,7 @@ import { constantTimeEqual, makeSignature } from "better-auth/crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   oauth2IdentityLimiter,
   rateLimitResponse,

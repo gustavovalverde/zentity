@@ -40,31 +40,34 @@ import { env } from "@/env";
 import {
   loadAapProfileForCibaRequest,
   persistAapSnapshotForCibaToken,
-} from "@/lib/agents/aap-profile";
+} from "@/lib/agents/act-claim";
 import {
   deriveCapabilityName,
   evaluateSessionGrants,
   normalizeAuthorizationDetails,
-} from "@/lib/agents/approval-engine";
+} from "@/lib/agents/approval-evaluate";
+import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import {
   AGENT_BOOTSTRAP_SCOPES,
   bindAgentAssertionToCibaRequest,
-} from "@/lib/agents/identity";
-import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
-import { getAccountAssurance } from "@/lib/assurance/data";
+} from "@/lib/agents/session";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
   getAuthenticationStateBySessionId,
   resolveAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
 import {
   revokePendingCibaOnLogout,
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
-import { isUrlClientId, resolveCimdClient } from "@/lib/auth/oidc/cimd";
+import {
+  isUrlClientId,
+  resolveCimdClient,
+} from "@/lib/auth/oidc/client-id-metadata";
 import {
   buildOidcVerifiedClaims,
   buildProofClaims,
@@ -159,7 +162,7 @@ import {
   organizations,
 } from "@/lib/db/schema/organization";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
-import { sendCibaNotification } from "@/lib/email/ciba-mailer";
+import { sendCibaNotification } from "@/lib/email/ciba";
 import { validateSafeUrl } from "@/lib/http/url-safety";
 import { computeRpNullifier } from "@/lib/identity/verification/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
@@ -1455,7 +1458,7 @@ export const auth = betterAuth({
   emailVerification: {
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      const { sendEmailVerification } = await import("@/lib/email/auth-mailer");
+      const { sendEmailVerification } = await import("@/lib/email/auth");
       await sendEmailVerification({ user, url });
     },
   },
@@ -1468,7 +1471,7 @@ export const auth = betterAuth({
       updateEmailWithoutVerification: true,
       sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
         const { sendChangeEmailConfirmation } = await import(
-          "@/lib/email/auth-mailer"
+          "@/lib/email/auth"
         );
         await sendChangeEmailConfirmation({ user, newEmail, url });
       },
@@ -1656,9 +1659,7 @@ export const auth = betterAuth({
       serverSetup: () => env.OPAQUE_SERVER_SETUP,
       resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
       sendResetPassword: async ({ user, url }) => {
-        const { sendResetPasswordEmail } = await import(
-          "@/lib/email/auth-mailer"
-        );
+        const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
       },
       revokeSessionsOnPasswordReset: true,
@@ -1668,7 +1669,7 @@ export const auth = betterAuth({
     }),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        const { sendMagicLinkEmail } = await import("@/lib/email/auth-mailer");
+        const { sendMagicLinkEmail } = await import("@/lib/email/auth");
         await sendMagicLinkEmail({ email, url });
       },
       expiresIn: 300, // 5 minutes

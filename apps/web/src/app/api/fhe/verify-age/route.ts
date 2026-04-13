@@ -1,6 +1,6 @@
 import { decode } from "@msgpack/msgpack";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/privacy";
 import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 import {
@@ -9,7 +9,7 @@ import {
   sanitizeAndLogApiError,
 } from "@/lib/http/route-responses";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
-import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
+import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/backend";
 
 export const runtime = "nodejs";
 

@@ -6,8 +6,8 @@ import { AgentApprovalView } from "@/components/agent-approval-view";
 import {
   buildStandaloneApprovalPath,
   resolveCibaApprovalData,
-} from "@/lib/agents/resolve-approval";
-import { getAccountAssurance } from "@/lib/assurance/data";
+} from "@/lib/agents/approval-resolve";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
 
 export default async function ApprovePage({

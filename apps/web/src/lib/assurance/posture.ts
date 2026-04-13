@@ -17,7 +17,7 @@ import type {
 import { and, eq } from "drizzle-orm";
 import { cache } from "react";
 
-import { resolveAuthenticationContext } from "@/lib/auth/authentication-context";
+import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { accounts, passkeys } from "@/lib/db/schema/auth";
 import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-proof-sessions";

@@ -23,7 +23,7 @@ import {
   loadStoredAapSnapshotForTokenJti,
   persistAapSnapshotForToken,
   readAapProfileFromPayload,
-} from "@/lib/agents/aap-profile";
+} from "@/lib/agents/act-claim";
 import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
@@ -31,16 +31,16 @@ import {
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/agents/identity";
-import { getAccountAssurance } from "@/lib/assurance/data";
+} from "@/lib/agents/session";
 import {
   buildOidcAssuranceClaims,
   computeAtHash,
 } from "@/lib/assurance/oidc-claims";
+import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,

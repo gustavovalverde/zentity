@@ -7,7 +7,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
 import { toServiceErrorPayload } from "@/lib/http/route-responses";
 import {
