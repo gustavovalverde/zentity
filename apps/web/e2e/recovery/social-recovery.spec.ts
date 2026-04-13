@@ -17,8 +17,8 @@ const TWO_FACTOR_DIALOG_RE = /Two-Factor/i;
 const SAVE_BACKUP_CODES_HEADING_RE = /Save your backup codes/i;
 const BACKUP_CODES_ERROR_RE =
   /Failed to generate backup codes|Invalid password/i;
-const VERIFY_2FA_URL_RE = /\/verify-2fa/;
-const BACKUP_CODES_URL_RE = /\/backup-codes/;
+const VERIFY_2FA_URL_RE = /\/two-factor\/verify/;
+const BACKUP_CODES_URL_RE = /\/two-factor\/backup-codes/;
 const SETTINGS_URL_RE = /\/dashboard\/settings/;
 const TRAILING_SLASH_RE = /\/$/;
 const TWO_FACTOR_HEADING_RE = /^Two-factor authentication/i;
@@ -327,10 +327,10 @@ async function ensureTwoFactorEnabled(
   }
   // PRD-20 rewrite: the setup dialog is a single-step wrapper. Clicking
   // "Continue" fires authClient.twoFactor.enable() and navigates to
-  // /verify-2fa?totpURI=..., then post-verify to /backup-codes.
+  // /two-factor/verify?totpURI=..., then post-verify to /two-factor/backup-codes.
   await setupDialog.getByRole("button", { name: CONTINUE_BUTTON_RE }).click();
 
-  // Step 2: /verify-2fa — scan the QR and enter the TOTP code
+  // Step 2: /two-factor/verify: scan the QR and enter the TOTP code
   await page.waitForURL(VERIFY_2FA_URL_RE, { timeout: 30_000 });
   const totpUri = new URL(page.url()).searchParams.get("totpURI");
   if (!totpUri) {
@@ -340,7 +340,7 @@ async function ensureTwoFactorEnabled(
   await fillOtpCode(page, totpCode);
   await page.getByRole("button", { name: "Verify" }).click();
 
-  // Step 3: /backup-codes — may prompt for password confirmation first
+  // Step 3: /two-factor/backup-codes: may prompt for password confirmation first
   // (better-auth requires password for generateBackupCodes when the user has
   // a credential-provider password, regardless of allowPasswordless).
   await page.waitForURL(BACKUP_CODES_URL_RE, { timeout: 30_000 });
@@ -383,7 +383,7 @@ async function ensureTwoFactorEnabled(
   const codesText = (await codesContainer.textContent()) ?? "";
   const backupCodes = parseBackupCodes(codesText);
   if (backupCodes.length === 0) {
-    throw new Error("No backup codes found on /backup-codes page.");
+    throw new Error("No backup codes found on /two-factor/backup-codes page.");
   }
 
   // The Continue button is disabled until the user clicks Download —
