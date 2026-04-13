@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveAgentSubForClient } from "@/lib/agents/pairwise-agent";
+import { resolveAgentSubForClient } from "@/lib/agents/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";

@@ -21,7 +21,7 @@ import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
   "urn:zentity:token-type:purchase-authorization";
 
-import { resolveAgentSubForClient } from "@/lib/agents/pairwise-agent";
+import { resolveAgentSubForClient } from "@/lib/agents/pairwise";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";

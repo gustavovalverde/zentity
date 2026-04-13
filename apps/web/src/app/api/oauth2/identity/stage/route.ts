@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import {
   handleIdentityStage,
   IdentityFieldsSchema,
 } from "@/lib/auth/oidc/disclosure/delivery";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import {
   computeOAuthRequestKey,
   parseRequestedScopes,

@@ -59,8 +59,8 @@ import {
   registerPasskeyWithPrf,
   renamePasskey,
   signInWithPasskey,
-} from "@/lib/auth/passkey";
-import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+} from "@/lib/auth/passkey/client";
+import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import { addWrapperForSecretType } from "@/lib/privacy/secrets/vault";

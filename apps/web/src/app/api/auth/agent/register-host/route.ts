@@ -2,11 +2,11 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { verifyAgentAttestation } from "@/lib/agents/agent-attestation";
+import { verifyAgentAttestation } from "@/lib/agents/attestation";
 import {
   AGENT_HOST_REGISTER_SCOPE,
   registerHostRequestSchema,
-} from "@/lib/agents/agent-identity";
+} from "@/lib/agents/identity";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";

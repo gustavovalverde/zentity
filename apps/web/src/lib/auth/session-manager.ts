@@ -6,7 +6,7 @@ import {
   authClient,
   signOut as betterAuthSignOut,
 } from "@/lib/auth/auth-client";
-import { redirectTo as navigateTo } from "@/lib/auth/navigation";
+import { redirectTo as navigateTo } from "@/lib/auth/redirect";
 import { resetFlowId } from "@/lib/observability/flow-client";
 import { clearAllCredentialCaches } from "@/lib/privacy/credentials/cache";
 import { resetBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";

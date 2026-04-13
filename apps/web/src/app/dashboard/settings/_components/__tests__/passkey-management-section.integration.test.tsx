@@ -15,7 +15,7 @@ const passkeyMocks = vi.hoisted(() => ({
   deletePasskey: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/passkey", () => ({
+vi.mock("@/lib/auth/passkey/client", () => ({
   listUserPasskeys: passkeyMocks.listUserPasskeys,
   registerPasskeyWithPrf: passkeyMocks.registerPasskeyWithPrf,
   signInWithPasskey: passkeyMocks.signInWithPasskey,
@@ -45,9 +45,9 @@ vi.mock("@/lib/auth/auth-client", () => ({
   authClient: authClientMocks,
 }));
 
-vi.mock("@/lib/auth/webauthn-prf", async (importOriginal) => {
+vi.mock("@/lib/auth/passkey/prf", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/auth/webauthn-prf")>();
+    await importOriginal<typeof import("@/lib/auth/passkey/prf")>();
   return {
     ...actual,
     checkPrfSupport: vi.fn().mockResolvedValue({ supported: true }),

@@ -2,12 +2,12 @@ import { decode } from "@msgpack/msgpack";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { getLatestEncryptedAttributeByUserAndType } from "@/lib/db/queries/privacy";
+import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 import {
   jsonError,
   msgpackResponse,
   sanitizeAndLogApiError,
-} from "@/lib/http/api-utils";
-import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
+} from "@/lib/http/route-responses";
 import { getTodayDobDays } from "@/lib/identity/verification/birth-year";
 import { verifyAgeFromDobFhe } from "@/lib/privacy/fhe/service";
 

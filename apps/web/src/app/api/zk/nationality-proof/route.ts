@@ -8,8 +8,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
-import { toServiceErrorPayload } from "@/lib/http/api-utils";
 import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
+import { toServiceErrorPayload } from "@/lib/http/route-responses";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,

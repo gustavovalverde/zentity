@@ -27,11 +27,11 @@ import {
 import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/agents/agent-identity";
+} from "@/lib/agents/identity";
 import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
-} from "@/lib/agents/pairwise-agent";
+} from "@/lib/agents/pairwise";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import {
   buildOidcAssuranceClaims,

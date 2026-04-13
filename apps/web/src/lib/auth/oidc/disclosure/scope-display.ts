@@ -9,8 +9,9 @@ import type { LucideIcon } from "lucide-react";
 
 import { BadgeCheck, KeyRound, Lock } from "lucide-react";
 
-import { isIdentityScope, isProofScope } from "./registry";
 import { SCOPE_GROUP_LABELS } from "@/lib/terminology";
+
+import { isIdentityScope, isProofScope } from "./registry";
 
 interface ScopeGroup {
   icon: LucideIcon;

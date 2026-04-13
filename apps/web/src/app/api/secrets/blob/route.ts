@@ -5,8 +5,8 @@ import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
 } from "@/lib/db/queries/privacy";
-import { sanitizeAndLogApiError } from "@/lib/http/api-utils";
 import { rateLimitResponse, secretsBlobLimiter } from "@/lib/http/rate-limit";
+import { sanitizeAndLogApiError } from "@/lib/http/route-responses";
 import { withSpan } from "@/lib/observability/telemetry";
 import {
   computeSecretBlobRef,

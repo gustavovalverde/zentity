@@ -1,11 +1,12 @@
 "use client";
 
 import { authClient } from "@/lib/auth/auth-client";
+
 import {
   buildPrfExtension,
   evaluatePrf,
   extractPrfOutputFromClientResults,
-} from "@/lib/auth/webauthn-prf";
+} from "./prf";
 
 type PasskeyErrorLike = {
   code?: string | undefined;

@@ -8,6 +8,7 @@
   ],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
+    "src/components/vault-unlock.tsx": ["exports", "types"],
     "src/lib/auth/oidc/cimd.ts": ["exports", "types"],
     "src/lib/auth/oidc/disclosure/delivery.ts": ["exports"],
     "src/lib/auth/oidc/step-up.ts": ["exports"],
@@ -15,6 +16,7 @@
     "src/lib/terminology.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
     "src/lib/identity/liveness/human/server.ts": ["exports"],
+    "src/lib/observability/client-metrics.ts": ["types"],
     "src/lib/trpc/routers/recovery.ts": ["exports"],
     "src/lib/trpc/routers/zk.ts": ["exports"]
   },

@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bytesToBase64Url } from "@/lib/privacy/primitives/symmetric";
 
 // We'll dynamically import to test with different global configurations
-let checkPrfSupport: typeof import("../webauthn-prf").checkPrfSupport;
-let extractPrfOutputFromClientResults: typeof import("../webauthn-prf").extractPrfOutputFromClientResults;
+let checkPrfSupport: typeof import("../prf").checkPrfSupport;
+let extractPrfOutputFromClientResults: typeof import("../prf").extractPrfOutputFromClientResults;
 
 describe("webauthn-prf", () => {
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe("webauthn-prf", () => {
       // @ts-expect-error - testing undefined
       globalThis.PublicKeyCredential = undefined;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -48,7 +48,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -66,7 +66,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -84,7 +84,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -101,7 +101,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -118,7 +118,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -131,7 +131,7 @@ describe("webauthn-prf", () => {
       globalThis.PublicKeyCredential =
         {} as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -148,7 +148,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -166,7 +166,7 @@ describe("webauthn-prf", () => {
         getClientCapabilities: mockGetClientCapabilities,
       } as unknown as typeof PublicKeyCredential;
 
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       checkPrfSupport = module.checkPrfSupport;
 
       const result = await checkPrfSupport();
@@ -183,7 +183,7 @@ describe("webauthn-prf", () => {
 
   describe("extractPrfOutputFromClientResults", () => {
     it("returns null when no extension results", async () => {
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       extractPrfOutputFromClientResults =
         module.extractPrfOutputFromClientResults;
 
@@ -196,7 +196,7 @@ describe("webauthn-prf", () => {
     });
 
     it("parses PRF output from ArrayBuffer", async () => {
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       extractPrfOutputFromClientResults =
         module.extractPrfOutputFromClientResults;
 
@@ -212,7 +212,7 @@ describe("webauthn-prf", () => {
     });
 
     it("parses PRF output from resultsByCredential base64url", async () => {
-      const module = await import("../webauthn-prf");
+      const module = await import("../prf");
       extractPrfOutputFromClientResults =
         module.extractPrfOutputFromClientResults;
 

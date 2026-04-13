@@ -9,9 +9,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { getProofSessionById } from "@/lib/db/queries/privacy";
-import { toServiceErrorPayload } from "@/lib/http/api-utils";
 import { resolveAudience } from "@/lib/http/http";
 import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
+import { toServiceErrorPayload } from "@/lib/http/route-responses";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
 import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
 import {

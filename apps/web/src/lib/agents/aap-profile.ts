@@ -4,7 +4,7 @@ import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
-import { resolveAgentSubForClient } from "./pairwise-agent";
+import { resolveAgentSubForClient } from "./pairwise";
 
 interface AapAgentClaim {
   id: string;

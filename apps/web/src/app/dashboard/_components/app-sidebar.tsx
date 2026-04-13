@@ -78,7 +78,7 @@ const blockchainNavItems: NavItem[] = [
 const developerNavItems: NavItem[] = [
   {
     title: "Applications",
-    url: "/dashboard/developer/applications",
+    url: "/dashboard/developer",
     icon: AppWindow,
   },
   {

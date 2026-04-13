@@ -12,6 +12,8 @@ import {
 } from "@/lib/privacy/secrets/vault";
 import { trpc } from "@/lib/trpc/client";
 
+import { computePublicKeyFingerprint } from "./keygen-client";
+
 export interface StoredFheKeys {
   clientKey: Uint8Array;
   createdAt: string;
@@ -118,7 +120,6 @@ export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {
   const keys = deserializeKeys(result.plaintext, result.metadata);
 
   if (keys.publicKeyFingerprint) {
-    const { computePublicKeyFingerprint } = await import("./fingerprint");
     const actual = await computePublicKeyFingerprint(keys.publicKey);
     if (actual !== keys.publicKeyFingerprint) {
       throw new Error("FHE public key fingerprint mismatch.");
@@ -135,7 +136,6 @@ export async function persistFheKeyId(
 ): Promise<void> {
   let fingerprint = publicKeyFingerprint;
   if (!fingerprint && cached?.keys.publicKey) {
-    const { computePublicKeyFingerprint } = await import("./fingerprint");
     fingerprint = await computePublicKeyFingerprint(cached.keys.publicKey);
   }
 

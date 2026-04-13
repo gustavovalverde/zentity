@@ -2,13 +2,7 @@
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import { AlertTriangle, KeyRound, Lock, Wallet } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 

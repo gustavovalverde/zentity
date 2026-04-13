@@ -5,12 +5,12 @@ import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
 } from "@/lib/db/queries/privacy";
+import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 import {
   jsonError,
   msgpackResponse,
   sanitizeAndLogApiError,
-} from "@/lib/http/api-utils";
-import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
+} from "@/lib/http/route-responses";
 import { registerFheKey } from "@/lib/privacy/fhe/service";
 
 export const runtime = "nodejs";

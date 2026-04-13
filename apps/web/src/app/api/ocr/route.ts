@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { sanitizeAndLogApiError } from "@/lib/http/api-utils";
 import { HttpError } from "@/lib/http/http";
 import {
   getClientIp,
   ocrLimiter,
   rateLimitResponse,
 } from "@/lib/http/rate-limit";
+import { sanitizeAndLogApiError } from "@/lib/http/route-responses";
 import { ocrDocumentOcr } from "@/lib/identity/document/ocr-client";
 import {
   attachRequestContextToSpan,

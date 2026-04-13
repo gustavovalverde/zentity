@@ -1,6 +1,6 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
-import { computeSessionState } from "@/lib/agents/agent-identity";
+import { computeSessionState } from "@/lib/agents/identity";
 import {
   extractProofScopes,
   isIdentityScope,

@@ -12,7 +12,7 @@
 import type { EnrollmentCredential, EnvelopeFormat, SecretType } from "./types";
 
 import { authClient } from "@/lib/auth/auth-client";
-import { evaluatePrf } from "@/lib/auth/webauthn-prf";
+import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import {
   clearPendingUnlock,
   getCachedRecoveryPublicKey,

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/identity";
 import {
   AgentManagementError,
   revokeSessionForActor,
 } from "@/lib/agents/management";
-import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/agent-identity";
 import { requireBootstrapAccessToken } from "@/lib/auth/api-auth";
 
 export const runtime = "nodejs";

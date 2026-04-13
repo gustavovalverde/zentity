@@ -7,7 +7,7 @@ import {
   deriveCapabilityName,
   resolveCapabilityApprovalStrength,
 } from "@/lib/agents/approval-engine";
-import { resolveAgentSubForClient } from "@/lib/agents/pairwise-agent";
+import { resolveAgentSubForClient } from "@/lib/agents/pairwise";
 import { db } from "@/lib/db/connection";
 import {
   agentHosts,

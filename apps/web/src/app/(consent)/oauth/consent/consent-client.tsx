@@ -32,8 +32,8 @@ import {
   isIdentityScope,
   SCOPE_DESCRIPTIONS,
 } from "@/lib/auth/oidc/disclosure/registry";
-import { getSignedOAuthQuery } from "@/lib/auth/oidc/oauth-post-login";
 import { groupScopes } from "@/lib/auth/oidc/disclosure/scope-display";
+import { getSignedOAuthQuery } from "@/lib/auth/oidc/oauth-post-login";
 
 import { ClientSecurityBadges } from "./_components/client-security-badges";
 

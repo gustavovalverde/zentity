@@ -1,5 +1,3 @@
-"use client";
-
 import { getFlowId } from "@/lib/observability/flow-client";
 
 export const CLIENT_METRIC_DEFINITIONS = {

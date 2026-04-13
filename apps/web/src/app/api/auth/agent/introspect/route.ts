@@ -7,7 +7,7 @@ import {
   loadAapProfileForTokenJti,
   readAapProfileFromPayload,
 } from "@/lib/agents/aap-profile";
-import { observeSessionLifecycle } from "@/lib/agents/agent-identity";
+import { observeSessionLifecycle } from "@/lib/agents/identity";
 import { requireClientCredentials } from "@/lib/auth/api-auth";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt-verify";
 import {

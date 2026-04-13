@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
-} from "@/lib/agents/pairwise-agent";
+} from "@/lib/agents/pairwise";
 import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";

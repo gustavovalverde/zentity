@@ -12,8 +12,8 @@ import { Bot, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
-import { PageHeader } from "@/components/chrome/page-header";
 import { AgentApprovalView } from "@/components/agent-approval-view";
+import { PageHeader } from "@/components/chrome/page-header";
 import { Web3Provider } from "@/components/providers/web3-provider";
 import {
   Sheet,

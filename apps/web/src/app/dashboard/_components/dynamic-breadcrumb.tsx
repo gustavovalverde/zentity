@@ -22,7 +22,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/dashboard/attestation": "On-Chain Attestation",
   "/dashboard/defi-demo": "DeFi Demo",
   "/dashboard/settings": "Settings",
-  "/dashboard/developer/applications": "Applications",
+  "/dashboard/developer": "Applications",
   "/dashboard/agents": "Agents",
   "/dashboard/verify": "Verify Identity",
 };
@@ -30,9 +30,7 @@ const ROUTE_LABELS: Record<string, string> = {
 /**
  * Parent route mappings for building breadcrumb hierarchy.
  */
-const PARENT_ROUTES: Record<string, string> = {
-  "/dashboard/developer/applications": "/dashboard/developer",
-};
+const PARENT_ROUTES: Record<string, string> = {};
 
 export function DynamicBreadcrumb() {
   const pathname = usePathname();

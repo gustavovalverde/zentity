@@ -27,8 +27,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth/auth-client";
-import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey";
-import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
+import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey/client";
+import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { fetchMsgpack } from "@/lib/http/binary-transport";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";

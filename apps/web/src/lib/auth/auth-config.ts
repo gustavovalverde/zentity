@@ -41,13 +41,15 @@ import {
   loadAapProfileForCibaRequest,
   persistAapSnapshotForCibaToken,
 } from "@/lib/agents/aap-profile";
-import { bindAgentAssertionToCibaRequest } from "@/lib/agents/agent-identity";
 import {
   deriveCapabilityName,
   evaluateSessionGrants,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/approval-engine";
-import { AGENT_BOOTSTRAP_SCOPES } from "@/lib/agents/agent-identity";
+import {
+  AGENT_BOOTSTRAP_SCOPES,
+  bindAgentAssertionToCibaRequest,
+} from "@/lib/agents/identity";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
 import { getAccountAssurance } from "@/lib/assurance/data";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
@@ -82,6 +84,10 @@ import {
   validateReleaseContextForSubject,
 } from "@/lib/auth/oidc/disclosure/context";
 import {
+  finalReleaseIdentityKey,
+  hasIdentityPayload,
+} from "@/lib/auth/oidc/disclosure/delivery";
+import {
   extractIdentityScopes,
   filterIdentityByScopes,
   filterProofClaimsByScopes,
@@ -101,10 +107,6 @@ import {
   loadX5cChain,
   validateX509Chain,
 } from "@/lib/auth/oidc/haip/x509-validation";
-import {
-  finalReleaseIdentityKey,
-  hasIdentityPayload,
-} from "@/lib/auth/oidc/disclosure/delivery";
 import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {

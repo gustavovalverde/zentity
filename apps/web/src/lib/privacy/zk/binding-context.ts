@@ -15,7 +15,7 @@ import "client-only";
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
 import type { CachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 
-import { evaluatePrf } from "@/lib/auth/webauthn-prf";
+import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import {
   clearCachedBindingMaterial,
   getCachedBindingMaterial,

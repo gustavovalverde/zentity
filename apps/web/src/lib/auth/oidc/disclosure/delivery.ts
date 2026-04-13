@@ -25,15 +25,13 @@ import { z } from "zod";
 
 import { requireBrowserSession } from "@/lib/auth/api-auth";
 import {
-  extractIdentityScopes,
-  filterIdentityByScopes,
-} from "./registry";
-import {
   oauth2IdentityLimiter,
   rateLimitResponse,
 } from "@/lib/http/rate-limit";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getIdentityIntentKey } from "@/lib/privacy/primitives/derived-keys";
+
+import { extractIdentityScopes, filterIdentityByScopes } from "./registry";
 
 // ---------------------------------------------------------------------------
 // Identity field schema + normalization (staging request validation)

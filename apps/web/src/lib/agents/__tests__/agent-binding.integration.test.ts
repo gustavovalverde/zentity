@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { bindAgentAssertionToCibaRequest } from "@/lib/agents/agent-identity";
+import { bindAgentAssertionToCibaRequest } from "@/lib/agents/identity";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";

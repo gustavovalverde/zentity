@@ -4,7 +4,7 @@ import {
   AGENT_BOOTSTRAP_TOKEN_USE,
   type AgentConfiguration,
   agentConfigurationSchema,
-} from "@/lib/agents/agent-identity";
+} from "@/lib/agents/identity";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 
 /**
