@@ -10,10 +10,7 @@ import {
   useState,
 } from "react";
 
-import {
-  checkPrfSupport,
-  type PrfSupportStatus,
-} from "@/lib/auth/webauthn-prf";
+import { checkPrfSupport, type PrfSupportStatus } from "@/lib/auth/passkey/prf";
 
 interface PasskeyAuthState {
   /** Whether PRF extension is supported by this device/browser */

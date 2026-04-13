@@ -8,12 +8,12 @@ import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/types";
 
+import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import {
   getSecurityPosture,
   getSecurityPostureForSession,
   getUnauthenticatedSecurityPosture,
-} from "@/lib/assurance/data";
-import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
+} from "@/lib/assurance/posture";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 

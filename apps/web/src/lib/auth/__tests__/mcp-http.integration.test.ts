@@ -15,19 +15,19 @@ import { resolve } from "node:path";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
+} from "@/test-utils/db-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const MCP_PORT = 3300;

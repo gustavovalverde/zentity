@@ -1,19 +1,19 @@
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+} from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const BASE = "http://localhost:3000";
 const PAR_URL = `${BASE}/api/auth/oauth2/par`;

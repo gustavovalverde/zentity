@@ -10,7 +10,7 @@ import { useMemo } from "react";
 
 import { env } from "@/env";
 import { authClient } from "@/lib/auth/auth-client";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 type AuthClientBase = ReturnType<
   typeof import("better-auth/react").createAuthClient

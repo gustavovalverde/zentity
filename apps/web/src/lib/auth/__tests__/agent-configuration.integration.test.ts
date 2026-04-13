@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AgentConfiguration,
   agentConfigurationSchema,
-} from "@/lib/auth/oidc/agent-configuration";
+} from "@/lib/agents/session";
 
 /**
  * Agent Auth Protocol — Discovery Document Integration Tests
@@ -61,7 +61,7 @@ describe("Agent Auth Discovery — endpoints", () => {
     const config = await parseConfig(await getConfiguration());
 
     expect(config.host_registration_endpoint).toContain(
-      "/api/auth/agent/register-host"
+      "/api/auth/agent/host/register"
     );
   });
 

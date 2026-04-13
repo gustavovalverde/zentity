@@ -3,18 +3,18 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
-} from "@/lib/auth/authentication-context";
-import { loadOpaqueAccessToken } from "@/lib/auth/oidc/opaque-access-token";
-import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
+} from "@/lib/auth/auth-context";
+import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";

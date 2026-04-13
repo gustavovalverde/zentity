@@ -1,9 +1,9 @@
 import { env } from "@/env";
-import { getAuthIssuer } from "@/lib/auth/issuer";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 /**
  * RFC 9728 — OAuth 2.0 Protected Resource Metadata

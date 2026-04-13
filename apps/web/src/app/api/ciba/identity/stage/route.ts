@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure-context";
-import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
-import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
+import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import {
+  handleIdentityStage,
+  IdentityFieldsSchema,
+} from "@/lib/auth/oidc/disclosure/delivery";
 import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
 
 const StageSchema = z.object({

@@ -9,25 +9,25 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
-import { getAccountAssurance } from "@/lib/assurance/data";
-import { auth } from "@/lib/auth/auth";
+import { getAccountAssurance } from "@/lib/assurance/posture";
+import { auth } from "@/lib/auth/auth-config";
 import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
-} from "@/lib/auth/authentication-context";
-import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
+} from "@/lib/auth/auth-context";
 import {
   buildDefaultTypedData,
   nonceIdentifier,
   verifyEip712Signature,
-} from "@/lib/auth/plugins/eip712/utils";
+} from "@/lib/auth/eip712/typed-data";
+import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   createDummyRegistrationRecord,
   decryptServerLoginState,
   encryptServerLoginState,
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
-} from "@/lib/auth/plugins/opaque/utils";
+} from "@/lib/auth/opaque/validation";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
@@ -39,9 +39,9 @@ import {
 import {
   type AuthChallengeSession,
   authChallengeSessions,
-} from "@/lib/db/schema/auth-challenge";
-import { haipPushedRequests } from "@/lib/db/schema/haip";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+  haipPushedRequests,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import { getOpaqueStateKey } from "@/lib/privacy/primitives/derived-keys";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
@@ -58,7 +58,7 @@ import {
   createRealRateLimiter,
   getClientIp,
   rateLimitResponse,
-} from "@/lib/utils/rate-limit";
+} from "@/lib/http/rate-limit";
 
 export const fpaLimiter = createRealRateLimiter({ windowMs: 60_000, max: 10 });
 

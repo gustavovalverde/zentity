@@ -16,8 +16,8 @@ import {
   getSecretWrappersBySecretId,
   updateEncryptedSecretMetadata,
   upsertSecretWrapper,
-} from "@/lib/db/queries/crypto";
-import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/crypto";
+} from "@/lib/db/queries/privacy";
+import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
   computeSecretBlobRef,
   getSecretBlobMaxBytes,

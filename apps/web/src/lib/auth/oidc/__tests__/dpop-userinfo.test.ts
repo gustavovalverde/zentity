@@ -14,7 +14,7 @@ vi.mock("jose", () => ({
   decodeJwt: (token: string) => decodeJwtMock(token),
 }));
 
-const { rewriteDpopForUserinfo } = await import("../dpop-userinfo");
+const { rewriteDpopForUserinfo } = await import("../haip/dpop");
 
 function makeRequest(
   authorization: string,

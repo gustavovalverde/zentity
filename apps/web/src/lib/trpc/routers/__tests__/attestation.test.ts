@@ -3,7 +3,7 @@
  */
 
 import type { SecurityPosture } from "@/lib/assurance/types";
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,17 +33,17 @@ vi.mock("@/lib/blockchain/networks", () => ({
   getExplorerTxUrl: (...args: unknown[]) => mockGetExplorerTxUrl(...args),
 }));
 
-vi.mock("@/lib/blockchain/providers/factory", () => ({
+vi.mock("@/lib/blockchain/attestation/providers", () => ({
   canCreateProvider: (...args: unknown[]) => mockCanCreateProvider(...args),
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));
 
-const mockGetUnifiedVerificationModel = vi.fn();
+const mockGetVerificationReadModel = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
 const mockComputeProofSetHash = vi.fn();
-vi.mock("@/lib/identity/verification/unified-model", () => ({
-  getUnifiedVerificationModel: (...args: unknown[]) =>
-    mockGetUnifiedVerificationModel(...args),
+vi.mock("@/lib/identity/verification/read-model", () => ({
+  getVerificationReadModel: (...args: unknown[]) =>
+    mockGetVerificationReadModel(...args),
 }));
 
 vi.mock("@/lib/blockchain/attestation/proof-set-hash", () => ({
@@ -74,7 +74,7 @@ vi.mock("@/lib/db/queries/attestation", () => ({
   deleteBlockchainAttestationsByUserId: vi.fn(),
 }));
 
-vi.mock("@/lib/assurance/data", () => ({
+vi.mock("@/lib/assurance/posture", () => ({
   getSecurityPosture: (...args: unknown[]) => mockGetSecurityPosture(...args),
 }));
 
@@ -273,7 +273,7 @@ describe("attestation router", () => {
     });
     mockComputeProofSetHash.mockResolvedValue(null);
     // Default unified model for submit flow
-    mockGetUnifiedVerificationModel.mockResolvedValue({
+    mockGetVerificationReadModel.mockResolvedValue({
       method: "ocr",
       verificationId: "v-1",
       verifiedAt: "2026-01-01T00:00:00.000Z",

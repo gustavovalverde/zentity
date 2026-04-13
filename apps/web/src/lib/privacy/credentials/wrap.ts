@@ -6,9 +6,14 @@
  * but the wrapping/unwrapping logic is identical.
  */
 
-import { encodeAad, WRAP_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
-import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  decryptAesGcm,
+  encodeAad,
+  encryptAesGcm,
+  WRAP_AAD_CONTEXT,
+} from "@/lib/privacy/primitives/symmetric";
 
 interface WrappedDekPayload {
   alg: "AES-GCM";

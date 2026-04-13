@@ -6,16 +6,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
 import {
   claimsRequestForEndpoint,
   loadReleaseContext,
-} from "@/lib/auth/oidc/disclosure-context";
+} from "@/lib/auth/oidc/disclosure/context";
 import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const REDIRECT_URI = "http://127.0.0.1/callback";
 const TEST_CLIENT_ID = "oauth-id-token-filter-client";

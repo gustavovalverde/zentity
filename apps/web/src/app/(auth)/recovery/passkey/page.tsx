@@ -25,12 +25,12 @@ import { Redacted } from "@/components/ui/redacted";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { authClient, useSession } from "@/lib/auth/auth-client";
-import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
-import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { generatePrfSalt } from "@/lib/privacy/credentials";
-import { addWrapperForSecretType } from "@/lib/privacy/secrets";
+import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
+import { checkPrfSupport } from "@/lib/auth/passkey/prf";
+import { redirectTo } from "@/lib/auth/redirect";
+import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
-import { redirectTo } from "@/lib/utils/navigation";
+import { addWrapperForSecretType } from "@/lib/privacy/secrets/vault";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";
 

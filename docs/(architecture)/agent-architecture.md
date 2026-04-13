@@ -94,7 +94,7 @@ Registration happens in two steps because the two identities prove different thi
 
 1. The MCP authenticates via OAuth and receives a pairwise user login token.
 2. The MCP exchanges that login token via RFC 8693 for a short-lived DPoP-bound bootstrap token carrying `agent:host.register`, `agent:session.register`, and `agent:session.revoke`.
-3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/register-host` with the bootstrap token.
+3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/host/register` with the bootstrap token.
 4. The MCP signs a short-lived host JWT proving possession of the host private key.
 5. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register` with the bootstrap token.
 6. Zentity creates a new `agent_session`, seeds default grants from host policy, and records any requested extra capabilities as pending grants.
@@ -114,7 +114,7 @@ sequenceDiagram
   AS-->>MCP: DPoP-bound bootstrap token
 
   Note over MCP: Load or create durable host key
-  MCP->>AS: POST /api/auth/agent/register-host
+  MCP->>AS: POST /api/auth/agent/host/register
   Note over MCP,AS: Authorization: DPoP bootstrap token
   AS-->>MCP: { hostId, attestation_tier }
 

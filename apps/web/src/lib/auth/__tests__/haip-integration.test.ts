@@ -14,14 +14,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
-import { auth } from "../auth";
+import { auth } from "../auth-config";
 import {
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "../well-known-utils";
+} from "../oidc/well-known";
 
 let signJwt: typeof import("../oidc/jwt-signer").signJwt;
 
@@ -152,7 +152,7 @@ describe("HAIP — credential issuer metadata", () => {
 
 describe("HAIP — JARM key provisioning", () => {
   it("getJarmDecryptionKey creates and caches ECDH-ES key", async () => {
-    const { getJarmDecryptionKey } = await import("../oidc/jarm-key");
+    const { getJarmDecryptionKey } = await import("../oidc/haip/jarm-key");
     const jwk = await getJarmDecryptionKey();
 
     expect(jwk.kty).toBe("EC");

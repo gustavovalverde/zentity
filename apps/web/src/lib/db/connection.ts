@@ -10,50 +10,32 @@ import { env } from "@/env";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as agentSchema from "./schema/agent";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as attestationSchema from "./schema/attestation";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as authSchema from "./schema/auth";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as authenticationContextSchema from "./schema/authentication-context";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as complianceSchema from "./schema/compliance";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as cryptoSchema from "./schema/crypto";
+import * as cibaSchema from "./schema/ciba";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as identitySchema from "./schema/identity";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as jwksSchema from "./schema/jwks";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as oauthProviderSchema from "./schema/oauth-provider";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as oidc4idaSchema from "./schema/oidc4ida";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as oidc4vciSchema from "./schema/oidc4vci";
+import * as oidcCredentialsSchema from "./schema/oidc-credentials";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as organizationSchema from "./schema/organization";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as pushSchema from "./schema/push";
+import * as privacySchema from "./schema/privacy";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as recoverySchema from "./schema/recovery";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as usageLedgerSchema from "./schema/usage-ledger";
 
 const schema = {
   ...agentSchema,
-  ...attestationSchema,
-  ...authenticationContextSchema,
   ...authSchema,
-  ...complianceSchema,
-  ...cryptoSchema,
+  ...cibaSchema,
   ...identitySchema,
-  ...jwksSchema,
   ...oauthProviderSchema,
-  ...oidc4idaSchema,
-  ...oidc4vciSchema,
+  ...oidcCredentialsSchema,
   ...organizationSchema,
-  ...pushSchema,
+  ...privacySchema,
   ...recoverySchema,
-  ...usageLedgerSchema,
 };
 
 function isBuildTime() {

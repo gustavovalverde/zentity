@@ -2,16 +2,18 @@ import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
-import { haipPushedRequests } from "@/lib/db/schema/haip";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  haipPushedRequests,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+} from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";

@@ -1,15 +1,17 @@
 import { decode } from "@msgpack/msgpack";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   getEncryptedSecretByUserAndType,
   updateEncryptedSecretMetadata,
-} from "@/lib/db/queries/crypto";
-import { registerFheKey } from "@/lib/privacy/fhe/service";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { jsonError, msgpackResponse } from "@/lib/utils/api-response";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { fheLimiter } from "@/lib/utils/rate-limiters";
+} from "@/lib/db/queries/privacy";
+import { fheLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
+import {
+  jsonError,
+  msgpackResponse,
+  sanitizeAndLogApiError,
+} from "@/lib/http/route-responses";
+import { registerFheKey } from "@/lib/privacy/fhe/backend";
 
 export const runtime = "nodejs";
 

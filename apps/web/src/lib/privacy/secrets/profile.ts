@@ -156,7 +156,7 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
     }
 
     // Dynamic import to avoid circular dependency
-    const { loadSecret } = await import("./index");
+    const { loadSecret } = await import("./vault");
     const result = await loadSecret({
       secretType: SECRET_TYPES.PROFILE,
       expectedEnvelopeFormat: PROFILE_ENVELOPE_FORMAT,
@@ -216,7 +216,7 @@ export async function storeProfileSecret(params: {
   };
   credential: EnrollmentCredential;
 }): Promise<void> {
-  const { storeSecretWithCredential } = await import("./index");
+  const { storeSecretWithCredential } = await import("./vault");
 
   // Check if profile secret already exists
   const bundle = await getProfileSecretBundle();
@@ -279,7 +279,7 @@ export async function getStoredProfileWithCredential(
     return cachedProfile;
   }
 
-  const { loadSecretWithCredential } = await import("./index");
+  const { loadSecretWithCredential } = await import("./vault");
   const result = await loadSecretWithCredential({
     secretType: SECRET_TYPES.PROFILE,
     expectedEnvelopeFormat: PROFILE_ENVELOPE_FORMAT,

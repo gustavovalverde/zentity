@@ -5,13 +5,15 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET } from "@/app/api/auth/oauth2/end-session/route";
-import { getAuthIssuer } from "@/lib/auth/issuer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  jwks as jwksTable,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const authIssuer = getAuthIssuer();
 const END_SESSION_URL = "http://localhost:3000/api/auth/oauth2/end-session";

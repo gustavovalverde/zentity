@@ -2,7 +2,19 @@
 
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
-import { computePublicKeyFingerprint } from "./fingerprint";
+/** SHA-256 fingerprint of an FHE public key; detects server-side key substitution. */
+export async function computePublicKeyFingerprint(
+  publicKey: Uint8Array
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    Uint8Array.from(publicKey).buffer
+  );
+  const bytes = new Uint8Array(digest);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 interface WorkerRequest {
   id: number;
@@ -150,5 +162,29 @@ export function prewarmTfheWorker(): void {
   if (!initSent) {
     initSent = true;
     worker.postMessage({ type: "init" });
+  }
+}
+
+export async function generateFheKeyMaterialForStorage(): Promise<FheKeygenResult> {
+  const start = performance.now();
+  let result: "ok" | "error" = "ok";
+
+  try {
+    const workerResult = await generateFheKeyMaterialInWorker();
+    recordClientMetric({
+      name: "client.tfhe.keygen.worker.duration",
+      value: workerResult.durationMs,
+      attributes: { result: "ok" },
+    });
+    return workerResult;
+  } catch (error) {
+    result = "error";
+    throw error;
+  } finally {
+    recordClientMetric({
+      name: "client.tfhe.keygen.duration",
+      value: performance.now() - start,
+      attributes: { result },
+    });
   }
 }

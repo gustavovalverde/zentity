@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Imported dynamically in beforeEach to pick up mocked derived-keys
-let createScopeHash: typeof import("@/lib/auth/oidc/identity-intent").createScopeHash;
-let verifyIdentityIntentToken: typeof import("@/lib/auth/oidc/identity-intent").verifyIdentityIntentToken;
+let createScopeHash: typeof import("@/lib/auth/oidc/disclosure/delivery").createScopeHash;
+let verifyIdentityIntentToken: typeof import("@/lib/auth/oidc/disclosure/delivery").verifyIdentityIntentToken;
 
 const STABLE_INTENT_KEY = "deadbeef".repeat(8);
 
@@ -18,7 +18,7 @@ const { mockVerifySignedOAuthQuery } = vi.hoisted(() => ({
   mockVerifySignedOAuthQuery: vi.fn<(q: string) => Promise<URLSearchParams>>(),
 }));
 
-vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
   parseRequestedScopes: (params: URLSearchParams) =>
     (params.get("scope") ?? "")
@@ -27,11 +27,11 @@ vi.mock("@/lib/auth/oidc/oauth-query", () => ({
       .filter(Boolean),
 }));
 
-vi.mock("@/lib/utils/rate-limiters", () => ({
+vi.mock("@/lib/http/rate-limiters", () => ({
   oauth2IdentityLimiter: { check: () => ({ limited: false }) },
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
 
@@ -55,10 +55,10 @@ describe("oauth2 identity intent route", () => {
     vi.resetModules();
     const routeMod = await import("../route");
     POST = routeMod.POST;
-    const intentMod = await import("@/lib/auth/oidc/identity-intent");
+    const intentMod = await import("@/lib/auth/oidc/disclosure/delivery");
     createScopeHash = intentMod.createScopeHash;
     verifyIdentityIntentToken = intentMod.verifyIdentityIntentToken;
-    const authMod = await import("@/lib/auth/api-auth");
+    const authMod = await import("@/lib/auth/resource-auth");
     requireBrowserSession = vi.mocked(authMod.requireBrowserSession);
 
     vi.clearAllMocks();

@@ -7,20 +7,20 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
+  createVerification,
+  dedupKeyExistsForOtherUser,
+  getSelectedVerification,
+  getVerificationStatus,
+} from "@/lib/db/queries/identity";
+import {
   createProofSession,
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   insertEncryptedAttribute,
   insertProofArtifact,
   insertSignedClaim,
-} from "@/lib/db/queries/crypto";
-import {
-  createVerification,
-  dedupKeyExistsForOtherUser,
-  getSelectedVerification,
-  getVerificationStatus,
-} from "@/lib/db/queries/identity";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+} from "@/lib/db/queries/privacy";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("Database Module", () => {
   beforeEach(async () => {

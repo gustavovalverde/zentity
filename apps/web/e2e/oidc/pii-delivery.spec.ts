@@ -180,17 +180,15 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     expect(userinfo.birthdate).toBe("1815-12-10");
     expect(userinfo.sub).toBeTruthy();
 
-    // 11. Second userinfo call should NOT return PII (single-consume)
+    // 11. Second userinfo call returns 401 invalid_token — single-use binding
+    // (exact disclosure enforcement: once PII has been delivered, the
+    // release context is consumed and the token is no longer usable)
     const userinfo2Res = await request.get(USERINFO_URL, {
       headers: { Authorization: `Bearer ${tokenBody.access_token}` },
     });
-    expect(userinfo2Res.ok()).toBeTruthy();
+    expect(userinfo2Res.status()).toBe(401);
     const userinfo2 = (await userinfo2Res.json()) as Record<string, unknown>;
-
-    // PII should be absent (consumed on first call)
-    expect(userinfo2.given_name).toBeUndefined();
-    expect(userinfo2.family_name).toBeUndefined();
-    expect(userinfo2.birthdate).toBeUndefined();
+    expect(userinfo2.error).toBe("invalid_token");
   });
 
   test("CIBA flow without identity scopes: userinfo returns no PII, id_token has no PII", async ({

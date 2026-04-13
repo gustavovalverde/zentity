@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
-} from "@/lib/auth/oidc/disclosure-registry";
+} from "@/lib/auth/oidc/disclosure/registry";
 import {
   buildWellKnownResponse,
   callAuthApi,
   enrichDiscoveryMetadata,
   unwrapMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/oidc/well-known";
 
 const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
 

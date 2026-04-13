@@ -1,17 +1,128 @@
 import "server-only";
 
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  randomBytes,
+} from "node:crypto";
+
 import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  type Jwk as JwkRow,
+  jwks,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
+import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/post-quantum";
+import {
+  bytesToBase64,
+  bytesToBase64Url,
+} from "@/lib/privacy/primitives/symmetric";
 
-import { decryptPrivateKey, encryptPrivateKey } from "./key-vault";
-import { signJwtWithMlDsa } from "./ml-dsa-signer";
+// ---------------------------------------------------------------------------
+// Envelope encryption for JWKS private keys at rest (AES-256-GCM)
+// ---------------------------------------------------------------------------
+
+const ENVELOPE_VERSION = 1;
+const ENVELOPE_ALG = "aes-256-gcm";
+const ENVELOPE_IV_BYTES = 12;
+const ENVELOPE_AUTH_TAG_BYTES = 16;
+
+interface EncryptedEnvelope {
+  ct: string;
+  iv: string;
+  v: number;
+}
+
+function deriveKek(raw: string): Buffer {
+  return createHash("sha256").update(raw).digest();
+}
+
+let cachedKek: Buffer | null = null;
+
+function getKek(): Buffer | null {
+  if (cachedKek) {
+    return cachedKek;
+  }
+  const raw = process.env.KEY_ENCRYPTION_KEY;
+  if (!raw) {
+    return null;
+  }
+  cachedKek = deriveKek(raw);
+  return cachedKek;
+}
+
+export function encryptPrivateKey(plaintext: string): string {
+  const kek = getKek();
+  if (!kek) {
+    return plaintext;
+  }
+
+  const iv = randomBytes(ENVELOPE_IV_BYTES);
+  const cipher = createCipheriv(ENVELOPE_ALG, kek, iv, {
+    authTagLength: ENVELOPE_AUTH_TAG_BYTES,
+  });
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+
+  const envelope: EncryptedEnvelope = {
+    v: ENVELOPE_VERSION,
+    iv: iv.toString("base64"),
+    ct: Buffer.concat([encrypted, authTag]).toString("base64"),
+  };
+  return JSON.stringify(envelope);
+}
+
+export function decryptPrivateKey(stored: string): string {
+  const kek = getKek();
+
+  if (!isEncryptedEnvelope(stored)) {
+    return stored;
+  }
+
+  if (!kek) {
+    throw new Error(
+      "KEY_ENCRYPTION_KEY is required to decrypt JWKS private keys"
+    );
+  }
+
+  const envelope = JSON.parse(stored) as EncryptedEnvelope;
+  const iv = Buffer.from(envelope.iv, "base64");
+  const combined = Buffer.from(envelope.ct, "base64");
+
+  const authTag = combined.subarray(combined.length - ENVELOPE_AUTH_TAG_BYTES);
+  const ciphertext = combined.subarray(
+    0,
+    combined.length - ENVELOPE_AUTH_TAG_BYTES
+  );
+
+  const decipher = createDecipheriv(ENVELOPE_ALG, kek, iv, {
+    authTagLength: ENVELOPE_AUTH_TAG_BYTES,
+  });
+  decipher.setAuthTag(authTag);
+
+  const decrypted = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]);
+  return decrypted.toString("utf8");
+}
+
+function isEncryptedEnvelope(value: string): boolean {
+  return value.startsWith('{"v":');
+}
+
+// ---------------------------------------------------------------------------
+// Standard signing key management (RS256 / ES256 / EdDSA)
+// ---------------------------------------------------------------------------
 
 type SigningAlg = "RS256" | "ES256" | "EdDSA" | "ML-DSA-65";
-
 type StandardAlg = "RS256" | "ES256" | "EdDSA";
 
 interface CachedSigningKey {
@@ -62,7 +173,6 @@ export async function getOrCreateSigningKey(
 
   const now = new Date();
 
-  // Prefer active key (no expiry), fall back to unexpired overlap key
   const row = await db
     .select()
     .from(jwks)
@@ -156,7 +266,6 @@ export async function rotateSigningKey(
   return { oldKid, newKid: newKey.kid };
 }
 
-/** Delete keys whose overlap window has expired. */
 export async function cleanupExpiredKeys(): Promise<number> {
   const now = new Date();
   const result = await db.delete(jwks).where(lt(jwks.expiresAt, now)).run();
@@ -173,6 +282,98 @@ async function signWithAlg(
     .setProtectedHeader({ alg, typ: "JWT", kid })
     .sign(privateKey);
 }
+
+// ---------------------------------------------------------------------------
+// ML-DSA-65 signing (post-quantum)
+// ---------------------------------------------------------------------------
+
+const ML_DSA_ALG = "ML-DSA-65" as const;
+
+interface MlDsaSigningKey {
+  kid: string;
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+}
+
+let cachedMlDsaSigningKey: MlDsaSigningKey | null = null;
+
+async function getOrCreateMlDsaSigningKey(): Promise<MlDsaSigningKey> {
+  if (cachedMlDsaSigningKey) {
+    return cachedMlDsaSigningKey;
+  }
+
+  const existing = await db
+    .select()
+    .from(jwks)
+    .where(eq(jwks.alg, ML_DSA_ALG))
+    .limit(1)
+    .get();
+
+  if (existing) {
+    const privateKeyData = JSON.parse(
+      decryptPrivateKey(existing.privateKey)
+    ) as { raw: string };
+    const publicKeyData = JSON.parse(existing.publicKey) as { pub: string };
+
+    cachedMlDsaSigningKey = {
+      kid: existing.id,
+      secretKey: Buffer.from(privateKeyData.raw, "base64"),
+      publicKey: Buffer.from(publicKeyData.pub, "base64"),
+    };
+    return cachedMlDsaSigningKey;
+  }
+
+  const { publicKey, secretKey } = mlDsaKeygen();
+  const kid = crypto.randomUUID();
+
+  const publicKeyJson = JSON.stringify({
+    kty: "AKP",
+    alg: ML_DSA_ALG,
+    pub: bytesToBase64(publicKey),
+  });
+  const privateKeyJson = JSON.stringify({
+    raw: bytesToBase64(secretKey),
+  });
+
+  await db
+    .insert(jwks)
+    .values({
+      id: kid,
+      publicKey: publicKeyJson,
+      privateKey: encryptPrivateKey(privateKeyJson),
+      alg: ML_DSA_ALG,
+      crv: null,
+    })
+    .run();
+
+  cachedMlDsaSigningKey = { kid, secretKey, publicKey };
+  return cachedMlDsaSigningKey;
+}
+
+function encodeJwtPart(data: Record<string, unknown>): string {
+  return bytesToBase64Url(new TextEncoder().encode(JSON.stringify(data)));
+}
+
+async function signJwtWithMlDsa(
+  payload: Record<string, unknown>
+): Promise<string> {
+  const { kid, secretKey } = await getOrCreateMlDsaSigningKey();
+
+  const header = { alg: ML_DSA_ALG, typ: "JWT", kid };
+  const encodedHeader = encodeJwtPart(header);
+  const encodedPayload = encodeJwtPart(payload);
+
+  const signingInput = new TextEncoder().encode(
+    `${encodedHeader}.${encodedPayload}`
+  );
+  const signature = mlDsaSign(signingInput, secretKey);
+
+  return `${encodedHeader}.${encodedPayload}.${bytesToBase64Url(signature)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-algorithm JWT dispatcher
+// ---------------------------------------------------------------------------
 
 function resolveClientId(payload: Record<string, unknown>): string | null {
   const { aud } = payload;
@@ -246,4 +447,59 @@ export async function signJwt(
     return signJwtWithMlDsa(payload);
   }
   return signWithAlg(payload, alg as StandardAlg);
+}
+
+// ---------------------------------------------------------------------------
+// Better-auth JWT adapter (JWKS view filtered to standard algs)
+// ---------------------------------------------------------------------------
+
+const STANDARD_JWT_SIGNING_ALGS = new Set(["RS256", "ES256", "EdDSA"] as const);
+
+type StandardJwtSigningAlg = "RS256" | "ES256" | "EdDSA";
+
+interface JwtSigningKey {
+  alg?: StandardJwtSigningAlg;
+  createdAt: Date;
+  crv?: string;
+  expiresAt?: Date;
+  id: string;
+  privateKey: string;
+  publicKey: string;
+}
+
+function isStandardJwtSigningAlg(
+  alg: string | null | undefined
+): alg is StandardJwtSigningAlg {
+  return (
+    typeof alg === "string" &&
+    STANDARD_JWT_SIGNING_ALGS.has(alg as StandardJwtSigningAlg)
+  );
+}
+
+/**
+ * Better-auth's OIDC4VCI/JWT internals use this adapter to enumerate standard
+ * signing keys. Filtered to exclude ML-DSA and encryption keys that `jose`
+ * cannot import directly.
+ */
+export async function getJwtSigningKeys(): Promise<JwtSigningKey[]> {
+  const rows = await db.select().from(jwks);
+  const signingRows = rows.filter(
+    (
+      row
+    ): row is JwkRow & {
+      alg: StandardJwtSigningAlg;
+      crv: string | null;
+      expiresAt: Date | null;
+    } => isStandardJwtSigningAlg(row.alg)
+  );
+
+  return signingRows.map((row) => ({
+    id: row.id,
+    publicKey: row.publicKey,
+    privateKey: row.privateKey,
+    createdAt: row.createdAt,
+    alg: row.alg,
+    ...(row.crv ? { crv: row.crv } : {}),
+    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+  }));
 }

@@ -16,8 +16,8 @@ import {
 import {
   RECOVERY_GUARDIAN_TYPE_CUSTODIAL_EMAIL,
   RECOVERY_GUARDIAN_TYPE_EMAIL,
-} from "@/lib/recovery/constants";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+} from "@/lib/db/schema/recovery";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function createConfigWithGuardians(params: {
   userId: string;

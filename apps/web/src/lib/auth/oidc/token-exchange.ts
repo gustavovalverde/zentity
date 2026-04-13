@@ -16,34 +16,6 @@ import {
 } from "jose";
 
 import { env } from "@/env";
-import { getAccountAssurance } from "@/lib/assurance/data";
-import {
-  buildOidcAssuranceClaims,
-  computeAtHash,
-} from "@/lib/assurance/oidc-claims";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  resolveAuthenticationContext,
-} from "@/lib/auth/authentication-context";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/issuer";
-import {
-  AGENT_BOOTSTRAP_SCOPE_SET,
-  AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/auth/oidc/agent-scopes";
-import {
-  getClientSigningAlg,
-  getOrCreateSigningKey,
-  signJwt,
-} from "@/lib/auth/oidc/jwt-signer";
-import {
-  extractDpopThumbprint,
-  loadOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/opaque-access-token";
-import {
-  resolveSubForClient,
-  resolveUserIdFromSub,
-} from "@/lib/auth/oidc/pairwise";
 import {
   buildAapProfile,
   buildDelegationClaim,
@@ -51,15 +23,45 @@ import {
   loadStoredAapSnapshotForTokenJti,
   persistAapSnapshotForToken,
   readAapProfileFromPayload,
-} from "@/lib/ciba/aap-profile";
+} from "@/lib/agents/act-claim";
 import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
-} from "@/lib/ciba/pairwise-agent";
+} from "@/lib/agents/actor-subject";
+import {
+  AGENT_BOOTSTRAP_SCOPE_SET,
+  AGENT_BOOTSTRAP_TOKEN_USE,
+} from "@/lib/agents/session";
+import {
+  buildOidcAssuranceClaims,
+  computeAtHash,
+} from "@/lib/assurance/oidc-claims";
+import { getAccountAssurance } from "@/lib/assurance/posture";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/auth-context";
+import {
+  extractDpopThumbprint,
+  loadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop,
+} from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  getClientSigningAlg,
+  getOrCreateSigningKey,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
+import {
+  resolveSubForClient,
+  resolveUserIdFromSub,
+} from "@/lib/auth/oidc/pairwise";
+import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  jwks as jwksTable,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";

@@ -15,9 +15,14 @@ import type { EnvelopeFormat, SecretType } from "./types";
 
 import { decode, encode } from "@msgpack/msgpack";
 
-import { encodeAad, SECRET_AAD_CONTEXT } from "@/lib/privacy/primitives/aad";
-import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  decryptAesGcm,
+  encodeAad,
+  encryptAesGcm,
+  SECRET_AAD_CONTEXT,
+} from "@/lib/privacy/primitives/symmetric";
 
 const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 

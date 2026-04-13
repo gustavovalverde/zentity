@@ -7,7 +7,7 @@ import {
 import {
   getBbJsVersion,
   getCircuitIdentity,
-} from "@/lib/privacy/zk/noir-verifier";
+} from "@/lib/privacy/zk/noir/verifier";
 import { PROOF_TYPE_SPECS } from "@/lib/privacy/zk/proof-types";
 
 export async function GET(request: Request) {

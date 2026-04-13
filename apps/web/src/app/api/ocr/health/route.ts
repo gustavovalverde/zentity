@@ -1,12 +1,12 @@
 import { unstable_cache } from "next/cache";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { HttpError } from "@/lib/http/fetch";
 import { getOcrHealth } from "@/lib/identity/document/ocr-client";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { HttpError } from "@/lib/utils/http";
 
 const getCachedOcrHealth = unstable_cache(
   () => getOcrHealth({ trace: false }),

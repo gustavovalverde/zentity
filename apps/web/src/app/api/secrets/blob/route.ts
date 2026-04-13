@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
   getEncryptedSecretById,
   getEncryptedSecretByUserAndType,
-} from "@/lib/db/queries/crypto";
+} from "@/lib/db/queries/privacy";
+import { rateLimitResponse, secretsBlobLimiter } from "@/lib/http/rate-limit";
+import { sanitizeAndLogApiError } from "@/lib/http/route-responses";
 import { withSpan } from "@/lib/observability/telemetry";
 import {
   computeSecretBlobRef,
@@ -13,9 +15,6 @@ import {
   SecretBlobTooLargeError,
   writeSecretBlob,
 } from "@/lib/privacy/secrets/storage.server";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { secretsBlobLimiter } from "@/lib/utils/rate-limiters";
 
 export const runtime = "nodejs";
 

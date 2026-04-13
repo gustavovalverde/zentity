@@ -4,7 +4,7 @@ import { useEffect } from "react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { completeSignOut } from "@/lib/auth/session-manager";
+import { completeSignOut } from "@/lib/auth/session-cleanup";
 
 interface SignOutClientProps {
   redirectTo: string;

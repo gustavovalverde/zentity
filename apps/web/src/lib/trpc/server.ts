@@ -16,17 +16,18 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { getSecurityPosture } from "@/lib/assurance/data";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
-import { auth, type Session } from "@/lib/auth/auth";
+import { getSecurityPosture } from "@/lib/assurance/posture";
+import { auth, type Session } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
-} from "@/lib/auth/authentication-context";
+} from "@/lib/auth/auth-context";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/opaque-access-token";
+} from "@/lib/auth/oidc/haip/opaque-access-token";
 import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
@@ -39,7 +40,6 @@ import {
   resolveRequestContext,
 } from "@/lib/observability/request-context";
 import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
-import { verifyAccessToken } from "@/lib/trpc/jwt-session";
 
 type SpanAttributes = Record<string, string | number | boolean>;
 

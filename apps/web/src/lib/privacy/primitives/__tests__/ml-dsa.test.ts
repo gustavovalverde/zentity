@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { mlDsaKeygen, mlDsaSign } from "@/lib/privacy/primitives/ml-dsa";
-import { mlKemEncapsulate, mlKemKeygen } from "@/lib/privacy/primitives/ml-kem";
+import {
+  mlDsaKeygen,
+  mlDsaSign,
+  mlKemEncapsulate,
+  mlKemKeygen,
+} from "@/lib/privacy/primitives/post-quantum";
 
 const ML_DSA_PUBLIC_KEY_BYTES = 1952;
 const ML_DSA_SECRET_KEY_BYTES = 4032;

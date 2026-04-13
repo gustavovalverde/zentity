@@ -185,5 +185,5 @@ jobs:
             echo "- Demo RP: \`GET /api/health\`"
             echo "- FHE: \`GET /build-info\`"
             echo "- OCR: \`GET /build-info\`"
-            echo "- Web: \`GET /api/build-info\`"
+            echo "- Web: \`GET /api/status/build-info\`"
           } >> "$GITHUB_STEP_SUMMARY"

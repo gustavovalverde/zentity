@@ -7,7 +7,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils/classname";
+import { cn } from "@/lib/cn";
 
 function InputGroup({
   className,

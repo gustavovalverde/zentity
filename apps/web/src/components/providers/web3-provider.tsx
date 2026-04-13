@@ -5,13 +5,13 @@ import type { ReactNode } from "react";
 import { createAppKit } from "@reown/appkit/react";
 import { cookieToInitialState, WagmiProvider } from "wagmi";
 
-import { InMemoryStorageProvider } from "@/hooks/fhevm/use-in-memory-storage";
+import { InMemoryStorageProvider } from "@/lib/blockchain/fhevm/use-in-memory-storage";
 import {
   fhevmSepolia,
   networks,
   projectId,
   wagmiAdapter,
-} from "@/lib/blockchain/wagmi/config";
+} from "@/lib/blockchain/wagmi";
 
 import { Eip712Bridge } from "./eip712-bridge";
 import { FhevmProvider } from "./fhevm-provider";

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db/connection";
 import { agentCapabilities } from "@/lib/db/schema/agent";
-import { ensureCapabilitiesSeeded } from "@/lib/db/seed/capabilities";
+import { ensureCapabilitiesSeeded } from "@/lib/db/seed";
 
 export const runtime = "nodejs";
 

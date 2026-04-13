@@ -2,11 +2,10 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
-import { pushSubscriptions } from "@/lib/db/schema/push";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { cibaLimiter } from "@/lib/utils/rate-limiters";
+import { pushSubscriptions } from "@/lib/db/schema/ciba";
+import { cibaLimiter, rateLimitResponse } from "@/lib/http/rate-limit";
 
 export const runtime = "nodejs";
 const MAX_SUBSCRIPTIONS = 5;

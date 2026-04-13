@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
-import { handleIdentityUnstage } from "@/lib/auth/oidc/identity-handler";
+import { clearPendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import { handleIdentityUnstage } from "@/lib/auth/oidc/disclosure/delivery";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import {
   computeOAuthRequestKey,
   verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+} from "@/lib/auth/oidc/oauth-request";
 
 const UnstageSchema = z.object({
   oauth_query: z.string().min(1),

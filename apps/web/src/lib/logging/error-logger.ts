@@ -12,8 +12,8 @@ import { createHash } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
 
-import { FheServiceError } from "@/lib/privacy/fhe/service";
-import { HttpError } from "@/lib/utils/http";
+import { HttpError } from "@/lib/http/fetch";
+import { FheServiceError } from "@/lib/privacy/fhe/backend";
 
 import { type Logger, logger } from "./logger";
 import { sanitizeLogMessage } from "./redact";

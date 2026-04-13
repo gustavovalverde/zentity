@@ -3,17 +3,15 @@ export async function register() {
     const { initTelemetry } = await import("@/lib/observability/telemetry");
     await initTelemetry();
 
-    const { markWarmupComplete } = await import(
-      "@/lib/observability/warmup-state"
-    );
+    const { markWarmupComplete } = await import("@/lib/observability/warmup");
 
     // Parallel group: Human.js models + Barretenberg + backend service checks
     // (warmupCRS depends on Barretenberg so it runs after BB completes)
     const [{ warmupHumanServer }, { warmupBarretenberg }, { warmupServices }] =
       await Promise.all([
-        import("@/lib/identity/liveness/human-server"),
+        import("@/lib/identity/liveness/human/server"),
         import("@/lib/privacy/primitives/barretenberg"),
-        import("@/lib/observability/service-warmup"),
+        import("@/lib/observability/warmup"),
       ]);
 
     const [, bbResult] = await Promise.allSettled([
@@ -24,7 +22,7 @@ export async function register() {
 
     // CRS + ZK checks depend on the shared Barretenberg instance
     if (bbResult.status === "fulfilled") {
-      const { warmupCRS } = await import("@/lib/privacy/zk/noir-verifier");
+      const { warmupCRS } = await import("@/lib/privacy/zk/noir/verifier");
       await warmupCRS();
 
       // ZKPassport verifier shares the Barretenberg WASM instance

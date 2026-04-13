@@ -285,7 +285,7 @@ describe("prepareAgentAssertionForProvider", () => {
     );
     expect(testState.fetchMock).toHaveBeenNthCalledWith(
       2,
-      "http://localhost:3000/api/auth/agent/register-host",
+      "http://localhost:3000/api/auth/agent/host/register",
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: "DPoP bootstrap-token",

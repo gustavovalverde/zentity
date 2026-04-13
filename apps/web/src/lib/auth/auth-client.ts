@@ -15,9 +15,9 @@ import {
 import { createAuthClient } from "better-auth/react";
 
 import { env } from "@/env";
-import { eip712AuthClient } from "@/lib/auth/plugins/eip712/client";
-import { opaqueClient } from "@/lib/auth/plugins/opaque/client";
-import { getSafeRedirectPath } from "@/lib/utils/navigation";
+import { eip712AuthClient } from "@/lib/auth/eip712/client";
+import { opaqueClient } from "@/lib/auth/opaque/client";
+import { getSafeRedirectPath } from "@/lib/auth/redirect";
 
 // Use current origin in browser to avoid IPv4/IPv6 localhost mismatch
 // Node.js v17+ prefers IPv6, so browser may be at [::1] while env says localhost
@@ -29,7 +29,7 @@ const getAuthBaseURL = () => {
   return new URL("/api/auth", base).toString();
 };
 
-type ServerAuth = typeof import("./auth").auth;
+type ServerAuth = typeof import("./auth-config").auth;
 
 export const authClient = createAuthClient({
   baseURL: getAuthBaseURL(),
@@ -53,8 +53,8 @@ export const authClient = createAuthClient({
           ).get("redirectTo");
           const safeRedirect = getSafeRedirectPath(redirectTo, "");
           const url = safeRedirect
-            ? `/verify-2fa?redirectTo=${encodeURIComponent(safeRedirect)}`
-            : "/verify-2fa";
+            ? `/two-factor/verify?redirectTo=${encodeURIComponent(safeRedirect)}`
+            : "/two-factor/verify";
           globalThis.window.location.href = url;
         }
       },

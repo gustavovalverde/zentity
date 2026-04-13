@@ -7,12 +7,12 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { OpaqueSignInForm } from "@/components/auth/opaque-sign-in-form";
-import { SocialLoginButtons } from "@/components/auth/social-login-buttons";
+import { OpaqueSignInForm } from "../_components/opaque-sign-in-form";
+import { SocialLoginButtons } from "../_components/social-login-buttons";
 
 const LazyWalletSignInButton = dynamic(
   () =>
-    import("@/components/auth/wallet-sign-in-form").then((m) => ({
+    import("../_components/wallet-sign-in-form").then((m) => ({
       default: m.WalletSignInButton,
     })),
   { ssr: false }
@@ -29,11 +29,11 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-import { getPostAuthRedirectUrl } from "@/lib/auth/oauth-post-login";
-import { signInWithPasskey } from "@/lib/auth/passkey";
-import { prepareForNewSession } from "@/lib/auth/session-manager";
-import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { getSafeRedirectPath, redirectTo } from "@/lib/utils/navigation";
+import { getPostAuthRedirectUrl } from "@/lib/auth/oidc/oauth-post-login";
+import { signInWithPasskey } from "@/lib/auth/passkey/client";
+import { checkPrfSupport } from "@/lib/auth/passkey/prf";
+import { getSafeRedirectPath, redirectTo } from "@/lib/auth/redirect";
+import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();

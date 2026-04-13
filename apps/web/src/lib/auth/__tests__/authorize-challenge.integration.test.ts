@@ -1,4 +1,4 @@
-import type { Eip712TypedData } from "@/lib/auth/plugins/eip712/types";
+import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 
 import crypto from "node:crypto";
 
@@ -9,23 +9,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
-import { auth } from "@/lib/auth/auth";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { auth } from "@/lib/auth/auth-config";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
-import { authChallengeSessions } from "@/lib/db/schema/auth-challenge";
 import { identityBundles } from "@/lib/db/schema/identity";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  authChallengeSessions,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
+} from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
   createTestDpopKeyPair,
   postTokenWithDpop,
-} from "@/test/dpop-test-utils";
+} from "@/test-utils/dpop-test-utils";
 
 const CHALLENGE_URL = "http://localhost:3000/api/oauth2/authorize-challenge";
 const TEST_CLIENT_ID = "fpa-test-client";

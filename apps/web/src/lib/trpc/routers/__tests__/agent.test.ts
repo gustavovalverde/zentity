@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -10,10 +10,10 @@ import {
   agentHosts,
   agentSessionGrants,
   agentSessions,
+  capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { capabilityUsageLedger } from "@/lib/db/schema/usage-ledger";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "agent-router-client";
 

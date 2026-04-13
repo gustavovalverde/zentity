@@ -76,10 +76,18 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    // Auth tests - foundational, no dependencies
+    // Auth tests - foundational, wipe storage to test unauthenticated flows
     {
       name: "auth",
       testMatch: /e2e\/auth\/.*\.spec\.ts/,
+      use: chromeOptions,
+    },
+    // Automation smoke tests - validate the seeded auth session works
+    // end-to-end. Runs early so session mutations by later specs (recovery,
+    // sign-up) don't invalidate the cookie before we can check it.
+    {
+      name: "automation",
+      testMatch: /e2e\/automation\/.*\.spec\.ts/,
       use: chromeOptions,
     },
     // Dashboard tests - requires authenticated session
@@ -112,16 +120,11 @@ export default defineConfig({
       testMatch: /e2e\/oidc\/.*\.spec\.ts/,
       use: chromeOptions,
     },
-    // Recovery flow tests
+    // Recovery flow tests - run last; recovery flows rotate credentials
+    // and invalidate the seeded session.
     {
       name: "recovery",
       testMatch: /e2e\/recovery\/.*\.spec\.ts/,
-      use: chromeOptions,
-    },
-    // Automation validation (internal tooling tests)
-    {
-      name: "automation",
-      testMatch: /e2e\/automation\/.*\.spec\.ts/,
       use: chromeOptions,
     },
   ],

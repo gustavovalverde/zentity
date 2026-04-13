@@ -48,7 +48,7 @@ async function postWithRetries(
 
 async function waitForServer(api: ApiContext) {
   for (let attempt = 0; attempt < 10; attempt++) {
-    const response = await api.get("/api/health");
+    const response = await api.get("/api/status/health");
     if (response.ok()) {
       return;
     }
@@ -56,7 +56,7 @@ async function waitForServer(api: ApiContext) {
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 
-  throw new Error("E2E global setup failed: /api/health not ready");
+  throw new Error("E2E global setup failed: /api/status/health not ready");
 }
 
 interface AuthSeed {
@@ -388,11 +388,25 @@ async function seedVerifiedIdentity(
     );
   `;
 
+  // Seed verification_checks to produce the "incomplete verification" state
+  // (identity checks passed; ZK proofs still missing for nationality/identity_binding)
+  // check_type values match CHECK_TYPE_TO_COMPLIANCE_KEY in read-model.ts
+  const verificationChecksSql = `
+    INSERT OR REPLACE INTO verification_checks (
+      id, user_id, verification_id, check_type, passed, source, created_at, updated_at
+    ) VALUES
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'document', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'liveness', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'face_match', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'age', 1, 'e2e_seed', '${now}', '${now}');
+  `;
+
   await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, identityVerificationSql);
   await runSql(dbUrl, signedClaimsSql);
   await runSql(dbUrl, proofArtifactsSql);
   await runSql(dbUrl, encryptedAttributesSql);
+  await runSql(dbUrl, verificationChecksSql);
 }
 
 async function resetTwoFactor(dbUrl: string, email: string) {

@@ -6,19 +6,18 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { getProofSessionById } from "@/lib/db/queries/crypto";
+import { getProofSessionById } from "@/lib/db/queries/privacy";
+import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
+import { toServiceErrorPayload } from "@/lib/http/route-responses";
+import { resolveAudience } from "@/lib/http/url-safety";
 import { consumeChallenge } from "@/lib/privacy/zk/challenge-store";
-import { verifyNoirProof } from "@/lib/privacy/zk/noir-verifier";
+import { verifyNoirProof } from "@/lib/privacy/zk/noir/verifier";
 import {
   normalizeChallengeNonce,
   PROOF_TYPE_SPECS,
 } from "@/lib/privacy/zk/proof-types";
-import { resolveAudience } from "@/lib/trpc/routers/zk/audience";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { zkLimiter } from "@/lib/utils/rate-limiters";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

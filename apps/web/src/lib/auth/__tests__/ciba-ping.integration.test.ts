@@ -13,10 +13,10 @@ import {
   createTestSession,
   createTestUser,
   resetDatabase,
-} from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+} from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
-import { auth } from "../auth";
+import { auth } from "../auth-config";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";

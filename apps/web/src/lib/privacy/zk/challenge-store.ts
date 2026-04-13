@@ -14,7 +14,7 @@ import { randomBytes } from "node:crypto";
 import { eq, lt, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import { zkChallenges } from "@/lib/db/schema/crypto";
+import { zkChallenges } from "@/lib/db/schema/privacy";
 
 interface ChallengeBinding {
   audience?: string | undefined;

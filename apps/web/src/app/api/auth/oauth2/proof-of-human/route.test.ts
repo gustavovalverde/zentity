@@ -1,17 +1,17 @@
-import type { UnifiedVerificationModel } from "@/lib/identity/verification/unified-model";
+import type { VerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   verifyAccessToken: vi.fn(),
   signJwt: vi.fn(),
-  getUnifiedVerificationModel: vi.fn(),
+  getVerificationReadModel: vi.fn(),
   resolveUserIdFromSub: vi.fn(),
   loadOpaqueAccessToken: vi.fn(),
   validateOpaqueAccessTokenDpop: vi.fn(),
 }));
 
-vi.mock("@/lib/trpc/jwt-session", () => ({
+vi.mock("@/lib/auth/jwt", () => ({
   verifyAccessToken: mocks.verifyAccessToken,
 }));
 
@@ -19,15 +19,15 @@ vi.mock("@/lib/auth/oidc/jwt-signer", () => ({
   signJwt: mocks.signJwt,
 }));
 
-vi.mock("@/lib/identity/verification/unified-model", () => ({
-  getUnifiedVerificationModel: mocks.getUnifiedVerificationModel,
+vi.mock("@/lib/identity/verification/read-model", () => ({
+  getVerificationReadModel: mocks.getVerificationReadModel,
 }));
 
 vi.mock("@/lib/auth/oidc/pairwise", () => ({
   resolveUserIdFromSub: mocks.resolveUserIdFromSub,
 }));
 
-vi.mock("@/lib/auth/oidc/opaque-access-token", () => ({
+vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
   loadOpaqueAccessToken: mocks.loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop: mocks.validateOpaqueAccessTokenDpop,
 }));
@@ -53,8 +53,8 @@ function makeAccessTokenPayload(overrides: Record<string, unknown> = {}) {
 }
 
 function makeVerifiedModel(
-  overrides: Partial<UnifiedVerificationModel> = {}
-): UnifiedVerificationModel {
+  overrides: Partial<VerificationReadModel> = {}
+): VerificationReadModel {
   return {
     verificationId: "v-123",
     method: "ocr",
@@ -95,7 +95,7 @@ function makeVerifiedModel(
 function setupVerifiedUser() {
   mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
   mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-  mocks.getUnifiedVerificationModel.mockResolvedValue(makeVerifiedModel());
+  mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
   mocks.signJwt.mockResolvedValue("signed-poh-jwt");
 }
 
@@ -186,7 +186,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       makeAccessTokenPayload({ cnf: { jkt: dpopThumbprint } })
     );
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(makeVerifiedModel());
+    mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("signed-poh-jwt");
 
     const response = await POST(
@@ -252,7 +252,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       })
     );
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(makeVerifiedModel());
+    mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("jwt-a");
 
     await POST(
@@ -271,7 +271,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       })
     );
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(makeVerifiedModel());
+    mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("jwt-b");
 
     await POST(
@@ -290,7 +290,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   it("returns 403 not_verified for unverified users", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue("user-456");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(
+    mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({ verificationId: null })
     );
 
@@ -307,7 +307,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   it("reflects the correct tier for a basic-level user", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(
+    mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
         method: "ocr",
         compliance: {
@@ -346,7 +346,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   it("reflects NFC chip method in the PoH token", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getUnifiedVerificationModel.mockResolvedValue(
+    mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
         method: "nfc_chip",
         compliance: {

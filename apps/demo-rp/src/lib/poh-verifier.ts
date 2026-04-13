@@ -4,9 +4,14 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 
-const pohJwks = createRemoteJWKSet(
-  new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
-);
+// Lazy JWKS init: see verify.ts for rationale (Next.js build skipValidation).
+let pohJwksInstance: ReturnType<typeof createRemoteJWKSet> | undefined;
+function pohJwks() {
+  pohJwksInstance ??= createRemoteJWKSet(
+    new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
+  );
+  return pohJwksInstance;
+}
 
 export interface PohClaims {
   method: "ocr" | "nfc_chip" | null;
@@ -23,7 +28,7 @@ export interface VerifiedPohToken {
 }
 
 export async function verifyPohToken(token: string): Promise<VerifiedPohToken> {
-  const { payload } = await jwtVerify(token, pohJwks, {
+  const { payload } = await jwtVerify(token, pohJwks(), {
     issuer: env.NEXT_PUBLIC_ZENTITY_URL,
     algorithms: ["EdDSA"],
   });

@@ -1,0 +1,305 @@
+/**
+ * Noir Client-Side Prover Library
+ *
+ * Generates zero-knowledge proofs in the browser using Noir.js and Barretenberg (bb.js).
+ * This enables true zero-knowledge: sensitive data (birth year, etc.) never leaves the user's device.
+ *
+ * Uses UltraHonk proof system with universal setup for fast client-side proving.
+ *
+ * Proof generation runs in a Web Worker to keep the UI responsive.
+ */
+
+import {
+  generateAgeProofWorker,
+  generateBaseCommitmentWorker,
+  generateDocValidityProofWorker,
+  generateFaceMatchProofWorker,
+  generateIdentityBindingProofWorker,
+  generateNationalityProofClientWorker,
+} from "./worker-manager";
+
+// Types for proof operations
+interface NoirProofResult {
+  generationTimeMs: number;
+  proof: Uint8Array;
+  publicInputs: string[];
+}
+
+interface AgeProofInput {
+  claimHash: string;
+  /** Current date encoded as days since 1900-01-01 (UTC). */
+  currentDays: number;
+  /** DOB encoded as days since 1900-01-01 (UTC). */
+  dobDays: number;
+  documentHashField: string;
+  /** Minimum age threshold encoded in days. */
+  minAgeDays: number;
+  nonce: string; // Hex nonce for replay resistance
+}
+
+interface DocValidityInput {
+  claimHash: string;
+  currentDate: number; // YYYYMMDD format
+  documentHashField: string;
+  expiryDate: number; // YYYYMMDD format
+  nonce: string; // Hex nonce for replay resistance
+}
+
+interface FaceMatchInput {
+  claimHash: string;
+  documentHashField: string;
+  nonce: string; // Hex nonce for replay resistance
+  similarityScore: number; // Scaled integer 0-10000
+  threshold: number; // Scaled integer 0-10000
+}
+
+interface NationalityProofInput {
+  claimHash: string;
+  documentHashField: string;
+  groupName: string; // Group to prove membership (e.g., "EU", "SCHENGEN")
+  nationalityCode: string; // ISO alpha-3 (e.g., "DEU" for Germany)
+  nonce: string; // Hex nonce for replay resistance
+}
+
+interface IdentityBindingInput {
+  audience: string; // Context binding: relying party audience
+  bindingSecretField: string; // Derived from auth mode (PRF/export key/signature)
+  documentHashField: string; // Document commitment
+  msgSender: string; // Context binding: caller identity
+  nonce: string; // Hex nonce for replay resistance
+  userIdHashField: string; // Hash of user ID
+}
+
+interface BaseCommitmentInput {
+  bindingSecretField: string;
+  userIdHashField: string;
+}
+
+/**
+ * Generate an age verification proof in the browser
+ *
+ * Uses a Web Worker to keep the UI responsive during proof generation.
+ *
+ * @param input - DOB days, current days, minimum age (days), and nonce from challenge API
+ * @returns Proof and public inputs that can be sent to server for verification
+ *
+ * @example
+ * // First get a challenge nonce
+ * const challenge = await getProofChallenge('age_verification');
+ *
+ * const result = await generateAgeProofNoir({
+ *   dobDays: 32872, // 1990-01-01 (example)
+ *   currentDays: 46000, // today (example)
+ *   minAgeDays: 6574, // 18y (example)
+ *   nonce: challenge.nonce
+ * });
+ * // result.publicInputs contains the verification result
+ * // Birth year NEVER leaves the browser
+ */
+export async function generateAgeProofNoir(
+  input: AgeProofInput
+): Promise<NoirProofResult> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const startTime = performance.now();
+
+  const result = await generateAgeProofWorker({
+    dobDays: input.dobDays,
+    currentDays: input.currentDays,
+    minAgeDays: input.minAgeDays,
+    nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Generate a document validity proof in the browser
+ *
+ * Uses a Web Worker to keep the UI responsive during proof generation.
+ *
+ * @param input - Expiry date, current date in YYYYMMDD format, and nonce from challenge API
+ * @returns Proof that document is valid without revealing expiry date
+ *
+ * @example
+ * // First get a challenge nonce
+ * const challenge = await getProofChallenge('doc_validity');
+ *
+ * const result = await generateDocValidityProofNoir({
+ *   expiryDate: 20271231, // December 31, 2027
+ *   currentDate: 20251212, // December 12, 2025
+ *   nonce: challenge.nonce
+ * });
+ */
+export async function generateDocValidityProofNoir(
+  input: DocValidityInput
+): Promise<NoirProofResult> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const startTime = performance.now();
+
+  const result = await generateDocValidityProofWorker({
+    expiryDate: input.expiryDate,
+    currentDate: input.currentDate,
+    nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
+
+export async function generateFaceMatchProofNoir(
+  input: FaceMatchInput
+): Promise<NoirProofResult> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const startTime = performance.now();
+
+  const result = await generateFaceMatchProofWorker({
+    similarityScore: input.similarityScore,
+    threshold: input.threshold,
+    nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Generate a nationality membership proof in the browser (FULLY CLIENT-SIDE)
+ *
+ * PRIVACY: Nationality NEVER leaves the browser. The Merkle path is computed
+ * in the Web Worker and the proof is generated entirely client-side.
+ *
+ * @param input - Nationality code (ISO alpha-3), group name, and nonce
+ * @returns Proof of membership without revealing nationality
+ *
+ * @example
+ * const challenge = await getProofChallenge("nationality_membership");
+ * const result = await generateNationalityProofNoir({
+ *   nationalityCode: "DEU", // Germany
+ *   groupName: "EU",
+ *   nonce: challenge.nonce,
+ * });
+ * // Proves German nationality is in EU without revealing "Germany"
+ */
+export async function generateNationalityProofNoir(
+  input: NationalityProofInput
+): Promise<NoirProofResult> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const startTime = performance.now();
+
+  const result = await generateNationalityProofClientWorker({
+    nationalityCode: input.nationalityCode,
+    groupName: input.groupName,
+    nonce: input.nonce,
+    documentHashField: input.documentHashField,
+    claimHash: input.claimHash,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Generate an identity binding proof in the browser
+ *
+ * PRIVACY: The binding secret (derived from passkey PRF, OPAQUE export key,
+ * or wallet signature) NEVER leaves the browser. Only the ZK proof is returned.
+ * Auth mode is NOT revealed in the proof - privacy enhancement.
+ *
+ * @param input - Binding secret, user ID hash, document hash, and nonce
+ * @returns Proof of identity binding without revealing the binding secret or auth mode
+ *
+ * @example
+ * const challenge = await getProofChallenge("identity_binding");
+ * const result = await generateIdentityBindingProofNoir({
+ *   bindingSecretField: "0x...",
+ *   userIdHashField: "0x...",
+ *   documentHashField: "0x...",
+ *   nonce: challenge.nonce,
+ * });
+ */
+export async function generateIdentityBindingProofNoir(
+  input: IdentityBindingInput
+): Promise<NoirProofResult> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const startTime = performance.now();
+
+  const result = await generateIdentityBindingProofWorker({
+    bindingSecretField: input.bindingSecretField,
+    userIdHashField: input.userIdHashField,
+    documentHashField: input.documentHashField,
+    nonce: input.nonce,
+    msgSender: input.msgSender,
+    audience: input.audience,
+  });
+
+  return {
+    proof: result.proof,
+    publicInputs: result.publicInputs,
+    generationTimeMs: performance.now() - startTime,
+  };
+}
+
+export async function generateBaseCommitmentNoir(
+  input: BaseCommitmentInput
+): Promise<string> {
+  if (globalThis.window === undefined) {
+    throw new Error("ZK proofs can only be generated in the browser");
+  }
+
+  const result = await generateBaseCommitmentWorker({
+    bindingSecretField: input.bindingSecretField,
+    userIdHashField: input.userIdHashField,
+  });
+
+  const commitment = result.publicInputs[0];
+  if (!commitment) {
+    throw new Error("Base commitment proof returned no public inputs.");
+  }
+  return commitment;
+}
+
+/**
+ * Get today's date as YYYYMMDD integer
+ */
+export function getTodayAsInt(): number {
+  const today = new Date();
+  return (
+    today.getFullYear() * 10_000 +
+    (today.getMonth() + 1) * 100 +
+    today.getDate()
+  );
+}

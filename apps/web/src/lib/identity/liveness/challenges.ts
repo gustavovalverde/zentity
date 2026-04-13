@@ -1,3 +1,7 @@
+/**
+ * Liveness flow types and challenge instructions.
+ */
+
 export type ChallengeType = "smile" | "turn_left" | "turn_right";
 
 export interface ChallengeInfo {
@@ -33,3 +37,14 @@ export const CHALLENGE_INSTRUCTIONS: Record<
     timeoutSeconds: 8,
   },
 };
+
+export interface FaceMatchResult {
+  confidence: number;
+  distance: number;
+  error?: string | undefined;
+  idFaceExtracted: boolean;
+  idFaceImage?: string | undefined;
+  matched: boolean;
+  processingTimeMs: number;
+  threshold: number;
+}

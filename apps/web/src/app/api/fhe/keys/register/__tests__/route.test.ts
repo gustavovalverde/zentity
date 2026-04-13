@@ -1,7 +1,7 @@
 import { decode, encode } from "@msgpack/msgpack";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
 
@@ -9,16 +9,16 @@ const fheMocks = vi.hoisted(() => ({
   registerFheKey: vi.fn(),
 }));
 
-vi.mock("@/lib/privacy/fhe/service", () => fheMocks);
+vi.mock("@/lib/privacy/fhe/backend", () => fheMocks);
 
 const dbMocks = vi.hoisted(() => ({
   getEncryptedSecretByUserAndType: vi.fn(),
   updateEncryptedSecretMetadata: vi.fn(),
 }));
 
-vi.mock("@/lib/db/queries/crypto", () => dbMocks);
+vi.mock("@/lib/db/queries/privacy", () => dbMocks);
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 
 import { POST } from "../route";
 

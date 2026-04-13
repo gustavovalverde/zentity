@@ -1,11 +1,24 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": ["server.mjs", "src/lib/identity/liveness/socket/*.ts"],
+  "entry": [
+    "server.mjs",
+    "src/lib/identity/liveness/socket.ts",
+    "vitest.global-setup.ts",
+    "vitest.setup.mts"
+  ],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
-    "src/lib/copy-constants.ts": ["exports"],
+    "src/components/vault-unlock.tsx": ["exports", "types"],
+    "src/lib/auth/oidc/client-id-metadata.ts": ["exports", "types"],
+    "src/lib/auth/oidc/disclosure/delivery.ts": ["exports"],
+    "src/lib/auth/oidc/step-up.ts": ["exports"],
+    "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],
+    "src/lib/terminology.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
-    "src/lib/identity/liveness/human-server.ts": ["exports"]
+    "src/lib/identity/liveness/human/server.ts": ["exports"],
+    "src/lib/observability/client-metrics.ts": ["types"],
+    "src/lib/trpc/routers/recovery.ts": ["exports"],
+    "src/lib/trpc/routers/zk.ts": ["exports"]
   },
   "ignore": [
     "scripts/**",
@@ -13,9 +26,8 @@
     "public/coi-serviceworker.js",
     "public/push-sw.js",
     "e2e/**",
-    "src/test/**",
-    "vitest.global-setup.ts",
-    "vitest.setup.mts"
+    "src/test-utils/**",
+    "src/**/*.d.ts"
   ],
   "ignoreDependencies": [
     "@commitlint/cli",

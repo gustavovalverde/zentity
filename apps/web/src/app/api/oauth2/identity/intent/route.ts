@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { handleIdentityIntent } from "@/lib/auth/oidc/identity-handler";
+import { handleIdentityIntent } from "@/lib/auth/oidc/disclosure/delivery";
 import {
   parseRequestedScopes,
   verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+} from "@/lib/auth/oidc/oauth-request";
 
 const IntentSchema = z.object({
   oauth_query: z.string().min(1),

@@ -7,9 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { users } from "./auth";
-import { authenticationContexts } from "./authentication-context";
-import { defaultId } from "./utils";
+import { authenticationContexts, defaultId, users } from "./auth";
 
 export const oauthClients = sqliteTable(
   "oauth_client",
@@ -224,3 +222,166 @@ export type OauthPendingDisclosure =
   typeof oauthPendingDisclosures.$inferSelect;
 export type NewOauthPendingDisclosure =
   typeof oauthPendingDisclosures.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// JWKS (signing keys, JARM keys, at-rest encrypted private keys)
+// ---------------------------------------------------------------------------
+
+export const jwks = sqliteTable("jwks", {
+  id: text("id").primaryKey().default(defaultId),
+  publicKey: text("public_key").notNull(),
+  privateKey: text("private_key").notNull(),
+  alg: text("alg"),
+  crv: text("crv"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .default(sql`(unixepoch() * 1000)`),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+});
+
+export type Jwk = typeof jwks.$inferSelect;
+export type NewJwk = typeof jwks.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// HAIP: pushed authorization requests + VP sessions
+// ---------------------------------------------------------------------------
+
+export const haipPushedRequests = sqliteTable(
+  "haip_pushed_request",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    requestId: text("request_id").notNull().unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    requestParams: text("request_params").notNull(),
+    resource: text("resource"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("haip_pushed_request_client_id_idx").on(table.clientId),
+    index("haip_pushed_request_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export const haipVpSessions = sqliteTable(
+  "haip_vp_session",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    sessionId: text("session_id").notNull().unique(),
+    nonce: text("nonce").notNull().unique(),
+    state: text("state").notNull(),
+    dcqlQuery: text("dcql_query").notNull(),
+    responseUri: text("response_uri").notNull(),
+    clientId: text("client_id"),
+    clientIdScheme: text("client_id_scheme"),
+    responseMode: text("response_mode").notNull().default("direct_post"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("haip_vp_session_expires_at_idx").on(table.expiresAt)]
+);
+
+export type HaipPushedRequest = typeof haipPushedRequests.$inferSelect;
+export type NewHaipPushedRequest = typeof haipPushedRequests.$inferInsert;
+export type HaipVpSession = typeof haipVpSessions.$inferSelect;
+export type NewHaipVpSession = typeof haipVpSessions.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// RP compliance encryption keys (ML-KEM-768)
+// ---------------------------------------------------------------------------
+
+export const rpEncryptionKeys = sqliteTable(
+  "rp_encryption_key",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    publicKey: text("public_key").notNull(),
+    keyAlgorithm: text("key_algorithm", {
+      enum: ["ml-kem-768"],
+    })
+      .notNull()
+      .default("ml-kem-768"),
+    keyFingerprint: text("key_fingerprint").notNull(),
+    intendedUse: text("intended_use")
+      .notNull()
+      .default("compliance_encryption"),
+    status: text("status", {
+      enum: ["active", "rotated", "revoked"],
+    })
+      .notNull()
+      .default("active"),
+    previousKeyId: text("previous_key_id"),
+    rotatedAt: text("rotated_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_rp_encryption_keys_client").on(table.clientId),
+    uniqueIndex("rp_encryption_key_client_active_unique")
+      .on(table.clientId)
+      .where(sql`status = 'active'`),
+    index("idx_rp_encryption_keys_status").on(table.status),
+  ]
+);
+
+export type RpEncryptionKey = typeof rpEncryptionKeys.$inferSelect;
+export type NewRpEncryptionKey = typeof rpEncryptionKeys.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// First-party app auth challenge sessions (OPAQUE / EIP-712)
+// ---------------------------------------------------------------------------
+
+export const authChallengeSessions = sqliteTable(
+  "auth_challenge_session",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    authSession: text("auth_session").notNull().unique(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    dpopJkt: text("dpop_jkt"),
+    scope: text("scope").notNull(),
+    claims: text("claims"),
+    resource: text("resource"),
+    codeChallenge: text("code_challenge"),
+    codeChallengeMethod: text("code_challenge_method"),
+    state: text("state", {
+      enum: ["pending", "authenticated", "code_issued"],
+    })
+      .notNull()
+      .default("pending"),
+    challengeType: text("challenge_type", {
+      enum: ["opaque", "eip712", "redirect_to_web"],
+    }),
+    resolvedAuthContextId: text("resolved_auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
+    acrValues: text("acr_values"),
+    opaqueServerState: text("opaque_server_state"),
+    authorizationCode: text("authorization_code").unique(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("auth_challenge_client_id_idx").on(table.clientId),
+    index("auth_challenge_user_id_idx").on(table.userId),
+    index("auth_challenge_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
+export type AuthChallengeSession = typeof authChallengeSessions.$inferSelect;
+export type NewAuthChallengeSession = typeof authChallengeSessions.$inferInsert;

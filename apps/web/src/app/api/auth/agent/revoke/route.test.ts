@@ -9,13 +9,13 @@ import {
   agentSessions,
 } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const { mockRequireBootstrapAccessToken } = vi.hoisted(() => ({
   mockRequireBootstrapAccessToken: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBootstrapAccessToken: mockRequireBootstrapAccessToken,
 }));
 

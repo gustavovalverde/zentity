@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { decryptAesGcm, encryptAesGcm } from "@/lib/privacy/primitives/aes-gcm";
+import {
+  decryptAesGcm,
+  encryptAesGcm,
+} from "@/lib/privacy/primitives/symmetric";
 
 function generateIv(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(12));

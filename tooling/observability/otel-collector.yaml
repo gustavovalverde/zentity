@@ -13,8 +13,8 @@ processors:
       span:
         - 'IsMatch(attributes["http.target"], "^/(health|healthz|ready|live)(/|$)")'
         - 'IsMatch(attributes["http.route"], "^/(health|healthz|ready|live)(/|$)")'
-        - 'IsMatch(attributes["http.target"], "^/api/metrics/client(/|$)")'
-        - 'IsMatch(attributes["http.route"], "^/api/metrics/client(/|$)")'
+        - 'IsMatch(attributes["http.target"], "^/api/status/metrics/client(/|$)")'
+        - 'IsMatch(attributes["http.route"], "^/api/status/metrics/client(/|$)")'
         - 'IsMatch(attributes["url.path"], "^/health$")'
         - 'IsMatch(attributes["http.target"], "^/health$")'
   filter/metrics:

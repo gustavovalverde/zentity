@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/protected-resources";
+import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
 
 const RESOURCE_CONFIG = {
   appUrl: "http://localhost:3000",

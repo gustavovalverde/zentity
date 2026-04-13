@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getAuthIssuer } from "@/lib/auth/issuer";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 // Mock server-only
 vi.mock("server-only", () => ({}));
@@ -22,17 +22,17 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/trpc/jwt-session", () => ({
+vi.mock("@/lib/auth/jwt", () => ({
   verifyAuthIssuedJwt: vi.fn(),
 }));
 
-import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 
 import {
   computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
-} from "../oauth-token-validation";
+} from "../oidc/oauth-request";
 
 // Regex for validating SHA-256 hex fingerprint (64 hex characters)
 const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;

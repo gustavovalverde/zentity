@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-id";
 
 export default function ErrorPage({
   error,
@@ -30,7 +30,7 @@ export default function ErrorPage({
     };
 
     const flowId = getFlowId();
-    fetch("/api/log-client-error", {
+    fetch("/api/status/log-client-error", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

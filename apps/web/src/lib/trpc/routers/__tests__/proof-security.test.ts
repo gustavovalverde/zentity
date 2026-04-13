@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,9 +31,9 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/privacy/zk/noir-verifier", async (importOriginal) => {
+vi.mock("@/lib/privacy/zk/noir/verifier", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/privacy/zk/noir-verifier")>();
+    await importOriginal<typeof import("@/lib/privacy/zk/noir/verifier")>();
   return {
     ...actual,
     verifyNoirProof: (...args: unknown[]) => mockVerifyNoirProof(...args),
@@ -52,9 +52,9 @@ vi.mock("@/lib/privacy/zk/challenge-store", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/db/queries/crypto", async (importOriginal) => {
+vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/lib/db/queries/crypto")>();
+    await importOriginal<typeof import("@/lib/db/queries/privacy")>();
   return {
     ...actual,
     getProofSessionById: (...args: unknown[]) =>
@@ -121,7 +121,7 @@ async function createCaller(
   session: Session | null,
   options: { url?: string; headers?: HeadersInit } = {}
 ) {
-  const { zkRouter } = await import("@/lib/trpc/routers/zk/router");
+  const { zkRouter } = await import("@/lib/trpc/routers/zk");
   return zkRouter.createCaller({
     req: new Request(options.url ?? "http://localhost/api/trpc", {
       ...(options.headers === undefined ? {} : { headers: options.headers }),

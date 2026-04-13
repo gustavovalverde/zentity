@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +11,7 @@ vi.mock("@/lib/blockchain/networks", () => ({
   getNetworkById: vi.fn(),
 }));
 
-vi.mock("@/lib/blockchain/providers/factory", () => ({
+vi.mock("@/lib/blockchain/attestation/providers", () => ({
   canCreateProvider: (...args: unknown[]) => mockCanCreateProvider(...args),
   createProvider: (...args: unknown[]) => mockCreateProvider(...args),
 }));

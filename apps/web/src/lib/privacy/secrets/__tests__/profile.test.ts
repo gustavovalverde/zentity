@@ -12,7 +12,7 @@ const trpcMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../index", () => secretsIndexMocks);
+vi.mock("../vault", () => secretsIndexMocks);
 vi.mock("@/lib/trpc/client", () => ({ trpc: trpcMocks }));
 
 describe("profile secret storage", () => {

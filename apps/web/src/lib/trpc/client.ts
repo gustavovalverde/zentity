@@ -17,12 +17,13 @@
  */
 "use client";
 
+import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 
-import { getFlowId } from "@/lib/observability/flow-client";
+import { getFlowId } from "@/lib/observability/flow-id";
 
 type LogMeta = Record<string, string | number | boolean>;
 
@@ -130,3 +131,9 @@ export function getTrpcClientConfig() {
     links,
   };
 }
+
+/**
+ * Inferred response type for any router procedure.
+ * Use `RouterOutputs["identity"]["verify"]` to derive component props.
+ */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;

@@ -7,22 +7,21 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
+import { rateLimitResponse, zkLimiter } from "@/lib/http/rate-limit";
+import { toServiceErrorPayload } from "@/lib/http/route-responses";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
+import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
 import {
   generateNationalityProofInputs,
   getCountriesInGroup,
   getMerkleRoot,
   isCountryInGroup,
   listCountryGroups,
-} from "@/lib/privacy/country";
-import { poseidon2Hash } from "@/lib/privacy/primitives/barretenberg";
-import { toServiceErrorPayload } from "@/lib/utils/http-error-payload";
-import { rateLimitResponse } from "@/lib/utils/rate-limit";
-import { zkLimiter } from "@/lib/utils/rate-limiters";
+} from "@/lib/privacy/zk/country";
 
 /**
  * POST - Get Merkle proof inputs for nationality membership

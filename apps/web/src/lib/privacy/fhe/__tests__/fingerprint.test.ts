@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computePublicKeyFingerprint } from "../fingerprint";
+import { computePublicKeyFingerprint } from "../keygen-client";
 
 const SHA256_HEX_RE = /^[a-f0-9]{64}$/;
 

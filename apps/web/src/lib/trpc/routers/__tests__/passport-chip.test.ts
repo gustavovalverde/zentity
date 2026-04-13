@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,12 +50,12 @@ vi.mock("@/lib/privacy/fhe/encryption", () => ({
     mockScheduleFheEncryption(...args),
 }));
 
-vi.mock("@/lib/db/queries/crypto", () => ({
+vi.mock("@/lib/db/queries/privacy", () => ({
   insertSignedClaim: (...args: unknown[]) => mockInsertSignedClaim(...args),
   insertProofArtifact: (...args: unknown[]) => mockInsertProofArtifact(...args),
 }));
 
-vi.mock("@/lib/privacy/zk/claims", () => ({
+vi.mock("@/lib/privacy/zk/attestation-claims", () => ({
   signAttestationClaim: (...args: unknown[]) =>
     mockSignAttestationClaim(...args),
 }));

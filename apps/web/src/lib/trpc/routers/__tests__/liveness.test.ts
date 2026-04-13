@@ -1,4 +1,4 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { createHash } from "node:crypto";
 
@@ -10,10 +10,10 @@ const mockDetectFromBase64 = vi.fn();
 const mockGetIdentityDraftById = vi.fn();
 const mockUpdateIdentityDraft = vi.fn();
 
-vi.mock("@/lib/identity/liveness/human-server", async (importOriginal) => {
+vi.mock("@/lib/identity/liveness/human/server", async (importOriginal) => {
   const actual =
     await importOriginal<
-      typeof import("@/lib/identity/liveness/human-server")
+      typeof import("@/lib/identity/liveness/human/server")
     >();
   return {
     ...actual,

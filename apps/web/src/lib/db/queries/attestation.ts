@@ -1,20 +1,20 @@
 import type {
   AttestationEvidenceRecord,
   BlockchainAttestation,
-} from "../schema/attestation";
+} from "../schema/identity";
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 
 import { db } from "../connection";
 import {
   attestationEvidence,
   blockchainAttestations,
-} from "../schema/attestation";
+} from "../schema/identity";
 
 export async function upsertAttestationEvidence(args: {
   consentScope?: string | undefined;

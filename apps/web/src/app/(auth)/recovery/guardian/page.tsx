@@ -35,11 +35,15 @@ import {
 } from "@/components/ui/input-otp";
 import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
-import { registerPasskeyWithPrf } from "@/lib/auth/passkey";
-import { checkPrfSupport } from "@/lib/auth/webauthn-prf";
-import { generatePrfSalt, wrapDekWithPrf } from "@/lib/privacy/credentials";
+import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
+import { checkPrfSupport } from "@/lib/auth/passkey/prf";
+import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
+import { wrapDekWithPrf } from "@/lib/privacy/credentials/passkey";
+import {
+  base64ToBytes,
+  bytesToBase64,
+} from "@/lib/privacy/primitives/symmetric";
 import { trpc, trpcReact } from "@/lib/trpc/client";
-import { base64ToBytes, bytesToBase64 } from "@/lib/utils/base64";
 
 type RecoveryPhase =
   | "email"

@@ -1,10 +1,10 @@
-import type { Session } from "@/lib/auth/auth";
+import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import {
   cleanupExpiredKeys,
@@ -12,7 +12,8 @@ import {
   rotateSigningKey,
 } from "../jwt-signer";
 
-vi.mock("../key-vault", () => ({
+vi.mock("../jwt-signer", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../jwt-signer")>()),
   encryptPrivateKey: (v: string) => v,
   decryptPrivateKey: (v: string) => v,
 }));

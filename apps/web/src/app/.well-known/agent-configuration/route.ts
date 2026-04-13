@@ -1,12 +1,10 @@
 import { env } from "@/env";
 import {
-  type AgentConfiguration,
-  agentConfigurationSchema,
-} from "@/lib/auth/oidc/agent-configuration";
-import {
   AGENT_BOOTSTRAP_SCOPES,
   AGENT_BOOTSTRAP_TOKEN_USE,
-} from "@/lib/auth/oidc/agent-scopes";
+  type AgentConfiguration,
+  agentConfigurationSchema,
+} from "@/lib/agents/session";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 
 /**
@@ -34,7 +32,7 @@ function buildAgentConfiguration(): AgentConfiguration {
 
     // Registration
     registration_endpoint: `${baseUrl}/api/auth/agent/register`,
-    host_registration_endpoint: `${baseUrl}/api/auth/agent/register-host`,
+    host_registration_endpoint: `${baseUrl}/api/auth/agent/host/register`,
 
     // Capabilities
     capabilities_endpoint: `${baseUrl}/api/auth/agent/capabilities`,

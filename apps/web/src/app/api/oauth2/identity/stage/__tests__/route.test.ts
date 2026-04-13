@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createIdentityIntentToken } from "@/lib/auth/oidc/identity-intent";
+import { createIdentityIntentToken } from "@/lib/auth/oidc/disclosure/delivery";
 
 vi.mock("@/env", () => ({
   env: { BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long" },
@@ -16,10 +16,10 @@ const { mockComputeOAuthRequestKey, mockVerifySignedOAuthQuery } = vi.hoisted(
   })
 );
 
-vi.mock("@/lib/auth/oidc/disclosure-context", () => ({
+vi.mock("@/lib/auth/oidc/disclosure/context", () => ({
   stagePendingOauthDisclosure: mockStagePendingOauthDisclosure,
 }));
-vi.mock("@/lib/auth/oidc/oauth-query", () => ({
+vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   computeOAuthRequestKey: mockComputeOAuthRequestKey,
   parseRequestedScopes: (queryParams: URLSearchParams) =>
     (queryParams.get("scope") ?? "")
@@ -29,18 +29,18 @@ vi.mock("@/lib/auth/oidc/oauth-query", () => ({
   verifySignedOAuthQuery: mockVerifySignedOAuthQuery,
 }));
 
-vi.mock("@/lib/auth/auth", () => ({
+vi.mock("@/lib/auth/auth-config", () => ({
   auth: { api: { getSession: vi.fn() } },
 }));
 
 // Mock api-auth to prevent the real module from caching in vmThreads.
 // Without this, the real api-auth module (loaded transitively through the route)
 // persists in the VM cache and can't be overridden by subsequent test files.
-vi.mock("@/lib/auth/api-auth", () => ({
+vi.mock("@/lib/auth/resource-auth", () => ({
   requireBrowserSession: vi.fn(),
 }));
 
-import { requireBrowserSession } from "@/lib/auth/api-auth";
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 
 import { POST } from "../route";
 

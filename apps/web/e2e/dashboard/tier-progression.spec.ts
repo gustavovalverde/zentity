@@ -6,10 +6,10 @@ const IDENTITY_STATUS_PATTERN = /Identity Status/i;
 const ANONYMOUS_TIER_PATTERN = /^Anonymous$/i;
 const VERIFICATION_INCOMPLETE_PATTERN = /Verification Incomplete/i;
 const INCOMPLETE_PROOFS_PATTERN =
-  /Identity checks passed, but verification proofs still need to be generated\./i;
+  /Your document was checked, but the verification process didn.t complete fully\./i;
 const COMPLETE_VERIFICATION_PATTERN = /Complete Verification/i;
 const WHAT_YOU_CAN_DO_PATTERN = /What You Can Do/i;
-const VERIFIABLE_CREDENTIALS_PATTERN = /Verifiable Credentials/i;
+const VERIFIABLE_CREDENTIALS_PATTERN = /Digital ID/i;
 const ON_CHAIN_ATTESTATION_PATTERN = /On-Chain Attestation/i;
 const TIER_2_BADGE_PATTERN = /^Tier 2$/i;
 const UNLOCK_WITH_VERIFICATION_PATTERN = /Unlock with Verification/i;

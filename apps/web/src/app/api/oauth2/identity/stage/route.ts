@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure-context";
-import { isIdentityScope } from "@/lib/auth/oidc/disclosure-registry";
-import { IdentityFieldsSchema } from "@/lib/auth/oidc/identity-fields-schema";
-import { handleIdentityStage } from "@/lib/auth/oidc/identity-handler";
+import { stagePendingOauthDisclosure } from "@/lib/auth/oidc/disclosure/context";
+import {
+  handleIdentityStage,
+  IdentityFieldsSchema,
+} from "@/lib/auth/oidc/disclosure/delivery";
+import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import {
   computeOAuthRequestKey,
   parseRequestedScopes,
   verifySignedOAuthQuery,
-} from "@/lib/auth/oidc/oauth-query";
+} from "@/lib/auth/oidc/oauth-request";
 
 /**
  * The consent handler strips identity scopes AND deduplicates the scope

@@ -19,6 +19,7 @@ import {
   getIdentityDraftById,
   updateIdentityDraft,
 } from "@/lib/db/queries/identity";
+import { createRateLimiter } from "@/lib/http/rate-limit";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
   getEmbeddingVector,
@@ -29,16 +30,16 @@ import {
   getPrimaryFace,
   getRealScore,
   getYawDegrees,
-} from "@/lib/identity/liveness/human-metrics";
+} from "@/lib/identity/liveness/human/metrics";
 import {
   detectFromBase64,
   getHumanServer,
-} from "@/lib/identity/liveness/human-server";
+} from "@/lib/identity/liveness/human/server";
 import {
   createLivenessSession,
   getChallengeInfo,
   getLivenessSession,
-} from "@/lib/identity/liveness/liveness-session-store";
+} from "@/lib/identity/liveness/session-store";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
   ANTISPOOF_REAL_THRESHOLD,
@@ -49,8 +50,7 @@ import {
   SMILE_SCORE_THRESHOLD,
   TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
   TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/identity/liveness/policy";
-import { createRateLimiter } from "@/lib/utils/rate-limit";
+} from "@/lib/identity/liveness/thresholds";
 
 import { protectedProcedure, router } from "../server";
 

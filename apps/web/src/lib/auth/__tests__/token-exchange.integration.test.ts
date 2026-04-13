@@ -13,23 +13,25 @@ import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
-} from "@/lib/auth/authentication-context";
-import { getAuthIssuer } from "@/lib/auth/issuer";
+} from "@/lib/auth/auth-context";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
   "urn:zentity:token-type:purchase-authorization";
 
-import { resolveAgentSubForClient } from "@/lib/ciba/pairwise-agent";
+import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
-import { jwks as jwksTable } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
-import { postTokenWithDpop } from "@/test/dpop-test-utils";
+import {
+  jwks as jwksTable,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const ID_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";

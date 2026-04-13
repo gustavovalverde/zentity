@@ -12,7 +12,7 @@ export default function GlobalError({
   reset: () => void;
 }>) {
   useEffect(() => {
-    fetch("/api/log-client-error", {
+    fetch("/api/status/log-client-error", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

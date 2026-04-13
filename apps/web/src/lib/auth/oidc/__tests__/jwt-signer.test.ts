@@ -5,8 +5,7 @@ import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
-import { jwks } from "@/lib/db/schema/jwks";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { jwks, oauthClients } from "@/lib/db/schema/oauth-provider";
 
 let signJwt: typeof import("../jwt-signer").signJwt;
 

@@ -28,9 +28,12 @@ const prfMocks = vi.hoisted(() => ({
   extractPrfOutputFromClientResults: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/webauthn-prf", () => prfMocks);
+vi.mock("@/lib/auth/passkey/prf", () => prfMocks);
 
-import { registerPasskeyWithPrf, signInWithPasskey } from "@/lib/auth/passkey";
+import {
+  registerPasskeyWithPrf,
+  signInWithPasskey,
+} from "@/lib/auth/passkey/client";
 
 describe("passkey auth wrapper", () => {
   it("registers a passkey and returns PRF output from WebAuthn response", async () => {

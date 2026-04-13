@@ -19,8 +19,8 @@ import {
 } from "react";
 import { useChainId } from "wagmi";
 
-import { useFhevmSdk } from "@/hooks/fhevm/use-fhevm-sdk";
-import { useIsMounted } from "@/hooks/use-is-mounted";
+import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
+import { useIsMounted } from "@/lib/browser-hooks";
 
 interface FhevmContextValue {
   /** Error if initialization failed */

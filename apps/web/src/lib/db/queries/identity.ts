@@ -19,14 +19,19 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   canCreateProvider,
   createProvider,
-} from "@/lib/blockchain/providers/factory";
+} from "@/lib/blockchain/attestation/providers";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
+import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
   blockchainAttestations,
-} from "../schema/attestation";
+  identityBundles,
+  identityVerificationDrafts,
+  identityVerificationJobs,
+  identityVerifications,
+} from "../schema/identity";
 import {
   encryptedAttributes,
   encryptedSecrets,
@@ -35,15 +40,8 @@ import {
   secretWrappers,
   signedClaims,
   zkChallenges,
-} from "../schema/crypto";
-import {
-  identityBundles,
-  identityVerificationDrafts,
-  identityVerificationJobs,
-  identityVerifications,
-} from "../schema/identity";
-import { pushSubscriptions } from "../schema/push";
-import { getSignedClaimTypesByUserAndVerification } from "./crypto";
+} from "../schema/privacy";
+import { getSignedClaimTypesByUserAndVerification } from "./privacy";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
@@ -869,7 +867,9 @@ export async function revokeIdentity(
       .run();
 
     // Step 3: Revoke OID4VCI issued credentials (status 0 → 1)
-    const { oidc4vciIssuedCredentials } = await import("../schema/oidc4vci");
+    const { oidc4vciIssuedCredentials } = await import(
+      "../schema/oidc-credentials"
+    );
     const credResult = await tx
       .update(oidc4vciIssuedCredentials)
       .set({

@@ -4,14 +4,16 @@ import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
-import { auth } from "@/lib/auth/auth";
-import { createAuthenticationContext } from "@/lib/auth/authentication-context";
+import { auth } from "@/lib/auth/auth-config";
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
-import { haipPushedRequests } from "@/lib/db/schema/haip";
 import { identityBundles } from "@/lib/db/schema/identity";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test/db-test-utils";
+import {
+  haipPushedRequests,
+  oauthClients,
+} from "@/lib/db/schema/oauth-provider";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "step-up-test-client";
 const REDIRECT_URI = "http://localhost:3102/callback";

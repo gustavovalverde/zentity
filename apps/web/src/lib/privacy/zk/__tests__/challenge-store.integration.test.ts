@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Mock server-only (no-op in test environment)
 vi.mock("server-only", () => ({}));
 
-import { resetDatabase } from "@/test/db-test-utils";
+import { resetDatabase } from "@/test-utils/db-test-utils";
 
 import {
   consumeChallenge,

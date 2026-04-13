@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth/auth";
+import { auth } from "@/lib/auth/auth-config";
 import {
   buildWellKnownResponse,
   callAuthApi,
@@ -6,7 +6,7 @@ import {
   enrichDiscoveryMetadata,
   issuerPathMatches,
   unwrapMetadata,
-} from "@/lib/auth/well-known-utils";
+} from "@/lib/auth/oidc/well-known";
 
 export async function GET(
   _request: Request,

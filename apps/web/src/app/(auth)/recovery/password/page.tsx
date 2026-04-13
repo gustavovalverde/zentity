@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
 import {
   Card,
   CardContent,
@@ -8,6 +7,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+import { ForgotPasswordForm } from "../../_components/forgot-password-form";
 
 export default function ForgotPasswordPage() {
   return (

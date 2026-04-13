@@ -1,14 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { HttpError } from "@/lib/http/fetch";
+import {
+  getClientIp,
+  ocrLimiter,
+  rateLimitResponse,
+} from "@/lib/http/rate-limit";
+import { sanitizeAndLogApiError } from "@/lib/http/route-responses";
 import { ocrDocumentOcr } from "@/lib/identity/document/ocr-client";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { sanitizeAndLogApiError } from "@/lib/utils/api-error";
-import { HttpError } from "@/lib/utils/http";
-import { getClientIp, rateLimitResponse } from "@/lib/utils/rate-limit";
-import { ocrLimiter } from "@/lib/utils/rate-limiters";
 
 interface OCRRequest {
   image: string;

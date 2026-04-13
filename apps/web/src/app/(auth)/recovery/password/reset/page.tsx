@@ -1,7 +1,6 @@
 import { AlertCircle } from "lucide-react";
 import Link from "next/link";
 
-import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +10,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+import { ResetPasswordForm } from "../../../_components/reset-password-form";
 
 interface PageProps {
   searchParams: Promise<{ token?: string }>;

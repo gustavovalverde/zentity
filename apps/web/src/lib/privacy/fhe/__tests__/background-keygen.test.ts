@@ -13,7 +13,7 @@ vi.mock("@/lib/privacy/fhe/keygen-client", () => ({
 }));
 
 const fetchMsgpack = vi.fn();
-vi.mock("@/lib/privacy/utils/binary-transport", () => ({
+vi.mock("@/lib/http/binary-transport", () => ({
   fetchMsgpack,
 }));
 

@@ -292,7 +292,7 @@ sequenceDiagram
     C->>AS: 1. Exchange login token for bootstrap token<br/>Scope: agent:host.register agent:session.register agent:session.revoke
     AS-->>C: 2. DPoP bootstrap token
 
-    C->>AS: 3. POST /register-host<br/>Authorization: DPoP bootstrap token<br/>Body: { publicKey, name }
+    C->>AS: 3. POST /host/register<br/>Authorization: DPoP bootstrap token<br/>Body: { publicKey, name }
     Note right of AS: Compute JWK thumbprint<br/>Upsert agent_host
     AS-->>C: { hostId, attestation_tier }
 
@@ -881,7 +881,7 @@ This section describes the profile's discovery and verification endpoints. They 
 {
   "issuer": "https://as.example.com",
   "registration_endpoint": "https://as.example.com/api/auth/agent/register",
-  "host_registration_endpoint": "https://as.example.com/api/auth/agent/register-host",
+  "host_registration_endpoint": "https://as.example.com/api/auth/agent/host/register",
   "capabilities_endpoint": "https://as.example.com/api/auth/agent/capabilities",
   "introspection_endpoint": "https://as.example.com/api/auth/agent/introspect",
   "revocation_endpoint": "https://as.example.com/api/auth/agent/revoke",

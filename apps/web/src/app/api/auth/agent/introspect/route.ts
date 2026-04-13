@@ -3,23 +3,23 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { requireClientCredentials } from "@/lib/auth/api-auth";
+import {
+  loadAapProfileForTokenJti,
+  readAapProfileFromPayload,
+} from "@/lib/agents/act-claim";
+import { observeSessionLifecycle } from "@/lib/agents/session";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
-import {
-  loadAapProfileForTokenJti,
-  readAapProfileFromPayload,
-} from "@/lib/ciba/aap-profile";
-import { observeSessionLifecycle } from "@/lib/ciba/agent-lifecycle";
+import { requireClientCredentials } from "@/lib/auth/resource-auth";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
   oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
-import { verifyAuthIssuedJwt } from "@/lib/trpc/jwt-session";
 
 export const runtime = "nodejs";
 

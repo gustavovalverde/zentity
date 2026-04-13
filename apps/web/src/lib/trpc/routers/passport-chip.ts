@@ -12,10 +12,6 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  insertProofArtifact,
-  insertSignedClaim,
-} from "@/lib/db/queries/crypto";
-import {
   createVerification,
   dedupKeyExistsForOtherUser,
   getIdentityBundleByUserId,
@@ -24,17 +20,21 @@ import {
   isChipVerified,
   isNullifierUsedByOtherUser,
 } from "@/lib/db/queries/identity";
-import { computeDedupKey } from "@/lib/identity/dedup";
+import {
+  insertProofArtifact,
+  insertSignedClaim,
+} from "@/lib/db/queries/privacy";
 import {
   calculateBirthYearOffsetFromYear,
   dobToDaysSince1900,
   parseBirthYearFromDob,
 } from "@/lib/identity/verification/birth-year";
+import { computeDedupKey } from "@/lib/identity/verification/dedup";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
-import { signAttestationClaim } from "@/lib/privacy/zk/claims";
-import { computeProofSetHash } from "@/lib/privacy/zk/verification-utils";
+import { signAttestationClaim } from "@/lib/privacy/zk/attestation-claims";
+import { computeProofSetHash } from "@/lib/privacy/zk/proof-verification";
 import { verifyZkPassportProofs } from "@/lib/privacy/zk/zkpassport-verifier";
 
 import { protectedProcedure, router } from "../server";
