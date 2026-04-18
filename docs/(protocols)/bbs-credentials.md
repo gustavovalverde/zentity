@@ -1,4 +1,6 @@
-# BBS+ Credentials Module
+---
+title: BBS+ Credentials
+---
 
 Internal BBS+ credential implementation for wallet identity verification
 with selective disclosure.
