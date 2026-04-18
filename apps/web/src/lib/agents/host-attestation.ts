@@ -132,6 +132,7 @@ async function verifyWithIssuer(
   const { payload } = await jwtVerify(attestationJwt, jwks, {
     audience,
     issuer,
+    typ: "oauth-client-attestation+jwt",
   });
 
   const cnf = payload.cnf as { jwk?: Record<string, unknown> } | undefined;
@@ -144,7 +145,10 @@ async function verifyWithIssuer(
     (cnf.jwk.alg as string | undefined) ??
     (cnf.jwk.kty === "OKP" ? "EdDSA" : undefined);
   const popKey = await importJWK(cnf.jwk, popAlg);
-  await jwtVerify(popJwt, popKey, { audience });
+  await jwtVerify(popJwt, popKey, {
+    audience,
+    typ: "oauth-client-attestation-pop+jwt",
+  });
 
   const provider = (payload.attester_name as string) ?? attester.issuer;
 

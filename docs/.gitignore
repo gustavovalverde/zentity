@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# kdrfc / xml2rfc reference cache
+.refcache/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+
+# Editor / OS
+*.swp
+*.swo
+Thumbs.db

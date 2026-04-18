@@ -8,12 +8,7 @@ import {
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth";
 import { eq } from "drizzle-orm";
-import {
-  createLocalJWKSet,
-  decodeProtectedHeader,
-  jwtVerify,
-  SignJWT,
-} from "jose";
+import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import {
@@ -46,11 +41,7 @@ import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
-import {
-  getClientSigningAlg,
-  getOrCreateSigningKey,
-  signJwt,
-} from "@/lib/auth/oidc/jwt-signer";
+import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
@@ -68,8 +59,6 @@ export const TOKEN_EXCHANGE_GRANT_TYPE =
 
 const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const TOKEN_TYPE_ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token";
-const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
-  "urn:zentity:token-type:purchase-authorization";
 
 const SUPPORTED_SUBJECT_TYPES = new Set([
   TOKEN_TYPE_ACCESS_TOKEN,
@@ -79,7 +68,6 @@ const SUPPORTED_SUBJECT_TYPES = new Set([
 const SUPPORTED_OUTPUT_TYPES = new Set([
   TOKEN_TYPE_ACCESS_TOKEN,
   TOKEN_TYPE_ID_TOKEN,
-  PURCHASE_AUTHORIZATION_TOKEN_TYPE,
 ]);
 
 const authIssuer = getAuthIssuer();
@@ -148,20 +136,6 @@ async function verifySubjectToken(
   const jwks = await buildLocalJwks(header.kid);
   const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
   return payload as Record<string, unknown>;
-}
-
-function getAudienceClient(clientId: string) {
-  return db
-    .select({
-      clientId: oauthClients.clientId,
-      grantTypes: oauthClients.grantTypes,
-      redirectUris: oauthClients.redirectUris,
-      subjectType: oauthClients.subjectType,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
 }
 
 function getRequestingClientMetadata(clientId: string) {
@@ -518,118 +492,6 @@ function createTokenExchangeHandler(): (
       taskPurpose: parentAapProfile.task?.purpose,
       traceId: parentAapProfile.audit?.trace_id,
     });
-
-    if (outputType === PURCHASE_AUTHORIZATION_TOKEN_TYPE) {
-      if (subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_request",
-          error_description:
-            "Purchase authorization artifacts require an access token subject",
-        });
-      }
-
-      if (!dpopJkt) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_request",
-          error_description:
-            "Purchase authorization artifacts require a DPoP-bound token exchange request",
-        });
-      }
-
-      const audienceClientId = audienceParam as string | undefined;
-      if (!audienceClientId) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_request",
-          error_description:
-            "audience is required for purchase authorization artifacts",
-        });
-      }
-
-      const audienceClient = await getAudienceClient(audienceClientId);
-      if (!audienceClient) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_target",
-          error_description: "Unknown purchase artifact audience",
-        });
-      }
-
-      if (!(actorSub && sourceClientId && actorSessionId)) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_grant",
-          error_description: "Subject token is missing actor context",
-        });
-      }
-
-      const audienceSub = await resolveSubForClient(rawUserId, {
-        subjectType: audienceClient.subjectType ?? null,
-        redirectUris: parseStoredStringArray(audienceClient.redirectUris),
-      });
-      const audienceActSub = await resolveAgentSubForClient(
-        actorSessionId,
-        audienceClient.clientId
-      );
-
-      const rawAuthorizationDetails = subjectPayload.authorization_details;
-      let authorizationDetails: unknown[];
-      if (Array.isArray(rawAuthorizationDetails)) {
-        authorizationDetails = rawAuthorizationDetails;
-      } else if (rawAuthorizationDetails == null) {
-        authorizationDetails = [];
-      } else {
-        authorizationDetails = [rawAuthorizationDetails];
-      }
-      const purchaseDetails = authorizationDetails.filter((detail) => {
-        return (
-          typeof detail === "object" &&
-          detail !== null &&
-          (detail as { type?: string }).type === "purchase"
-        );
-      });
-
-      if (purchaseDetails.length === 0) {
-        throw new APIError("BAD_REQUEST", {
-          error: "invalid_grant",
-          error_description:
-            "Subject token does not contain an approved purchase authorization detail",
-        });
-      }
-
-      const { kid, privateKey } = await getOrCreateSigningKey("EdDSA");
-      const artifactPayload: Record<string, unknown> = {
-        iss: authIssuer,
-        sub: audienceSub,
-        aud: audienceClient.clientId,
-        jti,
-        act: { sub: audienceActSub },
-        authorization_details: purchaseDetails,
-        iat: now,
-        exp,
-        ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
-      };
-
-      const artifact = await new SignJWT(artifactPayload)
-        .setProtectedHeader({
-          alg: "EdDSA",
-          kid,
-          typ: "purchase-authorization+jwt",
-        })
-        .sign(privateKey);
-
-      return ctx.json(
-        {
-          access_token: artifact,
-          issued_token_type: PURCHASE_AUTHORIZATION_TOKEN_TYPE,
-          token_type: "N_A",
-          expires_in: expiresIn,
-        },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-            Pragma: "no-cache",
-          },
-        }
-      );
-    }
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {

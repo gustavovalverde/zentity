@@ -12,38 +12,15 @@ description: Verified Ephemeral Identity Layer is a privacy-preserving identity 
 
 ## Abstract
 
-VEIL (Verified Ephemeral Identity Layer) is a security profile of OAuth 2.1 for privacy-preserving identity verification. It defines how an authorization server delivers verified claims about a person without exposing the underlying identity data that produced those claims.
-
-The profile introduces a two-track claim model: *proof claims* (boolean verification results, compliance flags, assurance levels) flow freely through tokens, while *identity claims* (name, date of birth, address, nationality) flow only through an ephemeral, single-consume delivery channel that keeps PII off long-lived tokens entirely. Subjects are pairwise by default. Consent is HMAC-verified. Step-up authentication enforces assurance tiers proportional to the sensitivity of the requested operation.
-
-VEIL is the foundation for domain-specific extensions. PACT (Private Agent Consent and Trust Profile) extends VEIL for agent delegation. Future extensions may cover verifiable credential issuance and presentation, regulatory compliance surfaces, or other domains that share the same privacy model.
+VEIL (Verified Ephemeral Identity Layer) is a security profile of OAuth 2.1 for privacy-preserving identity verification. It separates claims into two tracks: *proof claims* (boolean verification results, compliance flags, assurance levels) travel through standard token claims, while *identity claims* (name, date of birth, address, nationality) travel only through an ephemeral, single-consume channel that keeps PII off long-lived tokens. Subject identifiers are pairwise by default. Consent records are HMAC-protected. Step-up authentication scales with operation sensitivity. VEIL is the base profile for domain-specific extensions; PACT (Private Agent Consent and Trust Profile) extends it for agent delegation.
 
 ---
 
-## 1. Motivation
+## 1. Introduction
 
-### 1.1 Attestation Without Exposure
+Identity verification produces two kinds of outputs: *attestation* (boolean results, compliance scores, assurance tiers) and *identity data* (name, date of birth, address, document details). OpenID Connect Core 1.0 delivers both through the same channel, with the same lifetime and the same correlation properties. VEIL separates them: attestation is carried in standard token claims, while identity data is delivered through an ephemeral, single-consume channel bound to a user-initiated disclosure intent.
 
-Identity verification produces two structurally different outputs. The first is *attestation*: boolean results, compliance scores, and assurance tiers that answer questions like "is this person old enough?", "is this person in a permitted jurisdiction?", and "does this person have a verified document?" The second is *identity data*: the name, date of birth, address, and document details that were examined to produce those attestations.
-
-Relying parties almost always need the first kind. They rarely need the second, and when they do, they need it temporarily for a specific operation (shipping an order, filing a regulatory report) rather than permanently. Yet the standard OpenID Connect model delivers both kinds through the same channel, with the same lifetime, and the same correlation properties.
-
-VEIL separates them. Attestation flows through standard OAuth token claims. Identity data flows through an ephemeral channel with single-consume semantics. The relying party receives proof that the authorization server verified the user's identity without accumulating a plaintext PII database.
-
-### 1.2 Design Principles
-
-Six principles govern the profile's design. They share a common orientation: the default posture is privacy-preserving, and any deviation from that posture requires explicit opt-in.
-
-1. **Two-track by default.** Proof claims and identity claims are structurally separated at the scope level, the consent level, and the delivery level.
-2. **Pairwise by default.** Subject identifiers are per-relying-party pseudonyms. Global identifiers require explicit opt-in.
-3. **Ephemeral by default.** Identity data is staged in memory with a TTL and consumed once, never embedded in tokens. The system forgets what it does not need.
-4. **Abstract assurance.** The profile defines the interface for assurance level derivation (inputs, outputs, tiered levels) without mandating a specific verification pipeline.
-5. **Step-up proportional.** Consent strength and assurance requirements scale with the sensitivity of the requested operation.
-6. **Composable.** Domain-specific extensions (agent delegation, verifiable credentials, regulatory compliance) build on this foundation without modifying it.
-
-### 1.3 Compositional Stance
-
-VEIL profiles and constrains the following specifications:
+The profile composes and constrains the following specifications:
 
 | Concern | Specifications |
 |---------|---------------|
@@ -57,14 +34,7 @@ VEIL profiles and constrains the following specifications:
 | Token Introspection | RFC 7662 |
 | Back-Channel Logout | OIDC Back-Channel Logout 1.0 |
 
-VEIL adds six capabilities at the composition seams, in the spaces between those specifications where privacy-relevant decisions are made:
-
-1. Two-track claim model (Section 5)
-2. Ephemeral identity delivery (Section 6)
-3. Pairwise subject identifiers as default (Section 4)
-4. Abstract assurance level derivation (Section 7)
-5. Consent integrity verification (Section 9)
-6. Extension profile architecture (Section 13)
+This document specifies: a two-track claim model (§5), an ephemeral identity delivery channel (§6), pairwise subject identifiers as the default (§4), an abstract interface for assurance level derivation (§7), HMAC-verified consent integrity (§9), and an extension profile architecture for domain-specific profiles (§13).
 
 ---
 
@@ -96,13 +66,11 @@ VEIL uses `MAJOR.MINOR[-draft]` versioning. Implementations MUST reject configur
 
 **Step-Up Authentication.** A flow where the authorization server enforces a higher assurance requirement (`acr_values`) or session freshness (`max_age`) than the user's current session provides, triggering re-verification or re-authentication.
 
-With the problem space and vocabulary in place, the remaining sections walk through VEIL's requirements in a sequence that mirrors how a request flows through the system: transport (Section 3), subject identity (Section 4), claim selection (Section 5), PII delivery (Section 6), assurance evaluation (Section 7), and the infrastructure that supports them all (Sections 8 through 11).
-
 ---
 
 ## 3. Transport Constraints
 
-Every requirement in this section narrows the OAuth 2.1 optionality space to eliminate choices that weaken the privacy model. The shared pattern is *mandatory security*: where OAuth 2.1 says SHOULD or RECOMMENDED, VEIL says MUST.
+The following OAuth 2.1 options are mandatory under this profile. Requirements that OAuth 2.1 states as SHOULD or RECOMMENDED are restated here as MUST.
 
 ### 3.1 Authorization Server Requirements
 
@@ -135,13 +103,11 @@ Clients MUST NOT:
 - Use the implicit grant
 - Use the resource owner password credentials grant
 
-Transport constraints secure the channel -- but who appears at each end?
-
 ---
 
 ## 4. Subject Unlinkability
 
-The default posture of OIDC is globally stable subject identifiers: one `sub` per user, the same value sent to every RP. VEIL inverts this default. Unless a client explicitly requests global identifiers, every relying party sees a different pseudonym for the same user, making cross-RP correlation structurally impossible.
+Under this profile, pairwise subject identifiers are the default. Unless a client explicitly registers `subject_type: "public"`, each relying party receives a distinct pseudonym for the same user, preventing cross-RP correlation through the subject identifier.
 
 ### 4.1 Default Posture
 
@@ -171,13 +137,11 @@ When performing RFC 8693 Token Exchange with an `audience` parameter, the author
 
 Extension profiles MAY apply pairwise derivation to additional token claims. PACT extends pairwise derivation to the `act.sub` claim for agent session identifiers.
 
-With cross-RP correlation blocked, the remaining question is what each RP learns about the user behind its pseudonym.
-
 ---
 
 ## 5. Claim Separation
 
-Every identity system delivers claims. What distinguishes VEIL is that claims are divided into two structurally distinct tracks based on a single criterion: whether they contain personally identifiable information. The separation is not a policy recommendation; it is enforced at three levels simultaneously (scope definitions, consent decisions, and delivery mechanisms) so that no single point of failure can collapse the two tracks into one.
+VEIL divides claims into two tracks based on whether they contain personally identifiable information. The separation is enforced at three independent layers: scope definitions (§5.1), consent decisions (§5.3), and delivery mechanisms (§6).
 
 ### 5.1 The Two Tracks
 
@@ -227,13 +191,11 @@ sybil_nullifier = HMAC-SHA-256(DEDUP_HMAC_SECRET, dedupKey + ":" + clientId)
 
 The same person receives the same nullifier at one RP but different nullifiers at different RPs. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage.
 
-Proof claims now flow freely; identity claims are locked behind a gate. How do those locked claims actually reach an RP when they are genuinely needed?
-
 ---
 
 ## 6. Transient Disclosure
 
-Every element in this section answers one question: how does PII reach the relying party without persisting beyond the moment it is needed? The mechanism is an in-memory store with single-consume semantics, bound to a user-initiated intent flow. The variation across implementations is the unlock mechanism (passkey PRF, password-derived key, wallet signature); the profile mandates the delivery semantics while leaving the unlock mechanism unspecified.
+Identity claims (PII) reach the relying party through an in-memory store with single-consume semantics, bound to a user-initiated intent flow. The profile mandates the delivery semantics; the unlock mechanism (passkey PRF, password-derived key, wallet signature) is implementation-specific.
 
 ### 6.1 Single-Consume Properties
 
@@ -270,13 +232,11 @@ The ephemeral store MUST NOT contain:
 
 Only the identity claims authorized by the approved identity scopes are staged.
 
-Ephemeral delivery solves the transport of PII. A prior question remains: how does the server determine what level of trust the user's identity warrants in the first place?
-
 ---
 
 ## 7. Tiered Verification
 
-Every identity system needs a way to express "how verified is this person?" The systems differ in whether that expression is coupled to the verification pipeline or abstracted from it. VEIL abstracts: it defines the interface (what goes in, what comes out, what properties the function must have) while leaving the verification pipeline, check definitions, and tier labels to each implementation.
+VEIL defines the interface for assurance level derivation (inputs, outputs, properties) but leaves the verification pipeline, check definitions, and tier labels to each implementation.
 
 ### 7.1 Abstract Interface
 
@@ -318,9 +278,9 @@ When a client includes `acr_values` in an authorization request, the authorizati
 
 When a client includes `max_age`, the authorization server MUST verify that the user's session is not older than the specified value. If it is, the server MUST require re-authentication. In PAR-based flows, the PAR record SHOULD be preserved with an extended TTL to cover the re-authentication round-trip, so the authorization flow can resume after login. When `acr_values` cannot be satisfied in a browser-based PAR flow, the PAR record MUST be deleted and the server MUST redirect with the same step-up error contract used for other authorization flows (for example, `interaction_required`).
 
-Extension profiles MAY define additional step-up enforcement points. PACT enforces `acr_values` at both CIBA approval time and token exchange time.
+ACR identifiers are deployment-local. Consistent with OIDC Core 1.0 Section 2 and established IETF practice (e.g., `urn:mace:incommon:iap:silver`), a conforming authorization server MUST document the ACR URNs it issues and their tier semantics in its discovery metadata (`acr_values_supported`). VEIL does not register specific ACR values and does not reserve a VEIL-specific ACR namespace; interoperability is achieved by publishing the local URNs rather than by centralized registration.
 
-Because assurance claims travel inside signed JWTs, the signing layer itself needs constraints.
+Extension profiles MAY define additional step-up enforcement points. PACT enforces `acr_values` at both CIBA approval time and token exchange time.
 
 ---
 
@@ -340,13 +300,11 @@ Signing keys MUST be encrypted at rest (SHOULD use AES-256-GCM with a dedicated 
 
 Key rotation MUST support an overlap window during which both the retiring and replacement keys are served by the JWKS endpoint. The retiring key carries an `expiresAt` timestamp; after the overlap window, it is removed.
 
-Token signatures guard integrity in transit. The decisions that *produce* those tokens -- consent records -- need their own tamper-evidence guarantees.
-
 ---
 
 ## 9. Tamper-Evident Consent
 
-Consent records are the authorization server's memory of what the user approved. If that memory can be altered, the two-track model and ephemeral delivery provide no protection, because an attacker who can escalate stored scopes can bypass both mechanisms. VEIL makes consent tamper-evident through HMAC verification and structurally prevents identity scope persistence.
+An attacker who can modify stored consent scopes can bypass both the two-track model and ephemeral delivery. Consent records are protected by an HMAC (§9.1), and identity scopes are excluded from durable consent storage (§9.2).
 
 ### 9.1 Scope Verification
 
@@ -408,9 +366,9 @@ Extension profiles define their own discovery documents at dedicated well-known 
 
 ---
 
-## 12. Security Boundaries
+## 12. Security Considerations
 
-VEIL's protections (PII ephemeral delivery, subject unlinkability, consent integrity) are not a closed system. This section addresses the residual attack surface they leave open.
+Implementations MUST satisfy the security considerations of each composed specification: OAuth 2.1, PKCE (RFC 7636), PAR (RFC 9126), DPoP (RFC 9449), RAR (RFC 9396), Token Exchange (RFC 8693), OIDC Core 1.0, and OIDC Back-Channel Logout 1.0.
 
 ### 12.1 PII Exposure Window
 
@@ -430,7 +388,7 @@ DPoP sender-constraining prevents token theft and replay. When combined with pai
 
 ## 13. Compositional Extension
 
-VEIL covers the privacy properties that every identity scenario shares. Domain-specific use cases (agent delegation, verifiable credentials, regulatory compliance) each require additional capabilities that do not belong in the core. This section defines how extensions relate to VEIL without modifying it.
+Domain-specific profiles (agent delegation, verifiable credentials, regulatory compliance) extend VEIL through the mechanism defined below. Extensions MUST NOT modify VEIL itself.
 
 ### 13.1 Architecture
 
@@ -466,9 +424,9 @@ Extension profiles MAY:
 
 ---
 
-## 14. Unlinkability by Default
+## 14. Privacy Considerations
 
-Extension boundaries define what third-party profiles may and may not do. This section turns inward to what VEIL itself *refuses to create*: correlators. Every consideration here is an instance of the same principle, that the default posture is unlinkability and any deviation requires explicit opt-in.
+Implementations MUST satisfy the privacy considerations of each composed specification. Participants are the authorization server (AS), the relying party (RP), and the end user. Data categories are proof claims (§5), pairwise subjects (§4), sybil nullifiers (§5.4), and identity claims (PII), which flow only through the ephemeral channel (§6). Cross-RP correlation through subject identifiers requires explicit opt-in at registration (`subject_type: "public"`); identity disclosure requires explicit opt-in at authorization (identity scopes, per-scope user consent).
 
 ### 14.1 Double Anonymity
 
@@ -497,9 +455,31 @@ Proof claims are derived from cryptographic artifacts, not from raw PII. The aut
 
 ---
 
-## 15. Conformance
+## 15. IANA Considerations
 
-### 15.1 Authorization Server Requirements
+This document has no immediate IANA actions that require new registry creation. It relies on identifiers and registries that are either already allocated or that are delegated to extension profiles.
+
+### 15.1 OAuth Parameter Registries
+
+VEIL does not register new OAuth parameters, grant types, token type URIs, client metadata fields, or authorization server metadata fields. It narrows existing OAuth 2.1 and OIDC Core 1.0 parameters to a mandatory subset (see §3, §11). Extension profiles that build on VEIL (e.g., PACT) are responsible for registering any new OAuth identifiers they introduce.
+
+### 15.2 Well-Known URI Registrations
+
+VEIL relies on the existing well-known URI registrations `openid-configuration` (OIDC Discovery 1.0) and `oauth-authorization-server` (RFC 8414). It does not register a new well-known URI. Extension profiles MAY register their own well-known URI suffixes per RFC 8615.
+
+### 15.3 Assurance Certification Values (`acr`)
+
+ACR URNs listed in `acr_values_supported` are deployment-local, consistent with OIDC Core 1.0 Section 2 and established IETF practice. VEIL does not register a VEIL-specific ACR namespace and does not request a registry; each authorization server documents its own ACR URNs and their tier mapping in its discovery metadata (see §7.3).
+
+### 15.4 Verifiable Credential Type Identifiers
+
+Where a deployment emits verifiable credentials, credential type identifiers (VCT) MUST be provider-neutral URNs (see §14.4). VEIL does not define or reserve specific VCT URNs; deployments choose values consistent with the credential ecosystem they participate in.
+
+---
+
+## 16. Conformance
+
+### 16.1 Authorization Server Requirements
 
 A conforming authorization server MUST:
 
@@ -514,7 +494,7 @@ A conforming authorization server MUST:
 - Support back-channel logout (Section 10)
 - Publish OIDC Discovery metadata per Section 11
 
-### 15.2 Client Requirements
+### 16.2 Client Requirements
 
 A conforming client MUST:
 
@@ -526,7 +506,7 @@ A conforming client MUST:
 
 ---
 
-## 16. Standards Composition
+## 17. Standards Composition
 
 | Surface | Specification | Role in VEIL |
 |---------|---------------|-------------|
@@ -547,7 +527,7 @@ A conforming client MUST:
 
 ---
 
-## 17. References
+## 18. References
 
 ### Normative References
 

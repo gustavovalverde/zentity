@@ -12,57 +12,27 @@ description: Private Agent Consent and Trust is a security profile for agent aut
 
 ## Abstract
 
-PACT (Private Agent Consent and Trust Profile) is an extension of the VEIL (Verified Ephemeral Identity Layer) security profile for privacy-preserving agent delegation. It defines how an agent acts on behalf of a human under structured constraints, with human consent proportional to risk, without creating globally trackable agent identifiers.
-
-PACT inherits VEIL's privacy foundations (pairwise subjects, ephemeral PII delivery, two-track claims, consent integrity, step-up authentication) and extends them with agent-specific capabilities: host and session identity, CIBA-based consent routing, capability grants with typed constraints and usage limits, cryptographic binding chains, pairwise agent identifiers, and audience-bound authorization artifacts.
-
-PACT composes VEIL with CIBA (OIDC CIBA Core 1.0), the Agent Auth Protocol (v1.0-draft), and the AAP OAuth Profile (draft-aap-oauth-profile) into a coherent agent authorization stack organized around five architectural concerns: secure transport, structured intent, the agent control plane, the consent channel, and token semantics.
+PACT (Private Agent Consent and Trust Profile) is a security profile of OAuth 2.1 for privacy-preserving agent delegation. It extends VEIL and composes OIDC CIBA Core 1.0 and OAuth Token Exchange (RFC 8693). PACT defines a durable-host plus ephemeral-session control plane, a delegation token claim vocabulary, runtime identity proofs using Ed25519 JWTs, capability grants with typed constraints and usage limits, risk-graduated consent routing, and claim narrowing on token exchange to non-agent audiences. Claim names align with the Agent Auth Protocol and draft-aap-oauth-profile (§17).
 
 ---
 
-## 1. Motivation
+## 1. Introduction
 
-### 1.1 The Compositional Opportunity
+An agent acting on behalf of a human needs three properties at once: machine authentication (the caller proves it is a specific runtime, not merely the application that launched it), human consent (the human approves sensitive actions through a channel the agent cannot subvert), and privacy-preserving delegation (the relying party learns who acted without receiving a globally trackable identifier).
 
-AI agents that act on behalf of humans need three properties simultaneously: machine authentication (the caller proves it is a specific runtime, not merely the application that launched it), human consent (the human approves sensitive actions through a channel the agent cannot subvert), and privacy-preserving delegation (the relying party learns who acted without receiving a globally trackable identifier).
+Existing specifications cover each property in isolation. CIBA (OIDC CIBA Core 1.0) provides a backchannel consent channel. DPoP (RFC 9449) sender-constrains tokens. RAR (RFC 9396) carries structured authorization payloads. Token Exchange (RFC 8693) rebinds audience and scope. PACT specifies how agent identity, human consent, and token issuance compose into a single delegation flow.
 
-The standards ecosystem provides strong foundations for each of these properties individually. The Agent Auth Protocol (agent-auth-protocol.com) establishes agents as first-class principals with Ed25519 keypairs, capability grants, and lifecycle management. The AAP OAuth Profile (draft-aap-oauth-profile) defines JWT claim vocabulary for agent metadata, delegation depth, and oversight declarations. CIBA (OIDC CIBA Core 1.0) provides a backchannel consent mechanism originally designed for IoT and call centers. DPoP (RFC 9449) sender-constrains tokens. RAR (RFC 9396) carries structured authorization payloads. Token Exchange (RFC 8693) rebinds audience and scope.
-
-Each of these specifications is well-designed for its concern. What is missing is the composition layer: the wiring that connects agent identity to human consent to privacy-preserving token issuance. That composition layer is what this profile defines.
-
-PACT inherits the Agent Auth Protocol's host-and-session identity model, the AAP's token claim vocabulary, and CIBA's consent semantics. It adds six capabilities that emerge at the seams between those foundations: pairwise agent identifiers, risk-graduated consent routing, usage-limited capability grants, cryptographic binding chains, ephemeral identity disclosure, and audience-bound authorization artifacts.
-
-### 1.2 Design Principles
-
-Six principles govern the profile's design:
-
-1. **Privacy-consistent.** Agent identifiers follow the same pairwise model as user identifiers. Pairwise by default; global by opt-in.
-2. **Cryptographically verified.** Agents prove identity via Ed25519 signatures, not self-declared metadata.
-3. **Capability-based.** Named actions with typed constraints replace flat scopes.
-4. **Risk-graduated.** Consent strength matches operation sensitivity.
-5. **Non-repudiable.** Task attestation creates cryptographic pre-commitment to agent intent.
-6. **Composable.** Built from existing RFCs, not a monolithic replacement.
-
-### 1.3 Compositional Stance
-
-PACT composes rather than replaces. It defines how existing standards wire together, without inventing new message formats, discovery mechanisms, or transport protocols.
+The profile composes and constrains the following specifications:
 
 | Concern | Specifications |
 |---------|---------------|
 | Secure Transport | OAuth 2.1 (draft-ietf-oauth-v2-1), PKCE (RFC 7636), PAR (RFC 9126), DPoP (RFC 9449) |
 | Structured Intent | Rich Authorization Requests (RFC 9396) |
-| Agent Control Plane | Agent Auth Protocol (v1.0-draft), OAuth Client Attestation (draft-ietf-oauth-attestation-based-client-auth-08) |
+| Agent Control Plane | PACT (this document), OAuth Client Attestation (draft-ietf-oauth-attestation-based-client-auth-08) |
 | Consent Channel | CIBA (OIDC CIBA Core 1.0) |
-| Token Semantics | Token Exchange (RFC 8693), Token Introspection (RFC 7662), OIDC Core Pairwise Identifiers, AAP OAuth Profile |
+| Token Semantics | Token Exchange (RFC 8693), Token Introspection (RFC 7662), OIDC Core Pairwise Identifiers |
 
-The six capabilities this profile adds emerge at the seams between those standards, in the composition layer that connects them:
-
-1. Pairwise agent identifiers (Section 4.3)
-2. Risk-graduated consent routing (Section 6.2)
-3. Usage-limited capability grants (Section 5.5)
-4. Cryptographic binding chains (Section 11)
-5. Ephemeral identity disclosure (Section 11.5)
-6. Audience-bound authorization artifacts (Section 8)
+This document specifies: pairwise agent identifiers (§4.3), risk-graduated consent routing (§6.2), usage-limited capability grants (§5.5), cryptographic binding chains (§11), ephemeral identity disclosure (§11.5), and claim narrowing on token exchange (§8).
 
 ---
 
@@ -108,15 +78,13 @@ PACT uses `MAJOR.MINOR[-draft]` versioning. Implementations MUST reject configur
 
 **Usage Ledger.** An append-only record of capability executions, used to enforce daily limits and cooldowns atomically.
 
-With the problem space and vocabulary in place, the question becomes structural: how do thirteen constituent standards compose into a coherent authorization model?
-
 ---
 
 ## 3. Compositional Architecture
 
 ### 3.1 Five Compositional Concerns
 
-PACT's thirteen constituent standards cluster into five architectural concerns. Each concern maps to a set of existing standards and produces outputs consumed by the next concern in the chain. The shared pattern is *staged production*: each concern adds one layer of meaning to the flow, and the next concern consumes that layer as input.
+PACT's constituent standards group into five concerns: secure transport, structured intent, agent control plane, consent channel, and token semantics. Each concern produces inputs for the next, from machine authentication through human approval to token issuance and relying-party verification.
 
 ```mermaid
 flowchart TD
@@ -132,18 +100,18 @@ flowchart TD
 
     CC -->|"approved token"| TS
 
-    TS["**Token Semantics**\nToken Exchange (RFC 8693)\nIntrospection (RFC 7662)\nPairwise identifiers\nAAP claim profile"]
+    TS["**Token Semantics**\nToken Exchange (RFC 8693)\nIntrospection (RFC 7662)\nPairwise identifiers\nPACT delegation claims"]
 ```
 
-**Secure Transport** sits beneath the other four concerns because removing any transport spec changes security properties, not the agent model. DPoP is the one transport spec that crosses into agent territory: when token exchange repackages a CIBA token into a purchase artifact, DPoP re-binds the artifact to the agent's proof-of-possession key.
+**Secure Transport** sits beneath the other four concerns because removing any transport spec changes security properties, not the agent model. DPoP is the one transport spec that crosses into agent territory: when token exchange mints a downstream token from a CIBA access token, DPoP re-binds the issued token to the caller's proof-of-possession key.
 
-**Structured Intent** carries typed payloads through the entire flow without transformation. RAR (`authorization_details`) survives from CIBA request through consent evaluation into the issued token and forward through token exchange.
+**Structured Intent** carries typed payloads through the flow. RAR (`authorization_details`) is submitted on the CIBA request, retained on the CIBA request record during consent evaluation, and projected onto downstream exchanged tokens (§8). The approved typed payload does not appear on the CIBA-issued access token itself.
 
 **Agent Control Plane** establishes who is asking. It produces two outputs: the `Agent-Assertion` JWT that enters the consent channel as runtime proof, and the capability grants that determine whether consent can short-circuit into automatic approval.
 
-**Consent Channel** is where the control plane and structured intent converge. CIBA binds the runtime proof to a specific consent request, making the `auth_req_id` the trace identifier that correlates agent identity, consent, and token issuance across the entire flow.
+**Consent Channel** carries the human approval interaction. CIBA binds the runtime proof to a specific consent request. The CIBA `auth_req_id` serves as the trace identifier correlating agent identity, consent, and token issuance.
 
-**Token Semantics** encodes the authorized delegation that the four preceding concerns produce. Token exchange rebinds audience and recomputes pairwise identifiers. Introspection re-evaluates session lifecycle at query time. The AAP claim vocabulary structures the delegation metadata.
+**Token Semantics** encodes the authorized delegation. Token exchange rebinds audience and recomputes pairwise identifiers. Introspection re-evaluates session lifecycle at query time. The delegation claim vocabulary is defined in §7.
 
 ### 3.2 Runtime Participants
 
@@ -157,7 +125,7 @@ flowchart TD
 
 ### 3.3 Three Caller Classes
 
-PACT distinguishes three caller classes. They cluster by the relationship between the caller and the user: the browser *is* the user, the delegated machine *represents* the user, and the pure machine client *operates independently* of any user.
+PACT distinguishes three caller classes by authentication mode and scope.
 
 | Caller | Authentication | Scope |
 |--------|---------------|-------|
@@ -165,15 +133,13 @@ PACT distinguishes three caller classes. They cluster by the relationship betwee
 | User-delegated machine | OAuth access token exchanged into a dedicated DPoP-bound bootstrap token | Agent host/session registration, revocation |
 | Pure machine client | `client_credentials` access token | Introspection, resource-server APIs |
 
-The agent protocol is machine-facing even when a human is in the loop. Registration, introspection, and token exchange are OAuth surfaces. The human consent step happens later, through CIBA. For bootstrap, the client never reuses the login token directly; it exchanges that token for a dedicated DPoP-bound bootstrap token with narrow agent scopes before calling the registration endpoints.
-
-Sections 4 through 9 walk through these concerns in execution order: identity (who), capability (what), consent (whether), and tokens (how the result is delivered).
+Registration, introspection, and token exchange are machine-facing OAuth surfaces; human consent is obtained separately through CIBA (§6). A client bootstrapping an agent host MUST NOT reuse a login token for registration: it MUST first exchange that token for a DPoP-bound bootstrap token carrying narrow agent scopes (§4.1).
 
 ---
 
 ## 4. Principal Separation
 
-Every use case in this section is an instance of the same structural problem: two different lifetimes need two different keys, and two different audiences need two different identifiers. The host needs continuity across process restarts. The session needs a fresh, auditable identity for each runtime. The relying party needs an identifier that cannot be correlated across services. These three requirements produce three layers of identity: durable, ephemeral, and pairwise.
+PACT separates agent identity into three layers with distinct lifetimes and audiences. The host is durable (persistent across process restarts). The session is ephemeral (fresh per runtime instance, enabling per-session audit). The pairwise identifier shown to each relying party is uncorrelatable across services.
 
 ### 4.1 Durable Host
 
@@ -229,7 +195,7 @@ Attestation results in an elevated trust tier that widens default host policy (S
 
 ### 4.2 Ephemeral Session
 
-The host provides continuity; the session provides accountability. An agent session is the runtime identity for one live process. Each session gets its own Ed25519 keypair. The private key MUST exist only in process memory, never persisted to disk.
+An agent session is the runtime identity for one live process. Each session holds its own Ed25519 keypair. The private key MUST exist only in process memory, and MUST NOT be persisted to disk.
 
 **Registration.** `POST {registration_endpoint}` with the bootstrap token carrying `agent:session.register` and a host attestation JWT.
 
@@ -318,18 +284,17 @@ flowchart TD
 
 ### 4.3 Cross-Party Unlinkability
 
-The host provides continuity and the session provides accountability, but neither provides privacy. Without a third layer, the same session identifier travels to every relying party, creating a stable correlator across services.
-
-Agent identifiers in delegated tokens MUST be pairwise per relying party by default.
+Agent identifiers in delegated tokens MUST be pairwise per relying party by default. Without pairwise derivation, the session identifier would travel to every relying party as a stable cross-service correlator (see §13.1 for the full threat analysis).
 
 **Derivation:**
 
 ```text
-act.sub = HMAC-SHA-256(PAIRWISE_SECRET, sector + ":" + sessionId)
+act.sub = MAC(PAIRWISE_SECRET, sector + "." + sessionId)
 ```
 
 Where:
 
+- `MAC` is a keyed message authentication code with at least 128 bits of output. HMAC-SHA-256 (RFC 2104) meets this requirement.
 - `PAIRWISE_SECRET` is a server-side secret of at least 32 bytes.
 - `sector` is the RP's registered sector identifier, following the same mechanism used for user pairwise `sub` in VEIL Section 4.2. Deployments that do not yet support `sector_identifier_uri` MUST still enforce a stable single-host registration rule so the derived sector remains deterministic.
 - `sessionId` is the internal agent session identifier.
@@ -337,38 +302,36 @@ Where:
 **Properties:**
 
 - Two RPs receiving tokens from the same agent session see different `act.sub` values.
-- The same derivation applies to `agent.id` in the AAP claim profile.
+- The same derivation applies to `agent.id` in the PACT delegation claim set.
 - Deployments that need global agent tracking MUST use an agent-specific client setting distinct from VEIL's user-facing `subject_type`. Reusing `subject_type` would disable pairwise user identifiers at the same time.
 - Pairwise derivation uses the session ID (not host ID) because the acting principal is the runtime session, not the installation.
 
 **Where pairwise identifiers appear:**
 
 - `act.sub` in access tokens
-- `agent.id` in the AAP claim profile
-- `act.sub` in purchase authorization artifacts (re-derived for the target audience)
+- `agent.id` in the PACT delegation claim set
+- `act.sub` in tokens issued by token exchange (re-derived for the target audience; §8)
 - The introspection response
 - The CIBA request snapshot (server-side)
 
-**The correlation risk.** Agent identity standards currently use globally consistent agent IDs in delegated tokens, which means `act.sub` is sent to every resource server as a stable correlator. Two colluding RPs can link agent activity across services, infer timing patterns, and potentially deanonymize the human behind the agent. Pairwise derivation for `act.sub` extends the privacy model that OIDC Core already provides for user `sub` to the agent principal as well.
+The threat model and mitigation rationale are described in §13.1. Pairwise derivation extends OIDC Core's user-`sub` privacy model to the agent principal.
 
 ### 4.4 Trust Gradation
 
-The three identity layers answer *who* and *where*, but not *how much should be trusted*. Host attestation answers that question by widening default policy rather than creating a separate token class.
+Host attestation assigns a host to one of two trust tiers. Attestation widens the default host policy but does not create a separate token class or silently widen identity-disclosure capabilities.
 
 | Tier | How reached | Effect on default host policy |
 |------|-------------|-------------------------------|
 | `unverified` | Default registration | `check_compliance`, `request_approval` |
 | `attested` | Valid `OAuth-Client-Attestation` + PoP | Same default capability floor; trust tier is surfaced in UI, tokens, and introspection |
 
-The trust model is practical rather than ceremonial: verification changes how the runtime is presented and audited without silently widening identity-disclosure capabilities. A host's attestation tier is recorded at registration and surfaces in the approval UI (e.g., "Verified by Anthropic" vs. "Unverified agent"), token claims (`agent.runtime.attested: true/false`), and introspection responses.
-
-Identity and trust answer *who* is calling. The orthogonal question is *what* they are allowed to do.
+A host's attestation tier is recorded at registration and surfaces in the approval UI (for example, "Verified by Anthropic" versus "Unverified agent"), in token claims (`agent.runtime.attested: true/false`), and in introspection responses.
 
 ---
 
 ## 5. Named-Action Containment
 
-Every element in this section answers one narrow question: "Can this exact session do this exact kind of action without interrupting the user again?" The shared mechanism is capability-based authorization with typed constraints. What varies is the granularity of containment: the registry defines what actions exist, grants determine which sessions hold them, constraints restrict the parameters, and the usage ledger enforces temporal and cumulative limits.
+Capability-based authorization determines whether a session can perform an action without interrupting the user. The registry defines named actions, grants bind them to sessions, constraints restrict parameters, and the usage ledger enforces temporal and cumulative limits.
 
 ### 5.1 The Registry
 
@@ -480,7 +443,7 @@ The policy model is split for the same reason identity is split: durable default
 
 ### 5.5 Temporal and Cumulative Limits
 
-Containment is not only about what an action looks like; it is also about how often it repeats. The usage ledger is an append-only table recording each approved execution.
+The usage ledger is an append-only table recording each approved execution. It enforces limits on execution frequency and cumulative totals, independent of the per-request constraint checks in §5.3.
 
 **Scope determination.** Usage is scoped to the narrowest applicable boundary:
 
@@ -505,15 +468,11 @@ Capability containment defines what an agent may do. It does not answer when the
 
 ## 6. Risk-Proportional Consent
 
-Identity answers *who* is calling. Capability answers *what* they may do. Neither answers the question that matters most at runtime: does the human need to approve this specific action right now? The mechanism is CIBA (Client-Initiated Backchannel Authentication), but the profile's contribution is not CIBA itself; it is the routing logic that determines which CIBA outcome applies.
+At runtime, a delegation request must be routed to one of three outcomes: auto-approved (within pre-authorized limits), interactive approval (user prompt required), or denied. PACT uses CIBA (Client-Initiated Backchannel Authentication) as the transport and defines the routing logic that selects the outcome.
 
-### 6.1 The Architectural Linchpin
+### 6.1 CIBA as Correlation Point
 
-CIBA is the consent channel, not merely an approval transport. It is where the agent control plane and structured intent converge.
-
-The CIBA `auth_req_id` becomes the trace identifier that correlates agent identity (from the control plane), human consent (from the approval interaction), token issuance (from the token endpoint), and the audit trail (from the usage ledger).
-
-The runtime proof is bound to a specific consent request rather than floating as a general authentication mechanism. This binding makes CIBA the architectural linchpin: removing it means inventing a custom push-and-poll mechanism with its own request lifecycle, polling semantics, and token binding.
+The CIBA `auth_req_id` correlates agent identity (from the control plane), human consent (from the approval interaction), token issuance (from the token endpoint), and the audit trail (from the usage ledger). An `Agent-Assertion` JWT MUST be bound to a specific `auth_req_id`; it MUST NOT be accepted as general runtime authentication outside the CIBA request it carries.
 
 ### 6.2 Three Routing Outcomes
 
@@ -558,7 +517,7 @@ Before requesting consent, the client signs an `Agent-Assertion` JWT with the se
 
 The assertion is placed in the `Agent-Assertion` HTTP header on the CIBA backchannel authorize request.
 
-PACT requires a `binding_message` whenever an `Agent-Assertion` is present. The `task_hash` claim is defined as `SHA-256(binding_message)`, so an assertion without a bound request message cannot be verified and MUST NOT produce agent-bound token semantics.
+`binding_message` is the OIDC CIBA Core 1.0 request parameter (Section 7.1 of that specification), defined there as a human-readable display value. PACT retains its human-visible role in the approval UI and additionally requires that a `binding_message` be present whenever an `Agent-Assertion` is present. The `task_hash` claim is defined as `SHA-256(binding_message)`, giving the agent cryptographic commitment to the same string the human will see. An assertion whose `task_hash` does not match the CIBA request's `binding_message` MUST NOT produce agent-bound token semantics.
 
 **Verification sequence:**
 
@@ -592,9 +551,9 @@ This snapshot ties the later token to the actual registered runtime, not a free-
 2. **Atomic status transitions.** The transition from `approved` to `redeemed` MUST use compare-and-swap semantics. Concurrent polling attempts that race the transition MUST fail rather than duplicate-issue tokens.
 3. **Entropy.** `auth_req_id` values MUST be generated with cryptographic entropy sufficient to prevent enumeration (e.g., UUID v4).
 
-### 6.4 The Unforgeable Boundary
+### 6.4 Biometric Approval Strength
 
-The three routing outcomes would collapse into two if the agent could approve its own requests. Agents with browser control (e.g., Playwright, MCP browser tools) can navigate to approval URLs and click buttons. The `biometric` approval strength requires WebAuthn `userVerification: required`, a biometric or PIN verification that the agent cannot produce.
+An agent with browser control (for example, Playwright or an MCP browser tool) can navigate to approval URLs and click buttons. The `biometric` approval strength defends against self-approval by requiring WebAuthn `userVerification: required`, a biometric or PIN gesture that the agent cannot produce.
 
 For `biometric`-strength capabilities:
 
@@ -602,7 +561,7 @@ For `biometric`-strength capabilities:
 - The approval endpoint returns a WebAuthn challenge that MUST be satisfied before the approval is accepted.
 - Password-based session re-authentication is insufficient because the agent may know the password.
 
-The distinction between `session` and `biometric` is not about the UI; it is about whether the approval can be automated. `session` *can* be automated by an agent with browser access. `biometric` *cannot*. That is the structural boundary.
+The `session` strength accepts any in-session re-authentication an agent with browser access could automate (cookie presence, password re-entry). The `biometric` strength requires a WebAuthn user-verification ceremony that cannot be performed without the registered authenticator.
 
 **Identity scope exception.** When a CIBA request includes identity scopes, push notifications MUST NOT include inline approve actions, even for `session`-strength capabilities. Vault unlock (required by VEIL Section 6 for identity claim delivery) cannot be triggered from a service worker or agent browser context, making identity-scoped requests functionally equivalent to `biometric` for inline approval purposes. The user MUST navigate to the approval page in a full browser context.
 
@@ -617,19 +576,17 @@ The consent router derives a capability name from the CIBA request's `authorizat
 | Any scope is a proof scope (for example `proof:age` or `proof:compliance`) | `check_compliance` |
 | Only `openid` scope, no typed details | `request_approval` |
 
-The first matching row wins. The precedence is therefore `purchase` details first, then identity scopes, then proof scopes, then `openid`-only requests. This ensures that a mixed request (for example, purchase details plus `identity.*` scopes) is routed to the most sensitive derived capability rather than being left implementation-defined.
-
-Once the human approves, the approval must be encoded into a token that a relying party can consume.
+The first matching row wins. The precedence order is `purchase` details, then identity scopes, then proof scopes, then `openid`-only requests. A mixed request (for example, purchase details plus `identity.*` scopes) is routed to the most sensitive derived capability.
 
 ---
 
 ## 7. Delegation Evidence
 
-Every claim in the AAP token profile exists to answer one of two questions a relying party needs to resolve: "who authorized this action?" and "what constraints govern it?" The `sub` and `act` claims answer the first; the `capabilities`, `oversight`, and `delegation` claims answer the second. The shared mechanism is JWT claim embedding. What varies is whether the claim identifies a principal, describes a constraint, or traces a chain.
+Approved delegations are encoded as JWT access tokens. The `sub` and `act` claims identify the user and agent principals. The `capabilities`, `oversight`, `audit`, and `delegation` claims describe the constraints and provenance.
 
-### 7.1 The AAP Claim Set
+### 7.1 The Delegation Token Profile
 
-Access tokens issued after agent-verified CIBA approval carry the AAP (Agent Authorization Profile) claim set:
+Access tokens issued after agent-verified CIBA approval carry the delegation claim set defined below. The `act` claim is used as specified in [RFC 8693] Section 4.1. The remaining claims (`agent`, `task`, `capabilities`, `oversight`, `audit`, `delegation`) are defined normatively in this document. Approved `authorization_details` (RFC 9396) are retained on the CIBA request record and emitted on exchange artifacts (§8), not on the CIBA-issued access token. Claim names align with draft-aap-oauth-profile (see §16, informative).
 
 ```json
 {
@@ -682,15 +639,6 @@ Access tokens issued after agent-verified CIBA approval carry the AAP (Agent Aut
     "session_id": "<pairwise agent id for RP>"
   },
 
-  "authorization_details": [
-    {
-      "type": "purchase",
-      "merchant": "Acme",
-      "item": "Widget",
-      "amount": { "value": "29.99", "currency": "USD" }
-    }
-  ],
-
   "cnf": {
     "jkt": "<DPoP key thumbprint>"
   }
@@ -714,7 +662,7 @@ Access tokens issued after agent-verified CIBA approval carry the AAP (Agent Aut
 | `audit.trace_id` | CIBA `auth_req_id` for end-to-end correlation |
 | `cnf.jkt` | DPoP proof-of-possession key thumbprint |
 
-**Conditional emission.** If `assertion_verified` is `false` on the CIBA request, the AAP claims MUST NOT be emitted. The token reverts to a standard CIBA token without agent semantics. This is the first convergence point: the `assertion_verified` flag set in the control plane determines whether the token semantics layer emits agent claims at all.
+**Conditional emission.** If `assertion_verified` is `false` on the CIBA request, delegation claims MUST NOT be emitted; the token is issued as a standard CIBA token without agent semantics.
 
 ### 7.2 Chain Tracking
 
@@ -739,19 +687,36 @@ When tokens are exchanged via RFC 8693 Token Exchange, the `delegation` claim tr
 - `delegation.chain` in the exchanged token MUST be projected for the current audience from the canonical lineage. Previous audience-specific pairwise values MUST NOT be copied verbatim into a new audience context.
 - Implementations advertising `delegation_chains: true` MUST reject the exchange if `depth >= max_depth`.
 - Implementations advertising `delegation_chains: true` MUST enforce **mandatory privilege reduction**: at least one of narrower capabilities, tighter constraints, shorter TTL, or lower `max_depth`.
-- The first exchange from a CIBA access token to `purchase-authorization+jwt` satisfies privilege reduction by changing token type, narrowing output to approved purchase `authorization_details`, and rebinding audience. The artifact omits the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections. If `delegation_chains` is `false`, it MAY omit `delegation` as well; if `delegation_chains` is `true`, it MUST retain the projected `delegation` lineage needed for depth enforcement and family revocation. The issued artifact lifetime MUST NOT exceed the subject token's remaining lifetime.
+- The first exchange from a CIBA access token to a non-agent audience satisfies privilege reduction by applying the claim-narrowing rules of §8: the issued token omits the delegation `agent`, `task`, `capabilities`, `oversight`, and `audit` sections, narrows `authorization_details` to the approved subset, and rebinds audience. If `delegation_chains` is `false`, the issued token MAY omit `delegation` as well; if `delegation_chains` is `true`, it MUST retain the projected `delegation` lineage needed for depth enforcement and family revocation. The issued token lifetime MUST NOT exceed the subject token's remaining lifetime.
 
 **Family revocation.** Revoking a parent token (by `jti`) revokes all descendants reachable via `parent_jti` graph traversal.
 
 ---
 
-## 8. Audience-Bound Artifacts
+## 8. Claim Narrowing on Token Exchange
 
-The previous section described how delegation evidence is encoded into tokens. This section addresses the adjacent problem: how that evidence reaches a *different* audience than the one that originally received it. The mechanism is RFC 8693 Token Exchange. PACT's contribution is the `purchase-authorization+jwt` artifact type and the mandatory privilege reduction rule.
+When delegation evidence must cross an audience boundary, the AS uses RFC 8693 Token Exchange to mint a downstream token for the new audience. This section specifies what the AS MUST strip, project, and attenuate on every such exchange. The rules apply regardless of the `requested_token_type`; PACT does not mint any profile-specific artifact type.
 
-### 8.1 Purchase Authorization
+### 8.1 Dropping Agent Control-Plane Claims
 
-Token exchange (RFC 8693) produces audience-bound purchase authorization artifacts when the subject token contains approved purchase details.
+When the target audience is not itself an agent (the common case: a resource server or relying party consuming the delegated authorization), the issued token MUST omit the delegation `agent`, `task`, `capabilities`, `oversight`, and `audit` sections. These sections describe the agent control plane and leak agent-identifying context that a non-agent audience does not need for access decisions.
+
+- If the deployment does not advertise `delegation_chains`, the issued token MAY omit `delegation` entirely.
+- If the deployment advertises `delegation_chains: true`, the issued token MUST retain a projected `delegation` claim containing only the lineage needed for depth enforcement and family revocation (`depth`, `max_depth`, `chain`, `parent_jti`, `root_jti`; see §7). Previous audience-specific pairwise values MUST NOT be copied verbatim into the new audience context and MUST be recomputed per §4.3.
+
+Claims that the downstream audience does need (`iss`, `aud`, `sub`, `act.sub`, `scope`, `authorization_details`, `cnf`, `jti`, `iat`, `exp`) are copied or recomputed from the subject token: pairwise identifiers are recomputed for the target audience (§4.3), DPoP binding is taken from the token exchange request's proof, and `authorization_details` is narrowed per §8.2.
+
+### 8.2 Privilege Reduction
+
+Every token exchange MUST enforce privilege reduction on the issued token:
+
+- `scope` MUST be a subset of the subject token's scope.
+- `authorization_details` MUST be a subset of the subject token's `authorization_details`.
+- Lifetime MUST NOT exceed the subject token's remaining lifetime.
+
+### 8.3 Request and Response
+
+A downstream audience MAY negotiate a specialized `requested_token_type` (for example, a deployment-specific signed artifact type). The specific types are out of scope for this profile; the rules in §8.1 and §8.2 apply regardless of the chosen type.
 
 **Request:**
 
@@ -761,25 +726,19 @@ POST {token_endpoint}
   grant_type=urn:ietf:params:oauth:grant-type:token-exchange
   subject_token=<CIBA access token>
   subject_token_type=urn:ietf:params:oauth:token-type:access_token
-  requested_token_type=urn:zentity:token-type:purchase-authorization
+  requested_token_type=urn:ietf:params:oauth:token-type:access_token
   audience=<target RP client_id>
 ```
 
-**Issued artifact:**
+**Issued token (illustrative):**
 
 ```json
-{
-  "typ": "purchase-authorization+jwt",
-  "alg": "EdDSA"
-}
-.
 {
   "iss": "https://as.example.com",
   "aud": "<target RP client_id>",
   "sub": "<pairwise user id for target RP>",
-  "act": {
-    "sub": "<pairwise agent id for target RP>"
-  },
+  "act": { "sub": "<pairwise agent id for target RP>" },
+  "scope": "<narrowed subset>",
   "authorization_details": [
     {
       "type": "purchase",
@@ -788,45 +747,24 @@ POST {token_endpoint}
       "amount": { "value": "29.99", "currency": "USD" }
     }
   ],
-  "cnf": {
-    "jkt": "<DPoP key thumbprint>"
-  },
+  "cnf": { "jkt": "<DPoP key thumbprint>" },
   "jti": "<unique>",
   "iat": 1711000000,
   "exp": 1711003600
 }
 ```
 
-**Token response:**
-
-```json
-{
-  "access_token": "<purchase-authorization+jwt>",
-  "issued_token_type": "urn:zentity:token-type:purchase-authorization",
-  "token_type": "N_A",
-  "expires_in": 3600
-}
-```
-
-The artifact copies approved purchase details from the subject token, rebinds both `sub` and `act.sub` for the target audience, and carries `cnf.jkt` from the validated DPoP proof on the token exchange request. The artifact omits the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections; that token-type narrowing is the privilege-reduction step for this exchange. Deployments that do not advertise `delegation_chains` may omit `delegation` as well, while deployments that do advertise `delegation_chains` MUST retain the projected `delegation` lineage on the artifact. The target RP validates the JWT signature against the AS's JWKS, verifies a matching DPoP proof against `cnf.jkt`, and enforces the `authorization_details` constraints. It does not need to understand the capability model; it only needs to trust the signature and proof-of-possession binding.
-
-### 8.2 Mandatory Privilege Reduction
-
-Token exchange MUST enforce scope attenuation:
-
-- The exchanged token's scope MUST be a subset of the subject token's scope.
-- The exchanged token's `authorization_details` MUST be a subset of the subject token's `authorization_details`.
-- The exchanged token's lifetime MUST NOT exceed the subject token's remaining lifetime.
+The target RP validates the JWT signature against the AS's JWKS, verifies a matching DPoP proof against `cnf.jkt`, and enforces the `authorization_details` constraints. It does not need to understand the agent capability model; it only needs to trust the signature and proof-of-possession binding.
 
 ---
 
 ## 9. Temporal Boundaries
 
-Trust that never expires is indistinguishable from a permanent grant. Agent sessions are short-lived by design, and the profile enforces that property through independent clocks, terminal states, and no reactivation path.
+Agent sessions have bounded lifetimes. Expired or terminated sessions MUST NOT be reactivated.
 
 ### 9.1 Two Independent Clocks
 
-Each agent session has two independent lifetime clocks. They share a common purpose (bounding trust duration) but differ in what they measure: one tracks inactivity, the other tracks total elapsed time.
+Each agent session has two independent lifetime clocks: one tracks inactivity, the other tracks total elapsed time since session creation.
 
 | Clock | Measured from | Default | Purpose |
 |-------|--------------|---------|---------|
@@ -865,13 +803,11 @@ Revoking a session also revokes all its session grants (`status = "revoked"`, `r
 
 **Logout coordination.** The authorization server MUST revoke all pending CIBA requests for a user at the time of user logout (per VEIL Section 10.2). A CIBA token MUST NOT be issuable after the user's session has been terminated. Without this, an agent polling after user logout could obtain tokens for a session the user intended to end.
 
-Runtime behavior is only useful if machines can discover and verify it programmatically.
-
 ---
 
 ## 10. Machine-Readable Surfaces
 
-This section describes the profile's discovery and verification endpoints. They share a common design principle: every aspect of the agent authorization model must be programmatically discoverable. The axis of variation is who consumes each surface: clients discover capabilities and register identities, relying parties introspect tokens and verify lifecycle state, and other agents discover the profile via A2A cards.
+PACT exposes its agent authorization model through four machine-readable surfaces: an agent configuration document (§10.1), a capability registry (§10.2), token introspection (§10.3), and an optional A2A agent card (§10.4). Clients use the first two to discover what exists; relying parties use the third to verify runtime state.
 
 ### 10.1 Agent Configuration Document
 
@@ -889,9 +825,6 @@ This section describes the profile's discovery and verification endpoints. They 
   "supported_algorithms": ["EdDSA"],
   "approval_methods": ["ciba"],
   "approval_page_url_template": "https://as.example.com/approve/{auth_req_id}",
-  "issued_token_types": [
-    "urn:zentity:token-type:purchase-authorization"
-  ],
   "supported_features": {
     "task_attestation": true,
     "pairwise_agents": true,
@@ -958,17 +891,17 @@ No authentication required for either endpoint.
 - Session lifecycle is re-evaluated at query time. A session that expired between token issuance and introspection returns `active: false`.
 - `sub` and `agent.id` MUST come from a consistent caller-relative pairwise view. If the server cannot safely re-project `sub` for the introspecting client, it MUST omit `sub` rather than leak another client's pairwise identifier.
 - `client_id` and `aud` continue to identify the token that was issued, not the introspector's own client registration.
-- If `assertion_verified` is `false` on the token snapshot, AAP claims are omitted.
+- If `assertion_verified` is `false` on the token snapshot, delegation claims are omitted.
 
-### 10.4 A2A Agent Card
+### 10.4 A2A Agent Card (Informational)
 
-`GET /.well-known/agent-card.json` publishes an A2A Protocol (v0.3) agent card referencing the agent configuration document. This enables agent-to-agent capability discovery. The card declares security schemes including an `agent-auth` scheme whose `discoveryUrl` points to `/.well-known/agent-configuration`.
+Deployments MAY additionally publish an A2A Protocol agent card at `GET /.well-known/agent-card.json` that references the agent configuration document, to support agent-to-agent capability discovery ecosystems that rely on that surface. The card MAY declare an `agent-auth` security scheme whose `discoveryUrl` points to `/.well-known/agent-configuration`. This integration is informational: the A2A Protocol is not a normative dependency of this profile, and conforming implementations are not required to emit the A2A card.
 
 ---
 
 ## 11. Cryptographic Continuity
 
-Each phase of the profile produces evidence the next phase can reuse. These bindings are not separate features; they are the chain that lets a relying party infer a real delegation story from otherwise normal OAuth messages. The shared pattern is *evidence propagation*: each step narrows who can continue the flow by requiring proof that only the legitimate caller can produce.
+Each phase of the profile produces cryptographic evidence consumed by the next. A relying party verifies the delegation chain by inspecting the resulting OAuth messages; each step requires proof that only the legitimate caller can produce.
 
 ### 11.1 The Full Chain
 
@@ -979,8 +912,8 @@ flowchart TD
     C["Agent Session Registration\nFresh Ed25519 key bound to host + runtime"] --> D
     D["Agent-Assertion on CIBA\nRuntime proof bound to specific consent request"] --> E
     E["Human Approval via CIBA\nConsent bound to scope + authorization_details"] --> F
-    F["Access Token\nsub + act.sub + AAP claims"] --> G
-    G["Token Exchange (optional)\nAudience rebinding + purchase-authorization+jwt"]
+    F["Access Token\nsub + act.sub + PACT delegation claims"] --> G
+    G["Token Exchange (optional)\nAudience rebinding + claim narrowing for downstream RP"]
 ```
 
 ### 11.2 Session Binding
@@ -1003,20 +936,17 @@ If the runtime proof is present and valid, the server snapshots runtime metadata
 
 ### 11.6 Disclosure Binding
 
-Identity release is kept off the token path. If identity scopes are approved, PII is staged in an ephemeral in-memory store with single-consume semantics:
-
-- 5-minute TTL for OAuth2 flows
-- 10-minute TTL for CIBA flows
-
-PII is delivered exclusively via the userinfo endpoint, never embedded in `id_token` claims. This keeps long-lived JWTs free of identity payloads while preserving the consent record that authorized disclosure.
+Identity release follows VEIL §6: PII is staged in an ephemeral single-consume store and delivered via the userinfo endpoint, never embedded in `id_token` or access-token claims. PACT sets the CIBA TTL to 10 minutes; the OAuth2 TTL of 5 minutes is inherited unchanged.
 
 ### 11.7 Delegation Binding
 
-The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the full AAP claim set. The purchase authorization artifact carries pairwise `sub`, pairwise `act.sub`, `cnf.jkt`, and the approved `authorization_details`, all re-derived or rebound for the target audience.
+The delegated access token carries `sub` for the human principal, `act.sub` for the acting agent session, and the full PACT delegation claim set (§7). Tokens issued by token exchange to a non-agent audience carry pairwise `sub`, pairwise `act.sub`, `cnf.jkt`, and the approved `authorization_details`, all re-derived or rebound for the target audience per §8.
 
 ---
 
-## 12. Security Boundaries
+## 12. Security Considerations
+
+Implementations MUST satisfy the security considerations of OAuth 2.1, OIDC CIBA Core 1.0, OAuth Token Exchange (RFC 8693), and VEIL §12.
 
 ### 12.1 JTI Replay Protection
 
@@ -1044,13 +974,13 @@ Task descriptions may contain user-specific context. They appear as `task.purpos
 
 ### 12.7 DPoP Binding
 
-Delegated access tokens issued by this profile SHOULD be DPoP-bound (RFC 9449). When token exchange repackages a CIBA token into a purchase artifact, the artifact MUST carry `cnf.jkt` from the validated DPoP proof and the target RP MUST require a matching DPoP proof at presentation time. A leaked artifact is useless without the agent's proof-of-possession key.
+Delegated access tokens issued by this profile SHOULD be DPoP-bound (RFC 9449). When token exchange mints a downstream token from a CIBA access token, the issued token MUST carry `cnf.jkt` from the validated DPoP proof and the target RP MUST require a matching DPoP proof at presentation time. A leaked exchanged token is useless without the caller's proof-of-possession key.
 
 ---
 
-## 13. Unlinkability by Default
+## 13. Privacy Considerations
 
-Security boundaries defend against attacks; this section concerns what the profile *refuses to create*. Every consideration here is an instance of the same principle: the profile's default posture is unlinkability, and any deviation from that posture requires explicit opt-in.
+The privacy considerations of VEIL §14 apply in addition to those below. Participants are the user, the agent session, the durable host installation, the authorization server, and the relying parties receiving delegated tokens. Cross-RP correlation through agent identifiers requires explicit opt-in at registration (§13.4).
 
 ### 13.1 Cross-RP Agent Correlation
 
@@ -1060,7 +990,7 @@ PACT mitigates this by deriving `act.sub` per-RP using the same sector-identifie
 
 ### 13.2 PII in Tokens
 
-Identity PII MUST NOT be embedded in access tokens or purchase authorization artifacts. PII delivery uses the ephemeral in-memory store with single-consume semantics (Section 11.6). This ensures that long-lived tokens contain only cryptographic identifiers, not personal data.
+Identity PII MUST NOT be embedded in access tokens or any tokens issued by token exchange. PII delivery uses the ephemeral in-memory store with single-consume semantics (Section 11.6). This ensures that long-lived tokens contain only cryptographic identifiers, not personal data.
 
 ### 13.3 Metadata Minimization
 
@@ -1068,13 +998,68 @@ Agent display metadata (`model`, `runtime`, `version`) is informational and self
 
 ### 13.4 Pairwise Opt-Out
 
-RPs that require stable agent identifiers (e.g., for regulatory audit trails) need an agent-specific opt-in that is distinct from VEIL's user-facing `subject_type`. This is an explicit choice; the profile default is privacy-preserving.
+RPs that require stable agent identifiers (for example, for regulatory audit trails) opt in through an agent-specific signal distinct from VEIL's user-facing `subject_type`. The default is pairwise.
 
 ---
 
-## 14. Conformance
+## 14. IANA Considerations
 
-### 14.1 Server Requirements
+This document requests the registrations listed below. Media types under `application/*+jwt` are registered per RFC 8417 and RFC 7515.
+
+### 14.1 Media Type Registrations
+
+This document requests two registrations in the "Media Types" registry under the `application/` tree:
+
+- `application/agent-assertion+jwt`: JWT typ defined in §6.3; used in the `Agent-Assertion` HTTP header to prove runtime session identity on CIBA requests.
+- `application/host-attestation+jwt`: JWT typ defined in §4.2; host-signed assertion consumed by the session registration endpoint.
+
+Each registration specifies this document as its reference and references RFC 7515 for the `+jwt` structured syntax suffix semantics.
+
+### 14.2 Well-Known URI Registration
+
+This document requests one registration in the "Well-Known URIs" registry (RFC 8615):
+
+- **URI suffix:** `agent-configuration`
+- **Change Controller:** IETF
+- **Reference:** This document, §10.1
+- **Status:** Permanent
+
+### 14.3 HTTP Field Name Registrations
+
+This document requests three registrations in the "Hypertext Transfer Protocol (HTTP) Field Name Registry" (RFC 9110):
+
+- **Field Name:** `Agent-Assertion`. Status: permanent. Reference: this document §6.3.
+- **Field Name:** `OAuth-Client-Attestation`. Status: permanent. Reference: draft-ietf-oauth-attestation-based-client-auth.
+- **Field Name:** `OAuth-Client-Attestation-PoP`. Status: permanent. Reference: draft-ietf-oauth-attestation-based-client-auth.
+
+The latter two fields are registered by their originating draft; PACT references them without redefinition.
+
+### 14.4 JWT Claim Registrations
+
+This document requests registrations in the "JSON Web Token Claims" registry (RFC 7519) for the delegation claim vocabulary defined in §7.1:
+
+- `agent` — Object describing the acting agent runtime and attestation posture.
+- `task` — Object describing the task category under which delegation was authorized.
+- `capabilities` — Array of approved named actions with typed constraint snapshots.
+- `oversight` — Object carrying human-approval requirements and the originating approval reference.
+- `audit` — Object carrying a CIBA trace identifier and session reference.
+- `delegation` — Object tracking the delegation chain, as defined in §7.2.
+
+The `act`, `authorization_details`, `cnf`, `jti`, `iat`, `exp`, `iss`, `aud`, `sub`, and `scope` claims are referenced as already registered and are used per their originating specifications (RFC 8693 §4.1 for `act`, RFC 9396 for `authorization_details`, RFC 7800 for `cnf`, RFC 7519 for the common set).
+
+### 14.5 OAuth Extensions Error Registry
+
+PACT does not currently request new OAuth error codes; it uses the step-up error contract inherited from VEIL (`interaction_required`) and standard CIBA/token-exchange errors defined in their respective specifications.
+
+### 14.6 ACR Values
+
+ACR URNs in `acr_values_supported` are deployment-local (see VEIL §7.3). PACT does not register ACR values or reserve an ACR namespace.
+
+---
+
+## 15. Conformance
+
+### 15.1 Server Requirements
 
 A conforming authorization server MUST:
 
@@ -1083,7 +1068,7 @@ A conforming authorization server MUST:
 - Implement the capability registry and grant model (Section 5)
 - Route consent based on approval strength (Section 6.2)
 - Verify Agent-Assertions and bind them to CIBA requests (Section 6.3)
-- Issue AAP-profiled tokens only when assertions are verified (Section 7.1)
+- Issue tokens with PACT delegation claims only when assertions are verified (Section 7.1)
 - Publish the agent configuration document (Section 10.1)
 - Enforce JTI replay protection (Section 12.1)
 - Derive JWT algorithms from public keys, not headers (Section 12.2)
@@ -1092,12 +1077,11 @@ A conforming authorization server SHOULD:
 
 - Support vendor attestation (Section 4.4)
 - Enforce usage limits atomically (Section 5.5)
-- Support token exchange with delegation chains (Section 7.2)
-- Support purchase authorization artifacts (Section 8.1)
+- Support token exchange with claim narrowing for downstream audiences (Section 8)
 - Provide introspection with lifecycle evaluation (Section 10.3)
 - Bind tokens with DPoP (Section 12.7)
 
-### 14.2 Client Requirements
+### 15.2 Client Requirements
 
 A conforming client MUST:
 
@@ -1115,7 +1099,7 @@ A conforming client SHOULD:
 
 ---
 
-## 15. Standards Composition
+## 16. Standards Composition
 
 | Surface | Concern | Specification | Role in this profile |
 |---------|---------|---------------|----------------------|
@@ -1124,35 +1108,42 @@ A conforming client SHOULD:
 | DPoP sender constraining | Transport | RFC 9449 | Binds tokens to holder keys |
 | Rich authorization details | Intent | RFC 9396 | Typed approval payloads through full flow |
 | Backchannel authentication | Consent | OIDC CIBA Core 1.0 | Human consent channel for agent actions |
-| Discovery, registration, lifecycle | Control plane | Agent Auth Protocol v1.0-draft | Host/session identity, capability grants |
+| Discovery, registration, lifecycle | Control plane | PACT (this document) | Host/session identity, capability grants |
 | Host and session JWTs | Control plane | PACT | Signed proofs for registration and runtime binding |
 | Vendor attestation | Control plane | draft-ietf-oauth-attestation-based-client-auth-08 | Host attestation against trusted JWKS |
-| A2A agent card | Control plane | A2A Protocol v0.3 | Inter-agent capability discovery |
-| Token exchange | Token semantics | RFC 8693 | Audience rebinding, purchase artifact issuance |
+| A2A agent card (informational) | Control plane | A2A Protocol | Inter-agent capability discovery, optional surface |
+| Token exchange | Token semantics | RFC 8693 | Audience rebinding with claim narrowing for downstream RPs |
 | Token introspection | Token semantics | RFC 7662 | Runtime lifecycle validation for downstream RPs |
 | Pairwise subject identifiers | Token semantics | OIDC Core 1.0 | Privacy for both `sub` and `act.sub` |
-| Agent authorization claims | Token semantics | AAP draft (draft-aap-oauth-profile) | JWT claim vocabulary |
+| Agent authorization claims | Token semantics | PACT (this document) | JWT delegation claim vocabulary, §7 |
 | Agent-Assertion on CIBA | PACT | | Runtime proof binding to consent request |
 | Host policy / session grant split | PACT | | Durable defaults + ephemeral elevations |
 | Pairwise agent identifiers | PACT | | Cross-RP agent unlinkability |
 | Risk-graduated consent routing | PACT | | Approval strength matched to operation risk |
 | Usage-limited capability grants | PACT | | Temporal and cumulative containment |
 | Ephemeral identity disclosure | PACT | | PII off the token path |
-| Purchase authorization artifacts | PACT | | Audience-bound typed JWTs via token exchange |
+| Claim narrowing on token exchange | PACT | | Drops agent control-plane claims for non-agent audiences (§8) |
 
 ---
 
-## 16. References
+## 17. References
 
 ### Normative References
 
 - [VEIL v0.1-draft](/docs/veil-v0.1-draft) Verified Ephemeral Identity Layer, Privacy-Preserving Identity Security Profile for OAuth 2.1
 - [draft-ietf-oauth-v2-1](https://datatracker.ietf.org/doc/draft-ietf-oauth-v2-1/) The OAuth 2.1 Authorization Framework
+- [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) Key words for use in RFCs to Indicate Requirement Levels
+- [RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) JSON Web Signature (JWS)
+- [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) JSON Web Token (JWT)
 - [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) Proof Key for Code Exchange (PKCE)
 - [RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638) JSON Web Key (JWK) Thumbprint
 - [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662) OAuth 2.0 Token Introspection
+- [RFC 7800](https://datatracker.ietf.org/doc/html/rfc7800) Proof-of-Possession Key Semantics for JSON Web Tokens
 - [RFC 8037](https://datatracker.ietf.org/doc/html/rfc8037) CFRG Elliptic Curve Diffie-Hellman (ECDH) and Signatures in JOSE (Ed25519)
+- [RFC 8174](https://datatracker.ietf.org/doc/html/rfc8174) Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words
+- [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) Well-Known Uniform Resource Identifiers
 - [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) OAuth 2.0 Token Exchange
+- [RFC 9110](https://datatracker.ietf.org/doc/html/rfc9110) HTTP Semantics (field name registry)
 - [RFC 9126](https://datatracker.ietf.org/doc/html/rfc9126) OAuth 2.0 Pushed Authorization Requests (PAR)
 - [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396) OAuth 2.0 Rich Authorization Requests (RAR)
 - [RFC 9449](https://datatracker.ietf.org/doc/html/rfc9449) OAuth 2.0 Demonstrating Proof of Possession (DPoP)
@@ -1161,8 +1152,9 @@ A conforming client SHOULD:
 
 ### Informative References
 
+- [RFC 6973](https://datatracker.ietf.org/doc/html/rfc6973) Privacy Considerations for Internet Protocols
 - [Agent Auth Protocol v1.0-draft](https://agent-auth-protocol.com/specification/v1.0-draft) Agent Auth Protocol Specification
-- [AAP](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) Agent Authorization Profile for OAuth
+- [draft-aap-oauth-profile](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) Agent Authorization Profile for OAuth (terminology alignment, non-normative)
 - [draft-ietf-oauth-attestation-based-client-auth](https://datatracker.ietf.org/doc/draft-ietf-oauth-attestation-based-client-auth/) Attestation-Based Client Authentication
 - [A2A Protocol](https://a2a-protocol.org) Agent-to-Agent Protocol
 - [draft-oauth-ai-agents-on-behalf-of-user](https://datatracker.ietf.org/doc/draft-oauth-ai-agents-on-behalf-of-user/) AI Agents Acting on Behalf of Users

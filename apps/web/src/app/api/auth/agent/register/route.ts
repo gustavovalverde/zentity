@@ -107,6 +107,7 @@ export async function POST(request: Request) {
     const publicKey = await importJWK(JSON.parse(host.publicKey), "EdDSA");
     await jwtVerify(hostJwt, publicKey, {
       algorithms: ["EdDSA"],
+      typ: "host-attestation+jwt",
       issuer: hostId,
       subject: "agent-registration",
     });

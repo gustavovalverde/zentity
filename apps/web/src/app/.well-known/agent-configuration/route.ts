@@ -48,7 +48,6 @@ function buildAgentConfiguration(): AgentConfiguration {
     supported_algorithms: ["EdDSA"],
     approval_methods: ["ciba"],
     approval_page_url_template: `${baseUrl}/approve/{auth_req_id}`,
-    issued_token_types: ["urn:zentity:token-type:purchase-authorization"],
     bootstrap_token_exchange: {
       audience: baseUrl,
       grant_type: TOKEN_EXCHANGE_GRANT_TYPE,

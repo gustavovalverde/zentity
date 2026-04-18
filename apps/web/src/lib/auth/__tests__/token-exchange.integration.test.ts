@@ -1,12 +1,6 @@
 import crypto from "node:crypto";
 
-import {
-  calculateJwkThumbprint,
-  decodeJwt,
-  exportJWK,
-  generateKeyPair,
-  SignJWT,
-} from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
@@ -17,13 +11,7 @@ import {
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
-
-const PURCHASE_AUTHORIZATION_TOKEN_TYPE =
-  "urn:zentity:token-type:purchase-authorization";
-
-import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
 import { db } from "@/lib/db/connection";
-import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
@@ -291,150 +279,6 @@ describe("Token Exchange (RFC 8693)", () => {
         chain: ["pairwise-agent-subject"],
         parent_jti: parentPayload.jti,
       });
-    });
-  });
-
-  describe("access token → purchase authorization artifact", () => {
-    it("issues a purchase-authorization+jwt for the requested audience client", async () => {
-      const facilitatorClientId = "merchant-facilitator";
-      await createTestClient(facilitatorClientId);
-
-      const [host] = await db
-        .insert(agentHosts)
-        .values({
-          userId,
-          clientId: TEST_CLIENT_ID,
-          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
-          publicKeyThumbprint: "host-thumbprint",
-          name: "Test Host",
-        })
-        .returning({ id: agentHosts.id });
-      expect(host).toBeDefined();
-      if (!host) {
-        throw new Error("Expected host registration fixture to be created");
-      }
-      const [session] = await db
-        .insert(agentSessions)
-        .values({
-          hostId: host.id,
-          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
-          publicKeyThumbprint: "agent-thumbprint",
-          displayName: "Test Agent",
-        })
-        .returning({ id: agentSessions.id });
-      expect(session).toBeDefined();
-      if (!session) {
-        throw new Error("Expected agent session fixture to be created");
-      }
-
-      const subjectToken = await mintAccessToken(userId, {
-        azp: TEST_CLIENT_ID,
-        act: {
-          sub: await resolveAgentSubForClient(session.id, TEST_CLIENT_ID),
-        },
-        authorizationDetails: [
-          {
-            type: "purchase",
-            amount: { value: "48.50", currency: "USD" },
-            merchant: "Wine.com",
-            item: "Merlot",
-          },
-        ],
-      });
-
-      const { dpopKeyPair, status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        requested_token_type: PURCHASE_AUTHORIZATION_TOKEN_TYPE,
-        audience: facilitatorClientId,
-      });
-
-      expect(status).toBe(200);
-      expect(json.issued_token_type).toBe(PURCHASE_AUTHORIZATION_TOKEN_TYPE);
-      expect(json.token_type).toBe("N_A");
-
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(facilitatorClientId);
-      expect(payload.authorization_details).toEqual([
-        {
-          type: "purchase",
-          amount: { value: "48.50", currency: "USD" },
-          merchant: "Wine.com",
-          item: "Merlot",
-        },
-      ]);
-      expect(payload.act).toEqual({
-        sub: await resolveAgentSubForClient(session.id, facilitatorClientId),
-      });
-      expect(payload.cnf).toEqual({
-        jkt: await calculateJwkThumbprint(dpopKeyPair.jwk, "sha256"),
-      });
-    });
-
-    it("caps the artifact lifetime to the subject token lifetime", async () => {
-      const facilitatorClientId = "merchant-facilitator";
-      await createTestClient(facilitatorClientId);
-
-      const [host] = await db
-        .insert(agentHosts)
-        .values({
-          userId,
-          clientId: TEST_CLIENT_ID,
-          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
-          publicKeyThumbprint: "host-thumbprint",
-          name: "Test Host",
-        })
-        .returning({ id: agentHosts.id });
-      if (!host) {
-        throw new Error("Expected host registration fixture to be created");
-      }
-
-      const [session] = await db
-        .insert(agentSessions)
-        .values({
-          hostId: host.id,
-          publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
-          publicKeyThumbprint: "agent-thumbprint",
-          displayName: "Test Agent",
-        })
-        .returning({ id: agentSessions.id });
-      if (!session) {
-        throw new Error("Expected agent session fixture to be created");
-      }
-
-      const subjectExp = Math.floor(Date.now() / 1000) + 120;
-      const subjectToken = await mintAccessToken(userId, {
-        azp: TEST_CLIENT_ID,
-        exp: subjectExp,
-        act: {
-          sub: await resolveAgentSubForClient(session.id, TEST_CLIENT_ID),
-        },
-        authorizationDetails: [
-          {
-            type: "purchase",
-            amount: { value: "48.50", currency: "USD" },
-            merchant: "Wine.com",
-            item: "Merlot",
-          },
-        ],
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        requested_token_type: PURCHASE_AUTHORIZATION_TOKEN_TYPE,
-        audience: facilitatorClientId,
-      });
-
-      expect(status).toBe(200);
-
-      const payload = decodeJwt(json.access_token as string);
-      expect(payload.exp).toBe(subjectExp);
-      expect(json.expires_in).toBeLessThanOrEqual(120);
     });
   });
 

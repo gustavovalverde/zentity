@@ -469,14 +469,11 @@ Key points:
 - `authorization_details` preserves what was approved.
 - `cnf.jkt` sender-constrains the token when DPoP is in play.
 
-### Purchase authorization artifact
+### Claim narrowing on token exchange
 
-RFC 8693 token exchange has two outputs in the agent flow:
+RFC 8693 token exchange has a single output in the agent flow: a downstream access token re-bound to the target audience. Whether the audience is another agent runtime or a non-agent relying party (a merchant, a facilitator, an API) is reflected in which claims survive the exchange, not in which token type is issued.
 
-- exchanged access tokens keep the same AAP profile and add `delegation`
-- purchase authorization artifacts carry the approved purchase details for the target facilitator or merchant
-
-Purchase authorization is issued through RFC 8693 token exchange when the subject token already contains approved purchase details.
+When the target audience is itself an agent runtime, the exchanged token retains the full AAP profile (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. When the target audience is a non-agent relying party, those agent control-plane claims are dropped: the exchanged token carries only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
 
 ```json
 {
@@ -497,28 +494,26 @@ Purchase authorization is issued through RFC 8693 token exchange when the subjec
       }
     }
   ],
+  "cnf": {
+    "jkt": "dpop_key_thumbprint"
+  },
   "iat": 1759996400,
   "exp": 1760000000
 }
 ```
 
-The JWT header uses:
-
-- `alg: "EdDSA"`
-- `typ: "purchase-authorization+jwt"`
-
-And the token response uses:
+The token response uses the standard RFC 8693 access-token form:
 
 ```json
 {
-  "access_token": "<artifact>",
-  "issued_token_type": "urn:zentity:token-type:purchase-authorization",
-  "token_type": "N_A",
+  "access_token": "<token>",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "Bearer",
   "expires_in": 3600
 }
 ```
 
-The artifact copies approved purchase details from the subject token and rebinds both `sub` and `act.sub` for the target audience client. That exchange is also the reduction step: the artifact omits the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections, and its lifetime is capped by the subject token's remaining lifetime. Because the current deployment advertises `delegation_chains: false`, it omits `delegation` on purchase artifacts as well. A deployment that advertises `delegation_chains: true` would retain the projected `delegation` lineage on the artifact. Exchanged access tokens retain the AAP `agent`, `task`, `capabilities`, `oversight`, and `audit` sections and additionally emit `delegation`.
+The exchange is also the privilege-reduction step: scopes and `authorization_details` are a subset of the subject token's, lifetime is capped by the subject token's remaining lifetime, and `cnf.jkt` is rebound to the caller's DPoP proof.
 
 ### Host and runtime proofs
 
@@ -561,7 +556,7 @@ The derivation starts from the session ID rather than the host ID because the ru
 Current pairwise actor identifiers appear in:
 
 - `agent.id` and `act.sub` inside access tokens
-- `act.sub` inside purchase authorization artifacts
+- `act.sub` inside tokens issued by token exchange to non-agent audiences
 - the introspection response AAP `agent.id` for the calling machine client
 - the CIBA request snapshot stored on the server
 
@@ -620,7 +615,7 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-The purchase authorization artifact carries the pairwise `sub`, pairwise `act.sub`, and the approved purchase `authorization_details` for the target audience.
+Tokens issued by token exchange to a non-agent audience carry pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience.
 
 The full binding chain is:
 
@@ -631,7 +626,7 @@ flowchart LR
   C --> D["Agent-Assertion on CIBA request"]
   D --> E["Human approval via CIBA"]
   E --> F["Access token with sub + act.sub"]
-  F --> G["Optional RFC 8693 exchange to purchase-authorization+jwt"]
+  F --> G["Optional RFC 8693 exchange (audience rebinding + claim narrowing)"]
 ```
 
 Each step narrows who can continue the flow. The architecture remains OAuth-native while keeping the human and the agent as separate principals.
@@ -656,7 +651,6 @@ The document publishes:
 - `jwks_uri`
 - `supported_algorithms`
 - `approval_methods`
-- `issued_token_types`
 - `supported_features`
 
 The bootstrap contract implied by the document is narrow: the client first exchanges its login token for a dedicated DPoP-bound bootstrap token, then uses that token for host/session registration and revocation. The raw login token is not the bootstrap credential.
@@ -712,7 +706,7 @@ A relying party can ask whether an agent session is still active without learnin
 
 ### Agent JWKS
 
-`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating purchase authorization artifacts and other signed agent-facing JWTs.
+`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating signed agent-facing JWTs and tokens issued by token exchange.
 
 ### A2A discovery
 
@@ -755,7 +749,7 @@ When a tool needs user approval:
 3. it starts a CIBA request
 4. it polls until approval, denial, or timeout
 
-When the tool needs purchase execution rather than just approval, the downstream relying party can exchange the resulting delegated token for `purchase-authorization+jwt` through RFC 8693 token exchange.
+When the tool needs the delegated token rebound to a non-agent relying party (a merchant, facilitator, or RP API), the downstream client can exchange the CIBA access token through RFC 8693 token exchange. The exchange rebinds the audience and narrows the claim set: agent control-plane sections are dropped, leaving only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
 
 ### Session expiry
 
@@ -773,7 +767,7 @@ The MCP model is built around four operating rules:
 1. browser sessions do not authenticate machine protocol routes
 2. host continuity and runtime continuity are separate concepts
 3. free-form `agent_claims` are gone from the core CIBA path
-4. purchase authorization is issued as token exchange output, not a standalone POST route
+4. downstream RP-bound tokens are issued through token exchange, not standalone POST routes
 
 Those rules keep the MCP flow mostly ordinary OAuth while keeping the custom runtime layer small and explicit.
 
@@ -818,7 +812,7 @@ OAuth 2.1, PKCE (RFC 7636), PAR (RFC 9126), and DPoP (RFC 9449) form the transpo
 
 Removing any one of these specs does not change the agent model, only the security properties of the channel. PKCE prevents authorization code interception, PAR moves authorization parameters from the front channel to the back channel, and DPoP sender-constrains tokens so a stolen token is useless without the holder's proof-of-possession key.
 
-DPoP is the one transport spec that crosses into agent territory. When token exchange repackages a CIBA token into a purchase artifact, DPoP re-binds the artifact to the agent's key. The security property is transport-level, but its effect is agent containment: even a leaked artifact is useless without the agent's proof-of-possession key.
+DPoP is the one transport spec that crosses into agent territory. When token exchange mints a downstream token from a CIBA access token, DPoP re-binds the issued token to the caller's key. The security property is transport-level, but its effect is agent containment: even a leaked exchanged token is useless without the caller's proof-of-possession key.
 
 ### Structured intent
 
@@ -850,13 +844,13 @@ The runtime proof is bound to a specific consent request rather than floating as
 
 Once consent is obtained, the question shifts from "does the human approve?" to "how does the approved action reach the right party with the right identifiers?" Four specs shape the answer.
 
-**Token exchange** (RFC 8693) repackages the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and artifact creation (`purchase-authorization+jwt` with the approved purchase details forward-copied from the subject token). The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
+**Token exchange** (RFC 8693) rebinds the CIBA access token for a different audience. Without it, the agent would present the same token to every relying party, leaking cross-party correlation. Token exchange performs scope attenuation (narrowing what the downstream RP can see), audience rebinding (recomputing pairwise identifiers for the target client), and claim narrowing (dropping agent control-plane claims when issuing for non-agent audiences, leaving `sub`, `act.sub`, the approved `authorization_details`, and `cnf.jkt`). The current deployment does not advertise general delegation-chain support, so multi-hop chain portability is not part of the published contract.
 
-Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap artifact is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream purchase artifacts.
+Token exchange also issues the agent bootstrap token used for host/session registration. That bootstrap token is DPoP-bound and carries only the narrow agent scopes needed for bootstrap and revocation; it is intentionally separate from the login token and from downstream RP-bound tokens.
 
 **Token introspection** (RFC 7662) provides the verification channel. A downstream RP that receives an agent-presented token can query whether it is still active, who the actor is, and what trust level it carries. Introspection re-evaluates session lifecycle at query time, so an agent session that expired between token issuance and introspection reports `active: false` even if the JWT itself has not expired. This makes the lifecycle model operational rather than theoretical.
 
-**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation. A merchant that receives a purchase artifact cannot correlate the acting agent with the same agent's activity at a different merchant.
+**Pairwise subject identifiers** (OIDC Core) extend to both `act.sub` and the AAP `agent.id`, applying the same derivation that prevents RP-to-RP user correlation to agent correlation. A merchant that receives an exchanged token cannot correlate the acting agent with the same agent's activity at a different merchant.
 
 **The Agent Authorization Profile** (AAP draft) provides the JWT claim vocabulary: `agent`, `task`, `capabilities`, `oversight`, `delegation`, and `audit`. Verified agent-backed CIBA tokens emit `agent`, `task`, `capabilities`, `oversight`, and `audit`. Exchanged access tokens additionally emit `delegation`. Discovery still advertises `delegation_chains: false`, so the current implementation supports single-server token lineage rather than general multi-hop delegation protocols.
 
@@ -864,9 +858,9 @@ Token exchange also issues the agent bootstrap token used for host/session regis
 
 Two convergence points tie the five concerns together rather than letting them exist as parallel tracks.
 
-The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, four downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, token exchange cannot mint purchase artifacts (no `act.sub` to resolve), and the token reverts to a standard CIBA token without agent semantics.
+The `assertionVerified` flag on the CIBA request row is the first. It is set when the `Agent-Assertion` from the control plane passes verification inside the consent channel. If verification fails, four downstream effects cascade: the AAP profile builder returns nothing (no agent claims enter the token), introspection returns `active: false` for agent consumers, token exchange cannot rebind for non-agent audiences (no `act.sub` to resolve), and the token reverts to a standard CIBA token without agent semantics.
 
-The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, survives into the CIBA access token, and gets forward-copied into the purchase artifact during token exchange. The same structured data flows through four specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
+The `authorization_details` payload is the second. It enters at the structured intent layer, drives capability matching in the consent channel, survives into the CIBA access token, and is forward-copied into the exchanged token for the downstream audience. The same structured data flows through four specs without transformation, which is evidence that the specs compose cleanly rather than fighting over data representation.
 
 ### Standards map
 
@@ -881,10 +875,10 @@ The `authorization_details` payload is the second. It enters at the structured i
 | Host and agent JWTs | Control plane | [Agent Auth Protocol v1.0-draft](https://agent-auth-protocol.com/specification/v1.0-draft) | Signed proofs for registration and CIBA runtime binding |
 | Vendor attestation | Control plane | [draft-ietf-oauth-attestation-based-client-auth-08](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-attestation-based-client-auth-08) | Optional host attestation against trusted JWKS |
 | A2A agent card | Control plane | [A2A Protocol v0.3.0](https://a2a-protocol.org/v0.3.0/specification/) | Agent skills and security scheme for inter-agent discovery |
-| Token exchange | Token semantics | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | Audience rebinding and `purchase-authorization+jwt` issuance |
+| Token exchange | Token semantics | [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) | Audience rebinding with claim narrowing for downstream RPs |
 | Token introspection | Token semantics | [RFC 7662](https://datatracker.ietf.org/doc/html/rfc7662) | Runtime session status for downstream RPs |
 | Pairwise subject identifiers | Token semantics | [OIDC Core 1.0](https://openid.net/specs/openid-connect-core-1_0-18.html) | Privacy for both `sub` and `act.sub` across RPs |
 | Agent authorization claims | Token semantics | [AAP draft](https://datatracker.ietf.org/doc/draft-aap-oauth-profile/) | JWT claim vocabulary for delegation, task, and capabilities |
 | `Agent-Assertion` on CIBA | Zentity-specific | [Agent Architecture](agent-architecture.md) | Runtime proof through CIBA rather than the protocol's standard execution shape |
 | Host policy / session grant split | Zentity-specific | Agent schema | Durable host defaults and session-scoped grants as separate records |
-| `urn:zentity:token-type:purchase-authorization` | Zentity-specific | Token exchange handler | Audience-bound purchase artifact via RFC 8693 extension |
+| Claim narrowing on token exchange | PACT | Token exchange handler | Drops agent control-plane claims when issuing for non-agent audiences (PACT §8) |
