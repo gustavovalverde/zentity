@@ -114,9 +114,14 @@ export async function verifyVpToken(
   }
 
   const kbJwt = parts.at(-1);
+  // OID4VP + SD-JWT VC mandate a Key Binding JWT in the final segment.
+  // A missing or empty KB-JWT defeats holder binding, audience, nonce, and
+  // freshness checks, so reject before doing any further work.
+  if (!kbJwt) {
+    return { verified: false, claims: {} };
+  }
   const disclosureParts = parts.slice(1, -1).filter(Boolean);
 
-  // 1. Verify issuer signature
   let issuerPayload: Record<string, unknown>;
   try {
     const { payload } = await jwtVerify(issuerJwt, zentityJwks());
@@ -125,24 +130,20 @@ export async function verifyVpToken(
     return { verified: false, claims: {} };
   }
 
-  // 2. Decode disclosures and extract claims
   const disclosedClaims = decodeDisclosures(disclosureParts);
 
-  // 3. Cryptographically verify KB-JWT signature and holder binding
-  if (kbJwt) {
-    try {
-      const valid = await verifyKbJwt(
-        kbJwt,
-        issuerPayload,
-        expectedNonce,
-        expectedAudience
-      );
-      if (!valid) {
-        return { verified: false, claims: disclosedClaims };
-      }
-    } catch {
+  try {
+    const valid = await verifyKbJwt(
+      kbJwt,
+      issuerPayload,
+      expectedNonce,
+      expectedAudience
+    );
+    if (!valid) {
       return { verified: false, claims: disclosedClaims };
     }
+  } catch {
+    return { verified: false, claims: disclosedClaims };
   }
 
   return { verified: true, claims: disclosedClaims };
