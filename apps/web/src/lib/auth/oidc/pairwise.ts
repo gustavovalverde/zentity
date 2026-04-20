@@ -9,7 +9,12 @@ import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
-function getSectorIdentifier(redirectUris: string[]): string {
+import {
+  resolvePairwiseSubjectId,
+  upsertPairwiseSubjectIndex,
+} from "./pairwise-subject-index";
+
+export function getPairwiseSector(redirectUris: string[]): string {
   const first = redirectUris[0];
   if (!first) {
     throw new Error("Client has no redirect URIs for sector identifier");
@@ -22,7 +27,7 @@ export async function computePairwiseSub(
   redirectUris: string[],
   secret: string
 ): Promise<string> {
-  const sector = getSectorIdentifier(redirectUris);
+  const sector = getPairwiseSector(redirectUris);
   return await makeSignature(`${sector}.${userId}`, secret);
 }
 
@@ -31,11 +36,18 @@ export async function resolveSubForClient(
   client: { subjectType: string | null; redirectUris: string[] }
 ): Promise<string> {
   if (client.subjectType === "pairwise") {
-    return await computePairwiseSub(
+    const sub = await computePairwiseSub(
       userId,
       client.redirectUris,
       env.PAIRWISE_SECRET
     );
+    await upsertPairwiseSubjectIndex({
+      sector: getPairwiseSector(client.redirectUris),
+      sub,
+      subjectId: userId,
+      subjectType: "user",
+    });
+    return sub;
   }
   return userId;
 }
@@ -52,21 +64,27 @@ export async function resolveUserIdFromSubForClient(
     return sub;
   }
 
-  // TODO: add pairwise_subjects index table at scale
-  const allUsers = await db.select({ id: users.id }).from(users).all();
+  return await resolvePairwiseSubjectId({
+    sector: getPairwiseSector(client.redirectUris),
+    sub,
+    subjectType: "user",
+    findLegacySubjectId: async () => {
+      const allUsers = await db.select({ id: users.id }).from(users).all();
 
-  for (const user of allUsers) {
-    const pairwiseSub = await computePairwiseSub(
-      user.id,
-      client.redirectUris,
-      env.PAIRWISE_SECRET
-    );
-    if (pairwiseSub === sub) {
-      return user.id;
-    }
-  }
+      for (const user of allUsers) {
+        const pairwiseSub = await computePairwiseSub(
+          user.id,
+          client.redirectUris,
+          env.PAIRWISE_SECRET
+        );
+        if (pairwiseSub === sub) {
+          return user.id;
+        }
+      }
 
-  return null;
+      return null;
+    },
+  });
 }
 
 /**

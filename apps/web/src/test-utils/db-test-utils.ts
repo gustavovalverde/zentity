@@ -31,6 +31,7 @@ import {
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
+  pairwiseSubjects,
   rpEncryptionKeys,
 } from "@/lib/db/schema/oauth-provider";
 import {
@@ -103,6 +104,7 @@ export async function resetDatabase(): Promise<void> {
     // OAuth/compliance tables (delete children before parents)
     await tx.delete(rpEncryptionKeys).run();
     await tx.delete(agentTokenSnapshots).run();
+    await tx.delete(pairwiseSubjects).run();
     await tx.delete(oauthAccessTokens).run();
     await tx.delete(oauthRefreshTokens).run();
     await tx.delete(oauthConsents).run();

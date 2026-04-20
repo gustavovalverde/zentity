@@ -113,6 +113,7 @@ import {
 } from "@/lib/auth/oidc/haip/x509-validation";
 import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
+import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
@@ -1482,6 +1483,13 @@ export const auth = betterAuth({
     encryptOAuthTokens: true,
   },
   databaseHooks: {
+    user: {
+      delete: {
+        before: async (user) => {
+          await deletePairwiseSubjectsForUser(user.id);
+        },
+      },
+    },
     session: {
       create: {
         before: async (session) => ({
@@ -1789,10 +1797,12 @@ export const auth = betterAuth({
         // Per-RP sybil nullifier
         if (scopeList.includes("proof:sybil") && clientId) {
           const verification = await getLatestVerification(user.id);
-          if (verification?.dedupKey) {
+          const internalKey =
+            verification?.dedupKey ?? verification?.uniqueIdentifier;
+          if (internalKey) {
             claims.sybil_nullifier = computeRpNullifier(
               env.DEDUP_HMAC_SECRET,
-              verification.dedupKey,
+              internalKey,
               clientId
             );
           }

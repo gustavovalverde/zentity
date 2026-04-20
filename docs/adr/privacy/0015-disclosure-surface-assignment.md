@@ -95,7 +95,7 @@ Rationale:
 
 Rationale:
 
-* `sybil_nullifier` is not a user-facing profile claim. It is an RP-specific anti-abuse handle derived from `(dedupKey, clientId)`.
+* `sybil_nullifier` is not a user-facing profile claim. It is an RP-specific anti-abuse handle derived from `(internalIdentityKey, clientId)`, where Zentity uses `dedupKey` for OCR verifications and `uniqueIdentifier` for NFC verifications.
 * Putting it in `id_token` would spread a per-RP pseudonym into client/session surfaces that are often cached and logged.
 * Putting it in `userinfo` would make developers treat it like ordinary profile data and persist it alongside claims.
 * The access token is audience-bound and sender-constrained, so it is the correct place for an operational per-RP nullifier.

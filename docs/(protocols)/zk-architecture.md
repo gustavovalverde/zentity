@@ -189,7 +189,7 @@ Zentity prevents the same identity document from being registered under multiple
 
 **NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `uniqueIdentifier` (a nullifier from the NFC chip proof). Cross-method dedup (same passport via both OCR and NFC) is handled only by `uniqueIdentifier`.
 
-**Per-RP nullifier:** An HMAC-SHA256 derived from the dedup key and client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Each RP receives a unique pseudonymous nullifier; the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
+**Per-RP nullifier:** An HMAC-SHA256 derived from an internal identity key and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Zentity uses `dedupKey` for OCR verifications and `uniqueIdentifier` for NFC verifications. Each RP receives a unique pseudonymous nullifier; the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
 
 ## Implementation Notes
 

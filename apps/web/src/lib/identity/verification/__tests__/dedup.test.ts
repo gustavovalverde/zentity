@@ -60,29 +60,29 @@ describe("computeDedupKey", () => {
 });
 
 describe("computeRpNullifier", () => {
-  const dedupKey = computeDedupKey(SECRET, "X123", "US", "1990-01-15");
+  const internalKey = computeDedupKey(SECRET, "X123", "US", "1990-01-15");
 
   it("same person + same RP = same nullifier", () => {
-    const n1 = computeRpNullifier(SECRET, dedupKey, "client-bank");
-    const n2 = computeRpNullifier(SECRET, dedupKey, "client-bank");
+    const n1 = computeRpNullifier(SECRET, internalKey, "client-bank");
+    const n2 = computeRpNullifier(SECRET, internalKey, "client-bank");
     expect(n1).toBe(n2);
   });
 
   it("same person + different RP = different nullifier", () => {
-    const n1 = computeRpNullifier(SECRET, dedupKey, "client-bank");
-    const n2 = computeRpNullifier(SECRET, dedupKey, "client-exchange");
+    const n1 = computeRpNullifier(SECRET, internalKey, "client-bank");
+    const n2 = computeRpNullifier(SECRET, internalKey, "client-exchange");
     expect(n1).not.toBe(n2);
   });
 
   it("different person + same RP = different nullifier", () => {
     const otherKey = computeDedupKey(SECRET, "Y456", "GB", "2000-01-01");
-    const n1 = computeRpNullifier(SECRET, dedupKey, "client-bank");
+    const n1 = computeRpNullifier(SECRET, internalKey, "client-bank");
     const n2 = computeRpNullifier(SECRET, otherKey, "client-bank");
     expect(n1).not.toBe(n2);
   });
 
   it("returns a 64-character hex string", () => {
-    const n = computeRpNullifier(SECRET, dedupKey, "client-bank");
+    const n = computeRpNullifier(SECRET, internalKey, "client-bank");
     expect(n).toMatch(HEX_64);
   });
 });

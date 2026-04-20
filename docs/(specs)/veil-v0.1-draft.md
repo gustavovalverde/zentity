@@ -186,10 +186,13 @@ The two tracks produce different delivery behavior at each OAuth endpoint:
 The profile defines an optional `proof:sybil` scope that produces a per-RP unlinkable nullifier:
 
 ```text
-sybil_nullifier = HMAC-SHA-256(DEDUP_HMAC_SECRET, dedupKey + ":" + clientId)
+sybil_nullifier = HMAC-SHA-256(
+  DEDUP_HMAC_SECRET,
+  internal_identity_key + "|rp|" + clientId
+)
 ```
 
-The same person receives the same nullifier at one RP but different nullifiers at different RPs. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage.
+The same person receives the same nullifier at one RP but different nullifiers at different RPs. The internal identity key is implementation-defined. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage.
 
 ---
 

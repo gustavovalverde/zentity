@@ -30,17 +30,17 @@ export function computeDedupKey(
 /**
  * Compute a per-RP sybil nullifier.
  *
- * HMAC-SHA256(secret, dedup_key | "|rp|" | client_id)
+ * HMAC-SHA256(secret, internal_key | "|rp|" | client_id)
  *
  * Same person + same RP = same nullifier (enables RP-level one-identity enforcement).
  * Same person + different RP = different nullifier (no cross-RP linkability).
  */
 export function computeRpNullifier(
   secret: string,
-  dedupKey: string,
+  internalKey: string,
   clientId: string
 ): string {
   return createHmac("sha256", secret)
-    .update(`${dedupKey}|rp|${clientId}`)
+    .update(`${internalKey}|rp|${clientId}`)
     .digest("hex");
 }

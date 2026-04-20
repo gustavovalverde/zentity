@@ -1,14 +1,17 @@
+import type { Client } from "@libsql/client";
+
 import crypto from "node:crypto";
 
 import { makeSignature } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
+import { deleteIncompleteSignup } from "@/lib/db/queries/auth";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { oauthClients, pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 import {
@@ -19,6 +22,22 @@ import {
 
 const TEST_CLIENT_ID = "pairwise-test-client";
 const TEST_REDIRECT_URI = "https://pairwise-rp.example.com/callback";
+
+function getDbClient() {
+  return db as typeof db & { $client: Pick<Client, "execute"> };
+}
+
+async function countDatabaseQueries(run: () => Promise<void>): Promise<number> {
+  const client = getDbClient();
+  const executeSpy = vi.spyOn(client.$client, "execute");
+
+  try {
+    await run();
+    return executeSpy.mock.calls.length;
+  } finally {
+    executeSpy.mockRestore();
+  }
+}
 
 async function createTestClient(
   overrides: Partial<typeof oauthClients.$inferInsert> = {}
@@ -117,6 +136,104 @@ describe("pairwise subject resolution (integration)", () => {
       expect(resolved).toBe(user2);
       expect(resolved).not.toBe(userId);
       expect(resolved).not.toBe(user3);
+    });
+
+    it("backfills the pairwise index on a legacy cache miss", async () => {
+      await createTestClient();
+
+      const pairwiseSub = await computePairwiseSub(
+        userId,
+        [TEST_REDIRECT_URI],
+        env.PAIRWISE_SECRET
+      );
+
+      const indexedBefore = await db
+        .select({ sub: pairwiseSubjects.sub })
+        .from(pairwiseSubjects)
+        .where(
+          and(
+            eq(pairwiseSubjects.sector, new URL(TEST_REDIRECT_URI).host),
+            eq(pairwiseSubjects.sub, pairwiseSub)
+          )
+        )
+        .limit(1)
+        .get();
+      expect(indexedBefore).toBeUndefined();
+
+      const resolved = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
+      expect(resolved).toBe(userId);
+
+      const indexedAfter = await db
+        .select({
+          subjectId: pairwiseSubjects.subjectId,
+          subjectType: pairwiseSubjects.subjectType,
+        })
+        .from(pairwiseSubjects)
+        .where(
+          and(
+            eq(pairwiseSubjects.sector, new URL(TEST_REDIRECT_URI).host),
+            eq(pairwiseSubjects.sub, pairwiseSub)
+          )
+        )
+        .limit(1)
+        .get();
+
+      expect(indexedAfter).toEqual({
+        subjectId: userId,
+        subjectType: "user",
+      });
+    });
+
+    it("uses a constant query count once the user pairwise row is indexed", async () => {
+      await createTestClient();
+
+      const pairwiseSub = await resolveSubForClient(userId, {
+        subjectType: "pairwise",
+        redirectUris: [TEST_REDIRECT_URI],
+      });
+
+      const queryCountWithOneUser = await countDatabaseQueries(async () => {
+        await expect(
+          resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID)
+        ).resolves.toBe(userId);
+      });
+
+      for (let index = 0; index < 20; index += 1) {
+        await createTestUser({ email: `extra-user-${index}@example.com` });
+      }
+
+      const queryCountWithManyUsers = await countDatabaseQueries(async () => {
+        await expect(
+          resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID)
+        ).resolves.toBe(userId);
+      });
+
+      expect(queryCountWithManyUsers).toBe(queryCountWithOneUser);
+    });
+
+    it("removes pairwise rows when an incomplete signup is deleted", async () => {
+      await createTestClient();
+
+      const pairwiseSub = await resolveSubForClient(userId, {
+        subjectType: "pairwise",
+        redirectUris: [TEST_REDIRECT_URI],
+      });
+
+      const indexedBefore = await db
+        .select({ sub: pairwiseSubjects.sub })
+        .from(pairwiseSubjects)
+        .where(eq(pairwiseSubjects.sub, pairwiseSub))
+        .all();
+      expect(indexedBefore).toHaveLength(1);
+
+      await deleteIncompleteSignup(userId);
+
+      const indexedAfter = await db
+        .select({ sub: pairwiseSubjects.sub })
+        .from(pairwiseSubjects)
+        .where(eq(pairwiseSubjects.sub, pairwiseSub))
+        .all();
+      expect(indexedAfter).toHaveLength(0);
     });
   });
 

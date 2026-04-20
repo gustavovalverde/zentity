@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "@/lib/db/connection";
 import {
   getLatestVerification,
+  isNullifierUsedByOtherUser,
   revokeIdentity,
 } from "@/lib/db/queries/identity";
 import {
@@ -144,6 +145,35 @@ describe("identity revocation cascade", () => {
     expect(verifications).toHaveLength(2);
     expect(verifications.find((v) => v.status === "revoked")).toBeTruthy();
     expect(verifications.find((v) => v.status === "verified")).toBeTruthy();
+  });
+
+  it("re-registration allowed after revocation (NFC nullifier released)", async () => {
+    const challengerUserId = await createTestUser({
+      email: "challenger@test.com",
+    });
+    const uniqueIdentifier = `nfc-nullifier-${userId}`;
+
+    await db
+      .insert(identityVerifications)
+      .values({
+        id: crypto.randomUUID(),
+        userId,
+        method: "nfc_chip",
+        status: "verified",
+        uniqueIdentifier,
+        verifiedAt: new Date().toISOString(),
+      })
+      .run();
+
+    await expect(
+      isNullifierUsedByOtherUser(uniqueIdentifier, challengerUserId)
+    ).resolves.toBe(true);
+
+    await revokeIdentity(userId, "admin@zentity.app", "expired passport");
+
+    await expect(
+      isNullifierUsedByOtherUser(uniqueIdentifier, challengerUserId)
+    ).resolves.toBe(false);
   });
 
   it("idempotent — double revocation does not fail", async () => {

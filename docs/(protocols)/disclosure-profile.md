@@ -47,7 +47,7 @@ Proof claims are derived from the user's verification state. No PII is involved.
 | `proof:chip` | `chip_verified`, `chip_verification_method` | id_token, userinfo |
 | `proof:sybil` | `sybil_nullifier` | **access_token only** |
 
-`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, dedupKey + ":" + clientId)`. It appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, internalIdentityKey + "|rp|" + clientId)`. The internal identity key is `dedupKey` for OCR verifications and `uniqueIdentifier` for NFC verifications. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
 
 ### Identity scopes — vault-gated PII
 

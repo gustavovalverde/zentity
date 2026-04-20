@@ -2,6 +2,8 @@ import { and, desc, eq, isNotNull, ne, or } from "drizzle-orm";
 import { cache } from "react";
 import { getAddress } from "viem";
 
+import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
+
 import { db } from "../connection";
 import { accounts, users, walletAddresses } from "../schema/auth";
 
@@ -181,6 +183,7 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
   //    - identityBundles, identityVerifications, identityVerificationJobs (identity)
   //    - attestationEvidence, attestationState (attestation)
   //    - recoveryConfigs, recoveryRequests, guardianRelationships, pendingGuardianInvites (recovery)
+  await deletePairwiseSubjectsForUser(userId);
   await db.delete(users).where(eq(users.id, userId)).run();
 }
 

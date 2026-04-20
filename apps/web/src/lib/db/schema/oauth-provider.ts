@@ -2,6 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  // biome-ignore lint/suspicious/noDeprecatedImports: Drizzle uses this symbol for composite primary keys; this call site already uses the non-deprecated object form.
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -180,6 +182,28 @@ export const oidcReleaseContexts = sqliteTable(
   ]
 );
 
+export const pairwiseSubjects = sqliteTable(
+  "pairwise_subject",
+  {
+    sector: text("sector").notNull(),
+    sub: text("sub").notNull(),
+    subjectType: text("subject_type", {
+      enum: ["user", "agent_session"],
+    }).notNull(),
+    subjectId: text("subject_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sector, table.sub] }),
+    index("pairwise_subject_subject_idx").on(
+      table.subjectType,
+      table.subjectId
+    ),
+  ]
+);
+
 export const oauthPendingDisclosures = sqliteTable(
   "oauth_pending_disclosure",
   {
@@ -218,6 +242,8 @@ export type OauthConsent = typeof oauthConsents.$inferSelect;
 export type NewOauthConsent = typeof oauthConsents.$inferInsert;
 export type OidcReleaseContext = typeof oidcReleaseContexts.$inferSelect;
 export type NewOidcReleaseContext = typeof oidcReleaseContexts.$inferInsert;
+export type PairwiseSubject = typeof pairwiseSubjects.$inferSelect;
+export type NewPairwiseSubject = typeof pairwiseSubjects.$inferInsert;
 export type OauthPendingDisclosure =
   typeof oauthPendingDisclosures.$inferSelect;
 export type NewOauthPendingDisclosure =

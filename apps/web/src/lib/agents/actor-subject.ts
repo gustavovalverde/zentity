@@ -1,7 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
+import {
+  computePairwiseSub,
+  getPairwiseSector,
+} from "@/lib/auth/oidc/pairwise";
+import {
+  resolvePairwiseSubjectId,
+  upsertPairwiseSubjectIndex,
+} from "@/lib/auth/oidc/pairwise-subject-index";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
@@ -68,11 +75,18 @@ export async function resolveAgentSubForClient(
     return sessionId;
   }
 
-  return computePairwiseSub(
+  const sub = await computePairwiseSub(
     sessionId,
     client.redirectUris,
     env.PAIRWISE_SECRET
   );
+  await upsertPairwiseSubjectIndex({
+    sector: getPairwiseSector(client.redirectUris),
+    sub,
+    subjectId: sessionId,
+    subjectType: "agent_session",
+  });
+  return sub;
 }
 
 export async function resolveAgentSessionIdFromPairwiseSub(
@@ -94,20 +108,29 @@ export async function resolveAgentSessionIdFromPairwiseSub(
     return session?.id ?? null;
   }
 
-  const sessions = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .all();
-  for (const session of sessions) {
-    const candidate = await computePairwiseSub(
-      session.id,
-      client.redirectUris,
-      env.PAIRWISE_SECRET
-    );
-    if (candidate === pairwiseSub) {
-      return session.id;
-    }
-  }
+  return await resolvePairwiseSubjectId({
+    sector: getPairwiseSector(client.redirectUris),
+    sub: pairwiseSub,
+    subjectType: "agent_session",
+    findLegacySubjectId: async () => {
+      const sessions = await db
+        .select({ id: agentSessions.id })
+        .from(agentSessions)
+        .where(eq(agentSessions.status, "active"))
+        .all();
 
-  return null;
+      for (const session of sessions) {
+        const candidate = await computePairwiseSub(
+          session.id,
+          client.redirectUris,
+          env.PAIRWISE_SECRET
+        );
+        if (candidate === pairwiseSub) {
+          return session.id;
+        }
+      }
+
+      return null;
+    },
+  });
 }
