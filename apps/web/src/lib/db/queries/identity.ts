@@ -2,32 +2,31 @@ import type { ComplianceResult } from "@/lib/identity/verification/compliance";
 import type {
   FheStatus,
   IdentityBundle,
-  IdentityBundleStatus,
   IdentityJobStatus,
   IdentityVerification,
   IdentityVerificationDraft,
   IdentityVerificationJob,
   NewIdentityVerification,
+  ValidityStatus,
+  ValidityTransitionSource,
 } from "../schema/identity";
 
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import {
-  canCreateProvider,
-  createProvider,
-} from "@/lib/blockchain/attestation/providers";
+import { scheduleIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
+import { applyValidityTransition } from "@/lib/identity/validity/transition";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
 import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
-  blockchainAttestations,
   identityBundles,
+  identityValidityEvents,
   identityVerificationDrafts,
   identityVerificationJobs,
   identityVerifications,
@@ -41,10 +40,77 @@ import {
   signedClaims,
   zkChallenges,
 } from "../schema/privacy";
-import { getSignedClaimTypesByUserAndVerification } from "./privacy";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
+}
+
+interface AccountIdentity {
+  bundle: IdentityBundle | null;
+  effectiveVerification: IdentityVerification | null;
+  groupedCredentials: IdentityVerification[];
+}
+
+function getInternalIdentityKey(
+  verification: {
+    dedupKey?: string | null | undefined;
+    uniqueIdentifier?: string | null | undefined;
+  } | null
+): string | null {
+  return verification?.dedupKey ?? verification?.uniqueIdentifier ?? null;
+}
+
+function deriveBundleValidityStatusFromVerifications(
+  verifications: readonly IdentityVerification[]
+): ValidityStatus {
+  if (
+    verifications.some((verification) => verification.status === "verified")
+  ) {
+    return "verified";
+  }
+  if (verifications.some((verification) => verification.status === "pending")) {
+    return "pending";
+  }
+  if (verifications.some((verification) => verification.status === "failed")) {
+    return "failed";
+  }
+  if (verifications.some((verification) => verification.status === "revoked")) {
+    return "revoked";
+  }
+  return "pending";
+}
+
+async function loadIdentityBundleByUserId(
+  userId: string
+): Promise<IdentityBundle | null> {
+  const row = await db
+    .select()
+    .from(identityBundles)
+    .where(eq(identityBundles.userId, userId))
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+async function getSignedClaimTypesForVerification(
+  userId: string,
+  verificationId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ claimType: signedClaims.claimType })
+    .from(signedClaims)
+    .where(
+      and(
+        eq(signedClaims.userId, userId),
+        eq(signedClaims.verificationId, verificationId)
+      )
+    )
+    .groupBy(signedClaims.claimType)
+    .orderBy(signedClaims.claimType)
+    .all();
+
+  return rows.map((row) => row.claimType);
 }
 
 /**
@@ -150,6 +216,10 @@ export async function deleteIdentityData(userId: string): Promise<void> {
       .where(eq(identityVerificationDrafts.userId, userId))
       .run();
     await tx
+      .delete(identityValidityEvents)
+      .where(eq(identityValidityEvents.userId, userId))
+      .run();
+    await tx
       .delete(identityVerifications)
       .where(eq(identityVerifications.userId, userId))
       .run();
@@ -160,10 +230,11 @@ export async function deleteIdentityData(userId: string): Promise<void> {
   });
 }
 
-export const getVerificationStatus = cache(async function getVerificationStatus(
+export const getComplianceStatus = cache(async function getComplianceStatus(
   userId: string
 ): Promise<ComplianceResult> {
-  const selectedVerification = await getSelectedVerification(userId);
+  const accountIdentity = await getAccountIdentity(userId);
+  const selectedVerification = accountIdentity.effectiveVerification;
 
   if (!selectedVerification) {
     return deriveComplianceStatus({
@@ -181,7 +252,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
 
   // NFC chip path — only need signed claim types
   if (isChipVerified(selectedVerification)) {
-    const claimTypes = await getSignedClaimTypesByUserAndVerification(
+    const claimTypes = await getSignedClaimTypesForVerification(
       userId,
       verificationId
     );
@@ -217,7 +288,7 @@ export const getVerificationStatus = cache(async function getVerificationStatus(
         )
       )
       .all(),
-    getSignedClaimTypesByUserAndVerification(userId, verificationId),
+    getSignedClaimTypesForVerification(userId, verificationId),
   ]);
 
   // Group proofs by session, find the latest complete one
@@ -288,14 +359,7 @@ export const getIdentityBundleByUserId = cache(
   async function getIdentityBundleByUserId(
     userId: string
   ): Promise<IdentityBundle | null> {
-    const row = await db
-      .select()
-      .from(identityBundles)
-      .where(eq(identityBundles.userId, userId))
-      .limit(1)
-      .get();
-
-    return row ?? null;
+    return await loadIdentityBundleByUserId(userId);
   }
 );
 
@@ -348,122 +412,161 @@ async function getVerificationsByUserId(
     .all();
 }
 
-export const getSelectedVerification = cache(
-  async function getSelectedVerification(
-    userId: string
-  ): Promise<IdentityVerification | null> {
-    const verifications = await getVerificationsByUserId(userId);
-
-    if (verifications.length === 0) {
-      return null;
-    }
-
-    // NFC chip verifications are always "selected" if verified — no proof/claim check needed
-    for (const v of verifications) {
-      if (isChipVerified(v)) {
-        return v;
-      }
-    }
-
-    // OCR path — need proof and claim data to rank verifications
-    const [proofRows, claimRows] = await Promise.all([
-      db
-        .select({
-          verificationId: proofArtifacts.verificationId,
-          proofSessionId: proofArtifacts.proofSessionId,
-          proofType: proofArtifacts.proofType,
-          policyVersion: proofArtifacts.policyVersion,
-          verified: proofArtifacts.verified,
-        })
-        .from(proofArtifacts)
-        .where(eq(proofArtifacts.userId, userId))
-        .all(),
-      db
-        .select({
-          verificationId: signedClaims.verificationId,
-          claimType: signedClaims.claimType,
-        })
-        .from(signedClaims)
-        .where(eq(signedClaims.userId, userId))
-        .all(),
-    ]);
-
-    const proofTypesByVerificationSession = new Map<
-      string,
-      Map<string, Set<string>>
-    >();
-    for (const row of proofRows) {
-      if (
-        !(
-          row.verificationId &&
-          row.proofSessionId &&
-          row.verified &&
-          row.policyVersion === POLICY_VERSION
-        )
-      ) {
-        continue;
-      }
-      if (!proofTypesByVerificationSession.has(row.verificationId)) {
-        proofTypesByVerificationSession.set(row.verificationId, new Map());
-      }
-      const sessionProofs =
-        proofTypesByVerificationSession.get(row.verificationId) ?? new Map();
-      if (!sessionProofs.has(row.proofSessionId)) {
-        sessionProofs.set(row.proofSessionId, new Set());
-      }
-      sessionProofs.get(row.proofSessionId)?.add(row.proofType);
-      proofTypesByVerificationSession.set(row.verificationId, sessionProofs);
-    }
-
-    const claimTypesByVerification = new Map<string, Set<string>>();
-    for (const row of claimRows) {
-      if (!row.verificationId) {
-        continue;
-      }
-      if (!claimTypesByVerification.has(row.verificationId)) {
-        claimTypesByVerification.set(row.verificationId, new Set());
-      }
-      claimTypesByVerification.get(row.verificationId)?.add(row.claimType);
-    }
-
-    const requiredProofs = [
-      "age_verification",
-      "doc_validity",
-      "nationality_membership",
-      "face_match",
-      "identity_binding",
-    ];
-    const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
-
-    const hasAll = (set: Set<string> | undefined, required: string[]) =>
-      required.every((item) => set?.has(item));
-
-    for (const v of verifications) {
-      if (v.status !== "verified") {
-        continue;
-      }
-      const proofSessions = proofTypesByVerificationSession.get(v.id);
-      const hasCompleteProofSession = Boolean(
-        proofSessions &&
-          [...proofSessions.values()].some((proofs) =>
-            hasAll(proofs, requiredProofs)
-          )
-      );
-      const claims = claimTypesByVerification.get(v.id);
-      if (hasCompleteProofSession && hasAll(claims, requiredClaims)) {
-        return v;
-      }
-    }
-
-    for (const v of verifications) {
-      if (v.status === "verified") {
-        return v;
-      }
-    }
-
-    return verifications.find((v) => v.status !== "revoked") ?? null;
+async function selectEffectiveVerification(
+  userId: string,
+  verifications: readonly IdentityVerification[]
+): Promise<IdentityVerification | null> {
+  if (verifications.length === 0) {
+    return null;
   }
-);
+
+  for (const verification of verifications) {
+    if (isChipVerified(verification)) {
+      return verification;
+    }
+  }
+
+  const [proofRows, claimRows] = await Promise.all([
+    db
+      .select({
+        verificationId: proofArtifacts.verificationId,
+        proofSessionId: proofArtifacts.proofSessionId,
+        proofType: proofArtifacts.proofType,
+        policyVersion: proofArtifacts.policyVersion,
+        verified: proofArtifacts.verified,
+      })
+      .from(proofArtifacts)
+      .where(eq(proofArtifacts.userId, userId))
+      .all(),
+    db
+      .select({
+        verificationId: signedClaims.verificationId,
+        claimType: signedClaims.claimType,
+      })
+      .from(signedClaims)
+      .where(eq(signedClaims.userId, userId))
+      .all(),
+  ]);
+
+  const proofTypesByVerificationSession = new Map<
+    string,
+    Map<string, Set<string>>
+  >();
+  for (const row of proofRows) {
+    if (
+      !(
+        row.verificationId &&
+        row.proofSessionId &&
+        row.verified &&
+        row.policyVersion === POLICY_VERSION
+      )
+    ) {
+      continue;
+    }
+    if (!proofTypesByVerificationSession.has(row.verificationId)) {
+      proofTypesByVerificationSession.set(row.verificationId, new Map());
+    }
+    const sessionProofs =
+      proofTypesByVerificationSession.get(row.verificationId) ?? new Map();
+    if (!sessionProofs.has(row.proofSessionId)) {
+      sessionProofs.set(row.proofSessionId, new Set());
+    }
+    sessionProofs.get(row.proofSessionId)?.add(row.proofType);
+    proofTypesByVerificationSession.set(row.verificationId, sessionProofs);
+  }
+
+  const claimTypesByVerification = new Map<string, Set<string>>();
+  for (const row of claimRows) {
+    if (!row.verificationId) {
+      continue;
+    }
+    if (!claimTypesByVerification.has(row.verificationId)) {
+      claimTypesByVerification.set(row.verificationId, new Set());
+    }
+    claimTypesByVerification.get(row.verificationId)?.add(row.claimType);
+  }
+
+  const requiredProofs = [
+    "age_verification",
+    "doc_validity",
+    "nationality_membership",
+    "face_match",
+    "identity_binding",
+  ];
+  const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
+
+  const hasAll = (set: Set<string> | undefined, required: string[]) =>
+    required.every((item) => set?.has(item));
+
+  for (const verification of verifications) {
+    if (verification.status !== "verified") {
+      continue;
+    }
+    const proofSessions = proofTypesByVerificationSession.get(verification.id);
+    const hasCompleteProofSession = Boolean(
+      proofSessions &&
+        [...proofSessions.values()].some((proofs) =>
+          hasAll(proofs, requiredProofs)
+        )
+    );
+    const claims = claimTypesByVerification.get(verification.id);
+    if (hasCompleteProofSession && hasAll(claims, requiredClaims)) {
+      return verification;
+    }
+  }
+
+  for (const verification of verifications) {
+    if (verification.status === "verified") {
+      return verification;
+    }
+  }
+
+  return (
+    verifications.find((verification) => verification.status !== "revoked") ??
+    null
+  );
+}
+
+function getEffectiveVerificationFromBundle(
+  bundle: IdentityBundle | null,
+  verifications: readonly IdentityVerification[]
+): IdentityVerification | null {
+  if (!bundle?.effectiveVerificationId) {
+    return null;
+  }
+
+  return (
+    verifications.find(
+      (verification) => verification.id === bundle.effectiveVerificationId
+    ) ?? null
+  );
+}
+
+export const getAccountIdentity = cache(async function getAccountIdentity(
+  userId: string
+): Promise<AccountIdentity> {
+  const [bundle, groupedCredentials] = await Promise.all([
+    loadIdentityBundleByUserId(userId),
+    getVerificationsByUserId(userId),
+  ]);
+
+  if (!bundle && groupedCredentials.length === 0) {
+    return {
+      bundle: null,
+      effectiveVerification: null,
+      groupedCredentials: [],
+    };
+  }
+
+  return {
+    bundle,
+    effectiveVerification: getEffectiveVerificationFromBundle(
+      bundle,
+      groupedCredentials
+    ),
+    groupedCredentials,
+  };
+});
 
 export async function getIdentityDraftById(
   draftId: string
@@ -646,9 +749,14 @@ export async function updateIdentityVerificationJobStatus(args: {
 }
 
 export async function upsertIdentityBundle(data: {
+  effectiveVerificationId?: string | null;
+  rpNullifierSeed?: string | null;
+  revokedAt?: string | null;
+  revokedBy?: string | null;
+  revokedReason?: string | null;
   userId: string;
   walletAddress?: string | null;
-  status?: IdentityBundleStatus;
+  validityStatus?: ValidityStatus;
   policyVersion?: string | null;
   issuerId?: string | null;
   attestationExpiresAt?: string | null;
@@ -658,25 +766,36 @@ export async function upsertIdentityBundle(data: {
 }): Promise<void> {
   const insertValues: typeof identityBundles.$inferInsert = {
     userId: data.userId,
+    effectiveVerificationId: data.effectiveVerificationId ?? null,
+    rpNullifierSeed: data.rpNullifierSeed ?? null,
     walletAddress: data.walletAddress ?? null,
-    status: data.status ?? "pending",
+    validityStatus: data.validityStatus ?? "pending",
     policyVersion: data.policyVersion ?? null,
     issuerId: data.issuerId ?? null,
     attestationExpiresAt: data.attestationExpiresAt ?? null,
     fheKeyId: data.fheKeyId ?? null,
     fheStatus: data.fheStatus ?? null,
     fheError: data.fheError ?? null,
+    revokedAt: data.revokedAt ?? null,
+    revokedBy: data.revokedBy ?? null,
+    revokedReason: data.revokedReason ?? null,
   };
 
   const updateSet: Record<string, unknown> = {
     updatedAt: sql`datetime('now')`,
   };
 
+  if (data.effectiveVerificationId !== undefined) {
+    updateSet.effectiveVerificationId = data.effectiveVerificationId;
+  }
+  if (data.rpNullifierSeed !== undefined) {
+    updateSet.rpNullifierSeed = data.rpNullifierSeed;
+  }
   if (data.walletAddress !== undefined) {
     updateSet.walletAddress = data.walletAddress;
   }
-  if (data.status !== undefined) {
-    updateSet.status = data.status;
+  if (data.validityStatus !== undefined) {
+    updateSet.validityStatus = data.validityStatus;
   }
   if (data.policyVersion !== undefined) {
     updateSet.policyVersion = data.policyVersion;
@@ -695,6 +814,15 @@ export async function upsertIdentityBundle(data: {
   }
   if (data.fheError !== undefined) {
     updateSet.fheError = data.fheError;
+  }
+  if (data.revokedAt !== undefined) {
+    updateSet.revokedAt = data.revokedAt;
+  }
+  if (data.revokedBy !== undefined) {
+    updateSet.revokedBy = data.revokedBy;
+  }
+  if (data.revokedReason !== undefined) {
+    updateSet.revokedReason = data.revokedReason;
   }
 
   await db
@@ -731,16 +859,13 @@ export async function updateIdentityBundleFheStatus(args: {
     .run();
 }
 
-export async function updateIdentityBundleStatus(args: {
+export async function updateIdentityBundleAttestationState(args: {
   userId: string;
-  status: IdentityBundleStatus;
   policyVersion?: string | null;
   issuerId?: string | null;
   attestationExpiresAt?: string | null;
 }): Promise<void> {
-  const updates: Partial<typeof identityBundles.$inferInsert> = {
-    status: args.status,
-  };
+  const updates: Partial<typeof identityBundles.$inferInsert> = {};
 
   if (args.policyVersion !== null) {
     updates.policyVersion = args.policyVersion;
@@ -765,12 +890,7 @@ export async function updateIdentityBundleStatus(args: {
 export async function createVerification(
   data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">
 ): Promise<void> {
-  await db
-    .insert(identityVerifications)
-    .values({
-      ...data,
-    })
-    .run();
+  await db.insert(identityVerifications).values(data).run();
 }
 
 export async function upsertVerification(
@@ -789,6 +909,77 @@ export async function upsertVerification(
     })
     .run();
 }
+
+export async function reconcileIdentityBundle(userId: string): Promise<void> {
+  const [bundle, verifications] = await Promise.all([
+    loadIdentityBundleByUserId(userId),
+    getVerificationsByUserId(userId),
+  ]);
+
+  if (!bundle && verifications.length === 0) {
+    return;
+  }
+
+  const effectiveVerification = await selectEffectiveVerification(
+    userId,
+    verifications
+  );
+  const nextEffectiveVerificationId = effectiveVerification?.id ?? null;
+  const nextRpNullifierSeed =
+    bundle?.rpNullifierSeed ??
+    getInternalIdentityKey(
+      verifications.find(
+        (verification) => verification.status === "verified"
+      ) ?? null
+    ) ??
+    null;
+  const nextValidityStatus =
+    deriveBundleValidityStatusFromVerifications(verifications);
+  const shouldClearRevocationMetadata =
+    nextValidityStatus !== "revoked" &&
+    Boolean(bundle?.revokedAt || bundle?.revokedBy || bundle?.revokedReason);
+
+  const shouldCreateBundle = !bundle;
+  const shouldSyncEffectiveVerification =
+    (bundle?.effectiveVerificationId ?? null) !== nextEffectiveVerificationId;
+  const shouldSeedRpNullifier =
+    !bundle?.rpNullifierSeed && Boolean(nextRpNullifierSeed);
+  const shouldSyncValidityStatus =
+    (bundle?.validityStatus ?? null) !== nextValidityStatus;
+
+  if (
+    !(
+      shouldCreateBundle ||
+      shouldSyncEffectiveVerification ||
+      shouldSeedRpNullifier ||
+      shouldSyncValidityStatus ||
+      shouldClearRevocationMetadata
+    )
+  ) {
+    return;
+  }
+
+  await upsertIdentityBundle({
+    userId,
+    validityStatus: nextValidityStatus,
+    effectiveVerificationId: nextEffectiveVerificationId,
+    ...(nextRpNullifierSeed ? { rpNullifierSeed: nextRpNullifierSeed } : {}),
+    ...(shouldClearRevocationMetadata
+      ? {
+          revokedAt: null,
+          revokedBy: null,
+          revokedReason: null,
+        }
+      : {}),
+  });
+}
+
+export const getRpNullifierSeed = cache(async function getRpNullifierSeed(
+  userId: string
+): Promise<string | null> {
+  const bundle = await getIdentityBundleByUserId(userId);
+  return bundle?.rpNullifierSeed ?? null;
+});
 
 /**
  * Check if a nullifier is already used by a different user.
@@ -822,13 +1013,27 @@ export async function isNullifierUsedByOtherUser(
 export async function revokeIdentity(
   userId: string,
   revokedBy: string,
-  reason: string
-): Promise<{ revokedVerifications: number; revokedCredentials: number }> {
+  reason: string,
+  source: ValidityTransitionSource
+): Promise<{
+  eventId: string | null;
+  revokedVerifications: number;
+  scheduledDeliveries: number;
+}> {
   const now = new Date().toISOString();
+  let eventId: string | null = null;
   let revokedVerifications = 0;
-  let revokedCredentials = 0;
+  let scheduledDeliveries = 0;
 
   await db.transaction(async (tx) => {
+    const currentBundle =
+      (await tx
+        .select()
+        .from(identityBundles)
+        .where(eq(identityBundles.userId, userId))
+        .limit(1)
+        .get()) ?? null;
+
     // Step 1: Revoke all active verifications
     const verificationResult = await tx
       .update(identityVerifications)
@@ -848,89 +1053,47 @@ export async function revokeIdentity(
       .run();
     revokedVerifications = verificationResult.rowsAffected;
 
-    // Step 2: Revoke the identity bundle
-    await tx
-      .update(identityBundles)
-      .set({
-        status: "revoked",
-        revokedAt: now,
-        revokedBy,
-        revokedReason: reason,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(identityBundles.userId, userId),
-          ne(identityBundles.status, "revoked")
-        )
-      )
-      .run();
-
-    // Step 3: Revoke OID4VCI issued credentials (status 0 → 1)
-    const { oidc4vciIssuedCredentials } = await import(
-      "../schema/oidc-credentials"
-    );
-    const credResult = await tx
-      .update(oidc4vciIssuedCredentials)
-      .set({
-        status: 1,
-        revokedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(oidc4vciIssuedCredentials.userId, userId),
-          eq(oidc4vciIssuedCredentials.status, 0)
-        )
-      )
-      .run();
-    revokedCredentials = credResult.rowsAffected;
-
-    // Step 4: Remove push subscriptions (device identifiers)
-    await tx
-      .delete(pushSubscriptions)
-      .where(eq(pushSubscriptions.userId, userId))
-      .run();
-  });
-
-  // Step 4: Revoke on-chain attestations (best-effort, outside transaction)
-  const attestations = await db
-    .select({
-      id: blockchainAttestations.id,
-      walletAddress: blockchainAttestations.walletAddress,
-      networkId: blockchainAttestations.networkId,
-    })
-    .from(blockchainAttestations)
-    .where(
-      and(
-        eq(blockchainAttestations.userId, userId),
-        inArray(blockchainAttestations.status, ["pending", "confirmed"])
-      )
-    )
-    .all();
-
-  for (const attestation of attestations) {
-    let onChainRevoked = false;
-
-    if (canCreateProvider(attestation.networkId)) {
-      try {
-        const provider = createProvider(attestation.networkId);
-        await provider.revokeAttestation(attestation.walletAddress);
-        onChainRevoked = true;
-      } catch {
-        // On-chain failure → mark as revocation_pending for retry
-      }
+    // Step 2: Clear selected credential state on the identity bundle
+    let shouldRecordRevocation = false;
+    if (currentBundle) {
+      const bundleResult = await tx
+        .update(identityBundles)
+        .set({
+          effectiveVerificationId: null,
+          rpNullifierSeed: null,
+          updatedAt: now,
+        })
+        .where(eq(identityBundles.userId, userId))
+        .run();
+      shouldRecordRevocation =
+        bundleResult.rowsAffected > 0 &&
+        currentBundle.validityStatus !== "revoked";
+    } else {
+      shouldRecordRevocation = verificationResult.rowsAffected > 0;
     }
 
-    await db
-      .update(blockchainAttestations)
-      .set({
-        status: onChainRevoked ? "revoked" : "revocation_pending",
-        revokedAt: sql`datetime('now')`,
-        updatedAt: sql`datetime('now')`,
-      })
-      .where(eq(blockchainAttestations.id, attestation.id))
-      .run();
-  }
+    if (shouldRecordRevocation || verificationResult.rowsAffected > 0) {
+      const event = await applyValidityTransition({
+        executor: tx,
+        userId,
+        verificationId: currentBundle?.effectiveVerificationId ?? null,
+        eventKind: "revoked",
+        source,
+        triggeredBy: revokedBy,
+        reason,
+        occurredAt: now,
+        bundleSnapshot: {
+          validityStatus: "revoked",
+          revokedAt: now,
+          revokedBy,
+          revokedReason: reason,
+        },
+      });
+      eventId = event.id;
+      const deliveries = await scheduleIdentityValidityDeliveries(event.id, tx);
+      scheduledDeliveries = deliveries.length;
+    }
+  });
 
-  return { revokedVerifications, revokedCredentials };
+  return { eventId, revokedVerifications, scheduledDeliveries };
 }

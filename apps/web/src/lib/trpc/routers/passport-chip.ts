@@ -14,16 +14,18 @@ import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
+  getAccountIdentity,
   getIdentityBundleByUserId,
-  getSelectedVerification,
   hasProfileSecret,
   isChipVerified,
   isNullifierUsedByOtherUser,
+  reconcileIdentityBundle,
 } from "@/lib/db/queries/identity";
 import {
   insertProofArtifact,
   insertSignedClaim,
 } from "@/lib/db/queries/privacy";
+import { applyValidityTransition } from "@/lib/identity/validity/transition";
 import {
   calculateBirthYearOffsetFromYear,
   dobToDaysSince1900,
@@ -117,11 +119,12 @@ export const passportChipRouter = router({
         });
       }
 
-      const [bundle, existingVerification, nullifierUsed] = await Promise.all([
-        getIdentityBundleByUserId(userId),
-        getSelectedVerification(userId),
+      const [accountIdentity, nullifierUsed] = await Promise.all([
+        getAccountIdentity(userId),
         isNullifierUsedByOtherUser(uniqueIdentifier, userId),
       ]);
+      const bundle = accountIdentity.bundle;
+      const existingVerification = accountIdentity.effectiveVerification;
 
       if (!bundle?.fheKeyId) {
         throw new TRPCError({
@@ -294,6 +297,14 @@ export const passportChipRouter = router({
         }
 
         await materializeVerificationChecks(userId, verificationId);
+        await reconcileIdentityBundle(userId);
+        await applyValidityTransition({
+          userId,
+          verificationId,
+          eventKind: "verified",
+          source: "system",
+          occurredAt: now,
+        });
 
         // Convert DOB to dobDays for FHE encryption
         const dobDays = dobToDaysSince1900(birthdate);

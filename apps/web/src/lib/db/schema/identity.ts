@@ -10,14 +10,15 @@ import {
 
 import { users } from "./auth";
 
-export const identityBundleStatusEnum = [
+export const validityStatusEnum = [
   "pending",
   "verified",
   "failed",
   "revoked",
+  "stale",
 ] as const;
 
-export type IdentityBundleStatus = (typeof identityBundleStatusEnum)[number];
+export type ValidityStatus = (typeof validityStatusEnum)[number];
 
 export const verificationStatusEnum = [
   "pending",
@@ -31,6 +32,45 @@ export type VerificationStatus = (typeof verificationStatusEnum)[number];
 export const verificationMethodEnum = ["ocr", "nfc_chip"] as const;
 
 export type VerificationMethod = (typeof verificationMethodEnum)[number];
+
+export const validityTransitionSourceEnum = [
+  "product",
+  "admin",
+  "system",
+  "chain",
+] as const;
+
+export type ValidityTransitionSource =
+  (typeof validityTransitionSourceEnum)[number];
+
+export const validityEventKindEnum = [
+  "verified",
+  "failed",
+  "revoked",
+  "stale",
+] as const;
+
+export type ValidityEventKind = (typeof validityEventKindEnum)[number];
+
+export const validityDeliveryTargetEnum = [
+  "oidc4vci_credential_status",
+  "ciba_request_cancellation",
+  "backchannel_logout",
+  "blockchain_attestation_revocation",
+] as const;
+
+export type ValidityDeliveryTarget =
+  (typeof validityDeliveryTargetEnum)[number];
+
+export const validityDeliveryStatusEnum = [
+  "pending",
+  "delivered",
+  "retrying",
+  "dead_letter",
+] as const;
+
+export type ValidityDeliveryStatus =
+  (typeof validityDeliveryStatusEnum)[number];
 
 export const fheStatusEnum = ["pending", "complete", "error"] as const;
 
@@ -64,9 +104,14 @@ export const identityBundles = sqliteTable(
     userId: text("user_id")
       .primaryKey()
       .references(() => users.id, { onDelete: "cascade" }),
+    effectiveVerificationId: text("effective_verification_id").references(
+      () => identityVerifications.id,
+      { onDelete: "set null" }
+    ),
+    rpNullifierSeed: text("rp_nullifier_seed"),
     walletAddress: text("wallet_address"),
-    status: text("status", {
-      enum: identityBundleStatusEnum,
+    validityStatus: text("validity_status", {
+      enum: validityStatusEnum,
     }).default("pending"),
     policyVersion: text("policy_version"),
     issuerId: text("issuer_id"),
@@ -114,7 +159,90 @@ export const identityBundles = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
-  (table) => [index("idx_identity_bundles_status").on(table.status)]
+  (table) => [
+    index("idx_identity_bundles_validity_status").on(table.validityStatus),
+  ]
+);
+
+export const identityValidityEvents = sqliteTable(
+  "identity_validity_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    verificationId: text("verification_id").references(
+      () => identityVerifications.id,
+      { onDelete: "set null" }
+    ),
+    eventKind: text("event_kind", {
+      enum: validityEventKindEnum,
+    }).notNull(),
+    validityStatus: text("validity_status", {
+      enum: validityStatusEnum,
+    }).notNull(),
+    source: text("source", {
+      enum: validityTransitionSourceEnum,
+    }).notNull(),
+    triggeredBy: text("triggered_by"),
+    reason: text("reason"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_identity_validity_events_user_created_at").on(
+      table.userId,
+      table.createdAt
+    ),
+    index("idx_identity_validity_events_verification_created_at").on(
+      table.verificationId,
+      table.createdAt
+    ),
+  ]
+);
+
+export const identityValidityDeliveries = sqliteTable(
+  "identity_validity_deliveries",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => identityValidityEvents.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    target: text("target", {
+      enum: validityDeliveryTargetEnum,
+    }).notNull(),
+    targetKey: text("target_key").notNull(),
+    status: text("status", {
+      enum: validityDeliveryStatusEnum,
+    })
+      .notNull()
+      .default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: text("available_at").notNull().default(sql`(datetime('now'))`),
+    lastAttemptedAt: text("last_attempted_at"),
+    deliveredAt: text("delivered_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_identity_validity_deliveries_event").on(table.eventId),
+    index("idx_identity_validity_deliveries_user_created_at").on(
+      table.userId,
+      table.createdAt
+    ),
+    index("idx_identity_validity_deliveries_status_available_at").on(
+      table.status,
+      table.availableAt
+    ),
+    uniqueIndex("identity_validity_deliveries_event_target_unique").on(
+      table.eventId,
+      table.target,
+      table.targetKey
+    ),
+  ]
 );
 
 /**
@@ -231,6 +359,15 @@ export const identityVerificationJobs = sqliteTable(
 
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;
+
+export type IdentityValidityEvent = typeof identityValidityEvents.$inferSelect;
+export type NewIdentityValidityEvent =
+  typeof identityValidityEvents.$inferInsert;
+
+export type IdentityValidityDelivery =
+  typeof identityValidityDeliveries.$inferSelect;
+export type NewIdentityValidityDelivery =
+  typeof identityValidityDeliveries.$inferInsert;
 
 export type IdentityVerification = typeof identityVerifications.$inferSelect;
 export type NewIdentityVerification = typeof identityVerifications.$inferInsert;

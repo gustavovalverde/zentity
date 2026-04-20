@@ -58,6 +58,18 @@ function setVerifiedUser() {
     },
     checks: [],
     proofs: [],
+    groupedIdentity: {
+      effectiveVerificationId: "verification-1",
+      credentials: [
+        {
+          credentialId: "verification-1",
+          method: "ocr",
+          status: "verified",
+          verifiedAt: "2026-01-02T00:00:00.000Z",
+          isEffective: true,
+        },
+      ],
+    },
     bundle: {
       policyVersion: "policy-1",
       issuerId: "issuer-1",

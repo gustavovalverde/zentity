@@ -127,7 +127,7 @@ import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { getLatestVerification } from "@/lib/db/queries/identity";
+import { getRpNullifierSeed } from "@/lib/db/queries/identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -1796,13 +1796,11 @@ export const auth = betterAuth({
 
         // Per-RP sybil nullifier
         if (scopeList.includes("proof:sybil") && clientId) {
-          const verification = await getLatestVerification(user.id);
-          const internalKey =
-            verification?.dedupKey ?? verification?.uniqueIdentifier;
-          if (internalKey) {
+          const rpNullifierSeed = await getRpNullifierSeed(user.id);
+          if (rpNullifierSeed) {
             claims.sybil_nullifier = computeRpNullifier(
               env.DEDUP_HMAC_SECRET,
-              internalKey,
+              rpNullifierSeed,
               clientId
             );
           }

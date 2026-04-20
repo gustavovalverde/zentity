@@ -12,8 +12,7 @@ const mockGetNetworkById = vi.fn();
 const mockCanCreateProvider = vi.fn();
 const mockCreateProvider = vi.fn();
 const mockGetExplorerTxUrl = vi.fn();
-const mockGetVerificationStatus = vi.fn();
-const mockGetSelectedVerification = vi.fn();
+const mockGetComplianceStatus = vi.fn();
 const mockGetBlockchainAttestationsByUserId = vi.fn();
 const mockGetBlockchainAttestationByUserAndNetwork = vi.fn();
 const mockCreateBlockchainAttestation = vi.fn();
@@ -79,10 +78,7 @@ vi.mock("@/lib/assurance/posture", () => ({
 }));
 
 vi.mock("@/lib/db/queries/identity", () => ({
-  getVerificationStatus: (...args: unknown[]) =>
-    mockGetVerificationStatus(...args),
-  getSelectedVerification: (...args: unknown[]) =>
-    mockGetSelectedVerification(...args),
+  getComplianceStatus: (...args: unknown[]) => mockGetComplianceStatus(...args),
   getIdentityBundleByUserId: (...args: unknown[]) =>
     mockGetIdentityBundleByUserId(...args),
 }));
@@ -345,7 +341,7 @@ describe("attestation router", () => {
   });
 
   it("rejects submission when network is unavailable", async () => {
-    mockGetVerificationStatus.mockReturnValue({
+    mockGetComplianceStatus.mockReturnValue({
       verified: true,
       level: "full",
       numericLevel: 3,
@@ -359,10 +355,6 @@ describe("attestation router", () => {
         identityBound: true,
         sybilResistant: true,
       },
-    });
-    mockGetSelectedVerification.mockReturnValue({
-      id: "doc-1",
-      status: "verified",
     });
     mockGetNetworkById.mockReturnValue({
       id: "fhevm_sepolia",

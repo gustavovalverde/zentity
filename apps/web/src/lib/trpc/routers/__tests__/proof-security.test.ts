@@ -9,7 +9,10 @@ import {
   hashToFieldHexFromString,
 } from "@/lib/privacy/zk/hash-to-field";
 
-const mockGetSelectedVerification = vi.fn();
+const mockGetAccountIdentity = vi.fn();
+const mockReconcileIdentityBundle = vi.fn();
+const mockGetComplianceStatus = vi.fn();
+const mockUpdateIdentityBundleAttestationState = vi.fn();
 const mockVerifyNoirProof = vi.fn();
 const mockConsumeChallenge = vi.fn();
 const mockCreateChallenge = vi.fn();
@@ -20,14 +23,23 @@ const mockGetProofHashesByUserVerificationAndSession = vi.fn();
 const mockCloseProofSession = vi.fn();
 const mockCreateProofSession = vi.fn();
 const mockGetUserBaseCommitments = vi.fn();
+const mockInsertProofArtifact = vi.fn();
+const mockUpsertAttestationEvidence = vi.fn();
+const mockMaterializeVerificationChecks = vi.fn();
+const mockScheduleFheEncryption = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/db/queries/identity")>();
   return {
     ...actual,
-    getSelectedVerification: (...args: unknown[]) =>
-      mockGetSelectedVerification(...args),
+    getAccountIdentity: (...args: unknown[]) => mockGetAccountIdentity(...args),
+    reconcileIdentityBundle: (...args: unknown[]) =>
+      mockReconcileIdentityBundle(...args),
+    getComplianceStatus: (...args: unknown[]) =>
+      mockGetComplianceStatus(...args),
+    updateIdentityBundleAttestationState: (...args: unknown[]) =>
+      mockUpdateIdentityBundleAttestationState(...args),
   };
 });
 
@@ -67,6 +79,40 @@ vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
     createProofSession: (...args: unknown[]) => mockCreateProofSession(...args),
     getUserBaseCommitments: (...args: unknown[]) =>
       mockGetUserBaseCommitments(...args),
+    insertProofArtifact: (...args: unknown[]) =>
+      mockInsertProofArtifact(...args),
+  };
+});
+
+vi.mock("@/lib/db/queries/attestation", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/db/queries/attestation")>();
+  return {
+    ...actual,
+    upsertAttestationEvidence: (...args: unknown[]) =>
+      mockUpsertAttestationEvidence(...args),
+  };
+});
+
+vi.mock("@/lib/identity/verification/materialize", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/lib/identity/verification/materialize")
+    >();
+  return {
+    ...actual,
+    materializeVerificationChecks: (...args: unknown[]) =>
+      mockMaterializeVerificationChecks(...args),
+  };
+});
+
+vi.mock("@/lib/privacy/fhe/encryption", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/privacy/fhe/encryption")>();
+  return {
+    ...actual,
+    scheduleFheEncryption: (...args: unknown[]) =>
+      mockScheduleFheEncryption(...args),
   };
 });
 
@@ -169,9 +215,13 @@ describe("proof router replay and context binding", () => {
     };
 
     vi.clearAllMocks();
-    mockGetSelectedVerification.mockResolvedValue({
-      id: "ver-1",
-      status: "verified",
+    mockGetAccountIdentity.mockResolvedValue({
+      bundle: null,
+      effectiveVerification: {
+        id: "ver-1",
+        status: "verified",
+      },
+      groupedCredentials: [],
     });
     mockVerifyNoirProof.mockResolvedValue({
       isValid: true,
@@ -203,6 +253,15 @@ describe("proof router replay and context binding", () => {
     mockCreateProofSession.mockResolvedValue(undefined);
     mockGetUserBaseCommitments.mockResolvedValue([baseCommitment]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
+    mockReconcileIdentityBundle.mockResolvedValue(undefined);
+    mockGetComplianceStatus.mockResolvedValue({
+      verified: true,
+    });
+    mockUpdateIdentityBundleAttestationState.mockResolvedValue(undefined);
+    mockInsertProofArtifact.mockResolvedValue(undefined);
+    mockUpsertAttestationEvidence.mockResolvedValue(undefined);
+    mockMaterializeVerificationChecks.mockResolvedValue(undefined);
+    mockScheduleFheEncryption.mockResolvedValue(undefined);
     mockCreateChallenge.mockImplementation(
       async (
         circuitType: string,
@@ -567,5 +626,79 @@ describe("proof router replay and context binding", () => {
         verificationId: "ver-1",
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("reconciles the identity bundle before reading verification status after proof storage", async () => {
+    mockConsumeChallenge.mockResolvedValue({
+      nonce,
+      circuitType: "identity_binding",
+      userId: "user-123",
+      msgSender: "user-123",
+      audience: "http://localhost",
+      proofSessionId,
+      createdAt: 1,
+      expiresAt: 2,
+    });
+    mockGetProofSessionById.mockResolvedValue({
+      id: proofSessionId,
+      userId: "user-123",
+      verificationId: "ver-2",
+      msgSender: "user-123",
+      audience: "http://localhost",
+      policyVersion: POLICY_VERSION,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      closedAt: null,
+    });
+    mockGetProofTypesByUserVerificationAndSession.mockResolvedValue([
+      "identity_binding",
+      "age_verification",
+      "doc_validity",
+      "nationality_membership",
+      "face_match",
+    ]);
+
+    const caller = await createCaller(authedUserSession);
+
+    await caller.storeProof({
+      circuitType: "identity_binding",
+      proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+      publicSignals: [
+        nonce,
+        msgSenderHash,
+        audienceHash,
+        baseCommitment,
+        bindingCommitment,
+        isBound,
+      ],
+      generationTimeMs: 10,
+      proofSessionId,
+      verificationId: "ver-2",
+    });
+
+    expect(mockMaterializeVerificationChecks).toHaveBeenCalledWith(
+      "user-123",
+      "ver-2"
+    );
+    expect(mockReconcileIdentityBundle).toHaveBeenCalledWith("user-123");
+    expect(mockGetComplianceStatus).toHaveBeenCalledWith("user-123");
+    const reconcileCallOrder =
+      mockReconcileIdentityBundle.mock.invocationCallOrder[0];
+    const verificationStatusCallOrder =
+      mockGetComplianceStatus.mock.invocationCallOrder[0];
+    expect(reconcileCallOrder).toBeDefined();
+    expect(verificationStatusCallOrder).toBeDefined();
+    if (
+      reconcileCallOrder === undefined ||
+      verificationStatusCallOrder === undefined
+    ) {
+      throw new Error("Expected reconcile and compliance status call order");
+    }
+    expect(reconcileCallOrder).toBeLessThan(verificationStatusCallOrder);
+    expect(mockUpdateIdentityBundleAttestationState).toHaveBeenCalledWith({
+      userId: "user-123",
+      policyVersion: POLICY_VERSION,
+      issuerId: expect.any(String),
+    });
   });
 });

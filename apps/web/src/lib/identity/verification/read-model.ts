@@ -15,8 +15,7 @@ import { cache } from "react";
 import { db } from "@/lib/db/connection";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import {
-  getIdentityBundleByUserId,
-  getSelectedVerification,
+  getAccountIdentity,
   hasProfileSecret,
   isChipVerified,
 } from "@/lib/db/queries/identity";
@@ -45,6 +44,14 @@ export interface ProofSummary {
   verified: boolean;
 }
 
+export interface GroupedIdentityCredential {
+  credentialId: string;
+  isEffective: boolean;
+  method: "ocr" | "nfc_chip";
+  status: "pending" | "verified" | "failed" | "revoked";
+  verifiedAt: string | null;
+}
+
 export interface VerificationReadModel {
   bundle: {
     exists: boolean;
@@ -67,6 +74,10 @@ export interface VerificationReadModel {
   fhe: {
     complete: boolean;
     attributeTypes: string[];
+  };
+  groupedIdentity: {
+    effectiveVerificationId: string | null;
+    credentials: GroupedIdentityCredential[];
   };
   issuerCountry: string | null;
   method: "ocr" | "nfc_chip" | null;
@@ -259,7 +270,7 @@ async function checkNeedsReprocessing(
 
 // ─── Empty model ────────────────────────────────────────────────────
 
-type BundleData = Awaited<ReturnType<typeof getIdentityBundleByUserId>>;
+type BundleData = Awaited<ReturnType<typeof getAccountIdentity>>["bundle"];
 
 function buildBundle(bundle: BundleData) {
   return {
@@ -275,7 +286,8 @@ function buildEmptyModel(
   bundle: BundleData,
   fheTypes: string[],
   profileExists: boolean,
-  attested: boolean
+  attested: boolean,
+  groupedIdentity: VerificationReadModel["groupedIdentity"]
 ): VerificationReadModel {
   return {
     method: null,
@@ -296,6 +308,25 @@ function buildEmptyModel(
     vault: { hasProfileSecret: profileExists },
     onChainAttested: attested,
     needsDocumentReprocessing: false,
+    groupedIdentity,
+  };
+}
+
+function buildGroupedIdentity(
+  accountIdentity: Awaited<ReturnType<typeof getAccountIdentity>>
+): VerificationReadModel["groupedIdentity"] {
+  const effectiveVerificationId =
+    accountIdentity.effectiveVerification?.id ?? null;
+
+  return {
+    effectiveVerificationId,
+    credentials: accountIdentity.groupedCredentials.map((credential) => ({
+      credentialId: credential.id,
+      method: credential.method,
+      status: credential.status,
+      verifiedAt: credential.verifiedAt ?? null,
+      isEffective: credential.id === effectiveVerificationId,
+    })),
   };
 }
 
@@ -306,17 +337,26 @@ export const getVerificationReadModel = cache(
     userId: string
   ): Promise<VerificationReadModel> {
     // Batch 1: independent queries
-    const [verification, bundle, fheTypes, profileExists, attested] =
+    const [accountIdentity, fheTypes, profileExists, attested] =
       await Promise.all([
-        getSelectedVerification(userId),
-        getIdentityBundleByUserId(userId),
+        getAccountIdentity(userId),
         getEncryptedAttributeTypesByUserId(userId),
         hasProfileSecret(userId),
         hasConfirmedAttestation(userId),
       ]);
 
+    const verification = accountIdentity.effectiveVerification;
+    const bundle = accountIdentity.bundle;
+    const groupedIdentity = buildGroupedIdentity(accountIdentity);
+
     if (!verification) {
-      return buildEmptyModel(bundle, fheTypes, profileExists, attested);
+      return buildEmptyModel(
+        bundle,
+        fheTypes,
+        profileExists,
+        attested,
+        groupedIdentity
+      );
     }
 
     const verificationId = verification.id;
@@ -359,6 +399,7 @@ export const getVerificationReadModel = cache(
       onChainAttested: attested,
       needsDocumentReprocessing:
         compliance.checks.documentVerified && needsDocumentReprocessing,
+      groupedIdentity,
     };
   }
 );

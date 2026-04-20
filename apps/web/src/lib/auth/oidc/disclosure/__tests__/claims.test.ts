@@ -33,6 +33,18 @@ function makeModel(overrides: Record<string, unknown> = {}) {
     },
     checks: [],
     proofs: [],
+    groupedIdentity: {
+      effectiveVerificationId: "v-1",
+      credentials: [
+        {
+          credentialId: "v-1",
+          method: "ocr",
+          status: "verified",
+          verifiedAt: "2026-01-02T00:00:00.000Z",
+          isEffective: true,
+        },
+      ],
+    },
     bundle: {
       exists: true,
       fheKeyId: "fhe-1",

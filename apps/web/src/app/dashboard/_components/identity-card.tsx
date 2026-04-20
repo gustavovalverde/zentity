@@ -32,9 +32,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import {
-  getIdentityBundleByUserId,
-  getSelectedVerification,
-  getVerificationStatus,
+  getAccountIdentity,
+  getComplianceStatus,
 } from "@/lib/db/queries/identity";
 import {
   getEncryptedAttributeTypesByUserId,
@@ -243,10 +242,11 @@ export async function IdentityCard({
 
   // Tier 3: Chip Verified display
   if (tier === 3 && userId) {
-    const [verification, verificationStatus] = await Promise.all([
-      getSelectedVerification(userId),
-      getVerificationStatus(userId),
+    const [accountIdentity, verificationStatus] = await Promise.all([
+      getAccountIdentity(userId),
+      getComplianceStatus(userId),
     ]);
+    const verification = accountIdentity.effectiveVerification;
 
     return (
       <div className="space-y-6">
@@ -291,24 +291,24 @@ export async function IdentityCard({
 
   // Tier 2: Fetch identity data for fully verified display
   const [
-    ,
-    verification,
+    accountIdentity,
     encryptedAttributes,
     dobDaysCipher,
     birthYearOffsetCipher,
   ] = userId
     ? await Promise.all([
-        getIdentityBundleByUserId(userId),
-        getSelectedVerification(userId),
+        getAccountIdentity(userId),
         getEncryptedAttributeTypesByUserId(userId),
         // Check for dob_days first (new format), then fall back to birth_year_offset (legacy)
         getLatestEncryptedAttributeByUserAndType(userId, "dob_days"),
         getLatestEncryptedAttributeByUserAndType(userId, "birth_year_offset"),
       ])
-    : [null, null, [], null, null];
+    : [null, [], null, null];
 
   // Use whichever FHE ciphertext format exists (prefer new format)
   const birthYearCipher = dobDaysCipher ?? birthYearOffsetCipher;
+
+  const verification = accountIdentity?.effectiveVerification ?? null;
 
   const verificationId = verification?.id ?? null;
   const [zkProofTypes, signedClaimTypes]: [string[], string[]] =
@@ -379,7 +379,9 @@ function IdentitySummary({
   verification,
   hasAgeProof,
 }: {
-  verification: Awaited<ReturnType<typeof getSelectedVerification>>;
+  verification: Awaited<
+    ReturnType<typeof getAccountIdentity>
+  >["effectiveVerification"];
   hasAgeProof: boolean;
 }) {
   if (!verification) {

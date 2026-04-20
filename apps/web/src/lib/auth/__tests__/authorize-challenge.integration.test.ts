@@ -734,7 +734,7 @@ describe("Authorization Challenge Endpoint", () => {
           userId,
           fheKeyId: "test-fhe-key",
           fheStatus: "complete",
-          status: "verified",
+          validityStatus: "verified",
         })
         .run();
     }

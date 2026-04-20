@@ -6,9 +6,9 @@ import { after } from "next/server";
 
 import { isFheComplete } from "@/lib/assurance/compute";
 import {
+  getAccountIdentity,
+  getComplianceStatus,
   getIdentityBundleByUserId,
-  getSelectedVerification,
-  getVerificationStatus,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
 import {
@@ -95,7 +95,8 @@ async function runFheEncryption(
 
       span.setAttribute("fhe.key_id_hash", hashIdentifier(keyId));
 
-      const verification = await getSelectedVerification(userId);
+      const accountIdentity = await getAccountIdentity(userId);
+      const verification = accountIdentity.effectiveVerification;
 
       // dobDays is never persisted to DB (privacy). Resolve from context first,
       // then fall back to transient cache (survives across FHE retry attempts).
@@ -106,7 +107,7 @@ async function runFheEncryption(
       const livenessScore =
         verification?.livenessScore ?? context?.livenessScore ?? undefined;
 
-      const verificationStatus = await getVerificationStatus(userId);
+      const verificationStatus = await getComplianceStatus(userId);
       const complianceLevel = verificationStatus.verified
         ? verificationStatus.numericLevel
         : null;

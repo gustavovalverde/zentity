@@ -14,12 +14,9 @@ import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { deleteBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
 import { getUserCreatedAt, userHasPassword } from "@/lib/db/queries/auth";
-import {
-  deleteIdentityData,
-  getSelectedVerification,
-  getVerificationStatus,
-} from "@/lib/db/queries/identity";
+import { deleteIdentityData } from "@/lib/db/queries/identity";
 import { passkeys } from "@/lib/db/schema/auth";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { protectedProcedure, router } from "../server";
 
@@ -44,23 +41,25 @@ export const accountRouter = router({
   getData: protectedProcedure.query(async ({ ctx }) => {
     const { userId, session } = ctx;
 
-    const [verificationStatus, selectedVerification, createdAt, hasPassword] =
-      await Promise.all([
-        getVerificationStatus(userId),
-        getSelectedVerification(userId),
-        getUserCreatedAt(userId),
-        userHasPassword(userId),
-      ]);
+    const [verificationModel, createdAt, hasPassword] = await Promise.all([
+      getVerificationReadModel(userId),
+      getUserCreatedAt(userId),
+      userHasPassword(userId),
+    ]);
 
     return {
       email: session.user.email,
       createdAt,
       hasPassword,
       verification: {
-        level: verificationStatus.level,
-        checks: verificationStatus.checks,
+        level: verificationModel.compliance.level,
+        checks: verificationModel.compliance.checks,
       },
-      documentVerified: selectedVerification?.status === "verified",
+      groupedIdentity: verificationModel.groupedIdentity,
+      documentVerified: verificationModel.groupedIdentity.credentials.some(
+        (credential) =>
+          credential.isEffective && credential.status === "verified"
+      ),
     };
   }),
 

@@ -29,9 +29,10 @@ import {
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
-  getSelectedVerification,
-  getVerificationStatus,
-  updateIdentityBundleStatus,
+  getAccountIdentity,
+  getComplianceStatus,
+  reconcileIdentityBundle,
+  updateIdentityBundleAttestationState,
 } from "@/lib/db/queries/identity";
 import {
   closeProofSession,
@@ -206,7 +207,8 @@ const healthProcedure = publicProcedure.query(async () => {
 const createProofSessionProcedure = protectedProcedure
   .input(z.object({ verificationId: z.string().optional() }).optional())
   .mutation(async ({ ctx, input }) => {
-    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const accountIdentity = await getAccountIdentity(ctx.userId);
+    const selectedVerification = accountIdentity.effectiveVerification;
     const verificationId =
       input?.verificationId ?? selectedVerification?.id ?? null;
     if (!verificationId) {
@@ -879,7 +881,8 @@ const getProofsProcedure = protectedProcedure.query(async ({ ctx }) => {
 const getSignedClaimsProcedure = protectedProcedure
   .input(z.object({ verificationId: z.string().optional() }).optional())
   .query(async ({ ctx, input }) => {
-    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const accountIdentity = await getAccountIdentity(ctx.userId);
+    const selectedVerification = accountIdentity.effectiveVerification;
     const verificationId =
       input?.verificationId ?? selectedVerification?.id ?? null;
     if (!verificationId) {
@@ -961,7 +964,8 @@ const storeProofProcedure = protectedProcedure
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const selectedVerification = await getSelectedVerification(ctx.userId);
+    const accountIdentity = await getAccountIdentity(ctx.userId);
+    const selectedVerification = accountIdentity.effectiveVerification;
     const verificationId =
       input.verificationId ?? selectedVerification?.id ?? null;
     if (!verificationId) {
@@ -1094,17 +1098,17 @@ const storeProofProcedure = protectedProcedure
       await closeProofSession(input.proofSessionId);
     }
 
-    const verificationStatus = await getVerificationStatus(ctx.userId);
+    await materializeVerificationChecks(ctx.userId, verificationId);
+    await reconcileIdentityBundle(ctx.userId);
+
+    const verificationStatus = await getComplianceStatus(ctx.userId);
     if (verificationStatus.verified) {
-      await updateIdentityBundleStatus({
+      await updateIdentityBundleAttestationState({
         userId: ctx.userId,
-        status: "verified",
         policyVersion: POLICY_VERSION,
         issuerId: ISSUER_ID,
       });
     }
-
-    await materializeVerificationChecks(ctx.userId, verificationId);
 
     invalidateVerificationCache(ctx.userId);
     scheduleFheEncryption({

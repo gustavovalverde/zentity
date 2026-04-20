@@ -24,6 +24,7 @@ import { db } from "@/lib/db/connection";
 import {
   createIdentityVerificationJob,
   createVerification,
+  getAccountIdentity,
   getIdentityBundleByUserId,
   getIdentityDraftById,
   getIdentityVerificationJobById,
@@ -40,11 +41,14 @@ import {
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/identity/liveness/thresholds";
+import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
+import { getValidityReadModel } from "@/lib/identity/validity/read-model";
 import { dobDaysToBirthYearOffset } from "@/lib/identity/verification/birth-year";
 import {
   scheduleIdentityJob,
   type VerifyIdentityResponse,
 } from "@/lib/identity/verification/job-processor";
+import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
@@ -414,8 +418,12 @@ const revokeProcedure = adminProcedure
     const result = await revokeIdentity(
       input.userId,
       ctx.session.user.email ?? ctx.session.user.id,
-      input.reason
+      input.reason,
+      "admin"
     );
+    if (result.eventId) {
+      await processIdentityValidityDeliveries({ eventId: result.eventId });
+    }
     return result;
   });
 
@@ -427,7 +435,15 @@ const selfRevokeProcedure = protectedProcedure
     if (!userId) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }
-    const result = await revokeIdentity(userId, "self", input.reason);
+    const result = await revokeIdentity(
+      userId,
+      "self",
+      input.reason,
+      "product"
+    );
+    if (result.eventId) {
+      await processIdentityValidityDeliveries({ eventId: result.eventId });
+    }
     return result;
   });
 
@@ -474,11 +490,64 @@ const revokeCredentialProcedure = adminProcedure
     return { revoked: true };
   });
 
+const getOverviewProcedure = adminProcedure
+  .input(z.object({ userId: z.string().min(1) }))
+  .query(async ({ input }) => {
+    const [accountIdentity, verificationModel, validity] = await Promise.all([
+      getAccountIdentity(input.userId),
+      getVerificationReadModel(input.userId),
+      getValidityReadModel(input.userId),
+    ]);
+
+    return {
+      userId: input.userId,
+      bundle: accountIdentity.bundle
+        ? {
+            validityStatus: accountIdentity.bundle.validityStatus,
+            effectiveVerificationId:
+              accountIdentity.bundle.effectiveVerificationId,
+            walletAddress: accountIdentity.bundle.walletAddress,
+            policyVersion: accountIdentity.bundle.policyVersion,
+            issuerId: accountIdentity.bundle.issuerId,
+            attestationExpiresAt: accountIdentity.bundle.attestationExpiresAt,
+            fheKeyId: accountIdentity.bundle.fheKeyId,
+            fheStatus: accountIdentity.bundle.fheStatus,
+            revokedAt: accountIdentity.bundle.revokedAt,
+            revokedBy: accountIdentity.bundle.revokedBy,
+            revokedReason: accountIdentity.bundle.revokedReason,
+            updatedAt: accountIdentity.bundle.updatedAt,
+          }
+        : null,
+      groupedIdentity: verificationModel.groupedIdentity,
+      effectiveVerification: accountIdentity.effectiveVerification
+        ? {
+            id: accountIdentity.effectiveVerification.id,
+            method: accountIdentity.effectiveVerification.method,
+            status: accountIdentity.effectiveVerification.status,
+            verifiedAt: accountIdentity.effectiveVerification.verifiedAt,
+            issuerCountry: accountIdentity.effectiveVerification.issuerCountry,
+            documentType: accountIdentity.effectiveVerification.documentType,
+          }
+        : null,
+      verification: {
+        verificationId: verificationModel.verificationId,
+        method: verificationModel.method,
+        verifiedAt: verificationModel.verifiedAt,
+        level: verificationModel.compliance.level,
+        checked: verificationModel.compliance.verified,
+      },
+      latestValidityEvent: validity.latestEvent,
+      latestValidityDeliveries: validity.latestEventDeliveries,
+      validityDeliverySummary: validity.deliverySummary,
+    };
+  });
+
 export const identityRouter = router({
   prepareDocument: prepareDocumentProcedure,
   livenessStatus: livenessStatusProcedure,
   finalize: finalizeProcedure,
   finalizeStatus: finalizeStatusProcedure,
+  getOverview: getOverviewProcedure,
   revokeVerification: revokeProcedure,
   revokeCredential: revokeCredentialProcedure,
   selfRevoke: selfRevokeProcedure,

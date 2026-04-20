@@ -75,7 +75,7 @@ export const signUpRouter = router({
             : Promise.resolve(),
           upsertIdentityBundle({
             userId: ctx.userId,
-            status: "pending",
+            validityStatus: "pending",
             issuerId: BUNDLE_ISSUER_ID,
             policyVersion: BUNDLE_POLICY_VERSION,
             walletAddress: wallet?.address ?? null,

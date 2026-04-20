@@ -20,6 +20,7 @@ import {
 } from "@/lib/db/queries/attestation";
 import {
   createVerification,
+  reconcileIdentityBundle,
   upsertIdentityBundle,
 } from "@/lib/db/queries/identity";
 import {
@@ -43,6 +44,7 @@ async function createVerifiedDocument(docId: string, userId: string) {
     verifiedAt: new Date().toISOString(),
     confidenceScore: 0.95,
   });
+  await reconcileIdentityBundle(userId);
 }
 
 async function createBundleWithKeys(userId: string) {

@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { db } from "@/lib/db/connection";
-import { identityVerifications } from "@/lib/db/schema/identity";
+import {
+  createVerification,
+  reconcileIdentityBundle,
+} from "@/lib/db/queries/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { assertNoRawIdentifierInClaims } from "@/test-utils/claims-test-utils";
 import {
@@ -44,19 +47,15 @@ async function createNfcVerification(
 ): Promise<void> {
   const now = new Date().toISOString();
 
-  await db
-    .insert(identityVerifications)
-    .values({
-      id: crypto.randomUUID(),
-      userId,
-      method: "nfc_chip",
-      status: "verified",
-      uniqueIdentifier,
-      verifiedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
+  await createVerification({
+    id: crypto.randomUUID(),
+    userId,
+    method: "nfc_chip",
+    status: "verified",
+    uniqueIdentifier,
+    verifiedAt: now,
+  });
+  await reconcileIdentityBundle(userId);
 }
 
 async function issueSybilToken(clientId: string, userId: string) {
@@ -145,5 +144,28 @@ describe("sybil nullifier disclosure", () => {
 
     expect(userinfoBody).not.toContain(uniqueIdentifier);
     expect(userinfoBody).not.toContain("sybil_nullifier");
+  });
+
+  it("does not rotate the per-RP nullifier after a later credential is added", async () => {
+    const firstPrimaryToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
+    const firstPrimaryClaims = decodeJwt(firstPrimaryToken.accessToken);
+
+    await createVerification({
+      id: crypto.randomUUID(),
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: `ocr-dedup-${crypto.randomUUID()}`,
+      documentHash: `hash-${crypto.randomUUID()}`,
+      verifiedAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    await reconcileIdentityBundle(userId);
+
+    const secondPrimaryToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
+    const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
+
+    expect(firstPrimaryClaims.sybil_nullifier).toBe(
+      secondPrimaryClaims.sybil_nullifier
+    );
   });
 });

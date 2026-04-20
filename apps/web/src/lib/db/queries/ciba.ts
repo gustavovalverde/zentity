@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db/connection";
@@ -98,4 +98,35 @@ export async function validateCibaRequestOwnership(
     return result.error;
   }
   return { clientId: result.row.clientId };
+}
+
+export async function listPendingCibaRequestIdsByUserId(
+  userId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ authReqId: cibaRequests.authReqId })
+    .from(cibaRequests)
+    .where(
+      and(eq(cibaRequests.userId, userId), eq(cibaRequests.status, "pending"))
+    )
+    .all();
+
+  return rows.map((row) => row.authReqId);
+}
+
+export async function rejectPendingCibaRequest(
+  authReqId: string
+): Promise<boolean> {
+  const result = await db
+    .update(cibaRequests)
+    .set({ status: "rejected" })
+    .where(
+      and(
+        eq(cibaRequests.authReqId, authReqId),
+        eq(cibaRequests.status, "pending")
+      )
+    )
+    .run();
+
+  return result.rowsAffected > 0;
 }

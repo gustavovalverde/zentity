@@ -5,10 +5,7 @@ import type {
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import {
-  canCreateProvider,
-  createProvider,
-} from "@/lib/blockchain/attestation/providers";
+import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
 
 import { db } from "../connection";
 import {
@@ -238,9 +235,6 @@ export async function deleteBlockchainAttestationsByUserId(
     .run();
 }
 
-const MAX_REVOCATION_RETRIES = 3;
-const BACKOFF_BASE_MS = 1000;
-
 /**
  * Retry pending on-chain revocations with exponential backoff.
  * Returns the count of successfully revoked attestations.
@@ -250,59 +244,13 @@ export async function reconcilePendingRevocations(): Promise<{
   succeeded: number;
   failed: number;
 }> {
-  const pending = await db
-    .select({
-      id: blockchainAttestations.id,
-      walletAddress: blockchainAttestations.walletAddress,
-      networkId: blockchainAttestations.networkId,
-      retryCount: blockchainAttestations.retryCount,
-    })
-    .from(blockchainAttestations)
-    .where(eq(blockchainAttestations.status, "revocation_pending"))
-    .all();
+  const result = await processIdentityValidityDeliveries({
+    targets: ["blockchain_attestation_revocation"],
+  });
 
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const row of pending) {
-    if (row.retryCount >= MAX_REVOCATION_RETRIES) {
-      failed++;
-      continue;
-    }
-
-    if (!canCreateProvider(row.networkId)) {
-      failed++;
-      continue;
-    }
-
-    const delayMs = BACKOFF_BASE_MS * 3 ** row.retryCount;
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-
-    try {
-      const provider = createProvider(row.networkId);
-      await provider.revokeAttestation(row.walletAddress);
-
-      await db
-        .update(blockchainAttestations)
-        .set({
-          status: "revoked",
-          updatedAt: sql`datetime('now')`,
-        })
-        .where(eq(blockchainAttestations.id, row.id))
-        .run();
-      succeeded++;
-    } catch {
-      await db
-        .update(blockchainAttestations)
-        .set({
-          retryCount: sql`${blockchainAttestations.retryCount} + 1`,
-          updatedAt: sql`datetime('now')`,
-        })
-        .where(eq(blockchainAttestations.id, row.id))
-        .run();
-      failed++;
-    }
-  }
-
-  return { retried: pending.length, succeeded, failed };
+  return {
+    retried: result.attempted,
+    succeeded: result.delivered,
+    failed: result.retrying + result.deadLettered,
+  };
 }

@@ -7,12 +7,21 @@ import { db } from "@/lib/db/connection";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
+  deleteIdentityData,
+  getAccountIdentity,
   getIdentityBundleByUserId,
   getLatestVerification,
-  updateIdentityBundleStatus,
+  reconcileIdentityBundle,
+  revokeIdentity,
+  updateIdentityBundleAttestationState,
   upsertIdentityBundle,
+  upsertVerification,
 } from "@/lib/db/queries/identity";
-import { identityVerifications } from "@/lib/db/schema/identity";
+import {
+  identityBundles,
+  identityValidityEvents,
+  identityVerifications,
+} from "@/lib/db/schema/identity";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("identity queries", () => {
@@ -20,34 +29,182 @@ describe("identity queries", () => {
     await resetDatabase();
   });
 
-  it("upserts and updates identity bundle status", async () => {
+  it("upserts bundle validity and updates attestation state", async () => {
     const userId = await createTestUser();
 
     await upsertIdentityBundle({
       userId,
       walletAddress: "0xabc",
-      status: "pending",
+      validityStatus: "pending",
       policyVersion: "policy-v1",
     });
 
     const initial = await getIdentityBundleByUserId(userId);
+    expect(initial?.effectiveVerificationId).toBeNull();
     expect(initial?.walletAddress).toBe("0xabc");
-    expect(initial?.status).toBe("pending");
+    expect(initial?.validityStatus).toBe("pending");
     expect(initial?.policyVersion).toBe("policy-v1");
 
-    await updateIdentityBundleStatus({
+    await updateIdentityBundleAttestationState({
       userId,
-      status: "verified",
       policyVersion: "policy-v2",
       issuerId: "issuer-1",
       attestationExpiresAt: "2025-01-01T00:00:00Z",
     });
 
     const updated = await getIdentityBundleByUserId(userId);
-    expect(updated?.status).toBe("verified");
+    expect(updated?.validityStatus).toBe("pending");
     expect(updated?.policyVersion).toBe("policy-v2");
     expect(updated?.issuerId).toBe("issuer-1");
     expect(updated?.attestationExpiresAt).toBe("2025-01-01T00:00:00Z");
+  });
+
+  it("freezes the RP nullifier seed while promoting a newer verified NFC credential", async () => {
+    const userId = await createTestUser();
+    const ocrVerificationId = crypto.randomUUID();
+    const nfcVerificationId = crypto.randomUUID();
+
+    await upsertIdentityBundle({
+      userId,
+      validityStatus: "pending",
+    });
+
+    await createVerification({
+      id: ocrVerificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: "dedup-seed-ocr",
+      documentHash: "hash-ocr",
+      verifiedAt: "2025-01-01T00:00:00Z",
+    });
+    await reconcileIdentityBundle(userId);
+
+    const seededBundle = await getIdentityBundleByUserId(userId);
+    const seededVerification = await db
+      .select()
+      .from(identityVerifications)
+      .where(eq(identityVerifications.id, ocrVerificationId))
+      .get();
+
+    expect(seededBundle?.effectiveVerificationId).toBe(ocrVerificationId);
+    expect(seededBundle?.rpNullifierSeed).toBe("dedup-seed-ocr");
+    expect(seededBundle?.validityStatus).toBe("verified");
+    expect(seededVerification?.method).toBe("ocr");
+
+    await createVerification({
+      id: nfcVerificationId,
+      userId,
+      method: "nfc_chip",
+      status: "verified",
+      uniqueIdentifier: "nfc-credential-123",
+      verifiedAt: "2025-02-01T00:00:00Z",
+    });
+    await reconcileIdentityBundle(userId);
+
+    const accountIdentity = await getAccountIdentity(userId);
+    const promotedBundle = await getIdentityBundleByUserId(userId);
+    const promotedVerification = await db
+      .select()
+      .from(identityVerifications)
+      .where(eq(identityVerifications.id, nfcVerificationId))
+      .get();
+
+    expect(accountIdentity.effectiveVerification?.id).toBe(nfcVerificationId);
+    expect(accountIdentity.groupedCredentials).toHaveLength(2);
+    expect(promotedBundle?.effectiveVerificationId).toBe(nfcVerificationId);
+    expect(promotedBundle?.rpNullifierSeed).toBe("dedup-seed-ocr");
+    expect(promotedBundle?.validityStatus).toBe("verified");
+    expect(promotedVerification?.method).toBe("nfc_chip");
+  });
+
+  it("does not seed the RP nullifier from failed or pending credentials before a verification succeeds", async () => {
+    const userId = await createTestUser();
+    const failedVerificationId = crypto.randomUUID();
+    const verifiedVerificationId = crypto.randomUUID();
+
+    await createVerification({
+      id: failedVerificationId,
+      userId,
+      method: "ocr",
+      status: "failed",
+      dedupKey: "dedup-failed-attempt",
+      documentHash: "hash-failed",
+    });
+
+    await getAccountIdentity(userId);
+
+    const beforeVerifiedBundle = await db
+      .select()
+      .from(identityBundles)
+      .where(eq(identityBundles.userId, userId))
+      .get();
+    expect(beforeVerifiedBundle).toBeUndefined();
+
+    await createVerification({
+      id: verifiedVerificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: "dedup-verified-attempt",
+      documentHash: "hash-verified",
+      verifiedAt: "2025-03-01T00:00:00Z",
+    });
+    await reconcileIdentityBundle(userId);
+
+    const afterVerifiedBundle = await db
+      .select()
+      .from(identityBundles)
+      .where(eq(identityBundles.userId, userId))
+      .get();
+    expect(afterVerifiedBundle?.rpNullifierSeed).toBe("dedup-verified-attempt");
+    expect(afterVerifiedBundle?.effectiveVerificationId).toBe(
+      verifiedVerificationId
+    );
+  });
+
+  it("freezes the original OCR dedup key when a pending verification is promoted to verified", async () => {
+    const userId = await createTestUser();
+    const verificationId = crypto.randomUUID();
+
+    await upsertIdentityBundle({
+      userId,
+      validityStatus: "pending",
+    });
+
+    await createVerification({
+      id: verificationId,
+      userId,
+      method: "ocr",
+      status: "pending",
+      dedupKey: "dedup-promoted-ocr",
+      documentHash: "hash-promoted-ocr",
+    });
+
+    await upsertVerification({
+      id: verificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      verifiedAt: "2025-05-01T00:00:00Z",
+      documentHash: "hash-promoted-ocr",
+    });
+    await reconcileIdentityBundle(userId);
+
+    const [bundle, verification] = await Promise.all([
+      getIdentityBundleByUserId(userId),
+      db
+        .select()
+        .from(identityVerifications)
+        .where(eq(identityVerifications.id, verificationId))
+        .get(),
+    ]);
+
+    expect(bundle?.validityStatus).toBe("verified");
+    expect(bundle?.effectiveVerificationId).toBe(verificationId);
+    expect(bundle?.rpNullifierSeed).toBe("dedup-promoted-ocr");
+    expect(verification?.status).toBe("verified");
+    expect(verification?.dedupKey).toBe("dedup-promoted-ocr");
   });
 
   it("returns latest verified identity document", async () => {
@@ -124,5 +281,46 @@ describe("identity queries", () => {
     expect(rows.map((row) => row.id)).toEqual(
       expect.arrayContaining([originalId, reverifyId])
     );
+  });
+
+  it("deletes validity history alongside other identity data", async () => {
+    const userId = await createTestUser();
+    const verificationId = crypto.randomUUID();
+
+    await createVerification({
+      id: verificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: "dedup-delete-history",
+      documentHash: "hash-delete-history",
+      verifiedAt: "2025-04-01T00:00:00Z",
+    });
+
+    await reconcileIdentityBundle(userId);
+    await revokeIdentity(userId, "admin@zentity.app", "cleanup", "admin");
+    await deleteIdentityData(userId);
+
+    const [bundle, verification, revocationEvent] = await Promise.all([
+      db
+        .select()
+        .from(identityBundles)
+        .where(eq(identityBundles.userId, userId))
+        .get(),
+      db
+        .select()
+        .from(identityVerifications)
+        .where(eq(identityVerifications.userId, userId))
+        .get(),
+      db
+        .select()
+        .from(identityValidityEvents)
+        .where(eq(identityValidityEvents.userId, userId))
+        .get(),
+    ]);
+
+    expect(bundle).toBeUndefined();
+    expect(verification).toBeUndefined();
+    expect(revocationEvent).toBeUndefined();
   });
 });

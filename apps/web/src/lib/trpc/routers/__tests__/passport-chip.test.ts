@@ -7,16 +7,18 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const mockVerify = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
 const mockCreateVerification = vi.fn();
-const mockGetSelectedVerification = vi.fn();
+const mockGetAccountIdentity = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
 const mockDedupKeyExistsForOtherUser = vi.fn();
 const mockHasProfileSecret = vi.fn();
+const mockReconcileIdentityBundle = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
 const mockInsertSignedClaim = vi.fn();
 const mockInsertProofArtifact = vi.fn();
 const mockSignAttestationClaim = vi.fn();
 const mockUpsertAttestationEvidence = vi.fn();
 const mockMaterializeVerificationChecks = vi.fn();
+const mockApplyValidityTransition = vi.fn();
 const mockLoggerWarn = vi.fn();
 
 // --- Module mocks ---
@@ -34,14 +36,15 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
     ...actual,
     getIdentityBundleByUserId: (...args: unknown[]) =>
       mockGetIdentityBundleByUserId(...args),
-    createVerification: (...args: unknown[]) => mockCreateVerification(...args),
-    getSelectedVerification: (...args: unknown[]) =>
-      mockGetSelectedVerification(...args),
+    getAccountIdentity: (...args: unknown[]) => mockGetAccountIdentity(...args),
     isNullifierUsedByOtherUser: (...args: unknown[]) =>
       mockIsNullifierUsedByOtherUser(...args),
     dedupKeyExistsForOtherUser: (...args: unknown[]) =>
       mockDedupKeyExistsForOtherUser(...args),
     hasProfileSecret: (...args: unknown[]) => mockHasProfileSecret(...args),
+    createVerification: (...args: unknown[]) => mockCreateVerification(...args),
+    reconcileIdentityBundle: (...args: unknown[]) =>
+      mockReconcileIdentityBundle(...args),
   };
 });
 
@@ -68,6 +71,11 @@ vi.mock("@/lib/db/queries/attestation", () => ({
 vi.mock("@/lib/identity/verification/materialize", () => ({
   materializeVerificationChecks: (...args: unknown[]) =>
     mockMaterializeVerificationChecks(...args),
+}));
+
+vi.mock("@/lib/identity/validity/transition", () => ({
+  applyValidityTransition: (...args: unknown[]) =>
+    mockApplyValidityTransition(...args),
 }));
 
 vi.mock("@/lib/logging/logger", () => {
@@ -173,12 +181,18 @@ describe("passportChip.submitResult", () => {
       uniqueIdentifier: verifiedNullifier,
     });
     mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
-    mockGetSelectedVerification.mockResolvedValue(null);
+    mockGetAccountIdentity.mockResolvedValue({
+      bundle: bundleWithFhe,
+      effectiveVerification: null,
+      groupedCredentials: [],
+    });
     mockSignAttestationClaim.mockResolvedValue("signed-chip-claim");
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
     mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
     mockHasProfileSecret.mockResolvedValue(true);
     mockCreateVerification.mockImplementation((data) => data);
+    mockReconcileIdentityBundle.mockResolvedValue(undefined);
+    mockApplyValidityTransition.mockResolvedValue(undefined);
     mockScheduleFheEncryption.mockReturnValue(undefined);
     mockLoggerWarn.mockReset();
   });
@@ -298,6 +312,11 @@ describe("passportChip.submitResult", () => {
 
   it("rejects when FHE enrollment is missing", async () => {
     mockGetIdentityBundleByUserId.mockResolvedValue({ fheKeyId: null });
+    mockGetAccountIdentity.mockResolvedValue({
+      bundle: { fheKeyId: null },
+      effectiveVerification: null,
+      groupedCredentials: [],
+    });
 
     const caller = await createCaller(authedSession);
     await expect(caller.submitResult(validInput())).rejects.toMatchObject({
@@ -307,9 +326,13 @@ describe("passportChip.submitResult", () => {
   });
 
   it("rejects when passport chip already verified", async () => {
-    mockGetSelectedVerification.mockResolvedValue({
-      method: "nfc_chip",
-      status: "verified",
+    mockGetAccountIdentity.mockResolvedValue({
+      bundle: bundleWithFhe,
+      effectiveVerification: {
+        method: "nfc_chip",
+        status: "verified",
+      },
+      groupedCredentials: [],
     });
 
     const caller = await createCaller(authedSession);
@@ -571,11 +594,15 @@ describe("passportChip.submitResult", () => {
   // --- Re-verify for vault ---
 
   it("allows re-submission when chip-verified but profile secret missing", async () => {
-    mockGetSelectedVerification.mockResolvedValue({
-      id: "existing-verification-id",
-      method: "nfc_chip",
-      status: "verified",
-      uniqueIdentifier: verifiedNullifier,
+    mockGetAccountIdentity.mockResolvedValue({
+      bundle: bundleWithFhe,
+      effectiveVerification: {
+        id: "existing-verification-id",
+        method: "nfc_chip",
+        status: "verified",
+        uniqueIdentifier: verifiedNullifier,
+      },
+      groupedCredentials: [],
     });
     mockHasProfileSecret.mockResolvedValue(false);
 

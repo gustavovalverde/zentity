@@ -318,7 +318,7 @@ describe("Token Exchange (RFC 8693)", () => {
           userId,
           fheKeyId: "test-fhe-key-id",
           fheStatus: "complete",
-          status: "verified",
+          validityStatus: "verified",
         })
         .run();
 

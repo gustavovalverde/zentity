@@ -25,7 +25,7 @@ interface BclClient {
 /**
  * Find all OAuth clients that have registered a backchannel_logout_uri.
  */
-async function getBclClients(): Promise<BclClient[]> {
+export async function listBackchannelLogoutClients(): Promise<BclClient[]> {
   const clients = await db
     .select({
       clientId: oauthClients.clientId,
@@ -98,7 +98,7 @@ const RETRY_DELAYS = [1000, 3000]; // 1s, 3s exponential backoff
  * POST a logout_token to an RP's backchannel_logout_uri.
  * Retries on 5xx with exponential backoff. Fire-and-forget — never blocks.
  */
-async function deliverLogoutToken(
+async function postLogoutToken(
   uri: string,
   logoutToken: string,
   clientId: string
@@ -123,21 +123,45 @@ async function deliverLogoutToken(
         continue;
       }
 
-      logWarn(`BCL delivery to ${clientId} failed: HTTP ${response.status}`, {
-        clientId,
-        status: response.status,
-      });
-      return;
+      throw new Error(
+        `Back-channel logout delivery to ${clientId} failed with HTTP ${response.status}`
+      );
     } catch (err) {
       if (attempt < RETRY_DELAYS.length) {
         await new Promise((r) => setTimeout(r, RETRY_DELAYS[attempt]));
         continue;
       }
-      logError(err instanceof Error ? err : new Error(String(err)), {
-        operation: `bcl-delivery:${clientId}`,
-      });
+      throw err instanceof Error ? err : new Error(String(err));
     }
   }
+}
+
+export async function sendBackchannelLogoutToClient(args: {
+  clientId: string;
+  sessionId?: string;
+  userId: string;
+}): Promise<void> {
+  const clients = await listBackchannelLogoutClients();
+  const client = clients.find(
+    (candidate) => candidate.clientId === args.clientId
+  );
+
+  if (!client) {
+    return;
+  }
+
+  const resolvedSub = await resolveSubForClient(args.userId, {
+    subjectType: client.subjectType,
+    redirectUris: client.redirectUris,
+  });
+  const token = await buildLogoutToken(
+    resolvedSub,
+    client.clientId,
+    args.sessionId,
+    client.backchannelLogoutSessionRequired
+  );
+
+  await postLogoutToken(client.backchannelLogoutUri, token, client.clientId);
 }
 
 /**
@@ -149,27 +173,25 @@ export async function sendBackchannelLogout(
   sessionId?: string
 ): Promise<void> {
   try {
-    const clients = await getBclClients();
+    const clients = await listBackchannelLogoutClients();
     if (clients.length === 0) {
       return;
     }
 
     const deliveries = clients.map(async (client) => {
-      const resolvedSub = await resolveSubForClient(userId, {
-        subjectType: client.subjectType,
-        redirectUris: client.redirectUris,
-      });
-      const token = await buildLogoutToken(
-        resolvedSub,
-        client.clientId,
-        sessionId,
-        client.backchannelLogoutSessionRequired
-      );
-      await deliverLogoutToken(
-        client.backchannelLogoutUri,
-        token,
-        client.clientId
-      );
+      try {
+        const delivery = {
+          clientId: client.clientId,
+          userId,
+          ...(sessionId ? { sessionId } : {}),
+        };
+        await sendBackchannelLogoutToClient(delivery);
+      } catch (err) {
+        logWarn(`BCL delivery to ${client.clientId} failed`, {
+          clientId: client.clientId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     });
 
     await Promise.allSettled(deliveries);

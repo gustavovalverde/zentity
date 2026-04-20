@@ -9,8 +9,10 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import {
   createVerification,
   dedupKeyExistsForOtherUser,
-  getSelectedVerification,
-  getVerificationStatus,
+  getAccountIdentity,
+  getComplianceStatus,
+  getIdentityBundleByUserId,
+  reconcileIdentityBundle,
 } from "@/lib/db/queries/identity";
 import {
   createProofSession,
@@ -27,10 +29,10 @@ describe("Database Module", () => {
     await resetDatabase();
   });
 
-  describe("getVerificationStatus", () => {
+  describe("getComplianceStatus", () => {
     it("returns level none for unverified user", async () => {
       const userId = await createTestUser();
-      const status = await getVerificationStatus(userId);
+      const status = await getComplianceStatus(userId);
 
       expect(status.level).toBe("none");
       expect(status.verified).toBe(false);
@@ -57,6 +59,7 @@ describe("Database Module", () => {
         dedupKey: "test-dedup-key",
         verifiedAt: new Date().toISOString(),
       });
+      await reconcileIdentityBundle(userId);
 
       await createProofSession({
         id: proofSessionId,
@@ -101,7 +104,7 @@ describe("Database Module", () => {
         });
       }
 
-      const status = await getVerificationStatus(userId);
+      const status = await getComplianceStatus(userId);
       expect(status.level).toBe("full");
       expect(status.verified).toBe(true);
       expect(status.checks.documentVerified).toBe(true);
@@ -126,6 +129,7 @@ describe("Database Module", () => {
         status: "verified",
         verifiedAt: new Date().toISOString(),
       });
+      await reconcileIdentityBundle(userId);
 
       await createProofSession({
         id: proofSessionId,
@@ -163,7 +167,7 @@ describe("Database Module", () => {
         issuedAt: new Date().toISOString(),
       });
 
-      const status = await getVerificationStatus(userId);
+      const status = await getComplianceStatus(userId);
       // Incomplete proof session: individual proof checks require all 5 in one session
       expect(status.checks.documentVerified).toBe(false);
       expect(status.checks.livenessVerified).toBe(true);
@@ -186,6 +190,7 @@ describe("Database Module", () => {
         nationalityCommitment: "nat-commit",
         verifiedAt: new Date().toISOString(),
       });
+      await reconcileIdentityBundle(userId);
 
       await insertSignedClaim({
         id: crypto.randomUUID(),
@@ -207,7 +212,7 @@ describe("Database Module", () => {
         issuedAt: new Date().toISOString(),
       });
 
-      const status = await getVerificationStatus(userId);
+      const status = await getComplianceStatus(userId);
       expect(status.level).toBe("chip");
       expect(status.verified).toBe(true);
       expect(status.checks.documentVerified).toBe(true);
@@ -231,9 +236,10 @@ describe("Database Module", () => {
         uniqueIdentifier: "nullifier-456",
         verifiedAt: new Date().toISOString(),
       });
+      await reconcileIdentityBundle(userId);
 
       // No chip_verification signed claim
-      const status = await getVerificationStatus(userId);
+      const status = await getComplianceStatus(userId);
       expect(status.level).toBe("chip");
       expect(status.checks.ageVerified).toBe(false);
       expect(status.checks.faceMatchVerified).toBe(false);
@@ -397,7 +403,11 @@ describe("Document selection", () => {
       });
     }
 
-    const selected = await getSelectedVerification(userId);
-    expect(selected?.id).toBe(docFull);
+    await reconcileIdentityBundle(userId);
+
+    const accountIdentity = await getAccountIdentity(userId);
+    const bundle = await getIdentityBundleByUserId(userId);
+    expect(accountIdentity.effectiveVerification?.id).toBe(docFull);
+    expect(bundle?.effectiveVerificationId).toBe(docFull);
   });
 });

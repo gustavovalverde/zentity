@@ -15,7 +15,7 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/disclosure/claims";
-import { getVerificationStatus } from "@/lib/db/queries/identity";
+import { getComplianceStatus } from "@/lib/db/queries/identity";
 
 import { protectedProcedure, router } from "../server";
 
@@ -38,7 +38,7 @@ export const credentialsRouter = router({
    */
   status: protectedProcedure.query(async ({ ctx }) => {
     const [status, claims] = await Promise.all([
-      getVerificationStatus(ctx.userId),
+      getComplianceStatus(ctx.userId),
       buildProofClaims(ctx.userId),
     ]);
 
@@ -64,7 +64,7 @@ export const credentialsRouter = router({
     .input(z.object({}).optional())
     .mutation(async ({ ctx }) => {
       // Verify user has completed identity verification
-      const status = await getVerificationStatus(ctx.userId);
+      const status = await getComplianceStatus(ctx.userId);
       if (!status.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",

@@ -20,6 +20,7 @@ import {
   getIdentityDraftById,
   getIdentityVerificationJobById,
   getVerificationById,
+  reconcileIdentityBundle,
   updateIdentityDraft,
   updateIdentityVerificationJobStatus,
   upsertIdentityBundle,
@@ -32,6 +33,7 @@ import {
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/identity/liveness/thresholds";
+import { applyValidityTransition } from "@/lib/identity/validity/transition";
 import { logError } from "@/lib/logging/error-logger";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
@@ -448,30 +450,13 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
         const bundleStatus = ((): "pending" | "verified" | "failed" => {
           if (verified) {
-            return "pending";
+            return "verified";
           }
           if (documentProcessed) {
             return "failed";
           }
           return "pending";
         })();
-        const bundleUpdate: Parameters<typeof upsertIdentityBundle>[0] = {
-          userId: job.userId,
-          status: bundleStatus,
-          issuerId: ISSUER_ID,
-          policyVersion: POLICY_VERSION,
-          fheStatus,
-          fheError: null,
-        };
-        if (effectiveFheKeyId) {
-          bundleUpdate.fheKeyId = effectiveFheKeyId;
-        }
-
-        await upsertIdentityBundle(bundleUpdate);
-
-        invalidateVerificationCache(job.userId);
-
-        // Promote draft data to verification record
         if (documentProcessed && verificationId) {
           try {
             await upsertVerification({
@@ -485,6 +470,26 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               livenessScore: draft.antispoofScore ?? null,
               verifiedAt: verified ? new Date().toISOString() : null,
             });
+
+            await upsertIdentityBundle({
+              userId: job.userId,
+              validityStatus: bundleStatus,
+              issuerId: ISSUER_ID,
+              policyVersion: POLICY_VERSION,
+              fheStatus,
+              fheError: null,
+              ...(effectiveFheKeyId === undefined
+                ? {}
+                : { fheKeyId: effectiveFheKeyId }),
+            });
+            await reconcileIdentityBundle(job.userId);
+            await applyValidityTransition({
+              userId: job.userId,
+              verificationId,
+              eventKind: verified ? "verified" : "failed",
+              source: "system",
+              occurredAt: finishedAt,
+            });
           } catch (error) {
             logger.error(
               {
@@ -497,7 +502,19 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             );
             issues.push("failed_to_upsert_verification");
           }
+        } else {
+          await upsertIdentityBundle({
+            userId: job.userId,
+            validityStatus: bundleStatus,
+            issuerId: ISSUER_ID,
+            policyVersion: POLICY_VERSION,
+            fheStatus,
+            fheError: null,
+            ...(effectiveFheKeyId ? { fheKeyId: effectiveFheKeyId } : {}),
+          });
         }
+
+        invalidateVerificationCache(job.userId);
 
         // Delete draft after successful promotion
         if (verified) {

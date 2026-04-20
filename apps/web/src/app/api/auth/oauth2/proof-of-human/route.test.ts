@@ -77,6 +77,18 @@ function makeVerifiedModel(
     },
     checks: [],
     proofs: [],
+    groupedIdentity: {
+      effectiveVerificationId: "v-123",
+      credentials: [
+        {
+          credentialId: "v-123",
+          method: "ocr",
+          status: "verified",
+          verifiedAt: "2026-01-01T00:00:00Z",
+          isEffective: true,
+        },
+      ],
+    },
     bundle: {
       exists: true,
       fheKeyId: "fhe-1",

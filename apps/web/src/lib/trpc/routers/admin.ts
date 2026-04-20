@@ -6,7 +6,7 @@ import {
   cleanupExpiredKeys,
   rotateSigningKey,
 } from "@/lib/auth/oidc/jwt-signer";
-import { reconcilePendingRevocations } from "@/lib/db/queries/attestation";
+import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
 
 import { adminProcedure, router } from "../server";
 
@@ -28,6 +28,8 @@ export const adminRouter = router({
   }),
 
   retryPendingRevocations: adminProcedure.mutation(() =>
-    reconcilePendingRevocations()
+    processIdentityValidityDeliveries({
+      targets: ["blockchain_attestation_revocation"],
+    })
   ),
 });

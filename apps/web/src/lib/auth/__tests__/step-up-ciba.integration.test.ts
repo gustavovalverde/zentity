@@ -94,7 +94,7 @@ async function seedTier1User(userId: string) {
       userId,
       fheKeyId: "test-fhe-key-id",
       fheStatus: "complete",
-      status: "verified",
+      validityStatus: "verified",
     })
     .run();
 }

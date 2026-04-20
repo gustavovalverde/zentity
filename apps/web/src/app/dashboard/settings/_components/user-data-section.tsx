@@ -59,6 +59,11 @@ const VERIFICATION_LEVEL_LABELS = {
   basic: "Partially Verified",
 } as const;
 
+const CREDENTIAL_METHOD_LABELS = {
+  ocr: "Document OCR",
+  nfc_chip: "Passport Chip",
+} as const;
+
 const VerificationLevelBadge = memo(function VerificationLevelBadge({
   level,
 }: Readonly<{
@@ -93,6 +98,13 @@ function formatDate(dateString: string | null): string {
   } catch {
     return "Unknown";
   }
+}
+
+function getCredentialMethodLabel(method: string): string {
+  return (
+    CREDENTIAL_METHOD_LABELS[method as keyof typeof CREDENTIAL_METHOD_LABELS] ??
+    method
+  );
 }
 
 export function UserDataSection() {
@@ -256,6 +268,49 @@ export function UserDataSection() {
             />
           </div>
         </div>
+
+        {data.groupedIdentity.credentials.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-medium text-sm">Identity Credentials</p>
+              <Badge variant="outline">
+                {data.groupedIdentity.credentials.length} credential
+                {data.groupedIdentity.credentials.length === 1 ? "" : "s"}
+              </Badge>
+            </div>
+
+            <div className="space-y-2">
+              {data.groupedIdentity.credentials.map((credential) => (
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3"
+                  key={credential.credentialId}
+                >
+                  <div className="space-y-1">
+                    <p className="font-medium text-sm">
+                      {getCredentialMethodLabel(credential.method)}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Verified {formatDate(credential.verifiedAt)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant={
+                        credential.status === "verified" ? "success" : "outline"
+                      }
+                    >
+                      {credential.status}
+                    </Badge>
+                    {credential.isEffective ? (
+                      <Badge variant="secondary">Selected</Badge>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
