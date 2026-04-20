@@ -14,7 +14,7 @@
   },
   "scripts": {
     "dev": "react-router dev",
-    "build": "node scripts/sync-docs.js && react-router build && node scripts/fix-vite-manifest.js",
+    "build": "node scripts/sync-docs.js && node scripts/sync-mcp-tool-manifest.js && react-router build && node scripts/fix-vite-manifest.js",
     "lint": "biome check . --write",
     "lint:check": "biome check .",
     "lint:fix": "biome check --write --unsafe .",

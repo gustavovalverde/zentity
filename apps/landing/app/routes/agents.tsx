@@ -23,6 +23,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { SemanticColor } from "@/lib/colors";
 import { colorStyles } from "@/lib/colors";
 import { iconSemanticColors } from "@/lib/icon-semantics";
+import { MCP_TOOL_MANIFEST } from "@/lib/mcp-tool-manifest.generated";
 import { cn } from "@/lib/utils";
 
 export const meta: MetaFunction = () => [
@@ -358,35 +359,22 @@ function TrustTiersSection() {
 
 /* ─── MCP + A2A Integration ──────────────────────────────── */
 
-const MCP_TOOLS = [
-  { name: "whoami", desc: "Get the authenticated user's identity claims" },
-  { name: "my_proofs", desc: "List all proof claims for the current user" },
-  {
-    name: "check_compliance",
-    desc: "Check if user meets compliance requirements",
-  },
-  { name: "purchase", desc: "Request CIBA approval for a purchase action" },
-  {
-    name: "request_approval",
-    desc: "Request CIBA approval for a custom action",
-  },
-] as const;
-
 function McpSection() {
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div>
         <h3 className="font-semibold">MCP Tools</h3>
         <p className="landing-body mt-1">
-          5 identity tools, available over HTTP (SSE) and stdio transports.
+          {MCP_TOOL_MANIFEST.length} identity tools, available over HTTP (SSE)
+          and stdio transports.
         </p>
         <ul className="mt-4 space-y-2">
-          {MCP_TOOLS.map((tool) => (
+          {MCP_TOOL_MANIFEST.map((tool) => (
             <li className="flex items-start gap-2" key={tool.name}>
               <code className="mt-0.5 shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                 {tool.name}
               </code>
-              <span className="landing-body">{tool.desc}</span>
+              <span className="landing-body">{tool.description}</span>
             </li>
           ))}
         </ul>
