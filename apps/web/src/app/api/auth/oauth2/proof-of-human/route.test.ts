@@ -126,8 +126,8 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       tier: 3,
       verified: true,
       sybil_resistant: true,
-      method: "ocr",
     });
+    expect(payload.poh).not.toHaveProperty("method");
     expect(payload.exp).toBeGreaterThan(payload.iat as number);
 
     // Cache-Control: no-store
@@ -339,11 +339,11 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       tier: 2,
       verified: false,
       sybil_resistant: false,
-      method: "ocr",
     });
+    expect(payload.poh).not.toHaveProperty("method");
   });
 
-  it("reflects NFC chip method in the PoH token", async () => {
+  it("omits verification method even for NFC-based proof-of-human tokens", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
     mocks.getVerificationReadModel.mockResolvedValue(
@@ -378,8 +378,8 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       tier: 4,
       verified: true,
       sybil_resistant: true,
-      method: "nfc_chip",
     });
+    expect(payload.poh).not.toHaveProperty("method");
   });
 
   it("returns 401 when access token has no client_id or azp", async () => {

@@ -163,7 +163,6 @@ async function resolveToken(request: Request): Promise<TokenPrincipal | null> {
  * - `poh.tier` — numeric assurance level (1–4)
  * - `poh.verified` — whether the user meets full compliance
  * - `poh.sybil_resistant` — whether a uniqueness check passed
- * - `poh.method` — verification method ("ocr" | "nfc_chip" | null)
  */
 export async function POST(request: Request) {
   const principal = await resolveToken(request);
@@ -197,7 +196,6 @@ export async function POST(request: Request) {
       tier: model.compliance.numericLevel,
       verified: model.compliance.verified,
       sybil_resistant: model.compliance.checks.sybilResistant,
-      method: model.method ?? null,
     },
   };
 

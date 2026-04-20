@@ -72,7 +72,6 @@ export function reportRejection(error: unknown): void {
     keepalive: true,
   }).catch(() => {
     // Logging failure shouldn't cascade — fall back to console for dev visibility.
-    // biome-ignore lint/suspicious/noConsole: last-resort fallback when error reporting itself fails.
     console.error("async-handler: failed to report rejection", error);
   });
 }

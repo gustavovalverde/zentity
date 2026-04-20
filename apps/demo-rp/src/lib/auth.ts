@@ -34,6 +34,7 @@ const AETHER_BOOTSTRAP_SCOPES = [
   "agent:host.register",
   "agent:session.register",
 ];
+const ZENTITY_JWKS_TTL_MS = 5 * 60 * 1000;
 
 function zentityUserInfoUrl() {
   return new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString();
@@ -60,23 +61,24 @@ function stripProviderFields(obj: Record<string, unknown>) {
 }
 
 // Lazy JWKS init: see verify.ts for rationale (Next.js build skipValidation).
-let zentityJwksInstance: ReturnType<typeof createRemoteJWKSet> | undefined;
+let zentityJwksCache:
+  | { expiresAt: number; jwks: ReturnType<typeof createRemoteJWKSet> }
+  | undefined;
 function zentityJwks() {
-  zentityJwksInstance ??= createRemoteJWKSet(
-    new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
-  );
-  return zentityJwksInstance;
+  if (!zentityJwksCache || Date.now() >= zentityJwksCache.expiresAt) {
+    zentityJwksCache = {
+      jwks: createRemoteJWKSet(new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)),
+      expiresAt: Date.now() + ZENTITY_JWKS_TTL_MS,
+    };
+  }
+  return zentityJwksCache.jwks;
 }
 
 async function verifyIdToken(
   idToken: string
 ): Promise<Record<string, unknown>> {
-  try {
-    const { payload } = await jwtVerify(idToken, zentityJwks());
-    return payload as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+  const { payload } = await jwtVerify(idToken, zentityJwks());
+  return payload as Record<string, unknown>;
 }
 
 const ALG_TO_HASH: Record<string, string> = {
@@ -88,22 +90,13 @@ const ALG_TO_HASH: Record<string, string> = {
 };
 
 function validateAtHash(accessToken: string, idToken: string, atHash: string) {
-  try {
-    const header = decodeProtectedHeader(idToken);
-    const hashAlg = ALG_TO_HASH[header.alg ?? "RS256"] ?? "sha256";
-    const hash = crypto
-      .createHash(hashAlg)
-      .update(accessToken, "ascii")
-      .digest();
-    const expected = hash.subarray(0, hash.length / 2).toString("base64url");
-    if (atHash !== expected) {
-      console.warn(
-        "[demo-rp] at_hash mismatch: ID token is not bound to this access token",
-        { expected, actual: atHash, alg: header.alg }
-      );
-    }
-  } catch (e) {
-    console.warn("[demo-rp] at_hash validation failed:", e);
+  const header = decodeProtectedHeader(idToken);
+  const hashAlg = ALG_TO_HASH[header.alg ?? "RS256"] ?? "sha256";
+  const hash = crypto.createHash(hashAlg).update(accessToken, "ascii").digest();
+  const expected = hash.subarray(0, hash.length / 2).toString("base64url");
+
+  if (atHash !== expected) {
+    throw new Error("ID token at_hash mismatch");
   }
 }
 

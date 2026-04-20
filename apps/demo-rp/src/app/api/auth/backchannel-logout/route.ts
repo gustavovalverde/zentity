@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
-import { account } from "@/lib/db/schema";
+import { account, session } from "@/lib/db/schema";
 import {
   findProviderByClientId,
   PROVIDER_IDS,
@@ -12,26 +12,55 @@ import {
 import { env } from "@/lib/env";
 
 const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
+const DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS = 5 * 60 * 1000;
+const OIDC_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 
 interface OidcDiscovery {
   issuer: string;
   jwks: ReturnType<typeof createRemoteJWKSet>;
 }
 
-let cached: OidcDiscovery | null = null;
+let cached:
+  | {
+      expiresAt: number;
+      value: OidcDiscovery;
+    }
+  | null = null;
+const logoutTokenReplayExpiryByJti = new Map<string, number>();
+
+function pruneExpiredLogoutTokenReplayEntries(now: number) {
+  for (const [jti, expiresAt] of logoutTokenReplayExpiryByJti.entries()) {
+    if (expiresAt <= now) {
+      logoutTokenReplayExpiryByJti.delete(jti);
+    }
+  }
+}
+
+function resolveLogoutTokenReplayExpiry(payload: {
+  exp?: unknown;
+}): number {
+  if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
+    return payload.exp * 1000;
+  }
+
+  return Date.now() + DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS;
+}
 
 async function getOidcConfig(): Promise<OidcDiscovery> {
-  if (cached) {
-    return cached;
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.value;
   }
   const discoveryUrl = `${env.ZENTITY_URL}/.well-known/openid-configuration`;
   const res = await fetch(discoveryUrl);
   const meta = (await res.json()) as { issuer: string; jwks_uri: string };
   cached = {
-    issuer: meta.issuer,
-    jwks: createRemoteJWKSet(new URL(meta.jwks_uri)),
+    value: {
+      issuer: meta.issuer,
+      jwks: createRemoteJWKSet(new URL(meta.jwks_uri)),
+    },
+    expiresAt: Date.now() + OIDC_DISCOVERY_TTL_MS,
   };
-  return cached;
+  return cached.value;
 }
 
 async function getAllClientIds(): Promise<string[]> {
@@ -90,6 +119,31 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
+    if (typeof payload.nonce === "string" && payload.nonce) {
+      return NextResponse.json(
+        { error: "Logout token must not contain nonce" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof payload.jti === "string" && payload.jti) {
+      const now = Date.now();
+      pruneExpiredLogoutTokenReplayEntries(now);
+
+      const replayExpiry = logoutTokenReplayExpiryByJti.get(payload.jti);
+      if (replayExpiry && replayExpiry > now) {
+        return NextResponse.json(
+          { error: "Logout token has already been used" },
+          { status: 400 }
+        );
+      }
+
+      logoutTokenReplayExpiryByJti.set(
+        payload.jti,
+        resolveLogoutTokenReplayExpiry(payload)
+      );
+    }
+
     const sub = payload.sub;
     if (!sub) {
       return NextResponse.json({ error: "Missing sub claim" }, { status: 400 });
@@ -99,6 +153,18 @@ export async function POST(request: Request): Promise<Response> {
     const provider = aud ? await findProviderByClientId(aud) : null;
 
     const db = getDb();
+    const accountFilter = provider
+      ? and(
+          eq(account.accountId, sub),
+          eq(account.providerId, `zentity-${provider}`)
+        )
+      : eq(account.accountId, sub);
+    const matchingAccounts = await db
+      .select({ userId: account.userId })
+      .from(account)
+      .where(accountFilter)
+      .all();
+    const userIds = [...new Set(matchingAccounts.map((row) => row.userId))];
 
     if (provider) {
       // Revoke only the targeted provider's tokens — other providers stay active
@@ -109,12 +175,7 @@ export async function POST(request: Request): Promise<Response> {
           refreshToken: null,
           idToken: null,
         })
-        .where(
-          and(
-            eq(account.accountId, sub),
-            eq(account.providerId, `zentity-${provider}`)
-          )
-        )
+        .where(accountFilter)
         .run();
     } else {
       // Fallback: unknown provider — revoke all accounts matching sub
@@ -125,8 +186,12 @@ export async function POST(request: Request): Promise<Response> {
           refreshToken: null,
           idToken: null,
         })
-        .where(eq(account.accountId, sub))
+        .where(accountFilter)
         .run();
+    }
+
+    if (userIds.length > 0) {
+      await db.delete(session).where(inArray(session.userId, userIds)).run();
     }
 
     return new Response(null, { status: 200 });
