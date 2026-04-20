@@ -5,7 +5,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET } from "@/app/api/auth/oauth2/end-session/route";
-import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
+import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
@@ -255,11 +255,10 @@ describe("OIDC RP-Initiated Logout (end-session)", () => {
       });
       await createTestSession(userId);
 
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [PAIRWISE_REDIRECT],
-        process.env.PAIRWISE_SECRET as string
-      );
+      const pairwiseSub = await resolveSubForClient(userId, {
+        subjectType: "pairwise",
+        redirectUris: [PAIRWISE_REDIRECT],
+      });
       const idToken = await mintIdToken(pairwiseSub, PAIRWISE_CLIENT_ID);
 
       const response = await GET(

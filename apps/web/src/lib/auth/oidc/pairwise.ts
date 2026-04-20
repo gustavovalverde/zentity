@@ -6,7 +6,6 @@ import { eq } from "drizzle-orm";
 import { env } from "@/env";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { users } from "@/lib/db/schema/auth";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import {
@@ -68,22 +67,6 @@ export async function resolveUserIdFromSubForClient(
     sector: getPairwiseSector(client.redirectUris),
     sub,
     subjectType: "user",
-    findLegacySubjectId: async () => {
-      const allUsers = await db.select({ id: users.id }).from(users).all();
-
-      for (const user of allUsers) {
-        const pairwiseSub = await computePairwiseSub(
-          user.id,
-          client.redirectUris,
-          env.PAIRWISE_SECRET
-        );
-        if (pairwiseSub === sub) {
-          return user.id;
-        }
-      }
-
-      return null;
-    },
   });
 }
 

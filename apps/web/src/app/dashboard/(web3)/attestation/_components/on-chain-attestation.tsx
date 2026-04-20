@@ -306,7 +306,6 @@ export function OnChainAttestation({
       const result = await createPermitMutation.mutateAsync({
         networkId: selectedNetwork,
         walletAddress: address,
-        consentScope: `0x${attributeMask.toString(16).padStart(2, "0")}`,
       });
 
       if ("status" in result && result.status === "confirmed") {

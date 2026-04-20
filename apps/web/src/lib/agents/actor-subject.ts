@@ -112,25 +112,5 @@ export async function resolveAgentSessionIdFromPairwiseSub(
     sector: getPairwiseSector(client.redirectUris),
     sub: pairwiseSub,
     subjectType: "agent_session",
-    findLegacySubjectId: async () => {
-      const sessions = await db
-        .select({ id: agentSessions.id })
-        .from(agentSessions)
-        .where(eq(agentSessions.status, "active"))
-        .all();
-
-      for (const session of sessions) {
-        const candidate = await computePairwiseSub(
-          session.id,
-          client.redirectUris,
-          env.PAIRWISE_SECRET
-        );
-        if (candidate === pairwiseSub) {
-          return session.id;
-        }
-      }
-
-      return null;
-    },
   });
 }

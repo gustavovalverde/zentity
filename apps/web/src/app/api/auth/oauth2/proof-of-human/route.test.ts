@@ -34,10 +34,20 @@ vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
 
 import { POST } from "./route";
 
+const TEST_DPOP_JKT = "sha256-dpop-key-thumbprint";
+
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/auth/oauth2/proof-of-human", {
     method: "POST",
     headers,
+  });
+}
+
+function makeDpopRequest(headers: Record<string, string> = {}): Request {
+  return makeRequest({
+    authorization: "DPoP eyJhbGciOiJFZERTQSJ9.test.sig",
+    dpop: "test-dpop-proof",
+    ...headers,
   });
 }
 
@@ -48,6 +58,7 @@ function makeAccessTokenPayload(overrides: Record<string, unknown> = {}) {
     scope: "openid poh",
     iss: "http://localhost:3000/api/auth",
     aud: "http://localhost:3000",
+    cnf: { jkt: TEST_DPOP_JKT },
     ...overrides,
   };
 }
@@ -120,20 +131,18 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   it("returns a PoH JWT with correct claims for a verified user", async () => {
     setupVerifiedUser();
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as { token: string };
     expect(body.token).toBe("signed-poh-jwt");
 
-    // Verify signJwt was called with the correct PoH payload
     expect(mocks.signJwt).toHaveBeenCalledOnce();
     const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(payload.iss).toBe("http://localhost:3000");
     expect(payload.sub).toBe("pairwise-sub-for-client-a");
     expect(payload.scope).toBe("poh");
+    expect(payload.cnf).toEqual({ jkt: TEST_DPOP_JKT });
     expect(payload.poh).toEqual({
       tier: 3,
       verified: true,
@@ -142,7 +151,6 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(payload.poh).not.toHaveProperty("method");
     expect(payload.exp).toBeGreaterThan(payload.iat as number);
 
-    // Cache-Control: no-store
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
@@ -167,9 +175,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   it("returns 401 when token verification fails", async () => {
     mocks.verifyAccessToken.mockResolvedValue(null);
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(401);
     const body = (await response.json()) as { error: string };
@@ -182,9 +188,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     );
     mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: string };
@@ -192,29 +196,20 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(mocks.signJwt).not.toHaveBeenCalled();
   });
 
-  it("includes cnf.jkt in PoH JWT when access token is DPoP-bound", async () => {
-    const dpopThumbprint = "sha256-dpop-key-thumbprint";
+  it("rejects access tokens that lack a DPoP binding", async () => {
     mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ cnf: { jkt: dpopThumbprint } })
-    );
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
-    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
-
-    const response = await POST(
-      makeRequest({ authorization: "DPoP eyJhbGciOiJFZERTQSJ9.test.sig" })
+      makeAccessTokenPayload({ cnf: undefined })
     );
 
-    expect(response.status).toBe(200);
-    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.cnf).toEqual({ jkt: dpopThumbprint });
-    expect(mocks.validateOpaqueAccessTokenDpop).toHaveBeenCalledOnce();
+    const response = await POST(makeDpopRequest());
+
+    expect(response.status).toBe(401);
+    expect(mocks.signJwt).not.toHaveBeenCalled();
+    expect(mocks.validateOpaqueAccessTokenDpop).not.toHaveBeenCalled();
   });
 
   it("rejects DPoP-bound JWT access tokens sent with Bearer auth", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ cnf: { jkt: "sha256-dpop-key-thumbprint" } })
-    );
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
 
     const response = await POST(
       makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
@@ -226,37 +221,17 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("rejects DPoP-bound JWT access tokens when proof validation fails", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ cnf: { jkt: "sha256-dpop-key-thumbprint" } })
-    );
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(false);
 
-    const response = await POST(
-      makeRequest({
-        authorization: "DPoP eyJhbGciOiJFZERTQSJ9.test.sig",
-        dpop: "bad-proof",
-      })
-    );
+    const response = await POST(makeDpopRequest({ dpop: "bad-proof" }));
 
     expect(response.status).toBe(401);
     expect(mocks.signJwt).not.toHaveBeenCalled();
     expect(mocks.validateOpaqueAccessTokenDpop).toHaveBeenCalledOnce();
   });
 
-  it("omits cnf when access token has no DPoP binding", async () => {
-    setupVerifiedUser();
-
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
-
-    expect(response.status).toBe(200);
-    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.cnf).toBeUndefined();
-  });
-
   it("uses pairwise sub from the access token — different clients get different subs", async () => {
-    // Client A
     mocks.verifyAccessToken.mockResolvedValue(
       makeAccessTokenPayload({
         sub: "pairwise-sub-client-a",
@@ -267,15 +242,12 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("jwt-a");
 
-    await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
-
+    await POST(makeDpopRequest());
     const subA = (mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>)
       .sub;
 
-    // Client B
     vi.clearAllMocks();
+    mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(true);
     mocks.verifyAccessToken.mockResolvedValue(
       makeAccessTokenPayload({
         sub: "pairwise-sub-client-b",
@@ -286,14 +258,10 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("jwt-b");
 
-    await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
-
+    await POST(makeDpopRequest());
     const subB = (mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>)
       .sub;
 
-    // Same user, different clients → different pairwise subs in PoH tokens
     expect(subA).toBe("pairwise-sub-client-a");
     expect(subB).toBe("pairwise-sub-client-b");
     expect(subA).not.toBe(subB);
@@ -306,9 +274,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
       makeVerifiedModel({ verificationId: null })
     );
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(403);
     const body = (await response.json()) as { error: string };
@@ -341,9 +307,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     );
     mocks.signJwt.mockResolvedValue("signed-poh-jwt");
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(200);
     const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -380,9 +344,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     );
     mocks.signJwt.mockResolvedValue("signed-poh-jwt");
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(200);
     const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
@@ -398,12 +360,10 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.verifyAccessToken.mockResolvedValue({
       sub: "user-sub",
       scope: "openid poh",
-      // no client_id, no azp
+      cnf: { jkt: TEST_DPOP_JKT },
     });
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(401);
     const body = (await response.json()) as { error: string };
@@ -414,9 +374,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue(null);
 
-    const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
-    );
+    const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(401);
     const body = (await response.json()) as { error: string };

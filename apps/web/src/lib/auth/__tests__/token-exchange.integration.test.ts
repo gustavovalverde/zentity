@@ -8,7 +8,10 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
+import {
+  computePairwiseSub,
+  resolveSubForClient,
+} from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
@@ -592,12 +595,10 @@ describe("Token Exchange (RFC 8693)", () => {
     it("resolves pairwise id_token input to raw userId for user lookup", async () => {
       await createPairwiseClient();
 
-      // Mint an id_token with pairwise sub (as if issued to the pairwise client)
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [PAIRWISE_REDIRECT],
-        process.env.PAIRWISE_SECRET as string
-      );
+      const pairwiseSub = await resolveSubForClient(userId, {
+        subjectType: "pairwise",
+        redirectUris: [PAIRWISE_REDIRECT],
+      });
       const pairwiseIdToken = await mintIdToken(
         pairwiseSub,
         PAIRWISE_CLIENT_ID

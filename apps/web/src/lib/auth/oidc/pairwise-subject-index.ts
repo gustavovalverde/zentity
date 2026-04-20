@@ -16,7 +16,6 @@ interface PairwiseSubjectIndexEntry {
 }
 
 interface ResolvePairwiseSubjectIdOptions {
-  findLegacySubjectId: () => Promise<string | null>;
   sector: string;
   sub: string;
   subjectType: PairwiseSubjectType;
@@ -44,23 +43,7 @@ export async function resolvePairwiseSubjectId(
     .limit(1)
     .get();
 
-  if (indexed) {
-    return indexed.subjectId;
-  }
-
-  const subjectId = await options.findLegacySubjectId();
-  if (!subjectId) {
-    return null;
-  }
-
-  await upsertPairwiseSubjectIndex({
-    sector: options.sector,
-    sub: options.sub,
-    subjectId,
-    subjectType: options.subjectType,
-  });
-
-  return subjectId;
+  return indexed?.subjectId ?? null;
 }
 
 /**

@@ -14,11 +14,14 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients, pairwiseSubjects } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
-import {
-  computePairwiseSub,
-  resolveSubForClient,
-  resolveUserIdFromSub,
-} from "../pairwise";
+import { resolveSubForClient, resolveUserIdFromSub } from "../pairwise";
+
+async function issueSubForUser(userId: string): Promise<string> {
+  return await resolveSubForClient(userId, {
+    subjectType: "pairwise",
+    redirectUris: [TEST_REDIRECT_URI],
+  });
+}
 
 const TEST_CLIENT_ID = "pairwise-test-client";
 const TEST_REDIRECT_URI = "https://pairwise-rp.example.com/callback";
@@ -87,11 +90,7 @@ describe("pairwise subject resolution (integration)", () => {
     it("resolves pairwise sub back to raw userId", async () => {
       await createTestClient();
 
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [TEST_REDIRECT_URI],
-        env.PAIRWISE_SECRET
-      );
+      const pairwiseSub = await issueSubForUser(userId);
 
       const resolved = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
       expect(resolved).toBe(userId);
@@ -125,45 +124,25 @@ describe("pairwise subject resolution (integration)", () => {
       const user2 = await createTestUser({ email: "user2@example.com" });
       const user3 = await createTestUser({ email: "user3@example.com" });
 
-      // Compute pairwise for user2
-      const pairwiseSub = await computePairwiseSub(
-        user2,
-        [TEST_REDIRECT_URI],
-        env.PAIRWISE_SECRET
-      );
+      await issueSubForUser(userId);
+      const pairwiseSubUser2 = await issueSubForUser(user2);
+      await issueSubForUser(user3);
 
-      const resolved = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
+      const resolved = await resolveUserIdFromSub(
+        pairwiseSubUser2,
+        TEST_CLIENT_ID
+      );
       expect(resolved).toBe(user2);
       expect(resolved).not.toBe(userId);
       expect(resolved).not.toBe(user3);
     });
 
-    it("backfills the pairwise index on a legacy cache miss", async () => {
+    it("indexes the pairwise row atomically during issuance", async () => {
       await createTestClient();
 
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [TEST_REDIRECT_URI],
-        env.PAIRWISE_SECRET
-      );
+      const pairwiseSub = await issueSubForUser(userId);
 
-      const indexedBefore = await db
-        .select({ sub: pairwiseSubjects.sub })
-        .from(pairwiseSubjects)
-        .where(
-          and(
-            eq(pairwiseSubjects.sector, new URL(TEST_REDIRECT_URI).host),
-            eq(pairwiseSubjects.sub, pairwiseSub)
-          )
-        )
-        .limit(1)
-        .get();
-      expect(indexedBefore).toBeUndefined();
-
-      const resolved = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
-      expect(resolved).toBe(userId);
-
-      const indexedAfter = await db
+      const indexed = await db
         .select({
           subjectId: pairwiseSubjects.subjectId,
           subjectType: pairwiseSubjects.subjectType,
@@ -178,7 +157,7 @@ describe("pairwise subject resolution (integration)", () => {
         .limit(1)
         .get();
 
-      expect(indexedAfter).toEqual({
+      expect(indexed).toEqual({
         subjectId: userId,
         subjectType: "user",
       });
@@ -261,7 +240,6 @@ describe("pairwise subject resolution (integration)", () => {
       await createTestClient();
       const _sessionToken = await createTestSession(userId);
 
-      // Verify session exists under raw userId
       const sessionsBefore = await db
         .select()
         .from(sessions)
@@ -269,17 +247,9 @@ describe("pairwise subject resolution (integration)", () => {
         .all();
       expect(sessionsBefore).toHaveLength(1);
 
-      // Compute pairwise sub (what would be in id_token_hint)
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [TEST_REDIRECT_URI],
-        env.PAIRWISE_SECRET
-      );
-
-      // Verify pairwise sub does NOT match raw userId
+      const pairwiseSub = await issueSubForUser(userId);
       expect(pairwiseSub).not.toBe(userId);
 
-      // Verify resolveUserIdFromSub correctly resolves
       const resolved = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
       expect(resolved).toBe(userId);
     });
@@ -303,12 +273,7 @@ describe("pairwise subject resolution (integration)", () => {
         })
         .run();
 
-      // Resolve pairwise sub → raw userId
-      const pairwiseSub = await computePairwiseSub(
-        userId,
-        [TEST_REDIRECT_URI],
-        env.PAIRWISE_SECRET
-      );
+      const pairwiseSub = await issueSubForUser(userId);
       const rawUserId = await resolveUserIdFromSub(pairwiseSub, TEST_CLIENT_ID);
       expect(rawUserId).not.toBeNull();
 

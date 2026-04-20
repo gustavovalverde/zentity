@@ -166,6 +166,21 @@ const IDENTITY_REGISTRY = "0x00000000000000000000000000000000000000aa";
 const CONSENT_RECEIPT = `0x${"4".repeat(130)}`;
 const TX_HASH = `0x${"1".repeat(64)}`;
 
+function createValidValidationResult(consent?: {
+  attributeMask?: number;
+  deadline?: number;
+  signature?: string;
+}) {
+  return {
+    verdict: "valid" as const,
+    consent: {
+      attributeMask: consent?.attributeMask ?? 0x0f,
+      deadline: consent?.deadline ?? 1_700_000_000,
+      signature: (consent?.signature ?? CONSENT_RECEIPT) as `0x${string}`,
+    },
+  };
+}
+
 function createPermit() {
   return {
     birthYearOffset: 25,
@@ -203,7 +218,9 @@ function createProviderMock(overrides: Record<string, unknown> = {}) {
     checkTransaction: vi
       .fn()
       .mockResolvedValue({ confirmed: true, failed: false, blockNumber: 123 }),
-    validateAttestationTransaction: vi.fn().mockResolvedValue("valid"),
+    validateAttestationTransaction: vi
+      .fn()
+      .mockResolvedValue(createValidValidationResult()),
     ...overrides,
   };
 }
@@ -467,7 +484,9 @@ describe("attestation router", () => {
 
   it("rejects non-attestation transaction hashes during recordSubmission", async () => {
     const provider = createProviderMock({
-      validateAttestationTransaction: vi.fn().mockResolvedValue("invalid"),
+      validateAttestationTransaction: vi
+        .fn()
+        .mockResolvedValue({ verdict: "invalid" }),
     });
     mockCreateProvider.mockReturnValue(provider);
     mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
@@ -503,7 +522,7 @@ describe("attestation router", () => {
     const provider = createProviderMock({
       validateAttestationTransaction: vi
         .fn()
-        .mockResolvedValue("pending_lookup"),
+        .mockResolvedValue({ verdict: "pending_lookup" }),
     });
     mockCreateProvider.mockReturnValue(provider);
     mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
@@ -543,6 +562,27 @@ describe("attestation router", () => {
   });
 
   it("rejects submissions that omit the consent receipt", async () => {
+    const caller = await createCaller(authedSession);
+    await expect(
+      caller.recordSubmission({
+        networkId: "fhevm_sepolia",
+        txHash: TX_HASH,
+      } as { networkId: string; txHash: string; consentReceipt: string })
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    expect(mockUpdateBlockchainAttestationSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("rejects submissions whose consent receipt differs from the on-chain signature", async () => {
+    const onChainSignature = `0x${"a".repeat(130)}`;
+    const provider = createProviderMock({
+      validateAttestationTransaction: vi.fn().mockResolvedValue(
+        createValidValidationResult({
+          signature: onChainSignature,
+        })
+      ),
+    });
+    mockCreateProvider.mockReturnValue(provider);
     mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
       id: "att-1",
       userId: "test-user",
@@ -563,21 +603,25 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.recordSubmission({
+        consentReceipt: CONSENT_RECEIPT,
         networkId: "fhevm_sepolia",
         txHash: TX_HASH,
       })
     ).rejects.toMatchObject({
       code: "BAD_REQUEST",
       message:
-        "Consent receipt is required to record an attestation submission.",
+        "Consent receipt does not match the signature submitted on-chain.",
     });
 
     expect(mockUpdateBlockchainAttestationSubmitted).not.toHaveBeenCalled();
+    expect(mockUpsertAttestationEvidence).not.toHaveBeenCalled();
   });
 
   it("persists the consent receipt when recording a submission", async () => {
     const provider = createProviderMock({
-      validateAttestationTransaction: vi.fn().mockResolvedValue("valid"),
+      validateAttestationTransaction: vi
+        .fn()
+        .mockResolvedValue(createValidValidationResult()),
     });
     mockCreateProvider.mockReturnValue(provider);
     mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
@@ -614,6 +658,7 @@ describe("attestation router", () => {
         userId: "test-user",
         verificationId: "v-1",
         consentReceipt: CONSENT_RECEIPT,
+        consentScope: "0x0f",
       })
     );
   });

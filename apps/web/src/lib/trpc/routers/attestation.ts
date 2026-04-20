@@ -115,10 +115,6 @@ export const attestationRouter = router({
       z.object({
         networkId: z.string(),
         walletAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-        consentScope: z
-          .string()
-          .regex(/^0x[0-9a-fA-F]{1,2}$/)
-          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -286,7 +282,6 @@ export const attestationRouter = router({
         policyVersion: POLICY_VERSION,
         policyHash: POLICY_HASH,
         proofSetHash,
-        consentScope: input.consentScope,
       });
 
       return {
@@ -309,20 +304,12 @@ export const attestationRouter = router({
         consentReceipt: z
           .string()
           .regex(/^0x[a-fA-F0-9]{130}$/)
-          .optional(),
+          .transform((s) => s.toLowerCase() as `0x${string}`),
         networkId: z.string(),
         txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (!input.consentReceipt) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message:
-            "Consent receipt is required to record an attestation submission.",
-        });
-      }
-
       const attestation = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId
@@ -365,11 +352,22 @@ export const attestationRouter = router({
         userAddress: attestation.walletAddress,
       });
 
-      if (validation === "invalid") {
+      if (validation.verdict === "invalid") {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
             "Transaction hash does not match an attestation submitted from your wallet.",
+        });
+      }
+
+      if (
+        validation.verdict === "valid" &&
+        validation.consent.signature !== input.consentReceipt
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Consent receipt does not match the signature submitted on-chain.",
         });
       }
 
@@ -382,6 +380,13 @@ export const attestationRouter = router({
         });
       }
 
+      const consentScope =
+        validation.verdict === "valid"
+          ? (`0x${validation.consent.attributeMask
+              .toString(16)
+              .padStart(2, "0")}` as const)
+          : undefined;
+
       await upsertAttestationEvidence({
         userId: ctx.userId,
         verificationId: model.verificationId,
@@ -389,6 +394,7 @@ export const attestationRouter = router({
         policyHash: null,
         proofSetHash: undefined,
         consentReceipt: input.consentReceipt,
+        consentScope,
       });
 
       await updateBlockchainAttestationSubmitted(attestation.id, input.txHash);
@@ -399,7 +405,7 @@ export const attestationRouter = router({
         status: "submitted" as const,
         txHash: input.txHash,
         explorerUrl,
-        validationPending: validation === "pending_lookup",
+        validationPending: validation.verdict === "pending_lookup",
       };
     }),
 

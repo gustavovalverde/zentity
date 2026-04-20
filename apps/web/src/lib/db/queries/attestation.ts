@@ -5,8 +5,6 @@ import type {
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
-import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
-
 import { db } from "../connection";
 import {
   attestationEvidence,
@@ -233,24 +231,4 @@ export async function deleteBlockchainAttestationsByUserId(
     .delete(blockchainAttestations)
     .where(eq(blockchainAttestations.userId, userId))
     .run();
-}
-
-/**
- * Retry pending on-chain revocations with exponential backoff.
- * Returns the count of successfully revoked attestations.
- */
-export async function reconcilePendingRevocations(): Promise<{
-  retried: number;
-  succeeded: number;
-  failed: number;
-}> {
-  const result = await processIdentityValidityDeliveries({
-    targets: ["blockchain_attestation_revocation"],
-  });
-
-  return {
-    retried: result.attempted,
-    succeeded: result.delivered,
-    failed: result.retrying + result.deadLettered,
-  };
 }

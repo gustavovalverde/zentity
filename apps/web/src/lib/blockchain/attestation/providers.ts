@@ -84,10 +84,16 @@ export interface TransactionStatus {
   failed: boolean;
 }
 
+export interface OnChainConsentReceipt {
+  attributeMask: number;
+  deadline: number;
+  signature: `0x${string}`;
+}
+
 export type AttestationTransactionValidation =
-  | "valid"
-  | "invalid"
-  | "pending_lookup";
+  | { verdict: "valid"; consent: OnChainConsentReceipt }
+  | { verdict: "invalid" }
+  | { verdict: "pending_lookup" };
 
 export interface IAttestationProvider {
   checkTransaction(txHash: string): Promise<TransactionStatus>;
@@ -126,6 +132,50 @@ function isTransactionNotFoundError(error: unknown): boolean {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Decode the consent receipt components from an `attestWithPermit` call.
+ * Argument positions (per IdentityRegistry.attestWithPermit):
+ *   [0] permit struct
+ *   [1] consentV (uint8)
+ *   [2] consentR (bytes32)
+ *   [3] consentS (bytes32)
+ *   [4] attributeMask (uint8)
+ *   [5] consentDeadline (uint256)
+ *   [6..] encrypted handles + inputProof
+ */
+function decodeAttestWithPermitConsent(
+  args: readonly unknown[] | undefined
+): OnChainConsentReceipt | null {
+  if (!args || args.length < 6) {
+    return null;
+  }
+
+  const consentV = args[1] as number | bigint;
+  const consentR = args[2] as `0x${string}`;
+  const consentS = args[3] as `0x${string}`;
+  const attributeMask = args[4] as number | bigint;
+  const consentDeadline = args[5] as bigint;
+
+  if (
+    typeof consentR !== "string" ||
+    typeof consentS !== "string" ||
+    !consentR.startsWith("0x") ||
+    !consentS.startsWith("0x")
+  ) {
+    return null;
+  }
+
+  const vByte = Number(consentV).toString(16).padStart(2, "0");
+  const signature =
+    `${consentR}${consentS.slice(2)}${vByte}`.toLowerCase() as `0x${string}`;
+
+  return {
+    attributeMask: Number(attributeMask),
+    deadline: Number(consentDeadline),
+    signature,
+  };
 }
 
 export class AttestationProvider implements IAttestationProvider {
@@ -301,11 +351,11 @@ export class AttestationProvider implements IAttestationProvider {
         });
 
         if (!tx.to || tx.to.toLowerCase() !== contractAddress.toLowerCase()) {
-          return "invalid";
+          return { verdict: "invalid" };
         }
 
         if (tx.from.toLowerCase() !== params.userAddress.toLowerCase()) {
-          return "invalid";
+          return { verdict: "invalid" };
         }
 
         const decoded = decodeFunctionData({
@@ -313,9 +363,16 @@ export class AttestationProvider implements IAttestationProvider {
           data: tx.input,
         });
 
-        return decoded.functionName === "attestWithPermit"
-          ? "valid"
-          : "invalid";
+        if (decoded.functionName !== "attestWithPermit") {
+          return { verdict: "invalid" };
+        }
+
+        const consent = decodeAttestWithPermitConsent(decoded.args);
+        if (!consent) {
+          return { verdict: "invalid" };
+        }
+
+        return { verdict: "valid", consent };
       } catch (error) {
         if (
           isTransactionNotFoundError(error) &&
@@ -326,14 +383,14 @@ export class AttestationProvider implements IAttestationProvider {
         }
 
         if (isTransactionNotFoundError(error)) {
-          return "pending_lookup";
+          return { verdict: "pending_lookup" };
         }
 
-        return "invalid";
+        return { verdict: "invalid" };
       }
     }
 
-    return "pending_lookup";
+    return { verdict: "pending_lookup" };
   }
 
   async getAttestationStatus(userAddress: string): Promise<AttestationStatus> {

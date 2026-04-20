@@ -16,7 +16,7 @@ const TRAILING_SLASHES = /\/+$/;
 
 interface TokenPrincipal {
   clientId: string;
-  dpopJkt: string | null;
+  dpopJkt: string;
   scopes: string[];
   sub: string;
   userId: string;
@@ -27,6 +27,10 @@ async function resolveJwtToken(
   request: Request,
   scheme: string
 ): Promise<TokenPrincipal | null> {
+  if (scheme.toLowerCase() !== "dpop") {
+    return null;
+  }
+
   const payload = await verifyAccessToken(token);
   if (!payload?.sub) {
     return null;
@@ -39,23 +43,20 @@ async function resolveJwtToken(
     return null;
   }
 
+  const cnf = payload.cnf as { jkt?: string } | undefined;
+  if (!cnf?.jkt) {
+    return null;
+  }
+
+  const valid = await validateOpaqueAccessTokenDpop(request, cnf.jkt);
+  if (!valid) {
+    return null;
+  }
+
   const { resolveUserIdFromSub } = await import("@/lib/auth/oidc/pairwise");
   const userId = await resolveUserIdFromSub(payload.sub, clientId);
   if (!userId) {
     return null;
-  }
-
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-
-  if (cnf?.jkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return null;
-    }
-
-    const valid = await validateOpaqueAccessTokenDpop(request, cnf.jkt);
-    if (!valid) {
-      return null;
-    }
   }
 
   return {
@@ -66,7 +67,7 @@ async function resolveJwtToken(
       typeof payload.scope === "string"
         ? payload.scope.split(" ").filter(Boolean)
         : [],
-    dpopJkt: cnf?.jkt ?? null,
+    dpopJkt: cnf.jkt,
   };
 }
 
@@ -75,10 +76,12 @@ async function resolveOpaqueToken(
   request: Request,
   scheme: string
 ): Promise<TokenPrincipal | null> {
-  const { resolveSubForClient } = await import("@/lib/auth/oidc/pairwise");
+  if (scheme.toLowerCase() !== "dpop") {
+    return null;
+  }
 
   const row = await loadOpaqueAccessToken(token);
-  if (!(row?.userId && row.clientId)) {
+  if (!(row?.userId && row.clientId && row.dpopJkt)) {
     return null;
   }
 
@@ -86,21 +89,16 @@ async function resolveOpaqueToken(
     return null;
   }
 
-  // Enforce DPoP proof-of-possession for DPoP-bound tokens
-  if (row.dpopJkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return null;
-    }
-    const valid = await validateOpaqueAccessTokenDpop(request, row.dpopJkt);
-    if (!valid) {
-      return null;
-    }
+  const valid = await validateOpaqueAccessTokenDpop(request, row.dpopJkt);
+  if (!valid) {
+    return null;
   }
 
   const { parseStoredStringArray } = await import("@/lib/db/adapter-compat");
   const { oauthClients } = await import("@/lib/db/schema/oauth-provider");
   const { db } = await import("@/lib/db/connection");
   const { eq } = await import("drizzle-orm");
+  const { resolveSubForClient } = await import("@/lib/auth/oidc/pairwise");
 
   const client = await db
     .select({
@@ -128,7 +126,7 @@ async function resolveOpaqueToken(
     userId: row.userId,
     clientId: row.clientId,
     scopes: row.scopes,
-    dpopJkt: row.dpopJkt ?? null,
+    dpopJkt: row.dpopJkt,
   };
 }
 
@@ -186,24 +184,19 @@ export async function POST(request: Request) {
   const now = Math.floor(Date.now() / 1000);
   const issuer = env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASHES, "");
 
-  const pohPayload: Record<string, unknown> = {
+  const token = await signJwt({
     iss: issuer,
     sub,
     iat: now,
     exp: now + 3600,
     scope: "poh",
+    cnf: { jkt: principal.dpopJkt },
     poh: {
       tier: model.compliance.numericLevel,
       verified: model.compliance.verified,
       sybil_resistant: model.compliance.checks.sybilResistant,
     },
-  };
-
-  if (principal.dpopJkt) {
-    pohPayload.cnf = { jkt: principal.dpopJkt };
-  }
-
-  const token = await signJwt(pohPayload);
+  });
 
   return NextResponse.json(
     { token },
