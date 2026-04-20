@@ -400,6 +400,7 @@ export function OnChainAttestation({
 
       // 5. Record tx on server
       await recordSubmissionMutation.mutateAsync({
+        consentReceipt: consentSig,
         networkId: selectedNetwork,
         txHash,
       });

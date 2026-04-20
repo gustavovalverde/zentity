@@ -167,6 +167,7 @@ const authedSession = {
 const WALLET_A = "0x0000000000000000000000000000000000000001";
 const WALLET_B = "0x0000000000000000000000000000000000000002";
 const IDENTITY_REGISTRY = "0x00000000000000000000000000000000000000aa";
+const CONSENT_RECEIPT = `0x${"4".repeat(130)}`;
 const TX_HASH = `0x${"1".repeat(64)}`;
 
 function createPermit() {
@@ -497,6 +498,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.recordSubmission({
+        consentReceipt: CONSENT_RECEIPT,
         networkId: "fhevm_sepolia",
         txHash: TX_HASH,
       })
@@ -532,6 +534,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.recordSubmission({
+        consentReceipt: CONSENT_RECEIPT,
         networkId: "fhevm_sepolia",
         txHash: TX_HASH,
       })
@@ -544,6 +547,82 @@ describe("attestation router", () => {
     expect(mockUpdateBlockchainAttestationSubmitted).toHaveBeenCalledWith(
       "att-1",
       TX_HASH
+    );
+  });
+
+  it("rejects submissions that omit the consent receipt", async () => {
+    mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
+      id: "att-1",
+      userId: "test-user",
+      walletAddress: WALLET_A,
+      networkId: "fhevm_sepolia",
+      chainId: 11_155_111,
+      status: "pending",
+      txHash: null,
+      blockNumber: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      confirmedAt: null,
+      revokedAt: null,
+      errorMessage: null,
+      retryCount: 0,
+    });
+
+    const caller = await createCaller(authedSession);
+    await expect(
+      caller.recordSubmission({
+        networkId: "fhevm_sepolia",
+        txHash: TX_HASH,
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message:
+        "Consent receipt is required to record an attestation submission.",
+    });
+
+    expect(mockUpdateBlockchainAttestationSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("persists the consent receipt when recording a submission", async () => {
+    const provider = createProviderMock({
+      validateAttestationTransaction: vi.fn().mockResolvedValue("valid"),
+    });
+    mockCreateProvider.mockReturnValue(provider);
+    mockGetBlockchainAttestationByUserAndNetwork.mockResolvedValue({
+      id: "att-1",
+      userId: "test-user",
+      walletAddress: WALLET_A,
+      networkId: "fhevm_sepolia",
+      chainId: 11_155_111,
+      status: "pending",
+      txHash: null,
+      blockNumber: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      confirmedAt: null,
+      revokedAt: null,
+      errorMessage: null,
+      retryCount: 0,
+    });
+
+    const caller = await createCaller(authedSession);
+    await expect(
+      caller.recordSubmission({
+        networkId: "fhevm_sepolia",
+        txHash: TX_HASH,
+        consentReceipt: CONSENT_RECEIPT,
+      })
+    ).resolves.toMatchObject({
+      status: "submitted",
+      txHash: TX_HASH,
+    });
+
+    expect(mockUpsertAttestationEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "test-user",
+        verificationId: "v-1",
+        consentReceipt: CONSENT_RECEIPT,
+      })
     );
   });
 

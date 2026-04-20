@@ -306,11 +306,23 @@ export const attestationRouter = router({
   recordSubmission: protectedProcedure
     .input(
       z.object({
+        consentReceipt: z
+          .string()
+          .regex(/^0x[a-fA-F0-9]{130}$/)
+          .optional(),
         networkId: z.string(),
         txHash: z.string().regex(/^0x[a-fA-F0-9]{64}$/),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (!input.consentReceipt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Consent receipt is required to record an attestation submission.",
+        });
+      }
+
       const attestation = await getBlockchainAttestationByUserAndNetwork(
         ctx.userId,
         input.networkId
@@ -360,6 +372,24 @@ export const attestationRouter = router({
             "Transaction hash does not match an attestation submitted from your wallet.",
         });
       }
+
+      const model = await getVerificationReadModel(ctx.userId);
+      if (!model.verificationId) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message:
+            "No identity verification found. Complete OCR or NFC verification first.",
+        });
+      }
+
+      await upsertAttestationEvidence({
+        userId: ctx.userId,
+        verificationId: model.verificationId,
+        policyVersion: null,
+        policyHash: null,
+        proofSetHash: undefined,
+        consentReceipt: input.consentReceipt,
+      });
 
       await updateBlockchainAttestationSubmitted(attestation.id, input.txHash);
 
