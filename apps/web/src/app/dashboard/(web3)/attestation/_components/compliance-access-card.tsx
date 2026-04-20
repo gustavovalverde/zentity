@@ -9,7 +9,7 @@ import { ATTR, IdentityRegistryABI, Purpose } from "@zentity/fhevm-contracts";
  * to their encrypted identity data in IdentityRegistry.
  */
 import { AlertTriangle, CheckCircle, Scale } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   useBalance,
   useChainId,
@@ -31,6 +31,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
+
+const PURPOSE_OPTIONS = [
+  { value: Purpose.COMPLIANCE_CHECK, label: "Compliance check" },
+  { value: Purpose.AGE_VERIFICATION, label: "Age verification" },
+  { value: Purpose.NATIONALITY_CHECK, label: "Nationality check" },
+  { value: Purpose.TRANSFER_GATING, label: "Transfer gating" },
+  { value: Purpose.AUDIT, label: "Audit" },
+] as const;
 
 interface ComplianceAccessCardProps {
   complianceRules: `0x${string}` | null | undefined;
@@ -78,6 +86,10 @@ export function ComplianceAccessCard({
     reset: resetWrite,
   } = useWriteContract();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedPurpose, setSelectedPurpose] = useState<Purpose>(
+    Purpose.TRANSFER_GATING
+  );
+  const purposeSelectId = useId();
 
   const {
     isLoading: isConfirming,
@@ -145,7 +157,7 @@ export function ComplianceAccessCard({
         address: identityRegistry,
         abi: IdentityRegistryABI,
         functionName: "grantAttributeAccess",
-        args: [complianceRules, attributeMask, Purpose.TRANSFER_GATING],
+        args: [complianceRules, attributeMask, selectedPurpose],
         ...txOverrides,
       });
     } finally {
@@ -255,6 +267,25 @@ export function ComplianceAccessCard({
                 reveal your data to Zentity.
               </AlertDescription>
             </Alert>
+            <div className="space-y-2">
+              <label className="font-medium text-sm" htmlFor={purposeSelectId}>
+                Grant purpose
+              </label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                id={purposeSelectId}
+                onChange={(event) => {
+                  setSelectedPurpose(Number(event.target.value) as Purpose);
+                }}
+                value={selectedPurpose}
+              >
+                {PURPOSE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Button
               className="w-full"
               disabled={isActionDisabled}
