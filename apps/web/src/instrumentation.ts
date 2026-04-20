@@ -42,6 +42,11 @@ export async function register() {
     );
     await checkNoirVersions();
 
+    const { ensureWalletClientExists } = await import(
+      "@/lib/auth/oidc/wallet-dcr"
+    );
+    await ensureWalletClientExists();
+
     markWarmupComplete();
   }
 }

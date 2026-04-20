@@ -34,10 +34,19 @@ process.emitWarning = (warning, options) => {
   return originalEmitWarning.call(process, warning, options);
 };
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+
+// Mirrors Next.js's own node-environment-baseline setup that `next dev` performs
+// before any app-render module loads. Custom servers bypass that bootstrap, so
+// Next's FakeAsyncLocalStorage falls back and throws on .run(). See
+// https://github.com/vercel/next.js/issues/86719.
+if (typeof globalThis.AsyncLocalStorage !== "function") {
+  globalThis.AsyncLocalStorage = AsyncLocalStorage;
+}
 
 import next from "next";
 import { Server as SocketServer } from "socket.io";
@@ -56,11 +65,6 @@ require.cache[require.resolve("server-only")] = {
 // This is required because static imports are hoisted before any code runs.
 const { handleLivenessConnection } = await import(
   "./src/lib/identity/liveness/socket.ts"
-);
-
-// Import OIDC4VCI wallet client setup
-const { ensureWalletClientExists } = await import(
-  "./src/lib/auth/oidc/wallet-dcr.ts"
 );
 
 const dev = process.env.NODE_ENV !== "production";
@@ -86,14 +90,6 @@ if (dev) {
 }
 
 await app.prepare();
-
-// Ensure OIDC4VCI wallet client is registered for credential issuance
-try {
-  await ensureWalletClientExists();
-} catch (err) {
-  console.error("> Failed to ensure wallet client:", err);
-  // Continue startup - this is not fatal, just OIDC4VCI won't work
-}
 
 const httpServer = createServer(handler);
 
