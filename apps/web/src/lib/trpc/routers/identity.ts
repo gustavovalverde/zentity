@@ -123,6 +123,7 @@ const prepareDocumentProcedure = protectedProcedure
           issuerCountry: result.issuerCountry ?? null,
           documentHash: result.ocrResult.commitments.documentHash ?? null,
           dedupKey: result.dedupKey ?? null,
+          nullifierSeed: result.nullifierSeed ?? null,
           nameCommitment: result.ocrResult.commitments.nameCommitment ?? null,
           confidenceScore: result.ocrResult.confidence ?? null,
           birthYearOffset: dobDaysToBirthYearOffset(result.parsedDates.dobDays),

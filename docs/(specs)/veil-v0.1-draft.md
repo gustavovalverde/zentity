@@ -186,13 +186,14 @@ The two tracks produce different delivery behavior at each OAuth endpoint:
 The profile defines an optional `proof:sybil` scope that produces a per-RP unlinkable nullifier:
 
 ```text
+nullifier_seed  = HMAC-SHA-256(DEDUP_HMAC_SECRET, raw_key || source)
 sybil_nullifier = HMAC-SHA-256(
   DEDUP_HMAC_SECRET,
-  rp_nullifier_seed + "|rp|" + clientId
+  nullifier_seed + "|rp|" + clientId
 )
 ```
 
-The same person receives the same nullifier at one RP but different nullifiers at different RPs. `rp_nullifier_seed` is account-scoped state seeded from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage while keeping the RP handle stable over time.
+The same person receives the same nullifier at one RP but different nullifiers at different RPs. `nullifier_seed` is account-scoped state derived at credential write time from an HMAC over the raw key (`dedupKey` for OCR, chip nullifier for NFC) and a `source` tag that domain-separates OCR from NFC. It is seeded from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage, without ever exposing the raw ZKPassport chip identifier to downstream surfaces, and while keeping the RP handle stable over time.
 
 ---
 

@@ -401,7 +401,7 @@ Proof claims are projected from the account identity snapshot. The issuer reads 
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (access tokens only) |
 
-`proof:sybil` derives from the bundle-owned `rpNullifierSeed`. Verification finalization seeds `rpNullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, rpNullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions and resets it only after full identity revocation.
+`proof:sybil` derives from the bundle-owned `nullifierSeed`. At credential write time the system derives the seed as `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs). Verification finalization seeds `nullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions, prevents any raw ZKPassport chip identifier from reaching the bundle, and resets only after full identity revocation.
 
 ### Identity scopes (`identity.*`)
 

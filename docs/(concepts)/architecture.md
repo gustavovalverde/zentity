@@ -93,7 +93,7 @@ We persist only the minimum required for verification and auditability:
 - **Proof payloads** + public inputs
 - **Passkey-sealed profile** (encrypted blob; client-decrypt only)
 - **OPAQUE registration records** for password users (no plaintext or password hashes)
-- **Account snapshot state** in `identity_bundles` (`validityStatus`, `effectiveVerificationId`, `verificationExpiresAt`, `rpNullifierSeed`, and other non-sensitive operational metadata)
+- **Account snapshot state** in `identity_bundles` (`validityStatus`, `effectiveVerificationId`, `verificationExpiresAt`, `nullifierSeed`, and other non-sensitive operational metadata)
 - **Credential history** in `identity_verifications` (OCR and NFC verification rows, supersession lineage, and method-specific metadata)
 - **Validity transition and delivery ledgers** in `identity_validity_events` and `identity_validity_deliveries`
 
@@ -330,7 +330,7 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 
 Zentity models identity as one account-scoped snapshot plus credential history.
 
-- `identity_bundles` is the current account snapshot. It stores the authoritative `effectiveVerificationId`, current `validityStatus`, the freshness deadline (`verificationExpiresAt`), and the bundle-owned `rpNullifierSeed` used for stable per-RP anti-abuse claims.
+- `identity_bundles` is the current account snapshot. It stores the authoritative `effectiveVerificationId`, current `validityStatus`, the freshness deadline (`verificationExpiresAt`), and the bundle-owned `nullifierSeed` used for stable per-RP anti-abuse claims.
 - `identity_verifications` is credential history. OCR and NFC credentials append here, and older authoritative rows can become explicitly superseded without being deleted.
 - `reconcileIdentityBundle(userId)` is the only bundle reconciler. Verification lifecycle checkpoints call it to select the authoritative credential, compute freshness state, and preserve or reseed the RP nullifier seed according to bundle policy.
 - `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`. `identity_validity_deliveries` tracks downstream effects such as credential-status updates, back-channel logout, RP validity notice, CIBA cancellation, and blockchain revocation delivery.
@@ -384,7 +384,7 @@ Each check is derived from proof/claim existence, not stored boolean columns.
 | `ageVerified` | `age_verification` ZK proof exists | `chip_verification` claim **type** present |
 | `faceMatchVerified` | `face_match` ZK proof or `face_match_score` claim | `chip_verification` claim **type** present |
 | `nationalityVerified` | `nationality_membership` ZK proof exists | `hasNationalityCommitment` flag |
-| `identityBound` | `identity_binding` ZK proof exists | `uniqueIdentifier` present |
+| `identityBound` | `identity_binding` ZK proof exists | `chipNullifier` present |
 | `sybilResistant` | Effective verified credential has an internal identity key | Effective verified credential has an internal identity key |
 
 For NFC chip checks, only claim type presence matters; boolean payloads inside the claim are ignored. This prevents a malicious server from downgrading compliance by flipping a stored boolean.
@@ -402,7 +402,7 @@ See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) fo
 Identity revocation is part of the same validity pipeline that handles freshness and re-verification.
 
 - Admin revocation, self-service revocation, and chain-ingested revocation all converge on the same validity transition boundary.
-- The account snapshot in `identity_bundles` becomes `revoked`, clears `effectiveVerificationId`, and clears `rpNullifierSeed` so a later full re-verification can establish a new unlinkable seed.
+- The account snapshot in `identity_bundles` becomes `revoked`, clears `effectiveVerificationId`, and clears `nullifierSeed` so a later full re-verification can establish a new unlinkable seed.
 - Credential history is preserved. Verification rows are retained for audit; current trust lives on the bundle snapshot and in the validity ledger.
 - Downstream effects fan out through the delivery ledger: issued credential status updates, back-channel logout, pending CIBA cancellation, RP validity notice, and blockchain attestation revocation.
 

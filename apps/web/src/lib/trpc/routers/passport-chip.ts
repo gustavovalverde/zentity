@@ -14,13 +14,13 @@ import { db } from "@/lib/db/connection";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   createVerification,
-  dedupKeyExistsForOtherUser,
   getAccountIdentity,
   getIdentityBundleByUserId,
   hasProfileSecret,
   isChipVerified,
   isNullifierUsedByOtherUser,
   reconcileIdentityBundle,
+  resolveDedupKeyForUser,
 } from "@/lib/db/queries/identity";
 import {
   insertProofArtifact,
@@ -32,7 +32,10 @@ import {
   dobToDaysSince1900,
   parseBirthYearFromDob,
 } from "@/lib/identity/verification/birth-year";
-import { computeDedupKey } from "@/lib/identity/verification/dedup";
+import {
+  computeNullifierSeed,
+  NULLIFIER_SEED_SOURCE,
+} from "@/lib/identity/verification/dedup";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
 import { logger } from "@/lib/logging/logger";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
@@ -112,8 +115,8 @@ export const passportChipRouter = router({
         });
       }
 
-      const uniqueIdentifier = verifyResult.uniqueIdentifier;
-      if (!uniqueIdentifier) {
+      const chipNullifier = verifyResult.chipNullifier;
+      if (!chipNullifier) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "No nullifier in verified proofs",
@@ -122,7 +125,7 @@ export const passportChipRouter = router({
 
       const [accountIdentity, nullifierUsed] = await Promise.all([
         getAccountIdentity(userId),
-        isNullifierUsedByOtherUser(uniqueIdentifier, userId),
+        isNullifierUsedByOtherUser(chipNullifier, userId),
       ]);
       const bundle = accountIdentity.bundle;
       const existingVerification = accountIdentity.effectiveVerification;
@@ -140,7 +143,7 @@ export const passportChipRouter = router({
       const isReVerifyForVault =
         isChipVerified(existingVerification) &&
         !(await hasProfileSecret(userId)) &&
-        existingVerification?.uniqueIdentifier === uniqueIdentifier;
+        existingVerification?.chipNullifier === chipNullifier;
 
       if (isChipVerified(existingVerification) && !isReVerifyForVault) {
         throw new TRPCError({
@@ -172,28 +175,26 @@ export const passportChipRouter = router({
       const sanctionsCleared = result.sanctions?.passed === true;
       const faceMatchPassed = result.facematch?.passed ?? null;
 
-      // Cross-method Sybil dedup — same key computation as OCR path
-      const dedupCountry = issuingCountry ?? nationality ?? null;
-      let dedupKey: string | null = null;
-      if (documentNumber && dedupCountry && birthdate) {
-        dedupKey = computeDedupKey(
-          env.DEDUP_HMAC_SECRET,
-          documentNumber,
-          dedupCountry,
-          birthdate
-        );
-        const existsForOther = await dedupKeyExistsForOtherUser(
-          dedupKey,
-          userId
-        );
-        if (existsForOther) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message:
-              "This identity document is already registered to another account",
-          });
-        }
+      const { dedupKey, duplicateForOther } = await resolveDedupKeyForUser({
+        secret: env.DEDUP_HMAC_SECRET,
+        userId,
+        docNumber: documentNumber,
+        country: issuingCountry ?? nationality ?? null,
+        dob: birthdate,
+      });
+      if (duplicateForOther) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "This identity document is already registered to another account",
+        });
       }
+
+      const nullifierSeed = computeNullifierSeed(
+        env.DEDUP_HMAC_SECRET,
+        chipNullifier,
+        NULLIFIER_SEED_SOURCE.NFC
+      );
 
       const now = new Date().toISOString();
 
@@ -221,7 +222,8 @@ export const passportChipRouter = router({
                   parseBirthYearFromDob(birthdate)
                 ) ?? null,
               dedupKey,
-              uniqueIdentifier,
+              chipNullifier,
+              nullifierSeed,
               verifiedAt: now,
             },
             tx

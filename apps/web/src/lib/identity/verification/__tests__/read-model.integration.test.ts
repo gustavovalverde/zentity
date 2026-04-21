@@ -34,7 +34,7 @@ describe("verification read model", () => {
       userId,
       method: "nfc_chip",
       status: "verified",
-      uniqueIdentifier: "nullifier-grouped-nfc",
+      chipNullifier: "nullifier-grouped-nfc",
       verifiedAt: "2026-04-20T10:00:00Z",
     });
     await reconcileIdentityBundle(userId);

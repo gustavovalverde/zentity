@@ -9,7 +9,7 @@ const mockGetIdentityBundleByUserId = vi.fn();
 const mockCreateVerification = vi.fn();
 const mockGetAccountIdentity = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
-const mockDedupKeyExistsForOtherUser = vi.fn();
+const mockResolveDedupKeyForUser = vi.fn();
 const mockHasProfileSecret = vi.fn();
 const mockReconcileIdentityBundle = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
@@ -39,8 +39,8 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
     getAccountIdentity: (...args: unknown[]) => mockGetAccountIdentity(...args),
     isNullifierUsedByOtherUser: (...args: unknown[]) =>
       mockIsNullifierUsedByOtherUser(...args),
-    dedupKeyExistsForOtherUser: (...args: unknown[]) =>
-      mockDedupKeyExistsForOtherUser(...args),
+    resolveDedupKeyForUser: (...args: unknown[]) =>
+      mockResolveDedupKeyForUser(...args),
     hasProfileSecret: (...args: unknown[]) => mockHasProfileSecret(...args),
     createVerification: (...args: unknown[]) => mockCreateVerification(...args),
     reconcileIdentityBundle: (...args: unknown[]) =>
@@ -178,7 +178,7 @@ describe("passportChip.submitResult", () => {
     // Default happy-path mocks
     mockVerify.mockResolvedValue({
       verified: true,
-      uniqueIdentifier: verifiedNullifier,
+      chipNullifier: verifiedNullifier,
     });
     mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
     mockGetAccountIdentity.mockResolvedValue({
@@ -188,7 +188,13 @@ describe("passportChip.submitResult", () => {
     });
     mockSignAttestationClaim.mockResolvedValue("signed-chip-claim");
     mockIsNullifierUsedByOtherUser.mockResolvedValue(false);
-    mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
+    const FAKE_DEDUP_HEX = "a".repeat(64);
+    mockResolveDedupKeyForUser.mockImplementation(
+      async ({ docNumber }: { docNumber: string | null | undefined }) => ({
+        dedupKey: docNumber ? FAKE_DEDUP_HEX : null,
+        duplicateForOther: false,
+      })
+    );
     mockHasProfileSecret.mockResolvedValue(true);
     mockCreateVerification.mockImplementation((data) => data);
     mockReconcileIdentityBundle.mockResolvedValue({
@@ -249,7 +255,7 @@ describe("passportChip.submitResult", () => {
   it("rejects when verified but nullifier is missing", async () => {
     mockVerify.mockResolvedValue({
       verified: true,
-      uniqueIdentifier: undefined,
+      chipNullifier: undefined,
     });
 
     const caller = await createCaller(authedSession);
@@ -371,7 +377,7 @@ describe("passportChip.submitResult", () => {
       authedSession.user.id
     );
     expect(mockCreateVerification).toHaveBeenCalledWith(
-      expect.objectContaining({ uniqueIdentifier: verifiedNullifier }),
+      expect.objectContaining({ chipNullifier: verifiedNullifier }),
       expect.anything()
     );
   });
@@ -388,7 +394,7 @@ describe("passportChip.submitResult", () => {
     expect(mockCreateVerification).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-123",
-        uniqueIdentifier: verifiedNullifier,
+        chipNullifier: verifiedNullifier,
         method: "nfc_chip",
         status: "verified",
         documentType: "passport",
@@ -527,7 +533,10 @@ describe("passportChip.submitResult", () => {
   // --- Cross-method Sybil dedup ---
 
   it("rejects when dedupKey matches another user (cross-method sybil)", async () => {
-    mockDedupKeyExistsForOtherUser.mockResolvedValue(true);
+    mockResolveDedupKeyForUser.mockResolvedValue({
+      dedupKey: "a".repeat(64),
+      duplicateForOther: true,
+    });
 
     const resultWithDocNumber = {
       ...mockQueryResult,
@@ -564,7 +573,10 @@ describe("passportChip.submitResult", () => {
   });
 
   it("allows same user re-verification (dedupKey exists but same user)", async () => {
-    mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
+    mockResolveDedupKeyForUser.mockResolvedValue({
+      dedupKey: "a".repeat(64),
+      duplicateForOther: false,
+    });
 
     const resultWithDocNumber = {
       ...mockQueryResult,
@@ -586,7 +598,8 @@ describe("passportChip.submitResult", () => {
 
     const createCall = mockCreateVerification.mock.calls[0]?.[0];
     expect(createCall.dedupKey).toBeNull();
-    expect(mockDedupKeyExistsForOtherUser).not.toHaveBeenCalled();
+    const resolveCall = mockResolveDedupKeyForUser.mock.calls.at(-1)?.[0];
+    expect(resolveCall.docNumber).toBeFalsy();
   });
 
   it("handles Date object birthdate from SDK", async () => {
@@ -613,7 +626,7 @@ describe("passportChip.submitResult", () => {
         id: "existing-verification-id",
         method: "nfc_chip",
         status: "verified",
-        uniqueIdentifier: verifiedNullifier,
+        chipNullifier: verifiedNullifier,
       },
       groupedCredentials: [],
     });

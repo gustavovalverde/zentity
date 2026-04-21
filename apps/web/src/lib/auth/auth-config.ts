@@ -118,6 +118,7 @@ import {
   enforceCibaTokenAcr,
   enforceStepUp,
 } from "@/lib/auth/oidc/step-up";
+import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import {
   TOKEN_EXCHANGE_GRANT_TYPE,
   tokenExchangePlugin,
@@ -126,7 +127,6 @@ import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { getRpNullifierSeed } from "@/lib/db/queries/identity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -165,7 +165,6 @@ import {
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { validateSafeUrl } from "@/lib/http/url-safety";
-import { computeRpNullifier } from "@/lib/identity/verification/dedup";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 
@@ -1788,13 +1787,9 @@ export const auth = betterAuth({
 
         // Per-RP sybil nullifier
         if (scopeList.includes("proof:sybil") && clientId) {
-          const rpNullifierSeed = await getRpNullifierSeed(user.id);
-          if (rpNullifierSeed) {
-            claims.sybil_nullifier = computeRpNullifier(
-              env.DEDUP_HMAC_SECRET,
-              rpNullifierSeed,
-              clientId
-            );
+          const nullifier = await resolveSybilNullifier(user.id, clientId);
+          if (nullifier) {
+            claims.sybil_nullifier = nullifier;
           }
         }
 

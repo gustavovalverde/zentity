@@ -8,9 +8,10 @@ import { db } from "@/lib/db/connection";
 import {
   createVerification,
   reconcileIdentityBundle,
+  revokeIdentity,
 } from "@/lib/db/queries/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { assertNoRawIdentifierInClaims } from "@/test-utils/claims-test-utils";
+import { assertNoInternalIdentifiersInClaims } from "@/test-utils/claims-test-utils";
 import {
   createTestCibaRequest,
   createTestUser,
@@ -43,7 +44,8 @@ async function createTestClient(clientId: string) {
 
 async function createNfcVerification(
   userId: string,
-  uniqueIdentifier: string
+  chipNullifier: string,
+  nullifierSeed: string
 ): Promise<void> {
   const now = new Date().toISOString();
 
@@ -52,7 +54,8 @@ async function createNfcVerification(
     userId,
     method: "nfc_chip",
     status: "verified",
-    uniqueIdentifier,
+    chipNullifier,
+    nullifierSeed,
     verifiedAt: now,
   });
   await reconcileIdentityBundle(userId);
@@ -91,7 +94,8 @@ async function issueSybilToken(clientId: string, userId: string) {
 }
 
 describe("sybil nullifier disclosure", () => {
-  let uniqueIdentifier: string;
+  let chipNullifier: string;
+  let nullifierSeed: string;
   let userId: string;
 
   beforeEach(async () => {
@@ -100,9 +104,10 @@ describe("sybil nullifier disclosure", () => {
     await createTestClient(SECONDARY_CLIENT_ID);
 
     userId = await createTestUser();
-    uniqueIdentifier = `nfc-nullifier-${crypto.randomUUID()}`;
+    chipNullifier = `nfc-nullifier-${crypto.randomUUID()}`;
+    nullifierSeed = `nfc-seed-${crypto.randomUUID()}`;
 
-    await createNfcVerification(userId, uniqueIdentifier);
+    await createNfcVerification(userId, chipNullifier, nullifierSeed);
   });
 
   it("derives a stable per-RP nullifier from NFC identifiers without leaking the raw value", async () => {
@@ -122,9 +127,9 @@ describe("sybil nullifier disclosure", () => {
       secondaryClaims.sybil_nullifier
     );
 
-    assertNoRawIdentifierInClaims(firstPrimaryClaims, uniqueIdentifier);
-    assertNoRawIdentifierInClaims(secondPrimaryClaims, uniqueIdentifier);
-    assertNoRawIdentifierInClaims(secondaryClaims, uniqueIdentifier);
+    await assertNoInternalIdentifiersInClaims(firstPrimaryClaims, userId);
+    await assertNoInternalIdentifiersInClaims(secondPrimaryClaims, userId);
+    await assertNoInternalIdentifiersInClaims(secondaryClaims, userId);
 
     const userinfoProof = await buildDpopProof(
       firstPrimaryToken.dpopKeyPair,
@@ -142,7 +147,8 @@ describe("sybil nullifier disclosure", () => {
     );
     const userinfoBody = await userinfoResponse.text();
 
-    expect(userinfoBody).not.toContain(uniqueIdentifier);
+    expect(userinfoBody).not.toContain(chipNullifier);
+    expect(userinfoBody).not.toContain(nullifierSeed);
     expect(userinfoBody).not.toContain("sybil_nullifier");
   });
 
@@ -156,6 +162,7 @@ describe("sybil nullifier disclosure", () => {
       method: "ocr",
       status: "verified",
       dedupKey: `ocr-dedup-${crypto.randomUUID()}`,
+      nullifierSeed: `ocr-seed-${crypto.randomUUID()}`,
       documentHash: `hash-${crypto.randomUUID()}`,
       verifiedAt: new Date(Date.now() + 60_000).toISOString(),
     });
@@ -167,5 +174,37 @@ describe("sybil nullifier disclosure", () => {
     expect(firstPrimaryClaims.sybil_nullifier).toBe(
       secondPrimaryClaims.sybil_nullifier
     );
+  });
+
+  it("issues a fresh per-RP nullifier after revocation and re-verification", async () => {
+    const preRevocationToken = await issueSybilToken(PRIMARY_CLIENT_ID, userId);
+    const preRevocationClaims = decodeJwt(preRevocationToken.accessToken);
+
+    await revokeIdentity(
+      userId,
+      "admin@zentity.app",
+      "identity reset",
+      "admin"
+    );
+
+    const replacementChipNullifier = `nfc-nullifier-${crypto.randomUUID()}`;
+    const replacementSeed = `nfc-seed-${crypto.randomUUID()}`;
+    await createNfcVerification(
+      userId,
+      replacementChipNullifier,
+      replacementSeed
+    );
+
+    const postRevocationToken = await issueSybilToken(
+      PRIMARY_CLIENT_ID,
+      userId
+    );
+    const postRevocationClaims = decodeJwt(postRevocationToken.accessToken);
+
+    expect(typeof postRevocationClaims.sybil_nullifier).toBe("string");
+    expect(postRevocationClaims.sybil_nullifier).not.toBe(
+      preRevocationClaims.sybil_nullifier
+    );
+    await assertNoInternalIdentifiersInClaims(postRevocationClaims, userId);
   });
 });

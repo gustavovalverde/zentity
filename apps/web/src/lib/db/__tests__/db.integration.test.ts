@@ -186,7 +186,7 @@ describe("Database Module", () => {
         userId,
         method: "nfc_chip",
         status: "verified",
-        uniqueIdentifier: "nullifier-123",
+        chipNullifier: "nullifier-123",
         nationalityCommitment: "nat-commit",
         verifiedAt: new Date().toISOString(),
       });
@@ -233,7 +233,7 @@ describe("Database Module", () => {
         userId,
         method: "nfc_chip",
         status: "verified",
-        uniqueIdentifier: "nullifier-456",
+        chipNullifier: "nullifier-456",
         verifiedAt: new Date().toISOString(),
       });
       await reconcileIdentityBundle(userId);

@@ -160,7 +160,7 @@ sequenceDiagram
 | `identity_bound` | ◐ | ZK proof | Identity binding proof stored |
 | `sybil_resistant` | ◐ | Dedup key | Sybil resistance verified |
 | `chip_verified` | ◐ | Chip verification signed claim | NFC chip-verified (ZKPassport) |
-| `sybil_nullifier` | ◐ | Bundle-owned seed + clientId HMAC | Per-RP pseudonymous nullifier derived from `rpNullifierSeed` on the account snapshot, gated by `proof:sybil` |
+| `sybil_nullifier` | ◐ | Bundle-owned seed + clientId HMAC | Per-RP pseudonymous nullifier derived from `nullifierSeed` on the account snapshot, gated by `proof:sybil` |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
 | `issuer_id` | ✅ | Static | Zentity issuer identifier |
 | `verification_time` | ✅ | Server-computed | ISO 8601 timestamp |

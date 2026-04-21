@@ -8,8 +8,11 @@ import {
   computeClaimHash,
   getDocumentHashField,
 } from "@/lib/blockchain/attestation/claim-hash";
-import { dedupKeyExistsForOtherUser } from "@/lib/db/queries/identity";
-import { computeDedupKey } from "@/lib/identity/verification/dedup";
+import { resolveDedupKeyForUser } from "@/lib/db/queries/identity";
+import {
+  computeNullifierSeed,
+  NULLIFIER_SEED_SOURCE,
+} from "@/lib/identity/verification/dedup";
 import { logger } from "@/lib/logging/logger";
 import { toNumericCode } from "@/lib/privacy/zk/country";
 
@@ -57,6 +60,7 @@ interface DocumentProcessingResult {
   isDuplicateDocument: boolean;
   issuerCountry: string | null;
   issues: string[];
+  nullifierSeed: string | null;
   ocrResult: OcrProcessResult | null;
   parsedDates: ParsedDateValues;
   verificationId: string;
@@ -297,32 +301,27 @@ export async function processDocumentWithOcr(
     }
   }
 
-  // Compute deterministic dedup key and check for sybil duplicates
-  let isDuplicateDocument = false;
-  let dedupKey: string | null = null;
-  const docNumber = ocrResult?.extractedData?.documentNumber;
-  const dateOfBirth = ocrResult?.extractedData?.dateOfBirth;
-  const dedupCountry =
-    ocrResult?.documentOrigin ??
-    ocrResult?.extractedData?.nationalityCode ??
-    null;
-
-  if (docNumber && dedupCountry && dateOfBirth) {
-    dedupKey = computeDedupKey(
-      params.dedupSecret,
-      docNumber,
-      dedupCountry,
-      dateOfBirth
-    );
-    const existsForOther = await dedupKeyExistsForOtherUser(
-      dedupKey,
-      params.userId
-    );
-    if (existsForOther) {
-      isDuplicateDocument = true;
-      issues.push("duplicate_document");
-    }
+  const { dedupKey, duplicateForOther } = await resolveDedupKeyForUser({
+    secret: params.dedupSecret,
+    userId: params.userId,
+    docNumber: ocrResult?.extractedData?.documentNumber,
+    country:
+      ocrResult?.documentOrigin ??
+      ocrResult?.extractedData?.nationalityCode ??
+      null,
+    dob: ocrResult?.extractedData?.dateOfBirth,
+  });
+  if (duplicateForOther) {
+    issues.push("duplicate_document");
   }
+
+  const nullifierSeed = dedupKey
+    ? computeNullifierSeed(
+        params.dedupSecret,
+        dedupKey,
+        NULLIFIER_SEED_SOURCE.OCR
+      )
+    : null;
 
   // Parse date values
   const parsedDates = parseDateValues(ocrResult?.extractedData);
@@ -355,7 +354,7 @@ export async function processDocumentWithOcr(
     documentProcessed &&
     (ocrResult?.confidence ?? 0) > 0.3 &&
     Boolean(ocrResult?.extractedData?.documentNumber) &&
-    !isDuplicateDocument &&
+    !duplicateForOther &&
     !hasExpiredDocument;
 
   return {
@@ -364,9 +363,10 @@ export async function processDocumentWithOcr(
     verificationId,
     documentProcessed,
     dedupKey,
+    nullifierSeed,
     documentHash,
     documentHashField,
-    isDuplicateDocument,
+    isDuplicateDocument: duplicateForOther,
     isDocumentValid,
     issuerCountry,
     issues,

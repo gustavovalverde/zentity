@@ -224,7 +224,7 @@ The controls in this section prevent two categories of attack: duplicate identit
 
 **Control (NFC path):** The ZKPassport nullifier (unique identifier) is checked for uniqueness across all accounts before accepting the verification.
 
-**Control (RP disclosure stability):** The per-RP `sybil_nullifier` is derived from a user-scoped seed stored on `identity_bundles.rp_nullifier_seed`, not from "the latest verification." The seed is written once from the first verified credential, survives later credential additions, and is only cleared on full identity revocation. This prevents relying parties from seeing the nullifier rotate when a user upgrades or adds credentials while still allowing re-verification after revocation to establish a new unlinkable seed.
+**Control (RP disclosure stability):** The per-RP `sybil_nullifier` is derived from a user-scoped seed stored on `identity_bundles.nullifier_seed`, not from "the latest verification." The seed is itself HMAC-derived at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, raw_key || source)`) so no raw ZKPassport chip identifier reaches the bundle. It is written once from the first verified credential, survives later credential additions, and is cleared only on full identity revocation. This prevents relying parties from seeing the nullifier rotate when a user upgrades or adds credentials while still allowing re-verification after revocation to establish a new unlinkable seed.
 
 ### Consent Scope HMAC
 

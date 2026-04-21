@@ -82,6 +82,7 @@ describe("identity queries", () => {
       method: "ocr",
       status: "verified",
       dedupKey: "dedup-seed-ocr",
+      nullifierSeed: "seed-ocr",
       documentHash: "hash-ocr",
       verifiedAt: "2025-01-01T00:00:00Z",
     });
@@ -95,7 +96,7 @@ describe("identity queries", () => {
       .get();
 
     expect(seededBundle?.effectiveVerificationId).toBe(ocrVerificationId);
-    expect(seededBundle?.rpNullifierSeed).toBe("dedup-seed-ocr");
+    expect(seededBundle?.nullifierSeed).toBe("seed-ocr");
     expect(seededBundle?.validityStatus).toBe("verified");
     expect(seededVerification?.method).toBe("ocr");
 
@@ -104,7 +105,8 @@ describe("identity queries", () => {
       userId,
       method: "nfc_chip",
       status: "verified",
-      uniqueIdentifier: "nfc-credential-123",
+      chipNullifier: "nfc-credential-123",
+      nullifierSeed: "seed-nfc",
       verifiedAt: "2025-02-01T00:00:00Z",
     });
     await reconcileIdentityBundle(userId);
@@ -120,7 +122,8 @@ describe("identity queries", () => {
     expect(accountIdentity.effectiveVerification?.id).toBe(nfcVerificationId);
     expect(accountIdentity.groupedCredentials).toHaveLength(2);
     expect(promotedBundle?.effectiveVerificationId).toBe(nfcVerificationId);
-    expect(promotedBundle?.rpNullifierSeed).toBe("dedup-seed-ocr");
+    // First-write-wins: seed frozen to the OCR verification even after NFC promotion
+    expect(promotedBundle?.nullifierSeed).toBe("seed-ocr");
     expect(promotedBundle?.validityStatus).toBe("verified");
     expect(promotedVerification?.method).toBe("nfc_chip");
   });
@@ -154,6 +157,7 @@ describe("identity queries", () => {
       method: "ocr",
       status: "verified",
       dedupKey: "dedup-verified-attempt",
+      nullifierSeed: "seed-verified-attempt",
       documentHash: "hash-verified",
       verifiedAt: "2025-03-01T00:00:00Z",
     });
@@ -164,7 +168,7 @@ describe("identity queries", () => {
       .from(identityBundles)
       .where(eq(identityBundles.userId, userId))
       .get();
-    expect(afterVerifiedBundle?.rpNullifierSeed).toBe("dedup-verified-attempt");
+    expect(afterVerifiedBundle?.nullifierSeed).toBe("seed-verified-attempt");
     expect(afterVerifiedBundle?.effectiveVerificationId).toBe(
       verifiedVerificationId
     );
@@ -185,6 +189,7 @@ describe("identity queries", () => {
       method: "ocr",
       status: "pending",
       dedupKey: "dedup-promoted-ocr",
+      nullifierSeed: "seed-promoted-ocr",
       documentHash: "hash-promoted-ocr",
     });
 
@@ -209,7 +214,7 @@ describe("identity queries", () => {
 
     expect(bundle?.validityStatus).toBe("verified");
     expect(bundle?.effectiveVerificationId).toBe(verificationId);
-    expect(bundle?.rpNullifierSeed).toBe("dedup-promoted-ocr");
+    expect(bundle?.nullifierSeed).toBe("seed-promoted-ocr");
     expect(verification?.status).toBe("verified");
     expect(verification?.dedupKey).toBe("dedup-promoted-ocr");
   });

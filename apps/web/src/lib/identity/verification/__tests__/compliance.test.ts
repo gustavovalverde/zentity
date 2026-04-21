@@ -176,7 +176,7 @@ describe("deriveComplianceStatus", () => {
   });
 
   describe("NFC chip path", () => {
-    it("returns chip with uniqueIdentifier", () => {
+    it("returns chip when hasUniqueIdentifier is true", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
@@ -212,7 +212,7 @@ describe("deriveComplianceStatus", () => {
       expect(result.checks.nationalityVerified).toBe(false);
     });
 
-    it("returns chip even without signed claim if uniqueIdentifier present", () => {
+    it("returns chip even without signed claim if hasUniqueIdentifier is true", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
@@ -226,7 +226,7 @@ describe("deriveComplianceStatus", () => {
       expect(result.checks.faceMatchVerified).toBe(false);
     });
 
-    it("falls through to regular levels without uniqueIdentifier", () => {
+    it("falls through to regular levels when hasUniqueIdentifier is false", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",

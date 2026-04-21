@@ -204,7 +204,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
     Date.now() - 7 * 24 * 60 * 60 * 1000
   ).toISOString();
   const dedupKey = `demo-rp-smoke-dedup-${crypto.randomUUID()}`;
-  const uniqueIdentifier = `demo-rp-smoke-uid-${crypto.randomUUID()}`;
+  const nullifierSeed = `demo-rp-smoke-seed-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
 
   try {
@@ -217,7 +217,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
             method,
             status,
             dedup_key,
-            unique_identifier,
+            nullifier_seed,
             verified_at,
             created_at,
             updated_at
@@ -227,7 +227,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
           verificationId,
           userId,
           dedupKey,
-          uniqueIdentifier,
+          nullifierSeed,
           verifiedAt,
           now,
           now,
@@ -238,7 +238,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
           insert into identity_bundles (
             user_id,
             effective_verification_id,
-            rp_nullifier_seed,
+            nullifier_seed,
             validity_status,
             last_verified_at,
             verification_expires_at,
@@ -251,7 +251,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
         args: [
           userId,
           verificationId,
-          dedupKey,
+          nullifierSeed,
           verifiedAt,
           expiredAt,
           verifiedAt,

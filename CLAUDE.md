@@ -319,9 +319,9 @@ Users choose a verification method via `VerificationMethodCards` (OCR or NFC chi
 
 Levels: `none`(1) → `basic`(2) → `full`(3) → `chip`(4). Level is `chip` when NFC + sybilResistant; `full` when all 7 checks pass; `basic` when >= half pass; `none` otherwise. `verified` is true only for `full` or `chip`.
 
-7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/uniqueIdentifier).
+7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/chipNullifier).
 
-NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `uniqueIdentifier`.
+NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `chipNullifier`.
 
 **Identity Revocation:** `revokeIdentity()` (`src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction: (1) mark `identity_verifications` as revoked (`revokedAt`, `revokedBy`, `revokedReason`), (2) mark `identity_bundle` as revoked, (3) set OID4VCI credentials to `status=1` (revoked). Step 4 revokes on-chain attestations **outside** the transaction (best-effort). After revocation, assurance tier drops to Tier 1. Revoked dedup keys are auto-released for re-registration. Triggered via `identity.revokeVerification` (admin) or `identity.selfRevoke` (user GDPR).
 
@@ -330,7 +330,7 @@ NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/
 1. **Country/document pre-check** → `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support
 2. **ZKPassport deep-link** → Opens ZKPassport mobile app for NFC chip reading + proof generation
 3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side via `zkpassport.verify()`
-4. **Nullifier check** → `uniqueIdentifier` prevents duplicate passport registrations across accounts
+4. **Nullifier check** → `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents duplicate passport registrations across accounts
 5. **FHE Encryption** → Same as OCR path; synthetic liveness score (1.0) from physical chip possession
 
 **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`

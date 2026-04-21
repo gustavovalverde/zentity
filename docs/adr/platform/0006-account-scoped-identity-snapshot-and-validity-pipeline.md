@@ -30,7 +30,7 @@ The shipped architecture is:
 * `identity_bundles` is the account-scoped snapshot and aggregate root.
 * `identity_verifications` is credential history. New verification outcomes append or update rows there; they do not redefine the account model by themselves.
 * `identity_bundles.effectiveVerificationId` materializes the authoritative credential for current reads.
-* `identity_bundles.rpNullifierSeed` stores the stable per-account seed used to derive RP-specific `sybil_nullifier` claims.
+* `identity_bundles.nullifierSeed` stores the stable per-account seed used to derive RP-specific `sybil_nullifier` claims. The seed is produced by `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` at credential write time (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs), so no raw chip identifier ever reaches the bundle.
 * `identity_bundles.validityStatus`, revocation metadata, and `verificationExpiresAt` describe the current lifecycle state of the account snapshot.
 * `identity_validity_events` is the append-only transition ledger.
 * `identity_validity_deliveries` is the retryable per-target delivery ledger for downstream effects.
@@ -45,7 +45,7 @@ That boundary keeps "what is true now?" separate from "what happened before?". I
 
 ### RP nullifier seed ownership
 
-The RP nullifier seed lives on the bundle because its stability contract is account-scoped, not credential-scoped. The system writes `rpNullifierSeed` from the first authoritative verified credential, preserves it across later credential additions and supersession, clears it on full identity revocation, and reseeds it only when a later verified credential establishes a new account identity after that revocation.
+The RP nullifier seed lives on the bundle because its stability contract is account-scoped, not credential-scoped. The system writes `nullifierSeed` from the first authoritative verified credential, preserves it across later credential additions and supersession, clears it on full identity revocation, and reseeds it only when a later verified credential establishes a new account identity after that revocation.
 
 Recomputing the RP nullifier from "the latest verification row" would make `proof:sybil` rotate whenever the user adds a new credential. That breaks the relying-party contract. Storing the seed on the bundle makes the invariant explicit, durable, and easy to audit.
 

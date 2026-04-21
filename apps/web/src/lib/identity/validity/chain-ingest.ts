@@ -165,7 +165,7 @@ export async function ingestChainRevocations(args: {
           .update(identityBundles)
           .set({
             effectiveVerificationId: null,
-            rpNullifierSeed: null,
+            nullifierSeed: null,
             updatedAt: occurredAt,
           })
           .where(eq(identityBundles.userId, attestation.userId))

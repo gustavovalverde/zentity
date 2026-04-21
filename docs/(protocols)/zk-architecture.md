@@ -175,13 +175,13 @@ Key differences from browser-based Noir proving:
 - **Proof generation**: ZKPassport's own circuit infrastructure on mobile, not Noir/Barretenberg in a Web Worker
 - **Verification**: Server-side via `zkpassport.verify()`, not `UltraHonkVerifierBackend`
 - **Liveness**: Synthetic score (1.0), since NFC chip challenge-response proves physical possession
-- **Nullifier**: `uniqueIdentifier` prevents the same passport from being registered across multiple accounts
+- **Nullifier**: `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents the same passport from being registered across multiple accounts
 - **Country/document pre-check**: `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support before showing the option
 - **Dev mode**: `devMode` flag relaxes proof verification in `development`/`test` environments; production enforces strict verification
 
 The unified `identity_verifications` table stores results from both paths via the `method` discriminator (`"ocr"` | `"nfc_chip"`). FHE encryption is scheduled identically after either path completes.
 
-Account-level reads consume the account snapshot instead of inferring identity directly from verification rows. `identity_bundles` stores the authoritative `effectiveVerificationId` and the stable `rpNullifierSeed`, so OCR and NFC credentials can coexist in history while policy and disclosure reads consume one account snapshot.
+Account-level reads consume the account snapshot instead of inferring identity directly from verification rows. `identity_bundles` stores the authoritative `effectiveVerificationId` and the stable `nullifierSeed`, so OCR and NFC credentials can coexist in history while policy and disclosure reads consume one account snapshot.
 
 ## Sybil Deduplication
 
@@ -189,9 +189,9 @@ Zentity prevents the same identity document from being registered under multiple
 
 **OCR path:** `computeDedupKey(DEDUP_HMAC_SECRET, docNumber, issuerCountry, dob)` → `HMAC-SHA256` stored as `dedupKey` on `identity_verifications` (unique constraint). Any attempt to register the same document under a different account is rejected at the DB level.
 
-**NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `uniqueIdentifier` (a nullifier from the NFC chip proof). Cross-method dedup (same passport via both OCR and NFC) is handled only by `uniqueIdentifier`.
+**NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `chipNullifier` (a nullifier from the NFC chip proof; the SDK returns it as `uniqueIdentifier` and Zentity translates it at the verifier boundary). Cross-method dedup (same passport via both OCR and NFC) is handled only by `chipNullifier`.
 
-**Per-RP nullifier:** An HMAC-SHA256 derived from the account-scoped `rpNullifierSeed` and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). The seed is written once from the first verified credential, survives later credential additions, and is cleared only on full identity revocation. Each RP receives a unique pseudonymous nullifier; the same account produces the same nullifier for the same RP, but different RPs cannot correlate users.
+**Per-RP nullifier:** An HMAC-SHA256 derived from the account-scoped `nullifierSeed` and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). The seed itself is HMAC-derived at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier enters the bundle. It is written once from the first verified credential, survives later credential additions, and is cleared only on full identity revocation. Each RP receives a unique pseudonymous nullifier; the same account produces the same nullifier for the same RP, but different RPs cannot correlate users.
 
 ## Implementation Notes
 

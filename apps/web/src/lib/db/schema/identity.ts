@@ -111,7 +111,7 @@ export const identityBundles = sqliteTable(
       () => identityVerifications.id,
       { onDelete: "set null" }
     ),
-    rpNullifierSeed: text("rp_nullifier_seed"),
+    nullifierSeed: text("nullifier_seed"),
     walletAddress: text("wallet_address"),
     validityStatus: text("validity_status", {
       enum: validityStatusEnum,
@@ -308,8 +308,10 @@ export const identityVerifications = sqliteTable(
     confidenceScore: real("confidence_score"),
     livenessScore: real("liveness_score"),
     birthYearOffset: integer("birth_year_offset"),
-    // ZKPassport nullifier (NFC only)
-    uniqueIdentifier: text("unique_identifier"),
+    // Raw ZKPassport chip nullifier (NFC only). Never emitted in claims.
+    chipNullifier: text("chip_nullifier"),
+    // Domain-separated HMAC of the raw credential; safe to copy into identity_bundles.
+    nullifierSeed: text("nullifier_seed"),
     verifiedAt: text("verified_at"),
     revokedAt: text("revoked_at"),
     revokedBy: text("revoked_by"),
@@ -326,7 +328,7 @@ export const identityVerifications = sqliteTable(
     index("idx_identity_verifications_user_id").on(table.userId),
     index("idx_identity_verifications_doc_hash").on(table.documentHash),
     index("idx_identity_verifications_dedup_key").on(table.dedupKey),
-    index("idx_identity_verifications_nullifier").on(table.uniqueIdentifier),
+    index("idx_identity_verifications_chip_nullifier").on(table.chipNullifier),
   ]
 );
 

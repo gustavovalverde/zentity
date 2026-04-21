@@ -435,11 +435,7 @@ export function ZkPassportFlow({
       });
 
       request.onResult(
-        (response: {
-          uniqueIdentifier: string | undefined;
-          verified: boolean;
-          result: QueryResult;
-        }) => {
+        (response: { verified: boolean; result: QueryResult }) => {
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
           }

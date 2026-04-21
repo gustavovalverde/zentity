@@ -89,9 +89,9 @@ interface VerifyParams {
 }
 
 interface VerifyResult {
+  chipNullifier: string | undefined;
+  chipNullifierType: NullifierType | undefined;
   queryResultErrors: Record<string, unknown> | undefined;
-  uniqueIdentifier: string | undefined;
-  uniqueIdentifierType: NullifierType | undefined;
   verificationTimeMs: number;
   verified: boolean;
 }
@@ -2404,8 +2404,8 @@ async function verifyWithSdkFallback(
 
   return {
     verified: result.verified,
-    uniqueIdentifier: result.uniqueIdentifier,
-    uniqueIdentifierType: result.uniqueIdentifierType,
+    chipNullifier: result.uniqueIdentifier,
+    chipNullifierType: result.uniqueIdentifierType,
     queryResultErrors: result.queryResultErrors as
       | Record<string, unknown>
       | undefined,
@@ -2439,8 +2439,8 @@ export async function verifyZkPassportProofs(
   if (!proofs || proofs.length === 0) {
     return {
       verified: false,
-      uniqueIdentifier: undefined,
-      uniqueIdentifierType: undefined,
+      chipNullifier: undefined,
+      chipNullifierType: undefined,
       queryResultErrors: undefined,
       verificationTimeMs: 0,
     };
@@ -2480,8 +2480,8 @@ export async function verifyZkPassportProofs(
       logger.warn("Mock proof rejected in non-dev mode");
       return {
         verified: false,
-        uniqueIdentifier: undefined,
-        uniqueIdentifierType: undefined,
+        chipNullifier: undefined,
+        chipNullifierType: undefined,
         queryResultErrors: Object.keys(errors).length > 0 ? errors : undefined,
         verificationTimeMs: performance.now() - start,
       };
@@ -2491,8 +2491,8 @@ export async function verifyZkPassportProofs(
     let verified = isCorrect;
     let cryptographicFailureProofName: string | undefined;
     let queryResultErrors = Object.keys(errors).length > 0 ? errors : undefined;
-    let uniqueIdentifier = nullifier;
-    let uniqueIdentifierType = nullifierType;
+    let chipNullifier = nullifier;
+    let chipNullifierType = nullifierType;
     if (verified) {
       const [backend, manifest] = await Promise.all([
         getVerifierBackend(),
@@ -2555,8 +2555,8 @@ export async function verifyZkPassportProofs(
 
         const fallback = await verifyWithSdkFallback(fallbackParams);
         verified = fallback.verified;
-        uniqueIdentifier = fallback.uniqueIdentifier;
-        uniqueIdentifierType = fallback.uniqueIdentifierType;
+        chipNullifier = fallback.chipNullifier;
+        chipNullifierType = fallback.chipNullifierType;
         queryResultErrors = fallback.queryResultErrors;
       } catch (error) {
         logger.warn(
@@ -2577,8 +2577,8 @@ export async function verifyZkPassportProofs(
 
     return {
       verified,
-      uniqueIdentifier: verified ? uniqueIdentifier : undefined,
-      uniqueIdentifierType: verified ? uniqueIdentifierType : undefined,
+      chipNullifier: verified ? chipNullifier : undefined,
+      chipNullifierType: verified ? chipNullifierType : undefined,
       queryResultErrors,
       verificationTimeMs: elapsed,
     };

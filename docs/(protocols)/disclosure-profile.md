@@ -47,7 +47,7 @@ Proof claims are derived from the user's account identity snapshot. No PII is in
 | `proof:chip` | `chip_verified`, `chip_verification_method` | id_token, userinfo |
 | `proof:sybil` | `sybil_nullifier` | **access_token only** |
 
-`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, rpNullifierSeed + "|rp|" + clientId)`. `rpNullifierSeed` is bundle-owned state stored on `identity_bundles`, seeded from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. `nullifierSeed` is bundle-owned state stored on `identity_bundles`, itself an HMAC-derived value computed at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier reaches the bundle. The seed is written from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
 
 When the snapshot is `stale` or `revoked`, disclosure surfaces stop treating the account as verified even though historical credential rows remain available for audit and operator reads.
 

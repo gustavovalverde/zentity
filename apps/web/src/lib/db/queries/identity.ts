@@ -20,6 +20,7 @@ import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { computeFreshnessDeadline } from "@/lib/identity/validity/freshness";
 import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
+import { computeDedupKey } from "@/lib/identity/verification/dedup";
 
 import { db } from "../connection";
 import { pushSubscriptions } from "../schema/ciba";
@@ -52,15 +53,6 @@ interface AccountIdentity {
 }
 
 type IdentityExecutor = Pick<typeof db, "insert" | "select" | "update">;
-
-function getInternalIdentityKey(
-  verification: {
-    dedupKey?: string | null | undefined;
-    uniqueIdentifier?: string | null | undefined;
-  } | null
-): string | null {
-  return verification?.dedupKey ?? verification?.uniqueIdentifier ?? null;
-}
 
 function deriveBundleValidityStatusFromVerifications(
   verifications: readonly IdentityVerification[]
@@ -117,14 +109,14 @@ async function getSignedClaimTypesForVerification(
 }
 
 /**
- * Check if user has a stored PROFILE encrypted secret with at least one wrapper.
- * The profile secret is the sole bridge between verified identity and deliverable
+ * Profile secret is the sole bridge between verified identity and deliverable
  * identity claims — without it, identity.* OAuth scopes cannot be fulfilled.
  */
 export async function hasProfileSecret(userId: string): Promise<boolean> {
-  const secret = await db
+  const row = await db
     .select({ id: encryptedSecrets.id })
     .from(encryptedSecrets)
+    .innerJoin(secretWrappers, eq(secretWrappers.secretId, encryptedSecrets.id))
     .where(
       and(
         eq(encryptedSecrets.userId, userId),
@@ -134,18 +126,7 @@ export async function hasProfileSecret(userId: string): Promise<boolean> {
     .limit(1)
     .get();
 
-  if (!secret) {
-    return false;
-  }
-
-  const wrapper = await db
-    .select({ id: secretWrappers.id })
-    .from(secretWrappers)
-    .where(eq(secretWrappers.secretId, secret.id))
-    .limit(1)
-    .get();
-
-  return !!wrapper;
+  return !!row;
 }
 
 export async function getVerificationById(
@@ -177,6 +158,29 @@ export async function dedupKeyExistsForOtherUser(
     .get();
 
   return !!row;
+}
+
+export async function resolveDedupKeyForUser(args: {
+  secret: string;
+  userId: string;
+  docNumber: string | null | undefined;
+  country: string | null | undefined;
+  dob: string | null | undefined;
+}): Promise<{ dedupKey: string | null; duplicateForOther: boolean }> {
+  if (!(args.docNumber && args.country && args.dob)) {
+    return { dedupKey: null, duplicateForOther: false };
+  }
+  const dedupKey = computeDedupKey(
+    args.secret,
+    args.docNumber,
+    args.country,
+    args.dob
+  );
+  const duplicateForOther = await dedupKeyExistsForOtherUser(
+    dedupKey,
+    args.userId
+  );
+  return { dedupKey, duplicateForOther };
 }
 
 export async function deleteIdentityData(userId: string): Promise<void> {
@@ -266,7 +270,7 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
       zkProofs: [],
       signedClaims: claimTypes.map((t) => ({ claimType: t })),
       encryptedAttributes: [],
-      hasUniqueIdentifier: Boolean(selectedVerification.uniqueIdentifier),
+      hasUniqueIdentifier: Boolean(selectedVerification.chipNullifier),
       hasNationalityCommitment: Boolean(
         selectedVerification.nationalityCommitment
       ),
@@ -351,7 +355,7 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
     signedClaims: signedClaimTypes.map((t) => ({ claimType: t })),
     encryptedAttributes: [],
     hasUniqueIdentifier: Boolean(
-      selectedVerification.dedupKey || selectedVerification.uniqueIdentifier
+      selectedVerification.dedupKey || selectedVerification.chipNullifier
     ),
     hasNationalityCommitment: Boolean(
       selectedVerification.nationalityCommitment
@@ -768,7 +772,7 @@ export async function upsertIdentityBundle(
     revokedAt?: string | null;
     revokedBy?: string | null;
     revokedReason?: string | null;
-    rpNullifierSeed?: string | null;
+    nullifierSeed?: string | null;
     verificationExpiresAt?: string | null;
     userId: string;
     validityStatus?: ValidityStatus;
@@ -780,7 +784,7 @@ export async function upsertIdentityBundle(
   const insertValues: typeof identityBundles.$inferInsert = {
     userId: data.userId,
     effectiveVerificationId: data.effectiveVerificationId ?? null,
-    rpNullifierSeed: data.rpNullifierSeed ?? null,
+    nullifierSeed: data.nullifierSeed ?? null,
     walletAddress: data.walletAddress ?? null,
     validityStatus: data.validityStatus ?? "pending",
     policyVersion: data.policyVersion ?? null,
@@ -805,8 +809,8 @@ export async function upsertIdentityBundle(
   if (data.effectiveVerificationId !== undefined) {
     updateSet.effectiveVerificationId = data.effectiveVerificationId;
   }
-  if (data.rpNullifierSeed !== undefined) {
-    updateSet.rpNullifierSeed = data.rpNullifierSeed;
+  if (data.nullifierSeed !== undefined) {
+    updateSet.nullifierSeed = data.nullifierSeed;
   }
   if (data.walletAddress !== undefined) {
     updateSet.walletAddress = data.walletAddress;
@@ -1043,10 +1047,8 @@ export async function reconcileIdentityBundle(
   const previousEffectiveVerificationId =
     bundle?.effectiveVerificationId ?? null;
   const nextEffectiveVerificationId = effectiveVerification?.id ?? null;
-  const nextRpNullifierSeed =
-    bundle?.rpNullifierSeed ??
-    getInternalIdentityKey(effectiveVerification) ??
-    null;
+  const nextNullifierSeed =
+    bundle?.nullifierSeed ?? effectiveVerification?.nullifierSeed ?? null;
   const derivedValidityStatus =
     deriveBundleValidityStatusFromVerifications(verifications);
   const nextValidityStatus = resolveBundleValidityStatus({
@@ -1085,8 +1087,8 @@ export async function reconcileIdentityBundle(
   const shouldCreateBundle = !bundle;
   const shouldSyncEffectiveVerification =
     (bundle?.effectiveVerificationId ?? null) !== nextEffectiveVerificationId;
-  const shouldSeedRpNullifier =
-    !bundle?.rpNullifierSeed && Boolean(nextRpNullifierSeed);
+  const shouldSeedNullifier =
+    !bundle?.nullifierSeed && Boolean(nextNullifierSeed);
   const shouldSyncValidityStatus =
     (bundle?.validityStatus ?? null) !== nextValidityStatus;
   const shouldSyncFreshness =
@@ -1106,7 +1108,7 @@ export async function reconcileIdentityBundle(
     !(
       shouldCreateBundle ||
       shouldSyncEffectiveVerification ||
-      shouldSeedRpNullifier ||
+      shouldSeedNullifier ||
       shouldSyncValidityStatus ||
       shouldSyncFreshness ||
       shouldSyncVerificationCount ||
@@ -1145,7 +1147,7 @@ export async function reconcileIdentityBundle(
       verificationExpiresAt: nextVerificationExpiresAt,
       freshnessCheckedAt: nextFreshnessCheckedAt,
       verificationCount: nextVerificationCount,
-      ...(nextRpNullifierSeed ? { rpNullifierSeed: nextRpNullifierSeed } : {}),
+      ...(nextNullifierSeed ? { nullifierSeed: nextNullifierSeed } : {}),
       ...(shouldClearRevocationMetadata
         ? {
             revokedAt: null,
@@ -1169,30 +1171,12 @@ export async function reconcileIdentityBundle(
   };
 }
 
-export const getRpNullifierSeed = cache(async function getRpNullifierSeed(
-  userId: string
-): Promise<string | null> {
-  const bundle = await getIdentityBundleByUserId(userId);
-  if (bundle?.rpNullifierSeed) {
-    return bundle.rpNullifierSeed;
-  }
-
-  const verifications = await getVerificationsByUserId(userId);
-  return (
-    getInternalIdentityKey(
-      verifications.find(
-        (verification) => verification.status === "verified"
-      ) ?? null
-    ) ?? null
-  );
-});
-
 /**
- * Check if a nullifier is already used by a different user.
+ * Check if a chip nullifier is already used by a different user.
  * Same passport cannot register on multiple accounts.
  */
 export async function isNullifierUsedByOtherUser(
-  uniqueIdentifier: string,
+  chipNullifier: string,
   userId: string
 ): Promise<boolean> {
   const row = await db
@@ -1200,7 +1184,7 @@ export async function isNullifierUsedByOtherUser(
     .from(identityVerifications)
     .where(
       and(
-        eq(identityVerifications.uniqueIdentifier, uniqueIdentifier),
+        eq(identityVerifications.chipNullifier, chipNullifier),
         eq(identityVerifications.status, "verified"),
         ne(identityVerifications.userId, userId)
       )
@@ -1266,7 +1250,7 @@ export async function revokeIdentity(
         .update(identityBundles)
         .set({
           effectiveVerificationId: null,
-          rpNullifierSeed: null,
+          nullifierSeed: null,
           updatedAt: now,
         })
         .where(eq(identityBundles.userId, userId))

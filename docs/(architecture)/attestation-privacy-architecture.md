@@ -22,7 +22,7 @@ This model supports multi-document identities, an account-scoped current snapsho
 
 The persistence model separates snapshot state from history and downstream delivery:
 
-- `identity_bundles` stores the current account snapshot (`validityStatus`, `effectiveVerificationId`, `rpNullifierSeed`, `verificationExpiresAt`, and related metadata).
+- `identity_bundles` stores the current account snapshot (`validityStatus`, `effectiveVerificationId`, `nullifierSeed`, `verificationExpiresAt`, and related metadata).
 - `identity_verifications` stores credential history for OCR and NFC verification rows, including supersession lineage.
 - `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`.
 - `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, back-channel logout, CIBA cancellation, and blockchain revocation delivery.

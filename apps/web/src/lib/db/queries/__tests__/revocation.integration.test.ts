@@ -434,7 +434,7 @@ describe("identity revocation cascade", () => {
     const challengerUserId = await createTestUser({
       email: "challenger@test.com",
     });
-    const uniqueIdentifier = `nfc-nullifier-${userId}`;
+    const chipNullifier = `nfc-nullifier-${userId}`;
 
     await db
       .insert(identityVerifications)
@@ -443,13 +443,13 @@ describe("identity revocation cascade", () => {
         userId,
         method: "nfc_chip",
         status: "verified",
-        uniqueIdentifier,
+        chipNullifier,
         verifiedAt: new Date().toISOString(),
       })
       .run();
 
     await expect(
-      isNullifierUsedByOtherUser(uniqueIdentifier, challengerUserId)
+      isNullifierUsedByOtherUser(chipNullifier, challengerUserId)
     ).resolves.toBe(true);
 
     await revokeIdentity(
@@ -460,7 +460,7 @@ describe("identity revocation cascade", () => {
     );
 
     await expect(
-      isNullifierUsedByOtherUser(uniqueIdentifier, challengerUserId)
+      isNullifierUsedByOtherUser(chipNullifier, challengerUserId)
     ).resolves.toBe(false);
   });
 
@@ -495,6 +495,7 @@ describe("identity revocation cascade", () => {
       method: "ocr",
       status: "verified",
       dedupKey: "dedup-before-revocation",
+      nullifierSeed: "seed-before-revocation",
       documentHash: "hash-before-revocation",
       verifiedAt: "2025-01-01T00:00:00Z",
     });
@@ -505,7 +506,7 @@ describe("identity revocation cascade", () => {
       .from(identityBundles)
       .where(eq(identityBundles.userId, userId))
       .get();
-    expect(seededBundle?.rpNullifierSeed).toBe("dedup-before-revocation");
+    expect(seededBundle?.nullifierSeed).toBe("seed-before-revocation");
 
     await revokeIdentity(
       userId,
@@ -519,7 +520,7 @@ describe("identity revocation cascade", () => {
       .from(identityBundles)
       .where(eq(identityBundles.userId, userId))
       .get();
-    expect(revokedBundle?.rpNullifierSeed).toBeNull();
+    expect(revokedBundle?.nullifierSeed).toBeNull();
 
     await createVerification({
       id: reverifiedVerificationId,
@@ -527,6 +528,7 @@ describe("identity revocation cascade", () => {
       method: "ocr",
       status: "verified",
       dedupKey: "dedup-after-revocation",
+      nullifierSeed: "seed-after-revocation",
       documentHash: "hash-after-revocation",
       verifiedAt: "2025-02-01T00:00:00Z",
     });
@@ -541,7 +543,7 @@ describe("identity revocation cascade", () => {
     expect(reverifiedBundle?.effectiveVerificationId).toBe(
       reverifiedVerificationId
     );
-    expect(reverifiedBundle?.rpNullifierSeed).toBe("dedup-after-revocation");
+    expect(reverifiedBundle?.nullifierSeed).toBe("seed-after-revocation");
   });
 
   it("revokes OID4VCI issued credentials through the delivery worker", async () => {

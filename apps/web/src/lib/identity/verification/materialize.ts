@@ -118,7 +118,7 @@ export async function materializeVerificationChecks(
     signedClaims: claimTypes,
     encryptedAttributes: [],
     hasUniqueIdentifier: Boolean(
-      verification.dedupKey || verification.uniqueIdentifier
+      verification.dedupKey || verification.chipNullifier
     ),
     hasNationalityCommitment: Boolean(verification.nationalityCommitment),
   });

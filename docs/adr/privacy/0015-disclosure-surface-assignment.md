@@ -95,7 +95,7 @@ Rationale:
 
 Rationale:
 
-* `sybil_nullifier` is not a user-facing profile claim. It is an RP-specific anti-abuse handle derived from `(rpNullifierSeed, clientId)`, where `rpNullifierSeed` is stored on the account snapshot, seeded from the first verified credential, and preserved across later credential additions until full revocation.
+* `sybil_nullifier` is not a user-facing profile claim. It is an RP-specific anti-abuse handle derived from `(nullifierSeed, clientId)`, where `nullifierSeed` is an HMAC-derived value stored on the account snapshot, seeded from the first verified credential, and preserved across later credential additions until full revocation. Raw ZKPassport chip identifiers never reach the bundle: the seed is `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` with domain separation between OCR dedup keys and NFC chip nullifiers.
 * Putting it in `id_token` would spread a per-RP pseudonym into client/session surfaces that are often cached and logged.
 * Putting it in `userinfo` would make developers treat it like ordinary profile data and persist it alongside claims.
 * The access token is audience-bound and sender-constrained, so it is the correct place for an operational per-RP nullifier.
