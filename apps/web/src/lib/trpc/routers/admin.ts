@@ -6,7 +6,10 @@ import {
   cleanupExpiredKeys,
   rotateSigningKey,
 } from "@/lib/auth/oidc/jwt-signer";
-import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
+import { listIdentityValiditySourceCursors } from "@/lib/db/queries/identity-validity";
+import { ingestChainRevocations } from "@/lib/identity/validity/chain-ingest";
+import { deliverPendingValidityDeliveries } from "@/lib/identity/validity/delivery";
+import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness-worker";
 
 import { adminProcedure, router } from "../server";
 
@@ -27,9 +30,41 @@ export const adminRouter = router({
     return { deleted };
   }),
 
+  getIdentityValiditySourceCursors: adminProcedure.query(() =>
+    listIdentityValiditySourceCursors()
+  ),
+
   retryPendingRevocations: adminProcedure.mutation(() =>
-    processIdentityValidityDeliveries({
+    deliverPendingValidityDeliveries({
       targets: ["blockchain_attestation_revocation"],
     })
   ),
+
+  ingestChainRevocations: adminProcedure
+    .input(
+      z.object({
+        networkId: z.string().min(1),
+        fromBlock: z.number().int().nonnegative().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      ingestChainRevocations({
+        networkId: input.networkId,
+        ...(input.fromBlock === undefined
+          ? {}
+          : { fromBlock: input.fromBlock }),
+      })
+    ),
+
+  markDueIdentitiesStale: adminProcedure
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(500).optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      markDueIdentitiesStale(
+        input.limit === undefined ? {} : { limit: input.limit }
+      )
+    ),
 });

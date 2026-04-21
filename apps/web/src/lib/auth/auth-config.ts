@@ -617,6 +617,18 @@ async function validateDcrRegistration(
     });
   }
 
+  let rpValidityNoticeUri: string | undefined;
+  if (typeof body.rp_validity_notice_uri === "string") {
+    rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
+  } else if (typeof body.rpValidityNoticeUri === "string") {
+    rpValidityNoticeUri = body.rpValidityNoticeUri.trim();
+  }
+  if (rpValidityNoticeUri && !isDev && !isValidHttpsUrl(rpValidityNoticeUri)) {
+    throw new APIError("BAD_REQUEST", {
+      error_description: "rp_validity_notice_uri must be an HTTPS URL",
+    });
+  }
+
   // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
   const softwareStatement =
     typeof body.software_statement === "string"
@@ -708,6 +720,9 @@ async function beforeDcrRegister(ctx: HookCtx) {
   // Enable the plugin's native sid injection for BCL-registered clients
   if (ctx.body?.backchannel_logout_uri) {
     ctx.body.enable_end_session = true;
+  }
+  if (ctx.body?.rp_validity_notice_uri) {
+    ctx.body.rp_validity_notice_enabled = true;
   }
 }
 

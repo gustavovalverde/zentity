@@ -53,6 +53,8 @@ export const accountRouter = router({
       hasPassword,
       verification: {
         level: verificationModel.compliance.level,
+        verificationExpiresAt: verificationModel.bundle.verificationExpiresAt,
+        validityStatus: verificationModel.bundle.validityStatus,
         checks: verificationModel.compliance.checks,
       },
       groupedIdentity: verificationModel.groupedIdentity,

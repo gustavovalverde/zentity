@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
   createVerification,
@@ -18,10 +19,16 @@ import {
   upsertVerification,
 } from "@/lib/db/queries/identity";
 import {
+  createProofSession,
+  insertProofArtifact,
+  insertSignedClaim,
+} from "@/lib/db/queries/privacy";
+import {
   identityBundles,
   identityValidityEvents,
   identityVerifications,
 } from "@/lib/db/schema/identity";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("identity queries", () => {
@@ -322,5 +329,206 @@ describe("identity queries", () => {
     expect(bundle).toBeUndefined();
     expect(verification).toBeUndefined();
     expect(revocationEvent).toBeUndefined();
+  });
+
+  it("promotes a newer OCR credential only when its proof set completes and records supersession atomically", async () => {
+    const userId = await createTestUser();
+    const originalVerificationId = crypto.randomUUID();
+    const replacementVerificationId = crypto.randomUUID();
+
+    async function attachCompleteOcrEvidence(
+      verificationId: string,
+      issuedAt: string
+    ) {
+      for (const claimType of [
+        "ocr_result",
+        "liveness_score",
+        "face_match_score",
+      ]) {
+        await insertSignedClaim({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          claimType,
+          claimPayload: "{}",
+          signature: "sig",
+          issuedAt,
+        });
+      }
+
+      const proofSessionId = crypto.randomUUID();
+      const createdAt = Date.parse(issuedAt);
+      await createProofSession({
+        id: proofSessionId,
+        userId,
+        verificationId,
+        msgSender: userId,
+        audience: "http://localhost:3000",
+        policyVersion: POLICY_VERSION,
+        createdAt,
+        expiresAt: createdAt + 60_000,
+      });
+
+      for (const proofType of [
+        "age_verification",
+        "doc_validity",
+        "nationality_membership",
+        "face_match",
+        "identity_binding",
+      ]) {
+        await insertProofArtifact({
+          id: crypto.randomUUID(),
+          userId,
+          verificationId,
+          proofSessionId,
+          proofSystem: "noir_ultrahonk",
+          proofType,
+          proofHash: `${verificationId}-${proofType}`,
+          policyVersion: POLICY_VERSION,
+          verified: true,
+        });
+      }
+    }
+
+    await createVerification({
+      id: originalVerificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: "dedup-original-proof-set",
+      documentHash: "hash-original-proof-set",
+      verifiedAt: "2025-01-01T00:00:00Z",
+    });
+    await attachCompleteOcrEvidence(
+      originalVerificationId,
+      "2025-01-01T00:00:00Z"
+    );
+    await reconcileIdentityBundle(userId);
+
+    await createVerification({
+      id: replacementVerificationId,
+      userId,
+      method: "ocr",
+      status: "verified",
+      dedupKey: "dedup-replacement-proof-set",
+      documentHash: "hash-replacement-proof-set",
+      verifiedAt: "2025-02-01T00:00:00Z",
+    });
+    await reconcileIdentityBundle(userId);
+
+    const bundleBeforeReplacementProofs =
+      await getIdentityBundleByUserId(userId);
+    expect(bundleBeforeReplacementProofs?.effectiveVerificationId).toBe(
+      originalVerificationId
+    );
+
+    await db.transaction(async (tx) => {
+      for (const claimType of [
+        "ocr_result",
+        "liveness_score",
+        "face_match_score",
+      ]) {
+        await insertSignedClaim(
+          {
+            id: crypto.randomUUID(),
+            userId,
+            verificationId: replacementVerificationId,
+            claimType,
+            claimPayload: "{}",
+            signature: "sig",
+            issuedAt: "2025-02-01T00:00:00Z",
+          },
+          tx
+        );
+      }
+
+      const proofSessionId = crypto.randomUUID();
+      const createdAt = Date.parse("2025-02-01T00:00:00Z");
+      await createProofSession(
+        {
+          id: proofSessionId,
+          userId,
+          verificationId: replacementVerificationId,
+          msgSender: userId,
+          audience: "http://localhost:3000",
+          policyVersion: POLICY_VERSION,
+          createdAt,
+          expiresAt: createdAt + 60_000,
+        },
+        tx
+      );
+
+      for (const proofType of [
+        "age_verification",
+        "doc_validity",
+        "nationality_membership",
+        "face_match",
+        "identity_binding",
+      ]) {
+        await insertProofArtifact(
+          {
+            id: crypto.randomUUID(),
+            userId,
+            verificationId: replacementVerificationId,
+            proofSessionId,
+            proofSystem: "noir_ultrahonk",
+            proofType,
+            proofHash: `${replacementVerificationId}-${proofType}`,
+            policyVersion: POLICY_VERSION,
+            verified: true,
+          },
+          tx
+        );
+      }
+
+      const reconcileResult = await reconcileIdentityBundle(userId, tx);
+      expect(reconcileResult.credentialSuperseded).toBe(true);
+      expect(reconcileResult.effectiveVerificationId).toBe(
+        replacementVerificationId
+      );
+
+      await recordValidityTransition({
+        executor: tx,
+        userId,
+        verificationId: replacementVerificationId,
+        eventKind: "superseded",
+        source: "system",
+        occurredAt: "2025-02-01T00:00:01Z",
+      });
+    });
+
+    const [bundle, accountIdentity, originalVerification, validityEvent] =
+      await Promise.all([
+        getIdentityBundleByUserId(userId),
+        getAccountIdentity(userId),
+        db
+          .select()
+          .from(identityVerifications)
+          .where(eq(identityVerifications.id, originalVerificationId))
+          .get(),
+        db
+          .select()
+          .from(identityValidityEvents)
+          .where(eq(identityValidityEvents.userId, userId))
+          .orderBy(identityValidityEvents.createdAt)
+          .get(),
+      ]);
+
+    expect(bundle?.effectiveVerificationId).toBe(replacementVerificationId);
+    expect(accountIdentity.effectiveVerification?.id).toBe(
+      replacementVerificationId
+    );
+    expect(originalVerification?.supersededByVerificationId).toBe(
+      replacementVerificationId
+    );
+    expect(originalVerification?.supersededAt).not.toBeNull();
+    expect(validityEvent).toEqual(
+      expect.objectContaining({
+        verificationId: replacementVerificationId,
+        eventKind: "superseded",
+        validityStatus: "verified",
+        source: "system",
+      })
+    );
   });
 });

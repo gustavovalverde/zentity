@@ -29,8 +29,9 @@ function toAccountAssuranceInput(
   model: VerificationReadModel,
   isAuthenticated: boolean
 ) {
-  const documentVerified = model.verifiedAt !== null;
-  const chipVerified = model.method === "nfc_chip";
+  const chipVerified = model.method === "nfc_chip" && model.compliance.verified;
+  const documentVerified =
+    chipVerified || (model.method === "ocr" && model.verifiedAt !== null);
   const zkProofsComplete = hasRequiredOcrProofTypes(
     model.proofs.map((proof) => proof.proofType)
   );

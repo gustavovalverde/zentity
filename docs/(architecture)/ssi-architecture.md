@@ -12,6 +12,7 @@ Zentity issues **portable verifiable credentials** following OpenID standards wh
 - **OIDC4VCI**: Credential issuance with pre-authorized code flow; SD-JWT VC format.
 - **OIDC4VP**: Presentation requests from verifiers; Presentation Exchange (PEX) support.
 - **Derived claims only**: Credentials contain verification flags, not raw PII.
+- **Snapshot-based issuance**: Credentials are issued from the account snapshot rather than from an ad hoc row selection.
 - **Holder binding**: EdDSA proof JWT ties credentials to holder's cryptographic key.
 - **Selective disclosure**: SD-JWT format lets users reveal only the claims needed.
 - **Pairwise identifiers**: Different `sub` per relying party to prevent correlation.
@@ -159,7 +160,7 @@ sequenceDiagram
 | `identity_bound` | ◐ | ZK proof | Identity binding proof stored |
 | `sybil_resistant` | ◐ | Dedup key | Sybil resistance verified |
 | `chip_verified` | ◐ | Chip verification signed claim | NFC chip-verified (ZKPassport) |
-| `sybil_nullifier` | ◐ | Internal identity key + clientId HMAC | Per-RP pseudonymous nullifier derived from `dedupKey` (OCR) or `uniqueIdentifier` (NFC), gated by `proof:sybil` |
+| `sybil_nullifier` | ◐ | Bundle-owned seed + clientId HMAC | Per-RP pseudonymous nullifier derived from `rpNullifierSeed` on the account snapshot, gated by `proof:sybil` |
 | `policy_version` | ✅ | Server-computed | Policy version used for verification |
 | `issuer_id` | ✅ | Static | Zentity issuer identifier |
 | `verification_time` | ✅ | Server-computed | ISO 8601 timestamp |
@@ -171,6 +172,8 @@ sequenceDiagram
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
 
 **Compliance derivation:** `verification_level` and all boolean check claims are computed at request time by a pure function with no DB access, taking ZK proofs, signed claims, and flags as input. There are no mutable boolean columns; values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix.
+
+**Validity contract:** issuance and RP-facing proof semantics read the account snapshot (`identity_bundles`) plus its `effectiveVerificationId`. Explicit revoke fans out to OIDC4VCI credential-status revocation through the shared validity pipeline. `stale` and `superseded` do not delete history; they tell relying parties to evaluate trust against the authoritative or fresher snapshot rather than against an older row alone.
 
 ---
 

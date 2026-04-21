@@ -393,15 +393,15 @@ sequenceDiagram
 
 ### Revocation Flow
 
-When an identity verification is revoked (admin or self-service), the on-chain attestation is also revoked:
+On-chain attestation revocation is one delivery target of the canonical validity pipeline, not a separate business flow:
 
-1. DB revocation is committed in a transaction (marks `identity_verifications` and `identity_bundle` as revoked).
-2. On-chain revocation is attempted **outside** the DB transaction (best-effort).
-3. If the on-chain call fails, the attestation enters `revocation_pending` status.
-4. Retry uses exponential backoff: 1s → 3s → 9s, max 3 attempts.
-5. If all retries fail, an admin tRPC procedure (`admin.retryOnChainRevocation`) allows manual retry.
+1. A revoke transition updates the current account snapshot and appends one `identity_validity_events` row.
+2. The same transition schedules `blockchain_attestation_revocation` in `identity_validity_deliveries` alongside other downstream targets such as credential-status updates, CIBA cancellation, back-channel logout, and RP validity notice.
+3. The delivery worker attempts the on-chain revoke outside the snapshot transaction.
+4. If the chain call fails, the delivery stays retryable and the attestation moves to `revocation_pending`.
+5. The same delivery framework handles retries and operator visibility; `admin.retryOnChainRevocation` is an operational convenience, not a second revocation architecture.
 
-DB revocation is committed regardless of on-chain success; the server-side state is always authoritative.
+Chain-originated revocations also feed back through the same validity pipeline, so "revoked on chain" and "revoked in product" converge on one lifecycle model.
 
 ---
 

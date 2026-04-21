@@ -33,7 +33,7 @@ import {
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/identity/liveness/thresholds";
-import { applyValidityTransition } from "@/lib/identity/validity/transition";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { logError } from "@/lib/logging/error-logger";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
@@ -459,36 +459,55 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
         })();
         if (documentProcessed && verificationId) {
           try {
-            await upsertVerification({
-              id: verificationId,
-              userId: job.userId,
-              method: "ocr",
-              status: verified ? "verified" : "failed",
-              documentHash: duplicateDocumentDetected
-                ? null
-                : (documentHash ?? null),
-              livenessScore: draft.antispoofScore ?? null,
-              verifiedAt: verified ? new Date().toISOString() : null,
-            });
+            await db.transaction(async (tx) => {
+              await upsertVerification(
+                {
+                  id: verificationId,
+                  userId: job.userId,
+                  method: "ocr",
+                  status: verified ? "verified" : "failed",
+                  documentHash: duplicateDocumentDetected
+                    ? null
+                    : (documentHash ?? null),
+                  livenessScore: draft.antispoofScore ?? null,
+                  verifiedAt: verified ? new Date().toISOString() : null,
+                },
+                tx
+              );
 
-            await upsertIdentityBundle({
-              userId: job.userId,
-              validityStatus: bundleStatus,
-              issuerId: ISSUER_ID,
-              policyVersion: POLICY_VERSION,
-              fheStatus,
-              fheError: null,
-              ...(effectiveFheKeyId === undefined
-                ? {}
-                : { fheKeyId: effectiveFheKeyId }),
-            });
-            await reconcileIdentityBundle(job.userId);
-            await applyValidityTransition({
-              userId: job.userId,
-              verificationId,
-              eventKind: verified ? "verified" : "failed",
-              source: "system",
-              occurredAt: finishedAt,
+              await upsertIdentityBundle(
+                {
+                  userId: job.userId,
+                  validityStatus: bundleStatus,
+                  issuerId: ISSUER_ID,
+                  policyVersion: POLICY_VERSION,
+                  fheStatus,
+                  fheError: null,
+                  ...(effectiveFheKeyId === undefined
+                    ? {}
+                    : { fheKeyId: effectiveFheKeyId }),
+                },
+                tx
+              );
+              const reconcileResult = await reconcileIdentityBundle(
+                job.userId,
+                tx
+              );
+              let eventKind: "verified" | "failed" | "superseded" = "failed";
+              if (verified) {
+                eventKind = reconcileResult.credentialSuperseded
+                  ? "superseded"
+                  : "verified";
+              }
+
+              await recordValidityTransition({
+                executor: tx,
+                userId: job.userId,
+                verificationId,
+                eventKind,
+                source: "system",
+                occurredAt: finishedAt,
+              });
             });
           } catch (error) {
             logger.error(

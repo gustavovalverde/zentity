@@ -41,8 +41,8 @@ import {
   ANTISPOOF_REAL_THRESHOLD,
   FACE_MATCH_MIN_CONFIDENCE,
 } from "@/lib/identity/liveness/thresholds";
-import { processIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
-import { getValidityReadModel } from "@/lib/identity/validity/read-model";
+import { deliverPendingValidityDeliveries } from "@/lib/identity/validity/delivery";
+import { getIdentityValidityOverview } from "@/lib/identity/validity/read-model";
 import { dobDaysToBirthYearOffset } from "@/lib/identity/verification/birth-year";
 import {
   scheduleIdentityJob,
@@ -422,7 +422,7 @@ const revokeProcedure = adminProcedure
       "admin"
     );
     if (result.eventId) {
-      await processIdentityValidityDeliveries({ eventId: result.eventId });
+      await deliverPendingValidityDeliveries({ eventId: result.eventId });
     }
     return result;
   });
@@ -442,7 +442,7 @@ const selfRevokeProcedure = protectedProcedure
       "product"
     );
     if (result.eventId) {
-      await processIdentityValidityDeliveries({ eventId: result.eventId });
+      await deliverPendingValidityDeliveries({ eventId: result.eventId });
     }
     return result;
   });
@@ -496,7 +496,7 @@ const getOverviewProcedure = adminProcedure
     const [accountIdentity, verificationModel, validity] = await Promise.all([
       getAccountIdentity(input.userId),
       getVerificationReadModel(input.userId),
-      getValidityReadModel(input.userId),
+      getIdentityValidityOverview(input.userId),
     ]);
 
     return {

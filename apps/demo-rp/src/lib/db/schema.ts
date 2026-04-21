@@ -62,6 +62,29 @@ export const dcrClient = sqliteTable("dcr_client", {
   clientSecret: text("clientSecret"),
 });
 
+export const validityNotice = sqliteTable(
+  "validity_notice",
+  {
+    jti: text("jti").primaryKey(),
+    providerId: text("providerId").notNull(),
+    clientId: text("clientId").notNull(),
+    sub: text("sub").notNull(),
+    eventId: text("eventId").notNull(),
+    eventKind: text("eventKind").notNull(),
+    validityStatus: text("validityStatus").notNull(),
+    occurredAt: text("occurredAt").notNull(),
+    reason: text("reason"),
+    rawToken: text("rawToken").notNull(),
+    receivedAt: text("receivedAt").notNull().default("datetime('now')"),
+  },
+  (table) => [
+    uniqueIndex("validity_notice_client_event_unique").on(
+      table.clientId,
+      table.eventId
+    ),
+  ]
+);
+
 export const cibaPings = sqliteTable("ciba_ping", {
   authReqId: text("auth_req_id").primaryKey(),
   notificationToken: text("notification_token").notNull(),

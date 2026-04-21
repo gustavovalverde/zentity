@@ -16,7 +16,16 @@ The system separates identity data into distinct artifact types, each stored in 
 - **Credential-wrapped secrets**: FHE keys and profile data encrypted with passkey PRF, OPAQUE export key, or wallet signature; only the user can unwrap them in the browser. See [FHE Key Lifecycle](fhe-key-lifecycle.md) for the full encryption hierarchy.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
 
-This model supports multi-document identities, revocable attestations, periodic re-verification, and auditable disclosures across Web2 and Web3.
+This model supports multi-document identities, an account-scoped current snapshot, revocable and stale validity states, periodic re-verification, and auditable disclosures across Web2 and Web3.
+
+### Identity storage model
+
+The persistence model separates snapshot state from history and downstream delivery:
+
+- `identity_bundles` stores the current account snapshot (`validityStatus`, `effectiveVerificationId`, `rpNullifierSeed`, `verificationExpiresAt`, and related metadata).
+- `identity_verifications` stores credential history for OCR and NFC verification rows, including supersession lineage.
+- `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`.
+- `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, back-channel logout, CIBA cancellation, and blockchain revocation delivery.
 
 ### Regulatory Alignment
 
@@ -150,9 +159,13 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 
 | Data | ZK | FHE | Commit | Vault | Notes |
 |---|---|---|---|---|---|
-| Last verified at | — | — | — | — | Timestamp of last verification. |
-| Next verification due | — | — | — | — | Scheduled re-verification date. |
-| Verification count | — | — | — | — | Number of verifications performed. |
+| Last verified at | — | — | — | — | Timestamp of the current authoritative verification on `identity_bundles.lastVerifiedAt`. |
+| Freshness deadline | — | — | — | — | `identity_bundles.verificationExpiresAt` drives `verified -> stale`. |
+| Freshness checked at | — | — | — | — | `identity_bundles.freshnessCheckedAt` records the last freshness evaluation. |
+| Verification count | — | — | — | — | `identity_bundles.verificationCount` counts authoritative verification wins over time. |
+| Supersession lineage | — | — | — | — | `identity_verifications.supersededAt` and `supersededByVerificationId` preserve prior-authoritative history. |
+
+Current validity state itself lives on `identity_bundles.validityStatus`, while immutable lifecycle transitions live in `identity_validity_events`.
 
 **Note:** Passkey credential metadata (public keys, counters, transports) is stored in the `passkey` table for authentication and key custody. Wallet addresses are stored in the `wallet_address` table for wallet-based authentication.
 

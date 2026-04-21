@@ -33,7 +33,7 @@ Zentity custom scopes extend this baseline. They do not replace it.
 
 ### Proof scopes — non-PII verification status
 
-Proof claims are derived from the user's verification state. No PII is involved. They are computed live from the database on each request.
+Proof claims are derived from the user's account identity snapshot. No PII is involved. The issuer reads the bundle snapshot (`identity_bundles`) for validity state plus `effectiveVerificationId`, then projects claims from the authoritative verification row referenced by that snapshot.
 
 | Scope | Claims | Delivery |
 |-------|--------|----------|
@@ -47,7 +47,9 @@ Proof claims are derived from the user's verification state. No PII is involved.
 | `proof:chip` | `chip_verified`, `chip_verification_method` | id_token, userinfo |
 | `proof:sybil` | `sybil_nullifier` | **access_token only** |
 
-`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, internalIdentityKey + "|rp|" + clientId)`. The internal identity key is `dedupKey` for OCR verifications and `uniqueIdentifier` for NFC verifications. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+`proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, rpNullifierSeed + "|rp|" + clientId)`. `rpNullifierSeed` is bundle-owned state stored on `identity_bundles`, seeded from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+
+When the snapshot is `stale` or `revoked`, disclosure surfaces stop treating the account as verified even though historical credential rows remain available for audit and operator reads.
 
 ### Identity scopes — vault-gated PII
 

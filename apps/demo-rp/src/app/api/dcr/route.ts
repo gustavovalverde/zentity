@@ -63,6 +63,8 @@ export async function POST(request: Request) {
           grant_types: grantTypes ?? ["authorization_code"],
           response_types: ["code"],
           backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+          rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
+          rp_validity_notice_enabled: true,
         }),
       }
     );

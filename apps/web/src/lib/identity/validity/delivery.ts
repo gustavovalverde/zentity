@@ -35,6 +35,10 @@ import {
   identityValidityEvents,
 } from "@/lib/db/schema/identity";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
+import {
+  listRpValidityNoticeClients,
+  postRpValidityNotice,
+} from "@/lib/identity/validity/rp-notice";
 
 type DeliveryExecutor = Pick<typeof db, "insert" | "select" | "update">;
 
@@ -43,6 +47,7 @@ const MAX_ATTEMPTS_BY_TARGET: Record<ValidityDeliveryTarget, number> = {
   ciba_request_cancellation: 1,
   backchannel_logout: 3,
   blockchain_attestation_revocation: 3,
+  rp_validity_notice: 3,
 };
 
 const RETRY_DELAY_MS_BY_TARGET: Record<ValidityDeliveryTarget, number[]> = {
@@ -50,6 +55,7 @@ const RETRY_DELAY_MS_BY_TARGET: Record<ValidityDeliveryTarget, number[]> = {
   ciba_request_cancellation: [],
   backchannel_logout: [1000, 3000],
   blockchain_attestation_revocation: [1000, 3000],
+  rp_validity_notice: [1000, 3000],
 };
 
 interface DeliveryTargetDescriptor {
@@ -75,6 +81,7 @@ async function buildRevocationDeliveryTargets(
     issuedCredentials,
     pendingCibaRequests,
     backchannelClients,
+    rpValidityClients,
     attestations,
   ] = await Promise.all([
     executor
@@ -89,6 +96,7 @@ async function buildRevocationDeliveryTargets(
       .all(),
     listPendingCibaRequestIdsByUserId(userId),
     listBackchannelLogoutClients(),
+    listRpValidityNoticeClients(),
     executor
       .select({ id: blockchainAttestations.id })
       .from(blockchainAttestations)
@@ -114,6 +122,10 @@ async function buildRevocationDeliveryTargets(
       target: "backchannel_logout" as const,
       targetKey: client.clientId,
     })),
+    ...rpValidityClients.map((client) => ({
+      target: "rp_validity_notice" as const,
+      targetKey: client.clientId,
+    })),
     ...attestations.map((attestation) => ({
       target: "blockchain_attestation_revocation" as const,
       targetKey: attestation.id,
@@ -121,7 +133,18 @@ async function buildRevocationDeliveryTargets(
   ];
 }
 
-export async function scheduleIdentityValidityDeliveries(
+async function buildRpValidityNoticeTargets(): Promise<
+  DeliveryTargetDescriptor[]
+> {
+  const clients = await listRpValidityNoticeClients();
+
+  return clients.map((client) => ({
+    target: "rp_validity_notice" as const,
+    targetKey: client.clientId,
+  }));
+}
+
+export async function scheduleValidityDeliveries(
   eventId: string,
   executor: DeliveryExecutor = db
 ): Promise<IdentityValidityDelivery[]> {
@@ -142,8 +165,24 @@ export async function scheduleIdentityValidityDeliveries(
 
   let targets: DeliveryTargetDescriptor[] = [];
 
-  if (event.eventKind === "revoked") {
-    targets = await buildRevocationDeliveryTargets(event.userId, executor);
+  switch (event.eventKind) {
+    case "revoked":
+      targets = await buildRevocationDeliveryTargets(event.userId, executor);
+      break;
+    case "verified":
+    case "stale":
+    case "superseded":
+      targets = await buildRpValidityNoticeTargets();
+      break;
+    case "failed":
+      targets = [];
+      break;
+    default: {
+      const unreachableEventKind: never = event.eventKind;
+      throw new Error(
+        `Unsupported identity validity event kind: ${unreachableEventKind}`
+      );
+    }
   }
 
   await createIdentityValidityDeliveries(
@@ -171,7 +210,7 @@ export async function scheduleIdentityValidityDeliveries(
   return await listIdentityValidityDeliveriesForEvent(eventId);
 }
 
-async function processOidc4vciCredentialStatusDelivery(
+async function deliverOidc4vciCredentialStatus(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
   await db
@@ -189,13 +228,13 @@ async function processOidc4vciCredentialStatusDelivery(
     .run();
 }
 
-async function processCibaRequestCancellationDelivery(
+async function deliverCibaRequestCancellation(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
   await rejectPendingCibaRequest(delivery.targetKey);
 }
 
-async function processBackchannelLogoutDelivery(
+async function deliverBackchannelLogout(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
   await sendBackchannelLogoutToClient({
@@ -204,7 +243,7 @@ async function processBackchannelLogoutDelivery(
   });
 }
 
-async function processBlockchainAttestationRevocationDelivery(
+async function deliverBlockchainAttestationRevocation(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
   const attestation = await db
@@ -253,21 +292,42 @@ async function processBlockchainAttestationRevocationDelivery(
     .run();
 }
 
-async function processIdentityValidityDelivery(
+async function deliverRpValidityNotice(
+  delivery: IdentityValidityDelivery
+): Promise<void> {
+  const event = await getIdentityValidityEventById(delivery.eventId);
+  if (!event) {
+    throw new Error(
+      `Cannot deliver RP validity notice for missing event ${delivery.eventId}`
+    );
+  }
+
+  await postRpValidityNotice({
+    clientId: delivery.targetKey,
+    deliveryId: delivery.id,
+    event,
+    userId: delivery.userId,
+  });
+}
+
+async function deliverValidityTarget(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
   switch (delivery.target) {
     case "oidc4vci_credential_status":
-      await processOidc4vciCredentialStatusDelivery(delivery);
+      await deliverOidc4vciCredentialStatus(delivery);
       return;
     case "ciba_request_cancellation":
-      await processCibaRequestCancellationDelivery(delivery);
+      await deliverCibaRequestCancellation(delivery);
       return;
     case "backchannel_logout":
-      await processBackchannelLogoutDelivery(delivery);
+      await deliverBackchannelLogout(delivery);
       return;
     case "blockchain_attestation_revocation":
-      await processBlockchainAttestationRevocationDelivery(delivery);
+      await deliverBlockchainAttestationRevocation(delivery);
+      return;
+    case "rp_validity_notice":
+      await deliverRpValidityNotice(delivery);
       return;
     default: {
       const unreachableTarget: never = delivery.target;
@@ -295,7 +355,7 @@ function summarizeStatuses(
   );
 }
 
-export async function processIdentityValidityDeliveries(
+export async function deliverPendingValidityDeliveries(
   args: {
     eventId?: string;
     limit?: number;
@@ -323,7 +383,7 @@ export async function processIdentityValidityDeliveries(
     const nextAttemptCount = delivery.attemptCount + 1;
 
     try {
-      await processIdentityValidityDelivery(delivery);
+      await deliverValidityTarget(delivery);
       await markIdentityValidityDeliveryDelivered(
         delivery.id,
         nextAttemptCount,
@@ -362,7 +422,7 @@ export async function processIdentityValidityDeliveries(
   };
 }
 
-export async function getValidityDeliveryReadModel(userId: string): Promise<{
+export async function getLatestValidityDeliveryState(userId: string): Promise<{
   latestEvent: IdentityValidityDelivery[];
   statusSummary: Record<ValidityDeliveryStatus, number>;
 }> {

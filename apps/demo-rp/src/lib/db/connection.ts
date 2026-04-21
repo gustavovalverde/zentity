@@ -13,6 +13,7 @@ import {
   oauthDpopKey,
   session,
   user,
+  validityNotice,
   verification,
   vpSessions,
 } from "./schema";
@@ -25,6 +26,7 @@ const dbSchema = {
   oauthDpopKey,
   session,
   user,
+  validityNotice,
   verification,
   vpSessions,
 };

@@ -17,8 +17,8 @@ import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
-import { scheduleIdentityValidityDeliveries } from "@/lib/identity/validity/delivery";
-import { applyValidityTransition } from "@/lib/identity/validity/transition";
+import { computeFreshnessDeadline } from "@/lib/identity/validity/freshness";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 
 import { db } from "../connection";
@@ -51,6 +51,8 @@ interface AccountIdentity {
   groupedCredentials: IdentityVerification[];
 }
 
+type IdentityExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
 function getInternalIdentityKey(
   verification: {
     dedupKey?: string | null | undefined;
@@ -81,9 +83,10 @@ function deriveBundleValidityStatusFromVerifications(
 }
 
 async function loadIdentityBundleByUserId(
-  userId: string
+  userId: string,
+  executor: IdentityExecutor = db
 ): Promise<IdentityBundle | null> {
-  const row = await db
+  const row = await executor
     .select()
     .from(identityBundles)
     .where(eq(identityBundles.userId, userId))
@@ -146,9 +149,10 @@ export async function hasProfileSecret(userId: string): Promise<boolean> {
 }
 
 export async function getVerificationById(
-  id: string
+  id: string,
+  executor: IdentityExecutor = db
 ): Promise<IdentityVerification | null> {
-  const row = await db
+  const row = await executor
     .select()
     .from(identityVerifications)
     .where(eq(identityVerifications.id, id))
@@ -398,9 +402,10 @@ export const getLatestVerification = cache(async function getLatestVerification(
 });
 
 async function getVerificationsByUserId(
-  userId: string
+  userId: string,
+  executor: IdentityExecutor = db
 ): Promise<IdentityVerification[]> {
-  return await db
+  return await executor
     .select()
     .from(identityVerifications)
     .where(eq(identityVerifications.userId, userId))
@@ -414,7 +419,8 @@ async function getVerificationsByUserId(
 
 async function selectEffectiveVerification(
   userId: string,
-  verifications: readonly IdentityVerification[]
+  verifications: readonly IdentityVerification[],
+  executor: IdentityExecutor = db
 ): Promise<IdentityVerification | null> {
   if (verifications.length === 0) {
     return null;
@@ -427,7 +433,7 @@ async function selectEffectiveVerification(
   }
 
   const [proofRows, claimRows] = await Promise.all([
-    db
+    executor
       .select({
         verificationId: proofArtifacts.verificationId,
         proofSessionId: proofArtifacts.proofSessionId,
@@ -438,7 +444,7 @@ async function selectEffectiveVerification(
       .from(proofArtifacts)
       .where(eq(proofArtifacts.userId, userId))
       .all(),
-    db
+    executor
       .select({
         verificationId: signedClaims.verificationId,
         claimType: signedClaims.claimType,
@@ -748,22 +754,29 @@ export async function updateIdentityVerificationJobStatus(args: {
     .run();
 }
 
-export async function upsertIdentityBundle(data: {
-  effectiveVerificationId?: string | null;
-  rpNullifierSeed?: string | null;
-  revokedAt?: string | null;
-  revokedBy?: string | null;
-  revokedReason?: string | null;
-  userId: string;
-  walletAddress?: string | null;
-  validityStatus?: ValidityStatus;
-  policyVersion?: string | null;
-  issuerId?: string | null;
-  attestationExpiresAt?: string | null;
-  fheKeyId?: string | null;
-  fheStatus?: FheStatus | null;
-  fheError?: string | null;
-}): Promise<void> {
+export async function upsertIdentityBundle(
+  data: {
+    attestationExpiresAt?: string | null;
+    effectiveVerificationId?: string | null;
+    fheError?: string | null;
+    fheKeyId?: string | null;
+    fheStatus?: FheStatus | null;
+    freshnessCheckedAt?: string | null;
+    issuerId?: string | null;
+    lastVerifiedAt?: string | null;
+    policyVersion?: string | null;
+    revokedAt?: string | null;
+    revokedBy?: string | null;
+    revokedReason?: string | null;
+    rpNullifierSeed?: string | null;
+    verificationExpiresAt?: string | null;
+    userId: string;
+    validityStatus?: ValidityStatus;
+    verificationCount?: number;
+    walletAddress?: string | null;
+  },
+  executor: IdentityExecutor = db
+): Promise<void> {
   const insertValues: typeof identityBundles.$inferInsert = {
     userId: data.userId,
     effectiveVerificationId: data.effectiveVerificationId ?? null,
@@ -779,6 +792,10 @@ export async function upsertIdentityBundle(data: {
     revokedAt: data.revokedAt ?? null,
     revokedBy: data.revokedBy ?? null,
     revokedReason: data.revokedReason ?? null,
+    lastVerifiedAt: data.lastVerifiedAt ?? null,
+    verificationExpiresAt: data.verificationExpiresAt ?? null,
+    freshnessCheckedAt: data.freshnessCheckedAt ?? null,
+    verificationCount: data.verificationCount ?? 0,
   };
 
   const updateSet: Record<string, unknown> = {
@@ -824,8 +841,20 @@ export async function upsertIdentityBundle(data: {
   if (data.revokedReason !== undefined) {
     updateSet.revokedReason = data.revokedReason;
   }
+  if (data.lastVerifiedAt !== undefined) {
+    updateSet.lastVerifiedAt = data.lastVerifiedAt;
+  }
+  if (data.verificationExpiresAt !== undefined) {
+    updateSet.verificationExpiresAt = data.verificationExpiresAt;
+  }
+  if (data.freshnessCheckedAt !== undefined) {
+    updateSet.freshnessCheckedAt = data.freshnessCheckedAt;
+  }
+  if (data.verificationCount !== undefined) {
+    updateSet.verificationCount = data.verificationCount;
+  }
 
-  await db
+  await executor
     .insert(identityBundles)
     .values(insertValues)
     .onConflictDoUpdate({
@@ -888,16 +917,18 @@ export async function updateIdentityBundleAttestationState(args: {
 }
 
 export async function createVerification(
-  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">
+  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">,
+  executor: IdentityExecutor = db
 ): Promise<void> {
-  await db.insert(identityVerifications).values(data).run();
+  await executor.insert(identityVerifications).values(data).run();
 }
 
 export async function upsertVerification(
-  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">
+  data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">,
+  executor: IdentityExecutor = db
 ): Promise<void> {
   const { id: _id, ...updateFields } = data;
-  await db
+  await executor
     .insert(identityVerifications)
     .values(data)
     .onConflictDoUpdate({
@@ -910,31 +941,143 @@ export async function upsertVerification(
     .run();
 }
 
-export async function reconcileIdentityBundle(userId: string): Promise<void> {
+function resolveBundleValidityStatus(args: {
+  bundle: IdentityBundle | null;
+  derivedValidityStatus: ValidityStatus;
+  nextEffectiveVerificationId: string | null;
+}): ValidityStatus {
+  const currentValidityStatus = args.bundle?.validityStatus ?? null;
+
+  if (
+    !(currentValidityStatus === "revoked" || currentValidityStatus === "stale")
+  ) {
+    return args.derivedValidityStatus;
+  }
+
+  const effectiveVerificationChanged =
+    (args.bundle?.effectiveVerificationId ?? null) !==
+    args.nextEffectiveVerificationId;
+
+  if (
+    args.derivedValidityStatus === "verified" &&
+    effectiveVerificationChanged
+  ) {
+    return "verified";
+  }
+
+  return currentValidityStatus;
+}
+
+async function markSupersededVerifications(
+  args: {
+    occurredAt: string;
+    userId: string;
+    verificationId: string;
+  },
+  executor: IdentityExecutor = db
+): Promise<void> {
+  await executor
+    .update(identityVerifications)
+    .set({
+      supersededAt: args.occurredAt,
+      supersededByVerificationId: args.verificationId,
+      updatedAt: args.occurredAt,
+    })
+    .where(
+      and(
+        eq(identityVerifications.userId, args.userId),
+        eq(identityVerifications.status, "verified"),
+        ne(identityVerifications.id, args.verificationId)
+      )
+    )
+    .run();
+
+  await executor
+    .update(identityVerifications)
+    .set({
+      supersededAt: null,
+      supersededByVerificationId: null,
+      updatedAt: args.occurredAt,
+    })
+    .where(eq(identityVerifications.id, args.verificationId))
+    .run();
+}
+
+export async function reconcileIdentityBundle(
+  userId: string,
+  executor: IdentityExecutor = db
+): Promise<{
+  changed: boolean;
+  credentialSuperseded: boolean;
+  effectiveVerification: IdentityVerification | null;
+  effectiveVerificationId: string | null;
+  verificationExpiresAt: string | null;
+  previousEffectiveVerificationId: string | null;
+  previousValidityStatus: ValidityStatus | null;
+  validityStatus: ValidityStatus;
+}> {
+  const occurredAt = new Date().toISOString();
   const [bundle, verifications] = await Promise.all([
-    loadIdentityBundleByUserId(userId),
-    getVerificationsByUserId(userId),
+    loadIdentityBundleByUserId(userId, executor),
+    getVerificationsByUserId(userId, executor),
   ]);
 
   if (!bundle && verifications.length === 0) {
-    return;
+    return {
+      changed: false,
+      credentialSuperseded: false,
+      effectiveVerification: null,
+      effectiveVerificationId: null,
+      verificationExpiresAt: null,
+      previousEffectiveVerificationId: null,
+      previousValidityStatus: null,
+      validityStatus: "pending",
+    };
   }
 
   const effectiveVerification = await selectEffectiveVerification(
     userId,
-    verifications
+    verifications,
+    executor
   );
+  const previousEffectiveVerificationId =
+    bundle?.effectiveVerificationId ?? null;
   const nextEffectiveVerificationId = effectiveVerification?.id ?? null;
   const nextRpNullifierSeed =
     bundle?.rpNullifierSeed ??
-    getInternalIdentityKey(
-      verifications.find(
-        (verification) => verification.status === "verified"
-      ) ?? null
-    ) ??
+    getInternalIdentityKey(effectiveVerification) ??
     null;
-  const nextValidityStatus =
+  const derivedValidityStatus =
     deriveBundleValidityStatusFromVerifications(verifications);
+  const nextValidityStatus = resolveBundleValidityStatus({
+    bundle,
+    derivedValidityStatus,
+    nextEffectiveVerificationId,
+  });
+  const nextLastVerifiedAt = effectiveVerification?.verifiedAt ?? null;
+  const nextVerificationExpiresAt =
+    effectiveVerification?.verifiedAt && effectiveVerification?.method
+      ? computeFreshnessDeadline({
+          method: effectiveVerification.method,
+          verifiedAt: effectiveVerification.verifiedAt,
+        })
+      : null;
+  const shouldRefreshFreshnessCheck =
+    (bundle?.effectiveVerificationId ?? null) !== nextEffectiveVerificationId ||
+    (bundle?.lastVerifiedAt ?? null) !== nextLastVerifiedAt ||
+    (bundle?.validityStatus ?? null) !== nextValidityStatus;
+  let nextFreshnessCheckedAt: string | null = null;
+  if (effectiveVerification) {
+    nextFreshnessCheckedAt = shouldRefreshFreshnessCheck
+      ? occurredAt
+      : (bundle?.freshnessCheckedAt ?? occurredAt);
+  }
+  const shouldIncrementVerificationCount =
+    Boolean(effectiveVerification?.verifiedAt) &&
+    (bundle?.lastVerifiedAt ?? null) !== nextLastVerifiedAt;
+  const nextVerificationCount = shouldIncrementVerificationCount
+    ? (bundle?.verificationCount ?? 0) + 1
+    : (bundle?.verificationCount ?? 0);
   const shouldClearRevocationMetadata =
     nextValidityStatus !== "revoked" &&
     Boolean(bundle?.revokedAt || bundle?.revokedBy || bundle?.revokedReason);
@@ -946,6 +1089,18 @@ export async function reconcileIdentityBundle(userId: string): Promise<void> {
     !bundle?.rpNullifierSeed && Boolean(nextRpNullifierSeed);
   const shouldSyncValidityStatus =
     (bundle?.validityStatus ?? null) !== nextValidityStatus;
+  const shouldSyncFreshness =
+    (bundle?.lastVerifiedAt ?? null) !== nextLastVerifiedAt ||
+    (bundle?.verificationExpiresAt ?? null) !== nextVerificationExpiresAt ||
+    (bundle?.freshnessCheckedAt ?? null) !== nextFreshnessCheckedAt;
+  const shouldSyncVerificationCount =
+    (bundle?.verificationCount ?? 0) !== nextVerificationCount;
+  const credentialSuperseded = Boolean(
+    previousEffectiveVerificationId &&
+      nextEffectiveVerificationId &&
+      previousEffectiveVerificationId !== nextEffectiveVerificationId &&
+      effectiveVerification?.status === "verified"
+  );
 
   if (
     !(
@@ -953,32 +1108,83 @@ export async function reconcileIdentityBundle(userId: string): Promise<void> {
       shouldSyncEffectiveVerification ||
       shouldSeedRpNullifier ||
       shouldSyncValidityStatus ||
+      shouldSyncFreshness ||
+      shouldSyncVerificationCount ||
       shouldClearRevocationMetadata
     )
   ) {
-    return;
+    return {
+      changed: false,
+      credentialSuperseded,
+      effectiveVerification,
+      effectiveVerificationId: nextEffectiveVerificationId,
+      verificationExpiresAt: nextVerificationExpiresAt,
+      previousEffectiveVerificationId,
+      previousValidityStatus: bundle?.validityStatus ?? null,
+      validityStatus: nextValidityStatus,
+    };
   }
 
-  await upsertIdentityBundle({
-    userId,
-    validityStatus: nextValidityStatus,
+  if (credentialSuperseded && nextEffectiveVerificationId) {
+    await markSupersededVerifications(
+      {
+        occurredAt,
+        userId,
+        verificationId: nextEffectiveVerificationId,
+      },
+      executor
+    );
+  }
+
+  await upsertIdentityBundle(
+    {
+      userId,
+      validityStatus: nextValidityStatus,
+      effectiveVerificationId: nextEffectiveVerificationId,
+      lastVerifiedAt: nextLastVerifiedAt,
+      verificationExpiresAt: nextVerificationExpiresAt,
+      freshnessCheckedAt: nextFreshnessCheckedAt,
+      verificationCount: nextVerificationCount,
+      ...(nextRpNullifierSeed ? { rpNullifierSeed: nextRpNullifierSeed } : {}),
+      ...(shouldClearRevocationMetadata
+        ? {
+            revokedAt: null,
+            revokedBy: null,
+            revokedReason: null,
+          }
+        : {}),
+    },
+    executor
+  );
+
+  return {
+    changed: true,
+    credentialSuperseded,
+    effectiveVerification,
     effectiveVerificationId: nextEffectiveVerificationId,
-    ...(nextRpNullifierSeed ? { rpNullifierSeed: nextRpNullifierSeed } : {}),
-    ...(shouldClearRevocationMetadata
-      ? {
-          revokedAt: null,
-          revokedBy: null,
-          revokedReason: null,
-        }
-      : {}),
-  });
+    verificationExpiresAt: nextVerificationExpiresAt,
+    previousEffectiveVerificationId,
+    previousValidityStatus: bundle?.validityStatus ?? null,
+    validityStatus: nextValidityStatus,
+  };
 }
 
 export const getRpNullifierSeed = cache(async function getRpNullifierSeed(
   userId: string
 ): Promise<string | null> {
   const bundle = await getIdentityBundleByUserId(userId);
-  return bundle?.rpNullifierSeed ?? null;
+  if (bundle?.rpNullifierSeed) {
+    return bundle.rpNullifierSeed;
+  }
+
+  const verifications = await getVerificationsByUserId(userId);
+  return (
+    getInternalIdentityKey(
+      verifications.find(
+        (verification) => verification.status === "verified"
+      ) ?? null
+    ) ?? null
+  );
 });
 
 /**
@@ -1073,7 +1279,7 @@ export async function revokeIdentity(
     }
 
     if (shouldRecordRevocation || verificationResult.rowsAffected > 0) {
-      const event = await applyValidityTransition({
+      const { event, deliveries } = await recordValidityTransition({
         executor: tx,
         userId,
         verificationId: currentBundle?.effectiveVerificationId ?? null,
@@ -1090,7 +1296,6 @@ export async function revokeIdentity(
         },
       });
       eventId = event.id;
-      const deliveries = await scheduleIdentityValidityDeliveries(event.id, tx);
       scheduledDeliveries = deliveries.length;
     }
   });

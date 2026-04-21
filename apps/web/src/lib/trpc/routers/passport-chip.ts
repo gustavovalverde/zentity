@@ -10,6 +10,7 @@ import { z } from "zod";
 import { env } from "@/env";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
+import { db } from "@/lib/db/connection";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   createVerification,
@@ -25,7 +26,7 @@ import {
   insertProofArtifact,
   insertSignedClaim,
 } from "@/lib/db/queries/privacy";
-import { applyValidityTransition } from "@/lib/identity/validity/transition";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import {
   calculateBirthYearOffsetFromYear,
   dobToDaysSince1900,
@@ -202,108 +203,123 @@ export const passportChipRouter = router({
         : crypto.randomUUID();
 
       if (!isReVerifyForVault) {
-        await createVerification({
-          id: verificationId,
-          userId,
-          method: "nfc_chip",
-          status: "verified",
-          documentType: documentType ?? null,
-          issuerCountry: issuingCountry ?? null,
-          nameCommitment,
-          dobCommitment,
-          nationalityCommitment,
-          livenessScore: 1.0,
-          birthYearOffset:
-            calculateBirthYearOffsetFromYear(
-              parseBirthYearFromDob(birthdate)
-            ) ?? null,
-          dedupKey,
-          uniqueIdentifier,
-          verifiedAt: now,
-        });
-      }
+        await db.transaction(async (tx) => {
+          await createVerification(
+            {
+              id: verificationId,
+              userId,
+              method: "nfc_chip",
+              status: "verified",
+              documentType: documentType ?? null,
+              issuerCountry: issuingCountry ?? null,
+              nameCommitment,
+              dobCommitment,
+              nationalityCommitment,
+              livenessScore: 1.0,
+              birthYearOffset:
+                calculateBirthYearOffsetFromYear(
+                  parseBirthYearFromDob(birthdate)
+                ) ?? null,
+              dedupKey,
+              uniqueIdentifier,
+              verifiedAt: now,
+            },
+            tx
+          );
 
-      if (!isReVerifyForVault) {
-        // Store signed claim for chip verification results (tamper-evident)
-        const chipClaimPayload = {
-          type: "chip_verification" as const,
-          userId,
-          version: 1,
-          issuedAt: now,
-          policyVersion: POLICY_VERSION,
-          data: {
-            ageVerified,
-            sanctionsCleared,
-            faceMatchPassed: faceMatchPassed ?? false,
-            livenessScore: 1.0,
-            hasNationality: Boolean(nationalityCommitment),
-            hasName: Boolean(nameCommitment),
-            hasDob: Boolean(dobCommitment),
-          },
-        };
-        const chipClaimSignature = await signAttestationClaim(chipClaimPayload);
-        await insertSignedClaim({
-          id: crypto.randomUUID(),
-          userId,
-          verificationId,
-          claimType: "chip_verification",
-          claimPayload: JSON.stringify(chipClaimPayload),
-          signature: chipClaimSignature,
-          issuedAt: now,
-        });
+          // Store signed claim for chip verification results (tamper-evident)
+          const chipClaimPayload = {
+            type: "chip_verification" as const,
+            userId,
+            version: 1,
+            issuedAt: now,
+            policyVersion: POLICY_VERSION,
+            data: {
+              ageVerified,
+              sanctionsCleared,
+              faceMatchPassed: faceMatchPassed ?? false,
+              livenessScore: 1.0,
+              hasNationality: Boolean(nationalityCommitment),
+              hasName: Boolean(nameCommitment),
+              hasDob: Boolean(dobCommitment),
+            },
+          };
+          const chipClaimSignature =
+            await signAttestationClaim(chipClaimPayload);
+          await insertSignedClaim(
+            {
+              id: crypto.randomUUID(),
+              userId,
+              verificationId,
+              claimType: "chip_verification",
+              claimPayload: JSON.stringify(chipClaimPayload),
+              signature: chipClaimSignature,
+              issuedAt: now,
+            },
+            tx
+          );
 
-        // Store each ZKPassport proof in proof_artifacts
-        const proofHashes: string[] = [];
-        const proofs = input.proofs as ProofResult[];
-        for (const proofResult of proofs) {
-          const proofPayload = proofResult.proof ?? "";
-          const proofHash = crypto
-            .createHash("sha256")
-            .update(proofPayload)
-            .digest("hex");
-          proofHashes.push(proofHash);
+          // Store each ZKPassport proof in proof_artifacts
+          const proofHashes: string[] = [];
+          const proofs = input.proofs as ProofResult[];
+          for (const proofResult of proofs) {
+            const proofPayload = proofResult.proof ?? "";
+            const proofHash = crypto
+              .createHash("sha256")
+              .update(proofPayload)
+              .digest("hex");
+            proofHashes.push(proofHash);
 
-          await insertProofArtifact({
-            id: crypto.randomUUID(),
+            await insertProofArtifact(
+              {
+                id: crypto.randomUUID(),
+                userId,
+                verificationId,
+                proofSystem: "zkpassport",
+                proofType: proofResult.name ?? "zkpassport",
+                proofHash,
+                proofPayload,
+                verified: true,
+                policyVersion: POLICY_VERSION,
+                metadata: JSON.stringify({
+                  vkeyHash: proofResult.vkeyHash,
+                  version: proofResult.version,
+                  requestId: input.requestId,
+                }),
+              },
+              tx
+            );
+          }
+
+          if (proofHashes.length > 0) {
+            const proofSetHash = computeProofSetHash({
+              proofHashes,
+              policyHash: POLICY_HASH,
+            });
+            await upsertAttestationEvidence(
+              {
+                userId,
+                verificationId,
+                policyVersion: POLICY_VERSION,
+                policyHash: POLICY_HASH,
+                proofSetHash,
+              },
+              tx
+            );
+          }
+
+          await materializeVerificationChecks(userId, verificationId, tx);
+          const reconcileResult = await reconcileIdentityBundle(userId, tx);
+          await recordValidityTransition({
+            executor: tx,
             userId,
             verificationId,
-            proofSystem: "zkpassport",
-            proofType: proofResult.name ?? "zkpassport",
-            proofHash,
-            proofPayload,
-            verified: true,
-            policyVersion: POLICY_VERSION,
-            metadata: JSON.stringify({
-              vkeyHash: proofResult.vkeyHash,
-              version: proofResult.version,
-              requestId: input.requestId,
-            }),
+            eventKind: reconcileResult.credentialSuperseded
+              ? "superseded"
+              : "verified",
+            source: "system",
+            occurredAt: now,
           });
-        }
-
-        // Compute proofSetHash and upsert attestation evidence
-        if (proofHashes.length > 0) {
-          const proofSetHash = computeProofSetHash({
-            proofHashes,
-            policyHash: POLICY_HASH,
-          });
-          await upsertAttestationEvidence({
-            userId,
-            verificationId,
-            policyVersion: POLICY_VERSION,
-            policyHash: POLICY_HASH,
-            proofSetHash,
-          });
-        }
-
-        await materializeVerificationChecks(userId, verificationId);
-        await reconcileIdentityBundle(userId);
-        await applyValidityTransition({
-          userId,
-          verificationId,
-          eventKind: "verified",
-          source: "system",
-          occurredAt: now,
         });
 
         // Convert DOB to dobDays for FHE encryption

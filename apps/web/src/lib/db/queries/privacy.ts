@@ -23,6 +23,8 @@ import {
   signedClaims,
 } from "../schema/privacy";
 
+type PrivacyExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
 interface ProofArtifactInsert {
   generationTimeMs?: number | null | undefined;
   id: string;
@@ -255,9 +257,10 @@ export async function deleteSecretWrapper(
 }
 
 export async function createProofSession(
-  data: ProofSessionInsert
+  data: ProofSessionInsert,
+  executor: PrivacyExecutor = db
 ): Promise<void> {
-  await db
+  await executor
     .insert(proofSessions)
     .values({
       id: data.id,
@@ -285,8 +288,11 @@ export async function getProofSessionById(
   return row ?? null;
 }
 
-export async function closeProofSession(id: string): Promise<void> {
-  await db
+export async function closeProofSession(
+  id: string,
+  executor: PrivacyExecutor = db
+): Promise<void> {
+  await executor
     .update(proofSessions)
     .set({
       closedAt: Date.now(),
@@ -319,9 +325,10 @@ export async function getProofTypesByUserAndVerification(
 export async function getProofTypesByUserVerificationAndSession(
   userId: string,
   verificationId: string,
-  proofSessionId: string
+  proofSessionId: string,
+  executor: PrivacyExecutor = db
 ): Promise<string[]> {
-  const rows = await db
+  const rows = await executor
     .select({ proofType: proofArtifacts.proofType })
     .from(proofArtifacts)
     .where(
@@ -439,9 +446,10 @@ export async function getSignedClaimTypesByUserAndVerification(
 export async function getProofHashesByUserVerificationAndSession(
   userId: string,
   verificationId: string,
-  proofSessionId: string
+  proofSessionId: string,
+  executor: PrivacyExecutor = db
 ): Promise<string[]> {
-  const rows = await db
+  const rows = await executor
     .select({ proofHash: proofArtifacts.proofHash })
     .from(proofArtifacts)
     .where(
@@ -459,9 +467,10 @@ export async function getProofHashesByUserVerificationAndSession(
 }
 
 export async function insertProofArtifact(
-  data: ProofArtifactInsert
+  data: ProofArtifactInsert,
+  executor: PrivacyExecutor = db
 ): Promise<void> {
-  await db
+  await executor
     .insert(proofArtifacts)
     .values({
       id: data.id,
@@ -506,9 +515,10 @@ export async function insertEncryptedAttribute(
 }
 
 export async function insertSignedClaim(
-  data: Omit<SignedClaimRecord, "createdAt">
+  data: Omit<SignedClaimRecord, "createdAt">,
+  executor: PrivacyExecutor = db
 ): Promise<void> {
-  await db
+  await executor
     .insert(signedClaims)
     .values({
       id: data.id,
@@ -535,9 +545,10 @@ export async function getUserBaseCommitments(
 export async function getLatestSignedClaimByUserTypeAndVerification(
   userId: string,
   claimType: string,
-  verificationId: string
+  verificationId: string,
+  executor: PrivacyExecutor = db
 ): Promise<SignedClaimRecord | null> {
-  const row = await db
+  const row = await executor
     .select()
     .from(signedClaims)
     .where(

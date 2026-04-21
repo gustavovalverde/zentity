@@ -59,6 +59,14 @@ const VERIFICATION_LEVEL_LABELS = {
   basic: "Partially Verified",
 } as const;
 
+const VALIDITY_STATUS_LABELS = {
+  pending: "Pending",
+  verified: "Current",
+  failed: "Failed",
+  revoked: "Revoked",
+  stale: "Expired",
+} as const;
+
 const CREDENTIAL_METHOD_LABELS = {
   ocr: "Document OCR",
   nfc_chip: "Passport Chip",
@@ -105,6 +113,20 @@ function getCredentialMethodLabel(method: string): string {
     CREDENTIAL_METHOD_LABELS[method as keyof typeof CREDENTIAL_METHOD_LABELS] ??
     method
   );
+}
+
+function getValidityBadgeVariant(
+  validityStatus: "pending" | "verified" | "failed" | "revoked" | "stale"
+): "success" | "warning" | "outline" {
+  if (validityStatus === "verified") {
+    return "success";
+  }
+
+  if (validityStatus === "stale") {
+    return "warning";
+  }
+
+  return "outline";
 }
 
 export function UserDataSection() {
@@ -239,8 +261,28 @@ export function UserDataSection() {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="font-medium text-sm">Verification Status</p>
-            <VerificationLevelBadge level={data.verification.level} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant={getValidityBadgeVariant(
+                  data.verification.validityStatus
+                )}
+              >
+                {
+                  VALIDITY_STATUS_LABELS[
+                    data.verification
+                      .validityStatus as keyof typeof VALIDITY_STATUS_LABELS
+                  ]
+                }
+              </Badge>
+              <VerificationLevelBadge level={data.verification.level} />
+            </div>
           </div>
+          {data.verification.verificationExpiresAt ? (
+            <p className="text-muted-foreground text-xs">
+              Verification expires{" "}
+              {formatDate(data.verification.verificationExpiresAt)}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <VerificationBadge
               label="Document"

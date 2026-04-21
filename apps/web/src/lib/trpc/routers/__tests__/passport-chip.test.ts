@@ -18,7 +18,7 @@ const mockInsertProofArtifact = vi.fn();
 const mockSignAttestationClaim = vi.fn();
 const mockUpsertAttestationEvidence = vi.fn();
 const mockMaterializeVerificationChecks = vi.fn();
-const mockApplyValidityTransition = vi.fn();
+const mockRecordValidityTransition = vi.fn();
 const mockLoggerWarn = vi.fn();
 
 // --- Module mocks ---
@@ -74,8 +74,8 @@ vi.mock("@/lib/identity/verification/materialize", () => ({
 }));
 
 vi.mock("@/lib/identity/validity/transition", () => ({
-  applyValidityTransition: (...args: unknown[]) =>
-    mockApplyValidityTransition(...args),
+  recordValidityTransition: (...args: unknown[]) =>
+    mockRecordValidityTransition(...args),
 }));
 
 vi.mock("@/lib/logging/logger", () => {
@@ -191,8 +191,17 @@ describe("passportChip.submitResult", () => {
     mockDedupKeyExistsForOtherUser.mockResolvedValue(false);
     mockHasProfileSecret.mockResolvedValue(true);
     mockCreateVerification.mockImplementation((data) => data);
-    mockReconcileIdentityBundle.mockResolvedValue(undefined);
-    mockApplyValidityTransition.mockResolvedValue(undefined);
+    mockReconcileIdentityBundle.mockResolvedValue({
+      changed: true,
+      credentialSuperseded: false,
+      effectiveVerification: null,
+      effectiveVerificationId: "verification-id",
+      verificationExpiresAt: null,
+      previousEffectiveVerificationId: null,
+      previousValidityStatus: "pending",
+      validityStatus: "verified",
+    });
+    mockRecordValidityTransition.mockResolvedValue(undefined);
     mockScheduleFheEncryption.mockReturnValue(undefined);
     mockLoggerWarn.mockReset();
   });
@@ -362,7 +371,8 @@ describe("passportChip.submitResult", () => {
       authedSession.user.id
     );
     expect(mockCreateVerification).toHaveBeenCalledWith(
-      expect.objectContaining({ uniqueIdentifier: verifiedNullifier })
+      expect.objectContaining({ uniqueIdentifier: verifiedNullifier }),
+      expect.anything()
     );
   });
 
@@ -384,7 +394,8 @@ describe("passportChip.submitResult", () => {
         documentType: "passport",
         issuerCountry: "USA",
         livenessScore: 1.0,
-      })
+      }),
+      expect.anything()
     );
 
     // Commitments are SHA-256 hashes, not raw PII
@@ -402,7 +413,8 @@ describe("passportChip.submitResult", () => {
       expect.objectContaining({
         userId: "user-123",
         method: "nfc_chip",
-      })
+      }),
+      expect.anything()
     );
   });
 
@@ -501,7 +513,8 @@ describe("passportChip.submitResult", () => {
         nameCommitment: null,
         dobCommitment: null,
         nationalityCommitment: null,
-      })
+      }),
+      expect.anything()
     );
     const claimPayload = JSON.parse(
       mockInsertSignedClaim.mock.calls[0]?.[0].claimPayload

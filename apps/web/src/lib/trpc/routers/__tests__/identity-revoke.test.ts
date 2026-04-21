@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockRevokeAccountIdentity = vi.fn();
 const mockGetAccountIdentity = vi.fn();
 const mockGetVerificationReadModel = vi.fn();
-const mockGetValidityReadModel = vi.fn();
+const mockGetIdentityValidityOverview = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -22,8 +22,8 @@ vi.mock("@/lib/identity/validity/read-model", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/identity/validity/read-model")>();
   return {
     ...actual,
-    getValidityReadModel: (...args: unknown[]) =>
-      mockGetValidityReadModel(...args),
+    getIdentityValidityOverview: (...args: unknown[]) =>
+      mockGetIdentityValidityOverview(...args),
   };
 });
 
@@ -128,9 +128,10 @@ describe("revoke procedures", () => {
         ],
       },
     });
-    mockGetValidityReadModel.mockResolvedValue({
+    mockGetIdentityValidityOverview.mockResolvedValue({
       snapshot: {
         validityStatus: "verified",
+        verificationExpiresAt: null,
         revokedAt: null,
         revokedBy: null,
         revokedReason: null,
@@ -339,7 +340,9 @@ describe("revoke procedures", () => {
       });
       expect(mockGetAccountIdentity).toHaveBeenCalledWith("target-user");
       expect(mockGetVerificationReadModel).toHaveBeenCalledWith("target-user");
-      expect(mockGetValidityReadModel).toHaveBeenCalledWith("target-user");
+      expect(mockGetIdentityValidityOverview).toHaveBeenCalledWith(
+        "target-user"
+      );
     });
 
     it("rejects non-admin user with FORBIDDEN", async () => {

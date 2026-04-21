@@ -27,6 +27,7 @@ const mockInsertProofArtifact = vi.fn();
 const mockUpsertAttestationEvidence = vi.fn();
 const mockMaterializeVerificationChecks = vi.fn();
 const mockScheduleFheEncryption = vi.fn();
+const mockRecordValidityTransition = vi.fn();
 
 vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
   const actual =
@@ -115,6 +116,11 @@ vi.mock("@/lib/privacy/fhe/encryption", async (importOriginal) => {
       mockScheduleFheEncryption(...args),
   };
 });
+
+vi.mock("@/lib/identity/validity/transition", () => ({
+  recordValidityTransition: (...args: unknown[]) =>
+    mockRecordValidityTransition(...args),
+}));
 
 const authedUserSession = {
   user: { id: "user-123", twoFactorEnabled: true },
@@ -253,7 +259,17 @@ describe("proof router replay and context binding", () => {
     mockCreateProofSession.mockResolvedValue(undefined);
     mockGetUserBaseCommitments.mockResolvedValue([baseCommitment]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
-    mockReconcileIdentityBundle.mockResolvedValue(undefined);
+    mockReconcileIdentityBundle.mockResolvedValue({
+      changed: false,
+      credentialSuperseded: false,
+      effectiveVerification: null,
+      effectiveVerificationId: "ver-1",
+      verificationExpiresAt: null,
+      previousEffectiveVerificationId: "ver-1",
+      previousValidityStatus: "verified",
+      validityStatus: "verified",
+    });
+    mockRecordValidityTransition.mockResolvedValue(undefined);
     mockGetComplianceStatus.mockResolvedValue({
       verified: true,
     });
@@ -678,9 +694,13 @@ describe("proof router replay and context binding", () => {
 
     expect(mockMaterializeVerificationChecks).toHaveBeenCalledWith(
       "user-123",
-      "ver-2"
+      "ver-2",
+      expect.anything()
     );
-    expect(mockReconcileIdentityBundle).toHaveBeenCalledWith("user-123");
+    expect(mockReconcileIdentityBundle).toHaveBeenCalledWith(
+      "user-123",
+      expect.anything()
+    );
     expect(mockGetComplianceStatus).toHaveBeenCalledWith("user-123");
     const reconcileCallOrder =
       mockReconcileIdentityBundle.mock.invocationCallOrder[0];

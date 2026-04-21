@@ -6,8 +6,8 @@ import {
   createVerification,
   reconcileIdentityBundle,
 } from "@/lib/db/queries/identity";
-import { getValidityReadModel } from "@/lib/identity/validity/read-model";
-import { applyValidityTransition } from "@/lib/identity/validity/transition";
+import { getIdentityValidityOverview } from "@/lib/identity/validity/read-model";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("validity read model", () => {
@@ -28,7 +28,7 @@ describe("validity read model", () => {
       verifiedAt: "2026-04-20T12:00:00Z",
     });
     await reconcileIdentityBundle(userId);
-    await applyValidityTransition({
+    await recordValidityTransition({
       userId,
       verificationId,
       eventKind: "verified",
@@ -36,7 +36,7 @@ describe("validity read model", () => {
       occurredAt: "2026-04-20T12:00:01Z",
     });
 
-    const model = await getValidityReadModel(userId);
+    const model = await getIdentityValidityOverview(userId);
 
     expect(model.snapshot?.validityStatus).toBe("verified");
     expect(model.latestEvent).toEqual(
@@ -79,7 +79,7 @@ describe("validity read model", () => {
       documentHash: "hash-failed-secondary",
     });
     await reconcileIdentityBundle(userId);
-    await applyValidityTransition({
+    await recordValidityTransition({
       userId,
       verificationId: failedVerificationId,
       eventKind: "failed",
@@ -88,7 +88,7 @@ describe("validity read model", () => {
       reason: "ocr_confidence_too_low",
     });
 
-    const model = await getValidityReadModel(userId);
+    const model = await getIdentityValidityOverview(userId);
 
     expect(model.snapshot?.validityStatus).toBe("verified");
     expect(model.latestEvent).toEqual(

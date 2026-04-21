@@ -27,6 +27,7 @@ import {
   POLICY_VERSION,
 } from "@/lib/blockchain/attestation/policy";
 import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
+import { db } from "@/lib/db/connection";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   getAccountIdentity,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/db/queries/privacy";
 import { resolveAudience } from "@/lib/http/url-safety";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
+import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import {
   getTodayDobDays,
   minAgeYearsToDays,
@@ -1035,71 +1037,97 @@ const storeProofProcedure = protectedProcedure
       policyVersion: POLICY_VERSION,
     });
 
-    await withSpan(
-      "db.insert_proof_artifact",
-      { "proof.circuit_type": input.circuitType },
-      () =>
-        insertProofArtifact({
-          id: proofId,
-          userId: ctx.userId,
-          verificationId,
-          proofSessionId: input.proofSessionId,
-          proofSystem: "noir_ultrahonk",
-          proofType: input.circuitType,
-          proofHash,
-          proofPayload: input.proof,
-          publicInputs: JSON.stringify(input.publicSignals),
-          generationTimeMs: input.generationTimeMs,
-          nonce: nonceHex,
-          policyVersion: POLICY_VERSION,
-          metadata: JSON.stringify({
-            circuitType: result.circuitType,
-            noirVersion: result.noirVersion,
-            circuitHash: result.circuitHash,
-            verificationKeyHash: result.verificationKeyHash,
-            verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
-            bbVersion: result.bbVersion,
-            ...(input.circuitType === "age_verification"
-              ? { isOver18: true }
-              : {}),
-          }),
-          verified: true,
-        })
-    );
+    await db.transaction(async (tx) => {
+      await withSpan(
+        "db.insert_proof_artifact",
+        { "proof.circuit_type": input.circuitType },
+        () =>
+          insertProofArtifact(
+            {
+              id: proofId,
+              userId: ctx.userId,
+              verificationId,
+              proofSessionId: input.proofSessionId,
+              proofSystem: "noir_ultrahonk",
+              proofType: input.circuitType,
+              proofHash,
+              proofPayload: input.proof,
+              publicInputs: JSON.stringify(input.publicSignals),
+              generationTimeMs: input.generationTimeMs,
+              nonce: nonceHex,
+              policyVersion: POLICY_VERSION,
+              metadata: JSON.stringify({
+                circuitType: result.circuitType,
+                noirVersion: result.noirVersion,
+                circuitHash: result.circuitHash,
+                verificationKeyHash: result.verificationKeyHash,
+                verificationKeyPoseidonHash: result.verificationKeyPoseidonHash,
+                bbVersion: result.bbVersion,
+                ...(input.circuitType === "age_verification"
+                  ? { isOver18: true }
+                  : {}),
+              }),
+              verified: true,
+            },
+            tx
+          )
+      );
 
-    const proofHashes = await getProofHashesByUserVerificationAndSession(
-      ctx.userId,
-      verificationId,
-      input.proofSessionId
-    );
-    const proofSetHash = computeProofSetHash({
-      proofHashes,
-      policyHash: POLICY_HASH,
-    });
-    await withSpan("db.upsert_attestation_evidence", {}, () =>
-      upsertAttestationEvidence({
-        userId: ctx.userId,
+      const proofHashes = await getProofHashesByUserVerificationAndSession(
+        ctx.userId,
         verificationId,
-        policyVersion: POLICY_VERSION,
+        input.proofSessionId,
+        tx
+      );
+      const proofSetHash = computeProofSetHash({
+        proofHashes,
         policyHash: POLICY_HASH,
-        proofSetHash,
-      })
-    );
+      });
+      await withSpan("db.upsert_attestation_evidence", {}, () =>
+        upsertAttestationEvidence(
+          {
+            userId: ctx.userId,
+            verificationId,
+            policyVersion: POLICY_VERSION,
+            policyHash: POLICY_HASH,
+            proofSetHash,
+          },
+          tx
+        )
+      );
 
-    const sessionProofTypes = await getProofTypesByUserVerificationAndSession(
-      ctx.userId,
-      verificationId,
-      input.proofSessionId
-    );
-    const sessionComplete = REQUIRED_SESSION_PROOFS.every((proofType) =>
-      sessionProofTypes.includes(proofType)
-    );
-    if (sessionComplete) {
-      await closeProofSession(input.proofSessionId);
-    }
+      const sessionProofTypes = await getProofTypesByUserVerificationAndSession(
+        ctx.userId,
+        verificationId,
+        input.proofSessionId,
+        tx
+      );
+      const sessionComplete = REQUIRED_SESSION_PROOFS.every((proofType) =>
+        sessionProofTypes.includes(proofType)
+      );
+      if (sessionComplete) {
+        await closeProofSession(input.proofSessionId, tx);
+      }
 
-    await materializeVerificationChecks(ctx.userId, verificationId);
-    await reconcileIdentityBundle(ctx.userId);
+      await materializeVerificationChecks(ctx.userId, verificationId, tx);
+      const reconcileResult = await reconcileIdentityBundle(ctx.userId, tx);
+
+      if (
+        reconcileResult.changed &&
+        reconcileResult.validityStatus === "verified"
+      ) {
+        await recordValidityTransition({
+          executor: tx,
+          userId: ctx.userId,
+          verificationId:
+            reconcileResult.effectiveVerificationId ?? verificationId,
+          eventKind: reconcileResult.credentialSuperseded
+            ? "superseded"
+            : "verified",
+          source: "system",
+        });
+      }
+    });
 
     const verificationStatus = await getComplianceStatus(ctx.userId);
     if (verificationStatus.verified) {

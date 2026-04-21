@@ -49,6 +49,8 @@ export interface GroupedIdentityCredential {
   isEffective: boolean;
   method: "ocr" | "nfc_chip";
   status: "pending" | "verified" | "failed" | "revoked";
+  supersededAt?: string | null;
+  supersededByVerificationId?: string | null;
   verifiedAt: string | null;
 }
 
@@ -58,7 +60,9 @@ export interface VerificationReadModel {
     fheKeyId: string | null;
     policyVersion: string | null;
     attestationExpiresAt: string | null;
+    verificationExpiresAt: string | null;
     updatedAt: string | null;
+    validityStatus: "pending" | "verified" | "failed" | "revoked" | "stale";
   };
 
   checks: VerificationCheck[];
@@ -278,7 +282,23 @@ function buildBundle(bundle: BundleData) {
     fheKeyId: bundle?.fheKeyId ?? null,
     policyVersion: bundle?.policyVersion ?? null,
     attestationExpiresAt: bundle?.attestationExpiresAt ?? null,
+    verificationExpiresAt: bundle?.verificationExpiresAt ?? null,
     updatedAt: bundle?.updatedAt ?? null,
+    validityStatus: bundle?.validityStatus ?? "pending",
+  };
+}
+
+function applyBundleValidityToCompliance(
+  compliance: VerificationReadModel["compliance"],
+  bundle: BundleData
+): VerificationReadModel["compliance"] {
+  if (!bundle || bundle.validityStatus === "verified") {
+    return compliance;
+  }
+
+  return {
+    ...compliance,
+    verified: false,
   };
 }
 
@@ -324,6 +344,8 @@ function buildGroupedIdentity(
       credentialId: credential.id,
       method: credential.method,
       status: credential.status,
+      supersededAt: credential.supersededAt ?? null,
+      supersededByVerificationId: credential.supersededByVerificationId ?? null,
       verifiedAt: credential.verifiedAt ?? null,
       isEffective: credential.id === effectiveVerificationId,
     })),
@@ -379,10 +401,13 @@ export const getVerificationReadModel = cache(
       reprocessPromise,
     ]);
 
-    const compliance = deriveComplianceFromChecks(
-      checks,
-      method,
-      verification.birthYearOffset ?? null
+    const compliance = applyBundleValidityToCompliance(
+      deriveComplianceFromChecks(
+        checks,
+        method,
+        verification.birthYearOffset ?? null
+      ),
+      bundle
     );
 
     return {

@@ -42,6 +42,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
 | `GET /api/auth/oauth2/userinfo` | OIDC Core | Scope-filtered verified claims + identity PII (sole PII delivery endpoint) |
+| `GET /api/auth/oauth2/validity` | (custom) | RP pull endpoint for current identity-validity state of the authenticated pairwise subject |
 | `GET /api/auth/oauth2/end-session` | OIDC Session | Session logout |
 
 ### Client management
@@ -64,6 +65,13 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
 | `POST /api/ciba/push/subscribe` | Register browser push subscription for CIBA notifications |
 | `POST /api/ciba/push/unsubscribe` | Remove push subscription |
+
+### Internal validity operations
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/internal/validity/chain` | Admin-key trigger for chain revocation ingress |
+| `POST /api/internal/validity/freshness` | Admin-key trigger for scheduled freshness evaluation |
 
 ---
 
@@ -379,6 +387,8 @@ Scopes cluster into four families with distinct privacy properties. The full con
 
 Non-PII boolean verification flags, generally delivered via id_token and userinfo. `proof:sybil` is the exception: it is access-token-only.
 
+Proof claims are projected from the account identity snapshot. The issuer reads `identity_bundles` for validity state and `effectiveVerificationId`, then projects claims from the authoritative credential history row referenced by that snapshot.
+
 | Scope | Claims |
 | --- | --- |
 | `proof:identity` | All verification claims (umbrella, expanded at consent) |
@@ -390,6 +400,8 @@ Non-PII boolean verification flags, generally delivered via id_token and userinf
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
 | `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (access tokens only) |
+
+`proof:sybil` derives from the bundle-owned `rpNullifierSeed`. Verification finalization seeds `rpNullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, rpNullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions and resets it only after full identity revocation.
 
 ### Identity scopes (`identity.*`)
 
@@ -471,6 +483,17 @@ Identity scopes are never persisted in consent records. The consent page reappea
 | `identity.*` scopes | OAuth 2.1 custom scopes | userinfo only (PII never in id_token) |
 | `verified_claims` parameter | OIDC for Identity Assurance | userinfo |
 | SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
+
+## Identity Validity Transport
+
+Relying parties integrate two different post-authorization signals:
+
+- **Back-channel logout** ends sessions.
+- **Validity notice** reports that the underlying identity evidence changed.
+
+Push delivery uses a compact JWS POSTed to the registered `rp_validity_notice_uri`. Pull recovery uses `GET /api/auth/oauth2/validity` with the RP's DPoP-bound access token. The issuer resolves the caller's pairwise subject from the authenticated token and returns the latest immutable validity event plus the current snapshot status.
+
+This matters because revocation, freshness, and re-verification are not the same thing. A user can be `stale` without being `revoked`, and a newer credential can supersede an older one without ending the session immediately. The validity transport gives RPs one explicit way to learn about those claim-level changes without overloading session semantics.
 
 ---
 

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  foreignKey,
   index,
   integer,
   real,
@@ -48,6 +49,7 @@ export const validityEventKindEnum = [
   "failed",
   "revoked",
   "stale",
+  "superseded",
 ] as const;
 
 export type ValidityEventKind = (typeof validityEventKindEnum)[number];
@@ -57,6 +59,7 @@ export const validityDeliveryTargetEnum = [
   "ciba_request_cancellation",
   "backchannel_logout",
   "blockchain_attestation_revocation",
+  "rp_validity_notice",
 ] as const;
 
 export type ValidityDeliveryTarget =
@@ -153,7 +156,8 @@ export const identityBundles = sqliteTable(
 
     // Re-verification tracking
     lastVerifiedAt: text("last_verified_at"),
-    nextVerificationDue: text("next_verification_due"),
+    verificationExpiresAt: text("verification_expires_at"),
+    freshnessCheckedAt: text("freshness_checked_at"),
     verificationCount: integer("verification_count").default(0),
 
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
@@ -184,6 +188,9 @@ export const identityValidityEvents = sqliteTable(
     source: text("source", {
       enum: validityTransitionSourceEnum,
     }).notNull(),
+    sourceEventId: text("source_event_id"),
+    sourceNetwork: text("source_network"),
+    sourceBlockNumber: integer("source_block_number"),
     triggeredBy: text("triggered_by"),
     reason: text("reason"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
@@ -196,6 +203,33 @@ export const identityValidityEvents = sqliteTable(
     index("idx_identity_validity_events_verification_created_at").on(
       table.verificationId,
       table.createdAt
+    ),
+    uniqueIndex("identity_validity_events_source_event_unique").on(
+      table.source,
+      table.sourceNetwork,
+      table.sourceEventId
+    ),
+  ]
+);
+
+export const identityValiditySourceCursors = sqliteTable(
+  "identity_validity_source_cursors",
+  {
+    id: text("id").primaryKey(),
+    source: text("source", {
+      enum: validityTransitionSourceEnum,
+    }).notNull(),
+    network: text("network").notNull(),
+    cursor: text("cursor"),
+    lastSeenBlockNumber: integer("last_seen_block_number"),
+    lastSeenBlockHash: text("last_seen_block_hash"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("identity_validity_source_cursors_source_network_unique").on(
+      table.source,
+      table.network
     ),
   ]
 );
@@ -260,6 +294,8 @@ export const identityVerifications = sqliteTable(
     status: text("status", { enum: verificationStatusEnum })
       .notNull()
       .default("pending"),
+    supersededAt: text("superseded_at"),
+    supersededByVerificationId: text("superseded_by_verification_id"),
     documentType: text("document_type"),
     issuerCountry: text("issuer_country"),
     documentHash: text("document_hash"),
@@ -282,6 +318,11 @@ export const identityVerifications = sqliteTable(
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
+    foreignKey({
+      columns: [table.supersededByVerificationId],
+      foreignColumns: [table.id],
+      name: "identity_verifications_superseded_by_fk",
+    }).onDelete("set null"),
     index("idx_identity_verifications_user_id").on(table.userId),
     index("idx_identity_verifications_doc_hash").on(table.documentHash),
     index("idx_identity_verifications_dedup_key").on(table.dedupKey),
@@ -363,6 +404,11 @@ export type NewIdentityBundle = typeof identityBundles.$inferInsert;
 export type IdentityValidityEvent = typeof identityValidityEvents.$inferSelect;
 export type NewIdentityValidityEvent =
   typeof identityValidityEvents.$inferInsert;
+
+export type IdentityValiditySourceCursor =
+  typeof identityValiditySourceCursors.$inferSelect;
+export type NewIdentityValiditySourceCursor =
+  typeof identityValiditySourceCursors.$inferInsert;
 
 export type IdentityValidityDelivery =
   typeof identityValidityDeliveries.$inferSelect;

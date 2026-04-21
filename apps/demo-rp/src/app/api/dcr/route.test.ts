@@ -25,7 +25,7 @@ describe("/api/dcr POST", () => {
   });
 
   it("registers a client and persists the client_id", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ client_id: "client-123" }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -51,6 +51,23 @@ describe("/api/dcr POST", () => {
         "http://localhost:3102/api/auth/oauth2/callback/zentity-bank",
     });
     expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith("bank", "client-123");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3000/api/auth/oauth2/register",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+    const [, requestInit] = fetchMock.mock.calls[0] ?? [];
+    const requestBody = JSON.parse(
+      ((requestInit as RequestInit | undefined)?.body as string) ?? "{}"
+    );
+    expect(requestBody).toMatchObject({
+      backchannel_logout_uri:
+        "http://localhost:3102/api/auth/backchannel-logout",
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+    });
   });
 
   it("returns JSON when local persistence fails after upstream registration", async () => {

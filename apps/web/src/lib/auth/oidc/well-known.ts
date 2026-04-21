@@ -89,7 +89,8 @@ export function enrichDiscoveryMetadata(
     // Proof-of-Human (PRD-22)
     ...(issuer
       ? {
-          poh_endpoint: `${issuer}/api/auth/oauth2/proof-of-human`,
+          poh_endpoint: `${issuer}/oauth2/proof-of-human`,
+          validity_endpoint: `${issuer}/oauth2/validity`,
           poh_issuer_uri: `${issuer}/.well-known/proof-of-human`,
         }
       : {}),

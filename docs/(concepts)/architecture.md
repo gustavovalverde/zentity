@@ -93,7 +93,9 @@ We persist only the minimum required for verification and auditability:
 - **Proof payloads** + public inputs
 - **Passkey-sealed profile** (encrypted blob; client-decrypt only)
 - **OPAQUE registration records** for password users (no plaintext or password hashes)
-- **Verification status** + non-sensitive metadata
+- **Account snapshot state** in `identity_bundles` (`validityStatus`, `effectiveVerificationId`, `verificationExpiresAt`, `rpNullifierSeed`, and other non-sensitive operational metadata)
+- **Credential history** in `identity_verifications` (OCR and NFC verification rows, supersession lineage, and method-specific metadata)
+- **Validity transition and delivery ledgers** in `identity_validity_events` and `identity_validity_deliveries`
 
 ### Key Custody
 
@@ -185,9 +187,10 @@ sequenceDiagram
   UI->>API: Submit document + liveness
   API->>OCR: OCR + parse (transient)
   OCR-->>API: Extracted fields
-  API->>DB: Store commitments + signed claims
+  API->>DB: Store verification row + commitments + signed claims
   UI->>UI: Generate ZK proofs (client-side)
   UI->>API: Store proofs
+  API->>DB: Reconcile account snapshot + record validity transition
   API-->>UI: Verification complete (Tier progression)
 
   Note over User,FHE: Phase 2 (alt): NFC chip verification
@@ -196,7 +199,8 @@ sequenceDiagram
   Note right of UI: ZKPassport reads NFC chip, generates proofs on device
   UI->>API: passportChip.submitResult (proofs + nullifier)
   API->>API: zkpassport.verify() (server-side)
-  API->>DB: Store identity_verifications (method: nfc_chip)
+  API->>DB: Store verification row (method: nfc_chip)
+  API->>DB: Reconcile account snapshot + record validity transition
   API->>FHE: Schedule FHE encryption (synthetic liveness 1.0)
   API-->>UI: Verification complete
 ```
@@ -322,11 +326,25 @@ See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Iden
 
 ---
 
+## Account-Scoped Identity Model
+
+Zentity models identity as one account-scoped snapshot plus credential history.
+
+- `identity_bundles` is the current account snapshot. It stores the authoritative `effectiveVerificationId`, current `validityStatus`, the freshness deadline (`verificationExpiresAt`), and the bundle-owned `rpNullifierSeed` used for stable per-RP anti-abuse claims.
+- `identity_verifications` is credential history. OCR and NFC credentials append here, and older authoritative rows can become explicitly superseded without being deleted.
+- `reconcileIdentityBundle(userId)` is the only bundle reconciler. Verification lifecycle checkpoints call it to select the authoritative credential, compute freshness state, and preserve or reseed the RP nullifier seed according to bundle policy.
+- `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`. `identity_validity_deliveries` tracks downstream effects such as credential-status updates, back-channel logout, RP validity notice, CIBA cancellation, and blockchain revocation delivery.
+
+This split is what lets OCR and NFC credentials coexist on one account without making disclosure, assurance, or operator reads re-rank raw rows ad hoc.
+
+---
+
 ## State Durability & Shared Devices
 
 - **Sign-up state** is local React state only (no DB, no cookies). Refreshing the page restarts the sign-up form. An anonymous session is created on load for the credential flow.
 - **FHE enrollment state** is tracked server-side via `identity_bundles.fheKeyId`. Enrollment is resumable; if partial, the preflight re-checks completion criteria.
-- **Verification progress** is stored in first-party DB tables keyed by user ID (drafts, signed claims, ZK proofs).
+- **Verification progress and history** live in first-party DB tables keyed by user ID, with the current snapshot in `identity_bundles`, credential rows in `identity_verifications`, and supporting artifacts in drafts, signed claims, and ZK proofs.
+- **Validity transitions and downstream delivery state** are durable and auditable through `identity_validity_events` and `identity_validity_deliveries`.
 - **Profile data** lives in a credential-encrypted vault (`encrypted_secrets` + `secret_wrappers`), only decryptable client-side after a credential unlock.
 - **Identity PII** is never stored server-side. At consent time, PII is staged ephemerally in memory (5min TTL) and consumed once through the userinfo delivery path. The user's profile vault is the only persistent PII source.
 
@@ -367,7 +385,7 @@ Each check is derived from proof/claim existence, not stored boolean columns.
 | `faceMatchVerified` | `face_match` ZK proof or `face_match_score` claim | `chip_verification` claim **type** present |
 | `nationalityVerified` | `nationality_membership` ZK proof exists | `hasNationalityCommitment` flag |
 | `identityBound` | `identity_binding` ZK proof exists | `uniqueIdentifier` present |
-| `sybilResistant` | `dedupKey` / `uniqueIdentifier` present | `uniqueIdentifier` present |
+| `sybilResistant` | Effective verified credential has an internal identity key | Effective verified credential has an internal identity key |
 
 For NFC chip checks, only claim type presence matters; boolean payloads inside the claim are ignored. This prevents a malicious server from downgrading compliance by flipping a stored boolean.
 
@@ -381,9 +399,14 @@ See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) fo
 
 ## Identity Revocation
 
-Identity verifications can be revoked by an admin (fraud detection) or by the user themselves (GDPR self-service). Revocation cascades through a single DB transaction: verification records, identity bundles, and issued credentials are all marked revoked atomically. On-chain attestation revocation follows outside the transaction on a best-effort basis.
+Identity revocation is part of the same validity pipeline that handles freshness and re-verification.
 
-After revocation, the user's assurance tier drops to Tier 1 and their dedup key is released for re-registration.
+- Admin revocation, self-service revocation, and chain-ingested revocation all converge on the same validity transition boundary.
+- The account snapshot in `identity_bundles` becomes `revoked`, clears `effectiveVerificationId`, and clears `rpNullifierSeed` so a later full re-verification can establish a new unlinkable seed.
+- Credential history is preserved. Verification rows are retained for audit; current trust lives on the bundle snapshot and in the validity ledger.
+- Downstream effects fan out through the delivery ledger: issued credential status updates, back-channel logout, pending CIBA cancellation, RP validity notice, and blockchain attestation revocation.
+
+After revocation, the user's assurance posture drops, current proof claims stop reflecting a valid identity, and document-level dedup guards are released according to the current product policy.
 
 ---
 

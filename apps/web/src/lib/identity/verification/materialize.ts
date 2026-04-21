@@ -49,20 +49,26 @@ const CHECK_TO_COMPLIANCE_KEY: Record<CheckType, keyof ComplianceChecks> = {
   sybil_resistant: "sybilResistant",
 };
 
+type VerificationMaterializationExecutor = Pick<
+  typeof db,
+  "insert" | "select" | "update"
+>;
+
 // ─── Materialization ──────────────────────────────────────────────────
 
 export async function materializeVerificationChecks(
   userId: string,
-  verificationId: string
+  verificationId: string,
+  executor: VerificationMaterializationExecutor = db
 ): Promise<void> {
-  const verification = await getVerificationById(verificationId);
+  const verification = await getVerificationById(verificationId, executor);
   if (!verification || verification.userId !== userId) {
     return;
   }
 
   // Fetch evidence in parallel
   const [proofRows, claimRows] = await Promise.all([
-    db
+    executor
       .select({
         id: proofArtifacts.id,
         proofType: proofArtifacts.proofType,
@@ -80,7 +86,7 @@ export async function materializeVerificationChecks(
         )
       )
       .all(),
-    db
+    executor
       .select({
         id: signedClaims.id,
         claimType: signedClaims.claimType,
@@ -131,7 +137,7 @@ export async function materializeVerificationChecks(
       ? resolveNfcEvidence(checkType, verificationId, claimByType)
       : resolveOcrEvidence(checkType, verificationId, proofByType, claimByType);
 
-    await db
+    await executor
       .insert(verificationChecks)
       .values({
         id: crypto.randomUUID(),

@@ -10,44 +10,59 @@ import type {
 import { db } from "@/lib/db/connection";
 import {
   appendIdentityValidityEvent,
-  getIdentityBundleValiditySnapshot,
-  upsertIdentityBundleValiditySnapshot,
+  getIdentityValiditySnapshot,
+  upsertIdentityValiditySnapshot,
 } from "@/lib/db/queries/identity-validity";
+
+import { scheduleValidityDeliveries } from "./delivery";
 
 type IdentityValidityExecutor = Pick<typeof db, "insert" | "select" | "update">;
 
-interface BundleValiditySnapshotOverride {
+interface ValiditySnapshotInput {
+  effectiveVerificationId?: string | null;
+  freshnessCheckedAt?: string | null;
   revokedAt: string | null;
   revokedBy: string | null;
   revokedReason: string | null;
   validityStatus: ValidityStatus;
+  verificationExpiresAt?: string | null;
 }
 
-export async function applyValidityTransition(args: {
-  bundleSnapshot?: BundleValiditySnapshotOverride;
+async function persistValidityTransition(args: {
+  bundleSnapshot?: ValiditySnapshotInput;
   eventKind: ValidityEventKind;
   executor?: IdentityValidityExecutor;
   occurredAt?: string;
   reason?: string | null;
   source: ValidityTransitionSource;
+  sourceBlockNumber?: number | null;
+  sourceEventId?: string | null;
+  sourceNetwork?: string | null;
   triggeredBy?: string | null;
   userId: string;
   verificationId?: string | null;
 }): Promise<IdentityValidityEvent> {
   const executor = args.executor ?? db;
-  const currentSnapshot =
-    args.bundleSnapshot ??
-    (await getIdentityBundleValiditySnapshot(args.userId, executor));
+  const currentSnapshot = await getIdentityValiditySnapshot(
+    args.userId,
+    executor
+  );
+  const nextSnapshot = args.bundleSnapshot ?? currentSnapshot;
 
-  if (!currentSnapshot) {
+  if (!nextSnapshot) {
     throw new Error(
       `Cannot apply validity transition without a bundle snapshot for user ${args.userId}`
     );
   }
 
   if (args.bundleSnapshot) {
-    await upsertIdentityBundleValiditySnapshot(
+    await upsertIdentityValiditySnapshot(
       {
+        effectiveVerificationId:
+          args.bundleSnapshot.effectiveVerificationId ?? null,
+        freshnessCheckedAt: args.bundleSnapshot.freshnessCheckedAt ?? null,
+        verificationExpiresAt:
+          args.bundleSnapshot.verificationExpiresAt ?? null,
         userId: args.userId,
         validityStatus: args.bundleSnapshot.validityStatus,
         revokedAt: args.bundleSnapshot.revokedAt,
@@ -63,12 +78,38 @@ export async function applyValidityTransition(args: {
       eventKind: args.eventKind,
       reason: args.reason ?? null,
       source: args.source,
+      sourceBlockNumber: args.sourceBlockNumber ?? null,
+      sourceEventId: args.sourceEventId ?? null,
+      sourceNetwork: args.sourceNetwork ?? null,
       triggeredBy: args.triggeredBy ?? null,
       userId: args.userId,
-      validityStatus: currentSnapshot.validityStatus,
+      validityStatus: nextSnapshot.validityStatus,
       verificationId: args.verificationId ?? null,
       ...(args.occurredAt ? { createdAt: args.occurredAt } : {}),
     },
     executor
   );
+}
+
+export async function recordValidityTransition(args: {
+  bundleSnapshot?: ValiditySnapshotInput;
+  eventKind: ValidityEventKind;
+  executor?: IdentityValidityExecutor;
+  occurredAt?: string;
+  reason?: string | null;
+  source: ValidityTransitionSource;
+  sourceBlockNumber?: number | null;
+  sourceEventId?: string | null;
+  sourceNetwork?: string | null;
+  triggeredBy?: string | null;
+  userId: string;
+  verificationId?: string | null;
+}): Promise<{
+  deliveries: Awaited<ReturnType<typeof scheduleValidityDeliveries>>;
+  event: IdentityValidityEvent;
+}> {
+  const event = await persistValidityTransition(args);
+  const deliveries = await scheduleValidityDeliveries(event.id, args.executor);
+
+  return { event, deliveries };
 }

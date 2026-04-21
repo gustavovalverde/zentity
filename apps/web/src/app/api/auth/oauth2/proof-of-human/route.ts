@@ -3,153 +3,11 @@ import "server-only";
 import { NextResponse } from "next/server";
 
 import { env } from "@/env";
-import { verifyAccessToken } from "@/lib/auth/jwt";
-import {
-  loadOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { resolveProtectedResourcePrincipal } from "@/lib/auth/oidc/resource-principal";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
-const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const TRAILING_SLASHES = /\/+$/;
-
-interface TokenPrincipal {
-  clientId: string;
-  dpopJkt: string;
-  scopes: string[];
-  sub: string;
-  userId: string;
-}
-
-async function resolveJwtToken(
-  token: string,
-  request: Request,
-  scheme: string
-): Promise<TokenPrincipal | null> {
-  if (scheme.toLowerCase() !== "dpop") {
-    return null;
-  }
-
-  const payload = await verifyAccessToken(token);
-  if (!payload?.sub) {
-    return null;
-  }
-
-  const clientId =
-    (payload.client_id as string | undefined) ??
-    (payload.azp as string | undefined);
-  if (!clientId) {
-    return null;
-  }
-
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  if (!cnf?.jkt) {
-    return null;
-  }
-
-  const valid = await validateOpaqueAccessTokenDpop(request, cnf.jkt);
-  if (!valid) {
-    return null;
-  }
-
-  const { resolveUserIdFromSub } = await import("@/lib/auth/oidc/pairwise");
-  const userId = await resolveUserIdFromSub(payload.sub, clientId);
-  if (!userId) {
-    return null;
-  }
-
-  return {
-    sub: payload.sub,
-    userId,
-    clientId,
-    scopes:
-      typeof payload.scope === "string"
-        ? payload.scope.split(" ").filter(Boolean)
-        : [],
-    dpopJkt: cnf.jkt,
-  };
-}
-
-async function resolveOpaqueToken(
-  token: string,
-  request: Request,
-  scheme: string
-): Promise<TokenPrincipal | null> {
-  if (scheme.toLowerCase() !== "dpop") {
-    return null;
-  }
-
-  const row = await loadOpaqueAccessToken(token);
-  if (!(row?.userId && row.clientId && row.dpopJkt)) {
-    return null;
-  }
-
-  if (row.expiresAt.getTime() < Date.now()) {
-    return null;
-  }
-
-  const valid = await validateOpaqueAccessTokenDpop(request, row.dpopJkt);
-  if (!valid) {
-    return null;
-  }
-
-  const { parseStoredStringArray } = await import("@/lib/db/adapter-compat");
-  const { oauthClients } = await import("@/lib/db/schema/oauth-provider");
-  const { db } = await import("@/lib/db/connection");
-  const { eq } = await import("drizzle-orm");
-  const { resolveSubForClient } = await import("@/lib/auth/oidc/pairwise");
-
-  const client = await db
-    .select({
-      subjectType: oauthClients.subjectType,
-      redirectUris: oauthClients.redirectUris,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, row.clientId))
-    .limit(1)
-    .get();
-
-  if (!client) {
-    return null;
-  }
-
-  const redirectUris = parseStoredStringArray(client.redirectUris);
-
-  const sub = await resolveSubForClient(row.userId, {
-    subjectType: client.subjectType,
-    redirectUris,
-  });
-
-  return {
-    sub,
-    userId: row.userId,
-    clientId: row.clientId,
-    scopes: row.scopes,
-    dpopJkt: row.dpopJkt,
-  };
-}
-
-async function resolveToken(request: Request): Promise<TokenPrincipal | null> {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) {
-    return null;
-  }
-
-  const match = authHeader.match(AUTH_HEADER_RE);
-  if (!(match?.[1] && match[2])) {
-    return null;
-  }
-
-  const scheme = match[1];
-  const token = match[2];
-
-  if (token.startsWith("eyJ")) {
-    return await resolveJwtToken(token, request, scheme);
-  }
-
-  return await resolveOpaqueToken(token, request, scheme);
-}
 
 /**
  * POST /api/auth/oauth2/proof-of-human
@@ -163,7 +21,7 @@ async function resolveToken(request: Request): Promise<TokenPrincipal | null> {
  * - `poh.sybil_resistant` — whether a uniqueness check passed
  */
 export async function POST(request: Request) {
-  const principal = await resolveToken(request);
+  const principal = await resolveProtectedResourcePrincipal(request);
 
   if (!principal) {
     return NextResponse.json({ error: "invalid_token" }, { status: 401 });

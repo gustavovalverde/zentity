@@ -25,8 +25,8 @@ import {
 } from "@/lib/db/schema/oauth-provider";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import {
-  processIdentityValidityDeliveries,
-  scheduleIdentityValidityDeliveries,
+  deliverPendingValidityDeliveries,
+  scheduleValidityDeliveries,
 } from "@/lib/identity/validity/delivery";
 import {
   createTestCibaRequest,
@@ -171,7 +171,7 @@ describe("identity revocation cascade", () => {
     );
     expect(result.scheduledDeliveries).toBe(1);
 
-    await processIdentityValidityDeliveries({
+    await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
     });
 
@@ -228,7 +228,7 @@ describe("identity revocation cascade", () => {
       ])
     );
 
-    await processIdentityValidityDeliveries({
+    await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
     });
 
@@ -468,7 +468,7 @@ describe("identity revocation cascade", () => {
       ])
     );
 
-    await processIdentityValidityDeliveries({
+    await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
     });
 
@@ -518,8 +518,8 @@ describe("identity revocation cascade", () => {
       "admin"
     );
 
-    await scheduleIdentityValidityDeliveries(result.eventId as string);
-    await scheduleIdentityValidityDeliveries(result.eventId as string);
+    await scheduleValidityDeliveries(result.eventId as string);
+    await scheduleValidityDeliveries(result.eventId as string);
 
     const deliveries = await db
       .select()

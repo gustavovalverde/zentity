@@ -179,7 +179,7 @@ The two tracks produce different delivery behavior at each OAuth endpoint:
 
 **In access tokens:** Access tokens ordinarily carry only structural claims (`sub`, `scope`, `aud`, `cnf`, and extension-defined claims like `act`). Proof claims are not embedded there except where a profile explicitly defines an access-token-only proof artifact. VEIL defines one such exception in Section 5.4: `proof:sybil` yields a per-RP `sybil_nullifier` in access tokens only. Identity claims MUST NOT be embedded in access tokens.
 
-**Via userinfo:** Both proof claims and identity claims are delivered. Proof claims are resolved from the user's verification state. Identity claims are consumed from the ephemeral store (single-consume; the entry is deleted after retrieval).
+**Via userinfo:** Both proof claims and identity claims are delivered. Proof claims are resolved from the user's account identity snapshot. Identity claims are consumed from the ephemeral store (single-consume; the entry is deleted after retrieval).
 
 ### 5.4 Sybil Nullifiers
 
@@ -188,11 +188,11 @@ The profile defines an optional `proof:sybil` scope that produces a per-RP unlin
 ```text
 sybil_nullifier = HMAC-SHA-256(
   DEDUP_HMAC_SECRET,
-  internal_identity_key + "|rp|" + clientId
+  rp_nullifier_seed + "|rp|" + clientId
 )
 ```
 
-The same person receives the same nullifier at one RP but different nullifiers at different RPs. The internal identity key is implementation-defined. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage.
+The same person receives the same nullifier at one RP but different nullifiers at different RPs. `rp_nullifier_seed` is account-scoped state seeded from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. This enables per-human rate limiting and duplicate detection without cross-RP identity linkage while keeping the RP handle stable over time.
 
 ---
 

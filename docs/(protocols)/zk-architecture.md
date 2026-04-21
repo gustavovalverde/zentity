@@ -181,6 +181,8 @@ Key differences from browser-based Noir proving:
 
 The unified `identity_verifications` table stores results from both paths via the `method` discriminator (`"ocr"` | `"nfc_chip"`). FHE encryption is scheduled identically after either path completes.
 
+Account-level reads consume the account snapshot instead of inferring identity directly from verification rows. `identity_bundles` stores the authoritative `effectiveVerificationId` and the stable `rpNullifierSeed`, so OCR and NFC credentials can coexist in history while policy and disclosure reads consume one account snapshot.
+
 ## Sybil Deduplication
 
 Zentity prevents the same identity document from being registered under multiple accounts using HMAC-based deduplication.
@@ -189,7 +191,7 @@ Zentity prevents the same identity document from being registered under multiple
 
 **NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `uniqueIdentifier` (a nullifier from the NFC chip proof). Cross-method dedup (same passport via both OCR and NFC) is handled only by `uniqueIdentifier`.
 
-**Per-RP nullifier:** An HMAC-SHA256 derived from an internal identity key and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). Zentity uses `dedupKey` for OCR verifications and `uniqueIdentifier` for NFC verifications. Each RP receives a unique pseudonymous nullifier; the same user always produces the same nullifier for the same RP, but different RPs cannot correlate users.
+**Per-RP nullifier:** An HMAC-SHA256 derived from the account-scoped `rpNullifierSeed` and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). The seed is written once from the first verified credential, survives later credential additions, and is cleared only on full identity revocation. Each RP receives a unique pseudonymous nullifier; the same account produces the same nullifier for the same RP, but different RPs cannot correlate users.
 
 ## Implementation Notes
 

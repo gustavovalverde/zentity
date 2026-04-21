@@ -11,19 +11,24 @@ import {
   blockchainAttestations,
 } from "../schema/identity";
 
-export async function upsertAttestationEvidence(args: {
-  consentReceipt?: string | undefined;
-  consentScope?: string | undefined;
-  policyHash: string | null;
-  policyVersion: string | null;
-  proofSetHash: string | null | undefined;
-  userId: string;
-  verificationId: string;
-}): Promise<void> {
+type AttestationExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
+export async function upsertAttestationEvidence(
+  args: {
+    consentReceipt?: string | undefined;
+    consentScope?: string | undefined;
+    policyHash: string | null;
+    policyVersion: string | null;
+    proofSetHash: string | null | undefined;
+    userId: string;
+    verificationId: string;
+  },
+  executor: AttestationExecutor = db
+): Promise<void> {
   const now = new Date().toISOString();
   const consentedAt = args.consentReceipt || args.consentScope ? now : null;
 
-  await db
+  await executor
     .insert(attestationEvidence)
     .values({
       id: args.verificationId,
@@ -134,6 +139,26 @@ export async function getBlockchainAttestationByUserAndNetwork(
   return row ?? null;
 }
 
+export async function getBlockchainAttestationByNetworkAndWallet(
+  networkId: string,
+  walletAddress: string
+): Promise<BlockchainAttestation | null> {
+  const normalizedWalletAddress = walletAddress.toLowerCase();
+
+  const row = await db
+    .select()
+    .from(blockchainAttestations)
+    .where(eq(blockchainAttestations.networkId, networkId))
+    .all();
+
+  return (
+    row.find(
+      (candidate) =>
+        candidate.walletAddress.toLowerCase() === normalizedWalletAddress
+    ) ?? null
+  );
+}
+
 export async function getBlockchainAttestationsByUserId(
   userId: string
 ): Promise<BlockchainAttestation[]> {
@@ -171,6 +196,23 @@ export async function updateBlockchainAttestationConfirmed(
       blockNumber,
       confirmedAt: sql`datetime('now')`,
       updatedAt: sql`datetime('now')`,
+    })
+    .where(eq(blockchainAttestations.id, id))
+    .run();
+}
+
+export async function updateBlockchainAttestationRevoked(
+  id: string,
+  revokedAt: string,
+  blockNumber?: number | null
+): Promise<void> {
+  await db
+    .update(blockchainAttestations)
+    .set({
+      status: "revoked",
+      revokedAt,
+      ...(blockNumber === undefined ? {} : { blockNumber }),
+      updatedAt: revokedAt,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();
