@@ -28,13 +28,17 @@ import {
   deliverPendingValidityDeliveries,
   scheduleValidityDeliveries,
 } from "@/lib/identity/validity/delivery";
+import { getRpValidityState } from "@/lib/identity/validity/rp-notice";
 import {
   createTestCibaRequest,
   createTestUser,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 
-async function seedSigningKey() {
+async function seedSigningKey(): Promise<{
+  kid: string;
+  publicJwk: Record<string, unknown>;
+}> {
   const { exportJWK, generateKeyPair } = await import("jose");
   const keyPair = await generateKeyPair("EdDSA", {
     crv: "Ed25519",
@@ -54,19 +58,28 @@ async function seedSigningKey() {
       crv: "Ed25519",
     })
     .run();
+
+  return {
+    kid,
+    publicJwk: publicJwk as Record<string, unknown>,
+  };
 }
 
-async function createBclClient(
+async function createTestOAuthClient(
   clientId: string,
-  metadata: Record<string, unknown>
+  metadata: Record<string, unknown>,
+  args: {
+    subjectType?: "pairwise" | "public" | null;
+  } = {}
 ) {
   await db
     .insert(oauthClients)
     .values({
       clientId,
-      name: "BCL Test Client",
+      name: "Test OAuth Client",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       metadata: JSON.stringify(metadata),
+      subjectType: args.subjectType ?? "pairwise",
     })
     .run();
 }
@@ -191,7 +204,7 @@ describe("identity revocation cascade", () => {
 
     const clientId = "bcl-validity-client";
     await seedSigningKey();
-    await createBclClient(clientId, {
+    await createTestOAuthClient(clientId, {
       backchannel_logout_uri: "https://rp.example.com/backchannel-logout",
     });
     const { authReqId } = await createTestCibaRequest({
@@ -257,6 +270,109 @@ describe("identity revocation cascade", () => {
         expect.objectContaining({
           target: "backchannel_logout",
           status: "delivered",
+        }),
+      ])
+    );
+  });
+
+  it("delivers RP validity notices and exposes the same event through pull recovery", async () => {
+    const fetchSpy = vi.fn<typeof fetch>();
+    fetchSpy.mockResolvedValue(new Response(null, { status: 202 }));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await seedSigningKey();
+    const clientId = "rp-validity-client";
+    await createTestOAuthClient(clientId, {
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+    });
+    await seedVerifiedIdentity(userId);
+
+    const result = await revokeIdentity(
+      userId,
+      "admin@zentity.app",
+      "fraud",
+      "admin"
+    );
+
+    const scheduledRows = await db
+      .select()
+      .from(identityValidityDeliveries)
+      .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
+      .all();
+    const noticeDelivery = scheduledRows.find(
+      (delivery) => delivery.target === "rp_validity_notice"
+    );
+    if (!noticeDelivery) {
+      throw new Error(
+        "Expected an RP validity notice delivery to be scheduled"
+      );
+    }
+
+    await deliverPendingValidityDeliveries({
+      eventId: result.eventId as string,
+      targets: ["rp_validity_notice"],
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://rp.example.com/api/auth/validity",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/jwt",
+        },
+      })
+    );
+
+    const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
+    const compactJws = requestInit?.body;
+    if (typeof compactJws !== "string") {
+      throw new Error(
+        "Expected RP validity notice delivery to post a compact JWS"
+      );
+    }
+
+    expect(compactJws.split(".")).toHaveLength(3);
+
+    const { decodeJwt } = await import("jose");
+    const payload = decodeJwt(compactJws);
+
+    expect(payload.aud).toBe(clientId);
+    expect(payload.jti).toBe(noticeDelivery.id);
+    expect(payload.events).toMatchObject({
+      "https://zentity.xyz/events/validity-change": {
+        eventId: result.eventId,
+        eventKind: "revoked",
+        validityStatus: "revoked",
+        reason: "fraud",
+      },
+    });
+
+    const pairwiseSub =
+      typeof payload.sub === "string" ? payload.sub : noticeDelivery.userId;
+    const pullState = await getRpValidityState({
+      clientId,
+      sub: pairwiseSub,
+    });
+    expect(pullState).toMatchObject({
+      eventId: result.eventId,
+      eventKind: "revoked",
+      validityStatus: "revoked",
+      reason: "fraud",
+    });
+
+    const deliveredRows = await db
+      .select()
+      .from(identityValidityDeliveries)
+      .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
+      .all();
+    expect(deliveredRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: noticeDelivery.id,
+          status: "delivered",
+          target: "rp_validity_notice",
+          targetKey: clientId,
         }),
       ])
     );

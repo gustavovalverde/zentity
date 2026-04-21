@@ -37,6 +37,24 @@ The shipped architecture is:
 * `reconcileIdentityBundle(userId, executor?)` is the only bundle reconciler.
 * `recordValidityTransition({...})` is the canonical lifecycle writer and delivery scheduler.
 
+### Snapshot authority
+
+`identity_bundles` answers current-state questions. `identity_verifications` answers history questions. Code that needs the user's current identity, validity state, freshness deadline, or RP-nullifier basis reads the bundle snapshot and follows `effectiveVerificationId`. It does not re-run credential selection ad hoc from raw verification rows.
+
+That boundary keeps "what is true now?" separate from "what happened before?". It also keeps new credential sources from inventing a second current-state model when they only need to append history.
+
+### RP nullifier seed ownership
+
+The RP nullifier seed lives on the bundle because its stability contract is account-scoped, not credential-scoped. The system writes `rpNullifierSeed` from the first authoritative verified credential, preserves it across later credential additions and supersession, clears it on full identity revocation, and reseeds it only when a later verified credential establishes a new account identity after that revocation.
+
+Recomputing the RP nullifier from "the latest verification row" would make `proof:sybil` rotate whenever the user adds a new credential. That breaks the relying-party contract. Storing the seed on the bundle makes the invariant explicit, durable, and easy to audit.
+
+### Lifecycle ownership
+
+Low-level proof and claim inserts stay pure writes. Verification lifecycle checkpoints own bundle reconciliation and validity transitions. `reconcileIdentityBundle` is the only code path that can change `effectiveVerificationId`, freshness deadlines, or RP-nullifier seed policy, and `recordValidityTransition` is the only code path that appends lifecycle history and schedules downstream deliveries.
+
+That split reduces entropy in two directions. Current-state updates stay in one place, and downstream fan-out stays in one place. Future credential methods can therefore join the system by calling the same lifecycle checkpoints instead of adding a parallel validity architecture.
+
 ### Expected Consequences
 
 * Current reads become simpler because they consume one account snapshot and one selected credential instead of re-ranking verification rows ad hoc.
