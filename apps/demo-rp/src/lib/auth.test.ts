@@ -69,7 +69,8 @@ vi.mock("server-only", () => ({}));
 async function loadProviderConfig() {
   const { getAuth } = await import("./auth");
   const auth = await getAuth();
-  const plugins = auth.plugins as Array<Record<string, unknown>>;
+  const plugins = (auth as unknown as { plugins: Array<Record<string, unknown>> })
+    .plugins;
   const oauthPlugin = plugins.find((plugin) => plugin.type === "genericOAuth");
   if (!oauthPlugin) {
     throw new Error("genericOAuth plugin not configured");

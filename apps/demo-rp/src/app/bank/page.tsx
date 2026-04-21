@@ -14,6 +14,7 @@ import { BankDashboard } from "@/components/bank/bank-dashboard";
 import { BankProspect } from "@/components/bank/bank-prospect";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
+import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
 import { Button } from "@/components/ui/button";
 import { Redacted } from "@/components/ui/redacted";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
@@ -254,6 +255,7 @@ export default function BankPage() {
                   Welcome back, here&apos;s your financial overview.
                 </p>
                 <AssuranceBadges claims={claims} />
+                <ProviderValidityCard providerId={scenario.id} />
               </div>
               <BankDashboard claims={claims} />
             </div>

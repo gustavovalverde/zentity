@@ -1,0 +1,269 @@
+import "server-only";
+
+import { and, desc, eq } from "drizzle-orm";
+
+import { getDb } from "@/lib/db/connection";
+import { type ProviderId, readDcrClientId } from "@/lib/dcr";
+import {
+  createPersistentDpopClient,
+  type SerializedDpopKeyPair,
+} from "@/lib/dpop";
+import { env } from "@/lib/env";
+import {
+  describeOAuthErrorResponse,
+  parseOAuthJsonResponse,
+} from "@/lib/oauth-response";
+
+import { account, oauthDpopKey, validityNotice } from "./db/schema";
+
+const ZENTITY_PROVIDER_PREFIX = "zentity-";
+const VALIDITY_PATH = "/api/auth/oauth2/validity";
+
+export const VALIDITY_STATUSES = [
+  "pending",
+  "verified",
+  "failed",
+  "revoked",
+  "stale",
+] as const;
+
+export type ValidityStatus = (typeof VALIDITY_STATUSES)[number];
+
+function toValidityStatus(value: unknown): ValidityStatus {
+  return typeof value === "string" &&
+    (VALIDITY_STATUSES as readonly string[]).includes(value)
+    ? (value as ValidityStatus)
+    : "pending";
+}
+
+interface RemoteValidityState {
+  eventId: string | null;
+  eventKind: string | null;
+  occurredAt: string | null;
+  reason: string | null;
+  validityStatus: ValidityStatus;
+}
+
+interface StoredValidityNotice {
+  clientId: string;
+  eventId: string;
+  eventKind: string;
+  occurredAt: string;
+  reason: string | null;
+  receivedAt: string;
+  validityStatus: ValidityStatus;
+}
+
+export interface ProviderValidityState {
+  clientId: string | null;
+  latestNotice: StoredValidityNotice | null;
+  providerId: ProviderId;
+  pullError: string | null;
+  snapshot: RemoteValidityState | null;
+  subject: string | null;
+}
+
+function getOAuthProviderId(providerId: ProviderId): string {
+  return `${ZENTITY_PROVIDER_PREFIX}${providerId}`;
+}
+
+async function readProviderSessionAccount(args: {
+  providerId: ProviderId;
+  userId: string;
+}): Promise<{
+  accessToken: string | null;
+  subject: string;
+} | null> {
+  return (
+    (await getDb()
+      .select({
+        accessToken: account.accessToken,
+        subject: account.accountId,
+      })
+      .from(account)
+      .where(
+        and(
+          eq(account.providerId, getOAuthProviderId(args.providerId)),
+          eq(account.userId, args.userId)
+        )
+      )
+      .limit(1)
+      .get()) ?? null
+  );
+}
+
+async function readStoredDpopKey(accessToken: string): Promise<{
+  privateJwk: string;
+  publicJwk: string;
+} | null> {
+  return (
+    (await getDb()
+      .select({
+        privateJwk: oauthDpopKey.privateJwk,
+        publicJwk: oauthDpopKey.publicJwk,
+      })
+      .from(oauthDpopKey)
+      .where(eq(oauthDpopKey.accessToken, accessToken))
+      .limit(1)
+      .get()) ?? null
+  );
+}
+
+async function readLatestValidityNotice(args: {
+  clientId: string;
+  subject: string;
+}): Promise<StoredValidityNotice | null> {
+  const row = await getDb()
+    .select({
+      clientId: validityNotice.clientId,
+      eventId: validityNotice.eventId,
+      eventKind: validityNotice.eventKind,
+      occurredAt: validityNotice.occurredAt,
+      reason: validityNotice.reason,
+      receivedAt: validityNotice.receivedAt,
+      validityStatus: validityNotice.validityStatus,
+    })
+    .from(validityNotice)
+    .where(
+      and(
+        eq(validityNotice.clientId, args.clientId),
+        eq(validityNotice.sub, args.subject)
+      )
+    )
+    .orderBy(desc(validityNotice.receivedAt))
+    .limit(1)
+    .get();
+
+  return row
+    ? { ...row, validityStatus: toValidityStatus(row.validityStatus) }
+    : null;
+}
+
+async function fetchRemoteValidityState(args: {
+  accessToken: string;
+  keyPair: SerializedDpopKeyPair;
+}): Promise<RemoteValidityState> {
+  const validityUrl = new URL(VALIDITY_PATH, env.ZENTITY_URL).toString();
+  const dpop = await createPersistentDpopClient(args.keyPair);
+  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
+    const proof = await dpop.proofFor(
+      "GET",
+      validityUrl,
+      args.accessToken,
+      nonce
+    );
+    const response = await fetch(validityUrl, {
+      headers: {
+        Authorization: `DPoP ${args.accessToken}`,
+        DPoP: proof,
+      },
+    });
+
+    if (response.ok) {
+      return {
+        response,
+        result: await parseOAuthJsonResponse(
+          response,
+          "Issuer validity state request"
+        ),
+      };
+    }
+
+    const payload = (await response.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    return { response, result: payload };
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      describeOAuthErrorResponse(
+        response,
+        result as Record<string, unknown>,
+        "Issuer validity state request"
+      )
+    );
+  }
+
+  const body = result as Record<string, unknown>;
+  return {
+    eventId: typeof body.eventId === "string" ? body.eventId : null,
+    eventKind: typeof body.eventKind === "string" ? body.eventKind : null,
+    occurredAt: typeof body.occurredAt === "string" ? body.occurredAt : null,
+    reason: typeof body.reason === "string" ? body.reason : null,
+    validityStatus: toValidityStatus(body.validityStatus),
+  };
+}
+
+export async function getProviderValidityState(args: {
+  providerId: ProviderId;
+  userId: string;
+}): Promise<ProviderValidityState> {
+  const [clientId, sessionAccount] = await Promise.all([
+    readDcrClientId(args.providerId),
+    readProviderSessionAccount(args),
+  ]);
+
+  const subject = sessionAccount?.subject ?? null;
+  const accessToken = sessionAccount?.accessToken ?? null;
+
+  const [latestNotice, storedKey] = await Promise.all([
+    clientId && subject
+      ? readLatestValidityNotice({ clientId, subject })
+      : Promise.resolve(null),
+    accessToken
+      ? readStoredDpopKey(accessToken)
+      : Promise.resolve(null),
+  ]);
+
+  if (!(clientId && accessToken)) {
+    return {
+      clientId,
+      latestNotice,
+      providerId: args.providerId,
+      pullError: null,
+      snapshot: null,
+      subject,
+    };
+  }
+
+  if (!storedKey) {
+    return {
+      clientId,
+      latestNotice,
+      providerId: args.providerId,
+      pullError: "Missing DPoP key for current RP session.",
+      snapshot: null,
+      subject,
+    };
+  }
+
+  try {
+    const snapshot = await fetchRemoteValidityState({
+      accessToken,
+      keyPair: {
+        privateJwk: JSON.parse(storedKey.privateJwk),
+        publicJwk: JSON.parse(storedKey.publicJwk),
+      },
+    });
+
+    return {
+      clientId,
+      latestNotice,
+      providerId: args.providerId,
+      pullError: null,
+      snapshot,
+      subject,
+    };
+  } catch (error) {
+    return {
+      clientId,
+      latestNotice,
+      providerId: args.providerId,
+      pullError: error instanceof Error ? error.message : String(error),
+      snapshot: null,
+      subject,
+    };
+  }
+}

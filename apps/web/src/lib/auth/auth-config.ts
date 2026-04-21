@@ -104,7 +104,6 @@ import {
 } from "@/lib/auth/oidc/disclosure/registry";
 import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
-import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
 import {
@@ -620,8 +619,6 @@ async function validateDcrRegistration(
   let rpValidityNoticeUri: string | undefined;
   if (typeof body.rp_validity_notice_uri === "string") {
     rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
-  } else if (typeof body.rpValidityNoticeUri === "string") {
-    rpValidityNoticeUri = body.rpValidityNoticeUri.trim();
   }
   if (rpValidityNoticeUri && !isDev && !isValidHttpsUrl(rpValidityNoticeUri)) {
     throw new APIError("BAD_REQUEST", {
@@ -716,13 +713,6 @@ async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
-  }
-  // Enable the plugin's native sid injection for BCL-registered clients
-  if (ctx.body?.backchannel_logout_uri) {
-    ctx.body.enable_end_session = true;
-  }
-  if (ctx.body?.rp_validity_notice_uri) {
-    ctx.body.rp_validity_notice_enabled = true;
   }
 }
 
@@ -1281,18 +1271,6 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
 // for the after-hook to persist onto the opaque token record.
 const pendingCibaAuthContext = new Map<string, string>();
 
-async function afterTokenPersistOpaqueDpopBinding(ctx: HookCtx) {
-  const returned = (ctx as HookCtx & { returned?: unknown }).returned as
-    | { access_token?: unknown }
-    | undefined;
-  const accessToken = returned?.access_token;
-  if (typeof accessToken !== "string") {
-    return;
-  }
-
-  await persistOpaqueAccessTokenDpopBinding(accessToken, ctx.request);
-}
-
 function expireSessionDataCookie(ctx: HookCtx) {
   const authCookies = (
     ctx.context as {
@@ -1626,7 +1604,6 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        await afterTokenPersistOpaqueDpopBinding(ctx);
         // For CIBA tokens, persist authContextId on access + refresh token
         // records. The upstream createUserTokens stores only standard fields;
         // authContextId is a Zentity extension column.

@@ -1,20 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { env } from "@/env";
+import { requireAdminApiKey } from "@/lib/http/admin-auth";
 import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness-worker";
 
-function isAuthorized(request: Request): boolean {
-  const expectedKey = env.ZENTITY_ADMIN_API_KEY;
-  if (!expectedKey) {
-    return false;
-  }
-
-  return request.headers.get("x-zentity-admin-key") === expectedKey;
-}
-
 export async function POST(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const unauthorized = requireAdminApiKey(request);
+  if (unauthorized) {
+    return unauthorized;
   }
 
   const result = await markDueIdentitiesStale();

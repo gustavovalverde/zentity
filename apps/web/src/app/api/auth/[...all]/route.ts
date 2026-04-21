@@ -2,7 +2,10 @@ import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth-config";
 import { rewriteDpopForUserinfo } from "@/lib/auth/oidc/haip/dpop";
-import { getProtectedResourceMetadataUrl } from "@/lib/auth/oidc/haip/resource-metadata";
+import {
+  addWwwAuthenticate,
+  unwrapBetterAuthEnvelope,
+} from "@/lib/auth/oidc/haip/oauth-response";
 import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-dcr";
 import {
   attachRequestContextToSpan,
@@ -11,11 +14,7 @@ import {
 
 const { GET: authGET, POST: authPOST } = toNextJsHandler(auth);
 
-const UNWRAP_PATHS = [
-  "/oauth2/token",
-  "/oidc4vci/credential",
-  "/oauth2/userinfo",
-];
+const UNWRAP_PATHS = ["/oidc4vci/credential", "/oauth2/userinfo"];
 
 async function ensureOidc4vciWalletClientIfNeeded(request: Request) {
   const url = new URL(request.url);
@@ -24,7 +23,7 @@ async function ensureOidc4vciWalletClientIfNeeded(request: Request) {
   }
 }
 
-async function unwrapIfNeeded(request: Request, response: Response) {
+function unwrapIfNeeded(request: Request, response: Response) {
   const url = new URL(request.url);
   const shouldUnwrap = UNWRAP_PATHS.some((suffix) =>
     url.pathname.endsWith(suffix)
@@ -32,56 +31,7 @@ async function unwrapIfNeeded(request: Request, response: Response) {
   if (!shouldUnwrap) {
     return response;
   }
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    return response;
-  }
-  const text = await response.clone().text();
-  if (!text) {
-    return response;
-  }
-  try {
-    const payload = JSON.parse(text) as { response?: unknown };
-    if (payload && typeof payload === "object" && "response" in payload) {
-      const headers = new Headers(response.headers);
-      headers.set("content-type", "application/json");
-      return new Response(JSON.stringify(payload.response), {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
-    }
-  } catch {
-    return response;
-  }
-  return response;
-}
-
-function addWwwAuthenticate(response: Response): Response {
-  if (response.status !== 401 && response.status !== 403) {
-    return response;
-  }
-
-  const headers = new Headers(response.headers);
-  const metadataUrl = getProtectedResourceMetadataUrl();
-
-  if (response.status === 401) {
-    headers.set(
-      "WWW-Authenticate",
-      `Bearer resource_metadata="${metadataUrl}"`
-    );
-  } else {
-    headers.set(
-      "WWW-Authenticate",
-      `Bearer resource_metadata="${metadataUrl}", error="insufficient_scope"`
-    );
-  }
-
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return unwrapBetterAuthEnvelope(response);
 }
 
 export async function GET(request: Request) {

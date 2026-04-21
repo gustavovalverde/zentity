@@ -15,6 +15,7 @@ import { AidDashboard } from "@/components/aid/aid-dashboard";
 import { AidHeader } from "@/components/aid/aid-header";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
+import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { getScenario } from "@/lib/scenarios";
@@ -166,6 +167,7 @@ export default function AidPage() {
               Manage your aid distribution and verify status.
             </p>
             <AssuranceBadges claims={claims} />
+            <ProviderValidityCard providerId={scenario.id} />
           </div>
 
           <AidDashboard
