@@ -237,13 +237,15 @@ async function seedVerifiedIdentity(
   const identityBundleSql = `
     INSERT OR REPLACE INTO identity_bundles (
       user_id,
-      status,
+      effective_verification_id,
+      validity_status,
       policy_version,
       issuer_id,
       created_at,
       updated_at
     ) VALUES (
       '${bundleId}',
+      '${verificationId}',
       'verified',
       '${policyVersion}',
       'zentity-kyc',
@@ -401,8 +403,8 @@ async function seedVerifiedIdentity(
       ('${randomUUID()}', '${userId}', '${verificationId}', 'age', 1, 'e2e_seed', '${now}', '${now}');
   `;
 
-  await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, identityVerificationSql);
+  await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, signedClaimsSql);
   await runSql(dbUrl, proofArtifactsSql);
   await runSql(dbUrl, encryptedAttributesSql);

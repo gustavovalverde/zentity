@@ -64,33 +64,5 @@
     "typescript": "^5.9.3",
     "ultracite": "7.3.2",
     "vitest": "^4.1.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "better-call": "2.0.2",
-      "@better-auth/core": "file:vendor/better-auth-core-1.5.1-beta.3.tgz",
-      "@better-auth/drizzle-adapter": "file:vendor/better-auth-drizzle-adapter-1.5.1-beta.3.tgz",
-      "@better-auth/kysely-adapter": "file:vendor/better-auth-kysely-adapter-1.5.1-beta.3.tgz",
-      "@better-auth/memory-adapter": "file:vendor/better-auth-memory-adapter-1.5.1-beta.3.tgz",
-      "@better-auth/mongo-adapter": "file:vendor/better-auth-mongo-adapter-1.5.1-beta.3.tgz",
-      "@better-auth/prisma-adapter": "file:vendor/better-auth-prisma-adapter-1.5.1-beta.3.tgz",
-      "@better-auth/telemetry": "file:vendor/better-auth-telemetry-1.5.1-beta.3.tgz",
-      "undici": ">=7.24.0",
-      "hono": ">=4.12.14",
-      "@hono/node-server": ">=1.19.13",
-      "express-rate-limit": ">=8.2.2",
-      "minimatch": ">=3.1.5",
-      "vite": "7.3.2",
-      "esbuild": ">=0.25.0",
-      "defu": ">=6.1.5",
-      "effect": ">=3.20.0",
-      "kysely": ">=0.28.14",
-      "path-to-regexp": "^8.4.0",
-      "lodash": ">=4.18.0",
-      "picomatch@<2.3.2": "^2.3.2",
-      "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
-      "brace-expansion@<1.1.13": "^1.1.13",
-      "brace-expansion@>=2 <5.0.5": "^5.0.5"
-    }
   }
 }

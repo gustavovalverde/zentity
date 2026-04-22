@@ -292,6 +292,66 @@ describe("Token Exchange (RFC 8693)", () => {
         parent_jti: parentPayload.jti,
       });
     });
+
+    it("rejects second-hop delegation once max_depth is reached", async () => {
+      const subjectToken = await mintAccessToken(userId, {
+        scope: "openid",
+        aap: {
+          aap_claims_version: 1,
+          act: {
+            did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
+            host_attestation: "attested",
+            host_id: "host-123",
+            session_id: "session-123",
+            sub: "pairwise-agent-subject",
+            type: "mcp-agent",
+          },
+          task: {
+            description: "purchase",
+            created_at: 1_700_000_000,
+            expires_at: 1_700_003_600,
+            hash: "task-hash-123",
+          },
+          oversight: {
+            approval_id: "grant-123",
+            approved_at: 1_700_000_000,
+            method: "session",
+          },
+          audit: {
+            context_id: "ctx-123",
+            release_id: "release-123",
+          },
+        },
+      });
+
+      const firstExchange = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(firstExchange.status).toBe(200);
+      const firstPayload = decodeJwt(firstExchange.json.access_token as string);
+      expect(firstPayload.delegation).toEqual({
+        depth: 1,
+        max_depth: 1,
+        parent_jti: expect.any(String),
+      });
+
+      const secondExchange = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: firstExchange.json.access_token as string,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(secondExchange.status).toBe(400);
+      expect(secondExchange.json.error).toBe("invalid_grant");
+      expect(secondExchange.json.error_description).toBe(
+        "Subject token exceeded the maximum delegation depth"
+      );
+    });
   });
 
   describe("access token → id_token", () => {

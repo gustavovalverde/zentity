@@ -3,8 +3,17 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@prisma/engines': false
+  '@reown/appkit': true
+  '@synthetixio/synpress-cache': true
+  '@tensorflow/tfjs-node': true
+  bufferutil: false
+  core-js: false
   esbuild: true
-
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+  keccak: false
+  msgpackr-extract: false
+  prisma: false
+  protobufjs: true
+  sharp: false
+  unrs-resolver: false
+  utf-8-validate: false

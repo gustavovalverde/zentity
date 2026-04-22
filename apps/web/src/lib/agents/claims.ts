@@ -220,15 +220,31 @@ export function getAapClaimsFromPayload(
   return parsedClaims;
 }
 
+export class DelegationDepthExceededError extends Error {
+  readonly code = "delegation_depth_exceeded";
+
+  constructor(message = "Delegation depth exceeded") {
+    super(message);
+    this.name = "DelegationDepthExceededError";
+  }
+}
+
 export function deriveDelegationClaim(input: {
   parent?: Partial<AccessTokenClaims> | null;
   parentJti?: string | null;
 }): AccessTokenClaims["delegation"] {
   const parentDelegation = input.parent?.delegation;
+  const parentDepth = parentDelegation?.depth ?? 0;
+  const maxDepth = parentDelegation?.max_depth ?? 1;
+  const nextDepth = parentDepth + 1;
+
+  if (nextDepth > maxDepth) {
+    throw new DelegationDepthExceededError();
+  }
 
   return {
-    depth: (parentDelegation?.depth ?? 0) + 1,
-    max_depth: parentDelegation?.max_depth ?? 1,
+    depth: nextDepth,
+    max_depth: maxDepth,
     parent_jti: input.parentJti ?? parentDelegation?.parent_jti ?? null,
   };
 }

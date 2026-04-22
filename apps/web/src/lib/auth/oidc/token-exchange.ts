@@ -17,6 +17,7 @@ import {
 } from "@/lib/agents/actor-subject";
 import {
   buildAapClaims,
+  DelegationDepthExceededError,
   deriveDelegationClaim,
   getAapClaimsFromPayload,
 } from "@/lib/agents/claims";
@@ -405,12 +406,25 @@ function createTokenExchangeHandler(): (
       typeof subjectPayload.jti === "string"
         ? await findStoredTokenSnapshotByJti(subjectPayload.jti)
         : null;
-    const delegation = deriveDelegationClaim({
-      parent: parentAccessTokenClaims,
-      ...(typeof subjectPayload.jti === "string"
-        ? { parentJti: subjectPayload.jti }
-        : {}),
-    });
+    const delegation = (() => {
+      try {
+        return deriveDelegationClaim({
+          parent: parentAccessTokenClaims,
+          ...(typeof subjectPayload.jti === "string"
+            ? { parentJti: subjectPayload.jti }
+            : {}),
+        });
+      } catch (error) {
+        if (error instanceof DelegationDepthExceededError) {
+          throw new APIError("BAD_REQUEST", {
+            error: "invalid_grant",
+            error_description:
+              "Subject token exceeded the maximum delegation depth",
+          });
+        }
+        throw error;
+      }
+    })();
 
     const now = Math.floor(Date.now() / 1000);
     const subjectExp =

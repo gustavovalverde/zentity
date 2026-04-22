@@ -65,6 +65,8 @@ export function SignUpForm() {
     };
   }, []);
 
+  const resolveEmail = () => emailRef.current?.value.trim() || email.trim();
+
   const finalizeSignUp = (nextPath = "/dashboard") => {
     setIsRedirecting(true);
     redirectTo(nextPath);
@@ -73,8 +75,14 @@ export function SignUpForm() {
   const completeAccountCreation = async (params?: {
     wallet?: { address: string; chainId: number };
   }) => {
+    const resolvedEmail = resolveEmail();
+
+    if (resolvedEmail && resolvedEmail !== email.trim()) {
+      setEmail(resolvedEmail);
+    }
+
     await trpc.signUp.completeAccountCreation.mutate({
-      email: email.trim() || undefined,
+      email: resolvedEmail || undefined,
       wallet: params?.wallet,
     });
 
@@ -97,8 +105,7 @@ export function SignUpForm() {
 
       const prfSalt = crypto.getRandomValues(new Uint8Array(32));
 
-      const resolvedEmail =
-        emailRef.current?.value.trim() || email.trim() || "";
+      const resolvedEmail = resolveEmail();
 
       // Sync React state in case browser autofill didn't fire onChange
       if (resolvedEmail && resolvedEmail !== email.trim()) {
@@ -205,6 +212,13 @@ export function SignUpForm() {
   const handleCredentialSelect = (type: CredentialType) => {
     setError(null);
 
+    // Preserve the typed email even if the input change event hasn't flushed
+    // before the credential card click triggers a rerender.
+    const resolvedEmail = resolveEmail();
+    if (resolvedEmail && resolvedEmail !== email.trim()) {
+      setEmail(resolvedEmail);
+    }
+
     if (type === "passkey") {
       setCredentialType("passkey");
       handleCreatePasskey().catch(reportRejection);
@@ -219,6 +233,10 @@ export function SignUpForm() {
 
     // Password: toggle inline form
     setCredentialType(credentialType === "password" ? null : "password");
+  };
+
+  const handleEmailInput = (nextEmail: string) => {
+    setEmail(nextEmail);
   };
 
   const prfUnsupportedMessage =
@@ -247,15 +265,18 @@ export function SignUpForm() {
           <Input
             autoCapitalize="none"
             autoComplete="email"
+            defaultValue={email}
             disabled={isSubmitting}
             id={emailId}
             inputMode="email"
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => handleEmailInput(e.target.value)}
+            onInput={(e) =>
+              handleEmailInput((e.target as HTMLInputElement).value)
+            }
             placeholder="you@example.com"
             ref={emailRef}
             spellCheck={false}
             type="email"
-            value={email}
           />
           <p className="text-muted-foreground text-xs">
             Optional. Used to identify your account.
