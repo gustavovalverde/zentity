@@ -1,11 +1,20 @@
+import {
+  createPaymentRequired,
+  createProofOfHumanTokenVerifier,
+  encodePaymentResponseHeader,
+  PAYMENT_RESPONSE_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+  type ProofOfHumanClaims,
+  type VerifiedProofOfHumanToken,
+} from "@zentity/sdk/rp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { X402Resource } from "@/data/x402";
 import { findResource } from "@/data/x402";
 import { checkOnChainAttestation, getRegistryAddress } from "@/lib/chain";
+import { env } from "@/lib/env";
 import { settlePayment, verifyPayment } from "@/lib/facilitator";
 import { getStoredDpopJkt } from "@/lib/poh-client";
-import { verifyPohToken } from "@/lib/poh-verifier";
 import { buildRouteConfig } from "@/lib/x402-server";
 
 const bodySchema = z.object({
@@ -17,28 +26,31 @@ const bodySchema = z.object({
     .optional(),
 });
 
-function toBase64(data: unknown): string {
-  return Buffer.from(JSON.stringify(data)).toString("base64");
+let proofOfHumanTokenVerifier:
+  | ReturnType<typeof createProofOfHumanTokenVerifier>
+  | undefined;
+
+function getProofOfHumanTokenVerifier() {
+  proofOfHumanTokenVerifier ??= createProofOfHumanTokenVerifier({
+    issuer: env.NEXT_PUBLIC_ZENTITY_URL,
+    jwksUrl: new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL),
+  });
+  return proofOfHumanTokenVerifier;
 }
 
 function buildPaymentRequired(resource: X402Resource) {
   const routeConfig = buildRouteConfig(resource);
 
-  const accepts = Array.isArray(routeConfig.accepts)
-    ? routeConfig.accepts
-    : [routeConfig.accepts];
-
-  const body = {
-    x402Version: 2,
-    accepts,
+  return createPaymentRequired({
+    accepts: Array.isArray(routeConfig.accepts)
+      ? routeConfig.accepts
+      : [routeConfig.accepts],
     resource: { url: resource.endpoint },
-    description: routeConfig.description,
+    ...(routeConfig.description
+      ? { description: routeConfig.description }
+      : {}),
     ...(routeConfig.extensions ? { extensions: routeConfig.extensions } : {}),
-  };
-
-  const response = NextResponse.json(body, { status: 402 });
-  response.headers.set("PAYMENT-REQUIRED", toBase64(body));
-  return response;
+  });
 }
 
 function buildSettlementFailedResponse(settlement: {
@@ -175,12 +187,7 @@ function buildSuccess(
     transaction?: string | undefined;
     network?: string | undefined;
   },
-  poh?: {
-    tier: number;
-    verified: boolean;
-    sybil_resistant: boolean;
-    method: string | null;
-  },
+  poh?: ProofOfHumanClaims,
   onChain?: Record<string, unknown>
 ) {
   const body = {
@@ -194,8 +201,8 @@ function buildSuccess(
 
   const response = NextResponse.json(body);
   response.headers.set(
-    "PAYMENT-RESPONSE",
-    toBase64(settlement ?? { success: true })
+    PAYMENT_RESPONSE_HEADER,
+    encodePaymentResponseHeader(settlement ?? { success: true })
   );
   return response;
 }
@@ -204,7 +211,7 @@ async function validatePohToken(
   pohToken: string | undefined,
   resource: X402Resource
 ): Promise<
-  | { ok: true; verified: Awaited<ReturnType<typeof verifyPohToken>> }
+  | { ok: true; verified: VerifiedProofOfHumanToken }
   | { ok: false; response: NextResponse }
 > {
   if (!pohToken) {
@@ -217,9 +224,9 @@ async function validatePohToken(
     };
   }
 
-  const verified = await verifyPohToken(pohToken).catch(
-    (e: unknown) => e as Error
-  );
+  const verified = await getProofOfHumanTokenVerifier()
+    .verify(pohToken)
+    .catch((e: unknown) => e as Error);
   if (verified instanceof Error) {
     return {
       ok: false,
@@ -275,8 +282,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unknown_resource" }, { status: 404 });
   }
 
-  // Check for PAYMENT-SIGNATURE header (real x402 payment)
-  const paymentSignature = request.headers.get("PAYMENT-SIGNATURE");
+  const paymentSignature = request.headers.get(PAYMENT_SIGNATURE_HEADER);
 
   // No payment → 402
   if (!paymentSignature) {

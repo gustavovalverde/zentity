@@ -1,13 +1,10 @@
 import "server-only";
 
+import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/connection";
 import { type ProviderId, readDcrClientId } from "@/lib/dcr";
-import {
-  createPersistentDpopClient,
-  type SerializedDpopKeyPair,
-} from "@/lib/dpop";
 import { env } from "@/lib/env";
 import {
   describeOAuthErrorResponse,
@@ -141,10 +138,13 @@ async function readLatestValidityNotice(args: {
 
 async function fetchRemoteValidityState(args: {
   accessToken: string;
-  keyPair: SerializedDpopKeyPair;
+  keyPair: {
+    privateJwk: Record<string, unknown>;
+    publicJwk: Record<string, unknown>;
+  };
 }): Promise<RemoteValidityState> {
   const validityUrl = new URL(VALIDITY_PATH, env.ZENTITY_URL).toString();
-  const dpop = await createPersistentDpopClient(args.keyPair);
+  const dpop = await createDpopClientFromKeyPair(args.keyPair);
   const { response, result } = await dpop.withNonceRetry(async (nonce) => {
     const proof = await dpop.proofFor(
       "GET",
@@ -241,8 +241,8 @@ export async function getProviderValidityState(args: {
     const snapshot = await fetchRemoteValidityState({
       accessToken,
       keyPair: {
-        privateJwk: JSON.parse(storedKey.privateJwk),
-        publicJwk: JSON.parse(storedKey.publicJwk),
+        privateJwk: JSON.parse(storedKey.privateJwk) as Record<string, unknown>,
+        publicJwk: JSON.parse(storedKey.publicJwk) as Record<string, unknown>,
       },
     });
 

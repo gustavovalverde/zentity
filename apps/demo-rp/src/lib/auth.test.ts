@@ -2,17 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config) => config),
+  createOpenIdTokenVerifier: vi.fn(),
   currentClientIdKey: vi.fn(),
   createDpopClient: vi.fn(),
-  createRemoteJWKSet: vi.fn(() => "jwks"),
   decodeProtectedHeader: vi.fn(),
   drizzleAdapter: vi.fn(() => ({ adapter: true })),
+  fetchUserInfo: vi.fn(),
   genericOAuth: vi.fn((config) => ({ type: "genericOAuth", ...config })),
   getDb: vi.fn(() => ({})),
-  jwtVerify: vi.fn(),
   nextCookies: vi.fn(() => ({ type: "nextCookies" })),
   parseOAuthJsonResponse: vi.fn((response: Response) => response.json()),
   readDcrClientId: vi.fn(),
+  verifyToken: vi.fn(),
 }));
 
 vi.mock("@better-auth/drizzle-adapter", () => ({
@@ -31,10 +32,14 @@ vi.mock("better-auth/plugins", () => ({
   genericOAuth: authMocks.genericOAuth,
 }));
 
+vi.mock("@zentity/sdk/rp", () => ({
+  createDpopClient: authMocks.createDpopClient,
+  createOpenIdTokenVerifier: authMocks.createOpenIdTokenVerifier,
+  fetchUserInfo: authMocks.fetchUserInfo,
+}));
+
 vi.mock("jose", () => ({
-  createRemoteJWKSet: authMocks.createRemoteJWKSet,
   decodeProtectedHeader: authMocks.decodeProtectedHeader,
-  jwtVerify: authMocks.jwtVerify,
 }));
 
 vi.mock("@/lib/db/connection", () => ({
@@ -45,10 +50,6 @@ vi.mock("@/lib/dcr", () => ({
   PROVIDER_IDS: ["x402"],
   currentClientIdKey: authMocks.currentClientIdKey,
   readDcrClientId: authMocks.readDcrClientId,
-}));
-
-vi.mock("@/lib/dpop", () => ({
-  createDpopClient: authMocks.createDpopClient,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -99,9 +100,18 @@ describe("getAuth provider userinfo", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
-    authMocks.createRemoteJWKSet.mockReturnValue("jwks");
+    authMocks.createOpenIdTokenVerifier.mockReturnValue({
+      verify: authMocks.verifyToken,
+    });
     authMocks.currentClientIdKey.mockResolvedValue("x402=test-client");
     authMocks.readDcrClientId.mockResolvedValue("test-client");
+    authMocks.fetchUserInfo.mockResolvedValue({
+      email: "alice@example.com",
+      sub: "pairwise-sub",
+    });
+    authMocks.verifyToken.mockResolvedValue({
+      payload: { sub: "pairwise-sub" },
+    });
     authMocks.getDb.mockReturnValue({
       insert: vi.fn(() => ({
         values: vi.fn(() => ({
@@ -121,7 +131,7 @@ describe("getAuth provider userinfo", () => {
   });
 
   it("rejects when userinfo succeeds but id_token verification fails", async () => {
-    authMocks.jwtVerify.mockRejectedValueOnce(new Error("bad_id_token"));
+    authMocks.verifyToken.mockRejectedValueOnce(new Error("bad_id_token"));
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -146,7 +156,7 @@ describe("getAuth provider userinfo", () => {
   });
 
   it("rejects when the id_token at_hash does not match the access token", async () => {
-    authMocks.jwtVerify.mockResolvedValueOnce({
+    authMocks.verifyToken.mockResolvedValueOnce({
       payload: {
         at_hash: "wrong-hash",
         sub: "pairwise-sub",
@@ -176,23 +186,14 @@ describe("getAuth provider userinfo", () => {
     ).rejects.toThrow("ID token at_hash mismatch");
   });
 
-  it("refreshes the JWKS after the cache TTL expires", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-    authMocks.jwtVerify.mockResolvedValue({
-      payload: { sub: "pairwise-sub" },
+  it("configures id_token verification against the Zentity issuer", async () => {
+    const provider = await loadProviderConfig();
+
+    await provider.getUserInfo({ idToken: "id-token" });
+
+    expect(authMocks.createOpenIdTokenVerifier).toHaveBeenCalledWith({
+      issuerUrl: "http://zentity.example",
     });
-
-    try {
-      const provider = await loadProviderConfig();
-
-      await provider.getUserInfo({ idToken: "first-id-token" });
-      vi.setSystemTime(new Date("2026-01-01T00:06:00.000Z"));
-      await provider.getUserInfo({ idToken: "second-id-token" });
-
-      expect(authMocks.createRemoteJWKSet).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(authMocks.verifyToken).toHaveBeenCalledWith("id-token");
   });
 });

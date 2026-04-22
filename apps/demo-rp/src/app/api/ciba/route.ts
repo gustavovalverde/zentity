@@ -1,5 +1,10 @@
 import crypto from "node:crypto";
 
+import {
+  createDpopClient,
+  type DpopClient,
+  fetchUserInfo,
+} from "@zentity/sdk/rp";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -9,7 +14,6 @@ import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
 import { isValidProviderId, readDcrClient } from "@/lib/dcr";
-import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
@@ -22,7 +26,7 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
  */
 const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
-const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
+const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const MERCHANT_RESOURCE = "https://merchant.example.com/api";
 const EXCHANGE_SCOPE = "openid";
 
@@ -213,7 +217,7 @@ async function handleTokenExchange(
     grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
     client_id: client.clientId,
     subject_token: data.accessToken,
-    subject_token_type: TOKEN_TYPE_ACCESS,
+    subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
     resource: MERCHANT_RESOURCE,
     scope: EXCHANGE_SCOPE,
   };
@@ -253,31 +257,23 @@ async function handleCibaToken(
     return NextResponse.json(body, { status });
   }
 
-  const userinfo = await fetchUserinfo(cibaTokenDpop, cibaBody.access_token);
+  const userinfo = await readUserInfo(cibaTokenDpop, cibaBody.access_token);
   return userinfo
     ? NextResponse.json({ ...cibaBody, userinfo }, { status })
     : NextResponse.json(body, { status });
 }
 
-async function fetchUserinfo(
+async function readUserInfo(
   dpop: Awaited<ReturnType<typeof fetchTokenWithDpop>>["dpop"],
   accessToken: string
 ): Promise<Record<string, unknown> | null> {
   try {
-    const userinfoUrl = new URL(
-      "/api/auth/oauth2/userinfo",
-      env.ZENTITY_URL
-    ).toString();
-    const proof = await dpop.proofFor("GET", userinfoUrl, accessToken);
-    const uiRes = await fetch(userinfoUrl, {
-      headers: {
-        Authorization: `DPoP ${accessToken}`,
-        DPoP: proof,
-      },
+    return await fetchUserInfo({
+      accessToken,
+      dpopClient: dpop,
+      unwrapResponseEnvelope: false,
+      userInfoUrl: new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL),
     });
-    if (uiRes.ok) {
-      return (await uiRes.json()) as Record<string, unknown>;
-    }
   } catch {
     // Non-critical — return tokens without userinfo
   }

@@ -110,8 +110,8 @@ vi.mock("@/lib/dcr", () => ({
     testState.readDcrClient(...args),
 }));
 
-vi.mock("@/lib/dpop", () => ({
-  createPersistentDpopClient: async () => testState.dpopClient,
+vi.mock("@zentity/sdk/rp", () => ({
+  createDpopClientFromKeyPair: async () => testState.dpopClient,
 }));
 
 vi.mock("@/lib/env", () => ({

@@ -1,13 +1,18 @@
 import "server-only";
 
 import crypto from "node:crypto";
-
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import {
+  createDpopClient,
+  createOpenIdTokenVerifier,
+  type DpopClient,
+  fetchUserInfo,
+} from "@zentity/sdk/rp";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
+import { decodeProtectedHeader } from "jose";
 
 import { getDb } from "@/lib/db/connection";
 import {
@@ -23,7 +28,6 @@ import {
   type ProviderId,
   readDcrClientId,
 } from "@/lib/dcr";
-import { createDpopClient, type DpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 import {
   describeOAuthErrorResponse,
@@ -34,11 +38,6 @@ const AETHER_BOOTSTRAP_SCOPES = [
   "agent:host.register",
   "agent:session.register",
 ];
-const ZENTITY_JWKS_TTL_MS = 5 * 60 * 1000;
-
-function zentityUserInfoUrl() {
-  return new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL).toString();
-}
 
 // Store DPoP clients by access token so getUserInfo can reuse the same
 // keypair that getToken bound the token to (cnf.jkt).
@@ -60,26 +59,20 @@ function stripProviderFields(obj: Record<string, unknown>) {
   return obj;
 }
 
-// Lazy JWKS init: see verify.ts for rationale (Next.js build skipValidation).
-let zentityJwksCache:
-  | { expiresAt: number; jwks: ReturnType<typeof createRemoteJWKSet> }
-  | undefined;
-function zentityJwks() {
-  if (!zentityJwksCache || Date.now() >= zentityJwksCache.expiresAt) {
-    zentityJwksCache = {
-      jwks: createRemoteJWKSet(
-        new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
-      ),
-      expiresAt: Date.now() + ZENTITY_JWKS_TTL_MS,
-    };
-  }
-  return zentityJwksCache.jwks;
+// Keep verifier construction lazy because this module is imported during
+// Next.js build steps where env defaults may be skipped.
+let idTokenVerifier: ReturnType<typeof createOpenIdTokenVerifier> | undefined;
+function getIdTokenVerifier() {
+  idTokenVerifier ??= createOpenIdTokenVerifier({
+    issuerUrl: env.ZENTITY_URL,
+  });
+  return idTokenVerifier;
 }
 
 async function verifyIdToken(
   idToken: string
 ): Promise<Record<string, unknown>> {
-  const { payload } = await jwtVerify(idToken, zentityJwks());
+  const { payload } = await getIdTokenVerifier().verify(idToken);
   return payload as Record<string, unknown>;
 }
 
@@ -114,7 +107,7 @@ function toExpiryDate(seconds: unknown): Date | undefined {
   return new Date(Date.now() + seconds * 1000);
 }
 
-async function fetchUserInfo(tokens: {
+async function buildOAuthProfile(tokens: {
   accessToken?: string | undefined;
   idToken?: string | undefined;
 }) {
@@ -123,18 +116,14 @@ async function fetchUserInfo(tokens: {
   if (tokens.accessToken) {
     const dpop = dpopClients.get(tokens.accessToken);
     dpopClients.delete(tokens.accessToken);
-
-    const url = zentityUserInfoUrl();
-    const headers: Record<string, string> = dpop
-      ? {
-          Authorization: `DPoP ${tokens.accessToken}`,
-          DPoP: await dpop.proofFor("GET", url, tokens.accessToken),
-        }
-      : { Authorization: `Bearer ${tokens.accessToken}` };
-
-    const response = await fetch(url, { headers });
-    if (response.ok) {
-      body = await parseOAuthJsonResponse(response, "OAuth userinfo request");
+    const userInfo = await fetchUserInfo({
+      accessToken: tokens.accessToken,
+      ...(dpop ? { dpopClient: dpop } : {}),
+      unwrapResponseEnvelope: false,
+      userInfoUrl: new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL),
+    });
+    if (userInfo) {
+      body = userInfo;
     }
   }
 
@@ -292,16 +281,16 @@ function makeProviderConfig(
             id: crypto.randomUUID(),
             providerId,
             accessToken,
-            publicJwk: JSON.stringify(dpop.publicJwk),
-            privateJwk: JSON.stringify(dpop.privateJwk),
+            publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
+            privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: oauthDpopKey.accessToken,
             set: {
               providerId,
-              publicJwk: JSON.stringify(dpop.publicJwk),
-              privateJwk: JSON.stringify(dpop.privateJwk),
+              publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
+              privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
               updatedAt: new Date(),
             },
           });
@@ -319,7 +308,7 @@ function makeProviderConfig(
       accessToken?: string | undefined;
       idToken?: string | undefined;
     }) {
-      const { id, profile } = await fetchUserInfo(tokens);
+      const { id, profile } = await buildOAuthProfile(tokens);
       await syncClaimsToDb(id, providerId, profile);
       profile.__existingClaims = await readExistingClaims(id);
       return profile as { id: string; emailVerified: boolean };

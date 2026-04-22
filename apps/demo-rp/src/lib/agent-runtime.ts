@@ -3,6 +3,7 @@ import "server-only";
 import crypto, { randomUUID } from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
@@ -16,7 +17,6 @@ import { getDb } from "@/lib/db/connection";
 import { account, agentRuntime, oauthDpopKey } from "@/lib/db/schema";
 import type { ProviderId } from "@/lib/dcr";
 import { readDcrClient } from "@/lib/dcr";
-import { createPersistentDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
 
 const HOST_NAME = "Aether Demo RP";
@@ -46,7 +46,7 @@ interface RegisterAgentSessionOptions {
 
 interface BootstrapAccessContext {
   accessToken: string;
-  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>;
+  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>;
 }
 
 function hasRegisteredSession(
@@ -125,7 +125,7 @@ async function getPersistedDpopClient(
     throw new Error("Missing persisted DPoP key for the current OAuth session");
   }
 
-  return createPersistentDpopClient({
+  return createDpopClientFromKeyPair({
     privateJwk: JSON.parse(dpopRow.privateJwk),
     publicJwk: JSON.parse(dpopRow.publicJwk),
   });
@@ -174,7 +174,7 @@ async function getOrCreateAgentRuntime(
 async function postJsonWithDpop(
   url: string,
   accessToken: string,
-  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>,
+  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>,
   payload: unknown,
   extraHeaders?: Record<string, string>
 ): Promise<Response> {
@@ -203,7 +203,10 @@ async function exchangeBootstrapAccessToken(
   userId: string,
   providerId: ProviderId
 ): Promise<BootstrapAccessContext> {
-  const authAccount = await getAccountForProvider(userId, providerId);
+  const [authAccount, client] = await Promise.all([
+    getAccountForProvider(userId, providerId),
+    readDcrClient(providerId),
+  ]);
   if (!authAccount?.accessToken) {
     throw new Error("Missing OAuth access token. Sign in again.");
   }
@@ -212,7 +215,6 @@ async function exchangeBootstrapAccessToken(
     throw buildReauthError();
   }
 
-  const client = await readDcrClient(providerId);
   if (!client) {
     throw new Error("Client not registered. Register the demo client first.");
   }

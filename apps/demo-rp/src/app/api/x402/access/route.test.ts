@@ -1,16 +1,31 @@
+import {
+  buildPaymentRequiredPayload,
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+} from "@zentity/sdk/rp";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { X402Resource } from "@/data/x402";
 
 const mocks = vi.hoisted(() => ({
   buildRouteConfig: vi.fn(),
   checkOnChainAttestation: vi.fn(),
+  createProofOfHumanTokenVerifier: vi.fn(),
   findResource: vi.fn(),
   getRegistryAddress: vi.fn(),
   getStoredDpopJkt: vi.fn(),
   settlePayment: vi.fn(),
   verifyPayment: vi.fn(),
-  verifyPohToken: vi.fn(),
+  verifyProofOfHumanToken: vi.fn(),
 }));
+
+vi.mock("@zentity/sdk/rp", async () => {
+  const actual =
+    await vi.importActual<typeof import("@zentity/sdk/rp")>("@zentity/sdk/rp");
+  return {
+    ...actual,
+    createProofOfHumanTokenVerifier: mocks.createProofOfHumanTokenVerifier,
+  };
+});
 
 vi.mock("@/data/x402", () => ({
   findResource: mocks.findResource,
@@ -21,6 +36,13 @@ vi.mock("@/lib/chain", () => ({
   getRegistryAddress: mocks.getRegistryAddress,
 }));
 
+vi.mock("@/lib/env", () => ({
+  env: {
+    ZENTITY_URL: "http://zentity-internal:3000",
+    NEXT_PUBLIC_ZENTITY_URL: "https://app.zentity.xyz",
+  },
+}));
+
 vi.mock("@/lib/facilitator", () => ({
   settlePayment: mocks.settlePayment,
   verifyPayment: mocks.verifyPayment,
@@ -28,10 +50,6 @@ vi.mock("@/lib/facilitator", () => ({
 
 vi.mock("@/lib/poh-client", () => ({
   getStoredDpopJkt: mocks.getStoredDpopJkt,
-}));
-
-vi.mock("@/lib/poh-verifier", () => ({
-  verifyPohToken: mocks.verifyPohToken,
 }));
 
 vi.mock("@/lib/x402-server", () => ({
@@ -81,6 +99,9 @@ function makeRequest(
 describe("/api/x402/access POST", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.createProofOfHumanTokenVerifier.mockReturnValue({
+      verify: mocks.verifyProofOfHumanToken,
+    });
     mocks.buildRouteConfig.mockReturnValue({
       accepts: {
         scheme: "exact",
@@ -99,7 +120,7 @@ describe("/api/x402/access POST", () => {
       isValid: true,
       payer: WALLET_A,
     });
-    mocks.verifyPohToken.mockResolvedValue({
+    mocks.verifyProofOfHumanToken.mockResolvedValue({
       sub: "user-123",
       exp: 1_800_000_000,
       poh: {
@@ -125,7 +146,7 @@ describe("/api/x402/access POST", () => {
     const response = await POST(
       makeRequest(
         { resourceId: "resource-1" },
-        { "PAYMENT-SIGNATURE": Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
       )
     );
 
@@ -135,6 +156,36 @@ describe("/api/x402/access POST", () => {
       required: 2,
     });
     expect(mocks.settlePayment).not.toHaveBeenCalled();
+  });
+
+  it("emits an x402 v2 PAYMENT-REQUIRED header before payment", async () => {
+    mocks.findResource.mockReturnValue(
+      makeResource({ requiredTier: 2, requireOnChain: false })
+    );
+
+    const response = await POST(makeRequest({ resourceId: "resource-1" }));
+
+    expect(response.status).toBe(402);
+    const body = await response.json();
+    const header = response.headers.get(PAYMENT_REQUIRED_HEADER);
+
+    expect(body).toEqual(
+      buildPaymentRequiredPayload({
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:84532",
+            payTo: "0x000000000000000000000000000000000000dEaD",
+            amount: "1",
+            maxTimeoutSeconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            extra: {},
+          },
+        ],
+        resource: { url: "/api/x402/access" },
+      })
+    );
+    expect(header).toBe(Buffer.from(JSON.stringify(body)).toString("base64"));
   });
 
   it("rejects on-chain requests when the caller-provided wallet mismatches the payer", async () => {
@@ -147,7 +198,7 @@ describe("/api/x402/access POST", () => {
           pohToken: "poh-token",
           walletAddress: WALLET_B,
         },
-        { "PAYMENT-SIGNATURE": Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
       )
     );
 
@@ -171,7 +222,7 @@ describe("/api/x402/access POST", () => {
           resourceId: "resource-1",
           pohToken: "poh-token",
         },
-        { "PAYMENT-SIGNATURE": Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
       )
     );
 

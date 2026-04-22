@@ -1,5 +1,5 @@
+import { createOpenIdTokenVerifier } from "@zentity/sdk/rp";
 import { and, eq, inArray } from "drizzle-orm";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
@@ -13,17 +13,6 @@ import { env } from "@/lib/env";
 
 const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
 const DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS = 5 * 60 * 1000;
-const OIDC_DISCOVERY_TTL_MS = 5 * 60 * 1000;
-
-interface OidcDiscovery {
-  issuer: string;
-  jwks: ReturnType<typeof createRemoteJWKSet>;
-}
-
-let cached: {
-  expiresAt: number;
-  value: OidcDiscovery;
-} | null = null;
 const logoutTokenReplayExpiryByJti = new Map<string, number>();
 
 function pruneExpiredLogoutTokenReplayEntries(now: number) {
@@ -42,32 +31,17 @@ function resolveLogoutTokenReplayExpiry(payload: { exp?: unknown }): number {
   return Date.now() + DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS;
 }
 
-async function getOidcConfig(): Promise<OidcDiscovery> {
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.value;
-  }
-  const discoveryUrl = `${env.ZENTITY_URL}/.well-known/openid-configuration`;
-  const res = await fetch(discoveryUrl);
-  const meta = (await res.json()) as { issuer: string; jwks_uri: string };
-  cached = {
-    value: {
-      issuer: meta.issuer,
-      jwks: createRemoteJWKSet(new URL(meta.jwks_uri)),
-    },
-    expiresAt: Date.now() + OIDC_DISCOVERY_TTL_MS,
-  };
-  return cached.value;
+let oidcTokenVerifier: ReturnType<typeof createOpenIdTokenVerifier> | undefined;
+function getOidcTokenVerifier() {
+  oidcTokenVerifier ??= createOpenIdTokenVerifier({
+    issuerUrl: env.ZENTITY_URL,
+  });
+  return oidcTokenVerifier;
 }
 
 async function getAllClientIds(): Promise<string[]> {
-  const ids: string[] = [];
-  for (const providerId of PROVIDER_IDS) {
-    const clientId = await readDcrClientId(providerId);
-    if (clientId) {
-      ids.push(clientId);
-    }
-  }
-  return ids;
+  const ids = await Promise.all(PROVIDER_IDS.map(readDcrClientId));
+  return ids.filter((id): id is string => Boolean(id));
 }
 
 /**
@@ -93,7 +67,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const oidc = await getOidcConfig();
     const clientIds = await getAllClientIds();
     if (clientIds.length === 0) {
       return NextResponse.json(
@@ -101,8 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         { status: 503 }
       );
     }
-    const { payload } = await jwtVerify(logoutToken, oidc.jwks, {
-      issuer: oidc.issuer,
+    const { payload } = await getOidcTokenVerifier().verify(logoutToken, {
       audience: clientIds,
     });
 

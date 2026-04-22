@@ -2,12 +2,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const joseMocks = vi.hoisted(() => ({
   calculateJwkThumbprint: vi.fn(),
-  createRemoteJWKSet: vi.fn(() => "jwks"),
   importJWK: vi.fn(),
   jwtVerify: vi.fn(),
 }));
 
+const rpMocks = vi.hoisted(() => {
+  const verify = vi.fn();
+  return {
+    createJwksTokenVerifier: vi.fn(() => ({ verify })),
+    verify,
+  };
+});
+
 vi.mock("jose", () => joseMocks);
+vi.mock("@zentity/sdk/rp", () => ({
+  createJwksTokenVerifier: rpMocks.createJwksTokenVerifier,
+}));
 vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/env", () => ({
@@ -37,9 +47,10 @@ function disclosure(name: string, value: unknown): string {
 describe("verifyVpToken", () => {
   beforeEach(() => {
     joseMocks.calculateJwkThumbprint.mockReset();
-    joseMocks.createRemoteJWKSet.mockReset().mockReturnValue("jwks");
     joseMocks.importJWK.mockReset();
     joseMocks.jwtVerify.mockReset();
+    rpMocks.createJwksTokenVerifier.mockClear();
+    rpMocks.verify.mockReset();
   });
 
   it("rejects VP tokens with an empty trailing KB-JWT segment", async () => {
@@ -59,13 +70,12 @@ describe("verifyVpToken", () => {
   });
 
   it("accepts VP tokens with a valid KB-JWT", async () => {
-    joseMocks.jwtVerify
-      .mockResolvedValueOnce({
-        payload: { cnf: { jkt: HOLDER_THUMBPRINT, jwk: HOLDER_JWK } },
-      })
-      .mockResolvedValueOnce({
-        payload: { nonce: "expected-nonce" },
-      });
+    rpMocks.verify.mockResolvedValueOnce({
+      payload: { cnf: { jkt: HOLDER_THUMBPRINT, jwk: HOLDER_JWK } },
+    });
+    joseMocks.jwtVerify.mockResolvedValueOnce({
+      payload: { nonce: "expected-nonce" },
+    });
     joseMocks.calculateJwkThumbprint.mockResolvedValueOnce(HOLDER_THUMBPRINT);
     joseMocks.importJWK.mockResolvedValueOnce("holder-key");
 
