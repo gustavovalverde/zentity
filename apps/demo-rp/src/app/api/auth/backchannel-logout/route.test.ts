@@ -106,9 +106,9 @@ describe("POST /api/auth/backchannel-logout", () => {
           {
             status: 200,
             headers: { "content-type": "application/json" },
-          },
-        ),
-      ),
+          }
+        )
+      )
     );
   });
 

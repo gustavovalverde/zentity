@@ -19,7 +19,11 @@ vi.mock("@/lib/env", () => ({
 
 import { verifyVpToken } from "./verify";
 
-const HOLDER_JWK = { crv: "Ed25519", kty: "OKP", x: "holder-x" } as const;
+const HOLDER_JWK = {
+  crv: "Ed25519",
+  kty: "OKP",
+  x: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI",
+} as const;
 const HOLDER_THUMBPRINT = "holder-thumbprint";
 
 function base64url(input: string): string {

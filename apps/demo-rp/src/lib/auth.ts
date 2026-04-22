@@ -67,7 +67,9 @@ let zentityJwksCache:
 function zentityJwks() {
   if (!zentityJwksCache || Date.now() >= zentityJwksCache.expiresAt) {
     zentityJwksCache = {
-      jwks: createRemoteJWKSet(new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)),
+      jwks: createRemoteJWKSet(
+        new URL("/api/auth/oauth2/jwks", env.ZENTITY_URL)
+      ),
       expiresAt: Date.now() + ZENTITY_JWKS_TTL_MS,
     };
   }

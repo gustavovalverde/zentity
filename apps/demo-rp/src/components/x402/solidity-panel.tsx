@@ -87,7 +87,8 @@ function CodeBlock({ code, title }: { code: string; title: string }) {
       </h4>
       <pre className="overflow-x-auto rounded-md bg-muted/60 p-3 font-mono text-[11px] leading-relaxed">
         {tokens.map((t, i) => (
-          <span className={t.className} key={`s${i}`}>
+          // biome-ignore lint/suspicious/noArrayIndexKey: tokens are a deterministic syntax-highlighting stream regenerated from the same input on every render
+          <span className={t.className} key={`${i}:${t.className}:${t.text}`}>
             {t.text}
           </span>
         ))}

@@ -103,7 +103,7 @@ export async function generateSerializedDpopKeyPair(): Promise<SerializedDpopKey
   };
 }
 
-export async function createPersistentDpopClient(
+export function createPersistentDpopClient(
   keys: SerializedDpopKeyPair
 ): Promise<DpopClient> {
   return createDpopClientFromKeyPair(keys);

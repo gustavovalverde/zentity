@@ -16,8 +16,8 @@ import {
 import type { OAuthSessionContext } from "./context.js";
 import type { DpopKeyPair } from "./dpop.js";
 
-const INTERACTION_TTL_BUFFER_MS = 5_000;
-const NOTIFICATION_RETRY_MS = 1_000;
+const INTERACTION_TTL_BUFFER_MS = 5000;
+const NOTIFICATION_RETRY_MS = 1000;
 const TERMINAL_RESULT_RETENTION_MS = 60_000;
 
 export interface InteractiveToolInteraction {
@@ -41,9 +41,9 @@ interface InteractiveToolFlowEntry {
   expiresAt: number;
   fingerprint: string;
   interactionId: string;
+  notificationRetryTimer?: ReturnType<typeof setTimeout> | undefined;
   notificationSent?: boolean;
   pendingAuthorization: CibaPendingAuthorization;
-  notificationRetryTimer?: ReturnType<typeof setTimeout> | undefined;
   pollPromise?: Promise<CibaPollResult | undefined> | undefined;
   pollTimer?: ReturnType<typeof setTimeout> | undefined;
   terminalResult?:
@@ -67,6 +67,13 @@ interface StartInteractiveFlowParams<T> {
 const flowsByFingerprint = new Map<string, InteractiveToolFlowEntry>();
 const flowsById = new Map<string, InteractiveToolFlowEntry>();
 
+function fireAndForget(promise: Promise<unknown>): void {
+  promise.catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[interaction] Background task failed: ${message}`);
+  });
+}
+
 function evictExpiredInteractiveFlows(): void {
   const now = Date.now();
   for (const entry of flowsById.values()) {
@@ -83,7 +90,7 @@ function evictExpiredInteractiveFlows(): void {
     if (entry.expiresAt <= now) {
       entry.terminalResult = { status: "timed_out" };
       entry.terminalResultAt = now;
-      void notifyClientCompletion(entry);
+      fireAndForget(notifyClientCompletion(entry));
     }
   }
 }
@@ -158,7 +165,10 @@ function syncPendingApproval(
 
 function setTerminalResult(
   entry: InteractiveToolFlowEntry,
-  result: Extract<CibaPollResult, { status: "approved" | "denied" | "timed_out" }>
+  result: Extract<
+    CibaPollResult,
+    { status: "approved" | "denied" | "timed_out" }
+  >
 ): void {
   entry.terminalResult = result;
   entry.terminalResultAt = Date.now();
@@ -193,7 +203,7 @@ async function notifyClientCompletion(
       }
       const timer = setTimeout(() => {
         entry.notificationRetryTimer = undefined;
-        void notifyClientCompletion(entry);
+        fireAndForget(notifyClientCompletion(entry));
       }, NOTIFICATION_RETRY_MS);
       timer.unref?.();
       entry.notificationRetryTimer = timer;
@@ -216,22 +226,25 @@ function scheduleInteractiveFlowPoll(
   const remainingMs = entry.expiresAt - Date.now();
   if (remainingMs <= 0) {
     setTerminalResult(entry, { status: "timed_out" });
-    void notifyClientCompletion(entry);
+    fireAndForget(notifyClientCompletion(entry));
     return;
   }
 
-  const timer = setTimeout(() => {
-    void pollInteractiveFlow(entry);
-  }, Math.max(250, Math.min(delayMs, remainingMs)));
+  const timer = setTimeout(
+    () => {
+      fireAndForget(pollInteractiveFlow(entry));
+    },
+    Math.max(250, Math.min(delayMs, remainingMs))
+  );
   timer.unref?.();
   entry.pollTimer = timer;
 }
 
-async function pollInteractiveFlow(
+function pollInteractiveFlow(
   entry: InteractiveToolFlowEntry
 ): Promise<CibaPollResult | undefined> {
   if (entry.terminalResult) {
-    return entry.terminalResult;
+    return Promise.resolve(entry.terminalResult);
   }
 
   if (entry.pollPromise) {
@@ -275,7 +288,7 @@ async function pollInteractiveFlow(
       );
 
       if (flowsById.has(entry.interactionId) && !entry.terminalResult) {
-        scheduleInteractiveFlowPoll(entry, 1_000);
+        scheduleInteractiveFlowPoll(entry, 1000);
       }
 
       return undefined;
@@ -321,9 +334,12 @@ export async function beginOrResumeInteractiveFlow<T>(
   evictExpiredInteractiveFlows();
 
   const existing = flowsByFingerprint.get(params.fingerprint);
-  if (existing && (existing.expiresAt > Date.now() || existing.terminalResult)) {
+  if (
+    existing &&
+    (existing.expiresAt > Date.now() || existing.terminalResult)
+  ) {
     if (existing.terminalResult && !existing.notificationSent) {
-      void notifyClientCompletion(existing);
+      fireAndForget(notifyClientCompletion(existing));
     }
 
     const pollResult = await pollInteractiveFlow(existing);
@@ -353,7 +369,10 @@ export async function beginOrResumeInteractiveFlow<T>(
   }
 
   const pendingAuthorization = await beginCibaApproval(params.cibaRequest);
-  const approval = createPendingApproval(params.cibaRequest, pendingAuthorization);
+  const approval = createPendingApproval(
+    params.cibaRequest,
+    pendingAuthorization
+  );
   logPendingApprovalHandoff(approval);
 
   const interactionId = randomUUID();
@@ -373,7 +392,9 @@ export async function beginOrResumeInteractiveFlow<T>(
     approval,
     pendingAuthorization,
     expiresAt:
-      Date.now() + pendingAuthorization.expiresIn * 1000 + INTERACTION_TTL_BUFFER_MS,
+      Date.now() +
+      pendingAuthorization.expiresIn * 1000 +
+      INTERACTION_TTL_BUFFER_MS,
     browserUrl,
     completionNotifier,
     clientId: params.oauth.clientId,

@@ -492,6 +492,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: demo-rp receipt view renders ~10 optional claim sections from an AAP access token; extracting sub-components for each would obscure the single top-to-bottom render order this page is designed around
 function CibaResult({
   pick,
   onReset,

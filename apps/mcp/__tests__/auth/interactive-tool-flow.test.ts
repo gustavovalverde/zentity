@@ -84,10 +84,7 @@ function createParams(input: {
       resource: "http://localhost:3000",
     },
     onApproved:
-      input.onApproved ??
-      (async () => {
-        return { ok: true as const };
-      }),
+      input.onApproved ?? (() => Promise.resolve({ ok: true as const })),
   };
 }
 
@@ -128,7 +125,7 @@ describe("interactive tool flow", () => {
     expect(first.status).toBe("needs_user_action");
     expect(notifier).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
 
     expect(mockPollCibaTokenOnce).toHaveBeenCalledTimes(1);
     expect(notifier).toHaveBeenCalledTimes(1);
@@ -177,10 +174,10 @@ describe("interactive tool flow", () => {
 
     expect(first.status).toBe("needs_user_action");
 
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(2000);
     expect(notifier).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(1000);
     expect(notifier).toHaveBeenCalledTimes(2);
   });
 

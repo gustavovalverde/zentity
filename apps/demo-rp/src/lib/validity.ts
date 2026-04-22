@@ -212,9 +212,7 @@ export async function getProviderValidityState(args: {
     clientId && subject
       ? readLatestValidityNotice({ clientId, subject })
       : Promise.resolve(null),
-    accessToken
-      ? readStoredDpopKey(accessToken)
-      : Promise.resolve(null),
+    accessToken ? readStoredDpopKey(accessToken) : Promise.resolve(null),
   ]);
 
   if (!(clientId && accessToken)) {

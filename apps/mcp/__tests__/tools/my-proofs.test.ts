@@ -79,7 +79,7 @@ describe("my_proofs", () => {
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+      new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
     const client = await createConnectedClient();
@@ -89,7 +89,7 @@ describe("my_proofs", () => {
     });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text,
+      (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.isOver18).toBe(true);
     expect(parsed.verificationMethod).toBe("ocr");
@@ -108,7 +108,7 @@ describe("my_proofs", () => {
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+      new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
     const client = await createConnectedClient();
@@ -118,7 +118,7 @@ describe("my_proofs", () => {
     });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text,
+      (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.isOver18).toBeNull();
     expect(parsed.verified).toBe(false);
@@ -142,7 +142,7 @@ describe("my_proofs", () => {
     };
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify(userinfoResponse), { status: 200 }),
+      new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
     const client = await createConnectedClient();
@@ -152,20 +152,22 @@ describe("my_proofs", () => {
     });
 
     const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text,
+      (result.content as Array<{ text: string }>)[0].text
     );
     expect(parsed.verificationMethod).toBeNull();
     expect(parsed.verified).toBe(false);
     expect(parsed.checks.length).toBeGreaterThan(0);
     expect(parsed.checks.every((c: { passed: boolean }) => !c.passed)).toBe(
-      true,
+      true
     );
   });
 
   it("calls the userinfo endpoint, not tRPC", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ sub: "user-sub" }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sub: "user-sub" }), { status: 200 })
+      );
 
     const client = await createConnectedClient();
     await client.callTool({ name: "my_proofs", arguments: {} });

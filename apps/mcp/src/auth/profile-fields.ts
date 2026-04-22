@@ -12,11 +12,7 @@
 
 import { z } from "zod";
 
-export const PROFILE_FIELDS = [
-  "name",
-  "address",
-  "birthdate",
-] as const;
+export const PROFILE_FIELDS = ["name", "address", "birthdate"] as const;
 
 export const profileFieldSchema = z.enum(PROFILE_FIELDS);
 

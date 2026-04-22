@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import type { ValidityStatus } from "@/lib/validity";
 
-type ProviderValidityState = {
+interface ProviderValidityState {
   clientId: string | null;
   latestNotice: {
     eventId: string;
@@ -32,7 +32,7 @@ type ProviderValidityState = {
     validityStatus: ValidityStatus;
   } | null;
   subject: string | null;
-};
+}
 
 function formatStatusLabel(status: ValidityStatus | null | undefined): string {
   switch (status) {
@@ -66,6 +66,28 @@ function getBadgeVariant(
   }
 }
 
+async function fetchValidityState(
+  providerId: string
+): Promise<ProviderValidityState> {
+  const response = await fetch(
+    `/api/auth/validity-state?providerId=${encodeURIComponent(providerId)}`
+  );
+  const body = (await response.json().catch(() => null)) as
+    | ProviderValidityState
+    | { error?: string }
+    | null;
+
+  if (!response.ok) {
+    const message =
+      body && "error" in body && typeof body.error === "string"
+        ? body.error
+        : `Validity request failed (${response.status})`;
+    throw new Error(message);
+  }
+
+  return body as ProviderValidityState;
+}
+
 export function ProviderValidityCard({
   providerId,
 }: Readonly<{ providerId: string }>) {
@@ -82,34 +104,15 @@ export function ProviderValidityCard({
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
-      setState({ error: null, isLoading: true, value: null });
+    setState({ error: null, isLoading: true, value: null });
 
-      try {
-        const response = await fetch(
-          `/api/auth/validity-state?providerId=${encodeURIComponent(providerId)}`
-        );
-        const body = (await response.json().catch(() => null)) as
-          | ProviderValidityState
-          | { error?: string }
-          | null;
-
-        if (!response.ok) {
-          throw new Error(
-            (body && "error" in body && typeof body.error === "string"
-              ? body.error
-              : null) ?? `Validity request failed (${response.status})`
-          );
-        }
-
+    fetchValidityState(providerId)
+      .then((value) => {
         if (!cancelled) {
-          setState({
-            error: null,
-            isLoading: false,
-            value: body as ProviderValidityState,
-          });
+          setState({ error: null, isLoading: false, value });
         }
-      } catch (error) {
+      })
+      .catch((error: unknown) => {
         if (!cancelled) {
           setState({
             error: error instanceof Error ? error.message : String(error),
@@ -117,10 +120,8 @@ export function ProviderValidityCard({
             value: null,
           });
         }
-      }
-    };
+      });
 
-    load();
     return () => {
       cancelled = true;
     };
@@ -129,7 +130,7 @@ export function ProviderValidityCard({
   if (state.isLoading) {
     return (
       <Card className="border-border/60 shadow-sm" size="sm">
-        <CardHeader className="border-b border-border/60">
+        <CardHeader className="border-border/60 border-b">
           <CardTitle>Identity Validity</CardTitle>
           <CardDescription>Checking issuer validity state...</CardDescription>
         </CardHeader>
@@ -140,7 +141,7 @@ export function ProviderValidityCard({
   if (state.error) {
     return (
       <Card className="border-destructive/25 shadow-sm" size="sm">
-        <CardHeader className="border-b border-destructive/20">
+        <CardHeader className="border-destructive/20 border-b">
           <CardTitle>Identity Validity</CardTitle>
           <CardDescription>
             The RP could not read the current issuer validity state.
@@ -168,7 +169,7 @@ export function ProviderValidityCard({
 
   return (
     <Card className="border-border/60 shadow-sm" size="sm">
-      <CardHeader className="border-b border-border/60">
+      <CardHeader className="border-border/60 border-b">
         <CardTitle>Identity Validity</CardTitle>
         <CardDescription>
           RP-side view of the current issuer validity state for this session.
@@ -179,8 +180,12 @@ export function ProviderValidityCard({
           <Badge variant={getBadgeVariant(currentStatus)}>
             {formatStatusLabel(currentStatus)}
           </Badge>
-          {hasRecoveredState && <Badge variant="outline">Recovered via pull</Badge>}
-          {state.value.latestNotice && <Badge variant="outline">Push received</Badge>}
+          {hasRecoveredState && (
+            <Badge variant="outline">Recovered via pull</Badge>
+          )}
+          {state.value.latestNotice && (
+            <Badge variant="outline">Push received</Badge>
+          )}
         </div>
 
         <div className="grid gap-2 text-sm">

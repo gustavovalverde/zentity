@@ -200,6 +200,66 @@ function buildSuccess(
   return response;
 }
 
+async function validatePohToken(
+  pohToken: string | undefined,
+  resource: X402Resource
+): Promise<
+  | { ok: true; verified: Awaited<ReturnType<typeof verifyPohToken>> }
+  | { ok: false; response: NextResponse }
+> {
+  if (!pohToken) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "compliance_required", required: resource.requiredTier },
+        { status: 403 }
+      ),
+    };
+  }
+
+  const verified = await verifyPohToken(pohToken).catch(
+    (e: unknown) => e as Error
+  );
+  if (verified instanceof Error) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "invalid_poh_token", detail: verified.message },
+        { status: 401 }
+      ),
+    };
+  }
+
+  if (verified.cnf?.jkt) {
+    const storedJkt = await getStoredDpopJkt();
+    if (!storedJkt || verified.cnf.jkt !== storedJkt) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "dpop_binding_mismatch" },
+          { status: 401 }
+        ),
+      };
+    }
+  }
+
+  if (verified.poh.tier < resource.requiredTier) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "insufficient_tier",
+          required: resource.requiredTier,
+          actual: verified.poh.tier,
+        },
+        { status: 403 }
+      ),
+    };
+  }
+
+  return { ok: true, verified };
+}
+
 export async function POST(request: Request) {
   const clonedRequest = request.clone();
   const parsed = bodySchema.safeParse(
@@ -259,44 +319,11 @@ export async function POST(request: Request) {
     });
   }
 
-  // Compliance-gated resources require BOTH payment AND a PoH token
-  if (!body.pohToken) {
-    return NextResponse.json(
-      { error: "compliance_required", required: resource.requiredTier },
-      { status: 403 }
-    );
+  const pohResult = await validatePohToken(body.pohToken, resource);
+  if (!pohResult.ok) {
+    return pohResult.response;
   }
-
-  const verified = await verifyPohToken(body.pohToken).catch(
-    (e: unknown) => e as Error
-  );
-  if (verified instanceof Error) {
-    return NextResponse.json(
-      { error: "invalid_poh_token", detail: verified.message },
-      { status: 401 }
-    );
-  }
-
-  if (verified.cnf?.jkt) {
-    const storedJkt = await getStoredDpopJkt();
-    if (!storedJkt || verified.cnf.jkt !== storedJkt) {
-      return NextResponse.json(
-        { error: "dpop_binding_mismatch" },
-        { status: 401 }
-      );
-    }
-  }
-
-  if (verified.poh.tier < resource.requiredTier) {
-    return NextResponse.json(
-      {
-        error: "insufficient_tier",
-        required: resource.requiredTier,
-        actual: verified.poh.tier,
-      },
-      { status: 403 }
-    );
-  }
+  const verified = pohResult.verified;
 
   let onChain: Record<string, unknown> | undefined;
   if (resource.requireOnChain) {

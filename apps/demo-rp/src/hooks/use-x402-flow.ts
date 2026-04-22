@@ -93,6 +93,7 @@ export function useX402Flow(): UseX402FlowReturn {
   );
 
   const accessResource = useCallback(
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: x402 demo flow orchestrates the full 402 -> payment -> settle -> PoH -> on-chain sequence with per-step trace emission; splitting the linear stages into callbacks hides the top-to-bottom shape this demo is meant to illustrate
     async (resource: X402Resource, walletAddress?: string) => {
       clearTimer();
       abortedRef.current = false;

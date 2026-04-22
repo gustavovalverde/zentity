@@ -3,11 +3,15 @@ import { z } from "zod";
 import { prefixBindingMessage } from "../agent.js";
 import { signAgentAssertion } from "../auth/agent-registration.js";
 import {
+  getOAuthContext,
+  requireAuth,
+  tryGetRuntimeState,
+} from "../auth/context.js";
+import { redeemRelease } from "../auth/identity.js";
+import {
   beginOrResumeInteractiveFlow,
   throwUrlElicitationIfSupported,
 } from "../auth/interactive-tool-flow.js";
-import { getOAuthContext, requireAuth, tryGetRuntimeState } from "../auth/context.js";
-import { redeemRelease } from "../auth/identity.js";
 import { config } from "../config.js";
 
 const purchaseOutputSchema = {
@@ -30,7 +34,82 @@ const purchaseOutputSchema = {
     .optional(),
 };
 
-type PurchaseStructuredContent = z.infer<z.ZodObject<typeof purchaseOutputSchema>>;
+type PurchaseStructuredContent = z.infer<
+  z.ZodObject<typeof purchaseOutputSchema>
+>;
+
+function buildPurchaseResponse(structuredContent: PurchaseStructuredContent): {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent: PurchaseStructuredContent;
+} {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(structuredContent, null, 2),
+      },
+    ],
+    structuredContent,
+  };
+}
+
+function formatFulfillment(
+  pii: Awaited<ReturnType<typeof redeemRelease>>
+): PurchaseStructuredContent["fulfillment"] {
+  if (!pii) {
+    return null;
+  }
+
+  const address =
+    typeof pii.address === "string"
+      ? { formatted: pii.address }
+      : (pii.address ?? null);
+
+  return {
+    name: pii.name ?? null,
+    address,
+  };
+}
+
+interface PurchaseParams {
+  amount: number;
+  currency: string;
+  description?: string | undefined;
+  item: string;
+  merchant: string;
+  requires_age_verification?: boolean | undefined;
+}
+
+function buildRawBindingMessage(params: PurchaseParams): string {
+  const { item, merchant, amount, currency, description } = params;
+  const base = `Purchase ${item} from ${merchant} for ${amount} ${currency}`;
+  return description ? `${base}: ${description}` : base;
+}
+
+function buildPurchaseFingerprint(
+  oauth: ReturnType<typeof getOAuthContext>,
+  runtime: ReturnType<typeof tryGetRuntimeState>,
+  params: PurchaseParams
+): string {
+  return [
+    oauth.accountSub || oauth.loginHint,
+    oauth.clientId,
+    runtime?.sessionId ?? "no-runtime",
+    "purchase",
+    params.merchant,
+    params.item,
+    params.amount.toFixed(2),
+    params.currency,
+    params.description?.trim() ?? "",
+    params.requires_age_verification ? "age" : "standard",
+  ].join(":");
+}
+
+function buildPurchaseScope(requiresAgeVerification: boolean): string {
+  return requiresAgeVerification
+    ? "openid proof:age proof:nationality identity.name identity.address"
+    : "openid identity.name identity.address";
+}
 
 export function registerPurchaseTool(server: McpServer): void {
   server.registerTool(
@@ -69,8 +148,9 @@ export function registerPurchaseTool(server: McpServer): void {
       merchant,
       requires_age_verification,
     }) => {
+      let auth: Awaited<ReturnType<typeof requireAuth>>;
       try {
-        await requireAuth();
+        auth = await requireAuth();
       } catch (error) {
         return {
           isError: true,
@@ -84,23 +164,19 @@ export function registerPurchaseTool(server: McpServer): void {
         };
       }
 
-      const auth = await requireAuth();
       const oauth = getOAuthContext(auth);
       const runtime = tryGetRuntimeState(auth);
-      const authorizationDetails = [
-        {
-          type: "purchase",
-          merchant,
-          item,
-          amount: { value: amount.toFixed(2), currency },
-        },
-      ];
-      const rawMessage = description
-        ? `Purchase ${item} from ${merchant} for ${amount} ${currency}: ${description}`
-        : `Purchase ${item} from ${merchant} for ${amount} ${currency}`;
+      const params: PurchaseParams = {
+        amount,
+        currency,
+        description,
+        item,
+        merchant,
+        requires_age_verification,
+      };
       const bindingMessage = prefixBindingMessage(
         runtime?.display.name ?? "Zentity MCP",
-        rawMessage
+        buildRawBindingMessage(params)
       );
       const agentAssertion = runtime
         ? await signAgentAssertion(runtime, bindingMessage)
@@ -109,18 +185,7 @@ export function registerPurchaseTool(server: McpServer): void {
       const outcome = await beginOrResumeInteractiveFlow({
         server,
         toolName: "purchase",
-        fingerprint: [
-          oauth.accountSub || oauth.loginHint,
-          oauth.clientId,
-          runtime?.sessionId ?? "no-runtime",
-          "purchase",
-          merchant,
-          item,
-          amount.toFixed(2),
-          currency,
-          description?.trim() ?? "",
-          requires_age_verification ? "age" : "standard",
-        ].join(":"),
+        fingerprint: buildPurchaseFingerprint(oauth, runtime, params),
         oauth,
         cibaRequest: {
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
@@ -128,11 +193,16 @@ export function registerPurchaseTool(server: McpServer): void {
           clientId: oauth.clientId,
           dpopKey: oauth.dpopKey,
           loginHint: oauth.loginHint || oauth.accountSub,
-          scope: requires_age_verification
-            ? "openid proof:age proof:nationality identity.name identity.address"
-            : "openid identity.name identity.address",
+          scope: buildPurchaseScope(Boolean(requires_age_verification)),
           bindingMessage,
-          authorizationDetails,
+          authorizationDetails: [
+            {
+              type: "purchase",
+              merchant,
+              item,
+              amount: { value: amount.toFixed(2), currency },
+            },
+          ],
           resource: config.zentityUrl,
           ...(agentAssertion ? { agentAssertion } : {}),
         },
@@ -142,58 +212,32 @@ export function registerPurchaseTool(server: McpServer): void {
             status: "complete" as const,
             approved: true,
             bindingMessage,
-            fulfillment: pii
-              ? {
-                  name: pii.name ?? null,
-                  address:
-                    typeof pii.address === "string"
-                      ? { formatted: pii.address }
-                      : (pii.address ?? null),
-                }
-              : null,
+            fulfillment: formatFulfillment(pii),
           };
         },
       });
 
       if (outcome.status === "needs_user_action") {
         throwUrlElicitationIfSupported(server, outcome);
-        const structuredContent: PurchaseStructuredContent = {
+        return buildPurchaseResponse({
           status: "needs_user_action",
           approved: null,
           bindingMessage,
           fulfillment: null,
           interaction: outcome.interaction,
-        };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(structuredContent, null, 2),
-            },
-          ],
-          structuredContent,
-        };
+        });
       }
 
-      const structuredContent: PurchaseStructuredContent =
-        outcome.status === "complete"
-          ? outcome.data
-          : {
-              status: outcome.status,
-              approved: false,
-              bindingMessage,
-              fulfillment: null,
-            };
+      if (outcome.status === "complete") {
+        return buildPurchaseResponse(outcome.data);
+      }
 
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(structuredContent, null, 2),
-          },
-        ],
-        structuredContent,
-      };
+      return buildPurchaseResponse({
+        status: outcome.status,
+        approved: false,
+        bindingMessage,
+        fulfillment: null,
+      });
     }
   );
 }

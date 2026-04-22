@@ -72,8 +72,10 @@ export function registerCheckComplianceTool(server: McpServer): void {
       const data = (await response.json()) as {
         result: { data: AttestationStatus };
       };
-      const structuredContent =
-        data.result.data as unknown as Record<string, unknown>;
+      const structuredContent = data.result.data as unknown as Record<
+        string,
+        unknown
+      >;
       return {
         content: [
           {

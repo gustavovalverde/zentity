@@ -1,8 +1,8 @@
 import { config } from "../config.js";
 import { updateCredentials } from "./credentials.js";
-import { INSTALLED_AGENT_LOGIN_SCOPE_STRING } from "./installed-agent-scopes.js";
 import type { DpopKeyPair } from "./dpop.js";
 import { createDpopProof, extractDpopNonce } from "./dpop.js";
+import { INSTALLED_AGENT_LOGIN_SCOPE_STRING } from "./installed-agent-scopes.js";
 import { ensureReady, finishLogin, startLogin } from "./opaque-client.js";
 import type { PkceChallenge } from "./pkce.js";
 

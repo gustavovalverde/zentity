@@ -20,12 +20,10 @@ interface OidcDiscovery {
   jwks: ReturnType<typeof createRemoteJWKSet>;
 }
 
-let cached:
-  | {
-      expiresAt: number;
-      value: OidcDiscovery;
-    }
-  | null = null;
+let cached: {
+  expiresAt: number;
+  value: OidcDiscovery;
+} | null = null;
 const logoutTokenReplayExpiryByJti = new Map<string, number>();
 
 function pruneExpiredLogoutTokenReplayEntries(now: number) {
@@ -36,9 +34,7 @@ function pruneExpiredLogoutTokenReplayEntries(now: number) {
   }
 }
 
-function resolveLogoutTokenReplayExpiry(payload: {
-  exp?: unknown;
-}): number {
+function resolveLogoutTokenReplayExpiry(payload: { exp?: unknown }): number {
   if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
     return payload.exp * 1000;
   }
@@ -166,29 +162,15 @@ export async function POST(request: Request): Promise<Response> {
       .all();
     const userIds = [...new Set(matchingAccounts.map((row) => row.userId))];
 
-    if (provider) {
-      // Revoke only the targeted provider's tokens — other providers stay active
-      await db
-        .update(account)
-        .set({
-          accessToken: null,
-          refreshToken: null,
-          idToken: null,
-        })
-        .where(accountFilter)
-        .run();
-    } else {
-      // Fallback: unknown provider — revoke all accounts matching sub
-      await db
-        .update(account)
-        .set({
-          accessToken: null,
-          refreshToken: null,
-          idToken: null,
-        })
-        .where(accountFilter)
-        .run();
-    }
+    await db
+      .update(account)
+      .set({
+        accessToken: null,
+        refreshToken: null,
+        idToken: null,
+      })
+      .where(accountFilter)
+      .run();
 
     if (userIds.length > 0) {
       await db.delete(session).where(inArray(session.userId, userIds)).run();

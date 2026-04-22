@@ -69,17 +69,24 @@ vi.mock("server-only", () => ({}));
 async function loadProviderConfig() {
   const { getAuth } = await import("./auth");
   const auth = await getAuth();
-  const plugins = (auth as unknown as { plugins: Array<Record<string, unknown>> })
+  const plugins = (auth as unknown as { plugins: Record<string, unknown>[] })
     .plugins;
   const oauthPlugin = plugins.find((plugin) => plugin.type === "genericOAuth");
   if (!oauthPlugin) {
     throw new Error("genericOAuth plugin not configured");
   }
 
-  const config = oauthPlugin.config as Array<Record<string, unknown>>;
+  const config = oauthPlugin.config as Record<string, unknown>[];
   const provider = config.find(
-    (entry) => entry.providerId === "zentity-x402",
-  ) as { getUserInfo(tokens: { accessToken?: string; idToken?: string }): Promise<unknown> } | undefined;
+    (entry) => entry.providerId === "zentity-x402"
+  ) as
+    | {
+        getUserInfo(tokens: {
+          accessToken?: string;
+          idToken?: string;
+        }): Promise<unknown>;
+      }
+    | undefined;
 
   if (!provider) {
     throw new Error("x402 provider not configured");
@@ -124,8 +131,8 @@ describe("getAuth provider userinfo", () => {
         {
           status: 200,
           headers: { "content-type": "application/json" },
-        },
-      ),
+        }
+      )
     );
 
     const provider = await loadProviderConfig();
@@ -134,7 +141,7 @@ describe("getAuth provider userinfo", () => {
       provider.getUserInfo({
         accessToken: "access-token",
         idToken: "bad-id-token",
-      }),
+      })
     ).rejects.toThrow("bad_id_token");
   });
 
@@ -155,8 +162,8 @@ describe("getAuth provider userinfo", () => {
         {
           status: 200,
           headers: { "content-type": "application/json" },
-        },
-      ),
+        }
+      )
     );
 
     const provider = await loadProviderConfig();
@@ -165,7 +172,7 @@ describe("getAuth provider userinfo", () => {
       provider.getUserInfo({
         accessToken: "access-token",
         idToken: "good-id-token",
-      }),
+      })
     ).rejects.toThrow("ID token at_hash mismatch");
   });
 
