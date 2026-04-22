@@ -72,6 +72,7 @@ function serializeSession(session: ManagedSessionSummary) {
   const lifecycle = serializeLifecycle(session.lifecycle);
   return {
     createdAt: lifecycle.createdAt,
+    did: session.did,
     displayName: session.displayName,
     grants: session.grants.map(serializeGrant),
     hostId: session.hostId,
@@ -95,9 +96,9 @@ function serializeHost(host: ManagedHostSummary) {
     attestationProvider: host.attestationProvider,
     attestationTier: host.attestationTier,
     createdAt: host.createdAt.toISOString(),
+    did: host.did,
     id: host.id,
     name: host.name,
-    publicKeyThumbprint: host.publicKeyThumbprint,
     sessionCount: host.sessionCount,
     sessions: host.sessions.map(serializeSession),
     status: host.status,
@@ -135,6 +136,7 @@ function serializeSessionDetail(session: ManagedSessionDetail) {
     attestationProvider: session.attestationProvider,
     attestationTier: session.attestationTier,
     createdAt: lifecycle.createdAt,
+    did: session.did,
     grants: session.grants.map((grant) => ({
       ...serializeGrant(grant),
       usageToday: grant.usageToday,

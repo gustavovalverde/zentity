@@ -1,3 +1,8 @@
+import {
+  AAP_CLAIMS_VERSION,
+  ACT_DID_EMISSION_POLICY,
+  AGENT_DID_METHODS_SUPPORTED,
+} from "@zentity/sdk/protocol";
 import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
@@ -444,10 +449,14 @@ const agentBootstrapTokenExchangeSchema = z.object({
 });
 
 export const agentConfigurationSchema = z.object({
+  aap_claims_version: z.literal(AAP_CLAIMS_VERSION),
+  act_did_emission_policy: z.literal(ACT_DID_EMISSION_POLICY),
   approval_methods: z.array(z.string().min(1)),
   approval_page_url_template: z.url(),
   bootstrap_token_exchange: agentBootstrapTokenExchangeSchema,
   capabilities_endpoint: z.url(),
+  delegation_chains: z.boolean(),
+  did_methods_supported: z.array(z.enum(AGENT_DID_METHODS_SUPPORTED)),
   host_registration_endpoint: z.url(),
   introspection_endpoint: z.url(),
   issuer: z.url(),
@@ -473,7 +482,7 @@ export type AgentConfiguration = z.infer<typeof agentConfigurationSchema>;
 // ---------------------------------------------------------------------------
 
 export const registerHostRequestSchema = z.object({
-  publicKey: z.string().min(1),
+  did: z.string().min(1),
   name: z.string().min(1).max(255),
 });
 
@@ -486,7 +495,7 @@ const agentDisplaySchema = z.object({
 
 export const registerSessionRequestSchema = z.object({
   hostJwt: z.string().min(1),
-  agentPublicKey: z.string().min(1),
+  did: z.string().min(1),
   requestedCapabilities: z.array(z.string()).optional(),
   display: agentDisplaySchema,
 });

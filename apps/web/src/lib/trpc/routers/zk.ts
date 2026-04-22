@@ -1272,7 +1272,7 @@ export const bbsRouter = router({
         tier: input.tier,
       };
 
-      const holderDid = `did:key:user-${ctx.userId}`;
+      const holderDid = `urn:zentity:user:${ctx.userId}`;
 
       const credential = await createWalletCredential(
         subject,
@@ -1298,7 +1298,7 @@ export const bbsRouter = router({
         input.credential as SerializedBbsCredential
       );
 
-      const expectedHolderDid = `did:key:user-${ctx.userId}`;
+      const expectedHolderDid = `urn:zentity:user:${ctx.userId}`;
       if (credential.holder !== expectedHolderDid) {
         throw new TRPCError({
           code: "FORBIDDEN",

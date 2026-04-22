@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
@@ -143,11 +144,12 @@ export async function ensureHostRegistered(
   }
 
   const url = agentConfiguration.host_registration_endpoint;
+  const hostDid = hostKey.did ?? encodeEd25519DidKeyFromJwk(hostKey.publicKey);
   const response = await postJsonWithDpopRetry(
     url,
     auth,
     registerHostRequestSchema.parse({
-      publicKey: JSON.stringify(hostKey.publicKey),
+      did: hostDid,
       name: hostName,
     })
   );
@@ -161,6 +163,7 @@ export async function ensureHostRegistered(
   }
 
   const data = registerHostResponseSchema.parse(await response.json());
+  hostKey.did = data.did;
   hostKey.hostId = data.hostId;
   saveHostKey(zentityUrl, keyNamespace, hostKey);
   console.error(
@@ -218,6 +221,7 @@ export async function registerAgent(
   });
   const agentPrivateJwk = await exportJWK(privateKey);
   const agentPublicJwk = await exportJWK(publicKey);
+  const agentDid = encodeEd25519DidKeyFromJwk(agentPublicJwk);
 
   const hostJwt = await signHostJwt(hostKey, hostId);
 
@@ -227,7 +231,7 @@ export async function registerAgent(
     auth,
     registerSessionRequestSchema.parse({
       hostJwt,
-      agentPublicKey: JSON.stringify(agentPublicJwk),
+      did: agentDid,
       requestedCapabilities: REQUESTED_CAPABILITIES,
       display,
     })

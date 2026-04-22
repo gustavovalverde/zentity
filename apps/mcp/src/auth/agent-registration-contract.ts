@@ -3,12 +3,13 @@ import { z } from "zod";
 // Keep this schema aligned with
 // apps/web/src/lib/auth/oidc/agent-registration-contract.ts.
 export const registerHostRequestSchema = z.object({
-  publicKey: z.string().min(1),
+  did: z.string().min(1),
   name: z.string().min(1).max(255),
 });
 
 export const registerHostResponseSchema = z.object({
   hostId: z.string().min(1),
+  did: z.string().min(1),
   created: z.boolean(),
   attestation_tier: z
     .enum(["attested", "self-declared", "unverified"])
@@ -24,7 +25,7 @@ export const agentDisplaySchema = z.object({
 
 export const registerSessionRequestSchema = z.object({
   hostJwt: z.string().min(1),
-  agentPublicKey: z.string().min(1),
+  did: z.string().min(1),
   requestedCapabilities: z.array(z.string()).optional(),
   display: agentDisplaySchema,
 });
@@ -35,6 +36,7 @@ export const registerSessionGrantSchema = z.object({
 });
 
 export const registerSessionResponseSchema = z.object({
+  did: z.string().min(1),
   sessionId: z.string().min(1),
   status: z.string().min(1),
   grants: z.array(registerSessionGrantSchema).default([]),

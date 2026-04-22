@@ -8,6 +8,7 @@ const ZENTITY_DIR = join(homedir(), ".zentity");
 const HOST_KEY_DIR = join(ZENTITY_DIR, "hosts");
 
 export interface HostKeyData {
+  did?: string;
   hostId?: string;
   privateKey: JWK;
   publicKey: JWK;
@@ -72,6 +73,7 @@ export function clearHostId(zentityUrl: string, clientId: string): void {
   }
 
   saveHostKey(zentityUrl, clientId, {
+    ...(existing.did ? { did: existing.did } : {}),
     privateKey: existing.privateKey,
     publicKey: existing.publicKey,
   });

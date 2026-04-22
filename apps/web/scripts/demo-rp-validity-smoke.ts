@@ -449,11 +449,15 @@ async function run(): Promise<void> {
     });
     if (await registerButton.isVisible().catch(() => false)) {
       await registerButton.click();
-      await expect(verifyIdentityButton).toBeEnabled({ timeout: 10_000 });
+      await expect
+        .poll(() => verifyIdentityButton.isEnabled(), { timeout: 10_000 })
+        .toBe(true);
       console.log("[smoke] registered demo-rp client");
     }
 
-    await expect(verifyIdentityButton).toBeEnabled({ timeout: 10_000 });
+    await expect
+      .poll(() => verifyIdentityButton.isEnabled(), { timeout: 10_000 })
+      .toBe(true);
     const aidUrl = `${demoRpBaseUrl}/${providerId}`;
     await verifyIdentityButton.click();
     await page.waitForURL((url) => url.toString() !== aidUrl, {

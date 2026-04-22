@@ -2,6 +2,7 @@ import "server-only";
 
 import crypto, { randomUUID } from "node:crypto";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
@@ -93,7 +94,7 @@ function buildReauthError() {
   );
 }
 
-async function getAccountForProvider(userId: string, providerId: ProviderId) {
+function getAccountForProvider(userId: string, providerId: ProviderId) {
   return getDb().query.account.findFirst({
     where: and(
       eq(account.userId, userId),
@@ -106,7 +107,7 @@ async function getAccountForProvider(userId: string, providerId: ProviderId) {
   });
 }
 
-async function getDpopKey(providerId: ProviderId, accessToken: string) {
+function getDpopKey(providerId: ProviderId, accessToken: string) {
   return getDb().query.oauthDpopKey.findFirst({
     where: and(
       eq(oauthDpopKey.providerId, `zentity-${providerId}`),
@@ -276,12 +277,13 @@ async function ensureHostRegistered(
   bootstrap: BootstrapAccessContext,
   options?: EnsureHostRegistrationOptions
 ): Promise<AgentRuntimeRow> {
+  const hostDid = encodeEd25519DidKeyFromJwk(JSON.parse(runtime.hostPublicJwk));
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/host/register`,
     bootstrap.accessToken,
     bootstrap.dpop,
     {
-      publicKey: runtime.hostPublicJwk,
+      did: hostDid,
       name: HOST_NAME,
     },
     options?.attestationHeaders
@@ -357,6 +359,7 @@ async function registerAgentSession(
   }
 
   const sessionKeys = await generateEd25519Jwks();
+  const sessionDid = encodeEd25519DidKeyFromJwk(sessionKeys.publicJwk);
   const hostJwt = await signHostJwt(runtime, runtime.hostId);
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/register`,
@@ -364,7 +367,7 @@ async function registerAgentSession(
     bootstrap.dpop,
     {
       hostJwt,
-      agentPublicKey: JSON.stringify(sessionKeys.publicJwk),
+      did: sessionDid,
       requestedCapabilities: [...REQUESTED_CAPABILITIES],
       display: DISPLAY,
     }

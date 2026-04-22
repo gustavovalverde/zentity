@@ -58,7 +58,11 @@ describe("POST /api/auth/agent/revoke", () => {
       .values({
         clientId: "agent-owner",
         name: "Laptop",
-        publicKey: JSON.stringify({ kty: "OKP", crv: "Ed25519", x: "host" }),
+        publicKey: JSON.stringify({
+          kty: "OKP",
+          crv: "Ed25519",
+          x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        }),
         publicKeyThumbprint: "host-thumbprint",
         userId,
       })
@@ -72,7 +76,11 @@ describe("POST /api/auth/agent/revoke", () => {
       .values({
         displayName: "Claude Code",
         hostId: host.id,
-        publicKey: JSON.stringify({ kty: "OKP", crv: "Ed25519", x: "agent" }),
+        publicKey: JSON.stringify({
+          kty: "OKP",
+          crv: "Ed25519",
+          x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        }),
         publicKeyThumbprint: "session-thumbprint",
       })
       .returning({ id: agentSessions.id });

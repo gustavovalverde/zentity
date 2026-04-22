@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -19,6 +20,11 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "ciba-test-agent";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
+const HOST_DID = encodeEd25519DidKeyFromJwk({
+  crv: "Ed25519",
+  kty: "OKP",
+  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+});
 let defaultAuthContextId: string;
 
 async function createTestClient(clientId = TEST_CLIENT_ID) {
@@ -41,7 +47,11 @@ async function createRegisteredAgent(userId: string) {
     .values({
       userId,
       clientId: TEST_CLIENT_ID,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
       publicKeyThumbprint: `host-thumbprint-${crypto.randomUUID()}`,
       name: "Test Host",
       attestationProvider: "AgentPass",
@@ -56,7 +66,11 @@ async function createRegisteredAgent(userId: string) {
     .insert(agentSessions)
     .values({
       hostId: host.id,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      }),
       publicKeyThumbprint: `agent-thumbprint-${crypto.randomUUID()}`,
       displayName: "Test Agent",
       runtime: "test-runner",
@@ -341,13 +355,44 @@ describe("CIBA token endpoint", () => {
     );
     if (tokenShape.kind === "jwt") {
       const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
-      expect(tokenShape.payload.agent).toEqual({
-        id: actorId,
+      expect(tokenShape.payload.act).toEqual({
+        did: HOST_DID,
+        host_attestation: "attested",
+        host_id: hostId,
+        session_id: sessionId,
+        sub: actorId,
         type: "mcp-agent",
-        model: { id: "gpt-4", version: "1.0.0" },
-        runtime: { environment: "test-runner", attested: true },
       });
-      expect(tokenShape.payload.act).toEqual({ sub: actorId });
+      expect(tokenShape.payload.task).toEqual({
+        constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+        created_at: expect.any(Number),
+        description: "purchase",
+        expires_at: expect.any(Number),
+        hash: expect.any(String),
+      });
+      expect(tokenShape.payload.capabilities).toEqual([
+        {
+          action: "purchase",
+          constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+        },
+      ]);
+      expect(tokenShape.payload.oversight).toEqual({
+        approval_id: "grant-123",
+        approved_at: expect.any(Number),
+        method: "session",
+      });
+      expect(tokenShape.payload.audit).toEqual({
+        ciba_request_id: authReqId,
+        context_id: defaultAuthContextId,
+        release_id: "dev",
+        request_id: authReqId,
+      });
+      expect(tokenShape.payload.delegation).toEqual({
+        depth: 0,
+        max_depth: 1,
+        parent_jti: null,
+      });
+      expect(tokenShape.payload.aap_claims_version).toBe(1);
     }
   });
 
@@ -371,11 +416,12 @@ describe("CIBA token endpoint", () => {
       defaultAuthContextId
     );
     if (tokenShape.kind === "jwt") {
-      expect(tokenShape.payload.agent).toBeUndefined();
+      expect(tokenShape.payload.act).toEqual({ sub: TEST_CLIENT_ID });
       expect(tokenShape.payload.task).toBeUndefined();
       expect(tokenShape.payload.capabilities).toBeUndefined();
       expect(tokenShape.payload.oversight).toBeUndefined();
       expect(tokenShape.payload.audit).toBeUndefined();
+      expect(tokenShape.payload.delegation).toBeUndefined();
     }
   });
 });

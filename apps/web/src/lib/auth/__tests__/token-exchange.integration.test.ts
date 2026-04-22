@@ -233,15 +233,21 @@ describe("Token Exchange (RFC 8693)", () => {
       const subjectToken = await mintAccessToken(userId, {
         scope: "openid",
         aap: {
-          agent: {
-            id: "pairwise-agent-subject",
+          aap_claims_version: 1,
+          act: {
+            did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
+            host_attestation: "attested",
+            host_id: "host-123",
+            session_id: "session-123",
+            sub: "pairwise-agent-subject",
             type: "mcp-agent",
-            model: { id: "gpt-4", version: "1.0.0" },
-            runtime: { environment: "demo-rp", attested: true },
           },
           task: {
-            id: "task-123",
-            purpose: "purchase",
+            constraints: [{ field: "merchant", op: "eq", value: "Wine.com" }],
+            created_at: 1_700_000_000,
+            description: "purchase",
+            expires_at: 1_700_003_600,
+            hash: "task-hash-123",
           },
           capabilities: [
             {
@@ -250,12 +256,14 @@ describe("Token Exchange (RFC 8693)", () => {
             },
           ],
           oversight: {
-            approval_reference: "grant-123",
-            requires_human_approval_for: ["purchase"],
+            approval_id: "grant-123",
+            approved_at: 1_700_000_000,
+            method: "session",
           },
           audit: {
-            trace_id: "trace-123",
-            session_id: "pairwise-agent-subject",
+            context_id: "ctx-123",
+            release_id: "release-123",
+            request_id: "req-123",
           },
         },
       });
@@ -272,14 +280,15 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
 
-      expect(payload.agent).toEqual(parentPayload.agent);
+      expect(payload.act).toEqual(parentPayload.act);
       expect(payload.task).toEqual(parentPayload.task);
       expect(payload.capabilities).toEqual(parentPayload.capabilities);
       expect(payload.oversight).toEqual(parentPayload.oversight);
       expect(payload.audit).toEqual(parentPayload.audit);
+      expect(payload.aap_claims_version).toBe(1);
       expect(payload.delegation).toEqual({
         depth: 1,
-        chain: ["pairwise-agent-subject"],
+        max_depth: 1,
         parent_jti: parentPayload.jti,
       });
     });

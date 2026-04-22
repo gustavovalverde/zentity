@@ -1,5 +1,6 @@
 import "server-only";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import {
@@ -39,7 +40,7 @@ interface HostRow {
   createdAt: Date;
   id: string;
   name: string;
-  publicKeyThumbprint: string;
+  publicKey: string;
   status: string;
   updatedAt: Date;
   userId: string;
@@ -57,6 +58,7 @@ export interface ManagedSessionGrant {
 
 export interface ManagedSessionSummary {
   createdAt: Date;
+  did: string;
   displayName: string;
   grants: ManagedSessionGrant[];
   hostId: string;
@@ -72,9 +74,9 @@ export interface ManagedHostSummary {
   attestationProvider: string | null;
   attestationTier: string;
   createdAt: Date;
+  did: string;
   id: string;
   name: string;
-  publicKeyThumbprint: string;
   sessionCount: number;
   sessions: ManagedSessionSummary[];
   status: string;
@@ -104,6 +106,7 @@ export interface ManagedSessionDetail {
   attestationProvider: string | null;
   attestationTier: string;
   createdAt: Date;
+  did: string;
   grants: Array<
     ManagedSessionGrant & {
       usageToday: {
@@ -196,6 +199,7 @@ async function loadSessionsForHosts(
       lastActiveAt: agentSessions.lastActiveAt,
       maxLifetimeSec: agentSessions.maxLifetimeSec,
       model: agentSessions.model,
+      publicKey: agentSessions.publicKey,
       runtime: agentSessions.runtime,
       status: agentSessions.status,
       version: agentSessions.version,
@@ -262,6 +266,7 @@ async function loadSessionsForHosts(
 
   return sessionRows.map((session) => ({
     createdAt: session.createdAt,
+    did: encodeEd25519DidKeyFromJwk(session.publicKey),
     displayName: session.displayName,
     grants:
       grantMap
@@ -310,9 +315,9 @@ async function buildHostSummaries(
         attestationProvider: host.attestationProvider,
         attestationTier: host.attestationTier,
         createdAt: host.createdAt,
+        did: encodeEd25519DidKeyFromJwk(host.publicKey),
         id: host.id,
         name: host.name,
-        publicKeyThumbprint: host.publicKeyThumbprint,
         sessionCount: hostSessions.length,
         sessions: hostSessions,
         status: host.status,
@@ -340,7 +345,7 @@ async function loadHostRowForUser(
         createdAt: agentHosts.createdAt,
         id: agentHosts.id,
         name: agentHosts.name,
-        publicKeyThumbprint: agentHosts.publicKeyThumbprint,
+        publicKey: agentHosts.publicKey,
         status: agentHosts.status,
         updatedAt: agentHosts.updatedAt,
         userId: agentHosts.userId,
@@ -413,7 +418,7 @@ export async function listHostsForUser(
       createdAt: agentHosts.createdAt,
       id: agentHosts.id,
       name: agentHosts.name,
-      publicKeyThumbprint: agentHosts.publicKeyThumbprint,
+      publicKey: agentHosts.publicKey,
       status: agentHosts.status,
       updatedAt: agentHosts.updatedAt,
       userId: agentHosts.userId,
@@ -501,6 +506,7 @@ export async function getSessionDetailForUser(
       idleTtlSec: agentSessions.idleTtlSec,
       lastActiveAt: agentSessions.lastActiveAt,
       maxLifetimeSec: agentSessions.maxLifetimeSec,
+      publicKey: agentSessions.publicKey,
       status: agentSessions.status,
       userId: agentHosts.userId,
     })
@@ -564,6 +570,7 @@ export async function getSessionDetailForUser(
     attestationProvider: session.attestationProvider,
     attestationTier: session.attestationTier,
     createdAt: session.createdAt,
+    did: encodeEd25519DidKeyFromJwk(session.publicKey),
     grants: grants
       .map((grant) => ({
         capabilityName: grant.capabilityName,

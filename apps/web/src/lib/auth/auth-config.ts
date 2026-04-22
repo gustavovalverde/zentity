@@ -37,10 +37,6 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
-import {
-  loadAapProfileForCibaRequest,
-  persistAapSnapshotForCibaToken,
-} from "@/lib/agents/act-claim";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
   deriveCapabilityName,
@@ -51,6 +47,10 @@ import {
   AGENT_BOOTSTRAP_SCOPES,
   bindAgentAssertionToCibaRequest,
 } from "@/lib/agents/session";
+import {
+  persistCibaTokenSnapshot,
+  resolveTokenSnapshotForCibaRequest,
+} from "@/lib/agents/token-snapshot";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { reportRejection } from "@/lib/async-handler";
@@ -953,26 +953,26 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
     extensions: {
       "oauth-provider": {
         tokenClaims: {
-          id: async (info) =>
-            buildIdTokenDisclosureClaims({
-              ...((info as { authContextId?: string | null }).authContextId ===
-              undefined
+          id: (rawInfo: unknown) => {
+            const info = rawInfo as {
+              authContextId?: string | null;
+              referenceId?: string;
+              scopes: string[];
+              sessionId?: string | null;
+              user: { id: string };
+            };
+            return buildIdTokenDisclosureClaims({
+              ...(info.authContextId === undefined
                 ? {}
-                : {
-                    authContextId: (info as { authContextId?: string | null })
-                      .authContextId,
-                  }),
+                : { authContextId: info.authContextId }),
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
-              ...((info as { sessionId?: string | null }).sessionId ===
-              undefined
+              ...(info.sessionId === undefined
                 ? {}
-                : {
-                    sessionId: (info as { sessionId?: string | null })
-                      .sessionId,
-                  }),
+                : { sessionId: info.sessionId }),
               user: info.user,
-            }),
+            });
+          },
         },
       },
     },
@@ -1794,21 +1794,15 @@ export const auth = betterAuth({
         }
 
         if (referenceId && clientId) {
-          const aapSnapshot = await loadAapProfileForCibaRequest(
+          const tokenSnapshot = await resolveTokenSnapshotForCibaRequest(
             referenceId,
             clientId
           );
           if (cibaAuth) {
             claims.jti = referenceId;
           }
-          if (aapSnapshot) {
-            Object.assign(
-              claims,
-              aapSnapshot.aap.agent?.id
-                ? { act: { sub: aapSnapshot.aap.agent.id } }
-                : {},
-              aapSnapshot.aap
-            );
+          if (tokenSnapshot) {
+            Object.assign(claims, tokenSnapshot.claims);
           }
         }
 
@@ -2026,7 +2020,7 @@ export const auth = betterAuth({
         if (authCtxId) {
           pendingCibaAuthContext.set(cibaRequest.authReqId, authCtxId);
         }
-        const accessTokenClaims = await persistAapSnapshotForCibaToken(
+        const accessTokenClaims = await persistCibaTokenSnapshot(
           cibaRequest.authReqId,
           cibaRequest.clientId
         );
@@ -2046,7 +2040,6 @@ export const auth = betterAuth({
             cibaRequest.authReqId,
             Date.now() + 3600 * 1000
           );
-          claims.zentity_release_id = cibaRequest.authReqId;
         }
 
         if (!accessTokenClaims) {
@@ -2055,9 +2048,6 @@ export const auth = betterAuth({
 
         return {
           ...claims,
-          ...(accessTokenClaims.agent?.id
-            ? { act: { sub: accessTokenClaims.agent.id } }
-            : {}),
           ...(accessTokenClaims as unknown as Record<string, unknown>),
         };
       },

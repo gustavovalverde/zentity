@@ -35,6 +35,8 @@ describe("Agent Auth Discovery — structure", () => {
   it("includes all required top-level fields", async () => {
     const config = await parseConfig(await getConfiguration());
 
+    expect(config.aap_claims_version).toBe(1);
+    expect(config.act_did_emission_policy).toBe("attested_hosts_only");
     expect(config.issuer).toBeDefined();
     expect(config.registration_endpoint).toBeDefined();
     expect(config.host_registration_endpoint).toBeDefined();
@@ -46,6 +48,8 @@ describe("Agent Auth Discovery — structure", () => {
     expect(config.approval_methods).toBeDefined();
     expect(config.approval_page_url_template).toBeDefined();
     expect(config.bootstrap_token_exchange).toBeDefined();
+    expect(config.delegation_chains).toBe(false);
+    expect(config.did_methods_supported).toEqual(["did:key"]);
     expect(config.supported_features).toBeDefined();
   });
 });

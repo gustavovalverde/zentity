@@ -1,3 +1,4 @@
+import { decodeEd25519DidKeyToJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
@@ -57,12 +58,17 @@ export async function POST(request: Request) {
   }
 
   const { principal } = authResult;
-  const {
-    hostJwt,
-    agentPublicKey,
-    requestedCapabilities = [],
-    display,
-  } = parsed.data;
+  const { hostJwt, did, requestedCapabilities = [], display } = parsed.data;
+  let agentPublicKeyJwkJson: string;
+
+  try {
+    agentPublicKeyJwkJson = JSON.stringify(decodeEd25519DidKeyToJwk(did));
+  } catch {
+    return NextResponse.json(
+      { error: "invalid_did_key_format" },
+      { status: 400 }
+    );
+  }
 
   const hostId = decodeHostJwtIssuer(hostJwt);
   if (!hostId) {
@@ -130,12 +136,12 @@ export async function POST(request: Request) {
     host.attestationTier === "attested" ? "attestation_default" : "default"
   );
 
-  const publicKeyThumbprint = await computeJwkThumbprint(agentPublicKey);
+  const publicKeyThumbprint = await computeJwkThumbprint(agentPublicKeyJwkJson);
   const [session] = await db
     .insert(agentSessions)
     .values({
       hostId: host.id,
-      publicKey: agentPublicKey,
+      publicKey: agentPublicKeyJwkJson,
       publicKeyThumbprint,
       displayName: display.name,
       runtime: display.runtime,
@@ -168,6 +174,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json(
     {
+      did,
       sessionId: session.id,
       status: session.status,
       grants: [...activeGrants, ...pendingGrants],

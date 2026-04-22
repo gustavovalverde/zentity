@@ -31,7 +31,6 @@ const defaultNetwork = networks[0] ?? fhevmSepolia;
 // Initialize AppKit once at module level — must use the same adapter as WagmiProvider
 if (globalThis.window !== undefined && projectId) {
   createAppKit({
-    // @ts-expect-error WagmiAdapter uses `T | undefined` vs ChainAdapter `?` optionals — upstream type mismatch under exactOptionalPropertyTypes
     adapters: [wagmiAdapter],
     projectId,
     networks,

@@ -11,10 +11,14 @@ const agentBootstrapTokenExchangeSchema = z.object({
 });
 
 const agentConfigurationSchema = z.object({
+  aap_claims_version: z.literal(1),
+  act_did_emission_policy: z.literal("attested_hosts_only"),
   approval_methods: z.array(z.string().min(1)),
   approval_page_url_template: z.string().url(),
   bootstrap_token_exchange: agentBootstrapTokenExchangeSchema,
   capabilities_endpoint: z.string().url(),
+  delegation_chains: z.boolean(),
+  did_methods_supported: z.array(z.literal("did:key")),
   host_registration_endpoint: z.string().url(),
   introspection_endpoint: z.string().url(),
   issuer: z.string().url(),

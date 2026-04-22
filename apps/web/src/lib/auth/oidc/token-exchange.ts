@@ -12,21 +12,23 @@ import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import {
-  buildAapProfile,
-  buildDelegationClaim,
-  loadAapProfileForTokenJti,
-  loadStoredAapSnapshotForTokenJti,
-  persistAapSnapshotForToken,
-  readAapProfileFromPayload,
-} from "@/lib/agents/act-claim";
-import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
 } from "@/lib/agents/actor-subject";
 import {
+  buildAapClaims,
+  deriveDelegationClaim,
+  getAapClaimsFromPayload,
+} from "@/lib/agents/claims";
+import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/agents/session";
+import {
+  findStoredTokenSnapshotByJti,
+  persistTokenSnapshot,
+  resolveTokenSnapshotForTokenJti,
+} from "@/lib/agents/token-snapshot";
 import {
   buildOidcAssuranceClaims,
   computeAtHash,
@@ -246,8 +248,8 @@ function createTokenExchangeHandler(): (
           }
         }
 
-        const aapSnapshot = opaqueSubject.referenceId
-          ? await loadAapProfileForTokenJti(
+        const tokenSnapshot = opaqueSubject.referenceId
+          ? await resolveTokenSnapshotForTokenJti(
               opaqueSubject.referenceId,
               opaqueSubject.clientId
             )
@@ -266,10 +268,7 @@ function createTokenExchangeHandler(): (
           ...(opaqueSubject.referenceId
             ? { jti: opaqueSubject.referenceId }
             : {}),
-          ...(aapSnapshot?.aap ?? {}),
-          ...(aapSnapshot?.aap.agent?.id
-            ? { act: { sub: aapSnapshot.aap.agent.id } }
-            : {}),
+          ...(tokenSnapshot?.claims ?? {}),
         };
       } else {
         subjectPayload = await verifySubjectToken(subjectToken);
@@ -392,19 +391,22 @@ function createTokenExchangeHandler(): (
       actClaim.act = subjectPayload.act;
     }
 
-    const actorSub = (subjectPayload.act as { sub?: string } | undefined)?.sub;
+    const parentAccessTokenClaims = getAapClaimsFromPayload(subjectPayload);
+    const parentActorSub = parentAccessTokenClaims.act?.sub;
     const actorSessionId =
-      actorSub && sourceClientId
-        ? await resolveAgentSessionIdFromPairwiseSub(actorSub, sourceClientId)
+      parentActorSub && sourceClientId
+        ? await resolveAgentSessionIdFromPairwiseSub(
+            parentActorSub,
+            sourceClientId
+          )
         : null;
 
-    const parentAapProfile = readAapProfileFromPayload(subjectPayload);
-    const parentSnapshot =
+    const storedSubjectSnapshot =
       typeof subjectPayload.jti === "string"
-        ? await loadStoredAapSnapshotForTokenJti(subjectPayload.jti)
+        ? await findStoredTokenSnapshotByJti(subjectPayload.jti)
         : null;
-    const delegation = buildDelegationClaim({
-      baseProfile: parentAapProfile,
+    const delegation = deriveDelegationClaim({
+      parent: parentAccessTokenClaims,
       ...(typeof subjectPayload.jti === "string"
         ? { parentJti: subjectPayload.jti }
         : {}),
@@ -472,26 +474,61 @@ function createTokenExchangeHandler(): (
         })
       : rawUserId;
 
-    const outputActorId = actorSessionId
+    const outputActorSub = actorSessionId
       ? await resolveAgentSubForClient(actorSessionId, client.clientId)
-      : parentAapProfile.agent?.id;
-    const exchangedAapProfile = buildAapProfile({
-      actorId: outputActorId,
-      approvalReference: parentAapProfile.oversight?.approval_reference,
-      attestationTier: parentAapProfile.agent?.runtime?.attested
-        ? "attested"
-        : undefined,
-      capabilities: parentAapProfile.capabilities,
-      delegation,
-      model: parentAapProfile.agent?.model?.id,
-      requiresHumanApprovalFor:
-        parentAapProfile.oversight?.requires_human_approval_for,
-      runtime: parentAapProfile.agent?.runtime?.environment,
-      sessionVersion: parentAapProfile.agent?.model?.version,
-      taskId: parentAapProfile.task?.id,
-      taskPurpose: parentAapProfile.task?.purpose,
-      traceId: parentAapProfile.audit?.trace_id,
-    });
+      : parentAccessTokenClaims.act?.sub;
+    const exchangedAccessTokenClaims = outputActorSub
+      ? buildAapClaims({
+          act: {
+            sub: outputActorSub,
+            sessionId:
+              actorSessionId ??
+              parentAccessTokenClaims.act?.session_id ??
+              outputActorSub,
+            hostAttestation:
+              parentAccessTokenClaims.act?.host_attestation ?? "unverified",
+            ...(parentAccessTokenClaims.act?.did
+              ? { did: parentAccessTokenClaims.act.did }
+              : {}),
+            ...(parentAccessTokenClaims.act?.host_id
+              ? { hostId: parentAccessTokenClaims.act.host_id }
+              : {}),
+            ...(parentAccessTokenClaims.act?.operator
+              ? { operator: parentAccessTokenClaims.act.operator }
+              : {}),
+            ...(parentAccessTokenClaims.act?.type
+              ? { type: parentAccessTokenClaims.act.type }
+              : {}),
+          },
+          task: {
+            hash: parentAccessTokenClaims.task?.hash ?? jti,
+            description:
+              parentAccessTokenClaims.task?.description ?? "token-exchange",
+            createdAt: parentAccessTokenClaims.task?.created_at ?? now,
+            expiresAt: parentAccessTokenClaims.task?.expires_at ?? exp,
+            ...(parentAccessTokenClaims.task?.constraints === undefined
+              ? {}
+              : { constraints: parentAccessTokenClaims.task.constraints }),
+          },
+          oversight: {
+            approvalId: parentAccessTokenClaims.oversight?.approval_id ?? jti,
+            approvedAt: parentAccessTokenClaims.oversight?.approved_at ?? now,
+            method: parentAccessTokenClaims.oversight?.method ?? "session",
+          },
+          audit: {
+            releaseId: parentAccessTokenClaims.audit?.release_id ?? "dev",
+            contextId: parentAccessTokenClaims.audit?.context_id ?? jti,
+            ...(parentAccessTokenClaims.audit?.request_id
+              ? { requestId: parentAccessTokenClaims.audit.request_id }
+              : {}),
+            ...(parentAccessTokenClaims.audit?.ciba_request_id
+              ? { cibaRequestId: parentAccessTokenClaims.audit.ciba_request_id }
+              : {}),
+          },
+          capabilities: parentAccessTokenClaims.capabilities ?? null,
+          delegation,
+        })
+      : undefined;
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
@@ -555,16 +592,16 @@ function createTokenExchangeHandler(): (
         ? { [APP_LOGIN_HINT_CLAIM]: rawUserId }
         : {}),
       act: actClaim,
-      ...exchangedAapProfile,
+      ...(exchangedAccessTokenClaims ?? {}),
       ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
     };
 
     const accessToken = await signJwt(accessTokenPayload);
-    if (parentSnapshot) {
-      await persistAapSnapshotForToken({
+    if (storedSubjectSnapshot) {
+      await persistTokenSnapshot({
         tokenJti: jti,
         audienceClientId: client.clientId,
-        snapshot: parentSnapshot,
+        snapshot: storedSubjectSnapshot,
       });
     }
     return ctx.json(

@@ -1,0 +1,8 @@
+{
+  "name": "zentity-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "typecheck:sdk": "pnpm --filter @zentity/sdk exec tsc --noEmit"
+  }
+}

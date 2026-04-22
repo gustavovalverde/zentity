@@ -27,6 +27,7 @@
     "public/push-sw.js",
     "e2e/**",
     "src/test-utils/**",
+    "src/lib/turbopack-stubs/**",
     "src/**/*.d.ts"
   ],
   "ignoreDependencies": [
@@ -34,6 +35,7 @@
     "@commitlint/config-conventional",
     "@vladmandic/human-models",
     "@synthetixio/synpress-cache",
+    "@zentity/sdk",
     "buffer",
     "pino-pretty",
     "socket.io",

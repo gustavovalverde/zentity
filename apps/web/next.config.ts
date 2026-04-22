@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
       "next/dist/compiled/buffer": "buffer",
       // Also override direct buffer imports
       "node:buffer": "buffer",
+      // @wagmi/core@3.4.5's tempo module has `await import("accounts").catch(...)`
+      // for the optional Tempo Accounts SDK. Turbopack analyzes statically and
+      // fails to resolve even though the runtime catches the miss. Alias to an
+      // empty stub so the bundle builds; tempoWallet is never referenced here.
+      accounts: "./src/lib/turbopack-stubs/accounts.ts",
     },
   },
 

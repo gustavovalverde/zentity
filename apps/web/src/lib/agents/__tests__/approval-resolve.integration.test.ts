@@ -31,7 +31,11 @@ async function createAgentSession(userId: string) {
     .values({
       userId,
       clientId: TEST_CLIENT_ID,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
       publicKeyThumbprint: `host-${crypto.randomUUID()}`,
       name: "Claude Code Host",
       attestationTier: "attested",
@@ -46,7 +50,11 @@ async function createAgentSession(userId: string) {
     .insert(agentSessions)
     .values({
       hostId: host.id,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      }),
       publicKeyThumbprint: `agent-${crypto.randomUUID()}`,
       displayName: "Claude Code",
     })
