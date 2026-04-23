@@ -1,3 +1,4 @@
+import type { SdkErrorCode } from "../protocol/claims";
 import {
   createDpopClientFromKeyPair,
   generateDpopKeyPair,
@@ -271,6 +272,19 @@ export class TokenExpiredError extends Error {
   constructor() {
     super("No valid credentials — re-authentication required");
     this.name = "TokenExpiredError";
+  }
+}
+
+export class TokenRefreshError extends Error {
+  readonly code: SdkErrorCode = "token_refresh_failed";
+  readonly responseBody: string;
+  readonly status: number;
+
+  constructor(status: number, responseBody: string) {
+    super(`Token refresh failed: ${status} ${responseBody}`);
+    this.name = "TokenRefreshError";
+    this.responseBody = responseBody;
+    this.status = status;
   }
 }
 
@@ -756,16 +770,17 @@ export function createFirstPartyAuth(
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      if (text.includes("invalid_client") || text.includes("client not found")) {
+      const responseBody = await response.text();
+      if (
+        responseBody.includes("invalid_client") ||
+        responseBody.includes("client not found")
+      ) {
         await clearClientRegistration();
-        throw new TokenExpiredError();
       }
-      if (text.includes("invalid_grant")) {
+      if (responseBody.includes("invalid_grant")) {
         await clearTokens();
-        throw new TokenExpiredError();
       }
-      throw new Error(`Token refresh failed: ${response.status} ${text}`);
+      throw new TokenRefreshError(response.status, responseBody);
     }
 
     const responseBody = (await response.json()) as RefreshTokenResponseBody;

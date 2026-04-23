@@ -19,7 +19,7 @@ vi.mock("./loopback-browser", () => ({
   authenticateWithLoopbackBrowser: mockAuthenticateWithLoopbackBrowser,
 }));
 
-import { TokenExpiredError } from "../fpa/index";
+import { TokenExpiredError, TokenRefreshError } from "../fpa/index";
 import {
   createInstalledClientAuth,
   deriveAppAudience,
@@ -174,7 +174,7 @@ describe("createInstalledClientAuth", () => {
 
   it("falls back to the browser when cached token refresh fails with a non-expiry error", async () => {
     mockFirstPartyAuth.getAccessToken.mockRejectedValueOnce(
-      new Error('Token refresh failed: 400 {"error":"invalid_grant"}')
+      new TokenRefreshError(400, '{"error":"invalid_grant"}')
     );
     mockAuthenticateWithLoopbackBrowser.mockResolvedValue({
       accessToken: "browser-access-token",

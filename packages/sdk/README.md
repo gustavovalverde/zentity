@@ -55,7 +55,8 @@ const agent = createAgent({
 
 ## Error Codes
 
-`@zentity/sdk/protocol` exports the stable `ZentityErrorCode` union:
+`@zentity/sdk/protocol` exports the stable `SdkErrorCode` union. Runtime
+errors that carry one of these codes expose it on their `code` property.
 
 - `compliance_insufficient`
 - `invalid_did_key_format`
@@ -64,7 +65,9 @@ const agent = createAgent({
 
 ## Release Status
 
-`0.1.0` is the first public release line. The package is publish-ready in this repo; public npm release still requires npm scope credentials in CI.
+The package is ready for internal workspace consumers. Public npm release is
+deferred until the PRD-27 publish gate is green across PRD-37, PRD-38, and
+PRD-39.
 
 ## Build Contract
 

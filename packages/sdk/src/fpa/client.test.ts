@@ -72,6 +72,7 @@ import {
   RedirectToWebError,
   StepUpRequiredError,
   TokenExpiredError,
+  TokenRefreshError,
   createFirstPartyAuth,
   detectStepUp,
 } from "./client";
@@ -501,6 +502,20 @@ describe("createFirstPartyAuth", () => {
       )
       .mockResolvedValueOnce(new Response("invalid_grant", { status: 400 }));
 
+    let refreshError: unknown;
+    try {
+      await auth.getAccessToken();
+    } catch (error) {
+      refreshError = error;
+    }
+
+    expect(refreshError).toBeInstanceOf(TokenRefreshError);
+    expect(refreshError).toMatchObject({
+      code: "token_refresh_failed",
+      name: "TokenRefreshError",
+      responseBody: "invalid_grant",
+      status: 400,
+    });
     await expect(auth.getAccessToken()).rejects.toThrow(TokenExpiredError);
     expect(authStateStorage.read()).toEqual({
       clientId: "client-123",
