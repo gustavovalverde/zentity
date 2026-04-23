@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { DpopKeyPair } from "./dpop.js";
 import {
   type AgentRuntimeState,
-  agentRuntimeManager,
-} from "./runtime-manager.js";
+  agentRuntimeStateStore,
+} from "./runtime-state.js";
 
 export interface OAuthSessionContext {
   accessToken: string;
@@ -79,7 +79,7 @@ export function getAuthContext(): AuthContext {
       "Not authenticated — run ensureAuthenticated() first or check server logs"
     );
   }
-  const runtime = ctx.runtime ?? agentRuntimeManager.getState();
+  const runtime = ctx.runtime ?? agentRuntimeStateStore.getState();
   return runtime ? { ...ctx, runtime } : ctx;
 }
 
@@ -90,7 +90,7 @@ export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
 export function tryGetRuntimeState(
   ctx?: AuthContext
 ): AgentRuntimeState | undefined {
-  return (ctx ?? getAuthContext()).runtime ?? agentRuntimeManager.getState();
+  return (ctx ?? getAuthContext()).runtime ?? agentRuntimeStateStore.getState();
 }
 
 export function requireRuntimeState(ctx?: AuthContext): AgentRuntimeState {

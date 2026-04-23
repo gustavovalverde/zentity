@@ -7,7 +7,7 @@ import {
   setDefaultAuth,
   tryGetRuntimeState,
 } from "../../src/auth/context.js";
-import { agentRuntimeManager } from "../../src/auth/runtime-manager.js";
+import { agentRuntimeStateStore } from "../../src/auth/runtime-state.js";
 
 const dpopKey = {
   privateJwk: { kty: "EC", crv: "P-256" },
@@ -29,15 +29,17 @@ const mockRuntime = {
   display: { name: "test-agent" },
   grants: [],
   hostId: "host-1",
+  sessionDid: "did:key:zSession",
   sessionId: "session-1",
   sessionPrivateKey: { kty: "OKP", crv: "Ed25519" },
   sessionPublicKey: { kty: "OKP", crv: "Ed25519" },
+  status: "active",
 };
 
 describe("AuthContext", () => {
   beforeEach(() => {
     setDefaultAuth(undefined);
-    agentRuntimeManager.clear();
+    agentRuntimeStateStore.clear();
   });
 
   it("provides auth context inside runWithAuth", () => {
@@ -73,10 +75,10 @@ describe("AuthContext", () => {
       expect(tryGetRuntimeState()).toBe(mockRuntime);
     });
 
-    it("returns runtime from agentRuntimeManager as fallback", () => {
+    it("returns runtime from agentRuntimeStateStore as fallback", () => {
       const ctx: AuthContext = { oauth: makeOAuth() };
       setDefaultAuth(ctx);
-      agentRuntimeManager.setState(mockRuntime);
+      agentRuntimeStateStore.setState(mockRuntime);
 
       expect(tryGetRuntimeState()).toBe(mockRuntime);
     });

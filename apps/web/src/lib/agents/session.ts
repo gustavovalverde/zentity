@@ -478,7 +478,7 @@ export type AgentConfiguration = z.infer<typeof agentConfigurationSchema>;
 
 // ---------------------------------------------------------------------------
 // Agent Registration (host + session request schemas)
-// Keep aligned with apps/mcp/src/auth/agent-registration-contract.ts.
+// Keep aligned with packages/sdk/src/agent-registration.ts.
 // ---------------------------------------------------------------------------
 
 export const registerHostRequestSchema = z.object({

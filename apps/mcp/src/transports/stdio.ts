@@ -7,7 +7,7 @@ import {
   clearCachedHostId,
   ensureHostRegistered,
   prepareBootstrapRegistrationAuth,
-  registerAgent,
+  registerAgentSession,
 } from "../auth/agent-registration.js";
 import { ensureAuthenticated, refreshAuthContext } from "../auth/bootstrap.js";
 import {
@@ -17,8 +17,8 @@ import {
   setDefaultAuth,
 } from "../auth/context.js";
 import { clearTokenCredentials } from "../auth/credentials.js";
-import { agentRuntimeManager } from "../auth/runtime-manager.js";
 import { revokeAgentSession } from "../auth/runtime-revoke.js";
+import { agentRuntimeStateStore } from "../auth/runtime-state.js";
 import { config } from "../config.js";
 import { createServer } from "../server/index.js";
 
@@ -44,7 +44,7 @@ export async function bootstrapRegisteredRuntime(
   initializedPromise: Promise<void>
 ): Promise<
   Awaited<ReturnType<typeof ensureAuthenticated>> & {
-    runtime: Awaited<ReturnType<typeof registerAgent>>;
+    runtime: Awaited<ReturnType<typeof registerAgentSession>>;
   }
 > {
   await initializedPromise;
@@ -60,7 +60,7 @@ export async function bootstrapRegisteredRuntime(
 
   const registerRuntime = async (
     oauth: (typeof auth)["oauth"]
-  ): Promise<Awaited<ReturnType<typeof registerAgent>>> => {
+  ): Promise<Awaited<ReturnType<typeof registerAgentSession>>> => {
     const keyNamespace = buildHostKeyNamespace(oauth);
     const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauth);
     const hostId = await ensureHostRegistered(
@@ -69,7 +69,7 @@ export async function bootstrapRegisteredRuntime(
       "@zentity/mcp-server",
       keyNamespace
     );
-    return registerAgent(
+    return registerAgentSession(
       config.zentityUrl,
       bootstrapAuth,
       hostId,
@@ -109,12 +109,12 @@ async function runAuth(
   initializedPromise: Promise<void>
 ): Promise<void> {
   setDefaultAuth(undefined);
-  agentRuntimeManager.clear();
+  agentRuntimeStateStore.clear();
 
   try {
     const { accessTokenProvider, oauth, runtime } =
       await bootstrapRegisteredRuntime(server, initializedPromise);
-    agentRuntimeManager.setState(runtime);
+    agentRuntimeStateStore.setState(runtime);
     setDefaultAuth({ oauth, runtime });
 
     if (refreshTimer) {
@@ -128,7 +128,7 @@ async function runAuth(
           accessTokenProvider,
           currentOauth
         );
-        const currentRuntime = agentRuntimeManager.getState();
+        const currentRuntime = agentRuntimeStateStore.getState();
         if (!currentRuntime) {
           throw new Error(
             "Agent runtime is not initialized — complete host and session registration first"
@@ -154,7 +154,7 @@ export async function startStdio(): Promise<void> {
   const initializedPromise = waitForInitialized(server);
 
   const shutdown = async () => {
-    const runtime = agentRuntimeManager.getState();
+    const runtime = agentRuntimeStateStore.getState();
     if (runtime) {
       try {
         const auth = getAuthContext();

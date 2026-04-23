@@ -1,25 +1,23 @@
-import { randomUUID } from "node:crypto";
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
-import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
+import {
+  buildHostKeyNamespace as buildSdkHostKeyNamespace,
+  registerHost,
+  registerAgentSession as registerSdkAgentSession,
+  AgentRegistrationError as SdkAgentRegistrationError,
+  signAgentAssertion as signSdkAgentAssertion,
+} from "@zentity/sdk";
+import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
-import {
-  registerHostRequestSchema,
-  registerHostResponseSchema,
-  registerSessionRequestSchema,
-  registerSessionResponseSchema,
-} from "./agent-registration-contract.js";
 import { RUNTIME_BOOTSTRAP_SCOPE_STRING } from "./bootstrap-scopes.js";
 import type { OAuthSessionContext } from "./context.js";
-import { createDpopProof, extractDpopNonce } from "./dpop.js";
 import {
   clearHostId,
   getOrCreateHostKey,
   loadHostKey,
   saveHostKey,
 } from "./host-key.js";
-import type { AgentRuntimeState } from "./runtime-manager.js";
+import type { AgentRuntimeState } from "./runtime-state.js";
 import { exchangeToken } from "./token-exchange.js";
 
 const REQUESTED_CAPABILITIES = [
@@ -30,25 +28,8 @@ const REQUESTED_CAPABILITIES = [
   "check_compliance",
 ];
 
-export class AgentRegistrationError extends Error {
-  readonly responseBody: string;
-  readonly status: number;
-
-  constructor(message: string, status: number, responseBody: string) {
-    super(message);
-    this.name = "AgentRegistrationError";
-    this.status = status;
-    this.responseBody = responseBody;
-  }
-}
-
-export function buildHostKeyNamespace(
-  auth: Pick<OAuthSessionContext, "accountSub" | "clientId">
-): string {
-  return auth.accountSub
-    ? `${auth.clientId}:${auth.accountSub}`
-    : auth.clientId;
-}
+export const AgentRegistrationError = SdkAgentRegistrationError;
+export const buildHostKeyNamespace = buildSdkHostKeyNamespace;
 
 export async function prepareBootstrapRegistrationAuth(
   auth: OAuthSessionContext
@@ -77,53 +58,6 @@ export async function prepareBootstrapRegistrationAuth(
   };
 }
 
-async function postJsonWithDpopRetry(
-  url: string,
-  auth: OAuthSessionContext,
-  payload: unknown
-): Promise<Response> {
-  const body = JSON.stringify(payload);
-
-  let dpopProof = await createDpopProof(
-    auth.dpopKey,
-    "POST",
-    url,
-    auth.accessToken
-  );
-
-  let response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `DPoP ${auth.accessToken}`,
-      DPoP: dpopProof,
-    },
-    body,
-  });
-
-  const nonce = extractDpopNonce(response);
-  if (nonce && (response.status === 400 || response.status === 401)) {
-    dpopProof = await createDpopProof(
-      auth.dpopKey,
-      "POST",
-      url,
-      auth.accessToken,
-      nonce
-    );
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `DPoP ${auth.accessToken}`,
-        DPoP: dpopProof,
-      },
-      body,
-    });
-  }
-
-  return response;
-}
-
 /**
  * Register the host with Zentity (idempotent).
  * On first call, generates an Ed25519 keypair and creates a host record.
@@ -133,43 +67,29 @@ export async function ensureHostRegistered(
   zentityUrl: string,
   auth: OAuthSessionContext,
   hostName: string,
-  keyNamespace = buildHostKeyNamespace(auth)
+  keyNamespace = buildSdkHostKeyNamespace(auth)
 ): Promise<string> {
   const agentConfiguration = await discoverAgentConfiguration(zentityUrl);
   const hostKey = await getOrCreateHostKey(zentityUrl, keyNamespace);
 
-  // Already registered — return cached host ID
   if (hostKey.hostId) {
     return hostKey.hostId;
   }
 
-  const url = agentConfiguration.host_registration_endpoint;
-  const hostDid = hostKey.did ?? encodeEd25519DidKeyFromJwk(hostKey.publicKey);
-  const response = await postJsonWithDpopRetry(
-    url,
-    auth,
-    registerHostRequestSchema.parse({
-      did: hostDid,
-      name: hostName,
-    })
-  );
-  if (!response.ok) {
-    const text = await response.text();
-    throw new AgentRegistrationError(
-      `Host registration failed: ${response.status} ${text}`,
-      response.status,
-      text
-    );
-  }
-
-  const data = registerHostResponseSchema.parse(await response.json());
-  hostKey.did = data.did;
-  hostKey.hostId = data.hostId;
+  const registeredHost = await registerHost({
+    accessToken: auth.accessToken,
+    dpopClient: await createDpopClientFromKeyPair(auth.dpopKey),
+    endpoint: agentConfiguration.host_registration_endpoint,
+    hostKey,
+    hostName,
+  });
+  hostKey.did = registeredHost.did;
+  hostKey.hostId = registeredHost.hostId;
   saveHostKey(zentityUrl, keyNamespace, hostKey);
   console.error(
-    `[agent] Host registered: ${data.hostId} (${data.created ? "new" : "existing"})`
+    `[agent] Host registered: ${registeredHost.hostId} (${registeredHost.created ? "new" : "existing"}, ${registeredHost.attestationTier})`
   );
-  return data.hostId;
+  return registeredHost.hostId;
 }
 
 export function clearCachedHostId(
@@ -180,33 +100,15 @@ export function clearCachedHostId(
 }
 
 /**
- * Sign a host JWT for agent registration.
- * The JWT proves the caller possesses the host's Ed25519 private key.
- */
-async function signHostJwt(
-  hostKey: Awaited<ReturnType<typeof getOrCreateHostKey>>,
-  hostId: string
-): Promise<string> {
-  const privateKey = await importJWK(hostKey.privateKey, "EdDSA");
-  return new SignJWT({})
-    .setProtectedHeader({ alg: "EdDSA", typ: "host-attestation+jwt" })
-    .setIssuer(hostId)
-    .setSubject("agent-registration")
-    .setIssuedAt()
-    .setExpirationTime("60s")
-    .sign(privateKey);
-}
-
-/**
  * Register a fresh agent session for the current process.
  * Generates a fresh Ed25519 keypair (in-memory only) and registers with Zentity.
  */
-export async function registerAgent(
+export async function registerAgentSession(
   zentityUrl: string,
   auth: OAuthSessionContext,
   hostId: string,
   display: AgentInfo,
-  keyNamespace = buildHostKeyNamespace(auth)
+  keyNamespace = buildSdkHostKeyNamespace(auth)
 ): Promise<AgentRuntimeState> {
   const agentConfiguration = await discoverAgentConfiguration(zentityUrl);
   const hostKey = loadHostKey(zentityUrl, keyNamespace);
@@ -214,95 +116,48 @@ export async function registerAgent(
     throw new Error("Host key not found — call ensureHostRegistered first");
   }
 
-  // Generate ephemeral agent keypair (private key retained for JWT signing)
-  const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
-    crv: "Ed25519",
-    extractable: true,
+  const registeredSession = await registerSdkAgentSession({
+    accessToken: auth.accessToken,
+    display,
+    dpopClient: await createDpopClientFromKeyPair(auth.dpopKey),
+    endpoint: agentConfiguration.registration_endpoint,
+    hostId,
+    hostKey,
+    requestedCapabilities: REQUESTED_CAPABILITIES,
   });
-  const agentPrivateJwk = await exportJWK(privateKey);
-  const agentPublicJwk = await exportJWK(publicKey);
-  const agentDid = encodeEd25519DidKeyFromJwk(agentPublicJwk);
 
-  const hostJwt = await signHostJwt(hostKey, hostId);
-
-  const url = agentConfiguration.registration_endpoint;
-  const response = await postJsonWithDpopRetry(
-    url,
-    auth,
-    registerSessionRequestSchema.parse({
-      hostJwt,
-      did: agentDid,
-      requestedCapabilities: REQUESTED_CAPABILITIES,
-      display,
-    })
-  );
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new AgentRegistrationError(
-      `Agent registration failed: ${response.status} ${text}`,
-      response.status,
-      text
-    );
-  }
-
-  const data = registerSessionResponseSchema.parse(await response.json());
-  if (data.grants?.length) {
-    const active = data.grants
+  if (registeredSession.grants.length) {
+    const active = registeredSession.grants
       .filter((grant) => grant.status === "active")
       .map((grant) => grant.capability);
-    const pending = data.grants
+    const pending = registeredSession.grants
       .filter((grant) => grant.status === "pending")
       .map((grant) => grant.capability);
     console.error(
-      `[agent] Session registered: ${data.sessionId} (${data.status}), ` +
+      `[agent] Session registered: ${registeredSession.sessionId} (${registeredSession.status}), ` +
         `grants: ${active.length} active [${active.join(", ")}], ${pending.length} pending [${pending.join(", ")}]`
     );
   } else {
     console.error(
-      `[agent] Session registered: ${data.sessionId} (${data.status})`
+      `[agent] Session registered: ${registeredSession.sessionId} (${registeredSession.status})`
     );
   }
 
-  return {
-    display,
-    grants: data.grants ?? [],
-    hostId,
-    sessionId: data.sessionId,
-    sessionPrivateKey: agentPrivateJwk,
-    sessionPublicKey: agentPublicJwk,
-  };
+  return registeredSession;
 }
 
 /**
  * Sign an agent assertion JWT for a CIBA request.
  * Proves the caller possesses the session's Ed25519 private key.
  */
-export async function signAgentAssertion(
+export function signAgentAssertion(
   agent: AgentRuntimeState,
   bindingMessage: string
 ): Promise<string> {
-  const privateKey = await importJWK(agent.sessionPrivateKey, "EdDSA");
-  const hashHex = await sha256Hex(bindingMessage);
-  const taskId = randomUUID();
-
-  return new SignJWT({
-    host_id: agent.hostId,
-    task_hash: hashHex,
-    task_id: taskId,
-  })
-    .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })
-    .setIssuer(agent.sessionId)
-    .setJti(randomUUID())
-    .setIssuedAt()
-    .setExpirationTime("60s")
-    .sign(privateKey);
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const encoded = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return signSdkAgentAssertion({
+    bindingMessage,
+    hostId: agent.hostId,
+    sessionId: agent.sessionId,
+    sessionPrivateKey: agent.sessionPrivateKey,
+  });
 }

@@ -29,9 +29,11 @@ const mockRuntimeState = {
   },
   grants: [],
   hostId: "host-123",
+  sessionDid: "did:key:zSession",
   sessionId: "session-123",
   sessionPrivateKey: { kty: "OKP", crv: "Ed25519", d: "priv", x: "pub" },
   sessionPublicKey: { kty: "OKP", crv: "Ed25519", x: "pub" },
+  status: "active",
 };
 
 vi.mock("../../src/auth/context.js", () => ({

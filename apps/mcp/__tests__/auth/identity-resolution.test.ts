@@ -47,9 +47,11 @@ const mockRuntime = {
   display: { name: "test-agent" },
   grants: [],
   hostId: "host-1",
+  sessionDid: "did:key:zSession",
   sessionId: "session-1",
   sessionPrivateKey: { kty: "OKP", crv: "Ed25519" },
   sessionPublicKey: { kty: "OKP", crv: "Ed25519" },
+  status: "active",
 };
 
 function makeOAuth(overrides: Record<string, unknown> = {}) {

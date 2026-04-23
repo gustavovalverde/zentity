@@ -726,7 +726,7 @@ On startup, the stdio transport:
 2. stores OAuth state separately from runtime identity
 3. ensures the durable host is registered
 4. registers a fresh agent session for the current process
-5. stores runtime state in the `AgentRuntimeManager`
+5. stores runtime state in the `agentRuntimeStateStore`
 
 Access-token refresh does not destroy runtime identity. The OAuth session can rotate while the live session key and session ID remain stable for that process.
 
