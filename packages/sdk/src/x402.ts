@@ -2,7 +2,7 @@ import {
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   type PaymentRequiredPayload,
-} from "./rp/payment-required.js";
+} from "./rp/payment-required";
 
 export interface X402ComplianceRequirement {
   identityRegistry?: string;

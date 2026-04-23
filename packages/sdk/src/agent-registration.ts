@@ -2,8 +2,8 @@ import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 import {
   encodeEd25519DidKeyFromJwk,
   type HostAttestationTier,
-} from "./protocol/index.js";
-import type { DpopClient } from "./rp/dpop-client.js";
+} from "./protocol/index";
+import type { DpopClient } from "./rp/dpop-client";
 
 export interface AgentDisplay {
   model?: string;

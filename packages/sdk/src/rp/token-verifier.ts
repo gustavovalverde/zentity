@@ -5,7 +5,7 @@ import {
   type JWTVerifyResult,
   jwtVerify,
 } from "jose";
-import type { AccessTokenClaims } from "../protocol/claims.js";
+import type { AccessTokenClaims } from "../protocol/claims";
 
 const DEFAULT_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1000;

@@ -6,24 +6,24 @@ const { mockAuthenticateWithLoopbackBrowser, mockCreateFirstPartyAuth } =
     mockCreateFirstPartyAuth: vi.fn(),
   }));
 
-vi.mock("../fpa/index.js", async () => {
+vi.mock("../fpa/index", async () => {
   const actual =
-    await vi.importActual<typeof import("../fpa/index.js")>("../fpa/index.js");
+    await vi.importActual<typeof import("../fpa/index")>("../fpa/index");
   return {
     ...actual,
     createFirstPartyAuth: mockCreateFirstPartyAuth,
   };
 });
 
-vi.mock("./loopback-browser.js", () => ({
+vi.mock("./loopback-browser", () => ({
   authenticateWithLoopbackBrowser: mockAuthenticateWithLoopbackBrowser,
 }));
 
-import { TokenExpiredError } from "../fpa/index.js";
+import { TokenExpiredError } from "../fpa/index";
 import {
   createInstalledClientAuth,
   deriveAppAudience,
-} from "./installed-client.js";
+} from "./installed-client";
 
 const mockFirstPartyAuth = {
   clearClientRegistration: vi.fn(),

@@ -4,16 +4,16 @@ import {
   type CibaRequest,
   type CibaTokenSet,
   requestCibaApproval,
-} from "./ciba.js";
-import { createDiscoveryResolver } from "./fpa/discovery.js";
-import type { AccessTokenClaims, CapabilityClaim } from "./protocol/index.js";
-import type { DpopClient } from "./rp/dpop-client.js";
-import { requestProofOfHumanToken } from "./rp/proof-of-human.js";
+} from "./ciba";
+import { createDiscoveryResolver } from "./fpa/discovery";
+import type { AccessTokenClaims, CapabilityClaim } from "./protocol/index";
+import type { DpopClient } from "./rp/dpop-client";
+import { requestProofOfHumanToken } from "./rp/proof-of-human";
 import {
   createX402Fetch,
   type X402Fetch,
   type X402FetchOptions,
-} from "./x402.js";
+} from "./x402";
 
 const PURCHASE_CAPABILITY = "purchase";
 const POH_SCOPE = "openid poh";
@@ -55,8 +55,7 @@ export interface ProveHumanOptions {
 }
 
 export interface Agent {
-  decodeAccessToken(token: string): Partial<AccessTokenClaims> &
-    Record<string, unknown>;
+  decodeAccessToken(token: string): AccessTokenClaims & Record<string, unknown>;
   fetch: X402Fetch;
   proveHuman(options: ProveHumanOptions): Promise<string>;
   requestApproval(options: RequestApprovalOptions): Promise<CibaTokenSet>;
@@ -90,9 +89,8 @@ export class ComplianceInsufficientError extends Error {
 
 export function decodeAccessToken(
   token: string
-): Partial<AccessTokenClaims> & Record<string, unknown> {
-  return decodeJwt(token) as Partial<AccessTokenClaims> &
-    Record<string, unknown>;
+): AccessTokenClaims & Record<string, unknown> {
+  return decodeJwt(token) as AccessTokenClaims & Record<string, unknown>;
 }
 
 function buildCapabilityCacheKey(input: {

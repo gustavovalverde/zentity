@@ -3,7 +3,7 @@ import {
   buildLoopbackClientRegistration,
   buildOAuthClientMetadata,
   normalizeUrl,
-} from "./oauth-client-metadata.js";
+} from "./oauth-client-metadata";
 
 describe("oauth client metadata helpers", () => {
   it("builds a loopback registration request with the default redirect URI", () => {

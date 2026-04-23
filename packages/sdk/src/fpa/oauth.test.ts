@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DpopClient } from "../rp/dpop-client.js";
+import type { DpopClient } from "../rp/dpop-client";
 
 const { mockFetchUserInfo } = vi.hoisted(() => ({
   mockFetchUserInfo: vi.fn(),
 }));
 
-vi.mock("../rp/userinfo.js", () => ({
+vi.mock("../rp/userinfo", () => ({
   fetchUserInfo: mockFetchUserInfo,
 }));
 
-import { exchangeAuthorizationCode, exchangeToken } from "./oauth.js";
+import { exchangeAuthorizationCode, exchangeToken } from "./oauth";
 
 function createMockDpopClient(): DpopClient {
   return {

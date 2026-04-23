@@ -1,4 +1,4 @@
-import type { DpopClient } from "./dpop-client.js";
+import type { DpopClient } from "./dpop-client";
 
 export interface FetchUserInfoOptions {
   accessToken: string;

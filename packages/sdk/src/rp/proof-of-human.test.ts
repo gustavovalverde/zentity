@@ -5,14 +5,14 @@ const verifierMocks = vi.hoisted(() => ({
   verify: vi.fn(),
 }));
 
-vi.mock("./token-verifier.js", () => ({
+vi.mock("./token-verifier", () => ({
   createJwksTokenVerifier: verifierMocks.createJwksTokenVerifier,
 }));
 
 import {
   createProofOfHumanTokenVerifier,
   requestProofOfHumanToken,
-} from "./proof-of-human.js";
+} from "./proof-of-human";
 
 function createJwt(payload: Record<string, unknown>): string {
   return [

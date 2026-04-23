@@ -9,7 +9,7 @@ import {
   encodeEd25519DidKeyFromJwk,
   InvalidDidKeyFormatError,
   isEd25519DidKey,
-} from "./did-key.js";
+} from "./did-key";
 
 describe("did:key codec", () => {
   it("round-trips Ed25519 public keys deterministically", () => {

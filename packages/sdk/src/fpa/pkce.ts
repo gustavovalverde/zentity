@@ -1,4 +1,4 @@
-import { encodeBase64Url } from "../rp/dpop-client.js";
+import { encodeBase64Url } from "../rp/dpop-client";
 
 export interface PkceChallenge {
   codeChallenge: string;

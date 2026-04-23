@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { platform } from "node:os";
-import type { TokenResult } from "../fpa/oauth.js";
-import type { PkceChallenge } from "../fpa/pkce.js";
-import type { DpopClient } from "../rp/dpop-client.js";
+import type { TokenResult } from "../fpa/oauth";
+import type { PkceChallenge } from "../fpa/pkce";
+import type { DpopClient } from "../rp/dpop-client";
 
 const DEFAULT_CALLBACK_TIMEOUT_MS = 120_000;
 

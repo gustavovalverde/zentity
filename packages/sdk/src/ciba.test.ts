@@ -7,7 +7,7 @@ import {
   pollCibaToken,
   pollCibaTokenOnce,
   requestCibaApproval,
-} from "./ciba.js";
+} from "./ciba";
 
 const dpopSigner: DpopProofSigner = {
   proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),

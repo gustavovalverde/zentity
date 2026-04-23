@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDiscoveryResolver } from "./discovery.js";
+import { createDiscoveryResolver } from "./discovery";
 
 const BASE_DOCUMENT = {
   issuer: "https://issuer.example",

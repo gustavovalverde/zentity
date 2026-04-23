@@ -2,6 +2,12 @@ export const AAP_CLAIMS_VERSION = 1 as const;
 export const AGENT_DID_METHODS_SUPPORTED = ["did:key"] as const;
 export const ACT_DID_EMISSION_POLICY = "attested_hosts_only" as const;
 
+export type ZentityErrorCode =
+  | "compliance_insufficient"
+  | "invalid_did_key_format"
+  | "token_refresh_failed"
+  | "use_dpop_nonce";
+
 export type HostAttestationTier =
   | "attested"
   | "self-declared"
@@ -55,7 +61,18 @@ export interface AccessTokenDelegationClaim {
   parent_jti: string | null;
 }
 
-export interface AccessTokenClaims {
+export interface StandardAccessTokenClaims {
+  aud: string | string[];
+  client_id: string;
+  exp: number;
+  iat: number;
+  iss: string;
+  jti: string;
+  scope?: string;
+  sub: string;
+}
+
+export interface AapAccessTokenClaims {
   act: AccessTokenActClaim;
   aap_claims_version: typeof AAP_CLAIMS_VERSION;
   audit: AccessTokenAuditClaim;
@@ -64,3 +81,7 @@ export interface AccessTokenClaims {
   oversight: AccessTokenOversightClaim;
   task: AccessTokenTaskClaim;
 }
+
+export interface AccessTokenClaims
+  extends StandardAccessTokenClaims,
+    AapAccessTokenClaims {}

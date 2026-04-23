@@ -53,6 +53,12 @@
     }
   },
   "scripts": {
+    "changeset": "changeset",
+    "check:agent-sdk-rollout": "node ./scripts/check-agent-sdk-rollout.mjs",
+    "release:sdk:pack": "npm pack --json --dry-run ./packages/sdk",
     "typecheck:sdk": "pnpm --filter @zentity/sdk exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7"
   }
 }

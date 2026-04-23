@@ -1,6 +1,6 @@
 import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { describe, expect, it, vi } from "vitest";
-import type { DpopClient } from "./rp/dpop-client.js";
+import type { DpopClient } from "./rp/dpop-client";
 import {
   AgentRegistrationError,
   buildHostKeyNamespace,
@@ -8,7 +8,7 @@ import {
   registerHost,
   signAgentAssertion,
   type HostKeyMaterial,
-} from "./agent-registration.js";
+} from "./agent-registration";
 
 function createDpopClient(): Pick<DpopClient, "proofFor" | "withNonceRetry"> {
   return {

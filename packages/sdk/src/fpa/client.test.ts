@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DpopClient, DpopKeyPair } from "../rp/dpop-client.js";
+import type { DpopClient, DpopKeyPair } from "../rp/dpop-client";
 
 const TEST_KEY_PAIR: DpopKeyPair = {
   privateJwk: {
@@ -44,24 +44,24 @@ const fpaMocks = vi.hoisted(() => ({
   startOpaqueLogin: vi.fn(),
 }));
 
-vi.mock("../rp/dpop-client.js", () => ({
+vi.mock("../rp/dpop-client", () => ({
   createDpopClientFromKeyPair: fpaMocks.createDpopClientFromKeyPair,
   generateDpopKeyPair: fpaMocks.generateDpopKeyPair,
 }));
 
-vi.mock("./opaque.js", () => ({
+vi.mock("./opaque", () => ({
   ensureOpaqueReady: fpaMocks.ensureOpaqueReady,
   finishOpaqueLogin: fpaMocks.finishOpaqueLogin,
   startOpaqueLogin: fpaMocks.startOpaqueLogin,
 }));
 
-vi.mock("./oauth.js", () => ({
+vi.mock("./oauth", () => ({
   exchangeAuthorizationCode: fpaMocks.exchangeAuthorizationCode,
   exchangeToken: fpaMocks.exchangeToken,
 }));
 
-vi.mock("./pkce.js", async () => {
-  const actual = await vi.importActual<typeof import("./pkce.js")>("./pkce.js");
+vi.mock("./pkce", async () => {
+  const actual = await vi.importActual<typeof import("./pkce")>("./pkce");
   return {
     ...actual,
     generatePkceChallenge: fpaMocks.generatePkceChallenge,
@@ -74,7 +74,7 @@ import {
   TokenExpiredError,
   createFirstPartyAuth,
   detectStepUp,
-} from "./client.js";
+} from "./client";
 
 function createMemoryAuthStateStorage(
   initialState?: Record<string, unknown>
@@ -431,7 +431,7 @@ describe("createFirstPartyAuth", () => {
   it("clears token state when a new DCR client is registered", async () => {
     const authStateStorage = createMemoryAuthStateStorage({
       accessToken: "stale-access-token",
-      clientId: "legacy-client",
+      clientId: "stale-client",
       expiresAt: Date.now() + 60_000,
       refreshToken: "stale-refresh-token",
       registrationMethod: "dcr",

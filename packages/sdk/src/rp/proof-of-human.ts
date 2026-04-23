@@ -1,9 +1,9 @@
 import { decodeJwt, type JWTVerifyOptions } from "jose";
-import type { DpopClient } from "./dpop-client.js";
+import type { DpopClient } from "./dpop-client";
 import {
   createJwksTokenVerifier,
   type JwksTokenVerifierOptions,
-} from "./token-verifier.js";
+} from "./token-verifier";
 
 export interface ProofOfHumanClaims {
   method: "ocr" | "nfc_chip" | null;

@@ -11,7 +11,7 @@ import {
   createJwksTokenVerifier,
   createOpenIdTokenVerifier,
   verifyAccessToken,
-} from "./token-verifier.js";
+} from "./token-verifier";
 
 function createDiscoveryResponse(cacheControl: string): Response {
   return new Response(

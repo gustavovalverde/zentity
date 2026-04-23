@@ -3,12 +3,11 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createFirstPartyAuthFileStorage } from "./first-party-auth-storage.js";
+import { createFirstPartyAuthFileStorage } from "./first-party-auth-storage";
 
 const TEMP_DIRECTORIES: string[] = [];
 
@@ -56,43 +55,6 @@ describe("createFirstPartyAuthFileStorage", () => {
       accessToken: "access-token",
       clientId: "client-1",
       loginHint: "user@example.com",
-    });
-  });
-
-  it("loads legacy credentials when requested and no new storage file exists", () => {
-    const baseDir = createTempDirectory();
-    const legacyCredentialFilePath = join(baseDir, "credentials.json");
-    writeFileSync(
-      legacyCredentialFilePath,
-      JSON.stringify(
-        {
-          zentityUrl: "http://localhost:3000/",
-          clientId: "client-legacy",
-          accessToken: "legacy-access-token",
-          dpopJwk: { kty: "EC", crv: "P-256" },
-          dpopPublicJwk: { kty: "EC", crv: "P-256" },
-          registrationMethod: "dcr",
-        },
-        null,
-        2
-      )
-    );
-
-    const storage = createFirstPartyAuthFileStorage({
-      baseDir,
-      issuerUrl: "http://localhost:3000",
-      legacyCredentialFilePath,
-      namespace: "mcp-server",
-    });
-
-    expect(storage.load()).toEqual({
-      accessToken: "legacy-access-token",
-      clientId: "client-legacy",
-      dpopKeyPair: {
-        privateJwk: { kty: "EC", crv: "P-256" },
-        publicJwk: { kty: "EC", crv: "P-256" },
-      },
-      registrationMethod: "dcr",
     });
   });
 

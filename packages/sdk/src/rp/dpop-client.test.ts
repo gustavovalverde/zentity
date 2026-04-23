@@ -47,7 +47,7 @@ import {
   createDpopClient,
   createDpopClientFromKeyPair,
   generateDpopKeyPair,
-} from "./dpop-client.js";
+} from "./dpop-client";
 
 describe("dpop client", () => {
   beforeEach(() => {

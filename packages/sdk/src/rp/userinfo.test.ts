@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchUserInfo } from "./userinfo.js";
+import { fetchUserInfo } from "./userinfo";
 
 describe("fetchUserInfo", () => {
   afterEach(() => {

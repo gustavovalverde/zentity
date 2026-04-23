@@ -5,37 +5,17 @@ import { join } from "node:path";
 import type {
   FirstPartyAuthStorage,
   StoredFirstPartyAuthState,
-} from "../fpa/client.js";
-import type { DpopKeyPair } from "../rp/dpop-client.js";
-import { normalizeUrl } from "./oauth-client-metadata.js";
-
-const LEGACY_CREDENTIALS_FILENAME = "credentials.json";
+} from "../fpa/client";
+import { normalizeUrl } from "./oauth-client-metadata";
 
 interface PersistedFirstPartyAuthState {
   issuerUrl: string;
   state: StoredFirstPartyAuthState;
 }
 
-interface LegacyStoredCredentials {
-  accessToken?: string;
-  accountSub?: string;
-  authSession?: string;
-  clientId?: string;
-  clientSecret?: string;
-  dpopJwk?: DpopKeyPair["privateJwk"];
-  dpopPublicJwk?: DpopKeyPair["publicJwk"];
-  expiresAt?: number;
-  loginHint?: string;
-  refreshToken?: string;
-  registrationFingerprint?: string;
-  registrationMethod?: "cimd" | "dcr";
-  zentityUrl?: string;
-}
-
 export interface CreateFirstPartyAuthFileStorageOptions {
   baseDir?: string;
   issuerUrl: string | URL;
-  legacyCredentialFilePath?: false | string;
   namespace: string;
 }
 
@@ -90,19 +70,6 @@ function resolveStorageFile(options: {
   return join(resolveStorageDirectory(options), `${issuerKey}.json`);
 }
 
-function resolveLegacyCredentialFile(
-  options: CreateFirstPartyAuthFileStorageOptions
-): string | undefined {
-  if (options.legacyCredentialFilePath === false) {
-    return undefined;
-  }
-
-  return (
-    options.legacyCredentialFilePath ??
-    join(resolveBaseDir(options.baseDir), LEGACY_CREDENTIALS_FILENAME)
-  );
-}
-
 function readJsonFile<T>(filePath: string): T | undefined {
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as T;
@@ -126,62 +93,6 @@ function readPersistedState(
   return persisted.state;
 }
 
-const LEGACY_FIELDS_TO_COPY = [
-  "accessToken",
-  "accountSub",
-  "authSession",
-  "clientId",
-  "clientSecret",
-  "expiresAt",
-  "loginHint",
-  "refreshToken",
-  "registrationFingerprint",
-  "registrationMethod",
-] as const satisfies readonly (keyof StoredFirstPartyAuthState &
-  keyof LegacyStoredCredentials)[];
-
-function mapLegacyCredentials(
-  credentials: LegacyStoredCredentials
-): StoredFirstPartyAuthState {
-  const state: StoredFirstPartyAuthState = {};
-  for (const field of LEGACY_FIELDS_TO_COPY) {
-    const value = credentials[field];
-    if (value !== undefined) {
-      (state as Record<string, unknown>)[field] = value;
-    }
-  }
-
-  if (credentials.dpopJwk && credentials.dpopPublicJwk) {
-    state.dpopKeyPair = {
-      privateJwk: credentials.dpopJwk,
-      publicJwk: credentials.dpopPublicJwk,
-    };
-  }
-
-  return state;
-}
-
-function readLegacyState(
-  legacyCredentialFilePath: string | undefined,
-  issuerUrl: string
-): StoredFirstPartyAuthState | undefined {
-  if (!legacyCredentialFilePath) {
-    return undefined;
-  }
-
-  const legacyCredentials = readJsonFile<LegacyStoredCredentials>(
-    legacyCredentialFilePath
-  );
-  if (
-    !legacyCredentials?.zentityUrl ||
-    normalizeUrl(legacyCredentials.zentityUrl) !== issuerUrl
-  ) {
-    return undefined;
-  }
-
-  return mapLegacyCredentials(legacyCredentials);
-}
-
 export function createFirstPartyAuthFileStorage(
   options: CreateFirstPartyAuthFileStorageOptions
 ): FirstPartyAuthStorage {
@@ -195,14 +106,10 @@ export function createFirstPartyAuthFileStorage(
     ...storageOptions,
     issuerUrl: options.issuerUrl,
   });
-  const legacyCredentialFile = resolveLegacyCredentialFile(options);
 
   return {
     load() {
-      return (
-        readPersistedState(storageFile, issuerUrl) ??
-        readLegacyState(legacyCredentialFile, issuerUrl)
-      );
+      return readPersistedState(storageFile, issuerUrl);
     },
     save(state) {
       mkdirSync(resolveStorageDirectory(storageOptions), {

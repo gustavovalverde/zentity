@@ -4,10 +4,10 @@ import {
   type FirstPartyAuthDiscoveryDocument,
   type FirstPartyAuthStorage,
   type StoredFirstPartyAuthState,
-} from "../fpa/index.js";
-import type { DpopKeyPair } from "../rp/dpop-client.js";
-import { authenticateWithLoopbackBrowser } from "./loopback-browser.js";
-import { normalizeUrl } from "./oauth-client-metadata.js";
+} from "../fpa/index";
+import type { DpopKeyPair } from "../rp/dpop-client";
+import { authenticateWithLoopbackBrowser } from "./loopback-browser";
+import { normalizeUrl } from "./oauth-client-metadata";
 
 const AUTH_ISSUER_SUFFIX_RE = /\/api\/auth\/?$/;
 

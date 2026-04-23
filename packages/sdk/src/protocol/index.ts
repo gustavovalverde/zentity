@@ -1,2 +1,2 @@
-export * from "./claims.js";
-export * from "./did-key.js";
+export * from "./claims";
+export * from "./did-key";

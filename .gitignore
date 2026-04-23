@@ -12,6 +12,7 @@ commit-message.txt
 .actrc
 .zentity-auth-secret
 .playwright-mcp
+*.srl
 
 ### Documentation ###
 # Keep the public docs lean for open-source. Treat the rest as internal notes.

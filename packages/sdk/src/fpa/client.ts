@@ -3,19 +3,19 @@ import {
   generateDpopKeyPair,
   type DpopClient,
   type DpopKeyPair,
-} from "../rp/dpop-client.js";
-import { createDiscoveryResolver, type FirstPartyAuthDiscoveryDocument } from "./discovery.js";
-import { ensureOpaqueReady, finishOpaqueLogin, startOpaqueLogin } from "./opaque.js";
+} from "../rp/dpop-client";
+import { createDiscoveryResolver, type FirstPartyAuthDiscoveryDocument } from "./discovery";
+import { ensureOpaqueReady, finishOpaqueLogin, startOpaqueLogin } from "./opaque";
 import {
   exchangeAuthorizationCode,
   exchangeToken,
   type ExchangeTokenResult,
   type TokenResult,
-} from "./oauth.js";
+} from "./oauth";
 import {
   generatePkceChallenge,
   type PkceChallenge,
-} from "./pkce.js";
+} from "./pkce";
 
 type MaybePromise<T> = Promise<T> | T;
 

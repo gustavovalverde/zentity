@@ -3,7 +3,7 @@ import {
   buildPaymentRequiredPayload,
   createPaymentRequired,
   PAYMENT_REQUIRED_HEADER,
-} from "./payment-required.js";
+} from "./payment-required";
 
 describe("createPaymentRequired", () => {
   it("builds an x402 v2 402 response with a PAYMENT-REQUIRED header", async () => {

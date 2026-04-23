@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAgent } from "./agent.js";
-import type { DpopClient } from "./rp/dpop-client.js";
-import { PAYMENT_REQUIRED_HEADER } from "./rp/payment-required.js";
+import { createAgent } from "./agent";
+import type { DpopClient } from "./rp/dpop-client";
+import { PAYMENT_REQUIRED_HEADER } from "./rp/payment-required";
 
 const FUTURE_EXP = Math.floor(Date.now() / 1000) + 3600;
 

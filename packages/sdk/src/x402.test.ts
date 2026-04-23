@@ -3,8 +3,8 @@ import {
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   type PaymentRequiredPayload,
-} from "./rp/payment-required.js";
-import { createX402Fetch } from "./x402.js";
+} from "./rp/payment-required";
+import { createX402Fetch } from "./x402";
 
 function encodeHeader(payload: PaymentRequiredPayload): string {
   return Buffer.from(JSON.stringify(payload), "utf8").toString("base64");

@@ -1,6 +1,6 @@
 import { decodeJwt } from "jose";
-import type { DpopClient } from "../rp/dpop-client.js";
-import { fetchUserInfo } from "../rp/userinfo.js";
+import type { DpopClient } from "../rp/dpop-client";
+import { fetchUserInfo } from "../rp/userinfo";
 
 export interface ExchangeAuthorizationCodeOptions {
   clientId: string;

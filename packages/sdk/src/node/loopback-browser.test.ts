@@ -1,6 +1,6 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { authenticateWithLoopbackBrowser } from "./loopback-browser.js";
+import { authenticateWithLoopbackBrowser } from "./loopback-browser";
 
 const { mockExecFile, mockExchangeAuthorizationCode } = vi.hoisted(() => ({
   mockExecFile: vi.fn(),
