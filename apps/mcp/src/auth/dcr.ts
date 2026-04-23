@@ -3,17 +3,9 @@ import {
   buildInstalledAgentRegistrationRequest,
   getInstalledAgentRegistrationFingerprint,
 } from "./auth-surfaces.js";
-import {
-  clearClientRegistration,
-  loadCredentials,
-  updateCredentials,
-} from "./credentials.js";
+import { clearClientRegistration, loadCredentials } from "./credentials.js";
 import type { DiscoveryState } from "./discovery.js";
-
-interface DcrResponse {
-  client_id: string;
-  client_secret?: string;
-}
+import { ensureFirstPartyAuth } from "./first-party-auth.js";
 
 interface EnsureClientRegistrationOptions {
   force?: boolean;
@@ -60,28 +52,13 @@ export async function ensureClientRegistration(
     );
   }
 
-  const body = buildInstalledAgentRegistrationRequest();
-
-  const response = await fetch(discovery.registration_endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const clientId = await ensureFirstPartyAuth(
+    config.zentityUrl
+  ).ensureClientRegistration({
+    ...(typeof options.force === "boolean" ? { force: options.force } : {}),
+    request: buildInstalledAgentRegistrationRequest(),
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`DCR failed: ${response.status} ${text}`);
-  }
-
-  const data = (await response.json()) as DcrResponse;
-
-  updateCredentials(config.zentityUrl, {
-    clientId: data.client_id,
-    ...(data.client_secret ? { clientSecret: data.client_secret } : {}),
-    registrationFingerprint,
-    registrationMethod: "dcr",
-  });
-
-  console.error(`[dcr] Registered as client_id: ${data.client_id}`);
-  return data.client_id;
+  console.error(`[dcr] Registered as client_id: ${clientId}`);
+  return clientId;
 }

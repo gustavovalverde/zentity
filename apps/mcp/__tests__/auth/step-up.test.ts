@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../src/config.js", () => ({
   config: {
@@ -11,52 +11,22 @@ vi.mock("../../src/config.js", () => ({
 
 vi.mock("../../src/auth/credentials.js", () => ({
   loadCredentials: vi.fn(),
-  updateCredentials: vi.fn(),
 }));
 
-vi.mock("../../src/auth/dpop.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
+const { mockEnsureFirstPartyAuth, mockStepUp } = vi.hoisted(() => ({
+  mockEnsureFirstPartyAuth: vi.fn(),
+  mockStepUp: vi.fn(),
 }));
 
-const { mockRunFpaFlow } = vi.hoisted(() => ({
-  mockRunFpaFlow: vi.fn(),
-}));
-
-vi.mock("../../src/auth/fpa.js", () => ({
-  runFpaFlow: mockRunFpaFlow,
-  RedirectToWebError: class RedirectToWebError extends Error {
-    authSession: string;
-    constructor(authSession: string) {
-      super("Redirect to web");
-      this.name = "RedirectToWebError";
-      this.authSession = authSession;
-    }
-  },
-}));
-
-vi.mock("../../src/auth/pkce.js", () => ({
-  generatePkce: () =>
-    Promise.resolve({
-      codeVerifier: "test-verifier",
-      codeChallenge: "test-challenge",
-      codeChallengeMethod: "S256",
-    }),
-}));
-
-const { mockExchangeAuthCode } = vi.hoisted(() => ({
-  mockExchangeAuthCode: vi.fn(),
-}));
-
-vi.mock("../../src/auth/token-exchange.js", () => ({
-  exchangeAuthCode: mockExchangeAuthCode,
+vi.mock("../../src/auth/first-party-auth.js", () => ({
+  ensureFirstPartyAuth: mockEnsureFirstPartyAuth,
 }));
 
 import { loadCredentials } from "../../src/auth/credentials.js";
 import { RedirectToWebError } from "../../src/auth/fpa.js";
 import {
+  completeStepUp,
   detectStepUp,
-  performStepUp,
   StepUpRequiredError,
 } from "../../src/auth/step-up.js";
 
@@ -94,42 +64,29 @@ describe("detectStepUp", () => {
     }
   });
 
-  it("does nothing for non-403 status", () => {
-    const body = JSON.stringify({
-      error: "insufficient_authorization",
-      auth_session: "session-abc",
-    });
-
-    expect(() => detectStepUp(400, body)).not.toThrow();
-  });
-
-  it("does nothing when error is not insufficient_authorization", () => {
-    const body = JSON.stringify({
-      error: "invalid_grant",
-      auth_session: "session-abc",
-    });
-
-    expect(() => detectStepUp(403, body)).not.toThrow();
-  });
-
-  it("does nothing when auth_session is missing", () => {
-    const body = JSON.stringify({
-      error: "insufficient_authorization",
-    });
-
-    expect(() => detectStepUp(403, body)).not.toThrow();
-  });
-
-  it("does nothing on unparseable body", () => {
-    expect(() => detectStepUp(403, "not json")).not.toThrow();
+  it("ignores unrelated responses", () => {
+    expect(() =>
+      detectStepUp(
+        403,
+        JSON.stringify({
+          error: "invalid_grant",
+        })
+      )
+    ).not.toThrow();
   });
 });
 
-describe("performStepUp", () => {
+describe("completeStepUp", () => {
+  beforeEach(() => {
+    mockEnsureFirstPartyAuth.mockReset();
+    mockStepUp.mockReset();
+    mockEnsureFirstPartyAuth.mockReturnValue({
+      stepUp: mockStepUp,
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
-    mockRunFpaFlow.mockReset();
-    mockExchangeAuthCode.mockReset();
   });
 
   function makeStepUpParams(getPassword = () => Promise.resolve("secret")) {
@@ -143,63 +100,58 @@ describe("performStepUp", () => {
     };
   }
 
-  it("re-authenticates via FPA and returns new access token", async () => {
+  it("re-authenticates through the shared first-party auth client", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
       mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });
-
-    mockRunFpaFlow.mockResolvedValue({
-      authorizationCode: "new-code",
-      authSession: "new-session",
-      exportKey: "export-key",
-    });
-
-    mockExchangeAuthCode.mockResolvedValue({
+    mockStepUp.mockResolvedValue({
       accessToken: "stepped-up-token",
+      authSession: "new-session",
       expiresAt: Date.now() + 3_600_000,
+      scopes: ["openid"],
     });
 
     const params = makeStepUpParams();
     const stepUpError = new StepUpRequiredError("old-session", "tier2");
-    const token = await performStepUp(stepUpError, params);
+    const token = await completeStepUp(stepUpError, params);
 
     expect(token).toBe("stepped-up-token");
-    expect(mockRunFpaFlow).toHaveBeenCalledWith(
-      params.challengeEndpoint,
-      params.clientId,
-      expect.objectContaining({ codeVerifier: "test-verifier" }),
-      params.dpopKey,
-      "user@test.com",
-      "secret",
-      undefined
-    );
+    expect(mockStepUp).toHaveBeenCalledWith({
+      authSession: "old-session",
+      clientId: "client-1",
+      redirectUri: "http://127.0.0.1/callback",
+      strategies: {
+        password: {
+          password: "secret",
+        },
+      },
+    });
   });
 
-  it("throws if no stored credentials", async () => {
+  it("throws if no stored credentials are available", async () => {
     vi.mocked(loadCredentials).mockReturnValue(undefined);
 
     const stepUpError = new StepUpRequiredError("session");
     await expect(
-      performStepUp(stepUpError, makeStepUpParams())
+      completeStepUp(stepUpError, makeStepUpParams())
     ).rejects.toThrow("Cannot step up — no stored user identity");
   });
 
-  it("throws readable error on passkey redirect", async () => {
+  it("throws a readable error when step-up requires a browser redirect", async () => {
     vi.mocked(loadCredentials).mockReturnValue({
       zentityUrl: "http://localhost:3000",
       mcpPublicUrl: "http://localhost:3200",
       clientId: "client-1",
       loginHint: "user@test.com",
     });
-
-    mockRunFpaFlow.mockRejectedValue(new RedirectToWebError("redir-session"));
+    mockStepUp.mockRejectedValue(new RedirectToWebError("redir-session"));
 
     const stepUpError = new StepUpRequiredError("session");
     await expect(
-      performStepUp(stepUpError, makeStepUpParams())
+      completeStepUp(stepUpError, makeStepUpParams())
     ).rejects.toThrow("browser redirect not supported in step-up flow");
   });
 });

@@ -58,8 +58,8 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
   exchangeToken: mockExchangeToken,
 }));
 
-vi.mock("../../src/auth/token-manager.js", () => ({
-  TokenManager: class MockTokenManager {
+vi.mock("../../src/auth/access-token-provider.js", () => ({
+  AccessTokenProvider: class MockAccessTokenProvider {
     getAccessToken = mockGetAccessToken;
   },
 }));

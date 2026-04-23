@@ -1,20 +1,10 @@
-import { z } from "zod";
+import type { FirstPartyAuthDiscoveryDocument } from "@zentity/sdk/fpa";
+import {
+  clearFirstPartyAuthCache,
+  ensureFirstPartyAuth,
+} from "./first-party-auth.js";
 
-const discoverySchema = z.object({
-  issuer: z.string(),
-  token_endpoint: z.string(),
-  authorization_endpoint: z.string(),
-  registration_endpoint: z.string().optional(),
-  authorization_challenge_endpoint: z.string().optional(),
-  backchannel_authentication_endpoint: z.string().optional(),
-  pushed_authorization_request_endpoint: z.string().optional(),
-  jwks_uri: z.string().optional(),
-  dpop_signing_alg_values_supported: z.array(z.string()).optional(),
-  require_pushed_authorization_requests: z.boolean().optional(),
-  client_id_metadata_document_supported: z.boolean().optional(),
-});
-
-export type DiscoveryState = z.infer<typeof discoverySchema>;
+export type DiscoveryState = FirstPartyAuthDiscoveryDocument;
 
 let cachedDiscovery: DiscoveryState | undefined;
 
@@ -23,16 +13,7 @@ export async function discover(zentityUrl: string): Promise<DiscoveryState> {
     return cachedDiscovery;
   }
 
-  const url = `${zentityUrl}/.well-known/openid-configuration`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Discovery failed: ${response.status} ${response.statusText}`
-    );
-  }
-
-  const json = await response.json();
-  const state = discoverySchema.parse(json);
+  const state = await ensureFirstPartyAuth(zentityUrl).discover();
   cachedDiscovery = state;
 
   console.error("[discovery] Discovered endpoints:");
@@ -61,4 +42,5 @@ export function getDiscoveredJwksUri(): string | undefined {
 
 export function clearDiscoveryCache(): void {
   cachedDiscovery = undefined;
+  clearFirstPartyAuthCache();
 }

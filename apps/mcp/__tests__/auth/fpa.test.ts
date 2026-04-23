@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DpopKeyPair } from "../../src/auth/dpop.js";
 import type { PkceChallenge } from "../../src/auth/pkce.js";
 
@@ -11,23 +11,20 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/auth/credentials.js", () => ({
-  updateCredentials: vi.fn(),
+const { mockAuthorize, mockEnsureFirstPartyAuth } = vi.hoisted(() => ({
+  mockAuthorize: vi.fn(),
+  mockEnsureFirstPartyAuth: vi.fn(),
 }));
 
-vi.mock("../../src/auth/dpop.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
+vi.mock("../../src/auth/first-party-auth.js", () => ({
+  ensureFirstPartyAuth: mockEnsureFirstPartyAuth,
 }));
 
-vi.mock("../../src/auth/opaque-client.js", () => ({
-  ensureReady: vi.fn().mockResolvedValue(undefined),
-  startLogin: vi.fn(),
-  finishLogin: vi.fn(),
-}));
-
-import { RedirectToWebError, runFpaFlow } from "../../src/auth/fpa.js";
-import { finishLogin, startLogin } from "../../src/auth/opaque-client.js";
+import {
+  RedirectToWebError,
+  runFpaFlow,
+  runFpaFlowWithRetries,
+} from "../../src/auth/fpa.js";
 
 const mockDpopKey: DpopKeyPair = {
   privateJwk: { kty: "EC", crv: "P-256" },
@@ -42,47 +39,26 @@ const mockPkce: PkceChallenge = {
 
 const CHALLENGE_URL = "http://localhost:3000/api/oauth2/authorize-challenge";
 
-describe("FPA State Machine", () => {
+describe("FPA adapter", () => {
+  beforeEach(() => {
+    mockAuthorize.mockReset();
+    mockEnsureFirstPartyAuth.mockReset();
+    mockEnsureFirstPartyAuth.mockReturnValue({
+      authorize: mockAuthorize,
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("completes the 3-round OPAQUE flow", async () => {
-    vi.mocked(startLogin).mockReturnValue({
-      clientLoginState: "mock-client-state",
-      startLoginRequest: "mock-start-request",
-    });
-    vi.mocked(finishLogin).mockReturnValue({
-      finishLoginRequest: "mock-finish-request",
+  it("delegates password authorization to the shared first-party auth client", async () => {
+    mockAuthorize.mockResolvedValue({
+      authorizationCode: "code_xyz",
+      authSession: "session-abc",
       exportKey: "mock-export-key",
-      serverStaticPublicKey: "mock-server-pk",
+      loginMethod: "opaque",
     });
-
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            error: "insufficient_authorization",
-            auth_session: "session-abc",
-            challenge_type: "opaque",
-            server_public_key: "pk123",
-          }),
-          { status: 401 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            opaque_login_response: "server-response-data",
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ authorization_code: "code_xyz" }), {
-          status: 200,
-        })
-      );
 
     const result = await runFpaFlow(
       CHALLENGE_URL,
@@ -93,23 +69,26 @@ describe("FPA State Machine", () => {
       "password123"
     );
 
-    expect(result.authorizationCode).toBe("code_xyz");
-    expect(result.authSession).toBe("session-abc");
-    expect(result.exportKey).toBe("mock-export-key");
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(result).toEqual({
+      authorizationCode: "code_xyz",
+      authSession: "session-abc",
+      exportKey: "mock-export-key",
+    });
+    expect(mockAuthorize).toHaveBeenCalledWith({
+      clientId: "client-1",
+      identifier: "user@example.com",
+      pkce: mockPkce,
+      scope: expect.stringContaining("openid"),
+      strategies: {
+        password: {
+          password: "password123",
+        },
+      },
+    });
   });
 
-  it("throws RedirectToWebError for passkey-only users", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          error: "insufficient_authorization",
-          auth_session: "session-passkey",
-          challenge_type: "redirect_to_web",
-        }),
-        { status: 401 }
-      )
-    );
+  it("propagates passkey redirect requirements", async () => {
+    mockAuthorize.mockRejectedValue(new RedirectToWebError("session-passkey"));
 
     await expect(
       runFpaFlow(
@@ -123,17 +102,12 @@ describe("FPA State Machine", () => {
     ).rejects.toThrow(RedirectToWebError);
   });
 
-  it("throws on unsupported challenge type", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          error: "insufficient_authorization",
-          auth_session: "session-x",
-          challenge_type: "unknown_method",
-        }),
-        { status: 401 }
-      )
-    );
+  it("fails when the shared client does not return an OPAQUE export key", async () => {
+    mockAuthorize.mockResolvedValue({
+      authorizationCode: "wallet-code",
+      authSession: "wallet-session",
+      loginMethod: "eip712",
+    });
 
     await expect(
       runFpaFlow(
@@ -144,23 +118,38 @@ describe("FPA State Machine", () => {
         "user@example.com",
         "password"
       )
-    ).rejects.toThrow("Unsupported challenge type: unknown_method");
+    ).rejects.toThrow("OPAQUE authorization response missing exportKey");
   });
 
-  it("throws when round 1 returns unexpected status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("Server error", { status: 500 })
+  it("retries transient failures before succeeding", async () => {
+    mockEnsureFirstPartyAuth.mockReturnValue({
+      authorize: mockAuthorize,
+    });
+    mockAuthorize
+      .mockRejectedValueOnce(new Error("invalid credentials"))
+      .mockResolvedValueOnce({
+        authorizationCode: "code-2",
+        authSession: "session-2",
+        exportKey: "export-key-2",
+        loginMethod: "opaque",
+      });
+
+    const getCredentials = vi
+      .fn<() => Promise<{ email: string; password: string }>>()
+      .mockResolvedValue({
+        email: "user@example.com",
+        password: "password123",
+      });
+
+    const result = await runFpaFlowWithRetries(
+      CHALLENGE_URL,
+      "client-1",
+      mockPkce,
+      mockDpopKey,
+      getCredentials
     );
 
-    await expect(
-      runFpaFlow(
-        CHALLENGE_URL,
-        "client-1",
-        mockPkce,
-        mockDpopKey,
-        "user@example.com",
-        "password"
-      )
-    ).rejects.toThrow("Expected 401 from challenge endpoint: 500");
+    expect(result.authorizationCode).toBe("code-2");
+    expect(getCredentials).toHaveBeenCalledTimes(2);
   });
 });

@@ -110,7 +110,7 @@ describe("bootstrapRegisteredRuntime", () => {
 
     mockEnsureAuthenticated.mockResolvedValue({
       oauth: baseOauth,
-      tokenManager: { getAccessToken: vi.fn() },
+      accessTokenProvider: { getAccessToken: vi.fn() },
     });
     mockPrepareBootstrapRegistrationAuth.mockResolvedValue(bootstrapOauth);
     mockEnsureHostRegistered.mockResolvedValue("host-123");
@@ -190,11 +190,11 @@ describe("bootstrapRegisteredRuntime", () => {
     mockEnsureAuthenticated
       .mockResolvedValueOnce({
         oauth: baseOauth,
-        tokenManager: { getAccessToken: vi.fn() },
+        accessTokenProvider: { getAccessToken: vi.fn() },
       })
       .mockResolvedValueOnce({
         oauth: refreshedOauth,
-        tokenManager: { getAccessToken: vi.fn() },
+        accessTokenProvider: { getAccessToken: vi.fn() },
       });
     mockEnsureHostRegistered
       .mockRejectedValueOnce(

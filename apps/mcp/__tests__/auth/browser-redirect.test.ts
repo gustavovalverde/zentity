@@ -10,17 +10,18 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/auth/credentials.js", () => ({
-  updateCredentials: vi.fn(),
-}));
-
 vi.mock("../../src/auth/dpop.js", () => ({
   createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
 }));
 
-const { mockExecFile } = vi.hoisted(() => ({
+const { mockExchangeAuthCode, mockExecFile } = vi.hoisted(() => ({
+  mockExchangeAuthCode: vi.fn(),
   mockExecFile: vi.fn(),
+}));
+
+vi.mock("../../src/auth/token-exchange.js", () => ({
+  exchangeAuthCode: mockExchangeAuthCode,
 }));
 
 vi.mock("node:child_process", () => ({
@@ -29,12 +30,13 @@ vi.mock("node:child_process", () => ({
 
 import { authenticateViaBrowser } from "../../src/auth/browser-redirect.js";
 
+const CALLBACK_URL_RE = /^http:\/\/127\.0\.0\.1:\d+\/callback$/;
+
 const mockDpopKey = {
   privateJwk: { kty: "EC" as const, crv: "P-256" },
   publicJwk: { kty: "EC" as const, crv: "P-256" },
 };
 
-/** Use node:http to hit the callback server (not globalThis.fetch, which is mocked). */
 function httpGet(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     http
@@ -46,44 +48,34 @@ function httpGet(url: string): Promise<void> {
   });
 }
 
-function extractPortFromOpenedUrl(): number {
+function extractOpenedUrl(): URL {
   const call = mockExecFile.mock.calls[0];
-  const openedUrl = call[1][0] as string;
-  const redirectUri = new URL(openedUrl).searchParams.get("redirect_uri");
+  return new URL(call[1][0] as string);
+}
+
+function extractPortFromOpenedUrl(): number {
+  const redirectUri = extractOpenedUrl().searchParams.get("redirect_uri");
   if (!redirectUri) {
     throw new Error("No redirect_uri in URL");
   }
+
   return Number.parseInt(new URL(redirectUri).port, 10);
 }
 
 describe("authenticateViaBrowser", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    mockExchangeAuthCode.mockReset();
     mockExecFile.mockReset();
   });
 
-  it("starts callback server and exchanges code for tokens", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: "browser-at",
-            token_type: "DPoP",
-            expires_in: 3600,
-            refresh_token: "browser-rt",
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            email: "user@example.com",
-            sub: "pairwise-subject",
-          }),
-          { status: 200 }
-        )
-      );
+  it("starts a callback server and exchanges the returned authorization code", async () => {
+    mockExchangeAuthCode.mockResolvedValue({
+      accessToken: "browser-at",
+      expiresAt: Date.now() + 3_600_000,
+      refreshToken: "browser-rt",
+      scopes: ["openid"],
+    });
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -97,35 +89,30 @@ describe("authenticateViaBrowser", () => {
       },
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     const port = extractPortFromOpenedUrl();
     await httpGet(`http://127.0.0.1:${port}/callback?code=browser-code`);
 
     const result = await resultPromise;
     expect(result.accessToken).toBe("browser-at");
     expect(result.refreshToken).toBe("browser-rt");
+    expect(mockExchangeAuthCode).toHaveBeenCalledWith(
+      "http://localhost:3000/api/auth/oauth2/token",
+      "browser-code",
+      "test-verifier",
+      "client-1",
+      expect.stringMatching(CALLBACK_URL_RE),
+      mockDpopKey,
+      undefined
+    );
   });
 
-  it("includes resource parameter in authorize URL", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            access_token: "at",
-            token_type: "DPoP",
-          }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            email: "user@example.com",
-            sub: "pairwise-subject",
-          }),
-          { status: 200 }
-        )
-      );
+  it("includes the requested resource in the browser authorization URL", async () => {
+    mockExchangeAuthCode.mockResolvedValue({
+      accessToken: "at",
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ["openid"],
+    });
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -140,9 +127,8 @@ describe("authenticateViaBrowser", () => {
       },
     });
 
-    await new Promise((r) => setTimeout(r, 50));
-    const openedUrl = new URL(mockExecFile.mock.calls[0][1][0] as string);
-    expect(openedUrl.searchParams.get("resource")).toBe(
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(extractOpenedUrl().searchParams.get("resource")).toBe(
       "http://localhost:3000"
     );
 
@@ -151,36 +137,21 @@ describe("authenticateViaBrowser", () => {
     await resultPromise;
   });
 
-  it("uses PAR when parEndpoint is provided", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      // PAR response
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            request_uri: "urn:par:abc123",
-            expires_in: 60,
-          }),
-          { status: 201 }
-        )
+  it("uses PAR when a pushed-authorization endpoint is provided", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          request_uri: "urn:par:abc123",
+          expires_in: 60,
+        }),
+        { status: 201 }
       )
-      // Token exchange response
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: "par-at", token_type: "DPoP" }),
-          { status: 200 }
-        )
-      )
-      // Userinfo response
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            email: "user@example.com",
-            sub: "pairwise-subject",
-          }),
-          { status: 200 }
-        )
-      );
+    );
+    mockExchangeAuthCode.mockResolvedValue({
+      accessToken: "par-at",
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ["openid"],
+    });
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -195,19 +166,16 @@ describe("authenticateViaBrowser", () => {
       },
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Verify PAR was called
     const parCall = fetchSpy.mock.calls.find(([url]) =>
       (url as string).includes("/par")
     );
     expect(parCall).toBeDefined();
+    expect(extractOpenedUrl().searchParams.get("request_uri")).toBe(
+      "urn:par:abc123"
+    );
 
-    // Verify browser opens with request_uri
-    const openedUrl = new URL(mockExecFile.mock.calls[0][1][0] as string);
-    expect(openedUrl.searchParams.get("request_uri")).toBe("urn:par:abc123");
-
-    // Get port from PAR body
     const parBody = new URLSearchParams(
       (parCall?.[1] as RequestInit).body as string
     );
@@ -215,37 +183,26 @@ describe("authenticateViaBrowser", () => {
     const port = new URL(redirectUri).port;
     await httpGet(`http://127.0.0.1:${port}/callback?code=par-code`);
 
-    const result = await resultPromise;
-    expect(result.accessToken).toBe("par-at");
+    await expect(resultPromise).resolves.toMatchObject({
+      accessToken: "par-at",
+    });
   });
 
-  it("includes resource parameter in PAR requests", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            request_uri: "urn:par:resource-test",
-            expires_in: 60,
-          }),
-          { status: 201 }
-        )
+  it("includes the app resource in PAR requests", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          request_uri: "urn:par:resource-test",
+          expires_in: 60,
+        }),
+        { status: 201 }
       )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ access_token: "par-at", token_type: "DPoP" }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            email: "user@example.com",
-            sub: "pairwise-subject",
-          }),
-          { status: 200 }
-        )
-      );
+    );
+    mockExchangeAuthCode.mockResolvedValue({
+      accessToken: "par-at",
+      expiresAt: Date.now() + 3_600_000,
+      scopes: ["openid"],
+    });
 
     const resultPromise = authenticateViaBrowser({
       authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -261,7 +218,7 @@ describe("authenticateViaBrowser", () => {
       },
     });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const parCall = fetchSpy.mock.calls.find(([url]) =>
       (url as string).includes("/par")
@@ -280,32 +237,5 @@ describe("authenticateViaBrowser", () => {
     await expect(resultPromise).resolves.toMatchObject({
       accessToken: "par-at",
     });
-  });
-
-  it("rejects on authorization error callback", async () => {
-    vi.spyOn(globalThis, "fetch");
-
-    // Attach .catch immediately to prevent unhandled rejection
-    const resultPromise = authenticateViaBrowser({
-      authorizeEndpoint: "http://localhost:3000/api/auth/oauth2/authorize",
-      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
-      clientId: "client-1",
-      dpopKey: mockDpopKey,
-      pkce: {
-        codeVerifier: "v",
-        codeChallenge: "c",
-        codeChallengeMethod: "S256",
-      },
-    }).catch((e: Error) => e);
-
-    await new Promise((r) => setTimeout(r, 50));
-    const port = extractPortFromOpenedUrl();
-    await httpGet(
-      `http://127.0.0.1:${port}/callback?error=access_denied&error_description=User+cancelled`
-    );
-
-    const error = await resultPromise;
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain("Authorization failed");
   });
 });

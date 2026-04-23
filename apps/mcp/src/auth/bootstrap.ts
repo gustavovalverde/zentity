@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { AccessTokenProvider } from "./access-token-provider.js";
 import { authenticateViaBrowser } from "./browser-redirect.js";
 import type { OAuthSessionContext } from "./context.js";
 import { clearClientRegistration, loadCredentials } from "./credentials.js";
@@ -7,11 +8,10 @@ import { discover } from "./discovery.js";
 import { type DpopKeyPair, getOrCreateDpopKey } from "./dpop.js";
 import { generatePkce } from "./pkce.js";
 import { exchangeToken } from "./token-exchange.js";
-import { TokenManager } from "./token-manager.js";
 
 export interface AuthBootstrapResult {
+  accessTokenProvider: AccessTokenProvider;
   oauth: OAuthSessionContext;
-  tokenManager: TokenManager;
 }
 
 function isInvalidClientError(error: unknown): boolean {
@@ -52,7 +52,7 @@ async function authenticateFreshSession(
         force: true,
       })
     : clientId;
-  const tokenManager = new TokenManager(
+  const accessTokenProvider = new AccessTokenProvider(
     discovery.token_endpoint,
     dpopKey,
     activeClientId
@@ -86,7 +86,7 @@ async function authenticateFreshSession(
         loginHint: result.loginHint ?? "",
         scopes: appAuth.scopes,
       },
-      tokenManager,
+      accessTokenProvider,
     };
   } catch (error) {
     if (!forceClientRegistration && isInvalidClientError(error)) {
@@ -107,14 +107,14 @@ async function authenticateFreshSession(
  * 2. Register as an OAuth client (DCR) if needed
  * 3. Check for stored credentials — use them if valid
  * 4. If no credentials, open browser for OAuth login
- * 5. Return OAuth context plus a TokenManager for proactive refresh
+ * 5. Return OAuth context plus an access-token provider for proactive refresh
  */
 export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   const discovery = await discover(config.zentityUrl);
   const clientId = await ensureClientRegistration(discovery);
   const dpopKey = await getOrCreateDpopKey(config.zentityUrl);
 
-  const tokenManager = new TokenManager(
+  const accessTokenProvider = new AccessTokenProvider(
     discovery.token_endpoint,
     dpopKey,
     clientId
@@ -124,7 +124,7 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   const creds = loadCredentials(config.zentityUrl);
   if (creds?.accessToken || creds?.refreshToken) {
     try {
-      const loginAccessToken = await tokenManager.getAccessToken();
+      const loginAccessToken = await accessTokenProvider.getAccessToken();
       const appAuth = await exchangeAppAccessToken(
         discovery,
         loginAccessToken,
@@ -140,7 +140,7 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
         scopes: appAuth.scopes,
       };
       console.error("[auth] Using stored credentials");
-      return { oauth, tokenManager };
+      return { oauth, accessTokenProvider };
     } catch (error) {
       if (isInvalidClientError(error)) {
         console.error(
@@ -153,24 +153,24 @@ export async function ensureAuthenticated(): Promise<AuthBootstrapResult> {
   }
 
   // No valid credentials — authenticate via browser
-  const { oauth, tokenManager: freshTokenManager } =
+  const { oauth, accessTokenProvider: freshAccessTokenProvider } =
     await authenticateFreshSession(discovery, dpopKey, clientId);
   console.error("[auth] Authentication complete");
-  return { oauth, tokenManager: freshTokenManager };
+  return { oauth, accessTokenProvider: freshAccessTokenProvider };
 }
 
 /**
  * Refresh the OAuth session context with a fresh access token.
  */
 export async function refreshAuthContext(
-  tokenManager: TokenManager,
+  accessTokenProvider: AccessTokenProvider,
   oauth: Pick<
     OAuthSessionContext,
     "accountSub" | "clientId" | "dpopKey" | "loginHint"
   >
 ): Promise<OAuthSessionContext> {
   const discovery = await discover(config.zentityUrl);
-  const loginAccessToken = await tokenManager.getAccessToken();
+  const loginAccessToken = await accessTokenProvider.getAccessToken();
   const appAuth = await exchangeAppAccessToken(
     discovery,
     loginAccessToken,

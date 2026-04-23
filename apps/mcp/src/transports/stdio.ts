@@ -112,10 +112,8 @@ async function runAuth(
   agentRuntimeManager.clear();
 
   try {
-    const { oauth, runtime, tokenManager } = await bootstrapRegisteredRuntime(
-      server,
-      initializedPromise
-    );
+    const { accessTokenProvider, oauth, runtime } =
+      await bootstrapRegisteredRuntime(server, initializedPromise);
     agentRuntimeManager.setState(runtime);
     setDefaultAuth({ oauth, runtime });
 
@@ -126,7 +124,10 @@ async function runAuth(
     let currentOauth = oauth;
     refreshTimer = setInterval(async () => {
       try {
-        currentOauth = await refreshAuthContext(tokenManager, currentOauth);
+        currentOauth = await refreshAuthContext(
+          accessTokenProvider,
+          currentOauth
+        );
         const currentRuntime = agentRuntimeManager.getState();
         if (!currentRuntime) {
           throw new Error(

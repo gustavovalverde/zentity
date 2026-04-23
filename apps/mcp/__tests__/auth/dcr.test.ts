@@ -5,38 +5,43 @@ const credentialsMock = {
   stored: undefined as Record<string, unknown> | undefined,
 };
 
+const { mockClearClientRegistration, mockEnsureClientRegistration } =
+  vi.hoisted(() => ({
+    mockClearClientRegistration: vi.fn(() => {
+      if (!credentialsMock.stored) {
+        return;
+      }
+
+      const {
+        accessToken: _accessToken,
+        clientId: _clientId,
+        clientSecret: _clientSecret,
+        expiresAt: _expiresAt,
+        refreshToken: _refreshToken,
+        registrationFingerprint: _registrationFingerprint,
+        registrationMethod: _registrationMethod,
+        ...rest
+      } = credentialsMock.stored;
+
+      credentialsMock.stored = {
+        ...rest,
+        zentityUrl: "http://localhost:3000",
+        clientId: "",
+      };
+    }),
+    mockEnsureClientRegistration: vi.fn(),
+  }));
+
 vi.mock("../../src/auth/credentials.js", () => ({
-  clearClientRegistration: () => {
-    if (!credentialsMock.stored) {
-      return;
-    }
-    const {
-      accessToken: _accessToken,
-      clientId: _clientId,
-      clientSecret: _clientSecret,
-      expiresAt: _expiresAt,
-      refreshToken: _refreshToken,
-      registrationFingerprint: _registrationFingerprint,
-      registrationMethod: _registrationMethod,
-      ...rest
-    } = credentialsMock.stored;
-    credentialsMock.stored = {
-      ...rest,
-      zentityUrl: "http://localhost:3000",
-      clientId: "",
-    };
-  },
+  clearClientRegistration: mockClearClientRegistration,
   loadCredentials: () => credentialsMock.stored,
-  updateCredentials: (_url: string, updates: Record<string, unknown>) => {
-    credentialsMock.stored = {
-      zentityUrl: "http://localhost:3000",
-      mcpPublicUrl: "http://localhost:3200",
-      clientId: "",
-      ...credentialsMock.stored,
-      ...updates,
-    };
-    return credentialsMock.stored;
-  },
+  saveCredentials: vi.fn(),
+}));
+
+vi.mock("../../src/auth/first-party-auth.js", () => ({
+  ensureFirstPartyAuth: vi.fn(() => ({
+    ensureClientRegistration: mockEnsureClientRegistration,
+  })),
 }));
 
 vi.mock("../../src/config.js", () => ({
@@ -60,151 +65,115 @@ const discoveryWithRegistration: DiscoveryState = {
   registration_endpoint: "http://localhost:3000/api/auth/oauth2/register",
 };
 
-describe("DCR", () => {
+describe("DCR adapter", () => {
   beforeEach(() => {
     credentialsMock.stored = undefined;
+    mockClearClientRegistration.mockClear();
+    mockEnsureClientRegistration.mockReset();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("registers a new client via DCR", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "new-client-123" }), {
-        status: 200,
-      })
-    );
+  it("delegates new client registration to the shared first-party auth client", async () => {
+    mockEnsureClientRegistration.mockResolvedValue("new-client-123");
 
     const clientId = await ensureClientRegistration(discoveryWithRegistration);
+
     expect(clientId).toBe("new-client-123");
-
-    const fetchCall = vi.mocked(fetch).mock.calls[0];
-    expect(fetchCall[0]).toBe("http://localhost:3000/api/auth/oauth2/register");
-
-    const body = JSON.parse((fetchCall[1] as RequestInit).body as string);
-    expect(body.client_name).toBe("@zentity/mcp-server");
-    expect(body.token_endpoint_auth_method).toBe("none");
-    expect(body.skip_consent).toBeUndefined();
-    expect(body.grant_types).toContain("authorization_code");
-    expect(body.grant_types).toContain("urn:openid:params:grant-type:ciba");
-    expect(body.grant_types).toContain(
-      "urn:ietf:params:oauth:grant-type:token-exchange"
-    );
-    expect(body.scope).toContain("openid");
-    expect(body.scope).toContain("email");
-    expect(body.scope).toContain("offline_access");
-    expect(body.scope).toContain("identity.name");
-    expect(body.scope).toContain("identity.address");
-    expect(body.scope).toContain("identity.dob");
-    expect(body.scope).toContain("proof:identity");
-    expect(body.scope).toContain("proof:age");
-    expect(body.scope).toContain("proof:nationality");
-    expect(body.scope).toContain("agent:host.register");
-    expect(body.scope).toContain("agent:session.register");
-    expect(body.scope).toContain("agent:session.revoke");
-    expect(body.scope).not.toContain("compliance:key:read");
-    expect(body.subject_type).toBeUndefined();
+    expect(mockEnsureClientRegistration).toHaveBeenCalledWith({
+      request: expect.objectContaining({
+        client_name: "@zentity/mcp-server",
+        grant_types: expect.arrayContaining([
+          "authorization_code",
+          "refresh_token",
+          "urn:openid:params:grant-type:ciba",
+          "urn:ietf:params:oauth:grant-type:token-exchange",
+        ]),
+        response_types: ["code"],
+        token_endpoint_auth_method: "none",
+      }),
+    });
   });
 
-  it("reuses existing client_id", async () => {
-    const registrationFingerprint = getInstalledAgentRegistrationFingerprint();
+  it("reuses an existing DCR client with the current registration fingerprint", async () => {
     credentialsMock.stored = {
-      zentityUrl: "http://localhost:3000",
-      mcpPublicUrl: "http://localhost:3200",
       clientId: "existing-client",
-      registrationFingerprint,
+      registrationFingerprint: getInstalledAgentRegistrationFingerprint(),
       registrationMethod: "dcr",
+      zentityUrl: "http://localhost:3000",
     };
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
     const clientId = await ensureClientRegistration(discoveryWithRegistration);
+
     expect(clientId).toBe("existing-client");
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mockEnsureClientRegistration).not.toHaveBeenCalled();
   });
 
-  it("does not reuse a cached CIMD client_id for stdio DCR", async () => {
+  it("ignores a cached CIMD client id and registers a DCR client instead", async () => {
     credentialsMock.stored = {
-      zentityUrl: "http://localhost:3000",
-      mcpPublicUrl: "http://localhost:3200",
       clientId: "http://localhost:3200/.well-known/oauth-client.json",
       registrationMethod: "cimd",
+      zentityUrl: "http://localhost:3000",
     };
+    mockEnsureClientRegistration.mockResolvedValue("new-dcr-client");
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "new-dcr-client" }), {
-        status: 200,
-      })
-    );
-
-    const clientId = await ensureClientRegistration(discoveryWithRegistration);
-    expect(clientId).toBe("new-dcr-client");
+    await expect(
+      ensureClientRegistration(discoveryWithRegistration)
+    ).resolves.toBe("new-dcr-client");
+    expect(mockEnsureClientRegistration).toHaveBeenCalledTimes(1);
   });
 
-  it("re-registers a legacy cached DCR client without a registration fingerprint", async () => {
+  it("clears a stale DCR registration before delegating", async () => {
     credentialsMock.stored = {
-      zentityUrl: "http://localhost:3000",
-      mcpPublicUrl: "http://localhost:3200",
-      clientId: "legacy-client",
-      registrationMethod: "dcr",
       accessToken: "stale-access-token",
+      clientId: "legacy-client",
       refreshToken: "stale-refresh-token",
-    };
-
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "fresh-client" }), {
-        status: 200,
-      })
-    );
-
-    const clientId = await ensureClientRegistration(discoveryWithRegistration);
-    expect(clientId).toBe("fresh-client");
-    expect(credentialsMock.stored).toEqual(
-      expect.objectContaining({
-        clientId: "fresh-client",
-        registrationFingerprint: getInstalledAgentRegistrationFingerprint(),
-        registrationMethod: "dcr",
-      })
-    );
-    expect(credentialsMock.stored).not.toHaveProperty("accessToken");
-    expect(credentialsMock.stored).not.toHaveProperty("refreshToken");
-  });
-
-  it("re-registers when forced", async () => {
-    credentialsMock.stored = {
-      zentityUrl: "http://localhost:3000",
-      mcpPublicUrl: "http://localhost:3200",
-      clientId: "stale-client",
       registrationMethod: "dcr",
+      zentityUrl: "http://localhost:3000",
     };
+    mockEnsureClientRegistration.mockResolvedValue("fresh-client");
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ client_id: "fresh-client" }), {
-        status: 200,
-      })
+    await ensureClientRegistration(discoveryWithRegistration);
+
+    expect(mockClearClientRegistration).toHaveBeenCalledWith(
+      "http://localhost:3000"
     );
-
-    const clientId = await ensureClientRegistration(discoveryWithRegistration, {
-      force: true,
-    });
-    expect(clientId).toBe("fresh-client");
+    expect(mockEnsureClientRegistration).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when no registration_endpoint in discovery", async () => {
-    const noReg: DiscoveryState = {
+  it("passes force through to the shared client when requested", async () => {
+    mockEnsureClientRegistration.mockResolvedValue("fresh-client");
+
+    await expect(
+      ensureClientRegistration(discoveryWithRegistration, {
+        force: true,
+      })
+    ).resolves.toBe("fresh-client");
+
+    expect(mockEnsureClientRegistration).toHaveBeenCalledWith({
+      force: true,
+      request: expect.any(Object),
+    });
+  });
+
+  it("throws when discovery does not expose a registration endpoint", async () => {
+    const noRegistrationEndpoint: DiscoveryState = {
       issuer: "http://localhost:3000/api/auth",
       token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
       authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
     };
 
-    await expect(ensureClientRegistration(noReg)).rejects.toThrow(
-      "No registration_endpoint"
-    );
+    await expect(
+      ensureClientRegistration(noRegistrationEndpoint)
+    ).rejects.toThrow("No registration_endpoint");
+    expect(mockEnsureClientRegistration).not.toHaveBeenCalled();
   });
 
-  it("throws on DCR failure", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response("Bad request", { status: 400 })
+  it("surfaces shared-client DCR failures", async () => {
+    mockEnsureClientRegistration.mockRejectedValue(
+      new Error("DCR failed: 400 Bad request")
     );
 
     await expect(
