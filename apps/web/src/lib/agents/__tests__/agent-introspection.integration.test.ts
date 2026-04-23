@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
@@ -29,6 +30,15 @@ const HOST_DID = encodeEd25519DidKeyFromJwk({
   kty: "OKP",
   x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 });
+const AAP_CLAIM_KEYS = [
+  "act",
+  "task",
+  "capabilities",
+  "oversight",
+  "audit",
+  "delegation",
+  "aap_claims_version",
+] as const;
 
 async function createOAuthClient(
   clientId: string,
@@ -267,6 +277,16 @@ describe("Agent Introspection", () => {
     expect(result.body.active).toBe(true);
     expect(result.body.client_id).toBe(TEST_CLIENT_ID);
     expect(result.body.scope).toBe("openid");
+    expect(result.body).not.toHaveProperty("agent_sub");
+    expect(result.body).not.toHaveProperty("zentity_context_id");
+    expect(result.body).not.toHaveProperty("zentity_release_id");
+
+    if (accessToken.split(".").length === 3) {
+      const payload = decodeJwt(accessToken);
+      for (const claimKey of AAP_CLAIM_KEYS) {
+        expect(result.body[claimKey]).toEqual(payload[claimKey]);
+      }
+    }
 
     const expectedActorId = await resolveAgentSubForClient(
       sessionId,

@@ -354,6 +354,9 @@ describe("CIBA token endpoint", () => {
       defaultAuthContextId
     );
     if (tokenShape.kind === "jwt") {
+      expect(tokenShape.payload).not.toHaveProperty("agent_sub");
+      expect(tokenShape.payload).not.toHaveProperty("zentity_context_id");
+      expect(tokenShape.payload).not.toHaveProperty("zentity_release_id");
       const actorId = await resolveAgentSubForClient(sessionId, TEST_CLIENT_ID);
       expect(tokenShape.payload.act).toEqual({
         did: HOST_DID,
@@ -416,6 +419,9 @@ describe("CIBA token endpoint", () => {
       defaultAuthContextId
     );
     if (tokenShape.kind === "jwt") {
+      expect(tokenShape.payload).not.toHaveProperty("agent_sub");
+      expect(tokenShape.payload).not.toHaveProperty("zentity_context_id");
+      expect(tokenShape.payload).not.toHaveProperty("zentity_release_id");
       expect(tokenShape.payload.act).toEqual({ sub: TEST_CLIENT_ID });
       expect(tokenShape.payload.task).toBeUndefined();
       expect(tokenShape.payload.capabilities).toBeUndefined();

@@ -540,7 +540,7 @@ Agent pairwise identifiers are derived from:
 
 The server uses the same sector-identifier logic as human pairwise subject derivation. In the current deployment that sector is derived from the first registered `redirect_uri` host because registrations are constrained to a single host until `sector_identifier_uri` support exists.
 
-Actor publicity is controlled independently from the human `sub`. Client metadata may set `agent_subject_type` to `public` or `pairwise`; when absent, the deployment falls back to the client's user-facing `subject_type` for backward compatibility. Using a dedicated `agent_subject_type` avoids the earlier coupling where making `act.sub` public also made the human `sub` public. When the effective agent subject type is `public`, the actor identifier falls back to the raw session ID. Otherwise it becomes a pairwise pseudonym derived from the session ID and the client's sector.
+Actor publicity is controlled independently from the human `sub`. Client metadata may set `agent_subject_type` to `public` or `pairwise`; when absent, the actor layer defaults to pairwise identifiers. Using a dedicated `agent_subject_type` avoids coupling where making `act.sub` public also makes the human `sub` public. When the effective agent subject type is `public`, the actor identifier falls back to the raw session ID. Otherwise it becomes a pairwise pseudonym derived from the session ID and the client's sector.
 
 That gives the actor layer the same privacy model as the user layer without forcing both layers to share the same publicity setting:
 

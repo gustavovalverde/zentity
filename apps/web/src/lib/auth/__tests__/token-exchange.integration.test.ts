@@ -464,6 +464,9 @@ describe("Token Exchange (RFC 8693)", () => {
             release_id: "release-123",
             request_id: "req-123",
           },
+          agent_sub: "legacy-agent-subject",
+          zentity_context_id: "legacy-context-id",
+          zentity_release_id: "legacy-release-id",
         },
       });
 
@@ -485,6 +488,9 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.oversight).toEqual(parentPayload.oversight);
       expect(payload.audit).toEqual(parentPayload.audit);
       expect(payload.aap_claims_version).toBe(1);
+      expect(payload).not.toHaveProperty("agent_sub");
+      expect(payload).not.toHaveProperty("zentity_context_id");
+      expect(payload).not.toHaveProperty("zentity_release_id");
       expect(payload.delegation).toEqual({
         depth: 1,
         max_depth: 1,

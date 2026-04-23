@@ -39,10 +39,54 @@ interface BuildAapClaimsInput {
   };
 }
 
+const OVERSIGHT_METHOD_RANK: Record<OversightMethod, number> = {
+  capability_grant: 0,
+  email: 1,
+  session: 2,
+  biometric: 3,
+};
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function toOversightMethod(
+  value: string | null | undefined
+): OversightMethod | null {
+  switch (value) {
+    case "biometric":
+    case "capability_grant":
+    case "email":
+    case "session":
+      return value;
+    default:
+      return null;
+  }
+}
+
+export function resolveOversightMethod(
+  approvalMethod: string | null | undefined,
+  approvalStrength: string | null | undefined
+): OversightMethod {
+  const candidates = [
+    toOversightMethod(approvalMethod),
+    toOversightMethod(approvalStrength),
+  ].filter((method): method is OversightMethod => method !== null);
+
+  const [initialMethod, ...remainingMethods] = candidates;
+  if (!initialMethod) {
+    return "session";
+  }
+
+  return remainingMethods.reduce<OversightMethod>(
+    (strongest, method) =>
+      OVERSIGHT_METHOD_RANK[method] > OVERSIGHT_METHOD_RANK[strongest]
+        ? method
+        : strongest,
+    initialMethod
+  );
 }
 
 function normalizeCapabilityClaims(

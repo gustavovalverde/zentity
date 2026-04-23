@@ -143,6 +143,19 @@ describe("pairwise agent identifiers", () => {
     );
   });
 
+  it("defaults agent identifiers to pairwise even when human subjects are public", async () => {
+    const clientId = "public-user-default-agent";
+    await createClient({ clientId, subjectType: "public" });
+    const sessionId = await createAgentSession(userId, clientId);
+
+    const agentSub = await resolveAgentSubForClient(sessionId, clientId);
+
+    expect(agentSub).not.toBe(sessionId);
+    expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
+      sessionId
+    );
+  });
+
   it("uses a constant query count once pairwise agent rows are indexed", async () => {
     const clientId = "pairwise-agent-indexed";
     await createClient({

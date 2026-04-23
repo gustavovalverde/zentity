@@ -1880,9 +1880,15 @@ export const auth = betterAuth({
           claims[AUTHENTICATION_CONTEXT_CLAIM] = authContextId;
         }
 
-        if (referenceId && (await hasReleaseContext(referenceId))) {
-          await touchReleaseContext(referenceId, Date.now() + 3600 * 1000);
-          claims.zentity_release_id = referenceId;
+        const releaseContext = referenceId
+          ? await loadReleaseContext(referenceId)
+          : null;
+        if (releaseContext) {
+          await touchReleaseContext(
+            releaseContext.releaseId,
+            Date.now() + 3600 * 1000
+          );
+          claims.jti ??= releaseContext.releaseId;
         }
 
         return claims;
@@ -1895,12 +1901,14 @@ export const auth = betterAuth({
               azp?: string;
               client_id?: string;
               jti?: string;
-              zentity_release_id?: string;
             };
           }
         ).jwt;
         const clientId = jwt?.azp ?? jwt?.client_id;
-        const releaseId = jwt?.zentity_release_id;
+        const releaseId =
+          typeof jwt?.jti === "string" && (await hasReleaseContext(jwt.jti))
+            ? jwt.jti
+            : undefined;
         const scopeList = toScopeList(scopes);
         const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
 

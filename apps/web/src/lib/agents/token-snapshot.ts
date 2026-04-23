@@ -4,7 +4,6 @@ import type {
   AapAccessTokenClaims,
   CapabilityClaim,
   HostAttestationTier,
-  OversightMethod,
 } from "@zentity/sdk/protocol";
 
 import { createHash } from "node:crypto";
@@ -17,10 +16,13 @@ import { agentHosts, agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
 import { resolveAgentSubForClient } from "./actor-subject";
-import { buildAapClaims } from "./claims";
+import { buildAapClaims, resolveOversightMethod } from "./claims";
 
 const DEFAULT_RELEASE_ID =
-  process.env.GIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? "dev";
+  process.env.RELEASE_ID ??
+  process.env.GIT_SHA ??
+  process.env.RAILWAY_GIT_COMMIT_SHA ??
+  "dev";
 
 interface LoadedTokenSnapshot {
   assertionVerified: boolean;
@@ -81,21 +83,6 @@ function asHostAttestationTier(
       return value;
     default:
       return "unverified";
-  }
-}
-
-function asOversightMethod(
-  approvalMethod: string | null | undefined,
-  approvalStrength: string | null | undefined
-): OversightMethod {
-  switch (approvalMethod) {
-    case "biometric":
-    case "capability_grant":
-    case "email":
-    case "session":
-      return approvalMethod;
-    default:
-      return approvalStrength === "biometric" ? "biometric" : "session";
   }
 }
 
@@ -208,7 +195,10 @@ async function resolveTokenSnapshot(
       oversight: {
         approvalId: buildApprovalId(row),
         approvedAt: toUnixSeconds(row.createdAt),
-        method: asOversightMethod(row.approvalMethod, row.approvalStrength),
+        method: resolveOversightMethod(
+          row.approvalMethod,
+          row.approvalStrength
+        ),
       },
       audit: {
         releaseId: DEFAULT_RELEASE_ID,

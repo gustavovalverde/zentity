@@ -66,7 +66,7 @@ Identity claims come from the user's encrypted profile vault. They require vault
 **Privacy contract for identity scopes:**
 
 1. Claims are **never** stored in consent records — identity scopes are stripped before persistence
-2. Claims are **never** in id_tokens — only a `zentity_release_id` pointer appears
+2. Claims are **never** in id_tokens — release lookup is server-side and bound to the token correlation id
 3. Claims are **single-consume** — the userinfo endpoint destructively reads the ephemeral payload
 4. Claims are **exact-bound** — an intent token binds (userId, clientId, scopeHash) with HMAC and a 120-second TTL
 5. Claims require **vault unlock** — the user must provide their credential (passkey PRF, OPAQUE password, or wallet signature)

@@ -7,13 +7,12 @@
  */
 
 import {
-  calculateJwkThumbprint,
-  createRemoteJWKSet,
-  decodeProtectedHeader,
-  type JWTPayload,
-  type JWTVerifyResult,
-  jwtVerify,
-} from "jose";
+  createJwksTokenVerifier,
+  DpopProofVerificationError,
+  type TokenVerifier,
+  verifyDpopProof,
+} from "@zentity/sdk/rp";
+import type { JWTPayload, JWTVerifyResult } from "jose";
 import { config } from "../config.js";
 import {
   getCachedMcpOAuthIssuer,
@@ -21,29 +20,27 @@ import {
 } from "../oauth-client.js";
 
 const AUTH_HEADER_RE = /^(Bearer|DPoP)\s+(.+)$/i;
-const DPOP_MAX_AGE_S = 300; // 5 minutes
-const BASE64URL_PLUS = /\+/g;
-const BASE64URL_SLASH = /\//g;
-const BASE64URL_PAD = /=+$/;
 
-let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
-let jwksUrl: string | undefined;
+let tokenVerifier: TokenVerifier | undefined;
+let tokenVerifierCacheKey: string | undefined;
 
-function getJwks(): ReturnType<typeof createRemoteJWKSet> {
-  const currentUrl =
+function getTokenVerifier(): TokenVerifier {
+  const jwksUrl =
     getCachedMcpOAuthJwksUri() ?? `${config.zentityUrl}/api/auth/oauth2/jwks`;
+  const issuer = getCachedMcpOAuthIssuer() ?? `${config.zentityUrl}/api/auth`;
+  const cacheKey = `${issuer}|${jwksUrl}`;
 
-  if (!jwks || jwksUrl !== currentUrl) {
-    jwksUrl = currentUrl;
-    jwks = createRemoteJWKSet(new URL(currentUrl));
+  if (!tokenVerifier || tokenVerifierCacheKey !== cacheKey) {
+    tokenVerifierCacheKey = cacheKey;
+    tokenVerifier = createJwksTokenVerifier({ issuer, jwksUrl });
   }
-  return jwks;
+  return tokenVerifier;
 }
 
 /** Reset cached JWKS (for testing). */
 export function resetJwks(): void {
-  jwks = undefined;
-  jwksUrl = undefined;
+  tokenVerifier = undefined;
+  tokenVerifierCacheKey = undefined;
 }
 
 export interface TokenAuthResult {
@@ -87,6 +84,51 @@ function authError(
   };
 }
 
+async function validateDpopTokenBinding(input: {
+  cnfJkt: string | undefined;
+  dpopHeader: string | undefined;
+  method: string;
+  payload: JWTPayload;
+  requiredScopes: string[];
+  token: string;
+  url: string;
+}): Promise<TokenAuthResult | TokenAuthError> {
+  if (!input.dpopHeader) {
+    return authError(
+      401,
+      "invalid_token",
+      "Missing DPoP proof header",
+      input.requiredScopes
+    );
+  }
+
+  try {
+    const dpopResult = await verifyDpopProof({
+      accessToken: input.token,
+      expectedJkt: input.cnfJkt,
+      method: input.method,
+      proof: input.dpopHeader,
+      url: input.url,
+    });
+    return {
+      payload: input.payload,
+      scheme: "DPoP",
+      dpopPublicJwk: dpopResult.publicJwk as JsonWebKey,
+    };
+  } catch (err) {
+    const description =
+      err instanceof DpopProofVerificationError
+        ? err.message
+        : "DPoP proof validation failed";
+    return authError(
+      401,
+      "invalid_dpop_proof",
+      description,
+      input.requiredScopes
+    );
+  }
+}
+
 /**
  * Validate an OAuth access token from the request.
  * Returns the validated payload and scheme, or an error to send back.
@@ -123,8 +165,7 @@ export async function validateToken(
   // Verify the access token JWT (issuer + audience)
   let result: JWTVerifyResult<JWTPayload>;
   try {
-    result = await jwtVerify(token, getJwks(), {
-      issuer: getCachedMcpOAuthIssuer() ?? `${config.zentityUrl}/api/auth`,
+    result = await getTokenVerifier().verify(token, {
       audience: config.mcpPublicUrl,
     });
   } catch (err) {
@@ -161,27 +202,15 @@ export async function validateToken(
   }
 
   if (scheme === "DPoP") {
-    if (!dpopHeader) {
-      return authError(
-        401,
-        "invalid_token",
-        "Missing DPoP proof header",
-        requiredScopes
-      );
-    }
-
-    const dpopResult = await validateDpopProof(
+    return validateDpopTokenBinding({
+      cnfJkt,
       dpopHeader,
-      token,
       method,
+      payload,
+      requiredScopes,
+      token,
       url,
-      cnfJkt
-    );
-    if ("status" in dpopResult) {
-      return dpopResult;
-    }
-
-    return { payload, scheme, dpopPublicJwk: dpopResult.publicJwk };
+    });
   }
 
   return { payload, scheme };
@@ -218,124 +247,6 @@ function extractCnfJkt(payload: JWTPayload): string | undefined {
     return (payload.cnf as Record<string, unknown>).jkt as string;
   }
   return undefined;
-}
-
-async function validateDpopProof(
-  proof: string,
-  accessToken: string,
-  expectedMethod: string,
-  expectedUrl: string,
-  expectedJkt: string | undefined
-): Promise<{ publicJwk: JsonWebKey } | TokenAuthError> {
-  // Decode the DPoP proof header to get the embedded public key
-  let header: { alg?: string; typ?: string; jwk?: JsonWebKey };
-  try {
-    header = decodeProtectedHeader(proof);
-  } catch {
-    return authError(401, "invalid_dpop_proof", "Malformed DPoP proof header");
-  }
-
-  if (header.typ !== "dpop+jwt") {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof typ must be dpop+jwt"
-    );
-  }
-
-  if (!header.jwk) {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof must contain jwk header"
-    );
-  }
-
-  // Verify the proof is self-signed by the embedded key
-  let proofPayload: JWTPayload;
-  try {
-    const importKey = await globalThis.crypto.subtle.importKey(
-      "jwk",
-      header.jwk,
-      { name: "ECDSA", namedCurve: "P-256" },
-      true,
-      ["verify"]
-    );
-    const verified = await jwtVerify(proof, importKey);
-    proofPayload = verified.payload;
-  } catch {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof signature verification failed"
-    );
-  }
-
-  // Validate htm (HTTP method)
-  if (
-    typeof proofPayload.htm !== "string" ||
-    proofPayload.htm.toUpperCase() !== expectedMethod.toUpperCase()
-  ) {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof htm does not match request method"
-    );
-  }
-
-  // Validate htu (HTTP URI)
-  if (
-    typeof proofPayload.htu !== "string" ||
-    proofPayload.htu !== expectedUrl
-  ) {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof htu does not match request URI"
-    );
-  }
-
-  // Validate freshness (iat)
-  if (typeof proofPayload.iat !== "number") {
-    return authError(401, "invalid_dpop_proof", "DPoP proof missing iat");
-  }
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - proofPayload.iat) > DPOP_MAX_AGE_S) {
-    return authError(401, "invalid_dpop_proof", "DPoP proof has expired");
-  }
-
-  // Validate ath (access token hash)
-  const encoder = new TextEncoder();
-  const hash = await globalThis.crypto.subtle.digest(
-    "SHA-256",
-    encoder.encode(accessToken)
-  );
-  const expectedAth = btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(BASE64URL_PLUS, "-")
-    .replace(BASE64URL_SLASH, "_")
-    .replace(BASE64URL_PAD, "");
-
-  if (proofPayload.ath !== expectedAth) {
-    return authError(
-      401,
-      "invalid_dpop_proof",
-      "DPoP proof ath does not match access token"
-    );
-  }
-
-  // Validate jkt (JWK thumbprint) matches cnf.jkt in the access token
-  if (expectedJkt) {
-    const thumbprint = await calculateJwkThumbprint(header.jwk, "sha256");
-    if (thumbprint !== expectedJkt) {
-      return authError(
-        401,
-        "invalid_dpop_proof",
-        "DPoP proof key does not match token cnf.jkt"
-      );
-    }
-  }
-
-  return { publicJwk: header.jwk };
 }
 
 /** Check if the result is an error. */
