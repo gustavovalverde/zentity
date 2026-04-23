@@ -17,7 +17,12 @@
     "noUncheckedSideEffectImports": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@zentity/sdk": ["../../packages/sdk/src/index.ts"],
+      "@zentity/sdk/fpa": ["../../packages/sdk/src/fpa/index.ts"],
+      "@zentity/sdk/node": ["../../packages/sdk/src/node/index.ts"],
+      "@zentity/sdk/protocol": ["../../packages/sdk/src/protocol/index.ts"],
+      "@zentity/sdk/rp": ["../../packages/sdk/src/rp/index.ts"]
     }
   },
   "include": ["src/**/*.ts"],

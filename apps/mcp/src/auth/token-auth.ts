@@ -15,7 +15,10 @@ import {
   jwtVerify,
 } from "jose";
 import { config } from "../config.js";
-import { getDiscoveredIssuer, getDiscoveredJwksUri } from "./discovery.js";
+import {
+  getCachedMcpOAuthIssuer,
+  getCachedMcpOAuthJwksUri,
+} from "../oauth-client.js";
 
 const AUTH_HEADER_RE = /^(Bearer|DPoP)\s+(.+)$/i;
 const DPOP_MAX_AGE_S = 300; // 5 minutes
@@ -28,7 +31,7 @@ let jwksUrl: string | undefined;
 
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   const currentUrl =
-    getDiscoveredJwksUri() ?? `${config.zentityUrl}/api/auth/oauth2/jwks`;
+    getCachedMcpOAuthJwksUri() ?? `${config.zentityUrl}/api/auth/oauth2/jwks`;
 
   if (!jwks || jwksUrl !== currentUrl) {
     jwksUrl = currentUrl;
@@ -121,7 +124,7 @@ export async function validateToken(
   let result: JWTVerifyResult<JWTPayload>;
   try {
     result = await jwtVerify(token, getJwks(), {
-      issuer: getDiscoveredIssuer() ?? `${config.zentityUrl}/api/auth`,
+      issuer: getCachedMcpOAuthIssuer() ?? `${config.zentityUrl}/api/auth`,
       audience: config.mcpPublicUrl,
     });
   } catch (err) {

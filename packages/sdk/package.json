@@ -15,8 +15,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/fpa/index.ts src/protocol/index.ts src/rp/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
-    "build:watch": "tsup src/index.ts src/fpa/index.ts src/protocol/index.ts src/rp/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
+    "build": "tsup src/index.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts --format esm,cjs --dts --sourcemap --clean --out-dir dist",
+    "build:watch": "tsup src/index.ts src/fpa/index.ts src/node/index.ts src/protocol/index.ts src/rp/index.ts --format esm,cjs --dts --sourcemap --watch --out-dir dist",
     "clean": "rm -rf dist",
     "prepack": "pnpm run build",
     "test": "vitest run",
@@ -65,6 +65,16 @@
       "require": {
         "types": "./dist/fpa/index.d.cts",
         "default": "./dist/fpa/index.cjs"
+      }
+    },
+    "./node": {
+      "import": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.js"
+      },
+      "require": {
+        "types": "./dist/node/index.d.cts",
+        "default": "./dist/node/index.cjs"
       }
     },
     "./rp": {

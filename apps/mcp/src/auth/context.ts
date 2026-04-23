@@ -1,18 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { DpopKeyPair } from "./dpop.js";
+import type { InstalledOAuthSession } from "@zentity/sdk/node";
 import {
   type AgentRuntimeState,
   agentRuntimeStateStore,
 } from "./runtime-state.js";
 
-export interface OAuthSessionContext {
-  accessToken: string;
-  accountSub: string;
-  clientId: string;
-  dpopKey: DpopKeyPair;
-  loginHint: string;
-  scopes: string[];
-}
+export type OAuthSessionContext = InstalledOAuthSession;
 
 export interface AuthContext {
   oauth: OAuthSessionContext;
@@ -76,7 +69,7 @@ export function getAuthContext(): AuthContext {
   const ctx = authStorage.getStore() ?? defaultAuth;
   if (!ctx) {
     throw new Error(
-      "Not authenticated — run ensureAuthenticated() first or check server logs"
+      "Not authenticated — complete the MCP OAuth bootstrap first or check server logs"
     );
   }
   const runtime = ctx.runtime ?? agentRuntimeStateStore.getState();

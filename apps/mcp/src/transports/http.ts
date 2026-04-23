@@ -1,15 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { serve } from "@hono/node-server";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { type ExchangeTokenResult, exchangeToken } from "@zentity/sdk/fpa";
+import { deriveAppAudience } from "@zentity/sdk/node";
+import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { buildRemoteOAuthClientMetadata } from "../auth/auth-surfaces.js";
 import { type OAuthSessionContext, runWithAuth } from "../auth/context.js";
-import { updateCredentials } from "../auth/credentials.js";
-import { ensureClientRegistration } from "../auth/dcr.js";
-import { discover } from "../auth/discovery.js";
-import type { DpopKeyPair } from "../auth/dpop.js";
-import { getOrCreateDpopKey } from "../auth/dpop.js";
 import {
   getMinimalMcpScopes,
   getRequiredScopesForRemoteRequest,
@@ -20,18 +17,24 @@ import {
   type TokenAuthResult,
   validateToken,
 } from "../auth/token-auth.js";
-import { exchangeToken } from "../auth/token-exchange.js";
 import { config } from "../config.js";
+import {
+  buildMcpRemoteClientMetadata,
+  discoverMcpOAuth,
+  ensureMcpOAuthClientCredentials,
+} from "../oauth-client.js";
 import { createServer } from "../server/index.js";
 
 const DPOP_PREFIX = /^DPoP\s+/i;
 const BEARER_PREFIX = /^Bearer\s+/i;
-const AUTH_ISSUER_SUFFIX = /\/api\/auth\/?$/;
-const TRAILING_SLASH_RE = /\/+$/;
 
-let httpServerCredentials:
-  | { clientId: string; dpopKey: DpopKeyPair }
-  | undefined;
+interface HttpServerCredentials {
+  clientId: string;
+  dpopClient: DpopClient;
+  dpopKey: OAuthSessionContext["dpopKey"];
+}
+
+let httpServerCredentials: HttpServerCredentials | undefined;
 
 interface HttpSessionEntry {
   principalKey: string;
@@ -39,10 +42,7 @@ interface HttpSessionEntry {
 }
 
 /** Set server-level OAuth credentials (used by startHttp and tests). */
-export function setServerCredentials(creds: {
-  clientId: string;
-  dpopKey: DpopKeyPair;
-}): void {
+export function setServerCredentials(creds: HttpServerCredentials): void {
   httpServerCredentials = creds;
 }
 
@@ -99,24 +99,6 @@ export function matchOrigin(
   return undefined;
 }
 
-/**
- * Derive the canonical app audience from the discovered auth issuer.
- * Zentity serves its issuer from `${appUrl}/api/auth`.
- */
-export function resolveTokenExchangeAudience(issuer: string): string {
-  const normalizedIssuer = issuer.replace(TRAILING_SLASH_RE, "");
-  if (!AUTH_ISSUER_SUFFIX.test(normalizedIssuer)) {
-    return normalizedIssuer;
-  }
-
-  const issuerUrl = new URL(normalizedIssuer);
-  const appPath = issuerUrl.pathname.replace(AUTH_ISSUER_SUFFIX, "");
-  issuerUrl.pathname = appPath || "/";
-  issuerUrl.search = "";
-  issuerUrl.hash = "";
-  return issuerUrl.toString().replace(TRAILING_SLASH_RE, "");
-}
-
 /** Build the Hono app with all middleware and routes. Separated from `startHttp` for testability. */
 export function createApp(): Hono {
   const app = new Hono();
@@ -143,7 +125,7 @@ export function createApp(): Hono {
   );
 
   app.get("/.well-known/oauth-client.json", (c) => {
-    return c.json(buildRemoteOAuthClientMetadata(config.mcpPublicUrl), 200, {
+    return c.json(buildMcpRemoteClientMetadata(), 200, {
       "Cache-Control": "max-age=86400",
       "Content-Type": "application/json",
     });
@@ -179,17 +161,17 @@ export function createApp(): Hono {
 
     const callerToken =
       authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "";
-    let exchangeResult: Awaited<ReturnType<typeof exchangeToken>>;
+    let exchangeResult: ExchangeTokenResult;
     let exchangedToken: string;
     let exchangedScopes = getMinimalMcpScopes();
     try {
-      const discovery = await discover(config.zentityUrl);
+      const discovery = await discoverMcpOAuth();
       exchangeResult = await exchangeToken({
         tokenEndpoint: discovery.token_endpoint,
         subjectToken: callerToken,
-        audience: resolveTokenExchangeAudience(discovery.issuer),
+        audience: deriveAppAudience(discovery.issuer),
         clientId: httpServerCredentials.clientId,
-        dpopKey: httpServerCredentials.dpopKey,
+        dpopClient: httpServerCredentials.dpopClient,
       });
       exchangedToken = exchangeResult.accessToken;
       exchangedScopes =
@@ -288,11 +270,12 @@ export function createApp(): Hono {
 }
 
 export async function startHttp(): Promise<void> {
-  const discovery = await discover(config.zentityUrl);
-  const clientId = await ensureClientRegistration(discovery);
-  updateCredentials(config.zentityUrl, { clientId, registrationMethod: "dcr" });
-  const dpopKey = await getOrCreateDpopKey(config.zentityUrl);
-  httpServerCredentials = { clientId, dpopKey };
+  const { clientId, dpopKey } = await ensureMcpOAuthClientCredentials();
+  httpServerCredentials = {
+    clientId,
+    dpopClient: await createDpopClientFromKeyPair(dpopKey),
+    dpopKey,
+  };
 
   const app = createApp();
   const { port } = config;

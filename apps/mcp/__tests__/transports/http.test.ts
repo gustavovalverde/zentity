@@ -1,3 +1,4 @@
+import { deriveAppAudience } from "@zentity/sdk/node";
 import type { JWTPayload } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -40,7 +41,7 @@ vi.mock("../../src/auth/token-auth.js", () => ({
   resetJwks: vi.fn(),
 }));
 
-vi.mock("../../src/auth/token-exchange.js", () => ({
+vi.mock("@zentity/sdk/fpa", () => ({
   exchangeToken: vi.fn().mockResolvedValue({
     accessToken: "exchanged-token-123",
     tokenType: "DPoP",
@@ -49,11 +50,45 @@ vi.mock("../../src/auth/token-exchange.js", () => ({
   }),
 }));
 
-vi.mock("../../src/auth/discovery.js", () => ({
-  discover: vi.fn().mockResolvedValue({
+const { mockDpopClient } = vi.hoisted(() => ({
+  mockDpopClient: {
+    keyPair: {
+      privateJwk: { kty: "EC", crv: "P-256" },
+      publicJwk: { kty: "EC", crv: "P-256" },
+    },
+    proofFor: vi.fn().mockResolvedValue("dpop-proof"),
+    withNonceRetry: vi.fn(),
+  },
+}));
+
+vi.mock("@zentity/sdk/rp", () => ({
+  createDpopClientFromKeyPair: vi.fn().mockResolvedValue(mockDpopClient),
+}));
+
+vi.mock("../../src/oauth-client.js", () => ({
+  buildMcpRemoteClientMetadata: vi.fn(() => ({
+    client_id: "http://localhost:3200/.well-known/oauth-client.json",
+    client_name: "@zentity/mcp-server",
+    grant_types: [
+      "authorization_code",
+      "refresh_token",
+      "urn:openid:params:grant-type:ciba",
+    ],
+    redirect_uris: ["http://127.0.0.1/callback"],
+    scope: "openid",
+    token_endpoint_auth_method: "none",
+  })),
+  discoverMcpOAuth: vi.fn().mockResolvedValue({
     issuer: "http://localhost:3000/api/auth",
     token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
     authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
+  }),
+  ensureMcpOAuthClientCredentials: vi.fn().mockResolvedValue({
+    clientId: "test-client",
+    dpopKey: {
+      privateJwk: { kty: "EC", crv: "P-256" },
+      publicJwk: { kty: "EC", crv: "P-256" },
+    },
   }),
 }));
 
@@ -64,12 +99,11 @@ vi.mock("../../src/server/index.js", () => ({
   })),
 }));
 
-import { discover } from "../../src/auth/discovery.js";
-import { exchangeToken } from "../../src/auth/token-exchange.js";
+import { exchangeToken } from "@zentity/sdk/fpa";
+import { discoverMcpOAuth } from "../../src/oauth-client.js";
 import {
   createApp,
   matchOrigin,
-  resolveTokenExchangeAudience,
   setServerCredentials,
 } from "../../src/transports/http.js";
 
@@ -143,7 +177,7 @@ describe("HTTP transport middleware", () => {
 
   beforeEach(() => {
     mockValidateToken.mockReset();
-    vi.mocked(discover).mockResolvedValue({
+    vi.mocked(discoverMcpOAuth).mockResolvedValue({
       issuer: "http://localhost:3000/api/auth",
       token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
       authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
@@ -156,6 +190,7 @@ describe("HTTP transport middleware", () => {
     });
     setServerCredentials({
       clientId: "test-client",
+      dpopClient: mockDpopClient as never,
       dpopKey: {
         privateJwk: { kty: "EC", crv: "P-256" },
         publicJwk: { kty: "EC", crv: "P-256" },
@@ -425,7 +460,7 @@ describe("HTTP transport middleware", () => {
 
   it("derives token exchange audience from the discovered public issuer", async () => {
     mockValidateToken.mockResolvedValue(validPayload());
-    vi.mocked(discover).mockResolvedValueOnce({
+    vi.mocked(discoverMcpOAuth).mockResolvedValueOnce({
       issuer: "https://public.example/base/api/auth",
       token_endpoint: "http://internal-web:3000/api/auth/oauth2/token",
       authorization_endpoint:
@@ -527,15 +562,15 @@ describe("HTTP transport middleware", () => {
   });
 });
 
-describe("resolveTokenExchangeAudience", () => {
+describe("deriveAppAudience", () => {
   it("strips the auth issuer suffix to recover the app audience", () => {
-    expect(
-      resolveTokenExchangeAudience("https://public.example/base/api/auth")
-    ).toBe("https://public.example/base");
+    expect(deriveAppAudience("https://public.example/base/api/auth")).toBe(
+      "https://public.example/base"
+    );
   });
 
   it("falls back to the normalized issuer when the path is not an auth issuer", () => {
-    expect(resolveTokenExchangeAudience("https://public.example/custom/")).toBe(
+    expect(deriveAppAudience("https://public.example/custom/")).toBe(
       "https://public.example/custom"
     );
   });
