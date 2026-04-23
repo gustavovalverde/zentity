@@ -13,6 +13,9 @@ import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { account, oauthDpopKey } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { getOAuthProviderId } from "@/scenarios/route-scenario-registry";
+
+const X402_OAUTH_PROVIDER_ID = getOAuthProviderId("x402");
 
 export interface PohResult {
   claims: ProofOfHumanClaims;
@@ -50,7 +53,7 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     .where(
       and(
         eq(account.userId, session.user.id),
-        eq(account.providerId, "zentity-x402")
+        eq(account.providerId, X402_OAUTH_PROVIDER_ID)
       )
     )
     .limit(1)
@@ -134,7 +137,7 @@ export async function getStoredDpopJkt(): Promise<string | null> {
     .where(
       and(
         eq(account.userId, session.user.id),
-        eq(account.providerId, "zentity-x402")
+        eq(account.providerId, X402_OAUTH_PROVIDER_ID)
       )
     )
     .limit(1)

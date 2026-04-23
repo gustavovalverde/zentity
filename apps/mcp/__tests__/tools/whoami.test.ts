@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSummary = vi.fn();
 
-vi.mock("../../src/auth/context.js", () => ({
+vi.mock("../../src/runtime/auth-context.js", () => ({
   requireAuth: () => Promise.resolve({}),
 }));
 

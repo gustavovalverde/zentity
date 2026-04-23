@@ -36,19 +36,19 @@ const mockRuntimeState = {
   status: "active",
 };
 
-vi.mock("../../src/auth/context.js", () => ({
+vi.mock("../../src/runtime/auth-context.js", () => ({
   requireAuth: () => Promise.resolve({ oauth: mockOAuthContext }),
   getOAuthContext: () => mockOAuthContext,
   tryGetRuntimeState: () => mockRuntimeState,
 }));
 
-vi.mock("../../src/auth/interactive-tool-flow.js", () => ({
+vi.mock("../../src/services/interactive-approval.js", () => ({
   beginOrResumeInteractiveFlow: (...args: unknown[]) =>
     mockBeginOrResumeInteractiveFlow(...args),
   throwUrlElicitationIfSupported: vi.fn(),
 }));
 
-vi.mock("../../src/auth/agent-registration.js", () => ({
+vi.mock("../../src/runtime/agent-registration.js", () => ({
   signAgentAssertion: (...args: unknown[]) => mockSignAgentAssertion(...args),
 }));
 

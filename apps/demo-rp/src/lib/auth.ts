@@ -22,22 +22,18 @@ import {
   user,
   verification,
 } from "@/lib/db/schema";
-import {
-  currentClientIdKey,
-  PROVIDER_IDS,
-  type ProviderId,
-  readDcrClientId,
-} from "@/lib/dcr";
+import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import {
   describeOAuthErrorResponse,
   parseOAuthJsonResponse,
 } from "@/lib/oauth-response";
-
-const AETHER_BOOTSTRAP_SCOPES = [
-  "agent:host.register",
-  "agent:session.register",
-];
+import {
+  ROUTE_SCENARIO_IDS,
+  ROUTE_SCENARIOS,
+  type RouteScenarioId,
+} from "@/scenarios/route-scenario-registry";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 
 // Store DPoP clients by access token so getUserInfo can reuse the same
 // keypair that getToken bound the token to (cnf.jkt).
@@ -194,7 +190,7 @@ async function readExistingClaims(
 
 async function syncClaimsToDb(
   accountId: string,
-  providerId: string,
+  oauthProviderId: string,
   profile: Record<string, unknown>
 ) {
   try {
@@ -207,7 +203,10 @@ async function syncClaimsToDb(
       columns: { claims: true },
     });
     const allClaims = row?.claims ? JSON.parse(row.claims) : {};
-    allClaims[providerId] = { ...allClaims[providerId], ...profile };
+    allClaims[oauthProviderId] = {
+      ...allClaims[oauthProviderId],
+      ...profile,
+    };
     await getDb()
       .update(user)
       .set({ claims: JSON.stringify(allClaims) })
@@ -218,13 +217,13 @@ async function syncClaimsToDb(
 }
 
 function makeProviderConfig(
-  providerId: string,
+  oauthProviderId: string,
   clientId: string,
   scopes: string[],
   authorizationUrlParams?: Record<string, string>
 ) {
   return {
-    providerId,
+    providerId: oauthProviderId,
     discoveryUrl: `${env.ZENTITY_URL}/.well-known/openid-configuration`,
     clientId,
     scopes,
@@ -279,7 +278,7 @@ function makeProviderConfig(
           .insert(oauthDpopKey)
           .values({
             id: crypto.randomUUID(),
-            providerId,
+            oauthProviderId,
             accessToken,
             publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
             privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
@@ -288,7 +287,7 @@ function makeProviderConfig(
           .onConflictDoUpdate({
             target: oauthDpopKey.accessToken,
             set: {
-              providerId,
+              oauthProviderId,
               publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
               privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
               updatedAt: new Date(),
@@ -309,7 +308,7 @@ function makeProviderConfig(
       idToken?: string | undefined;
     }) {
       const { id, profile } = await buildOAuthProfile(tokens);
-      await syncClaimsToDb(id, providerId, profile);
+      await syncClaimsToDb(id, oauthProviderId, profile);
       profile.__existingClaims = await readExistingClaims(id);
       return profile as { id: string; emailVerified: boolean };
     },
@@ -343,32 +342,36 @@ function makeProviderConfig(
         image: profile.picture as string,
         claims: {
           ...existingClaims,
-          [providerId]: { ...existingClaims[providerId], ...cleanProfile },
+          [oauthProviderId]: {
+            ...existingClaims[oauthProviderId],
+            ...cleanProfile,
+          },
         },
       };
     },
   };
 }
 
-const PROVIDER_AUTH_PARAMS: Partial<
-  Record<ProviderId, Record<string, string>>
-> = {
-  exchange: { acr_values: "urn:zentity:assurance:tier-2" },
-  bank: { max_age: "300" },
-};
+function buildAuthorizationUrlParams(
+  scenario: RouteScenario
+): Record<string, string> | undefined {
+  const params: Record<string, string> = {};
 
-const PROVIDER_SCOPES: Record<ProviderId, string[]> = {
-  bank: ["openid", "email", "proof:verification"],
-  exchange: ["openid", "email", "proof:verification"],
-  wine: ["openid", "proof:age"],
-  aid: ["openid", "email", "proof:verification"],
-  veripass: ["openid", "proof:verification"],
-  aether: ["openid", "email", ...AETHER_BOOTSTRAP_SCOPES],
-  x402: ["openid", "email", "poh"],
-};
+  if (scenario.acrValues) {
+    params.acr_values = scenario.acrValues;
+  }
 
-function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
-  const registeredProviders = PROVIDER_IDS.filter((id) => clientIds[id]);
+  if (scenario.maxAge) {
+    params.max_age = String(scenario.maxAge);
+  }
+
+  return Object.keys(params).length > 0 ? params : undefined;
+}
+
+function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
+  const registeredScenarios = ROUTE_SCENARIOS.filter(
+    (scenario) => clientIds[scenario.id]
+  );
 
   return betterAuth({
     database: drizzleAdapter(getDb(), {
@@ -379,7 +382,9 @@ function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
     secret: env.BETTER_AUTH_SECRET,
     account: {
       accountLinking: {
-        trustedProviders: PROVIDER_IDS.map((id: ProviderId) => `zentity-${id}`),
+        trustedProviders: ROUTE_SCENARIOS.map(
+          (scenario) => scenario.oauthProviderId
+        ),
       },
     },
     advanced: {
@@ -393,17 +398,17 @@ function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
     plugins: [
       nextCookies(),
       genericOAuth({
-        config: registeredProviders.flatMap((id) => {
-          const clientId = clientIds[id];
+        config: registeredScenarios.flatMap((scenario) => {
+          const clientId = clientIds[scenario.id];
           if (!clientId) {
             return [];
           }
           return [
             makeProviderConfig(
-              `zentity-${id}`,
+              scenario.oauthProviderId,
               clientId,
-              PROVIDER_SCOPES[id],
-              PROVIDER_AUTH_PARAMS[id]
+              scenario.signInScopes,
+              buildAuthorizationUrlParams(scenario)
             ),
           ];
         }),
@@ -412,25 +417,17 @@ function createAuth(clientIds: Partial<Record<ProviderId, string>>) {
   });
 }
 
-let _instance: ReturnType<typeof createAuth> | null = null;
-let _cachedClientIds: string | undefined;
-
 export async function getAuth() {
-  const key = await currentClientIdKey();
-  if (!_instance || key !== _cachedClientIds) {
-    _cachedClientIds = key;
-    const clientIds: Partial<Record<ProviderId, string>> = {};
-    await Promise.all(
-      PROVIDER_IDS.map(async (id) => {
-        const clientId = await readDcrClientId(id);
-        if (clientId) {
-          clientIds[id] = clientId;
-        }
-      })
-    );
-    _instance = createAuth(clientIds);
-  }
-  return _instance;
+  const clientIds: Partial<Record<RouteScenarioId, string>> = {};
+  await Promise.all(
+    ROUTE_SCENARIO_IDS.map(async (id) => {
+      const clientId = await readDcrClientId(id);
+      if (clientId) {
+        clientIds[id] = clientId;
+      }
+    })
+  );
+  return createAuth(clientIds);
 }
 
 export type Auth = ReturnType<typeof createAuth>;

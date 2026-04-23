@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   TokenAuthError,
   TokenAuthResult,
-} from "../../src/auth/token-auth.js";
+} from "../../src/transports/token-auth.js";
 
 vi.mock("../../src/config.js", () => ({
   config: {
@@ -27,7 +27,7 @@ const mockValidateToken =
     ) => Promise<TokenAuthResult | TokenAuthError>
   >();
 
-vi.mock("../../src/auth/token-auth.js", () => ({
+vi.mock("../../src/transports/token-auth.js", () => ({
   validateToken: (...args: unknown[]) =>
     mockValidateToken(
       args[0] as string | undefined,

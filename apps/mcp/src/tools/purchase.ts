@@ -11,18 +11,18 @@ import {
 } from "@zentity/sdk/rp";
 import { z } from "zod";
 import { prefixBindingMessage } from "../agent.js";
-import { signAgentAssertion } from "../auth/agent-registration.js";
+import { config } from "../config.js";
+import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
   getOAuthContext,
   requireAuth,
   tryGetRuntimeState,
-} from "../auth/context.js";
-import { redeemRelease } from "../auth/identity.js";
+} from "../runtime/auth-context.js";
+import { redeemRelease } from "../services/identity-release.js";
 import {
   beginOrResumeInteractiveFlow,
   throwUrlElicitationIfSupported,
-} from "../auth/interactive-tool-flow.js";
-import { config } from "../config.js";
+} from "../services/interactive-approval.js";
 
 const purchaseOutputSchema = {
   status: z.enum([

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { createAppKit } from "@reown/appkit/react";
 import { cookieToInitialState, WagmiProvider } from "wagmi";
 
+import { env } from "@/env";
 import { InMemoryStorageProvider } from "@/lib/blockchain/fhevm/use-in-memory-storage";
 import {
   fhevmSepolia,
@@ -36,12 +37,12 @@ if (globalThis.window !== undefined && projectId) {
     networks,
     defaultNetwork,
     metadata,
-    enableInjected: true,
-    enableWalletConnect: true,
-    enableEIP6963: true,
-    enableCoinbase: true,
+    enableInjected: env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED,
+    enableWalletConnect: env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT,
+    enableEIP6963: env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963,
+    enableCoinbase: env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE,
     features: {
-      analytics: true,
+      analytics: env.NEXT_PUBLIC_APPKIT_ANALYTICS,
       email: false,
       socials: false,
     },

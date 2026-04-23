@@ -4,12 +4,12 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session } from "@/lib/db/schema";
-import {
-  findProviderByClientId,
-  PROVIDER_IDS,
-  readDcrClientId,
-} from "@/lib/dcr";
+import { findRouteScenarioByClientId, readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import {
+  getOAuthProviderId,
+  ROUTE_SCENARIO_IDS,
+} from "@/scenarios/route-scenario-registry";
 
 const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
 const DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS = 5 * 60 * 1000;
@@ -40,7 +40,7 @@ function getOidcTokenVerifier() {
 }
 
 async function getAllClientIds(): Promise<string[]> {
-  const ids = await Promise.all(PROVIDER_IDS.map(readDcrClientId));
+  const ids = await Promise.all(ROUTE_SCENARIO_IDS.map(readDcrClientId));
   return ids.filter((id): id is string => Boolean(id));
 }
 
@@ -118,13 +118,13 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
-    const provider = aud ? await findProviderByClientId(aud) : null;
+    const scenarioId = aud ? await findRouteScenarioByClientId(aud) : null;
 
     const db = getDb();
-    const accountFilter = provider
+    const accountFilter = scenarioId
       ? and(
           eq(account.accountId, sub),
-          eq(account.providerId, `zentity-${provider}`)
+          eq(account.providerId, getOAuthProviderId(scenarioId))
         )
       : eq(account.accountId, sub);
     const matchingAccounts = await db

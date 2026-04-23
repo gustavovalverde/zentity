@@ -1,7 +1,7 @@
 import "server-only";
 
 import type {
-  AccessTokenClaims,
+  AapAccessTokenClaims,
   CapabilityClaim,
   HostAttestationTier,
   OversightMethod,
@@ -30,7 +30,7 @@ interface LoadedTokenSnapshot {
     verified: boolean;
   };
   authReqId: string;
-  claims: AccessTokenClaims;
+  claims: AapAccessTokenClaims;
   hostId: string | null;
   sessionId: string;
 }
@@ -316,7 +316,7 @@ function findCibaRequestSnapshot(authReqId: string) {
 export async function persistCibaTokenSnapshot(
   authReqId: string,
   audienceClientId: string
-): Promise<(AccessTokenClaims & { jti: string }) | null> {
+): Promise<(AapAccessTokenClaims & { jti: string }) | null> {
   const storedSnapshot = await findCibaRequestSnapshot(authReqId);
   const tokenSnapshot = await resolveTokenSnapshot(
     storedSnapshot,

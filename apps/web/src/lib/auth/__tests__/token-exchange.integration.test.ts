@@ -1,9 +1,16 @@
 import crypto from "node:crypto";
 
-import { decodeJwt, exportJWK, generateKeyPair, SignJWT } from "jose";
+import {
+  calculateJwkThumbprint,
+  decodeJwt,
+  exportJWK,
+  generateKeyPair,
+  SignJWT,
+} from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
+import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
@@ -22,12 +29,18 @@ import {
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
-import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+import {
+  createTestDpopKeyPair,
+  postTokenWithDpop,
+} from "@/test-utils/dpop-test-utils";
 
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const ID_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:id_token";
 const TEST_CLIENT_ID = "exchange-test-agent";
+const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const authIssuer = getAuthIssuer();
+const APP_AUDIENCE = "http://localhost:3000";
+const CREDENTIAL_AUDIENCE = `${authIssuer}/oidc4vci/credential`;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
 let testKid: string;
@@ -53,7 +66,10 @@ async function ensureSigningKey() {
     .run();
 }
 
-async function createTestClient(clientId = TEST_CLIENT_ID) {
+async function createTestClient(
+  clientId = TEST_CLIENT_ID,
+  metadata?: Record<string, unknown>
+) {
   await db
     .insert(oauthClients)
     .values({
@@ -61,10 +77,34 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       name: "Exchange Test Agent",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+      ...(metadata ? { metadata: JSON.stringify(metadata) } : {}),
       tokenEndpointAuthMethod: "none",
       public: true,
     })
     .run();
+}
+
+function parseTokenResponse(text: string): Record<string, unknown> {
+  const parsedBody = JSON.parse(text) as Record<string, unknown>;
+  return "response" in parsedBody
+    ? (parsedBody.response as Record<string, unknown>)
+    : parsedBody;
+}
+
+async function postTokenWithoutDpop(body: Record<string, string>) {
+  const response = await auth.handler(
+    new Request(TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams(body),
+    })
+  );
+
+  const bodyText = await response.text();
+  const json = bodyText ? parseTokenResponse(bodyText) : {};
+  return { status: response.status, json };
 }
 
 function mintAccessToken(
@@ -76,13 +116,15 @@ function mintAccessToken(
     authContextId?: string;
     authorizationDetails?: unknown;
     azp?: string;
+    aud?: string | string[];
+    dpopJkt?: string;
     exp?: number;
   } = {}
 ): Promise<string> {
   const payload: Record<string, unknown> = {
     iss: authIssuer,
     sub,
-    aud: authIssuer,
+    aud: opts.aud ?? authIssuer,
     jti: crypto.randomUUID(),
     scope: opts.scope ?? "openid",
     azp: opts.azp ?? TEST_CLIENT_ID,
@@ -90,6 +132,7 @@ function mintAccessToken(
     exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600,
     [AUTHENTICATION_CONTEXT_CLAIM]: opts.authContextId ?? defaultAuthContextId,
     ...(opts.aap ?? {}),
+    ...(opts.dpopJkt ? { cnf: { jkt: opts.dpopJkt } } : {}),
   };
   if (opts.act) {
     payload.act = opts.act;
@@ -162,38 +205,176 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
     });
 
+    it("preserves JWT access-token DPoP binding on exchange", async () => {
+      const dpopKeyPair = await createTestDpopKeyPair();
+      const dpopJkt = await calculateJwkThumbprint(dpopKeyPair.jwk);
+      const subjectToken = await mintAccessToken(userId, {
+        dpopJkt,
+        scope: "openid identity.name",
+      });
+
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        dpopKeyPair
+      );
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.cnf).toEqual({ jkt: dpopJkt });
+    });
+
+    it("rejects JWT access-token subject when DPoP key differs", async () => {
+      const subjectKeyPair = await createTestDpopKeyPair();
+      const attackerKeyPair = await createTestDpopKeyPair();
+      const subjectToken = await mintAccessToken(userId, {
+        dpopJkt: await calculateJwkThumbprint(subjectKeyPair.jwk),
+        scope: "openid identity.name",
+      });
+
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        attackerKeyPair
+      );
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
+      expect(json.error_description).toBe(
+        "Subject token DPoP binding does not match exchange request"
+      );
+    });
+
+    it("rejects JWT access-token subject when DPoP proof is missing", async () => {
+      const dpopKeyPair = await createTestDpopKeyPair();
+      const subjectToken = await mintAccessToken(userId, {
+        dpopJkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
+        scope: "openid identity.name",
+      });
+
+      const { status, json } = await postTokenWithoutDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        scope: "openid",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
+      expect(json.error_description).toBe(
+        "Subject token DPoP binding does not match exchange request"
+      );
+    });
+
+    it("allows a resource server to re-bind a DPoP-bound subject token", async () => {
+      const resourceServerClientId = "installed-resource-server";
+      await createTestClient(resourceServerClientId, {
+        zentity_protected_resource: APP_AUDIENCE,
+      });
+
+      const callerKeyPair = await createTestDpopKeyPair();
+      const resourceServerKeyPair = await createTestDpopKeyPair();
+      const subjectToken = await mintAccessToken(userId, {
+        aud: APP_AUDIENCE,
+        azp: "upstream-client",
+        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
+        scope: "openid identity.name",
+      });
+      const resourceServerJkt = await calculateJwkThumbprint(
+        resourceServerKeyPair.jwk
+      );
+
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: resourceServerClientId,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        resourceServerKeyPair
+      );
+
+      expect(status).toBe(200);
+      const payload = decodeJwt(json.access_token as string);
+      expect(payload.cnf).toEqual({ jkt: resourceServerJkt });
+      expect(payload.act).toEqual({ sub: resourceServerClientId });
+    });
+
+    it("rejects resource-server DPoP re-binding without matching audience", async () => {
+      const resourceServerClientId = "installed-resource-server";
+      await createTestClient(resourceServerClientId, {
+        zentity_protected_resource: APP_AUDIENCE,
+      });
+
+      const callerKeyPair = await createTestDpopKeyPair();
+      const resourceServerKeyPair = await createTestDpopKeyPair();
+      const subjectToken = await mintAccessToken(userId, {
+        aud: "https://other-resource.example.com",
+        azp: "upstream-client",
+        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
+        scope: "openid identity.name",
+      });
+
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: resourceServerClientId,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        resourceServerKeyPair
+      );
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
+      expect(json.error_description).toBe(
+        "Subject token DPoP binding does not match exchange request"
+      );
+    });
+
     it("binds audience to resource parameter", async () => {
       const subjectToken = await mintAccessToken(userId);
-      const merchantApi = "https://merchant.example.com/api";
 
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: merchantApi,
+        resource: APP_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(merchantApi);
+      expect(payload.aud).toBe(APP_AUDIENCE);
     });
 
     it("binds audience to audience parameter when resource is absent", async () => {
       const subjectToken = await mintAccessToken(userId);
-      const targetService = "https://target.example.com";
 
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: targetService,
+        audience: CREDENTIAL_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(targetService);
+      expect(payload.aud).toBe(CREDENTIAL_AUDIENCE);
     });
 
     it("prefers resource over audience for aud binding", async () => {
@@ -204,13 +385,31 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: "https://resource.example.com",
-        audience: "https://audience.example.com",
+        resource: APP_AUDIENCE,
+        audience: CREDENTIAL_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe("https://resource.example.com");
+      expect(payload.aud).toBe(APP_AUDIENCE);
+    });
+
+    it("rejects unregistered target audiences", async () => {
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        resource: "https://merchant.example.com/api",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_target");
+      expect(json.error_description).toBe(
+        "Token exchange target audience is not a registered protected resource"
+      );
     });
 
     it("inherits subject scopes when none requested", async () => {
@@ -339,12 +538,15 @@ describe("Token Exchange (RFC 8693)", () => {
         parent_jti: expect.any(String),
       });
 
-      const secondExchange = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: firstExchange.json.access_token as string,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
+      const secondExchange = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: firstExchange.json.access_token as string,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+        },
+        firstExchange.dpopKeyPair
+      );
 
       expect(secondExchange.status).toBe(400);
       expect(secondExchange.json.error).toBe("invalid_grant");
@@ -543,7 +745,7 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name",
       });
 
-      const { json: firstExchange } = await postTokenWithDpop({
+      const firstExchange = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: agentAId,
         subject_token: originalToken,
@@ -551,20 +753,23 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name",
       });
 
-      const firstPayload = decodeJwt(firstExchange.access_token as string);
+      const firstPayload = decodeJwt(firstExchange.json.access_token as string);
       expect(firstPayload.act).toEqual({ sub: agentAId });
 
-      // Second exchange: agent B exchanges agent A's token
+      // Second exchange must prove possession of agent A's sender-constrained token.
       const agentBId = "agent-b";
       await createTestClient(agentBId);
 
-      const { status, json: secondExchange } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: agentBId,
-        subject_token: firstExchange.access_token as string,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid",
-      });
+      const { status, json: secondExchange } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: agentBId,
+          subject_token: firstExchange.json.access_token as string,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        firstExchange.dpopKeyPair
+      );
 
       expect(status).toBe(200);
       const secondPayload = decodeJwt(secondExchange.access_token as string);

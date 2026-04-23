@@ -18,7 +18,7 @@ export default async function ConsentLayout({
   const cookies = (await headers()).get("cookie");
 
   return (
-    <StandaloneLayout cookies={cookies}>
+    <StandaloneLayout>
       <Web3Provider cookies={cookies}>{children}</Web3Provider>
     </StandaloneLayout>
   );

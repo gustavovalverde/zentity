@@ -13,14 +13,18 @@ import { Nav } from "@/components/nav";
 import { ComplianceBadges } from "@/components/shared/compliance-badges";
 import { Card, CardContent } from "@/components/ui/card";
 import { env } from "@/lib/env";
-import { SCENARIOS as SOURCE_SCENARIOS } from "@/lib/scenarios";
+import {
+  getRouteScenario,
+  ROUTE_SCENARIOS,
+  type RouteScenarioId,
+} from "@/scenarios/route-scenario-registry";
 
 interface LandingScenario {
   brandFont: string;
   brandName: string;
   brandSub: string;
   icon: IconSvgElement | null;
-  id: string;
+  id: RouteScenarioId;
   title: string;
 }
 
@@ -84,10 +88,7 @@ const LANDING_UI: LandingScenario[] = [
 ];
 
 const SCENARIOS = LANDING_UI.map((ui) => {
-  const source = SOURCE_SCENARIOS[ui.id];
-  if (!source) {
-    throw new Error(`Unknown scenario: ${ui.id}`);
-  }
+  const source = getRouteScenario(ui.id);
   return {
     ...ui,
     href: `/${ui.id}`,
@@ -110,7 +111,7 @@ function WineIcon({ className }: { className?: string }) {
   );
 }
 
-const FOOTER_SCENARIOS = Object.values(SOURCE_SCENARIOS).map((s) => ({
+const FOOTER_SCENARIOS = ROUTE_SCENARIOS.map((s) => ({
   label: s.name,
   href: `/${s.id}`,
 }));

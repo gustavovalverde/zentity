@@ -12,11 +12,15 @@
   "files": {
     "includes": [
       "src/**",
+      "e2e/**",
+      "scripts/**",
       "*.ts",
       "*.mts",
       "!!node_modules",
       "!!.next",
-      "!!.data"
+      "!!.data",
+      "!!playwright-report",
+      "!!test-results"
     ]
   },
   "overrides": [

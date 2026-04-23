@@ -30,10 +30,10 @@ vi.mock("../../src/oauth-client.js", () => ({
   refreshMcpOAuthSession: mockRefreshMcpOAuthSession,
 }));
 
-vi.mock("../../src/auth/agent-registration.js", async () => {
+vi.mock("../../src/runtime/agent-registration.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../src/auth/agent-registration.js")
-  >("../../src/auth/agent-registration.js");
+    typeof import("../../src/runtime/agent-registration.js")
+  >("../../src/runtime/agent-registration.js");
   return {
     ...actual,
     clearCachedHostId: mockClearCachedHostId,
@@ -43,10 +43,7 @@ vi.mock("../../src/auth/agent-registration.js", async () => {
   };
 });
 
-import {
-  AgentRegistrationError,
-  buildHostKeyNamespace,
-} from "../../src/auth/agent-registration.js";
+import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
 import { bootstrapRegisteredRuntime } from "../../src/transports/stdio.js";
 
 const baseOauth = {

@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Redacted } from "@/components/ui/redacted";
-import type { VerifierScenario } from "@/data/veripass";
-import { CLAIM_LABELS } from "@/data/veripass";
+import { CLAIM_LABELS } from "@/scenarios/veripass/verifier-registry";
+import type { VerifierScenario } from "@/scenarios/veripass/verifier-scenario";
 
 interface PresentationResultProps {
   disclosedClaims: Record<string, unknown>;

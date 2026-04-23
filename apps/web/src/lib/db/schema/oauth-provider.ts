@@ -2,7 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
-  // biome-ignore lint/suspicious/noDeprecatedImports: Drizzle uses this symbol for composite primary keys; this call site already uses the non-deprecated object form.
   primaryKey,
   sqliteTable,
   text,

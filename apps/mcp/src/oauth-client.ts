@@ -1,5 +1,3 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
 import type { FirstPartyAuthDiscoveryDocument } from "@zentity/sdk/fpa";
 import {
   buildLoopbackClientRegistration,
@@ -11,13 +9,14 @@ import {
   type InstalledOAuthSession,
   normalizeUrl,
 } from "@zentity/sdk/node";
-import { RUNTIME_BOOTSTRAP_SCOPES } from "./auth/bootstrap-scopes.js";
 import { config } from "./config.js";
+import { RUNTIME_BOOTSTRAP_SCOPES } from "./runtime/bootstrap-scopes.js";
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
 const CLIENT_METADATA_PATH = "/.well-known/oauth-client.json";
 const MCP_SERVER_CLIENT_NAME = "@zentity/mcp-server";
 const REMOTE_MCP_DEFAULT_SCOPE = "openid";
+const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 
 const INSTALLED_AGENT_LOGIN_SCOPES = [
   "openid",
@@ -56,22 +55,20 @@ let cachedInstalledClientAuth: InstalledClientAuth | undefined;
 function getMcpInstalledClientAuth(): InstalledClientAuth {
   if (!cachedInstalledClientAuth) {
     cachedInstalledClientAuth = createInstalledClientAuth({
-      clientRegistrationRequest: buildLoopbackClientRegistration({
-        clientName: MCP_SERVER_CLIENT_NAME,
-        grantTypes: INSTALLED_AGENT_GRANT_TYPES,
-        redirectUri: LOOPBACK_REDIRECT_URI,
-        scope: INSTALLED_AGENT_REGISTRATION_SCOPES.join(" "),
-      }),
+      clientRegistrationRequest: {
+        ...buildLoopbackClientRegistration({
+          clientName: MCP_SERVER_CLIENT_NAME,
+          grantTypes: INSTALLED_AGENT_GRANT_TYPES,
+          redirectUri: LOOPBACK_REDIRECT_URI,
+          scope: INSTALLED_AGENT_REGISTRATION_SCOPES.join(" "),
+        }),
+        [PROTECTED_RESOURCE_METADATA_FIELD]: normalizeUrl(config.mcpPublicUrl),
+      },
       issuerUrl: config.zentityUrl,
       loginResource: config.zentityUrl,
       loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" "),
       storage: createFirstPartyAuthFileStorage({
         issuerUrl: config.zentityUrl,
-        legacyCredentialFilePath: join(
-          homedir(),
-          ".zentity",
-          "credentials.json"
-        ),
         namespace: "mcp-server",
       }),
       tokenExchangeAudience: config.zentityUrl,

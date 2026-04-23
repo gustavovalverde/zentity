@@ -6,24 +6,27 @@ import { deriveAppAudience } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { type OAuthSessionContext, runWithAuth } from "../auth/context.js";
-import {
-  getMinimalMcpScopes,
-  getRequiredScopesForRemoteRequest,
-} from "../auth/mcp-scope-policy.js";
-import { getResourceMetadata } from "../auth/resource-metadata.js";
-import {
-  isAuthError,
-  type TokenAuthResult,
-  validateToken,
-} from "../auth/token-auth.js";
 import { config } from "../config.js";
 import {
   buildMcpRemoteClientMetadata,
   discoverMcpOAuth,
   ensureMcpOAuthClientCredentials,
 } from "../oauth-client.js";
+import {
+  type OAuthSessionContext,
+  runWithAuth,
+} from "../runtime/auth-context.js";
 import { createServer } from "../server/index.js";
+import {
+  getMinimalMcpScopes,
+  getRequiredScopesForRemoteRequest,
+} from "./remote-scope-policy.js";
+import { getResourceMetadata } from "./resource-metadata.js";
+import {
+  isAuthError,
+  type TokenAuthResult,
+  validateToken,
+} from "./token-auth.js";
 
 const DPOP_PREFIX = /^DPoP\s+/i;
 const BEARER_PREFIX = /^Bearer\s+/i;
@@ -41,7 +44,6 @@ interface HttpSessionEntry {
   transport: WebStandardStreamableHTTPServerTransport;
 }
 
-/** Set server-level OAuth credentials (used by startHttp and tests). */
 export function setServerCredentials(creds: HttpServerCredentials): void {
   httpServerCredentials = creds;
 }
@@ -79,7 +81,6 @@ function buildPrincipalKey(result: TokenAuthResult): string {
   });
 }
 
-/** Match origin against allowed patterns (supports wildcard port). */
 export function matchOrigin(
   origin: string,
   patterns: string[]
@@ -99,7 +100,6 @@ export function matchOrigin(
   return undefined;
 }
 
-/** Build the Hono app with all middleware and routes. Separated from `startHttp` for testability. */
 export function createApp(): Hono {
   const app = new Hono();
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 interface ExchangeHeaderProps {
   activeSection: "portfolio" | "markets" | "trade";
   isAuthenticated: boolean;
+  isConnectReady: boolean;
   isVerified: boolean;
   onConnect: () => void;
   onSectionChange: (section: "portfolio" | "markets" | "trade") => void;
@@ -14,6 +15,7 @@ interface ExchangeHeaderProps {
 
 export function ExchangeHeader({
   activeSection,
+  isConnectReady,
   onSectionChange,
   isAuthenticated,
   isVerified,
@@ -83,6 +85,7 @@ export function ExchangeHeader({
             ) : (
               <Button
                 className="font-bold font-mono text-xs uppercase tracking-wider"
+                disabled={!isConnectReady}
                 onClick={onConnect}
                 size="sm"
               >

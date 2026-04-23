@@ -1,21 +1,21 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prefixBindingMessage } from "../agent.js";
-import { signAgentAssertion } from "../auth/agent-registration.js";
+import { config } from "../config.js";
+import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
   getOAuthContext,
   requireAuth,
   tryGetRuntimeState,
-} from "../auth/context.js";
-import { type IdentityClaims, redeemRelease } from "../auth/identity.js";
-import { beginOrResumeInteractiveFlow } from "../auth/interactive-tool-flow.js";
+} from "../runtime/auth-context.js";
+import { type IdentityClaims, redeemRelease } from "./identity-release.js";
+import { beginOrResumeInteractiveFlow } from "./interactive-approval.js";
 import {
   buildIdentityScopeString,
   buildProfileFieldKey,
   getProtectedProfileFields,
   normalizeProfileFields,
   type PublicProfileField,
-} from "../auth/profile-fields.js";
-import { config } from "../config.js";
+} from "./profile-fields.js";
 
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
 

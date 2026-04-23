@@ -1,7 +1,7 @@
-import { zentityFetch } from "../auth/api-client.js";
-import { getOAuthContext, requireAuth } from "../auth/context.js";
-import { PROFILE_FIELDS } from "../auth/profile-fields.js";
 import { config } from "../config.js";
+import { getOAuthContext, requireAuth } from "../runtime/auth-context.js";
+import { PROFILE_FIELDS } from "./profile-fields.js";
+import { zentityFetch } from "./zentity-api.js";
 
 interface AssuranceProfile {
   authStrength: string;

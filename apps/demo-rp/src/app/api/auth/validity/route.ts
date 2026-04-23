@@ -4,12 +4,9 @@ import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { validityNotice } from "@/lib/db/schema";
-import {
-  findProviderByClientId,
-  PROVIDER_IDS,
-  readDcrClientId,
-} from "@/lib/dcr";
+import { findRouteScenarioByClientId, readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { ROUTE_SCENARIO_IDS } from "@/scenarios/route-scenario-registry";
 
 const RP_VALIDITY_EVENT_URI = "https://zentity.xyz/events/validity-change";
 
@@ -22,7 +19,7 @@ function getOidcTokenVerifier() {
 }
 
 async function getAllClientIds(): Promise<string[]> {
-  const clientIds = await Promise.all(PROVIDER_IDS.map(readDcrClientId));
+  const clientIds = await Promise.all(ROUTE_SCENARIO_IDS.map(readDcrClientId));
   return clientIds.filter((id): id is string => Boolean(id));
 }
 
@@ -90,8 +87,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const providerId = await findProviderByClientId(aud);
-    if (!providerId) {
+    const scenarioId = await findRouteScenarioByClientId(aud);
+    if (!scenarioId) {
       return NextResponse.json(
         { error: "Unknown client audience" },
         { status: 400 }
@@ -102,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
       .insert(validityNotice)
       .values({
         jti: payload.jti,
-        providerId,
+        scenarioId,
         clientId: aud,
         sub: payload.sub,
         eventId: validityEvent.eventId,

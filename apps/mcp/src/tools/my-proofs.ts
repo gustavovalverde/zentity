@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { zentityFetch } from "../auth/api-client.js";
-import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
+import { requireAuth } from "../runtime/auth-context.js";
+import { zentityFetch } from "../services/zentity-api.js";
 
 /**
  * Proof claims delivered by the userinfo endpoint when the token carries

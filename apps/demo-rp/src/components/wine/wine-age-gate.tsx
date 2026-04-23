@@ -6,11 +6,11 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 
 interface WineAgeGateProps {
-  dcrConfig: { clientName: string; defaultScopes: string };
   onVerify: () => void;
-  providerId: string;
+  scenario: RouteScenario;
 }
 
 function WineIcon({ className }: { className?: string }) {
@@ -32,11 +32,7 @@ function WineIcon({ className }: { className?: string }) {
   );
 }
 
-export function WineAgeGate({
-  dcrConfig,
-  providerId,
-  onVerify,
-}: WineAgeGateProps) {
+export function WineAgeGate({ onVerify, scenario }: WineAgeGateProps) {
   const [dcrReady, setDcrReady] = useState(false);
   const handleDcrRegistered = useCallback(() => setDcrReady(true), []);
 
@@ -92,10 +88,8 @@ export function WineAgeGate({
 
           <div className="space-y-4 pt-2">
             <DcrRegistration
-              clientName={dcrConfig.clientName}
-              defaultScopes={dcrConfig.defaultScopes}
               onRegistered={handleDcrRegistered}
-              providerId={providerId}
+              scenario={scenario}
             />
             <Button
               className="h-14 w-full gap-3 rounded-none bg-primary font-medium text-lg text-primary-foreground uppercase tracking-widest transition-all hover:bg-primary/90 disabled:opacity-40"

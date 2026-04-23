@@ -1,29 +1,28 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
 import { detectAgent } from "../agent.js";
-import {
-  AgentRegistrationError,
-  buildHostKeyNamespace,
-  clearCachedHostId,
-  ensureHostRegistered,
-  prepareBootstrapRegistrationAuth,
-  registerAgentSession,
-} from "../auth/agent-registration.js";
-import {
-  getAuthContext,
-  type OAuthSessionContext,
-  setAuthFactory,
-  setAuthPromise,
-  setDefaultAuth,
-} from "../auth/context.js";
-import { revokeAgentSession } from "../auth/runtime-revoke.js";
-import { agentRuntimeStateStore } from "../auth/runtime-state.js";
 import { config } from "../config.js";
 import {
   clearMcpOAuthTokens,
   ensureMcpOAuthSession,
   refreshMcpOAuthSession,
 } from "../oauth-client.js";
+import {
+  clearCachedHostId,
+  ensureHostRegistered,
+  prepareBootstrapRegistrationAuth,
+  registerAgentSession,
+} from "../runtime/agent-registration.js";
+import { agentRuntimeStateStore } from "../runtime/agent-session-state.js";
+import {
+  getAuthContext,
+  type OAuthSessionContext,
+  setAuthFactory,
+  setAuthPromise,
+  setDefaultAuth,
+} from "../runtime/auth-context.js";
+import { revokeAgentSession } from "../runtime/session-revoke.js";
 import { createServer } from "../server/index.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes

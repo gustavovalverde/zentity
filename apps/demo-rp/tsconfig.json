@@ -11,11 +11,13 @@
     "noImplicitOverride": true,
     "noEmit": true,
     "module": "preserve",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "erasableSyntaxOnly": true,
     "jsx": "react-jsx",
+    "types": ["node", "@playwright/test"],
     "incremental": true,
     "plugins": [
       {
@@ -29,6 +31,8 @@
   },
   "include": [
     "next-env.d.ts",
+    "e2e/**/*.mts",
+    "e2e/**/*.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts",

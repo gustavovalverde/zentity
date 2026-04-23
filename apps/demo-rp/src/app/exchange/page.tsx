@@ -10,13 +10,13 @@ import { ExchangePortfolio } from "@/components/exchange/exchange-portfolio";
 import { ExchangeTrade } from "@/components/exchange/exchange-trade";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
-import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
+import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
 import { Redacted } from "@/components/ui/redacted";
 import { MARKET_DATA } from "@/data/exchange";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
-import { getScenario } from "@/lib/scenarios";
+import { exchangeScenario } from "@/scenarios/exchange";
 
-const scenario = getScenario("exchange");
+const scenario = exchangeScenario;
 
 export default function ExchangePage() {
   const {
@@ -64,12 +64,9 @@ export default function ExchangePage() {
       <ExchangeHeader
         activeSection={activeSection}
         isAuthenticated={isAuthenticated}
+        isConnectReady={dcrReady}
         isVerified={isSteppedUp}
-        onConnect={() => {
-          if (dcrReady) {
-            handleSignIn();
-          }
-        }}
+        onConnect={handleSignIn}
         onSectionChange={setActiveSection}
         onSignOut={handleSignOut}
       />
@@ -143,7 +140,7 @@ export default function ExchangePage() {
                 )}
               </div>
               <AssuranceBadges claims={claims} />
-              <ProviderValidityCard providerId={scenario.id} />
+              <ScenarioValidityCard scenarioId={scenario.id} />
             </div>
           ) : (
             <div className="space-y-4 rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -162,10 +159,8 @@ export default function ExchangePage() {
                 exchange never sees the underlying document.
               </p>
               <DcrRegistration
-                clientName={scenario.dcr.clientName}
-                defaultScopes={scenario.dcr.defaultScopes}
                 onRegistered={handleDcrRegistered}
-                providerId={scenario.id}
+                scenario={scenario}
               />
             </div>
           )}

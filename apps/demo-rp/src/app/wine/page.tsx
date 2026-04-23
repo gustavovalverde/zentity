@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
-import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
+import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
 import { WineAgeGate } from "@/components/wine/wine-age-gate";
 import { type CartItem, WineCart } from "@/components/wine/wine-cart";
 import { WineHeader } from "@/components/wine/wine-header";
@@ -10,11 +11,55 @@ import { WineOrderConfirmation } from "@/components/wine/wine-order-confirmation
 import { WineProductGrid } from "@/components/wine/wine-product-grid";
 import type { Wine } from "@/data/wine";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
-import { getScenario } from "@/lib/scenarios";
+import { wineScenario } from "@/scenarios/wine";
 
-const scenario = getScenario("wine");
+const scenario = wineScenario;
+const CART_TAB = "cart";
+const TAB_QUERY_PARAM = "tab";
+const WINE_CART_STORAGE_KEY = "demo-rp:wine-cart";
 
-export default function WinePage() {
+function WinePageLoading() {
+  return (
+    <div
+      className="flex min-h-screen items-center justify-center bg-background"
+      data-theme="wine"
+    >
+      <div className="animate-pulse text-muted-foreground">Loading...</div>
+    </div>
+  );
+}
+
+function readStoredCart(): CartItem[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const rawCart = window.sessionStorage.getItem(WINE_CART_STORAGE_KEY);
+    return rawCart ? (JSON.parse(rawCart) as CartItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredCart(cart: CartItem[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (cart.length === 0) {
+      window.sessionStorage.removeItem(WINE_CART_STORAGE_KEY);
+      return;
+    }
+
+    window.sessionStorage.setItem(WINE_CART_STORAGE_KEY, JSON.stringify(cart));
+  } catch {
+    // Best-effort persistence for redirect resilience.
+  }
+}
+
+function WinePageContent() {
   const {
     isPending,
     isAuthenticated,
@@ -25,11 +70,47 @@ export default function WinePage() {
     handleSignOut,
   } = useOAuthFlow(scenario);
 
-  const [activeTab, setActiveTab] = useState<"browse" | "cart">("browse");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab =
+    searchParams.get(TAB_QUERY_PARAM) === CART_TAB ? "cart" : "browse";
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [hasRestoredCart, setHasRestoredCart] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderedItems, setOrderedItems] = useState<CartItem[]>([]);
   const [orderId, setOrderId] = useState("");
+
+  const setActiveTab = useCallback(
+    (nextTab: "browse" | "cart") => {
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+
+      if (nextTab === "browse") {
+        nextSearchParams.delete(TAB_QUERY_PARAM);
+      } else {
+        nextSearchParams.set(TAB_QUERY_PARAM, nextTab);
+      }
+
+      const nextQuery = nextSearchParams.toString();
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+        scroll: false,
+      });
+    },
+    [pathname, router, searchParams]
+  );
+
+  useEffect(() => {
+    setCart(readStoredCart());
+    setHasRestoredCart(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasRestoredCart) {
+      return;
+    }
+
+    writeStoredCart(cart);
+  }, [cart, hasRestoredCart]);
 
   const addToCart = useCallback((wine: Wine) => {
     setCart((prev) => {
@@ -72,29 +153,16 @@ export default function WinePage() {
     setOrderPlaced(false);
     setOrderedItems([]);
     setActiveTab("browse");
-  }, []);
+  }, [setActiveTab]);
 
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   if (isPending) {
-    return (
-      <div
-        className="flex min-h-screen items-center justify-center bg-background"
-        data-theme="wine"
-      >
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
-      </div>
-    );
+    return <WinePageLoading />;
   }
 
   if (!isAuthenticated) {
-    return (
-      <WineAgeGate
-        dcrConfig={scenario.dcr}
-        onVerify={handleSignIn}
-        providerId={scenario.id}
-      />
-    );
+    return <WineAgeGate onVerify={handleSignIn} scenario={scenario} />;
   }
 
   if (orderPlaced) {
@@ -139,7 +207,7 @@ export default function WinePage() {
 
       <main className="mx-auto max-w-7xl px-6 py-12">
         <AssuranceBadges claims={claims} />
-        <ProviderValidityCard providerId={scenario.id} />
+        <ScenarioValidityCard scenarioId={scenario.id} />
         {activeTab === "browse" ? (
           <div className="fade-in animate-in space-y-16 duration-700">
             <div className="space-y-6 border-border/40 border-b py-12 text-center">
@@ -221,5 +289,13 @@ export default function WinePage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function WinePage() {
+  return (
+    <Suspense fallback={<WinePageLoading />}>
+      <WinePageContent />
+    </Suspense>
   );
 }

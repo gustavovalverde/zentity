@@ -141,11 +141,18 @@
     "tailwind-merge": "3.5.0",
     "tfhe": "1.5.4",
     "uuid": "13.0.0",
-    "viem": "2.47.4",
+    "viem": "2.48.4",
     "wagmi": "3.5.0",
     "web-push": "^3.6.7",
     "zod": "4.3.6",
     "zustand": "^5.0.12"
+  },
+  "optionalDependencies": {
+    "@base-org/account": "^2.5.1",
+    "@coinbase/wallet-sdk": "^4.3.6",
+    "@metamask/connect-evm": "~0.9.0",
+    "@walletconnect/ethereum-provider": "^2.21.1",
+    "porto": "~0.2.35"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",

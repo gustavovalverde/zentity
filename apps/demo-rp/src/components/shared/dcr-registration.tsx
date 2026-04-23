@@ -4,13 +4,11 @@ import { PlusSignCircleIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 
 interface DcrRegistrationProps {
-  clientName: string;
-  defaultScopes: string;
-  grantTypes?: string[] | undefined;
   onRegistered: (clientId: string) => void;
-  providerId: string;
+  scenario: RouteScenario;
 }
 
 type RegistrationState =
@@ -33,11 +31,8 @@ async function parseJsonResponse(response: Response): Promise<unknown> {
 }
 
 export function DcrRegistration({
-  providerId,
-  clientName,
-  defaultScopes,
-  grantTypes,
   onRegistered,
+  scenario,
 }: DcrRegistrationProps) {
   const [state, setState] = useState<RegistrationState>({
     status: "checking",
@@ -46,7 +41,7 @@ export function DcrRegistration({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/dcr?providerId=${encodeURIComponent(providerId)}`)
+    fetch(`/api/dcr?scenarioId=${encodeURIComponent(scenario.id)}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) {
@@ -67,7 +62,7 @@ export function DcrRegistration({
     return () => {
       cancelled = true;
     };
-  }, [providerId, onRegistered]);
+  }, [scenario.id, onRegistered]);
 
   const handleRegister = async () => {
     setState({ status: "registering" });
@@ -76,12 +71,7 @@ export function DcrRegistration({
       const res = await fetch("/api/dcr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerId,
-          clientName,
-          scopes: defaultScopes,
-          ...(grantTypes ? { grantTypes } : {}),
-        }),
+        body: JSON.stringify({ scenarioId: scenario.id }),
       });
       const data = (await parseJsonResponse(res)) as {
         client_id?: string;
@@ -130,11 +120,15 @@ export function DcrRegistration({
       <div className="space-y-1.5 text-muted-foreground text-sm">
         <div className="flex items-center gap-2">
           <span className="text-xs">Client name:</span>
-          <span className="font-medium text-foreground">{clientName}</span>
+          <span className="font-medium text-foreground">
+            {scenario.dcr.clientName}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs">Scopes:</span>
-          <span className="font-mono text-xs">{defaultScopes}</span>
+          <span className="font-mono text-xs">
+            {scenario.dcr.requestedScopes}
+          </span>
         </div>
       </div>
       {error && <p className="text-destructive text-sm">{error}</p>}

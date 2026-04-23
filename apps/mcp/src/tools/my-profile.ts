@@ -1,11 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { throwUrlElicitationIfSupported } from "../auth/interactive-tool-flow.js";
+import { throwUrlElicitationIfSupported } from "../services/interactive-approval.js";
 import {
   normalizeProfileFields,
   PROFILE_FIELDS,
   type PublicProfileField,
-} from "../auth/profile-fields.js";
+} from "../services/profile-fields.js";
 import { readProfile } from "../services/profile-read.js";
 
 const profileFieldSchema = z.enum(PROFILE_FIELDS);

@@ -1,10 +1,5 @@
 import { SDJwtInstance } from "@sd-jwt/core";
 
-import {
-  createVeripassDisclosureKeyMap,
-  normalizeVeripassClaims,
-} from "@/lib/veripass-claims";
-
 const STORAGE_KEY = "veripass:credential";
 
 export interface StoredCredential {
@@ -47,19 +42,13 @@ export function clearCredential(): void {
 export async function decodeClaims(
   credential: string
 ): Promise<Record<string, unknown>> {
-  return normalizeVeripassClaims(
-    (await sdjwt.getClaims(credential)) as Record<string, unknown>
-  );
+  return (await sdjwt.getClaims(credential)) as Record<string, unknown>;
 }
 
 export async function getPresentableKeys(
   credential: string
 ): Promise<string[]> {
-  const keys = Array.from(
-    createVeripassDisclosureKeyMap(
-      await sdjwt.presentableKeys(credential)
-    ).keys()
-  );
+  const keys = await sdjwt.presentableKeys(credential);
   // Filter out JWT metadata keys
   const metaKeys = new Set([
     "iss",
@@ -82,15 +71,12 @@ export function createPresentation(
   selectedKeys: string[]
 ): Promise<string> {
   return (async () => {
-    const keyMap = createVeripassDisclosureKeyMap(
-      await sdjwt.presentableKeys(credential)
-    );
+    const presentableKeys = new Set(await sdjwt.presentableKeys(credential));
     const frame: Record<string, boolean> = {};
 
     for (const key of selectedKeys) {
-      const disclosureKey = keyMap.get(key);
-      if (disclosureKey) {
-        frame[disclosureKey] = true;
+      if (presentableKeys.has(key)) {
+        frame[key] = true;
       }
     }
 
@@ -101,7 +87,5 @@ export function createPresentation(
 export async function verifyPresentation(
   presentation: string
 ): Promise<Record<string, unknown>> {
-  return normalizeVeripassClaims(
-    (await sdjwt.getClaims(presentation)) as Record<string, unknown>
-  );
+  return (await sdjwt.getClaims(presentation)) as Record<string, unknown>;
 }

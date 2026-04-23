@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Redacted } from "@/components/ui/redacted";
-import { CLAIM_LABELS } from "@/data/veripass";
+import { CLAIM_LABELS } from "@/scenarios/veripass/verifier-registry";
 
 interface ClaimListProps {
   claims: Record<string, unknown>;

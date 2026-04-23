@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routeMocks = vi.hoisted(() => ({
-  getProviderValidityState: vi.fn(),
+  getScenarioValidityState: vi.fn(),
   getSession: vi.fn(),
   headers: vi.fn(),
-  isValidProviderId: vi.fn(),
+  isRouteScenarioId: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -19,12 +19,12 @@ vi.mock("@/lib/auth", () => ({
   })),
 }));
 
-vi.mock("@/lib/dcr", () => ({
-  isValidProviderId: routeMocks.isValidProviderId,
+vi.mock("@/scenarios/route-scenario-registry", () => ({
+  isRouteScenarioId: routeMocks.isRouteScenarioId,
 }));
 
 vi.mock("@/lib/validity", () => ({
-  getProviderValidityState: routeMocks.getProviderValidityState,
+  getScenarioValidityState: routeMocks.getScenarioValidityState,
 }));
 
 import { GET } from "./route";
@@ -33,14 +33,14 @@ describe("GET /api/auth/validity-state", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     routeMocks.headers.mockResolvedValue(new Headers());
-    routeMocks.isValidProviderId.mockReturnValue(true);
+    routeMocks.isRouteScenarioId.mockReturnValue(true);
     routeMocks.getSession.mockResolvedValue({
       user: { id: "user-123" },
     });
-    routeMocks.getProviderValidityState.mockResolvedValue({
+    routeMocks.getScenarioValidityState.mockResolvedValue({
       clientId: "client-123",
       latestNotice: null,
-      providerId: "bank",
+      scenarioId: "bank",
       pullError: null,
       snapshot: {
         eventId: "event-1",
@@ -54,15 +54,15 @@ describe("GET /api/auth/validity-state", () => {
   });
 
   it("rejects invalid provider ids", async () => {
-    routeMocks.isValidProviderId.mockReturnValue(false);
+    routeMocks.isRouteScenarioId.mockReturnValue(false);
 
     const response = await GET(
-      new Request("http://localhost/api/auth/validity-state?providerId=nope")
+      new Request("http://localhost/api/auth/validity-state?scenarioId=nope")
     );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid or missing providerId",
+      error: "Invalid or missing scenarioId",
     });
   });
 
@@ -70,7 +70,7 @@ describe("GET /api/auth/validity-state", () => {
     routeMocks.getSession.mockResolvedValue(null);
 
     const response = await GET(
-      new Request("http://localhost/api/auth/validity-state?providerId=bank")
+      new Request("http://localhost/api/auth/validity-state?scenarioId=bank")
     );
 
     expect(response.status).toBe(401);
@@ -81,7 +81,7 @@ describe("GET /api/auth/validity-state", () => {
 
   it("returns the provider validity state for the current session", async () => {
     const response = await GET(
-      new Request("http://localhost/api/auth/validity-state?providerId=bank")
+      new Request("http://localhost/api/auth/validity-state?scenarioId=bank")
     );
 
     expect(response.status).toBe(200);
@@ -89,7 +89,7 @@ describe("GET /api/auth/validity-state", () => {
     await expect(response.json()).resolves.toEqual({
       clientId: "client-123",
       latestNotice: null,
-      providerId: "bank",
+      scenarioId: "bank",
       pullError: null,
       snapshot: {
         eventId: "event-1",
@@ -100,8 +100,8 @@ describe("GET /api/auth/validity-state", () => {
       },
       subject: "pairwise-sub-1",
     });
-    expect(routeMocks.getProviderValidityState).toHaveBeenCalledWith({
-      providerId: "bank",
+    expect(routeMocks.getScenarioValidityState).toHaveBeenCalledWith({
+      scenarioId: "bank",
       userId: "user-123",
     });
   });

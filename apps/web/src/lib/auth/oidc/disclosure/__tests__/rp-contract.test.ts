@@ -36,14 +36,22 @@ let signJwt: typeof import("../../jwt-signer").signJwt;
 
 const MCP_ROOT = "../../../../../../../mcp/src";
 const DEMO_RP_ROOT = "../../../../../../../demo-rp/src";
+const DEMO_RP_ROUTE_REGISTRY_PATH = `${DEMO_RP_ROOT}/scenarios/route-scenario-registry.ts`;
+const MCP_SCOPE_SOURCE_FILES = [
+  `${MCP_ROOT}/runtime/bootstrap-scopes.ts`,
+  `${MCP_ROOT}/oauth-client.ts`,
+  `${MCP_ROOT}/transports/remote-scope-policy.ts`,
+  `${MCP_ROOT}/services/profile-fields.ts`,
+  `${MCP_ROOT}/services/identity-release.ts`,
+  `${MCP_ROOT}/tools/purchase.ts`,
+] as const;
 
 // Top-level regexes (Biome: useTopLevelRegex)
-const PROVIDER_SCOPES_BLOCK_RE =
-  /PROVIDER_SCOPES[^{]*\{([^}]+(?:\{[^}]*\}[^}]*)*)\}/s;
-const AETHER_BOOTSTRAP_RE = /AETHER_BOOTSTRAP_SCOPES\s*=\s*\[([^\]]*)\]/;
-const LOGIN_SCOPES_RE = /INSTALLED_AGENT_LOGIN_SCOPES\s*=\s*\[([^\]]*)\]/;
-const CIBA_SCOPES_RE = /INSTALLED_AGENT_CIBA_SCOPES\s*=\s*\[([^\]]*)\]/;
-const SCENARIO_IIFE_RE = /(\w+):\s*\(\(\)\s*=>\s*\{([\s\S]*?)\}\)\(\)/g;
+const DEMO_RP_ROUTE_SCENARIO_IMPORT_RE = /from\s+"@\/scenarios\/([^"]+)"/g;
+const SCENARIO_ID_RE = /id:\s*"([^"]+)"/;
+const STRING_ARRAY_ITEM_RE = /"([^"\n]+)"/g;
+const LOGIN_SCOPES_RE = /INSTALLED_AGENT_LOGIN_SCOPES\s*=\s*\[([^\]]*)\]/s;
+const CIBA_SCOPES_RE = /INSTALLED_AGENT_CIBA_SCOPES\s*=\s*\[([^\]]*)\]/s;
 
 async function readSource(relativePath: string): Promise<string> {
   const fs = await import("node:fs/promises");
@@ -94,91 +102,78 @@ function extractScopes(source: string): string[] {
   return [...scopes];
 }
 
-/** Parse demo-rp scenarios.ts — returns signInScopes, stepUpScopes, stepUpClaimKeys per scenario. */
+function extractStringArray(sourceFragment: string): string[] {
+  return [...sourceFragment.matchAll(STRING_ARRAY_ITEM_RE)].map(
+    (match) => match[1] as string
+  );
+}
+
+function extractConstStringArray(source: string, constName: string): string[] {
+  const arrayMatch = source.match(
+    new RegExp(`const\\s+${constName}\\s*=\\s*\\[([^\\]]*?)\\]`, "s")
+  );
+  return arrayMatch?.[1] ? extractStringArray(arrayMatch[1]) : [];
+}
+
+function extractInlineStringArray(source: string, fieldName: string): string[] {
+  const arrayMatch = source.match(
+    new RegExp(`${fieldName}:\\s*\\[([^\\]]*?)\\]`, "s")
+  );
+  return arrayMatch?.[1] ? extractStringArray(arrayMatch[1]) : [];
+}
+
+async function getDemoRpRouteScenarioSourcePaths(): Promise<string[]> {
+  const registrySource = await readSource(DEMO_RP_ROUTE_REGISTRY_PATH);
+  const sourcePaths = new Set<string>();
+
+  for (const match of registrySource.matchAll(
+    DEMO_RP_ROUTE_SCENARIO_IMPORT_RE
+  )) {
+    const importPath = match[1];
+    if (!importPath || importPath === "route-scenario") {
+      continue;
+    }
+    sourcePaths.add(`${DEMO_RP_ROOT}/scenarios/${importPath}.ts`);
+  }
+
+  return [...sourcePaths];
+}
+
+/** Parse demo-rp route scenario source files. */
 async function parseDemoRpScenarios(): Promise<
   Record<
     string,
     {
+      sourcePath: string;
       signInScopes: string[];
       stepUpScopes: string[];
       stepUpClaimKeys: string[];
     }
   >
 > {
-  const source = await readSource(`${DEMO_RP_ROOT}/lib/scenarios.ts`);
   const result: Record<
     string,
     {
+      sourcePath: string;
       signInScopes: string[];
       stepUpScopes: string[];
       stepUpClaimKeys: string[];
     }
   > = {};
 
-  // Each scenario is an IIFE: `scenarioId: (() => { const signInScopes = [...]; ... })()`
-  // Split on scenario keys in the SCENARIOS object to get per-scenario blocks
-  SCENARIO_IIFE_RE.lastIndex = 0;
-  let scenarioMatch = SCENARIO_IIFE_RE.exec(source);
-  while (scenarioMatch) {
-    const id = scenarioMatch[1];
-    const body = scenarioMatch[2] ?? "";
-    if (id) {
-      const extractArray = (key: string): string[] => {
-        const m = body.match(
-          new RegExp(`(?:const|let)\\s+${key}\\s*=\\s*\\[([^\\]]*?)\\]`)
-        );
-        if (m?.[1]) {
-          return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1] as string);
-        }
-        const inline = body.match(new RegExp(`${key}:\\s*\\[([^\\]]*?)\\]`));
-        if (inline?.[1]) {
-          return [...inline[1].matchAll(/"([^"]+)"/g)].map(
-            (x) => x[1] as string
-          );
-        }
-        return [];
-      };
-
-      result[id] = {
-        signInScopes: extractArray("signInScopes"),
-        stepUpScopes: extractArray("stepUpScopes"),
-        stepUpClaimKeys: extractArray("stepUpClaimKeys"),
-      };
+  for (const sourcePath of await getDemoRpRouteScenarioSourcePaths()) {
+    const source = await readSource(sourcePath);
+    const scenarioId = source.match(SCENARIO_ID_RE)?.[1];
+    if (!scenarioId) {
+      continue;
     }
-    scenarioMatch = SCENARIO_IIFE_RE.exec(source);
-  }
-  return result;
-}
 
-/** Parse demo-rp auth.ts — returns PROVIDER_SCOPES per provider. */
-async function parseDemoRpProviderScopes(): Promise<Record<string, string[]>> {
-  const source = await readSource(`${DEMO_RP_ROOT}/lib/auth.ts`);
-  const result: Record<string, string[]> = {};
-
-  const providerBlock = source.match(PROVIDER_SCOPES_BLOCK_RE);
-  if (!providerBlock?.[1]) {
-    return result;
-  }
-
-  for (const match of providerBlock[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
-    const provider = match[1];
-    const scopeStr = match[2];
-    if (provider && scopeStr) {
-      result[provider] = [...scopeStr.matchAll(/"([^"]+)"/g)].map(
-        (m) => m[1] as string
-      );
-    }
-  }
-
-  // aether uses spread: ...AETHER_BOOTSTRAP_SCOPES
-  if (result.aether) {
-    const bootstrapMatch = source.match(AETHER_BOOTSTRAP_RE);
-    if (bootstrapMatch?.[1]) {
-      const bootstrapScopes = [...bootstrapMatch[1].matchAll(/"([^"]+)"/g)].map(
-        (m) => m[1] as string
-      );
-      result.aether = [...result.aether, ...bootstrapScopes];
-    }
+    result[scenarioId] = {
+      sourcePath,
+      signInScopes: extractConstStringArray(source, "signInScopes"),
+      stepUpScopes: extractConstStringArray(source, "stepUpScopes"),
+      stepUpClaimKeys: extractInlineStringArray(source, "stepUpClaimKeys"),
+    };
   }
 
   return result;
@@ -188,26 +183,18 @@ async function parseDemoRpProviderScopes(): Promise<Record<string, string[]>> {
 // 1. Scope existence — every scope string in every external file
 // ---------------------------------------------------------------------------
 
-const EXTERNAL_SCOPE_SITES = [
-  `${MCP_ROOT}/auth/bootstrap-scopes.ts`,
-  `${MCP_ROOT}/auth/installed-agent-scopes.ts`,
-  `${MCP_ROOT}/auth/mcp-scope-policy.ts`,
-  `${MCP_ROOT}/auth/profile-fields.ts`,
-  `${MCP_ROOT}/auth/identity.ts`,
-  // fpa.ts uses INSTALLED_AGENT_LOGIN_SCOPE_STRING (no hardcoded scopes) — validated in MCP semantic tests
-  `${MCP_ROOT}/auth/auth-surfaces.ts`,
-  `${MCP_ROOT}/tools/purchase.ts`,
-  `${DEMO_RP_ROOT}/lib/scenarios.ts`,
-  `${DEMO_RP_ROOT}/lib/auth.ts`,
-];
-
 describe("cross-channel contract — scope existence", () => {
-  const registryScopes = new Set(OAUTH_SCOPES);
+  it("every scope in active consumer sources is in the registry", async () => {
+    const registryScopes = new Set(OAUTH_SCOPES);
+    const externalScopeSites = [
+      ...MCP_SCOPE_SOURCE_FILES,
+      ...(await getDemoRpRouteScenarioSourcePaths()),
+    ];
 
-  for (const file of EXTERNAL_SCOPE_SITES) {
-    const shortName = file.replace(/^\.\.\/+/g, "");
+    expect(externalScopeSites.length).toBeGreaterThan(0);
 
-    it(`${shortName}: every scope is in the registry`, async () => {
+    for (const file of externalScopeSites) {
+      const shortName = file.replace(/^\.\.\/+/g, "");
       const source = await readSource(file);
       const scopes = extractScopes(source);
       expect(
@@ -221,8 +208,8 @@ describe("cross-channel contract — scope existence", () => {
           `${shortName} uses scope "${scope}" which is not in the disclosure registry`
         ).toBe(true);
       }
-    });
-  }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -230,23 +217,15 @@ describe("cross-channel contract — scope existence", () => {
 // ---------------------------------------------------------------------------
 
 describe("cross-channel contract — demo-rp semantic alignment", () => {
-  it("scenarios.ts signInScopes match PROVIDER_SCOPES in auth.ts", async () => {
+  it("auth.ts passes scenario sign-in scopes to the OAuth provider config", async () => {
     const scenarios = await parseDemoRpScenarios();
-    const providerScopes = await parseDemoRpProviderScopes();
-
     expect(Object.keys(scenarios).length).toBeGreaterThan(0);
-    expect(Object.keys(providerScopes).length).toBeGreaterThan(0);
+    const authSource = await readSource(`${DEMO_RP_ROOT}/lib/auth.ts`);
 
-    for (const [id, scenario] of Object.entries(scenarios)) {
-      const provider = providerScopes[id];
-      if (!provider) {
-        continue;
-      }
-      expect(
-        [...scenario.signInScopes].sort(),
-        `${id}: signInScopes in scenarios.ts does not match PROVIDER_SCOPES in auth.ts`
-      ).toEqual([...provider].sort());
-    }
+    expect(
+      authSource.includes("scenario.signInScopes"),
+      "auth.ts must pass scenario.signInScopes into makeProviderConfig"
+    ).toBe(true);
   });
 
   it("signInScopes never contain identity.* scopes", async () => {
@@ -321,7 +300,7 @@ describe("cross-channel contract — demo-rp semantic alignment", () => {
 
 describe("cross-channel contract — MCP semantic alignment", () => {
   it("profile-fields.ts field→scope entries have valid claim mappings", async () => {
-    const source = await readSource(`${MCP_ROOT}/auth/profile-fields.ts`);
+    const source = await readSource(`${MCP_ROOT}/services/profile-fields.ts`);
 
     const map: Record<string, string> = {};
     const regex = /(\w+):\s*"(identity\.\w+)"/g;
@@ -344,25 +323,23 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     }
   });
 
-  it("fpa.ts uses INSTALLED_AGENT_LOGIN_SCOPE_STRING, not a hardcoded string", async () => {
-    const source = await readSource(`${MCP_ROOT}/auth/fpa.ts`);
+  it("oauth-client.ts derives loginScope from INSTALLED_AGENT_LOGIN_SCOPES", async () => {
+    const source = await readSource(`${MCP_ROOT}/oauth-client.ts`);
 
     expect(
-      source.includes("INSTALLED_AGENT_LOGIN_SCOPE_STRING"),
-      "fpa.ts must use INSTALLED_AGENT_LOGIN_SCOPE_STRING to stay aligned with installed-agent-scopes.ts"
+      source.includes('loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" ")'),
+      "oauth-client.ts must derive loginScope from INSTALLED_AGENT_LOGIN_SCOPES"
     ).toBe(true);
   });
 
   it("installed-agent login scopes contain no identity.* scopes (vault-gated PII is CIBA-only)", async () => {
-    const source = await readSource(
-      `${MCP_ROOT}/auth/installed-agent-scopes.ts`
-    );
+    const source = await readSource(`${MCP_ROOT}/oauth-client.ts`);
 
     const loginMatch = source.match(LOGIN_SCOPES_RE);
     expect(loginMatch?.[1]).toBeDefined();
-    const loginScopes = [
-      ...(loginMatch?.[1]?.matchAll(/"([^"\n]+)"/g) ?? []),
-    ].map((m) => m[1] as string);
+    const loginScopes = loginMatch?.[1]
+      ? extractStringArray(loginMatch[1])
+      : [];
 
     for (const scope of loginScopes) {
       expect(
@@ -373,15 +350,11 @@ describe("cross-channel contract — MCP semantic alignment", () => {
   });
 
   it("installed-agent CIBA scopes are all in the registry", async () => {
-    const source = await readSource(
-      `${MCP_ROOT}/auth/installed-agent-scopes.ts`
-    );
+    const source = await readSource(`${MCP_ROOT}/oauth-client.ts`);
 
     const cibaMatch = source.match(CIBA_SCOPES_RE);
     expect(cibaMatch?.[1]).toBeDefined();
-    const toolScopes = [
-      ...(cibaMatch?.[1]?.matchAll(/"([^"\n]+)"/g) ?? []),
-    ].map((m) => m[1] as string);
+    const toolScopes = cibaMatch?.[1] ? extractStringArray(cibaMatch[1]) : [];
 
     expect(toolScopes.length).toBeGreaterThan(0);
     const registryScopes = new Set(OAUTH_SCOPES);
@@ -394,7 +367,7 @@ describe("cross-channel contract — MCP semantic alignment", () => {
   });
 
   it("identity.ts scope strings are registered identity scopes", async () => {
-    const source = await readSource(`${MCP_ROOT}/auth/identity.ts`);
+    const source = await readSource(`${MCP_ROOT}/services/identity-release.ts`);
     const scopes = extractScopes(source);
     const identityScopes = scopes.filter((s) => s.startsWith("identity."));
 
@@ -402,7 +375,7 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     for (const scope of identityScopes) {
       expect(
         IDENTITY_SCOPES.includes(scope as never),
-        `identity.ts uses "${scope}" which is not in IDENTITY_SCOPES`
+        `identity-release.ts uses "${scope}" which is not in IDENTITY_SCOPES`
       ).toBe(true);
     }
   });

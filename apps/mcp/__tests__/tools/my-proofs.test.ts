@@ -23,18 +23,18 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/auth/dpop.js", () => ({
+vi.mock("../../src/runtime/dpop-proof.js", () => ({
   createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
   extractDpopNonce: vi.fn().mockReturnValue(undefined),
 }));
 
-vi.mock("../../src/auth/context.js", () => ({
+vi.mock("../../src/runtime/auth-context.js", () => ({
   getAuthContext: () => mockAuthContext,
   getOAuthContext: () => mockOAuthContext,
   requireAuth: () => Promise.resolve(mockAuthContext),
 }));
 
-vi.mock("../../src/auth/ciba.js", () => ({
+vi.mock("../../src/services/ciba.js", () => ({
   CibaDeniedError: class extends Error {},
   CibaTimeoutError: class extends Error {},
   logPendingApprovalHandoff: vi.fn(),

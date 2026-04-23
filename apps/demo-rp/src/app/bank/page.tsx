@@ -14,13 +14,13 @@ import { BankDashboard } from "@/components/bank/bank-dashboard";
 import { BankProspect } from "@/components/bank/bank-prospect";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
-import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
+import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
 import { Button } from "@/components/ui/button";
 import { Redacted } from "@/components/ui/redacted";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
-import { getScenario } from "@/lib/scenarios";
+import { bankScenario } from "@/scenarios/bank";
 
-const scenario = getScenario("bank");
+const scenario = bankScenario;
 
 interface SidebarItem {
   active?: boolean;
@@ -115,10 +115,8 @@ export default function BankPage() {
             <div className="space-y-4 pt-4">
               <div className="text-left [&_*]:text-white/80 [&_.border]:border-white/10">
                 <DcrRegistration
-                  clientName={scenario.dcr.clientName}
-                  defaultScopes={scenario.dcr.defaultScopes}
                   onRegistered={handleDcrRegistered}
-                  providerId={scenario.id}
+                  scenario={scenario}
                 />
               </div>
               <Button
@@ -255,7 +253,7 @@ export default function BankPage() {
                   Welcome back, here&apos;s your financial overview.
                 </p>
                 <AssuranceBadges claims={claims} />
-                <ProviderValidityCard providerId={scenario.id} />
+                <ScenarioValidityCard scenarioId={scenario.id} />
               </div>
               <BankDashboard claims={claims} />
             </div>

@@ -3,16 +3,13 @@ import Link from "next/link";
 import { Logo } from "@/components/chrome/logo";
 import { ModeToggle } from "@/components/chrome/mode-toggle";
 import { QueryProvider } from "@/components/providers/query-provider";
-import { Web3Provider } from "@/components/providers/web3-provider";
 
 interface StandaloneLayoutProps {
   children: React.ReactNode;
-  cookies: string | null;
 }
 
 export function StandaloneLayout({
   children,
-  cookies,
 }: Readonly<StandaloneLayoutProps>) {
   return (
     <div className="flex min-h-screen flex-col">
@@ -28,9 +25,7 @@ export function StandaloneLayout({
         className="flex flex-1 items-center justify-center px-4 py-12"
         id="main-content"
       >
-        <QueryProvider>
-          <Web3Provider cookies={cookies}>{children}</Web3Provider>
-        </QueryProvider>
+        <QueryProvider>{children}</QueryProvider>
       </main>
     </div>
   );

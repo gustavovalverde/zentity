@@ -9,12 +9,13 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prepareAgentAssertionForProvider } from "@/lib/agent-runtime";
+import { prepareAgentAssertionForScenario } from "@/lib/agent-runtime";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
-import { isValidProviderId, readDcrClient } from "@/lib/dcr";
+import { readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { ROUTE_SCENARIO_IDS } from "@/scenarios/route-scenario-registry";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
@@ -30,10 +31,12 @@ const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const MERCHANT_RESOURCE = "https://merchant.example.com/api";
 const EXCHANGE_SCOPE = "openid";
 
+const scenarioIdSchema = z.enum(ROUTE_SCENARIO_IDS);
+
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("authorize"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     loginHint: z.string().min(1),
     scope: z.string().min(1),
     bindingMessage: z.string().optional(),
@@ -43,7 +46,7 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("token"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     authReqId: z.string().min(1),
   }),
   z.object({
@@ -52,7 +55,7 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("token-exchange"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     accessToken: z.string().min(1),
   }),
 ]);
@@ -153,11 +156,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: row?.received ?? false });
   }
 
-  if (!("providerId" in data && isValidProviderId(data.providerId))) {
-    return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
-  }
-
-  const client = await readDcrClient(data.providerId);
+  const client = await readDcrClient(data.scenarioId);
   if (!client) {
     return NextResponse.json(
       { error: "Client not registered. Register first." },
@@ -180,9 +179,9 @@ export async function POST(request: Request) {
 
     let agentAssertion: string | null = null;
     try {
-      agentAssertion = await prepareAgentAssertionForProvider({
+      agentAssertion = await prepareAgentAssertionForScenario({
         bindingMessage,
-        providerId: data.providerId,
+        scenarioId: data.scenarioId,
         ...(data.trustTier ? { trustTier: data.trustTier } : {}),
         userId: session.user.id,
       });

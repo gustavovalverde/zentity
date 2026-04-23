@@ -4,9 +4,9 @@ import { QRCodeSVG } from "qrcode.react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CLAIM_LABELS } from "@/data/veripass";
 import type { useVpFlow } from "@/hooks/use-vp-flow";
 import { isDcApiAvailable, requestPresentation } from "@/lib/dc-api";
+import { CLAIM_LABELS } from "@/scenarios/veripass/verifier-registry";
 
 interface VpRequestProps {
   flow: ReturnType<typeof useVpFlow>;

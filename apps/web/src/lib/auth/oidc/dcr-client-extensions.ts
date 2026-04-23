@@ -8,9 +8,12 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 interface DcrClientExtensions {
   backchannelLogoutSessionRequired?: boolean;
   backchannelLogoutUri?: string;
+  protectedResource?: string;
   rpValidityNoticeEnabled?: boolean;
   rpValidityNoticeUri?: string;
 }
+
+const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 
 function parseClientMetadataRecord(
   metadata: string | null
@@ -44,6 +47,9 @@ export function readDcrClientExtensions(
     body.backchannel_logout_session_required === true;
   const rpValidityNoticeUri = readTrimmedString(body.rp_validity_notice_uri);
   const rpValidityNoticeEnabled = body.rp_validity_notice_enabled === true;
+  const protectedResource = readTrimmedString(
+    body[PROTECTED_RESOURCE_METADATA_FIELD]
+  );
 
   const extensions: DcrClientExtensions = {};
   if (backchannelLogoutUri) {
@@ -56,6 +62,9 @@ export function readDcrClientExtensions(
     extensions.rpValidityNoticeEnabled = true;
   } else if (rpValidityNoticeEnabled) {
     extensions.rpValidityNoticeEnabled = true;
+  }
+  if (protectedResource) {
+    extensions.protectedResource = protectedResource;
   }
 
   return Object.keys(extensions).length > 0 ? extensions : null;
@@ -89,6 +98,9 @@ export async function persistDcrClientExtensions(
   }
   if (extensions.rpValidityNoticeEnabled) {
     metadata.rp_validity_notice_enabled = true;
+  }
+  if (extensions.protectedResource) {
+    metadata[PROTECTED_RESOURCE_METADATA_FIELD] = extensions.protectedResource;
   }
 
   await db

@@ -1,5 +1,5 @@
 import type {
-  AccessTokenClaims,
+  AapAccessTokenClaims,
   CapabilityClaim,
   HostAttestationTier,
   OversightMethod,
@@ -24,7 +24,7 @@ interface BuildAapClaimsInput {
     requestId?: string | null;
   };
   capabilities?: CapabilityClaim[] | null;
-  delegation?: AccessTokenClaims["delegation"] | null;
+  delegation?: AapAccessTokenClaims["delegation"] | null;
   oversight: {
     approvalId: string;
     approvedAt: number;
@@ -56,7 +56,9 @@ function normalizeCapabilityClaims(
     .toSorted((left, right) => left.action.localeCompare(right.action));
 }
 
-export function buildAapClaims(input: BuildAapClaimsInput): AccessTokenClaims {
+export function buildAapClaims(
+  input: BuildAapClaimsInput
+): AapAccessTokenClaims {
   const capabilities = normalizeCapabilityClaims(input.capabilities);
 
   return {
@@ -105,8 +107,8 @@ export function buildAapClaims(input: BuildAapClaimsInput): AccessTokenClaims {
 
 export function getAapClaimsFromPayload(
   payload: Record<string, unknown>
-): Partial<AccessTokenClaims> {
-  const parsedClaims: Partial<AccessTokenClaims> = {};
+): Partial<AapAccessTokenClaims> {
+  const parsedClaims: Partial<AapAccessTokenClaims> = {};
 
   const act = asRecord(payload.act);
   if (
@@ -230,9 +232,9 @@ export class DelegationDepthExceededError extends Error {
 }
 
 export function deriveDelegationClaim(input: {
-  parent?: Partial<AccessTokenClaims> | null;
+  parent?: Partial<AapAccessTokenClaims> | null;
   parentJti?: string | null;
-}): AccessTokenClaims["delegation"] {
+}): AapAccessTokenClaims["delegation"] {
   const parentDelegation = input.parent?.delegation;
   const parentDepth = parentDelegation?.depth ?? 0;
   const maxDepth = parentDelegation?.max_depth ?? 1;

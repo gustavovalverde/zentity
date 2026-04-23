@@ -415,8 +415,7 @@ export async function bindAgentAssertionToCibaRequest(
 
 // ---------------------------------------------------------------------------
 // Agent OAuth Scopes
-// Keep aligned with apps/mcp/src/auth/bootstrap-scopes.ts and
-// apps/mcp/src/auth/installed-agent-scopes.ts.
+// Keep aligned with apps/mcp/src/runtime/bootstrap-scopes.ts.
 // ---------------------------------------------------------------------------
 
 export const AGENT_HOST_REGISTER_SCOPE = "agent:host.register";
@@ -437,7 +436,7 @@ export const AGENT_BOOTSTRAP_TOKEN_USE = "agent_bootstrap";
 
 // ---------------------------------------------------------------------------
 // Agent Configuration (well-known document)
-// Keep aligned with apps/mcp/src/auth/agent-configuration.ts.
+// Keep aligned with apps/mcp/src/runtime/agent-configuration.ts.
 // ---------------------------------------------------------------------------
 
 const agentBootstrapTokenExchangeSchema = z.object({

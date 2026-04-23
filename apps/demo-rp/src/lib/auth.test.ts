@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authMocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config) => config),
   createOpenIdTokenVerifier: vi.fn(),
-  currentClientIdKey: vi.fn(),
   createDpopClient: vi.fn(),
   decodeProtectedHeader: vi.fn(),
   drizzleAdapter: vi.fn(() => ({ adapter: true })),
@@ -47,10 +46,16 @@ vi.mock("@/lib/db/connection", () => ({
 }));
 
 vi.mock("@/lib/dcr", () => ({
-  PROVIDER_IDS: ["x402"],
-  currentClientIdKey: authMocks.currentClientIdKey,
   readDcrClientId: authMocks.readDcrClientId,
 }));
+
+vi.mock("@/scenarios/route-scenario-registry", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/scenarios/route-scenario-registry")
+    >();
+  return { ...actual, ROUTE_SCENARIO_IDS: ["x402"] };
+});
 
 vi.mock("@/lib/env", () => ({
   env: {
@@ -103,7 +108,6 @@ describe("getAuth provider userinfo", () => {
     authMocks.createOpenIdTokenVerifier.mockReturnValue({
       verify: authMocks.verifyToken,
     });
-    authMocks.currentClientIdKey.mockResolvedValue("x402=test-client");
     authMocks.readDcrClientId.mockResolvedValue("test-client");
     authMocks.fetchUserInfo.mockResolvedValue({
       email: "alice@example.com",
@@ -195,5 +199,29 @@ describe("getAuth provider userinfo", () => {
       issuerUrl: "http://zentity.example",
     });
     expect(authMocks.verifyToken).toHaveBeenCalledWith("id-token");
+  });
+
+  it("rebuilds provider configuration from the latest DCR client id", async () => {
+    authMocks.readDcrClientId
+      .mockResolvedValueOnce("client-before")
+      .mockResolvedValueOnce("client-after");
+
+    const { getAuth } = await import("./auth");
+    const firstAuth = await getAuth();
+    const secondAuth = await getAuth();
+
+    const firstProvider = (
+      firstAuth as unknown as { plugins: Record<string, unknown>[] }
+    ).plugins.find((plugin) => plugin.type === "genericOAuth") as
+      | { config: Record<string, unknown>[] }
+      | undefined;
+    const secondProvider = (
+      secondAuth as unknown as { plugins: Record<string, unknown>[] }
+    ).plugins.find((plugin) => plugin.type === "genericOAuth") as
+      | { config: Record<string, unknown>[] }
+      | undefined;
+
+    expect(firstProvider?.config[0]?.clientId).toBe("client-before");
+    expect(secondProvider?.config[0]?.clientId).toBe("client-after");
   });
 });

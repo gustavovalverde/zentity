@@ -84,6 +84,7 @@ export function OAuthConsentClient({
   clientId,
   clientHostname,
   clientMeta,
+  initialErrorMessage,
   isLocalApp,
   optionalScopes,
   scopeParam,
@@ -94,6 +95,7 @@ export function OAuthConsentClient({
   clientId: string | null;
   clientHostname: string | null;
   clientMeta: ClientMeta | null;
+  initialErrorMessage?: string | null;
   isLocalApp: boolean;
   optionalScopes: string[];
   scopeParam: string;
@@ -106,10 +108,14 @@ export function OAuthConsentClient({
     rawClientName.length > 100
       ? `${rawClientName.slice(0, 97)}...`
       : rawClientName;
+  const [isHydrated, setIsHydrated] = useState(false);
   const [isPopup, setIsPopup] = useState(false);
+  const [signedOAuthQuery, setSignedOAuthQuery] = useState<string | null>(null);
 
   useEffect(() => {
     setIsPopup(!!globalThis.window.opener);
+    setIsHydrated(true);
+    setSignedOAuthQuery(getSignedOAuthQuery());
   }, []);
 
   const allScopes = useMemo(
@@ -146,7 +152,9 @@ export function OAuthConsentClient({
 
   const [selectedOptional, setSelectedOptional] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    initialErrorMessage ?? null
+  );
 
   const approvedScopes = useMemo(
     () => [
@@ -164,6 +172,10 @@ export function OAuthConsentClient({
   );
   const approvedScopeKey = useMemo(
     () => buildScopeKey(approvedScopes),
+    [approvedScopes]
+  );
+  const consentScopeString = useMemo(
+    () => approvedScopes.filter((scope) => !isIdentityScope(scope)).join(" "),
     [approvedScopes]
   );
 
@@ -309,18 +321,16 @@ export function OAuthConsentClient({
         );
       }
 
-      const data = response.data as {
+      const { redirectURI, url } = response.data as {
+        redirectURI?: string;
         url?: string;
-        uri?: string;
-        redirect_uri?: string;
       };
-      const redirectUri = data.url || data.uri || data.redirect_uri;
-
-      if (!redirectUri) {
+      const redirectUrl = (redirectURI ?? url)?.trim();
+      if (!redirectUrl) {
         throw new Error("Missing redirect URL from consent response.");
       }
 
-      globalThis.window.location.assign(redirectUri);
+      globalThis.window.location.assign(redirectUrl);
     } catch (err) {
       // If staging succeeded but consent failed, clear the stale ephemeral
       // entry so the user can retry without hitting "concurrent_stage".
@@ -349,6 +359,7 @@ export function OAuthConsentClient({
   return (
     <div
       className={`mx-auto flex w-full flex-col gap-4 ${isPopup ? "max-w-sm" : "max-w-md"}`}
+      data-consent-hydrated={isHydrated ? "true" : "false"}
     >
       <Card>
         <CardHeader className="text-center">
@@ -474,32 +485,62 @@ export function OAuthConsentClient({
             </Alert>
           ) : null}
 
-          <div className="flex flex-col gap-2">
-            <Button
-              disabled={
-                isSubmitting ||
-                (hasApprovedIdentityScopes &&
-                  (vault.vaultState.status !== "loaded" ||
-                    !vault.hasValidIdentityIntent ||
-                    vault.intentLoading))
-              }
-              onClick={asyncHandler(() => handleConsent(true))}
-              type="button"
+          {hasApprovedIdentityScopes ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                disabled={
+                  !isHydrated ||
+                  isSubmitting ||
+                  vault.vaultState.status !== "loaded" ||
+                  !vault.hasValidIdentityIntent ||
+                  vault.intentLoading
+                }
+                onClick={asyncHandler(() => handleConsent(true))}
+                type="button"
+              >
+                {isSubmitting ? (
+                  <Spinner aria-hidden="true" className="mr-2" size="sm" />
+                ) : null}
+                Allow
+              </Button>
+              <Button
+                disabled={!isHydrated || isSubmitting}
+                onClick={asyncHandler(() => handleConsent(false))}
+                type="button"
+                variant="outline"
+              >
+                Deny
+              </Button>
+            </div>
+          ) : (
+            <form
+              action="/oauth/consent/submit"
+              className="flex flex-col gap-2"
+              method="post"
             >
-              {isSubmitting ? (
-                <Spinner aria-hidden="true" className="mr-2" size="sm" />
+              {consentScopeString ? (
+                <input name="scope" type="hidden" value={consentScopeString} />
               ) : null}
-              Allow
-            </Button>
-            <Button
-              disabled={isSubmitting}
-              onClick={asyncHandler(() => handleConsent(false))}
-              type="button"
-              variant="outline"
-            >
-              Deny
-            </Button>
-          </div>
+              {signedOAuthQuery ? (
+                <input
+                  name="oauth_query"
+                  type="hidden"
+                  value={signedOAuthQuery}
+                />
+              ) : null}
+              <Button name="accept" type="submit" value="true">
+                Allow
+              </Button>
+              <Button
+                name="accept"
+                type="submit"
+                value="false"
+                variant="outline"
+              >
+                Deny
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

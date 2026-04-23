@@ -2,14 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
-import type { Scenario } from "@/lib/scenarios";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 
 const ERROR_MESSAGES: Record<string, string> = {
   interaction_required:
     "Identity verification required. This service requires a higher assurance level than your current account provides. Please complete identity verification on Zentity first.",
 };
 
-export function useOAuthFlow(scenario: Scenario) {
+function resolveCallbackUrl(defaultPath: string): string {
+  const location = globalThis.window.location;
+  const callbackPath = `${location.pathname}${location.search}`;
+
+  if (!callbackPath || callbackPath === "/") {
+    return defaultPath;
+  }
+
+  return callbackPath;
+}
+
+export function useOAuthFlow(scenario: RouteScenario) {
   const { data: session, isPending } = useSession();
   const [oauthError, setOauthError] = useState<string | null>(null);
 
@@ -31,7 +42,7 @@ export function useOAuthFlow(scenario: Scenario) {
   const allClaims = (
     session?.user as { claims?: Record<string, Record<string, unknown>> }
   )?.claims;
-  const claims = allClaims?.[scenario.providerId];
+  const claims = allClaims?.[scenario.oauthProviderId];
 
   const isAuthenticated = !!claims;
 
@@ -49,12 +60,12 @@ export function useOAuthFlow(scenario: Scenario) {
     async (scopes?: string[]) => {
       setOauthError(null);
       await authClient.signIn.oauth2({
-        providerId: scenario.providerId,
-        callbackURL: `/${scenario.id}`,
+        providerId: scenario.oauthProviderId,
+        callbackURL: resolveCallbackUrl(`/${scenario.id}`),
         ...(scopes?.length ? { scopes } : {}),
       });
     },
-    [scenario.providerId, scenario.id]
+    [scenario.oauthProviderId, scenario.id]
   );
 
   const handleSignIn = useCallback(() => runOAuthFlow(), [runOAuthFlow]);

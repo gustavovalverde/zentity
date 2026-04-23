@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Redacted } from "@/components/ui/redacted";
-import type { CartItem } from "./wine-cart";
+import { type CartItem, formatShippingAddress } from "./wine-cart";
 
 interface WineOrderConfirmationProps {
   claims?: Record<string, unknown> | undefined;
@@ -16,6 +16,8 @@ export function WineOrderConfirmation({
   orderId,
   onContinueShopping,
 }: WineOrderConfirmationProps) {
+  const recipientName = claims?.name == null ? null : String(claims.name);
+  const shippingAddress = formatShippingAddress(claims?.address);
   const subtotal = items.reduce(
     (sum, item) => sum + item.wine.price * item.quantity,
     0
@@ -51,19 +53,19 @@ export function WineOrderConfirmation({
 
       <Card>
         <CardContent className="space-y-6 pt-6">
-          {(claims?.name != null || claims?.address != null) && (
+          {(recipientName || shippingAddress) && (
             <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
               <h4 className="font-medium text-muted-foreground text-sm">
                 Delivery Details
               </h4>
-              {claims.name != null && (
+              {recipientName && (
                 <p className="font-medium text-sm">
-                  <Redacted>{String(claims.name)}</Redacted>
+                  <Redacted>{recipientName}</Redacted>
                 </p>
               )}
-              {claims.address != null && (
+              {shippingAddress && (
                 <p className="text-muted-foreground text-sm">
-                  <Redacted>{String(claims.address)}</Redacted>
+                  <Redacted>{shippingAddress}</Redacted>
                 </p>
               )}
             </div>

@@ -1,3 +1,5 @@
+import type { TrustTier } from "@/lib/agent-runtime-storage";
+
 export interface Product {
   brand: string;
   id: string;
@@ -6,8 +8,6 @@ export interface Product {
   rating: number;
   snippet: string;
 }
-
-export type TrustTier = "anonymous" | "registered" | "attested";
 
 export interface ShoppingTask {
   budget: number;

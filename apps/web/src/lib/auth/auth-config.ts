@@ -70,6 +70,10 @@ import {
   resolveCimdClient,
 } from "@/lib/auth/oidc/client-id-metadata";
 import {
+  persistDcrClientExtensions,
+  readDcrClientExtensions,
+} from "@/lib/auth/oidc/dcr-client-extensions";
+import {
   buildOidcVerifiedClaims,
   buildProofClaims,
   computeConsentHmac,
@@ -431,6 +435,7 @@ const oidc4vciDeferredIssuance = isOidcE2e
 
 const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
+const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
 
@@ -625,6 +630,19 @@ async function validateDcrRegistration(
     });
   }
 
+  const protectedResource =
+    typeof body[PROTECTED_RESOURCE_METADATA_FIELD] === "string"
+      ? body[PROTECTED_RESOURCE_METADATA_FIELD]
+      : undefined;
+  if (protectedResource) {
+    const result = validateResourceUri(protectedResource);
+    if (!result.valid) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: `${PROTECTED_RESOURCE_METADATA_FIELD}: ${result.error}`,
+      });
+    }
+  }
+
   // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
   const softwareStatement =
     typeof body.software_statement === "string"
@@ -712,6 +730,50 @@ async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
+  }
+}
+
+async function readReturnedResponseBody(
+  returned: unknown
+): Promise<Record<string, unknown> | null> {
+  if (returned instanceof Response) {
+    return (await returned
+      .clone()
+      .json()
+      .catch(() => null)) as Record<string, unknown> | null;
+  }
+
+  if (!(returned && typeof returned === "object")) {
+    return null;
+  }
+
+  if ("response" in returned) {
+    const response = returned.response;
+    return response && typeof response === "object"
+      ? (response as Record<string, unknown>)
+      : null;
+  }
+
+  return returned as Record<string, unknown>;
+}
+
+async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
+  const extensions = readDcrClientExtensions(
+    ctx.body as Record<string, unknown> | undefined
+  );
+  if (!extensions) {
+    return;
+  }
+
+  const returned = (ctx.context as { returned?: unknown }).returned;
+  const responseBody = await readReturnedResponseBody(returned);
+  if (!responseBody) {
+    return;
+  }
+
+  const clientId = responseBody.client_id;
+  if (typeof clientId === "string") {
+    await persistDcrClientExtensions(clientId, extensions);
   }
 }
 
@@ -1593,6 +1655,10 @@ export const auth = betterAuth({
     }),
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
+      if (ctx.path === "/oauth2/register") {
+        await afterDcrRegisterPersistExtensions(ctx);
+        return;
+      }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         await afterConsentStoreHmac(ctx);

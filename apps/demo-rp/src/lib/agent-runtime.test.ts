@@ -62,8 +62,8 @@ interface RuntimeRow {
   hostPublicJwk: string;
   id: string;
   model: string;
-  providerId: string;
   runtime: string;
+  runtimePartitionKey: string;
   sessionId: string | null;
   sessionPrivateJwk: string | null;
   sessionPublicJwk: string | null;
@@ -121,7 +121,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import { prepareAgentAssertionForProvider } from "./agent-runtime";
+import { prepareAgentAssertionForScenario } from "./agent-runtime";
 
 function createDbMock(state: {
   accountRow?: {
@@ -142,7 +142,7 @@ function createDbMock(state: {
             hostPublicJwk: "{}",
             id: "runtime-new",
             model: "gpt-4",
-            providerId: "bank::agent-runtime:v2:attested",
+            runtimePartitionKey: "bank::agent-runtime:v2:attested",
             runtime: "demo-rp",
             sessionId: null,
             sessionPrivateJwk: null,
@@ -174,7 +174,7 @@ function createDbMock(state: {
         findFirst: vi.fn(async () => ({
           accessToken: "access-token",
           privateJwk: "{}",
-          providerId: "bank",
+          oauthProviderId: "zentity-bank",
           publicJwk: "{}",
         })),
       },
@@ -215,7 +215,7 @@ function createRuntimeRow(overrides: Partial<RuntimeRow> = {}): RuntimeRow {
     }),
     id: "runtime-1",
     model: "gpt-4",
-    providerId: "bank::agent-runtime:v2:attested",
+    runtimePartitionKey: "bank::agent-runtime:v2:attested",
     runtime: "demo-rp",
     sessionId: "session-old",
     sessionPrivateJwk: JSON.stringify({
@@ -235,7 +235,7 @@ function createRuntimeRow(overrides: Partial<RuntimeRow> = {}): RuntimeRow {
   };
 }
 
-describe("prepareAgentAssertionForProvider", () => {
+describe("prepareAgentAssertionForScenario", () => {
   beforeEach(() => {
     const dbState = { runtimeRow: null as RuntimeRow | null };
     testState.db = createDbMock(dbState);
@@ -278,9 +278,9 @@ describe("prepareAgentAssertionForProvider", () => {
       );
 
     await expect(
-      prepareAgentAssertionForProvider({
+      prepareAgentAssertionForScenario({
         bindingMessage: "Verified Aether AI requests purchase: Macallan 18",
-        providerId: "bank",
+        scenarioId: "bank",
         trustTier: "attested",
         userId: "user-1",
       })
@@ -335,9 +335,9 @@ describe("prepareAgentAssertionForProvider", () => {
       );
 
     await expect(
-      prepareAgentAssertionForProvider({
+      prepareAgentAssertionForScenario({
         bindingMessage: "Aether AI requests purchase: Sony WH-1000XM5",
-        providerId: "bank",
+        scenarioId: "bank",
         trustTier: "registered",
         userId: "user-1",
       })
@@ -392,9 +392,9 @@ describe("prepareAgentAssertionForProvider", () => {
         )
       );
 
-    const assertion = await prepareAgentAssertionForProvider({
+    const assertion = await prepareAgentAssertionForScenario({
       bindingMessage: "Verified Aether AI requests purchase: Macallan 18",
-      providerId: "bank",
+      scenarioId: "bank",
       trustTier: "attested",
       userId: "user-1",
     });

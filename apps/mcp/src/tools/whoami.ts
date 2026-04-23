@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { requireAuth } from "../auth/context.js";
-import { PROFILE_FIELDS } from "../auth/profile-fields.js";
+import { requireAuth } from "../runtime/auth-context.js";
 import { fetchAccountSummary } from "../services/account-summary.js";
+import { PROFILE_FIELDS } from "../services/profile-fields.js";
 
 const whoamiOutputSchema = {
   email: z.string().nullable(),

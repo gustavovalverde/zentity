@@ -18,6 +18,46 @@ interface WineCartProps {
   onUpdateQuantity: (wineId: string, quantity: number) => void;
 }
 
+interface IdentityAddressClaim {
+  country?: string;
+  formatted?: string;
+  locality?: string;
+  postal_code?: string;
+  region?: string;
+  street_address?: string;
+}
+
+export function formatShippingAddress(value: unknown): string | null {
+  if (typeof value === "string") {
+    const address = value.trim();
+    return address.length > 0 ? address : null;
+  }
+
+  if (!(value && typeof value === "object")) {
+    return null;
+  }
+
+  const address = value as IdentityAddressClaim;
+  if (typeof address.formatted === "string" && address.formatted.trim()) {
+    return address.formatted.trim();
+  }
+
+  const parts = [
+    address.street_address,
+    address.locality,
+    address.region,
+    address.postal_code,
+    address.country,
+  ]
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && part.trim().length > 0
+    )
+    .map((part) => part.trim());
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 export function WineCart({
   items,
   onUpdateQuantity,
@@ -27,6 +67,8 @@ export function WineCart({
   onStepUp,
   onPlaceOrder,
 }: WineCartProps) {
+  const recipientName = claims?.name == null ? null : String(claims.name);
+  const shippingAddress = formatShippingAddress(claims?.address);
   const subtotal = items.reduce(
     (sum, item) => sum + item.wine.price * item.quantity,
     0
@@ -130,19 +172,19 @@ export function WineCart({
       {isSteppedUp && (
         <Card>
           <CardContent className="space-y-4 pt-6">
-            {(claims?.name != null || claims?.address != null) && (
+            {(recipientName || shippingAddress) && (
               <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
                 <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
                   Ship To
                 </h4>
-                {claims.name != null && (
+                {recipientName && (
                   <p className="font-medium text-sm">
-                    <Redacted>{String(claims.name)}</Redacted>
+                    <Redacted>{recipientName}</Redacted>
                   </p>
                 )}
-                {claims.address != null && (
+                {shippingAddress && (
                   <p className="text-muted-foreground text-sm">
-                    <Redacted>{String(claims.address)}</Redacted>
+                    <Redacted>{shippingAddress}</Redacted>
                   </p>
                 )}
               </div>

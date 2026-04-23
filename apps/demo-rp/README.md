@@ -114,10 +114,6 @@ Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OA
 | `NEXT_PUBLIC_ZENTITY_URL` | <http://localhost:3000> | Zentity URL (client-side) |
 | `BETTER_AUTH_SECRET` | demo-rp-secret... | Auth secret |
 | `ZENTITY_URL` | <http://localhost:3000> | Zentity server URL |
-| `ZENTITY_BANK_CLIENT_ID` | zentity-demo-bank | Fallback if DCR file absent |
-| `ZENTITY_EXCHANGE_CLIENT_ID` | zentity-demo-exchange | Fallback if DCR file absent |
-| `ZENTITY_WINE_CLIENT_ID` | zentity-demo-wine | Fallback if DCR file absent |
-| `ZENTITY_AID_CLIENT_ID` | zentity-demo-aid | Fallback if DCR file absent |
 | `DATABASE_URL` | file:./.data/demo-rp.db | SQLite database URL |
 | `OIDC4VCI_WALLET_CLIENT_ID` | zentity-wallet | OID4VCI wallet client ID |
 | `VERIFIER_CERT_PATH` | .data/certs/ | Path to x509 dev certificates |
@@ -133,7 +129,7 @@ Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OA
 - **better-auth** with `genericOAuth` plugin (`overrideUserInfo: true` for step-up)
 - **shadcn/ui** for components
 - **SQLite** (via better-sqlite3) for session storage
-- **All-DCR**: Every scenario self-registers via RFC 7591, stored in `.data/dcr-{providerId}.json`
+- **All-DCR**: Every route scenario self-registers via RFC 7591 and persists the `client_id` in the `dcr_client` table keyed by `scenarioId`
 
 ### OID4VCI Issuance Flow
 

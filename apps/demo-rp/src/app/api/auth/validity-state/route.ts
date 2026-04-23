@@ -2,14 +2,14 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getAuth } from "@/lib/auth";
-import { isValidProviderId } from "@/lib/dcr";
-import { getProviderValidityState } from "@/lib/validity";
+import { getScenarioValidityState } from "@/lib/validity";
+import { isRouteScenarioId } from "@/scenarios/route-scenario-registry";
 
 export async function GET(request: Request): Promise<Response> {
-  const providerId = new URL(request.url).searchParams.get("providerId");
-  if (!(providerId && isValidProviderId(providerId))) {
+  const scenarioId = new URL(request.url).searchParams.get("scenarioId");
+  if (!(scenarioId && isRouteScenarioId(scenarioId))) {
     return NextResponse.json(
-      { error: "Invalid or missing providerId" },
+      { error: "Invalid or missing scenarioId" },
       { status: 400 }
     );
   }
@@ -23,8 +23,8 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const validityState = await getProviderValidityState({
-    providerId,
+  const validityState = await getScenarioValidityState({
+    scenarioId,
     userId: session.user.id,
   });
 
