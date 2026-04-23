@@ -1,6 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+} from "@zentity/sdk/rp";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockBeginOrResumeInteractiveFlow = vi.fn();
 const mockSignAgentAssertion = vi.fn();
@@ -55,6 +59,10 @@ describe("purchase", () => {
     mockSignAgentAssertion.mockResolvedValue("agent-assertion");
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   async function createConnectedClient() {
     const { server } = createServer();
     const [clientTransport, serverTransport] =
@@ -73,6 +81,29 @@ describe("purchase", () => {
     currency: "USD",
     item: "Widget Pro",
   };
+
+  function createX402PaymentRequiredHeader(): string {
+    return Buffer.from(
+      JSON.stringify({
+        x402Version: 2,
+        accepts: {
+          scheme: "exact",
+          network: "eip155:84532",
+          payTo: "0x000000000000000000000000000000000000dEaD",
+          amount: "1",
+          maxTimeoutSeconds: 300,
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        },
+        resource: { url: "https://merchant.example/api/purchase" },
+        extensions: {
+          zentity: {
+            minComplianceLevel: 2,
+            pohIssuer: "https://app.zentity.xyz",
+          },
+        },
+      })
+    ).toString("base64");
+  }
 
   it("returns typed purchase data after approval", async () => {
     mockBeginOrResumeInteractiveFlow.mockResolvedValue({
@@ -153,5 +184,120 @@ describe("purchase", () => {
         fingerprint: expect.stringContaining("For the office team lunch"),
       })
     );
+  });
+
+  it("fetches an x402 URL with a PoH retry after approval", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response("payment required", {
+          status: 402,
+          headers: {
+            [PAYMENT_REQUIRED_HEADER]: createX402PaymentRequiredHeader(),
+          },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access: "granted" }), { status: 200 })
+      );
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "complete",
+      data: "poh-token",
+    });
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({
+      name: "purchase",
+      arguments: {
+        ...purchaseArgs,
+        url: "https://merchant.example/api/purchase",
+      },
+    });
+
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+    const retryRequest = fetchSpy.mock.calls[1]?.[0] as Request;
+
+    expect(parsed.status).toBe("complete");
+    expect(parsed.x402).toMatchObject({
+      level_used: 2,
+      poh_issuer: "https://app.zentity.xyz",
+      retried: true,
+      status: 200,
+    });
+    expect(retryRequest.headers.get(PAYMENT_SIGNATURE_HEADER)).toBeTruthy();
+    expect(mockBeginOrResumeInteractiveFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cibaRequest: expect.objectContaining({
+          resource: "http://localhost:3000",
+          scope: "openid poh",
+        }),
+      })
+    );
+  });
+
+  it("returns denied when x402 approval is denied", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("payment required", {
+        status: 402,
+        headers: {
+          [PAYMENT_REQUIRED_HEADER]: createX402PaymentRequiredHeader(),
+        },
+      })
+    );
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "denied",
+    });
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({
+      name: "purchase",
+      arguments: {
+        ...purchaseArgs,
+        url: "https://merchant.example/api/purchase",
+      },
+    });
+
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+
+    expect(parsed.status).toBe("denied");
+    expect(parsed.approved).toBe(false);
+    expect(parsed.fulfillment).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns expired when x402 approval expires", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("payment required", {
+        status: 402,
+        headers: {
+          [PAYMENT_REQUIRED_HEADER]: createX402PaymentRequiredHeader(),
+        },
+      })
+    );
+    mockBeginOrResumeInteractiveFlow.mockResolvedValue({
+      status: "expired",
+    });
+
+    const client = await createConnectedClient();
+    const result = await client.callTool({
+      name: "purchase",
+      arguments: {
+        ...purchaseArgs,
+        url: "https://merchant.example/api/purchase",
+      },
+    });
+
+    const parsed = JSON.parse(
+      (result.content as Array<{ text: string }>)[0].text
+    );
+
+    expect(parsed.status).toBe("expired");
+    expect(parsed.approved).toBe(false);
+    expect(parsed.fulfillment).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

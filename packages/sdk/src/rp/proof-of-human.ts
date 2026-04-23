@@ -29,6 +29,7 @@ export interface ProofOfHumanTokenVerifier {
 export interface RequestProofOfHumanTokenOptions {
   accessToken: string;
   dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">;
+  fetch?: typeof globalThis.fetch;
   proofOfHumanUrl: string | URL;
 }
 
@@ -140,7 +141,7 @@ export async function requestProofOfHumanToken(
         options.accessToken,
         nonce
       );
-      const response = await fetch(proofOfHumanUrl, {
+      const response = await (options.fetch ?? fetch)(proofOfHumanUrl, {
         method: "POST",
         headers: {
           Authorization: `DPoP ${options.accessToken}`,

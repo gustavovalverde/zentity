@@ -16,6 +16,7 @@ export interface FirstPartyAuthDiscoveryDocument {
 
 export interface CreateDiscoveryResolverOptions {
   discoveryTtlMs?: number;
+  fetch?: typeof globalThis.fetch;
   issuerUrl: string | URL;
 }
 
@@ -200,7 +201,9 @@ export function createDiscoveryResolver(
         return cached.document;
       }
 
-      const response = await fetch(resolveDiscoveryUrl(options.issuerUrl));
+      const response = await (options.fetch ?? fetch)(
+        resolveDiscoveryUrl(options.issuerUrl)
+      );
       if (!response.ok) {
         throw new Error(
           `Discovery failed: ${response.status} ${response.statusText}`

@@ -66,7 +66,7 @@ function createServerDouble(notifier: ReturnType<typeof vi.fn>) {
 function createParams(input: {
   fingerprint: string;
   notifier: ReturnType<typeof vi.fn>;
-  onApproved?: (result: { accessToken: string }) => Promise<{ ok: true }>;
+  onApproved?: (tokenSet: { accessToken: string }) => Promise<{ ok: true }>;
 }) {
   return {
     server: createServerDouble(input.notifier),
@@ -110,7 +110,7 @@ describe("interactive tool flow", () => {
     });
     mockPollCibaTokenOnce.mockResolvedValue({
       status: "approved",
-      result: {
+      tokenSet: {
         accessToken: "approved-token",
       },
     });
@@ -160,7 +160,7 @@ describe("interactive tool flow", () => {
     });
     mockPollCibaTokenOnce.mockResolvedValue({
       status: "approved",
-      result: {
+      tokenSet: {
         accessToken: "approved-token",
       },
     });

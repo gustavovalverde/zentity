@@ -4,9 +4,6 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { exportJWK, generateKeyPair, type JWK } from "jose";
 
-const ZENTITY_DIR = join(homedir(), ".zentity");
-const HOST_KEY_DIR = join(ZENTITY_DIR, "hosts");
-
 export interface HostKeyData {
   did?: string;
   hostId?: string;
@@ -14,9 +11,14 @@ export interface HostKeyData {
   publicKey: JWK;
 }
 
-function ensureDir(): void {
-  if (!existsSync(HOST_KEY_DIR)) {
-    mkdirSync(HOST_KEY_DIR, { mode: 0o700, recursive: true });
+function getHostKeyDir(): string {
+  return join(homedir(), ".zentity", "hosts");
+}
+
+function ensureHostKeyDir(): void {
+  const hostKeyDir = getHostKeyDir();
+  if (!existsSync(hostKeyDir)) {
+    mkdirSync(hostKeyDir, { mode: 0o700, recursive: true });
   }
 }
 
@@ -29,7 +31,7 @@ function getHostKeyFile(zentityUrl: string, namespace: string): string {
   const hashedNamespace = createHash("sha256")
     .update(`${normalizeZentityUrl(zentityUrl)}:${namespace}`)
     .digest("hex");
-  return join(HOST_KEY_DIR, `${hashedNamespace}.json`);
+  return join(getHostKeyDir(), `${hashedNamespace}.json`);
 }
 
 function readHostKeyFile(hostKeyFile: string): HostKeyData | undefined {
@@ -56,7 +58,7 @@ export function saveHostKey(
   clientId: string,
   data: HostKeyData
 ): void {
-  ensureDir();
+  ensureHostKeyDir();
   writeFileSync(
     getHostKeyFile(zentityUrl, clientId),
     JSON.stringify(data, null, 2),

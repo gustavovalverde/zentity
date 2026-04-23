@@ -76,7 +76,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
   const bindingMessage = `${runtime.display.name}: Unlock identity for this session`;
   const agentAssertion = await signAgentAssertion(runtime, bindingMessage);
 
-  const result = await requestCibaApproval({
+  const tokenSet = await requestCibaApproval({
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
     tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
     clientId: oauth.clientId,
@@ -89,7 +89,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     onPendingApproval: logPendingApprovalHandoff,
   });
 
-  const claims = await redeemRelease(result.accessToken, oauth.dpopKey);
+  const claims = await redeemRelease(tokenSet.accessToken, oauth.dpopKey);
   if (!claims) {
     return null;
   }
@@ -151,7 +151,7 @@ async function resolvePendingIdentity(
   if (pollResult.status === "approved") {
     pendingIdentityCache.delete(userId);
     const claims = await redeemRelease(
-      pollResult.result.accessToken,
+      pollResult.tokenSet.accessToken,
       oauth.dpopKey
     );
     if (claims) {

@@ -8,7 +8,7 @@ import {
   type CibaPendingAuthorization,
   type CibaPollResult,
   type CibaRequest,
-  type CibaResult,
+  type CibaTokenSet,
   createPendingApproval,
   logPendingApprovalHandoff,
   pollCibaTokenOnce,
@@ -59,7 +59,7 @@ interface StartInteractiveFlowParams<T> {
   cibaRequest: CibaRequest;
   fingerprint: string;
   oauth: OAuthSessionContext;
-  onApproved: (result: CibaResult) => Promise<T>;
+  onApproved: (tokenSet: CibaTokenSet) => Promise<T>;
   server: McpServer;
   toolName: "my_profile" | "purchase";
 }
@@ -165,12 +165,12 @@ function syncPendingApproval(
 
 function setTerminalResult(
   entry: InteractiveToolFlowEntry,
-  result: Extract<
+  terminalResult: Extract<
     CibaPollResult,
     { status: "approved" | "denied" | "timed_out" }
   >
 ): void {
-  entry.terminalResult = result;
+  entry.terminalResult = terminalResult;
   entry.terminalResultAt = Date.now();
 
   if (entry.pollTimer) {
@@ -253,7 +253,7 @@ function pollInteractiveFlow(
 
   entry.pollPromise = (async () => {
     try {
-      const result = await pollCibaTokenOnce(
+      const pollResult = await pollCibaTokenOnce(
         {
           clientId: entry.clientId,
           dpopKey: entry.dpopKey,
@@ -263,14 +263,14 @@ function pollInteractiveFlow(
       );
 
       if (!flowsById.has(entry.interactionId)) {
-        return result;
+        return pollResult;
       }
 
-      if (result.status === "pending") {
-        syncPendingApproval(entry, result.pendingAuthorization);
+      if (pollResult.status === "pending") {
+        syncPendingApproval(entry, pollResult.pendingAuthorization);
         scheduleInteractiveFlowPoll(
           entry,
-          result.pendingAuthorization.intervalSeconds * 1000
+          pollResult.pendingAuthorization.intervalSeconds * 1000
         );
         return {
           status: "pending",
@@ -278,9 +278,9 @@ function pollInteractiveFlow(
         } satisfies CibaPollResult;
       }
 
-      setTerminalResult(entry, result);
+      setTerminalResult(entry, pollResult);
       await notifyClientCompletion(entry);
-      return result;
+      return pollResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(
@@ -345,11 +345,11 @@ export async function beginOrResumeInteractiveFlow<T>(
     const pollResult = await pollInteractiveFlow(existing);
 
     if (pollResult?.status === "approved") {
-      const data = await params.onApproved(pollResult.result);
+      const approvedData = await params.onApproved(pollResult.tokenSet);
       deleteInteractiveFlow(existing);
       return {
         status: "complete",
-        data,
+        data: approvedData,
       };
     }
 
