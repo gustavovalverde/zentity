@@ -58,7 +58,7 @@
     "@better-auth/core": "file:vendor/better-auth-core-1.6.0.tgz",
     "@better-auth/drizzle-adapter": "1.6.0",
     "@better-auth/haip": "file:vendor/better-auth-haip-1.5.6.tgz",
-    "@better-auth/oauth-provider": "file:vendor/better-auth-oauth-provider-1.6.0.tgz",
+    "@better-auth/oauth-provider": "1.6.5",
     "@better-auth/oidc4ida": "file:vendor/better-auth-oidc4ida-1.5.6.tgz",
     "@better-auth/oidc4vci": "file:vendor/better-auth-oidc4vci-1.5.6.tgz",
     "@better-auth/oidc4vp": "file:vendor/better-auth-oidc4vp-0.0.0.tgz",
