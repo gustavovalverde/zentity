@@ -22,6 +22,10 @@ import {
   extractMetadataHostname,
 } from "./consent-view-model";
 
+const CONSENT_ERROR_MESSAGES: Record<string, string> = {
+  consent_failed: "Unable to process consent request.",
+};
+
 export default async function OAuthConsentPage({
   searchParams,
 }: Readonly<{
@@ -138,7 +142,12 @@ export default async function OAuthConsentPage({
       clientHostname={clientHostname}
       clientId={clientId}
       clientMeta={clientMeta}
-      initialErrorMessage={params.consent_error ?? null}
+      initialErrorMessage={
+        params.consent_error
+          ? (CONSENT_ERROR_MESSAGES[params.consent_error] ??
+            "Unable to process consent request.")
+          : null
+      }
       isLocalApp={isLocalApp}
       optionalScopes={optionalScopes}
       scopeParam={params.scope ?? ""}

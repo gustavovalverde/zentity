@@ -28,12 +28,12 @@ import {
   describeOAuthErrorResponse,
   parseOAuthJsonResponse,
 } from "@/lib/oauth-response";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 import {
   ROUTE_SCENARIO_IDS,
   ROUTE_SCENARIOS,
   type RouteScenarioId,
 } from "@/scenarios/route-scenario-registry";
-import type { RouteScenario } from "@/scenarios/route-scenario";
 
 // Store DPoP clients by access token so getUserInfo can reuse the same
 // keypair that getToken bound the token to (cnf.jkt).

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   appendSetCookieHeaders,
+  buildConsentAuthProxyHeaders,
   buildConsentErrorRedirect,
   readConsentRedirectUrl,
 } from "../submit/response";
@@ -48,7 +49,7 @@ describe("consent submit response helpers", () => {
     expect(redirectUrl.pathname).toBe("/oauth/consent");
     expect(redirectUrl.searchParams.get("client_id")).toBe("client-1");
     expect(redirectUrl.searchParams.get("consent_error")).toBe(
-      "Consent failed"
+      "consent_failed"
     );
   });
 
@@ -70,8 +71,29 @@ describe("consent submit response helpers", () => {
     expect(redirectUrl.origin).toBe("https://app.zentity.test");
     expect(redirectUrl.pathname).toBe("/oauth/consent");
     expect(redirectUrl.searchParams.get("consent_error")).toBe(
-      "Consent failed"
+      "consent_failed"
     );
+  });
+
+  it("does not forward client-supplied origin or referer to Better Auth", () => {
+    const request = new Request(
+      "https://app.zentity.test/oauth/consent/submit",
+      {
+        headers: {
+          cookie: "session=abc",
+          origin: "https://attacker.test",
+          referer: "https://attacker.test/form",
+          "user-agent": "test-agent",
+        },
+      }
+    );
+
+    const headers = buildConsentAuthProxyHeaders(request);
+
+    expect(headers.get("cookie")).toBe("session=abc");
+    expect(headers.get("user-agent")).toBe("test-agent");
+    expect(headers.get("origin")).toBeNull();
+    expect(headers.get("referer")).toBeNull();
   });
 
   it("preserves multiple set-cookie headers", () => {

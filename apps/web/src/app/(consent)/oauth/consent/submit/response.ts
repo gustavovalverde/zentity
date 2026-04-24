@@ -21,7 +21,7 @@ export function buildConsentAuthProxyHeaders(request: Request): Headers {
     "Content-Type": "application/json",
   });
 
-  for (const headerName of ["cookie", "origin", "referer", "user-agent"]) {
+  for (const headerName of ["cookie", "user-agent"]) {
     const value = request.headers.get(headerName);
     if (value) {
       headers.set(headerName, value);
@@ -45,7 +45,7 @@ function parseUrl(value: string | null): URL | null {
 
 export function buildConsentErrorRedirect(
   request: Request,
-  message: string
+  _message: string
 ): NextResponse {
   const fallbackUrl = new URL("/oauth/consent", request.url);
   const requestOrigin = new URL(request.url).origin;
@@ -53,7 +53,7 @@ export function buildConsentErrorRedirect(
   const targetUrl =
     refererUrl?.origin === requestOrigin ? refererUrl : fallbackUrl;
 
-  targetUrl.searchParams.set("consent_error", message);
+  targetUrl.searchParams.set("consent_error", "consent_failed");
   return NextResponse.redirect(targetUrl, { status: 303 });
 }
 

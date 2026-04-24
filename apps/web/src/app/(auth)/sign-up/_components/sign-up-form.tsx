@@ -265,18 +265,15 @@ export function SignUpForm() {
           <Input
             autoCapitalize="none"
             autoComplete="email"
-            defaultValue={email}
             disabled={isSubmitting}
             id={emailId}
             inputMode="email"
             onChange={(e) => handleEmailInput(e.target.value)}
-            onInput={(e) =>
-              handleEmailInput((e.target as HTMLInputElement).value)
-            }
             placeholder="you@example.com"
             ref={emailRef}
             spellCheck={false}
             type="email"
+            value={email}
           />
           <p className="text-muted-foreground text-xs">
             Optional. Used to identify your account.

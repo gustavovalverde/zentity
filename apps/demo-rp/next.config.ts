@@ -34,6 +34,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   output: "standalone",
+  typescript: {
+    tsconfigPath: "tsconfig.next.json",
+  },
   turbopack: {
     resolveAlias: {
       // @wagmi/core's Tempo connector probes the optional Accounts SDK with

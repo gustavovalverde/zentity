@@ -69,8 +69,6 @@ jobs:
         with:
           node-version: "24"
       - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
-        with:
-          version: 10.19.0
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
       - name: Install MCP deps (for mcp-http integration test subprocess)
@@ -115,8 +113,6 @@ jobs:
         with:
           node-version: "24"
       - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
-        with:
-          version: 10.19.0
       - run: pnpm install --frozen-lockfile
         working-directory: apps/mcp
       - run: pnpm test

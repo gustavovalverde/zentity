@@ -77,7 +77,8 @@ jobs:
     uses: ./.github/workflows/reusable-build-service.yml
     with:
       service_name: demo-rp
-      context_path: apps/demo-rp
+      context_path: .
+      dockerfile_path: apps/demo-rp/Dockerfile
     secrets:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
@@ -124,7 +125,8 @@ jobs:
     uses: ./.github/workflows/reusable-build-service.yml
     with:
       service_name: web
-      context_path: apps/web
+      context_path: .
+      dockerfile_path: apps/web/Dockerfile
     secrets:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
