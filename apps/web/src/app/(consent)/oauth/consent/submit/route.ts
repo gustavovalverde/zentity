@@ -2,6 +2,7 @@ import { toNextJsHandler } from "better-auth/next-js";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth/auth-config";
+import { logger } from "@/lib/logging/logger";
 
 import {
   appendSetCookieHeaders,
@@ -34,6 +35,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const authResponse = await authPOST(authRequest);
   const body = (await authResponse.json().catch(() => null)) as {
+    error?: string;
     error_description?: string;
     message?: string;
     redirectURI?: string;
@@ -42,11 +44,24 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const url = readConsentRedirectUrl(body);
   if (!(authResponse.ok && url)) {
+    logger.warn(
+      {
+        status: authResponse.status,
+        error: body?.error,
+        errorDescription: body?.error_description,
+        message: body?.message,
+        hasOauthQuery: Boolean(oauthQuery),
+        accept,
+        scope,
+      },
+      "oauth consent submit rejected by better-auth"
+    );
     return buildConsentErrorRedirect(
       request,
       body?.error_description ??
         body?.message ??
-        "Unable to process consent request."
+        "Unable to process consent request.",
+      oauthQuery
     );
   }
 

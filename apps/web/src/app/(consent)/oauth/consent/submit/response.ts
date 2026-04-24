@@ -28,6 +28,18 @@ export function buildConsentAuthProxyHeaders(request: Request): Headers {
     }
   }
 
+  const requestOrigin = new URL(request.url).origin;
+  const origin = request.headers.get("origin");
+  const refererUrl = parseUrl(request.headers.get("referer"));
+  if (
+    origin === requestOrigin ||
+    (!origin && refererUrl?.origin === requestOrigin)
+  ) {
+    headers.set("origin", requestOrigin);
+  } else if (origin) {
+    headers.set("origin", origin);
+  }
+
   return headers;
 }
 
@@ -45,15 +57,25 @@ function parseUrl(value: string | null): URL | null {
 
 export function buildConsentErrorRedirect(
   request: Request,
-  _message: string
+  message: string,
+  oauthQuery?: string | null
 ): NextResponse {
-  const fallbackUrl = new URL("/oauth/consent", request.url);
   const requestOrigin = new URL(request.url).origin;
   const refererUrl = parseUrl(request.headers.get("referer"));
-  const targetUrl =
-    refererUrl?.origin === requestOrigin ? refererUrl : fallbackUrl;
+
+  let targetUrl: URL;
+  if (refererUrl?.origin === requestOrigin) {
+    targetUrl = refererUrl;
+  } else if (oauthQuery) {
+    targetUrl = new URL(`/oauth/consent?${oauthQuery}`, request.url);
+  } else {
+    targetUrl = new URL("/oauth/consent", request.url);
+  }
 
   targetUrl.searchParams.set("consent_error", "consent_failed");
+  if (message) {
+    targetUrl.searchParams.set("consent_error_description", message);
+  }
   return NextResponse.redirect(targetUrl, { status: 303 });
 }
 

@@ -32,6 +32,7 @@ export default async function OAuthConsentPage({
   searchParams: Promise<{
     client_id?: string;
     consent_error?: string;
+    consent_error_description?: string;
     scope?: string;
   }>;
 }>) {
@@ -144,8 +145,9 @@ export default async function OAuthConsentPage({
       clientMeta={clientMeta}
       initialErrorMessage={
         params.consent_error
-          ? (CONSENT_ERROR_MESSAGES[params.consent_error] ??
-            "Unable to process consent request.")
+          ? params.consent_error_description?.trim() ||
+            CONSENT_ERROR_MESSAGES[params.consent_error] ||
+            "Unable to process consent request."
           : null
       }
       isLocalApp={isLocalApp}

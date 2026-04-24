@@ -75,7 +75,44 @@ describe("consent submit response helpers", () => {
     );
   });
 
-  it("does not forward client-supplied origin or referer to Better Auth", () => {
+  it("forwards same-origin consent POST origin to Better Auth", () => {
+    const request = new Request(
+      "https://app.zentity.test/oauth/consent/submit",
+      {
+        headers: {
+          cookie: "session=abc",
+          origin: "https://app.zentity.test",
+          referer: "https://app.zentity.test/oauth/consent?client_id=client-1",
+          "user-agent": "test-agent",
+        },
+      }
+    );
+
+    const headers = buildConsentAuthProxyHeaders(request);
+
+    expect(headers.get("cookie")).toBe("session=abc");
+    expect(headers.get("user-agent")).toBe("test-agent");
+    expect(headers.get("origin")).toBe("https://app.zentity.test");
+    expect(headers.get("referer")).toBeNull();
+  });
+
+  it("uses same-origin referer as the proxy origin fallback", () => {
+    const request = new Request(
+      "https://app.zentity.test/oauth/consent/submit",
+      {
+        headers: {
+          referer: "https://app.zentity.test/oauth/consent?client_id=client-1",
+        },
+      }
+    );
+
+    const headers = buildConsentAuthProxyHeaders(request);
+
+    expect(headers.get("origin")).toBe("https://app.zentity.test");
+    expect(headers.get("referer")).toBeNull();
+  });
+
+  it("forwards cross-origin origins so Better Auth can reject them", () => {
     const request = new Request(
       "https://app.zentity.test/oauth/consent/submit",
       {
@@ -92,7 +129,7 @@ describe("consent submit response helpers", () => {
 
     expect(headers.get("cookie")).toBe("session=abc");
     expect(headers.get("user-agent")).toBe("test-agent");
-    expect(headers.get("origin")).toBeNull();
+    expect(headers.get("origin")).toBe("https://attacker.test");
     expect(headers.get("referer")).toBeNull();
   });
 
