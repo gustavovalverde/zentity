@@ -84,9 +84,9 @@ const HOST_DATA = [
     attestationProvider: "AgentPass",
     attestationTier: "attested",
     createdAt: new Date().toISOString(),
+    did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
     id: "host-1",
     name: "Laptop",
-    publicKeyThumbprint: "1234567890abcdef1234567890abcdef",
     sessionCount: 1,
     sessions: [
       {

@@ -190,7 +190,9 @@ async function main(): Promise<void> {
       }
       const data = JSON.parse(text);
       if (typeof data.verified !== "boolean") {
-        throw new Error(`Expected verified boolean, got: ${text.slice(0, 100)}`);
+        throw new Error(
+          `Expected verified boolean, got: ${text.slice(0, 100)}`
+        );
       }
       console.log(`    verified=${data.verified}, isOver18=${data.isOver18}`);
     });

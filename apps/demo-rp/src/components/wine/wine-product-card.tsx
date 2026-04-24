@@ -41,6 +41,7 @@ export function WineProductCard({ wine, onAddToCart }: WineProductCardProps) {
           alt={wine.name}
           className="object-contain p-6 mix-blend-multiply transition-transform duration-700 group-hover:scale-110"
           fill
+          sizes="(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
           src={wine.image}
         />
         <div className="absolute bottom-3 left-3">

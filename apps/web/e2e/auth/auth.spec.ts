@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const WELCOME_BACK_PATTERN = /welcome back/i;
@@ -13,6 +13,27 @@ const SIGN_IN_BUTTON_PATTERN = /^sign in$/i;
 const PASSWORD_OPTION_PATTERN = /Password Use a secure password/i;
 
 test.use({ storageState: { cookies: [], origins: [] } });
+
+async function openInlinePasswordSignUp(page: Page) {
+  const passwordOption = page.getByRole("button", {
+    name: PASSWORD_OPTION_PATTERN,
+  });
+  const passwordInput = page.getByLabel(PASSWORD_LABEL_PATTERN);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await passwordOption.click();
+    const visible = await passwordInput.isVisible().catch(() => false);
+    if (visible) {
+      break;
+    }
+    await page.waitForTimeout(250);
+  }
+
+  await expect(passwordInput).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel(CONFIRM_PASSWORD_PATTERN)).toBeVisible({
+    timeout: 15_000,
+  });
+}
 
 test.describe("Authentication Flow", () => {
   test("should show sign-in page", async ({ page }) => {
@@ -89,14 +110,7 @@ test.describe("Authentication Flow", () => {
       page.locator("text=Please enter a valid email address")
     ).toHaveCount(0);
 
-    await page.getByRole("button", { name: PASSWORD_OPTION_PATTERN }).click();
-
-    await expect(page.getByLabel(PASSWORD_LABEL_PATTERN)).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByLabel(CONFIRM_PASSWORD_PATTERN)).toBeVisible({
-      timeout: 15_000,
-    });
+    await openInlinePasswordSignUp(page);
     await expect(emailInput).toHaveValue(testEmail);
   });
 });

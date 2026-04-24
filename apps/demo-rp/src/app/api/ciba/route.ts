@@ -1,16 +1,21 @@
 import crypto from "node:crypto";
 
+import {
+  createDpopClient,
+  type DpopClient,
+  fetchUserInfo,
+} from "@zentity/sdk/rp";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prepareAgentAssertionForProvider } from "@/lib/agent-runtime";
+import { prepareAgentAssertionForScenario } from "@/lib/agent-runtime";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
-import { isValidProviderId, readDcrClient } from "@/lib/dcr";
-import { createDpopClient, type DpopClient } from "@/lib/dpop";
+import { readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { ROUTE_SCENARIO_IDS } from "@/scenarios/route-scenario-registry";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
@@ -22,14 +27,16 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
  */
 const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
-const TOKEN_TYPE_ACCESS = "urn:ietf:params:oauth:token-type:access_token";
+const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
 const MERCHANT_RESOURCE = "https://merchant.example.com/api";
 const EXCHANGE_SCOPE = "openid";
+
+const scenarioIdSchema = z.enum(ROUTE_SCENARIO_IDS);
 
 const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("authorize"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     loginHint: z.string().min(1),
     scope: z.string().min(1),
     bindingMessage: z.string().optional(),
@@ -39,7 +46,7 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("token"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     authReqId: z.string().min(1),
   }),
   z.object({
@@ -48,7 +55,7 @@ const bodySchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("token-exchange"),
-    providerId: z.string(),
+    scenarioId: scenarioIdSchema,
     accessToken: z.string().min(1),
   }),
 ]);
@@ -149,11 +156,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: row?.received ?? false });
   }
 
-  if (!("providerId" in data && isValidProviderId(data.providerId))) {
-    return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
-  }
-
-  const client = await readDcrClient(data.providerId);
+  const client = await readDcrClient(data.scenarioId);
   if (!client) {
     return NextResponse.json(
       { error: "Client not registered. Register first." },
@@ -176,9 +179,9 @@ export async function POST(request: Request) {
 
     let agentAssertion: string | null = null;
     try {
-      agentAssertion = await prepareAgentAssertionForProvider({
+      agentAssertion = await prepareAgentAssertionForScenario({
         bindingMessage,
-        providerId: data.providerId,
+        scenarioId: data.scenarioId,
         ...(data.trustTier ? { trustTier: data.trustTier } : {}),
         userId: session.user.id,
       });
@@ -198,23 +201,38 @@ export async function POST(request: Request) {
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
 
   if (data.action === "token-exchange") {
-    const params: Record<string, string> = {
-      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-      client_id: client.clientId,
-      subject_token: data.accessToken,
-      subject_token_type: TOKEN_TYPE_ACCESS,
-      resource: MERCHANT_RESOURCE,
-      scope: EXCHANGE_SCOPE,
-    };
-    if (client.clientSecret) {
-      params.client_secret = client.clientSecret;
-    }
-
-    const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
-    return NextResponse.json(body, { status });
+    return handleTokenExchange(data, client, tokenUrl);
   }
 
-  // action === "token"
+  return handleCibaToken(data, client, tokenUrl);
+}
+
+async function handleTokenExchange(
+  data: Extract<z.infer<typeof bodySchema>, { action: "token-exchange" }>,
+  client: { clientId: string; clientSecret: string | null },
+  tokenUrl: string
+): Promise<NextResponse> {
+  const params: Record<string, string> = {
+    grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+    client_id: client.clientId,
+    subject_token: data.accessToken,
+    subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
+    resource: MERCHANT_RESOURCE,
+    scope: EXCHANGE_SCOPE,
+  };
+  if (client.clientSecret) {
+    params.client_secret = client.clientSecret;
+  }
+
+  const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
+  return NextResponse.json(body, { status });
+}
+
+async function handleCibaToken(
+  data: Extract<z.infer<typeof bodySchema>, { action: "token" }>,
+  client: { clientId: string; clientSecret: string | null },
+  tokenUrl: string
+): Promise<NextResponse> {
   const params: Record<string, string> = {
     grant_type: CIBA_GRANT_TYPE,
     client_id: client.clientId,
@@ -230,36 +248,33 @@ export async function POST(request: Request) {
   } = await fetchTokenWithDpop(tokenUrl, params);
   const cibaBody = body as Record<string, unknown>;
 
-  // If token fetch succeeded, immediately fetch userinfo with the same DPoP keypair
   if (
-    status >= 200 &&
-    status < 300 &&
-    typeof cibaBody.access_token === "string"
+    status < 200 ||
+    status >= 300 ||
+    typeof cibaBody.access_token !== "string"
   ) {
-    try {
-      const userinfoUrl = new URL(
-        "/api/auth/oauth2/userinfo",
-        env.ZENTITY_URL
-      ).toString();
-      const proof = await cibaTokenDpop.proofFor(
-        "GET",
-        userinfoUrl,
-        cibaBody.access_token
-      );
-      const uiRes = await fetch(userinfoUrl, {
-        headers: {
-          Authorization: `DPoP ${cibaBody.access_token}`,
-          DPoP: proof,
-        },
-      });
-      if (uiRes.ok) {
-        const userinfo = (await uiRes.json()) as Record<string, unknown>;
-        return NextResponse.json({ ...cibaBody, userinfo }, { status });
-      }
-    } catch {
-      // Non-critical — return tokens without userinfo
-    }
+    return NextResponse.json(body, { status });
   }
 
-  return NextResponse.json(body, { status });
+  const userinfo = await readUserInfo(cibaTokenDpop, cibaBody.access_token);
+  return userinfo
+    ? NextResponse.json({ ...cibaBody, userinfo }, { status })
+    : NextResponse.json(body, { status });
+}
+
+async function readUserInfo(
+  dpop: Awaited<ReturnType<typeof fetchTokenWithDpop>>["dpop"],
+  accessToken: string
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await fetchUserInfo({
+      accessToken,
+      dpopClient: dpop,
+      unwrapResponseEnvelope: false,
+      userInfoUrl: new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL),
+    });
+  } catch {
+    // Non-critical — return tokens without userinfo
+  }
+  return null;
 }

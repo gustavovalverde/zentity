@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockRequireAuth = vi.fn();
 const mockZentityFetch = vi.fn();
 
-vi.mock("../../src/auth/context.js", () => ({
+vi.mock("../../src/runtime/auth-context.js", () => ({
   getOAuthContext: (ctx: { oauth: { scopes: string[] } }) => ctx.oauth,
   requireAuth: () => mockRequireAuth(),
 }));
 
-vi.mock("../../src/auth/api-client.js", () => ({
+vi.mock("../../src/services/zentity-api.js", () => ({
   zentityFetch: (...args: unknown[]) => mockZentityFetch(...args),
 }));
 

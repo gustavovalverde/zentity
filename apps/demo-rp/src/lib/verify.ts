@@ -1,26 +1,19 @@
 import "server-only";
 
+import { createJwksTokenVerifier } from "@zentity/sdk/rp";
 import type { JWK } from "jose";
-import {
-  calculateJwkThumbprint,
-  createRemoteJWKSet,
-  importJWK,
-  jwtVerify,
-} from "jose";
+import { calculateJwkThumbprint, importJWK, jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 
 const MAX_KB_JWT_AGE_SECONDS = 300;
 
-// Lazy JWKS init: module is imported during Next.js `collect page data`
-// where T3 Env's skipValidation returns raw process.env without defaults,
-// so `env.ZENTITY_URL` would be undefined and `new URL()` would throw.
-let zentityJwksInstance: ReturnType<typeof createRemoteJWKSet> | undefined;
-function zentityJwks() {
-  zentityJwksInstance ??= createRemoteJWKSet(
-    new URL(env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/oauth2/jwks`)
-  );
-  return zentityJwksInstance;
+let issuerTokenVerifier: ReturnType<typeof createJwksTokenVerifier> | undefined;
+function getIssuerTokenVerifier() {
+  issuerTokenVerifier ??= createJwksTokenVerifier({
+    jwksUrl: env.ZENTITY_JWKS_URL ?? `${env.ZENTITY_URL}/api/auth/oauth2/jwks`,
+  });
+  return issuerTokenVerifier;
 }
 
 interface VerifyResult {
@@ -124,7 +117,7 @@ export async function verifyVpToken(
 
   let issuerPayload: Record<string, unknown>;
   try {
-    const { payload } = await jwtVerify(issuerJwt, zentityJwks());
+    const { payload } = await getIssuerTokenVerifier().verify(issuerJwt);
     issuerPayload = payload as Record<string, unknown>;
   } catch {
     return { verified: false, claims: {} };

@@ -1,3 +1,8 @@
+import {
+  AAP_CLAIMS_VERSION,
+  ACT_DID_EMISSION_POLICY,
+  AGENT_DID_METHODS_SUPPORTED,
+} from "@zentity/sdk/protocol";
 import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { z } from "zod";
@@ -410,8 +415,7 @@ export async function bindAgentAssertionToCibaRequest(
 
 // ---------------------------------------------------------------------------
 // Agent OAuth Scopes
-// Keep aligned with apps/mcp/src/auth/bootstrap-scopes.ts and
-// apps/mcp/src/auth/installed-agent-scopes.ts.
+// Keep aligned with apps/mcp/src/runtime/bootstrap-scopes.ts.
 // ---------------------------------------------------------------------------
 
 export const AGENT_HOST_REGISTER_SCOPE = "agent:host.register";
@@ -432,7 +436,7 @@ export const AGENT_BOOTSTRAP_TOKEN_USE = "agent_bootstrap";
 
 // ---------------------------------------------------------------------------
 // Agent Configuration (well-known document)
-// Keep aligned with apps/mcp/src/auth/agent-configuration.ts.
+// Keep aligned with apps/mcp/src/runtime/agent-configuration.ts.
 // ---------------------------------------------------------------------------
 
 const agentBootstrapTokenExchangeSchema = z.object({
@@ -444,10 +448,14 @@ const agentBootstrapTokenExchangeSchema = z.object({
 });
 
 export const agentConfigurationSchema = z.object({
+  aap_claims_version: z.literal(AAP_CLAIMS_VERSION),
+  act_did_emission_policy: z.literal(ACT_DID_EMISSION_POLICY),
   approval_methods: z.array(z.string().min(1)),
   approval_page_url_template: z.url(),
   bootstrap_token_exchange: agentBootstrapTokenExchangeSchema,
   capabilities_endpoint: z.url(),
+  delegation_chains: z.boolean(),
+  did_methods_supported: z.array(z.enum(AGENT_DID_METHODS_SUPPORTED)),
   host_registration_endpoint: z.url(),
   introspection_endpoint: z.url(),
   issuer: z.url(),
@@ -469,11 +477,11 @@ export type AgentConfiguration = z.infer<typeof agentConfigurationSchema>;
 
 // ---------------------------------------------------------------------------
 // Agent Registration (host + session request schemas)
-// Keep aligned with apps/mcp/src/auth/agent-registration-contract.ts.
+// Keep aligned with packages/sdk/src/agent-registration.ts.
 // ---------------------------------------------------------------------------
 
 export const registerHostRequestSchema = z.object({
-  publicKey: z.string().min(1),
+  did: z.string().min(1),
   name: z.string().min(1).max(255),
 });
 
@@ -486,7 +494,7 @@ const agentDisplaySchema = z.object({
 
 export const registerSessionRequestSchema = z.object({
   hostJwt: z.string().min(1),
-  agentPublicKey: z.string().min(1),
+  did: z.string().min(1),
   requestedCapabilities: z.array(z.string()).optional(),
   display: agentDisplaySchema,
 });

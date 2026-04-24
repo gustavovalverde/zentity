@@ -15,12 +15,12 @@ import { AidDashboard } from "@/components/aid/aid-dashboard";
 import { AidHeader } from "@/components/aid/aid-header";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
-import { ProviderValidityCard } from "@/components/shared/provider-validity-card";
+import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
-import { getScenario } from "@/lib/scenarios";
+import { aidScenario } from "@/scenarios/aid";
 
-const scenario = getScenario("aid");
+const scenario = aidScenario;
 
 export default function AidPage() {
   const {
@@ -95,10 +95,8 @@ export default function AidPage() {
 
             <div className="space-y-6 pt-4">
               <DcrRegistration
-                clientName={scenario.dcr.clientName}
-                defaultScopes={scenario.dcr.defaultScopes}
                 onRegistered={handleDcrRegistered}
-                providerId={scenario.id}
+                scenario={scenario}
               />
               <Button
                 className="h-14 w-full gap-3 bg-primary font-medium text-lg shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl"
@@ -167,7 +165,7 @@ export default function AidPage() {
               Manage your aid distribution and verify status.
             </p>
             <AssuranceBadges claims={claims} />
-            <ProviderValidityCard providerId={scenario.id} />
+            <ScenarioValidityCard scenarioId={scenario.id} />
           </div>
 
           <AidDashboard

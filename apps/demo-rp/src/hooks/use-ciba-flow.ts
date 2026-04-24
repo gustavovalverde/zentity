@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RouteScenarioId } from "@/scenarios/route-scenario-registry";
 
 export type CibaState =
   | "idle"
@@ -69,7 +70,7 @@ export function classifyPollResponse(
   };
 }
 
-export function useCibaFlow(providerId: string): CibaFlowState {
+export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
   const [state, setState] = useState<CibaState>("idle");
   const [authReqId, setAuthReqId] = useState<string | null>(null);
   const [tokens, setTokens] = useState<Record<string, unknown> | null>(null);
@@ -113,7 +114,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "token-exchange",
-            providerId,
+            scenarioId,
             accessToken,
           }),
         });
@@ -125,7 +126,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         // Non-critical — the CIBA token is still valid
       }
     },
-    [providerId]
+    [scenarioId]
   );
 
   const reset = useCallback(() => {
@@ -207,7 +208,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 action: "token",
-                providerId,
+                scenarioId,
                 authReqId: reqId,
               }),
             });
@@ -270,7 +271,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         }
       }, CLIENT_EXPIRE_MS);
     },
-    [providerId, stopPolling, handlePollResult]
+    [scenarioId, stopPolling, handlePollResult]
   );
 
   const startFlow = useCallback(
@@ -291,7 +292,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "authorize",
-            providerId,
+            scenarioId,
             loginHint: params.loginHint,
             scope: params.scope,
             bindingMessage: params.bindingMessage,
@@ -323,7 +324,7 @@ export function useCibaFlow(providerId: string): CibaFlowState {
         setState("error");
       }
     },
-    [providerId, pollToken]
+    [scenarioId, pollToken]
   );
 
   // Cleanup on unmount

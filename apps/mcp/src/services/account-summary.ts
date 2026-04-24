@@ -1,7 +1,7 @@
-import { PROFILE_FIELDS } from "../auth/profile-fields.js";
-import { zentityFetch } from "../auth/api-client.js";
-import { getOAuthContext, requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
+import { getOAuthContext, requireAuth } from "../runtime/auth-context.js";
+import { PROFILE_FIELDS } from "./profile-fields.js";
+import { zentityFetch } from "./zentity-api.js";
 
 interface AssuranceProfile {
   authStrength: string;
@@ -29,7 +29,7 @@ export interface AccountSummary {
   profileToolHint: "my_profile";
   tier: number | null;
   tierName: string | null;
-  vaultFieldsAvailable: typeof PROFILE_FIELDS[number][];
+  vaultFieldsAvailable: (typeof PROFILE_FIELDS)[number][];
   verificationLevel: string | null;
 }
 
@@ -54,7 +54,7 @@ export async function fetchAccountSummary(): Promise<AccountSummary> {
     : null;
 
   return {
-    email: canDiscloseEmail ? account?.email ?? null : null,
+    email: canDiscloseEmail ? (account?.email ?? null) : null,
     memberSince: account?.createdAt ?? null,
     tier: profile?.tier ?? null,
     tierName: profile?.tierName ?? null,

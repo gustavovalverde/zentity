@@ -1,23 +1,24 @@
 import "server-only";
 
+import {
+  createDpopClientFromKeyPair,
+  type ProofOfHumanClaims,
+  requestProofOfHumanToken,
+} from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeJwt } from "jose";
+import { calculateJwkThumbprint } from "jose";
 import { headers } from "next/headers";
 
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { account, oauthDpopKey } from "@/lib/db/schema";
-import { createPersistentDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
-import { parseOAuthJsonResponse } from "@/lib/oauth-response";
+import { getOAuthProviderId } from "@/scenarios/route-scenario-registry";
+
+const X402_OAUTH_PROVIDER_ID = getOAuthProviderId("x402");
 
 export interface PohResult {
-  claims: {
-    method: string | null;
-    sybil_resistant: boolean;
-    tier: number;
-    verified: boolean;
-  };
+  claims: ProofOfHumanClaims;
   dpopJkt: string | null;
   token: string;
 }
@@ -52,7 +53,7 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     .where(
       and(
         eq(account.userId, session.user.id),
-        eq(account.providerId, "zentity-x402")
+        eq(account.providerId, X402_OAUTH_PROVIDER_ID)
       )
     )
     .limit(1)
@@ -87,65 +88,31 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     return { error: "dpop_keys_missing", status: 500 };
   }
 
-  const dpop = await createPersistentDpopClient({
+  const dpop = await createDpopClientFromKeyPair({
     publicJwk: JSON.parse(dpopRow.publicJwk),
     privateJwk: JSON.parse(dpopRow.privateJwk),
   });
 
-  const pohUrl = `${env.ZENTITY_URL}/api/auth/oauth2/proof-of-human`;
-  const token = acct.accessToken;
-
-  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
-    const proof = await dpop.proofFor("POST", pohUrl, token, nonce);
-    const res = await fetch(pohUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `DPoP ${token}`,
-        DPoP: proof,
-      },
-    });
-    const needsNonceRetry =
-      (res.status === 400 || res.status === 401) &&
-      Boolean(res.headers.get("DPoP-Nonce"));
-    return {
-      response: res,
-      result: needsNonceRetry
-        ? {}
-        : await parseOAuthJsonResponse(res, "PoH request"),
-    };
+  const result = await requestProofOfHumanToken({
+    accessToken: acct.accessToken,
+    dpopClient: dpop,
+    proofOfHumanUrl: `${env.ZENTITY_URL}/api/auth/oauth2/proof-of-human`,
   });
 
-  if (!response.ok) {
+  if (!result.ok) {
     return {
-      error:
-        ((result as Record<string, unknown>).error as string) ?? "poh_failed",
-      error_description:
-        ((result as Record<string, unknown>).error_description as string) ??
-        `Zentity returned ${response.status}`,
-      status: response.status,
+      error: result.error,
+      status: result.status,
+      ...(result.errorDescription
+        ? { error_description: result.errorDescription }
+        : {}),
     };
   }
 
-  const pohToken = (result as Record<string, unknown>).token as
-    | string
-    | undefined;
-  if (!pohToken) {
-    return { error: "no_token_in_response", status: 502 };
-  }
-
-  const jwt = decodeJwt(pohToken);
-  const poh = jwt.poh as Record<string, unknown> | undefined;
-  const cnf = jwt.cnf as { jkt?: string } | undefined;
-
   return {
-    token: pohToken,
-    dpopJkt: cnf?.jkt ?? null,
-    claims: {
-      tier: (poh?.tier as number) ?? 0,
-      verified: Boolean(poh?.verified),
-      sybil_resistant: Boolean(poh?.sybil_resistant),
-      method: (poh?.method as string) ?? null,
-    },
+    token: result.token,
+    dpopJkt: result.confirmationJkt,
+    claims: result.unverifiedClaims,
   };
 }
 
@@ -170,7 +137,7 @@ export async function getStoredDpopJkt(): Promise<string | null> {
     .where(
       and(
         eq(account.userId, session.user.id),
-        eq(account.providerId, "zentity-x402")
+        eq(account.providerId, X402_OAUTH_PROVIDER_ID)
       )
     )
     .limit(1)

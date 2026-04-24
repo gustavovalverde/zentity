@@ -41,11 +41,12 @@ describe("formatGrantSource", () => {
 describe("formatHostTier", () => {
   it("returns human labels", () => {
     expect(formatHostTier("attested")).toBe("Verified");
+    expect(formatHostTier("self-declared")).toBe("Self-declared");
     expect(formatHostTier("unverified")).toBe("Unverified");
   });
 
   it("passes through unknown tiers", () => {
-    expect(formatHostTier("self-declared")).toBe("self-declared");
+    expect(formatHostTier("custom-tier")).toBe("custom-tier");
   });
 });
 

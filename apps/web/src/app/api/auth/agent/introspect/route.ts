@@ -3,11 +3,9 @@ import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import {
-  loadAapProfileForTokenJti,
-  readAapProfileFromPayload,
-} from "@/lib/agents/act-claim";
+import { getAapClaimsFromPayload } from "@/lib/agents/claims";
 import { observeSessionLifecycle } from "@/lib/agents/session";
+import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
@@ -148,28 +146,34 @@ export async function POST(request: Request) {
       : rawUserId;
   }
 
-  let snapshot: Awaited<ReturnType<typeof loadAapProfileForTokenJti>> = null;
+  let tokenSnapshot: Awaited<
+    ReturnType<typeof resolveTokenSnapshotForTokenJti>
+  > = null;
   if (typeof payload?.jti === "string") {
-    snapshot = await loadAapProfileForTokenJti(
+    tokenSnapshot = await resolveTokenSnapshotForTokenJti(
       payload.jti,
       authResult.principal.clientId
     );
   } else if (opaqueToken?.referenceId) {
-    snapshot = await loadAapProfileForTokenJti(
+    tokenSnapshot = await resolveTokenSnapshotForTokenJti(
       opaqueToken.referenceId,
       authResult.principal.clientId
     );
   }
-  if (!snapshot) {
+  if (!tokenSnapshot) {
     return NextResponse.json({ active: false });
   }
 
-  const payloadAap =
+  const embeddedAccessTokenClaims =
     payload && typeof payload === "object"
-      ? readAapProfileFromPayload(payload as Record<string, unknown>)
+      ? getAapClaimsFromPayload(payload as Record<string, unknown>)
       : {};
+  const responseAccessTokenClaims =
+    Object.keys(embeddedAccessTokenClaims).length > 0
+      ? embeddedAccessTokenClaims
+      : tokenSnapshot.claims;
 
-  const lifecycle = await observeSessionLifecycle(snapshot.sessionId);
+  const lifecycle = await observeSessionLifecycle(tokenSnapshot.sessionId);
   if (!lifecycle) {
     return NextResponse.json({ active: false });
   }
@@ -180,7 +184,7 @@ export async function POST(request: Request) {
       client_id: tokenClientId,
       ...(tokenScopes ? { scope: tokenScopes } : {}),
       zentity: {
-        attestation: snapshot.attestation,
+        attestation: tokenSnapshot.attestation,
         lifecycle: serializeLifecycle(lifecycle),
       },
     });
@@ -192,10 +196,9 @@ export async function POST(request: Request) {
     ...(tokenScopes ? { scope: tokenScopes } : {}),
     ...(projectedSub ? { sub: projectedSub } : {}),
     ...(payload?.aud ? { aud: payload.aud } : {}),
-    ...snapshot.aap,
-    ...(payloadAap.delegation ? { delegation: payloadAap.delegation } : {}),
+    ...responseAccessTokenClaims,
     zentity: {
-      attestation: snapshot.attestation,
+      attestation: tokenSnapshot.attestation,
       lifecycle: serializeLifecycle(lifecycle),
     },
   });

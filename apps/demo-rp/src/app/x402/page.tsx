@@ -17,10 +17,10 @@ import { useWalletAddress } from "@/components/x402/wallet-connect";
 import { RESOURCES } from "@/data/x402";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { useX402Flow } from "@/hooks/use-x402-flow";
-import { getScenario } from "@/lib/scenarios";
 import { wagmiConfig } from "@/lib/wagmi-config";
+import { x402Scenario } from "@/scenarios/x402";
 
-const scenario = getScenario("x402");
+const scenario = x402Scenario;
 const queryClient = new QueryClient();
 
 function X402Demo() {
@@ -111,10 +111,8 @@ function X402Demo() {
             <div className="space-y-4 pt-4">
               <div className="text-left [&_*]:text-white/80 [&_.border]:border-white/10">
                 <DcrRegistration
-                  clientName={scenario.dcr.clientName}
-                  defaultScopes={scenario.dcr.defaultScopes}
                   onRegistered={handleDcrRegistered}
-                  providerId={scenario.id}
+                  scenario={scenario}
                 />
               </div>
               <Button

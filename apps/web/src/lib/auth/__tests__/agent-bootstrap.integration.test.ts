@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -25,6 +26,11 @@ const REDIRECT_URI = "http://localhost:3100/callback";
 const WEB_CLIENT_ID = "web-bootstrap-client";
 const WEB_REDIRECT_URI = "https://app.example.com/callback";
 const BOOTSTRAP_SCOPE = "agent:host.register agent:session.register";
+const HOST_DID = encodeEd25519DidKeyFromJwk({
+  crv: "Ed25519",
+  kty: "OKP",
+  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+});
 
 function hashOpaqueAccessToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("base64url");
@@ -174,12 +180,8 @@ describe("agent bootstrap token exchange", () => {
           DPoP: proof,
         },
         body: JSON.stringify({
+          did: HOST_DID,
           name: "Bootstrap Host",
-          publicKey: JSON.stringify({
-            crv: "Ed25519",
-            kty: "OKP",
-            x: "host-public-key",
-          }),
         }),
       })
     );
@@ -188,6 +190,7 @@ describe("agent bootstrap token exchange", () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         created: true,
+        did: HOST_DID,
         hostId: expect.any(String),
       })
     );
@@ -217,12 +220,8 @@ describe("agent bootstrap token exchange", () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          did: HOST_DID,
           name: "Bootstrap Host",
-          publicKey: JSON.stringify({
-            crv: "Ed25519",
-            kty: "OKP",
-            x: "host-public-key",
-          }),
         }),
       })
     );

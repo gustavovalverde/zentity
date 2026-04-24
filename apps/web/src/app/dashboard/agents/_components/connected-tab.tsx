@@ -120,11 +120,11 @@ function formatRemainingTime(iso: string): string {
   return `${Math.ceil(hours / 24)}d`;
 }
 
-function truncateThumbprint(thumbprint: string): string {
-  if (thumbprint.length <= 18) {
-    return thumbprint;
+function truncateIdentifier(identifier: string): string {
+  if (identifier.length <= 24) {
+    return identifier;
   }
-  return `${thumbprint.slice(0, 8)}...${thumbprint.slice(-8)}`;
+  return `${identifier.slice(0, 12)}...${identifier.slice(-12)}`;
 }
 
 const CAPABILITY_ICONS: Record<string, LucideIcon> = {
@@ -536,9 +536,9 @@ export function ConnectedTab() {
                       </div>
                       <div>
                         <span className="text-muted-foreground">
-                          Public key:{" "}
+                          Host DID:{" "}
                         </span>
-                        {truncateThumbprint(host.publicKeyThumbprint)}
+                        {truncateIdentifier(host.did)}
                       </div>
                       {host.attestationProvider && (
                         <div>

@@ -2,21 +2,25 @@ import "server-only";
 
 import crypto, { randomUUID } from "node:crypto";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
-import type { TrustTier } from "@/data/aether";
 import {
   buildAgentRuntimePartitionKey,
   type PersistedTrustTier,
+  type TrustTier,
 } from "@/lib/agent-runtime-storage";
 import { signAttestationHeaders } from "@/lib/attestation";
 import { getDb } from "@/lib/db/connection";
 import { account, agentRuntime, oauthDpopKey } from "@/lib/db/schema";
-import type { ProviderId } from "@/lib/dcr";
 import { readDcrClient } from "@/lib/dcr";
-import { createPersistentDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
+import {
+  getOAuthProviderId,
+  type RouteScenarioId,
+} from "@/scenarios/route-scenario-registry";
 
 const HOST_NAME = "Aether Demo RP";
 const AGENT_BOOTSTRAP_SCOPE = "agent:host.register agent:session.register";
@@ -45,7 +49,7 @@ interface RegisterAgentSessionOptions {
 
 interface BootstrapAccessContext {
   accessToken: string;
-  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>;
+  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>;
 }
 
 function hasRegisteredSession(
@@ -93,11 +97,11 @@ function buildReauthError() {
   );
 }
 
-async function getAccountForProvider(userId: string, providerId: ProviderId) {
+function getAccountForScenario(userId: string, scenarioId: RouteScenarioId) {
   return getDb().query.account.findFirst({
     where: and(
       eq(account.userId, userId),
-      eq(account.providerId, `zentity-${providerId}`)
+      eq(account.providerId, getOAuthProviderId(scenarioId))
     ),
     columns: {
       accessToken: true,
@@ -106,25 +110,25 @@ async function getAccountForProvider(userId: string, providerId: ProviderId) {
   });
 }
 
-async function getDpopKey(providerId: ProviderId, accessToken: string) {
+function getDpopKey(scenarioId: RouteScenarioId, accessToken: string) {
   return getDb().query.oauthDpopKey.findFirst({
     where: and(
-      eq(oauthDpopKey.providerId, `zentity-${providerId}`),
+      eq(oauthDpopKey.oauthProviderId, getOAuthProviderId(scenarioId)),
       eq(oauthDpopKey.accessToken, accessToken)
     ),
   });
 }
 
 async function getPersistedDpopClient(
-  providerId: ProviderId,
+  scenarioId: RouteScenarioId,
   accessToken: string
 ) {
-  const dpopRow = await getDpopKey(providerId, accessToken);
+  const dpopRow = await getDpopKey(scenarioId, accessToken);
   if (!dpopRow) {
     throw new Error("Missing persisted DPoP key for the current OAuth session");
   }
 
-  return createPersistentDpopClient({
+  return createDpopClientFromKeyPair({
     privateJwk: JSON.parse(dpopRow.privateJwk),
     publicJwk: JSON.parse(dpopRow.publicJwk),
   });
@@ -132,14 +136,14 @@ async function getPersistedDpopClient(
 
 async function getOrCreateAgentRuntime(
   userId: string,
-  providerId: ProviderId,
+  scenarioId: RouteScenarioId,
   trustTier: PersistedTrustTier
 ): Promise<AgentRuntimeRow> {
-  const runtimeKey = buildAgentRuntimePartitionKey(providerId, trustTier);
+  const runtimeKey = buildAgentRuntimePartitionKey(scenarioId, trustTier);
   const existing = await getDb().query.agentRuntime.findFirst({
     where: and(
       eq(agentRuntime.userId, userId),
-      eq(agentRuntime.providerId, runtimeKey)
+      eq(agentRuntime.runtimePartitionKey, runtimeKey)
     ),
   });
   if (existing) {
@@ -152,7 +156,7 @@ async function getOrCreateAgentRuntime(
     .values({
       id: randomUUID(),
       userId,
-      providerId: runtimeKey,
+      runtimePartitionKey: runtimeKey,
       displayName: DISPLAY.name,
       runtime: DISPLAY.runtime,
       model: DISPLAY.model,
@@ -173,7 +177,7 @@ async function getOrCreateAgentRuntime(
 async function postJsonWithDpop(
   url: string,
   accessToken: string,
-  dpop: Awaited<ReturnType<typeof createPersistentDpopClient>>,
+  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>,
   payload: unknown,
   extraHeaders?: Record<string, string>
 ): Promise<Response> {
@@ -200,9 +204,12 @@ async function postJsonWithDpop(
 
 async function exchangeBootstrapAccessToken(
   userId: string,
-  providerId: ProviderId
+  scenarioId: RouteScenarioId
 ): Promise<BootstrapAccessContext> {
-  const authAccount = await getAccountForProvider(userId, providerId);
+  const [authAccount, client] = await Promise.all([
+    getAccountForScenario(userId, scenarioId),
+    readDcrClient(scenarioId),
+  ]);
   if (!authAccount?.accessToken) {
     throw new Error("Missing OAuth access token. Sign in again.");
   }
@@ -211,14 +218,13 @@ async function exchangeBootstrapAccessToken(
     throw buildReauthError();
   }
 
-  const client = await readDcrClient(providerId);
   if (!client) {
     throw new Error("Client not registered. Register the demo client first.");
   }
 
   const subjectToken = authAccount.accessToken;
   const dpop = await getPersistedDpopClient(
-    providerId,
+    scenarioId,
     authAccount.accessToken
   );
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
@@ -276,12 +282,13 @@ async function ensureHostRegistered(
   bootstrap: BootstrapAccessContext,
   options?: EnsureHostRegistrationOptions
 ): Promise<AgentRuntimeRow> {
+  const hostDid = encodeEd25519DidKeyFromJwk(JSON.parse(runtime.hostPublicJwk));
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/host/register`,
     bootstrap.accessToken,
     bootstrap.dpop,
     {
-      publicKey: runtime.hostPublicJwk,
+      did: hostDid,
       name: HOST_NAME,
     },
     options?.attestationHeaders
@@ -357,6 +364,7 @@ async function registerAgentSession(
   }
 
   const sessionKeys = await generateEd25519Jwks();
+  const sessionDid = encodeEd25519DidKeyFromJwk(sessionKeys.publicJwk);
   const hostJwt = await signHostJwt(runtime, runtime.hostId);
   const response = await postJsonWithDpop(
     `${env.ZENTITY_URL}/api/auth/agent/register`,
@@ -364,7 +372,7 @@ async function registerAgentSession(
     bootstrap.dpop,
     {
       hostJwt,
-      agentPublicKey: JSON.stringify(sessionKeys.publicJwk),
+      did: sessionDid,
       requestedCapabilities: [...REQUESTED_CAPABILITIES],
       display: DISPLAY,
     }
@@ -398,9 +406,9 @@ async function registerAgentSession(
   return updated;
 }
 
-export async function prepareAgentAssertionForProvider(params: {
+export async function prepareAgentAssertionForScenario(params: {
   bindingMessage: string;
-  providerId: ProviderId;
+  scenarioId: RouteScenarioId;
   trustTier?: TrustTier;
   userId: string;
 }): Promise<string | null> {
@@ -412,12 +420,12 @@ export async function prepareAgentAssertionForProvider(params: {
 
   let runtime = await getOrCreateAgentRuntime(
     params.userId,
-    params.providerId,
+    params.scenarioId,
     tier
   );
   const bootstrap = await exchangeBootstrapAccessToken(
     params.userId,
-    params.providerId
+    params.scenarioId
   );
 
   if (tier === "attested") {

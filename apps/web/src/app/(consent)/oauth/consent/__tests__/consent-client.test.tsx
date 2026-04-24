@@ -100,6 +100,7 @@ describe("OAuthConsentClient identity hardening", () => {
       lastName: "Lovelace",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });
+    globalThis.window.location.hash = "";
 
     vi.stubGlobal(
       "fetch",
@@ -235,9 +236,37 @@ describe("OAuthConsentClient identity hardening", () => {
     expect(screen.getByText("Encrypted")).toBeTruthy();
   });
 
+  it("uses a progressive form submit for non-identity consent", () => {
+    render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={[]}
+        scopeParam="openid email"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    const allowButton = screen.getByRole("button", { name: "Allow" });
+    expect(allowButton.getAttribute("type")).toBe("submit");
+    expect(allowButton.closest("form")?.getAttribute("action")).toBe(
+      "/oauth/consent/submit"
+    );
+  });
+
   it("warns about missing profile fields but stages the available subset", async () => {
     authClientMocks.oauth2.consent.mockResolvedValue({
-      data: { uri: null },
+      data: { redirectURI: "#oauth-return" },
     });
     oauthPostLoginMocks.getSignedOAuthQuery.mockReturnValue(
       "client_id=client-1&scope=openid%20identity.name%20identity.address%20identity.dob&exp=9999999999&sig=test"
@@ -339,5 +368,6 @@ describe("OAuthConsentClient identity hardening", () => {
     await waitFor(() => {
       expect(authClientMocks.oauth2.consent).toHaveBeenCalled();
     });
+    expect(globalThis.window.location.hash).toBe("#oauth-return");
   });
 });

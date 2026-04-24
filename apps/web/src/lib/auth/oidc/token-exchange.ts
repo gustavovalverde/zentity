@@ -12,21 +12,24 @@ import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import {
-  buildAapProfile,
-  buildDelegationClaim,
-  loadAapProfileForTokenJti,
-  loadStoredAapSnapshotForTokenJti,
-  persistAapSnapshotForToken,
-  readAapProfileFromPayload,
-} from "@/lib/agents/act-claim";
-import {
   resolveAgentSessionIdFromPairwiseSub,
   resolveAgentSubForClient,
 } from "@/lib/agents/actor-subject";
 import {
+  buildAapClaims,
+  DelegationDepthExceededError,
+  deriveDelegationClaim,
+  getAapClaimsFromPayload,
+} from "@/lib/agents/claims";
+import {
   AGENT_BOOTSTRAP_SCOPE_SET,
   AGENT_BOOTSTRAP_TOKEN_USE,
 } from "@/lib/agents/session";
+import {
+  findStoredTokenSnapshotByJti,
+  persistTokenSnapshot,
+  resolveTokenSnapshotForTokenJti,
+} from "@/lib/agents/token-snapshot";
 import {
   buildOidcAssuranceClaims,
   computeAtHash,
@@ -41,6 +44,7 @@ import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
 import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
@@ -74,6 +78,22 @@ const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
+const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
+const rpApiAudience = `${authIssuer}/resource/rp-api`;
+const tokenExchangeAudiences = getProtectedResourceAudiences({
+  appUrl,
+  authIssuer,
+  mcpPublicUrl: env.MCP_PUBLIC_URL,
+  oidc4vciCredentialAudience,
+  rpApiAudience,
+});
+const tokenExchangeUserinfoAudience = joinAuthIssuerPath(
+  authIssuer,
+  "oauth2/userinfo"
+);
+const CLIENT_METADATA_PATH_SUFFIX = "/.well-known/oauth-client.json";
+const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
+const TRAILING_SLASHES = /\/+$/;
 
 function isLoopbackHostname(hostname: string): boolean {
   return (
@@ -103,6 +123,116 @@ function isInstalledAgentBootstrapClient(input: {
       }
     })
   );
+}
+
+function normalizeResourceAudience(value: string): string {
+  return value.replace(TRAILING_SLASHES, "");
+}
+
+function audienceIncludes(audience: unknown, expected: string): boolean {
+  if (typeof audience === "string") {
+    return normalizeResourceAudience(audience) === expected;
+  }
+
+  return (
+    Array.isArray(audience) &&
+    audience.some(
+      (value) =>
+        typeof value === "string" &&
+        normalizeResourceAudience(value) === expected
+    )
+  );
+}
+
+function parseJsonRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveClientIdResourceAudience(clientId: string): string | undefined {
+  try {
+    const url = new URL(clientId);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return undefined;
+    }
+    if (!url.pathname.endsWith(CLIENT_METADATA_PATH_SUFFIX)) {
+      return undefined;
+    }
+
+    url.pathname =
+      url.pathname.slice(0, -CLIENT_METADATA_PATH_SUFFIX.length) || "/";
+    url.search = "";
+    url.hash = "";
+
+    return normalizeResourceAudience(url.href);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveClientResourceAudience(
+  clientId: string,
+  metadata: unknown
+): string | undefined {
+  const metadataResource =
+    parseJsonRecord(metadata)[PROTECTED_RESOURCE_METADATA_FIELD];
+  if (typeof metadataResource === "string" && metadataResource.length > 0) {
+    return normalizeResourceAudience(metadataResource);
+  }
+
+  return resolveClientIdResourceAudience(clientId);
+}
+
+async function loadClientResourceAudience(
+  clientId: string
+): Promise<string | undefined> {
+  const row = await db
+    .select({ metadata: oauthClients.metadata })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+
+  return resolveClientResourceAudience(clientId, row?.metadata);
+}
+
+function canRebindDpopForResourceServer(input: {
+  clientId: string;
+  clientResourceAudience: string | undefined;
+  requestDpopJkt: string | undefined;
+  sourceClientId: string | undefined;
+  subjectAudience: unknown;
+  subjectTokenType: string;
+}): boolean {
+  if (
+    input.subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN ||
+    !input.requestDpopJkt ||
+    !input.sourceClientId ||
+    input.sourceClientId === input.clientId
+  ) {
+    return false;
+  }
+
+  if (
+    !(
+      input.clientResourceAudience &&
+      tokenExchangeAudiences.includes(input.clientResourceAudience)
+    )
+  ) {
+    return false;
+  }
+
+  return audienceIncludes(input.subjectAudience, input.clientResourceAudience);
 }
 
 async function buildLocalJwks(kid: string) {
@@ -136,6 +266,64 @@ async function verifySubjectToken(
   const jwks = await buildLocalJwks(header.kid);
   const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
   return payload as Record<string, unknown>;
+}
+
+async function resolveRequestDpopJkt(
+  request: Request | undefined
+): Promise<string | undefined> {
+  const proof = request?.headers?.get("DPoP");
+  if (!(request && proof)) {
+    return undefined;
+  }
+
+  const dpopJkt = await extractDpopThumbprint(request);
+  if (!dpopJkt) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: "Invalid DPoP proof",
+    });
+  }
+
+  const validDpop = await validateOpaqueAccessTokenDpop(request, dpopJkt);
+  if (!validDpop) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: "Invalid DPoP proof",
+    });
+  }
+
+  return dpopJkt;
+}
+
+function resolveTargetAudience(resource: unknown, audience: unknown): string {
+  if (resource !== undefined && typeof resource !== "string") {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_target",
+      error_description: "Token exchange supports a single resource audience",
+    });
+  }
+
+  if (audience !== undefined && typeof audience !== "string") {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_target",
+      error_description: "Token exchange supports a single audience value",
+    });
+  }
+
+  return resource ?? audience ?? authIssuer;
+}
+
+function isValidTokenExchangeAudience(
+  audience: string,
+  scopes: string[]
+): boolean {
+  if (tokenExchangeAudiences.includes(audience)) {
+    return true;
+  }
+
+  return (
+    scopes.includes("openid") && audience === tokenExchangeUserinfoAudience
+  );
 }
 
 function getRequestingClientMetadata(clientId: string) {
@@ -223,9 +411,11 @@ function createTokenExchangeHandler(): (
       clientId,
       clientSecret
     );
+    const requestDpopJkt = await resolveRequestDpopJkt(ctx.request);
 
     // Verify the subject token JWT (must be issued by this AS)
     let subjectPayload: Record<string, unknown>;
+    let subjectDpopJkt: string | undefined;
     try {
       if (
         subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
@@ -235,19 +425,10 @@ function createTokenExchangeHandler(): (
         if (!opaqueSubject?.userId || opaqueSubject.expiresAt < new Date()) {
           throw new Error("Opaque subject token not found");
         }
+        subjectDpopJkt = opaqueSubject.dpopJkt ?? undefined;
 
-        if (opaqueSubject.dpopJkt) {
-          const validDpop = await validateOpaqueAccessTokenDpop(
-            ctx.request,
-            opaqueSubject.dpopJkt
-          );
-          if (!validDpop) {
-            throw new Error("Opaque subject token DPoP validation failed");
-          }
-        }
-
-        const aapSnapshot = opaqueSubject.referenceId
-          ? await loadAapProfileForTokenJti(
+        const tokenSnapshot = opaqueSubject.referenceId
+          ? await resolveTokenSnapshotForTokenJti(
               opaqueSubject.referenceId,
               opaqueSubject.clientId
             )
@@ -266,13 +447,16 @@ function createTokenExchangeHandler(): (
           ...(opaqueSubject.referenceId
             ? { jti: opaqueSubject.referenceId }
             : {}),
-          ...(aapSnapshot?.aap ?? {}),
-          ...(aapSnapshot?.aap.agent?.id
-            ? { act: { sub: aapSnapshot.aap.agent.id } }
-            : {}),
+          ...(tokenSnapshot?.claims ?? {}),
         };
       } else {
         subjectPayload = await verifySubjectToken(subjectToken);
+        const subjectCnf = subjectPayload.cnf as { jkt?: unknown } | undefined;
+        subjectDpopJkt =
+          subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
+          typeof subjectCnf?.jkt === "string"
+            ? subjectCnf.jkt
+            : undefined;
       }
     } catch {
       throw new APIError("BAD_REQUEST", {
@@ -305,6 +489,31 @@ function createTokenExchangeHandler(): (
       (subjectPayload.azp as string | undefined) ??
       (subjectPayload.client_id as string | undefined) ??
       (typeof subjectPayload.aud === "string" ? subjectPayload.aud : undefined);
+
+    const dpopProofMatchesSubject =
+      !subjectDpopJkt || subjectDpopJkt === requestDpopJkt;
+    const clientResourceAudience = await loadClientResourceAudience(
+      client.clientId
+    );
+    if (
+      subjectDpopJkt &&
+      !dpopProofMatchesSubject &&
+      !canRebindDpopForResourceServer({
+        clientId: client.clientId,
+        clientResourceAudience,
+        requestDpopJkt,
+        sourceClientId,
+        subjectAudience: subjectPayload.aud,
+        subjectTokenType,
+      })
+    ) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_grant",
+        error_description:
+          "Subject token DPoP binding does not match exchange request",
+      });
+    }
+
     let rawUserId = sub;
     if (sourceClientId) {
       rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
@@ -392,23 +601,39 @@ function createTokenExchangeHandler(): (
       actClaim.act = subjectPayload.act;
     }
 
-    const actorSub = (subjectPayload.act as { sub?: string } | undefined)?.sub;
+    const parentAccessTokenClaims = getAapClaimsFromPayload(subjectPayload);
+    const parentActorSub = parentAccessTokenClaims.act?.sub;
     const actorSessionId =
-      actorSub && sourceClientId
-        ? await resolveAgentSessionIdFromPairwiseSub(actorSub, sourceClientId)
+      parentActorSub && sourceClientId
+        ? await resolveAgentSessionIdFromPairwiseSub(
+            parentActorSub,
+            sourceClientId
+          )
         : null;
 
-    const parentAapProfile = readAapProfileFromPayload(subjectPayload);
-    const parentSnapshot =
+    const storedSubjectSnapshot =
       typeof subjectPayload.jti === "string"
-        ? await loadStoredAapSnapshotForTokenJti(subjectPayload.jti)
+        ? await findStoredTokenSnapshotByJti(subjectPayload.jti)
         : null;
-    const delegation = buildDelegationClaim({
-      baseProfile: parentAapProfile,
-      ...(typeof subjectPayload.jti === "string"
-        ? { parentJti: subjectPayload.jti }
-        : {}),
-    });
+    const delegation = (() => {
+      try {
+        return deriveDelegationClaim({
+          parent: parentAccessTokenClaims,
+          ...(typeof subjectPayload.jti === "string"
+            ? { parentJti: subjectPayload.jti }
+            : {}),
+        });
+      } catch (error) {
+        if (error instanceof DelegationDepthExceededError) {
+          throw new APIError("BAD_REQUEST", {
+            error: "invalid_grant",
+            error_description:
+              "Subject token exceeded the maximum delegation depth",
+          });
+        }
+        throw error;
+      }
+    })();
 
     const now = Math.floor(Date.now() / 1000);
     const subjectExp =
@@ -428,13 +653,18 @@ function createTokenExchangeHandler(): (
       });
     }
     const jti = crypto.randomUUID();
-    const dpopJkt = await extractDpopThumbprint(ctx.request);
+    const dpopJkt = requestDpopJkt;
 
     // Resolve target audience: resource (RFC 8707) > audience (RFC 8693) > issuer
-    const targetAudience =
-      (resource as string | undefined) ??
-      (audienceParam as string | undefined) ??
-      authIssuer;
+    const targetAudience = resolveTargetAudience(resource, audienceParam);
+    if (!isValidTokenExchangeAudience(targetAudience, targetScopes)) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_target",
+        error_description:
+          "Token exchange target audience is not a registered protected resource",
+      });
+    }
+
     const includesBootstrapScope = targetScopes.some((scope) =>
       AGENT_BOOTSTRAP_SCOPE_SET.has(scope)
     );
@@ -472,26 +702,61 @@ function createTokenExchangeHandler(): (
         })
       : rawUserId;
 
-    const outputActorId = actorSessionId
+    const outputActorSub = actorSessionId
       ? await resolveAgentSubForClient(actorSessionId, client.clientId)
-      : parentAapProfile.agent?.id;
-    const exchangedAapProfile = buildAapProfile({
-      actorId: outputActorId,
-      approvalReference: parentAapProfile.oversight?.approval_reference,
-      attestationTier: parentAapProfile.agent?.runtime?.attested
-        ? "attested"
-        : undefined,
-      capabilities: parentAapProfile.capabilities,
-      delegation,
-      model: parentAapProfile.agent?.model?.id,
-      requiresHumanApprovalFor:
-        parentAapProfile.oversight?.requires_human_approval_for,
-      runtime: parentAapProfile.agent?.runtime?.environment,
-      sessionVersion: parentAapProfile.agent?.model?.version,
-      taskId: parentAapProfile.task?.id,
-      taskPurpose: parentAapProfile.task?.purpose,
-      traceId: parentAapProfile.audit?.trace_id,
-    });
+      : parentAccessTokenClaims.act?.sub;
+    const exchangedAccessTokenClaims = outputActorSub
+      ? buildAapClaims({
+          act: {
+            sub: outputActorSub,
+            sessionId:
+              actorSessionId ??
+              parentAccessTokenClaims.act?.session_id ??
+              outputActorSub,
+            hostAttestation:
+              parentAccessTokenClaims.act?.host_attestation ?? "unverified",
+            ...(parentAccessTokenClaims.act?.did
+              ? { did: parentAccessTokenClaims.act.did }
+              : {}),
+            ...(parentAccessTokenClaims.act?.host_id
+              ? { hostId: parentAccessTokenClaims.act.host_id }
+              : {}),
+            ...(parentAccessTokenClaims.act?.operator
+              ? { operator: parentAccessTokenClaims.act.operator }
+              : {}),
+            ...(parentAccessTokenClaims.act?.type
+              ? { type: parentAccessTokenClaims.act.type }
+              : {}),
+          },
+          task: {
+            hash: parentAccessTokenClaims.task?.hash ?? jti,
+            description:
+              parentAccessTokenClaims.task?.description ?? "token-exchange",
+            createdAt: parentAccessTokenClaims.task?.created_at ?? now,
+            expiresAt: parentAccessTokenClaims.task?.expires_at ?? exp,
+            ...(parentAccessTokenClaims.task?.constraints === undefined
+              ? {}
+              : { constraints: parentAccessTokenClaims.task.constraints }),
+          },
+          oversight: {
+            approvalId: parentAccessTokenClaims.oversight?.approval_id ?? jti,
+            approvedAt: parentAccessTokenClaims.oversight?.approved_at ?? now,
+            method: parentAccessTokenClaims.oversight?.method ?? "session",
+          },
+          audit: {
+            releaseId: parentAccessTokenClaims.audit?.release_id ?? "dev",
+            contextId: parentAccessTokenClaims.audit?.context_id ?? jti,
+            ...(parentAccessTokenClaims.audit?.request_id
+              ? { requestId: parentAccessTokenClaims.audit.request_id }
+              : {}),
+            ...(parentAccessTokenClaims.audit?.ciba_request_id
+              ? { cibaRequestId: parentAccessTokenClaims.audit.ciba_request_id }
+              : {}),
+          },
+          capabilities: parentAccessTokenClaims.capabilities ?? null,
+          delegation,
+        })
+      : undefined;
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
@@ -555,16 +820,16 @@ function createTokenExchangeHandler(): (
         ? { [APP_LOGIN_HINT_CLAIM]: rawUserId }
         : {}),
       act: actClaim,
-      ...exchangedAapProfile,
+      ...(exchangedAccessTokenClaims ?? {}),
       ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
     };
 
     const accessToken = await signJwt(accessTokenPayload);
-    if (parentSnapshot) {
-      await persistAapSnapshotForToken({
+    if (storedSubjectSnapshot) {
+      await persistTokenSnapshot({
         tokenJti: jti,
         audienceClientId: client.clientId,
-        snapshot: parentSnapshot,
+        snapshot: storedSubjectSnapshot,
       });
     }
     return ctx.json(

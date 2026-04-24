@@ -57,7 +57,7 @@ export const verification = sqliteTable("verification", {
 });
 
 export const dcrClient = sqliteTable("dcr_client", {
-  providerId: text("providerId").primaryKey(),
+  scenarioId: text("scenarioId").primaryKey(),
   clientId: text("clientId").notNull(),
   clientSecret: text("clientSecret"),
 });
@@ -66,7 +66,7 @@ export const validityNotice = sqliteTable(
   "validity_notice",
   {
     jti: text("jti").primaryKey(),
-    providerId: text("providerId").notNull(),
+    scenarioId: text("scenarioId").notNull(),
     clientId: text("clientId").notNull(),
     sub: text("sub").notNull(),
     eventId: text("eventId").notNull(),
@@ -96,7 +96,7 @@ export const cibaPings = sqliteTable("ciba_ping", {
 
 export const oauthDpopKey = sqliteTable("oauth_dpop_key", {
   id: text("id").primaryKey(),
-  providerId: text("providerId").notNull(),
+  oauthProviderId: text("oauthProviderId").notNull(),
   accessToken: text("accessToken").notNull().unique(),
   publicJwk: text("publicJwk").notNull(),
   privateJwk: text("privateJwk").notNull(),
@@ -115,7 +115,7 @@ export const agentRuntime = sqliteTable(
     userId: text("userId")
       .notNull()
       .references(() => user.id),
-    providerId: text("providerId").notNull(),
+    runtimePartitionKey: text("runtimePartitionKey").notNull(),
     hostId: text("hostId"),
     hostPublicJwk: text("hostPublicJwk").notNull(),
     hostPrivateJwk: text("hostPrivateJwk").notNull(),
@@ -134,9 +134,9 @@ export const agentRuntime = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   (table) => [
-    uniqueIndex("agent_runtime_user_provider_unique").on(
+    uniqueIndex("agent_runtime_user_runtime_partition_unique").on(
       table.userId,
-      table.providerId
+      table.runtimePartitionKey
     ),
   ]
 );

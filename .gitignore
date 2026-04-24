@@ -12,6 +12,7 @@ commit-message.txt
 .actrc
 .zentity-auth-secret
 .playwright-mcp
+*.srl
 
 ### Documentation ###
 # Keep the public docs lean for open-source. Treat the rest as internal notes.
@@ -78,7 +79,7 @@ Temporary Items
 
 ### NextJS ###
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 

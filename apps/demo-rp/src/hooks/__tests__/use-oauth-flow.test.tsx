@@ -1,5 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { RouteScenario } from "@/scenarios/route-scenario";
 
 const sessionMock = vi.hoisted(() => ({
   data: null as {
@@ -16,25 +17,24 @@ vi.mock("@/lib/auth-client", () => ({
   signOut: vi.fn(),
 }));
 
-import type { Scenario } from "@/lib/scenarios";
 import { useOAuthFlow } from "../use-oauth-flow";
 
-function makeScenario(overrides: Partial<Scenario> = {}): Scenario {
+function makeScenario(overrides: Partial<RouteScenario> = {}): RouteScenario {
   return {
     id: "bank",
     name: "Test Bank",
     tagline: "Test",
     description: "Test",
-    providerId: "zentity-bank",
+    oauthProviderId: "zentity-bank",
     signInScopes: ["openid", "email", "proof:verification"],
     stepUpScopes: ["identity.name"],
     stepUpClaimKeys: ["name"],
     stepUpAction: "Open Account",
-    dcr: { clientName: "Test", defaultScopes: "openid email" },
+    dcr: { clientName: "Test", requestedScopes: "openid email" },
     compliance: [],
     notShared: [],
     ...overrides,
-  } as Scenario;
+  };
 }
 
 describe("useOAuthFlow", () => {
@@ -79,6 +79,26 @@ describe("useOAuthFlow", () => {
     const { result } = renderHook(() => useOAuthFlow(scenario));
 
     expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it("does not leak bank claims into the wine scenario", () => {
+    sessionMock.data = {
+      user: {
+        claims: { "zentity-bank": { email: "a@b.com", name: "Ada Lovelace" } },
+      },
+    };
+    const scenario = makeScenario({
+      id: "wine",
+      oauthProviderId: "zentity-wine",
+      stepUpAction: "Complete Purchase",
+      stepUpScopes: ["identity.name", "identity.address"],
+      stepUpClaimKeys: ["name", "address"],
+    });
+    const { result } = renderHook(() => useOAuthFlow(scenario));
+
+    expect(result.current.claims).toBeUndefined();
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.isSteppedUp).toBe(false);
   });
 
   it("isSteppedUp is true when all stepUpClaimKeys are present", () => {

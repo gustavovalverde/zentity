@@ -364,7 +364,7 @@ docker run -p 3000:3000 zentity-web
 ## Dependency Patches
 
 This project uses pnpm's native patching (via `pnpm-workspace.yaml`)
-to modify three packages:
+to modify selected packages:
 
 | Package | Purpose |
 | --- | --- |
@@ -372,6 +372,14 @@ to modify three packages:
 | `@better-auth/passkey` | Add WebAuthn extensions support and new error codes |
 | `@daveyplate/better-auth-ui` | Custom auth UI configuration |
 | `@better-auth/oauth-provider` | CIBA grant type extensibility |
+
+Better Auth packages that cannot be represented cleanly as pnpm patches are
+vendored as tarballs in `vendor/`. Those tarballs are patched builds; see
+[`vendor/README.md`](vendor/README.md) before replacing them with npm versions.
+
+Wallet connector packages such as WalletConnect, Coinbase, MetaMask, Base
+Account, and Porto are optional AppKit peer integrations. Keep them in
+`optionalDependencies` unless the app imports a connector directly.
 
 ### Updating Patches
 

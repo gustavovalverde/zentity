@@ -3,7 +3,6 @@ import "server-only";
 import { resolve } from "node:path";
 import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
-import { VERIFIER_SCENARIOS } from "@/data/veripass";
 import { getDb } from "@/lib/db/connection";
 import { vpSessions } from "@/lib/db/schema";
 import { env } from "@/lib/env";
@@ -14,6 +13,7 @@ import {
   loadLeafKeyPem,
   loadLeafPem,
 } from "@/lib/x509";
+import { VERIFIER_SCENARIOS } from "@/scenarios/veripass/verifier-registry";
 
 const VP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 

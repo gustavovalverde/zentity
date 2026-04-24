@@ -1,88 +1,485 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Project Overview
 
-This is a polyglot monorepo. Each service lives under `apps/`:
+Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE passwords, or wallet signatures (EIP-712) for authentication and key custody, zero-knowledge proofs (ZKPs), fully homomorphic encryption (FHE), and cryptographic commitments. The platform enables identity verification without storing or exposing sensitive personal information.
 
-- `apps/web/` — Next.js 16 + React 19 frontend (App Router). Source in `src/`, static assets in `public/`, unit tests in `src/**/__tests__` / `*.test.ts`, E2E in `e2e/`. Includes client-side ZK proof generation via Noir.js + Barretenberg. Noir circuits in `noir-circuits/`.
-- `apps/fhe/` — Rust/Axum fully homomorphic encryption service. Source in `src/`.
-- `apps/ocr/` — Python/FastAPI OCR service. Source in `app/`, tests in `tests/`.
+## Key Documentation
 
-Shared docs are in `docs/`, and sample/test data in `fixtures/`.
+**Understanding the privacy model (read these first):**
 
-## Build, Test, and Development Commands
+- [Attestation & Privacy Architecture](docs/(understand)/attestation-privacy-architecture.md) — Attestation schema, data classification, privacy boundaries
+- [Tamper Model](docs/(understand)/tamper-model.md) — Integrity controls and threat model
 
-- Full stack (recommended): `docker compose up --build` from repo root.
-- Toolchain versions are pinned in `.mise.toml` (Node 24, pnpm 10, Rust 1.92, Python 3.12).
-- Web (`apps/web`): `pnpm install`, `pnpm run dev` (localhost:3000), `pnpm run build`, `pnpm run lint`, `pnpm run test`, `pnpm run test:e2e`, `pnpm run circuits:compile` (Noir), `pnpm run circuits:test`.
-- FHE (`apps/fhe`): `cargo run` (port 5001), `cargo test`.
-- OCR (`apps/ocr`): `pip install -e '.[test]'`, `PYTHONPATH=src uvicorn ocr_service.main:app --reload --port 5004`, `pytest`.
+**For Web3/blockchain integration:**
 
-## Coding Style & Naming Conventions
+- [Web3 Architecture](docs/(blockchain)/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
+- [Blockchain Setup](docs/(blockchain)/blockchain-setup.md) — Network config, contract deployment
 
-- TypeScript/JavaScript/CSS: Biome is the formatter/linter (`biome.json`), 2‑space indentation. Prefer `camelCase` for variables/functions, `PascalCase` for React components, and `kebab-case` for route/feature folders.
-- Python: follow PEP 8, 4‑space indentation, use type hints for public APIs.
-- Rust: run `cargo fmt` and keep Clippy‑clean.
+**For detailed system design:**
 
-## Testing Guidelines
+- [Architecture](docs/(understand)/architecture.md) — Components, data flow, storage model
+- [Agent Architecture](docs/(integration)/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
+- [ZK Architecture](docs/(cryptography)/zk-architecture.md) — Noir circuits and proving
+- [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
-- Vitest for TS apps; name files `*.test.ts`/`*.spec.ts`.
-- Playwright for web E2E (`pnpm run test:e2e`).
-- Pytest for Python services; name files `test_*.py`.
-- Keep tests close to the module they cover and avoid storing PII in fixtures.
+## Architecture
 
-## Commit & Pull Request Guidelines
+Monorepo with services communicating via REST APIs:
 
-- Use Conventional Commits (e.g., `feat(web): add onboarding step`, `fix(liveness): handle head‑turn edge case`).
-- PRs should include: clear summary, how to test, linked issues, and UI screenshots when relevant. Keep changes scoped to one service unless coordinating a cross‑service feature.
+| Service | Location | Stack | Port |
+|---------|----------|-------|------|
+| Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
+| FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
+| OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
+| FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
+| MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
-## Security & Configuration Tips
+Additional apps (not core services):
 
-Never commit secrets. Copy `.env.example` to `.env` / `.env.local` and override service URLs or auth keys locally.
+- `apps/mcp` — MCP HTTP/stdio server with OAuth auth (FPA OPAQUE 3-round, PKCE, DPoP), CIBA integration, step-up re-auth. Public tools: whoami, my_profile, my_proofs, check_compliance, purchase
+- `apps/landing` — Marketing landing page (deploys to Vercel)
+- `apps/demo-rp` — Demo relying party with OAuth scenarios (bank, exchange, wine, aid), OID4VP verifier (VeriPass), and CIBA agent authorization (Aether AI at `/aether`)
 
-## Database (Drizzle)
+The frontend handles:
 
-- Schema source of truth: `apps/web/src/lib/db/schema/`.
-- Apply schema via `pnpm run db:push` (no runtime migrations; containers do not run drizzle-kit).
-- Local + Docker Compose: create or reset `apps/web/.data/dev.db` with `TURSO_DATABASE_URL=file:./apps/web/.data/dev.db pnpm run db:push` before `docker compose up`.
-- Turso (production/CI): set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`, then run `pnpm run db:push`.
-- Railway: configure `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` on the web service and run `pnpm run db:push` from CI or your local machine (no volume mounts or db-init container required).
-- Local SQLite uses `file:` URLs via `TURSO_DATABASE_URL` (no `DATABASE_PATH` fallback).
-- `drizzle-kit push` requires a SQLite driver; in this repo we use `@libsql/client`.
-- When wiping DBs, delete the SQLite file and rerun `pnpm run db:push` before starting the web app.
+- Face detection and liveness verification using Human.js (server-side via tfjs-node)
+- **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
+- **tRPC API layer** with type-safe routers for all backend operations
+- OAuth 2.1 / OpenID Connect provider for third-party integrations (via better-auth)
+- **FROST threshold signatures** for guardian-based key recovery
 
-## E2E (Playwright/Synpress) - Web
+## Route Architecture
 
-E2E lives in `apps/web/e2e` and relies on a seeded SQLite DB plus MetaMask.
+### Naming convention
 
-### Default (Hardhat, auto web server)
+Name routes by **domain noun** (what it manages), sub-routes by **action/state** (what the user does). Example: `recovery/password/sent/` not `forgot-password-sent/`.
 
-- Run: `cd apps/web && pnpm run test:e2e`
-- Playwright will start its own dev server via `e2e/automation/start-web3-dev.js`:
-  - Boots Hardhat node + deploys contracts from `../zama/zentity-fhevm-contracts`
-  - Sets `NEXT_PUBLIC_ENABLE_HARDHAT=true`, `NEXT_PUBLIC_ENABLE_FHEVM=false`
-  - Uses `apps/web/e2e/.data/e2e.db`
-- If contracts repo lives elsewhere, set `E2E_CONTRACTS_PATH=/path/to/zentity-fhevm-contracts`.
+### Page routes (`apps/web/src/app/`)
 
-### Existing dev server (port 3000)
+- **Route groups** `()` are visual/provider shells — they don't affect URLs
+- **`_components/`** for co-located non-route components — no exceptions
+- **AuthView wrappers** (`callback/`, `email-verification/`, `magic-link/`, `recovery/`) are an accepted Next.js App Router constraint, not a design flaw
+- **Standalone routes** (`approve/`, `oauth/consent/`) live at the app root with their own layout when they need no sidebar chrome
+- **`verify/` subtree** is the reference implementation: domain folders, `_components/`, server→client splits, meaningful server-side gates
 
-- Start your own server with the correct envs.
-- Run tests with: `E2E_EXTERNAL_WEB_SERVER=true pnpm exec playwright test`
-- **Important:** set `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL` for Playwright) to the same file as `E2E_DATABASE_PATH` so server + tests share the same seed DB:
-  - `TURSO_DATABASE_URL=file:apps/web/e2e/.data/e2e.db`
+### API routes (`apps/web/src/app/api/`)
 
-### Sepolia (fhEVM)
+Name by domain noun, not implementation mechanism:
 
-- Start server with fhEVM enabled and Hardhat disabled:
-  - `NEXT_PUBLIC_ENABLE_FHEVM=true`
-  - `NEXT_PUBLIC_ENABLE_HARDHAT=false`
+| Domain | Prefix | Contains |
+|--------|--------|----------|
+| FHE | `api/fhe/` | enrollment, key registration, status, age verification, diagnostics |
+| ZK | `api/zk/` | circuit artifacts, nationality proof verification |
+| CIBA | `api/ciba/` | identity intent/stage, push subscribe/unsubscribe |
+| OAuth2 | `api/oauth2/` | identity intent/stage/unstage |
+
+### tRPC routers (`src/lib/trpc/routers/`)
+
+Router names must match the domain they serve. Only rename `crypto` → `zk` was needed — all others were already correct.
+
+## Build & Development Commands
+
+### Web Frontend (apps/web)
+
+```bash
+pnpm dev             # Start dev server
+pnpm build           # Production build
+pnpm lint            # Biome linting (with write)
+pnpm lint:check      # Check lint issues (no write)
+pnpm lint:fix        # Fix lint issues (with unsafe fixes)
+pnpm typecheck       # TypeScript type checking
+pnpm check-all       # Run typecheck + lint + markdown + build + circuit version check
+
+# Testing
+pnpm test            # Run unit + integration tests
+pnpm test:unit       # Run unit tests only (vitest.unit.config.mts)
+pnpm test:integration # Run integration tests only (vitest.config.mts)
+pnpm test:unit path/to/file.test.ts         # Run single test file
+pnpm test:unit -t "test name pattern"       # Run tests matching pattern
+pnpm test:e2e        # Run Playwright E2E tests
+pnpm test:e2e:ui     # Run E2E with Playwright UI
+```
+
+### E2E Notes (Hardhat vs Sepolia)
+
+**Hardhat (default):**
+
+- `pnpm test:e2e` starts its own dev server + Hardhat node via `e2e/automation/start-web3-dev.js`.
+- Contracts repo path defaults to `../zama/zentity-fhevm-contracts` (override with `E2E_CONTRACTS_PATH`).
+- Uses the seeded E2E database configured by the E2E runner.
+
+**Existing dev server:**
+
+- Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn't spawn its own server.
+- Ensure `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL`) matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
+
+**Sepolia (fhEVM):**
+
+- Start server with `NEXT_PUBLIC_ENABLE_FHEVM=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
 - Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
 - Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test e2e/web3-sepolia.spec.ts`
-- The Sepolia test will **skip** if:
-  - Required envs are missing, or
-  - The MetaMask account has **no SepoliaETH** (grant compliance access is disabled).
+- Sepolia E2E **skips** if envs are missing or the MetaMask account has no SepoliaETH (grant compliance access is disabled).
 
-### Logs / debugging
+**Logs:**
 
 - Next dev logs: `apps/web/.next/dev/logs/next-development.log`
-- If tests hang, check MetaMask popups and network balance (Sepolia requires gas).
+
+### Noir Circuits (apps/web/noir-circuits)
+
+```bash
+# From apps/web directory:
+pnpm circuits:compile        # Compile all circuits
+pnpm circuits:test           # Run circuit tests
+pnpm circuits:check-versions # Verify Noir/BB versions match artifacts
+pnpm circuits:profile        # Profile circuit gate counts
+```
+
+### FHE Service (apps/fhe)
+
+The FHE service uses **MessagePack + gzip** for all POST endpoints (not JSON). Keys are persisted in a **ReDB** embedded database.
+
+```bash
+cargo build --release    # Build
+cargo run --release      # Run (keys persist to ReDB on first registration)
+cargo test               # Run tests
+```
+
+### OCR Service (apps/ocr)
+
+```bash
+python -m venv venv && source venv/bin/activate
+pip install -e '.[test]'
+PYTHONPATH=src uvicorn ocr_service.main:app --port 5004 --reload
+pytest                    # Run tests
+pytest tests/test_x.py    # Run single test file
+ruff check src            # Lint (if dev deps installed)
+ruff format src           # Format
+```
+
+### FROST Signer Service (apps/signer)
+
+FROST threshold signature service for guardian-based key recovery. Consists of a coordinator and multiple signer instances.
+
+```bash
+cargo build --release              # Build
+cargo run --bin coordinator        # Run coordinator (port 5002)
+cargo run --bin signer             # Run signer instance (port 5101+)
+cargo test                         # Run tests
+```
+
+See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
+
+### MCP Server (apps/mcp)
+
+MCP identity server supporting HTTP and stdio transports.
+
+```bash
+pnpm dev              # Run with watch (stdio transport)
+pnpm start:http       # Run HTTP transport (port 3200)
+pnpm build            # Build to dist/
+pnpm test             # Vitest unit tests
+pnpm test:e2e         # Smoke test script
+```
+
+Env vars: `ZENTITY_URL` (Zentity server URL), `MCP_ALLOWED_ORIGINS` (CORS origins for HTTP transport).
+
+### Docker (all services)
+
+```bash
+docker-compose up        # Start all services
+docker-compose up -d     # Detached mode
+```
+
+## Deployment
+
+### Vercel (Landing Page)
+
+The landing page (`apps/landing`) deploys to Vercel. Configuration is in `apps/landing/vercel.json`. The Vercel project has `rootDirectory: apps/landing`, so **deploy from the monorepo root** (not from `apps/landing/`):
+
+```bash
+vercel --prod            # Run from repo root
+```
+
+### Railway (Backend Services)
+
+Backend services deploy to Railway using Dockerfiles. Each service has a `railway.toml` for configuration.
+
+**Important**: Use `--path-as-root` flag to deploy from service subdirectories in this monorepo.
+
+```bash
+# Deploy individual services
+railway up apps/fhe --path-as-root --service fhe
+railway up apps/ocr --path-as-root --service ocr
+railway up apps/web --path-as-root --service web
+```
+
+**Service URLs (production)**:
+
+- Web: `https://app.zentity.xyz`
+- FHE: `http://fhe.railway.internal:5001` (internal only)
+- OCR: `http://ocr.railway.internal:5004` (internal only)
+
+**Required env vars** (set via Railway dashboard):
+
+- `BETTER_AUTH_SECRET`, `OPAQUE_SERVER_SETUP`, `NEXT_PUBLIC_APP_URL`
+- `INTERNAL_SERVICE_TOKEN` (min 32 chars, shared across all services)
+- `DEDUP_HMAC_SECRET` (min 32 chars, sybil dedup & per-RP nullifiers)
+- `PAIRWISE_SECRET` (min 32 chars, HAIP pairwise subject identifiers)
+- `KEY_ENCRYPTION_KEY` (min 32 chars, AES-256-GCM for JWKS at rest)
+- `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
+- `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web push)
+- `RESEND_API_KEY` (transactional email)
+- `MAIL_FROM_EMAIL=no-reply@zentity.xyz`
+- `SIGNER_COORDINATOR_URL`, `SIGNER_ENDPOINTS` (FROST recovery)
+- `RECOVERY_ML_KEM_SECRET_KEY` (ML-KEM-768 base64, for recovery flow)
+- `DPOP_NONCE_TTL_SECONDS` (default: 30)
+- `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
+- `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
+- `X5C_LEAF_PEM`, `X5C_CA_PEM`
+
+### Manual Setup (without Docker)
+
+**Prerequisites:**
+
+- Node.js 24+ (recommended: use `.nvmrc` or `mise`)
+- pnpm 10+ (package manager)
+- Rust 1.91+ (recommended: `mise`)
+- Python 3.12+ (recommended: `mise`)
+
+**Setup Toolchain:**
+
+```bash
+# Install mise (https://mise.jdx.dev)
+curl https://mise.run | sh
+
+# Install project toolchain versions
+mise install
+```
+
+**Install Dependencies:**
+
+```bash
+# Frontend (install deps + generate secrets + init DB)
+cd apps/web && pnpm install && pnpm setup
+
+# OCR service
+cd apps/ocr && python -m venv venv && source venv/bin/activate && pip install -e '.[test]'
+
+# FHE Service (compiles on first run)
+cd apps/fhe && cargo build --release
+```
+
+**Start Services (3 terminals):**
+
+```bash
+# Terminal 1: Frontend
+cd apps/web && pnpm dev
+
+# Terminal 2: FHE Service
+cd apps/fhe && cargo run --release
+
+# Terminal 3: OCR Service
+cd apps/ocr && source venv/bin/activate && PYTHONPATH=src uvicorn ocr_service.main:app --reload --port 5004
+```
+
+## Key Data Flow
+
+The system has two distinct flows: **sign-up** (account creation) and **verification** (identity proofing).
+
+**Sign-Up Flow** (`/sign-up` → `/dashboard`):
+
+1. **Credential choice** → User picks passkey, password (OPAQUE), or wallet (inline cards)
+2. **Session creation** → Passkey/password paths call `ensureAuthSession()` on demand to create an anonymous user; wallet (SIWE) creates its own user directly
+3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
+4. User lands on dashboard with **Tier 1** (account created, no FHE keys yet)
+
+FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/(cryptography)/fhe-key-lifecycle.md).
+
+**Verification Flow** (from `/dashboard/verify/*`):
+
+Users choose a verification method via `VerificationMethodCards` (OCR or NFC chip, gated by `NEXT_PUBLIC_ZKPASSPORT_ENABLED`). Both paths converge at the same `identity_verifications` table (unified schema with `method` discriminator: `"ocr"` | `"nfc_chip"`).
+
+**OCR path:**
+
+1. **Document OCR** → `trpc.identity.prepareDocument` extracts data, generates commitments
+2. **Liveness + Face Match** → `trpc.liveness.*` runs multi-gesture challenges, server verifies
+3. **Profile Secret** → Extracted PII is encrypted with the user's credential (passkey/password/wallet) and stored as a `PROFILE` secret. This is the only persistent copy of the user's PII and is only decryptable by the user.
+4. **ZK Proofs** → Client-side Noir generates UltraHonk proofs (age, doc validity, nationality, face match)
+5. **FHE Encryption** → Encrypt DOB, country code, compliance level via FHE service
+6. **Compliance derivation** → `deriveComplianceStatus()` pure function (`src/lib/identity/verification/compliance.ts`) computes level from proofs, claims, and flags — no DB access, no mutable booleans
+7. User reaches **Tier 2/3** depending on proof completeness
+
+**Compliance Derivation Engine:**
+
+`deriveComplianceStatus(input) → { verified, level, numericLevel, birthYearOffset, checks }` is the sole source of truth for compliance status. It takes `verificationMethod`, `zkProofs`, `signedClaims`, `encryptedAttributes`, `hasUniqueIdentifier`, `hasNationalityCommitment`, and `birthYearOffset`.
+
+Levels: `none`(1) → `basic`(2) → `full`(3) → `chip`(4). Level is `chip` when NFC + sybilResistant; `full` when all 7 checks pass; `basic` when >= half pass; `none` otherwise. `verified` is true only for `full` or `chip`.
+
+7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/uniqueIdentifier).
+
+NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `uniqueIdentifier`.
+
+**Identity Revocation:** `revokeIdentity()` (`src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction: (1) mark `identity_verifications` as revoked (`revokedAt`, `revokedBy`, `revokedReason`), (2) mark `identity_bundle` as revoked, (3) set OID4VCI credentials to `status=1` (revoked). Step 4 revokes on-chain attestations **outside** the transaction (best-effort). After revocation, assurance tier drops to Tier 1. Revoked dedup keys are auto-released for re-registration. Triggered via `identity.revokeVerification` (admin) or `identity.selfRevoke` (user GDPR).
+
+**NFC chip path (ZKPassport):**
+
+1. **Country/document pre-check** → `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support
+2. **ZKPassport deep-link** → Opens ZKPassport mobile app for NFC chip reading + proof generation
+3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side via `zkpassport.verify()`
+4. **Nullifier check** → `uniqueIdentifier` prevents duplicate passport registrations across accounts
+5. **FHE Encryption** → Same as OCR path; synthetic liveness score (1.0) from physical chip possession
+
+**Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
+
+All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.attestation.*`, etc.).
+
+**Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
+
+**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, or wallet signature via HKDF). The server cannot decrypt these keys—only the user with their passkey, password, or wallet can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/(understand)/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
+
+## Code Conventions
+
+- **Linting**: Biome via Ultracite preset (`pnpm exec ultracite fix`). Run `pnpm lint:fix` before commits.
+- **Code Standards**: See `apps/web/.claude/CLAUDE.md` for detailed TypeScript/React style guidelines enforced by Ultracite
+- **API Layer**: tRPC with Zod validation in `src/lib/trpc/`
+- **Forms**: TanStack Form with Zod validation
+- **UI Components**: shadcn/ui (Radix primitives) in `src/components/ui/`
+- **Database**: Drizzle ORM with SQLite local files or Turso in production. Schema source of truth: `apps/web/src/lib/db/schema/`. Apply schema with `pnpm db:push` (no runtime migrations)
+- **Turso**: set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` for production/CI. For local file DBs, use a `file:` SQLite URL pointing at your local database path
+- **SQLite driver**: uses `@libsql/client`
+
+### Module Organization Principles
+
+**Deep modules over shallow modules.** A module's interface cost (import path, directory entry, mental slot) must be justified by the complexity it hides. If combining two files produces a simpler interface for the same functionality, combine them. A 500-line cohesive module is preferable to five 100-line files that require understanding all five.
+
+**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `recovery/`, it's `keys.ts` not `recovery-keys.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
+
+**Sub-directory threshold: 4+ cohesive files.** Only create a sub-directory when a concern group has 4+ files after consolidation. Two-file directories are shallow modules at the directory level. Examples: `auth/oidc/haip/` (6 files, HAIP spec), `auth/oidc/disclosure/` (5 files, selective-disclosure registry).
+
+**Component co-location.** Route-scoped components live in `_components/` next to their page, not in `src/components/`. Only genuinely cross-route components (`tier-badge.tsx`, `vault-unlock.tsx`, `agent-approval-view.tsx`) belong at the `src/components/` root.
+
+**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `recovery.ts`, `organization.ts`, `oidc-credentials.ts`.
+
+**No barrel files.** Avoid `index.ts` files that just re-export. If a module is 900 lines of business logic, name it after its domain (e.g., `vault.ts`), not `index.ts`.
+
+**Avoid cross-domain collisions.** When a name would collide across domains, disambiguate by what each actually computes: on-chain attestation lives in `blockchain/attestation/`, agent-host attestation is `agents/host-attestation.ts`, ZK signed-claim attestation is `privacy/zk/attestation-claims.ts` — three domains, three distinct names.
+
+See `apps/web/CLAUDE.md` for the current directory map.
+
+## tRPC API Structure
+
+All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trpc/routers/`:
+
+| Router | Purpose |
+|--------|---------|
+| `zk` | ZK proof verification, challenge nonces |
+| `identity` | Identity verification (document OCR, liveness, face match, proofs, revocation) |
+| `liveness` | Multi-gesture liveness detection sessions |
+| `signUp` | Account creation completion (email linking, wallet association, identity bundle creation) |
+| `assurance` | Tier profile, AAL computation, and feature gating |
+| `attestation` | On-chain identity attestation (submit, refresh, networks) |
+| `account` | User account management |
+| `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
+| `credentials` | WebAuthn credential management |
+| `compliantToken` | CompliantERC20 DeFi token operations |
+| `recovery` | FROST guardian-based key recovery flow |
+| `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
+| `admin` | JWKS signing key rotation, cleanup, and on-chain revocation retry (admin-only via `adminProcedure`) |
+| `agentBoundaries` | CIBA pre-authorized boundary policies CRUD (purchase limits, scope allowlists, custom actions) |
+
+**Client usage:**
+
+```typescript
+import { trpc } from "@/lib/trpc/client";
+
+// Query
+const health = await trpc.zk.health.query();
+
+// Mutation
+const result = await trpc.liveness.verify.mutate({ sessionId, ... });
+```
+
+## OAuth Provider (Third-Party Integrations)
+
+Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-auth's `oauthProvider` plugin. Endpoints are under `/api/auth/oauth2/*` with discovery at `/.well-known/*`.
+
+OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
+
+**HAIP compliance** (`@better-auth/haip`): DPoP enforced at token endpoint (`requireDpop: true`); tRPC resource endpoints accept Bearer fallback. Server-managed nonce store (`DPOP_NONCE_TTL_SECONDS`, default 30s), PAR required (`requirePar: true`), wallet attestation (`TRUSTED_WALLET_ISSUERS`), JARM encrypted VP responses (ECDH-ES P-256), pairwise subject identifiers (`PAIRWISE_SECRET`, required min 32 chars). Discovery metadata enriched via `enrichDiscoveryMetadata()` in `well-known.ts` (NOT via plugin after-hook — Next.js routes call `auth.api.*` directly).
+
+**First-Party Apps** (`draft-ietf-oauth-first-party-apps`): Authorization Challenge Endpoint at `POST /api/oauth2/authorize-challenge` for CLI/headless clients. Supports OPAQUE (3-round) and EIP-712 wallet (2-round) challenge flows with DPoP-bound `auth_session`. Credential resolution: OPAQUE > EIP-712 > `redirect_to_web` (passkey-only). Only clients with `firstParty: true` can use the endpoint. Rate limited to 10 req/min per IP. Step-up re-authentication: when CIBA token exchange fails `acr_values`, FPA clients receive HTTP 403 + `auth_session` to re-authenticate via the challenge endpoint. Schema: `src/lib/db/schema/auth-challenge.ts`. Route: `src/app/api/oauth2/authorize-challenge/route.ts`.
+
+**CIBA** (`@better-auth/ciba`): Backchannel auth for agent authorization. Poll and ping modes. Endpoints: `POST /oauth2/bc-authorize`, `GET /ciba/verify`, `POST /ciba/authorize`, `POST /ciba/reject`. Grant type `urn:openid:params:grant-type:ciba` handled at the token endpoint via `customGrantTypeHandlers` (requires oauth-provider patch). Supports `authorization_details` (RAR) for structured action metadata and `acr_values` for assurance tier enforcement (checked at approval time and token exchange). Approval UI: standalone `/approve/[authReqId]` (push notification target, no dashboard chrome) and dashboard `/dashboard/agents/approve` (secondary). Listing at `/dashboard/agents` (Requests tab). Email notifications via `src/lib/email/ciba.ts`. Web push notifications: service worker (`public/push-sw.js`) with inline approve/deny actions, push subscription API at `/api/ciba/push/subscribe` and `/api/ciba/push/unsubscribe`, `PushManager` client in `src/lib/agents/push-client.ts`. VAPID env vars: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Identity PII delivery: ephemeral in-memory store with single-consume semantics (5-min TTL for OAuth2, 10-min for CIBA); PII delivered exclusively via userinfo endpoint, never in id_tokens. `requiresVaultUnlock`: identity-scoped requests show only "Deny" inline (vault unlock requires browser context). Schema: `src/lib/db/schema/ciba.ts`. Demo: Aether AI shopping agent at `apps/demo-rp/src/app/aether/`.
+
+**OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
+
+**Back-Channel Logout** (OIDC BCL): `end_session_endpoint` at `GET /api/auth/oauth2/end-session` validates `id_token_hint` and terminates sessions. `sendBackchannelLogout()` delivers logout tokens to all RPs with registered `backchannel_logout_uri`. `sid` claim injected into id_tokens for BCL-registered clients. `revokePendingCibaOnLogout()` cancels pending CIBA requests on user logout. Discovery: `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`.
+
+**JWKS Key Rotation**: `rotateSigningKey(alg, overlapHours)` in `jwt-signer.ts` retires the active key with an `expiresAt` timestamp and creates a new one. During the overlap window, both keys are served by the JWKS endpoint. `cleanupExpiredKeys()` removes keys past the overlap window. Both operations are exposed via the `admin` tRPC router (admin-only). JWKS private keys are encrypted at rest with AES-256-GCM (`KEY_ENCRYPTION_KEY` env var).
+
+**Agent Registration**: Durable host plus ephemeral session identity model. `agent_host` stores the persistent MCP installation identity keyed by `public_key_thumbprint`; the MCP persists the host key outside the repository under a per-instance namespace. `agent_session` stores the live runtime identity for one process. Registration endpoints: `POST /api/auth/agent/host/register` and `POST /api/auth/agent/register`, both authenticated with a user-bound OAuth access token carrying `agent:manage`. Session registration requires a host-signed `host-attestation+jwt`, creates a fresh session, seeds active grants from host policy, and records requested extra capabilities as pending session grants.
+
+**Agent Capabilities**: Server-side capability model split into durable `agent_host_policy` and ephemeral `agent_session_grant`. Seeded capabilities: `purchase`/`biometric`, `read_profile`/`session`, `check_compliance`/`none`, `request_approval`/`session`. Discovery: `GET /api/auth/agent/capabilities`. Grant evaluation in `src/lib/agents/approval-evaluate.ts` is the sole auto-approve path for CIBA. Constraint operators: `max`, `min`, `in`, `not_in`, `eq`. Usage limits are enforced through `capability_usage_ledger` using `daily_limit_count`, `daily_limit_amount`, and `cooldown_sec`. Successful automatic approvals set `approvalMethod: "capability_grant"`.
+
+**Agent Trust and Runtime Proof**: Host registration supports optional `OAuth-Client-Attestation` plus PoP verification against `TRUSTED_AGENT_ATTESTERS`, producing operational host tiers of `unverified` and `attested`. Attested hosts receive a wider default host policy (`read_profile` in addition to `check_compliance` and `request_approval`). Runtime proof on CIBA requests uses `Agent-Assertion`, a short-lived Ed25519 JWT signed by the registered session key and carrying `host_id`, `task_id`, and `task_hash`. On verification, the server snapshots `agent_session_id`, host/runtime metadata, and pairwise actor metadata onto `ciba_request`, then issues tokens with `act.sub` rather than legacy self-declared agent claims.
+
+- [OAuth Integrations](docs/(integration)/oauth-integrations.md) — Authorization flow, client management, scopes, consent, OIDC4VCI/VP, HAIP, CIBA
+
+## ZK Circuit Development
+
+ZK circuits are in `apps/web/noir-circuits/` using Noir. Build process:
+
+1. Install Noir toolchain: `curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | bash && noirup`
+2. Compile circuits: `cd apps/web && pnpm circuits:compile`
+3. Test circuits: `cd apps/web && pnpm circuits:test`
+
+Circuits available:
+
+- `age_verification` — Prove age >= threshold without revealing DOB
+- `doc_validity` — Prove document not expired without revealing expiry date
+- `nationality_membership` — Prove nationality in country group via Merkle proof
+- `address_jurisdiction` — Prove residential address in jurisdiction via Merkle proof
+- `face_match` — Prove face similarity above threshold
+- `identity_binding` — Bind proofs to user identity for replay protection (works with passkey, OPAQUE, and wallet auth)
+
+**Critical: BN254 field constraints** — All circuit inputs must fit the BN254 scalar field (~254 bits). Cryptographic outputs (passkey PRF, OPAQUE export keys, SHA-256) must use HKDF-based hash-to-field (512-bit expansion, then modulo BN254) before use. See [ZK Architecture](docs/(cryptography)/zk-architecture.md#bn254-field-constraints).
+
+## Environment Variables
+
+Env config is centralized in `apps/web/src/env.ts` using [T3 Env](https://env.t3.gg/) with Zod validation. Run `cd apps/web && pnpm setup` to auto-generate secrets and initialize the database.
+
+All env vars are typed and validated at startup. See `src/env.ts` for the full schema with defaults. Key vars:
+
+```bash
+# Required (auto-generated by pnpm setup)
+BETTER_AUTH_SECRET=<random-32-char-string>
+OPAQUE_SERVER_SETUP=<generated-by-setup>
+
+# Services (defaults work for local dev)
+FHE_SERVICE_URL=http://localhost:5001
+OCR_SERVICE_URL=http://localhost:5004
+
+# Privacy & compliance (required in production)
+PAIRWISE_SECRET=<min-32-char-string>    # Required (z.string().min(32)), pairwise subject identifiers
+KEY_ENCRYPTION_KEY=<min-32-char-string> # Optional in dev, required in production (min 32 chars). AES-256-GCM envelope encryption for JWKS private keys at rest.
+DEDUP_HMAC_SECRET=<min-32-char-string>  # Required (z.string().min(32)). HMAC key for sybil dedup and per-RP nullifiers.
+CUSTODIAL_SIGNER_URL=                   # Optional. URL of the custodial signer instance for zero-friction recovery.
+CUSTODIAL_SIGNER_ID=                    # Optional. Signer ID of the custodial signer instance.
+
+# Web Push (auto-generated by pnpm setup)
+VAPID_PUBLIC_KEY=<vapid-key>            # Required in production
+VAPID_PRIVATE_KEY=<vapid-key>           # Required in production
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<vapid-key> # Same as VAPID_PUBLIC_KEY, baked into client bundle
+
+# Email (required in production)
+RESEND_API_KEY=<resend-key>
+MAIL_FROM_EMAIL=no-reply@zentity.xyz
+
+# Feature flags
+NEXT_PUBLIC_ZKPASSPORT_ENABLED=false     # Enable NFC chip verification via ZKPassport
+
+# Optional overrides
+OIDC4VP_JWKS_URL=                        # Override JWKS endpoint for VP token verification
+```

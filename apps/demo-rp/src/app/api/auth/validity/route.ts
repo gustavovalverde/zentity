@@ -1,63 +1,26 @@
+import { createOpenIdTokenVerifier } from "@zentity/sdk/rp";
 import { eq } from "drizzle-orm";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { validityNotice } from "@/lib/db/schema";
-import {
-  findProviderByClientId,
-  PROVIDER_IDS,
-  readDcrClientId,
-} from "@/lib/dcr";
+import { findRouteScenarioByClientId, readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { ROUTE_SCENARIO_IDS } from "@/scenarios/route-scenario-registry";
 
 const RP_VALIDITY_EVENT_URI = "https://zentity.xyz/events/validity-change";
-const OIDC_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 
-interface OidcDiscovery {
-  issuer: string;
-  jwks: ReturnType<typeof createRemoteJWKSet>;
-}
-
-let cached: {
-  expiresAt: number;
-  value: OidcDiscovery;
-} | null = null;
-
-async function getOidcConfig(): Promise<OidcDiscovery> {
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.value;
-  }
-
-  const discoveryUrl = `${env.ZENTITY_URL}/.well-known/openid-configuration`;
-  const response = await fetch(discoveryUrl);
-  const metadata = (await response.json()) as {
-    issuer: string;
-    jwks_uri: string;
-  };
-
-  cached = {
-    value: {
-      issuer: metadata.issuer,
-      jwks: createRemoteJWKSet(new URL(metadata.jwks_uri)),
-    },
-    expiresAt: Date.now() + OIDC_DISCOVERY_TTL_MS,
-  };
-
-  return cached.value;
+let oidcTokenVerifier: ReturnType<typeof createOpenIdTokenVerifier> | undefined;
+function getOidcTokenVerifier() {
+  oidcTokenVerifier ??= createOpenIdTokenVerifier({
+    issuerUrl: env.ZENTITY_URL,
+  });
+  return oidcTokenVerifier;
 }
 
 async function getAllClientIds(): Promise<string[]> {
-  const clientIds: string[] = [];
-
-  for (const providerId of PROVIDER_IDS) {
-    const clientId = await readDcrClientId(providerId);
-    if (clientId) {
-      clientIds.push(clientId);
-    }
-  }
-
-  return clientIds;
+  const clientIds = await Promise.all(ROUTE_SCENARIO_IDS.map(readDcrClientId));
+  return clientIds.filter((id): id is string => Boolean(id));
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -72,7 +35,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const oidc = await getOidcConfig();
     const clientIds = await getAllClientIds();
     if (clientIds.length === 0) {
       return NextResponse.json(
@@ -81,8 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const { payload } = await jwtVerify(token, oidc.jwks, {
-      issuer: oidc.issuer,
+    const { payload } = await getOidcTokenVerifier().verify(token, {
       audience: clientIds,
     });
 
@@ -126,8 +87,8 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    const providerId = await findProviderByClientId(aud);
-    if (!providerId) {
+    const scenarioId = await findRouteScenarioByClientId(aud);
+    if (!scenarioId) {
       return NextResponse.json(
         { error: "Unknown client audience" },
         { status: 400 }
@@ -138,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
       .insert(validityNotice)
       .values({
         jti: payload.jti,
-        providerId,
+        scenarioId,
         clientId: aud,
         sub: payload.sub,
         eventId: validityEvent.eventId,

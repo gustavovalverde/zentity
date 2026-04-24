@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routeMocks = vi.hoisted(() => ({
-  createRemoteJWKSet: vi.fn(() => "jwks"),
-  findProviderByClientId: vi.fn(),
+  createOpenIdTokenVerifier: vi.fn(),
+  findRouteScenarioByClientId: vi.fn(),
   getDb: vi.fn(),
-  jwtVerify: vi.fn(),
   readDcrClientId: vi.fn(),
+  verifyToken: vi.fn(),
 }));
 
-vi.mock("jose", () => ({
-  createRemoteJWKSet: routeMocks.createRemoteJWKSet,
-  jwtVerify: routeMocks.jwtVerify,
+vi.mock("@zentity/sdk/rp", () => ({
+  createOpenIdTokenVerifier: routeMocks.createOpenIdTokenVerifier,
 }));
 
 vi.mock("@/lib/db/connection", () => ({
@@ -18,9 +17,12 @@ vi.mock("@/lib/db/connection", () => ({
 }));
 
 vi.mock("@/lib/dcr", () => ({
-  PROVIDER_IDS: ["x402"],
-  findProviderByClientId: routeMocks.findProviderByClientId,
+  findRouteScenarioByClientId: routeMocks.findRouteScenarioByClientId,
   readDcrClientId: routeMocks.readDcrClientId,
+}));
+
+vi.mock("@/scenarios/route-scenario-registry", () => ({
+  ROUTE_SCENARIO_IDS: ["x402"],
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -81,9 +83,12 @@ describe("/api/auth/validity", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    routeMocks.createOpenIdTokenVerifier.mockReturnValue({
+      verify: routeMocks.verifyToken,
+    });
     routeMocks.readDcrClientId.mockResolvedValue("client-123");
-    routeMocks.findProviderByClientId.mockResolvedValue("x402");
-    routeMocks.jwtVerify.mockResolvedValue({
+    routeMocks.findRouteScenarioByClientId.mockResolvedValue("x402");
+    routeMocks.verifyToken.mockResolvedValue({
       payload: {
         aud: "client-123",
         sub: "pairwise-sub-1",
@@ -99,21 +104,6 @@ describe("/api/auth/validity", () => {
         },
       },
     });
-    routeMocks.createRemoteJWKSet.mockReturnValue("jwks");
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            issuer: "http://zentity.example",
-            jwks_uri: "http://zentity.example/api/auth/oauth2/jwks",
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }
-        )
-      )
-    );
   });
 
   it("accepts a valid RP validity notice and stores it", async () => {
@@ -131,7 +121,7 @@ describe("/api/auth/validity", () => {
         eventId: "event-1",
         eventKind: "revoked",
         jti: "notice-jti-1",
-        providerId: "x402",
+        scenarioId: "x402",
         sub: "pairwise-sub-1",
         validityStatus: "revoked",
       })

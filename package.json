@@ -1,0 +1,64 @@
+{
+  "name": "zentity-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "@daveyplate/better-auth-ui": "apps/web/vendor/@daveyplate__better-auth-ui.patch",
+      "better-call@1.3.5": "apps/web/patches/better-call@1.3.5.patch"
+    },
+    "overrides": {
+      "@walletconnect/logger": "3.0.1",
+      "tar@<7.5.11": "7.5.11",
+      "axios@<1.15.0": "1.15.0",
+      "ws@<8.17.1": "8.17.1",
+      "hono@<4.12.14": "4.12.14",
+      "@hono/node-server@<1.19.13": "1.19.13",
+      "undici@<7.24.0": "7.24.0",
+      "fast-xml-parser@<5.5.7": "5.5.7",
+      "follow-redirects@<1.16.0": "1.16.0",
+      "node-forge@<1.4.0": "1.4.0",
+      "protobufjs@<7.5.5": "7.5.5",
+      "dompurify@<3.4.0": "3.4.0",
+      "express-rate-limit@<8.2.2": "8.2.2",
+      "path-to-regexp@>=8 <8.4.0": "8.4.0"
+    },
+    "packageExtensions": {
+      "@better-auth/ciba": {
+        "dependencies": {
+          "@better-auth/core": "*",
+          "@better-auth/oauth-provider": "*"
+        }
+      },
+      "@better-auth/haip": {
+        "dependencies": {
+          "@better-auth/core": "*"
+        }
+      },
+      "@better-auth/oidc4ida": {
+        "dependencies": {
+          "@better-auth/core": "*"
+        }
+      },
+      "@better-auth/oidc4vci": {
+        "dependencies": {
+          "@better-auth/core": "*"
+        }
+      },
+      "@better-auth/oidc4vp": {
+        "dependencies": {
+          "@better-auth/core": "*"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "changeset": "changeset",
+    "check:agent-sdk-rollout": "node ./scripts/check-agent-sdk-rollout.mjs",
+    "release:sdk:pack": "npm pack --json --dry-run ./packages/sdk",
+    "typecheck:sdk": "pnpm --filter @zentity/sdk exec tsc --noEmit"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.7"
+  }
+}

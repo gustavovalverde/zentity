@@ -1,3 +1,4 @@
+import { decodeEd25519DidKeyToJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -34,8 +35,18 @@ export async function POST(request: Request) {
   }
 
   const { principal } = authResult;
-  const { publicKey, name } = parsed.data;
+  const { did, name } = parsed.data;
   const clientId = principal.clientId;
+  let publicKeyJwkJson: string;
+
+  try {
+    publicKeyJwkJson = JSON.stringify(decodeEd25519DidKeyToJwk(did));
+  } catch {
+    return NextResponse.json(
+      { error: "invalid_did_key_format" },
+      { status: 400 }
+    );
+  }
 
   const client = await db
     .select({ clientId: oauthClients.clientId })
@@ -59,6 +70,7 @@ export async function POST(request: Request) {
   let attestationVerifiedAt: Date | null = null;
 
   if (attestationJwt) {
+    attestationTier = "self-declared";
     const result = await verifyAgentAttestation(
       attestationJwt,
       attestationPopJwt ?? undefined,
@@ -73,9 +85,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const publicKeyThumbprint = await computeJwkThumbprint(publicKey);
+  const publicKeyThumbprint = await computeJwkThumbprint(publicKeyJwkJson);
   const existing = await db
     .select({
+      attestationProvider: agentHosts.attestationProvider,
+      attestationTier: agentHosts.attestationTier,
       clientId: agentHosts.clientId,
       id: agentHosts.id,
       userId: agentHosts.userId,
@@ -96,26 +110,33 @@ export async function POST(request: Request) {
       );
     }
 
+    const nextAttestationTier = attestationJwt
+      ? attestationTier
+      : (existing.attestationTier as
+          | "attested"
+          | "self-declared"
+          | "unverified");
+    const nextAttestationProvider = attestationJwt
+      ? attestationProvider
+      : existing.attestationProvider;
+
     await db
       .update(agentHosts)
       .set({
-        publicKey,
+        publicKey: publicKeyJwkJson,
         name,
         updatedAt: new Date(),
-        ...(attestationTier === "unverified"
-          ? {}
-          : {
-              attestationProvider,
-              attestationTier,
-              attestationVerifiedAt,
-            }),
+        attestationProvider: nextAttestationProvider,
+        attestationTier: nextAttestationTier,
+        ...(attestationJwt ? { attestationVerifiedAt } : {}),
       })
       .where(eq(agentHosts.id, existing.id));
 
     return NextResponse.json({
       hostId: existing.id,
+      did,
       created: false,
-      attestation_tier: attestationTier,
+      attestation_tier: nextAttestationTier,
     });
   }
 
@@ -124,7 +145,7 @@ export async function POST(request: Request) {
     .values({
       userId: principal.userId,
       clientId,
-      publicKey,
+      publicKey: publicKeyJwkJson,
       publicKeyThumbprint,
       name,
       attestationProvider,
@@ -143,6 +164,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       hostId: host.id,
+      did,
       created: true,
       attestation_tier: attestationTier,
     },

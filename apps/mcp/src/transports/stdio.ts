@@ -1,25 +1,28 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
 import { detectAgent } from "../agent.js";
+import { config } from "../config.js";
 import {
-  AgentRegistrationError,
-  buildHostKeyNamespace,
+  clearMcpOAuthTokens,
+  ensureMcpOAuthSession,
+  refreshMcpOAuthSession,
+} from "../oauth-client.js";
+import {
   clearCachedHostId,
   ensureHostRegistered,
   prepareBootstrapRegistrationAuth,
-  registerAgent,
-} from "../auth/agent-registration.js";
-import { ensureAuthenticated, refreshAuthContext } from "../auth/bootstrap.js";
+  registerAgentSession,
+} from "../runtime/agent-registration.js";
+import { agentRuntimeStateStore } from "../runtime/agent-session-state.js";
 import {
   getAuthContext,
+  type OAuthSessionContext,
   setAuthFactory,
   setAuthPromise,
   setDefaultAuth,
-} from "../auth/context.js";
-import { clearTokenCredentials } from "../auth/credentials.js";
-import { agentRuntimeManager } from "../auth/runtime-manager.js";
-import { revokeAgentSession } from "../auth/runtime-revoke.js";
-import { config } from "../config.js";
+} from "../runtime/auth-context.js";
+import { revokeAgentSession } from "../runtime/session-revoke.js";
 import { createServer } from "../server/index.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
@@ -42,11 +45,10 @@ function waitForInitialized(server: McpServer): Promise<void> {
 export async function bootstrapRegisteredRuntime(
   server: McpServer,
   initializedPromise: Promise<void>
-): Promise<
-  Awaited<ReturnType<typeof ensureAuthenticated>> & {
-    runtime: Awaited<ReturnType<typeof registerAgent>>;
-  }
-> {
+): Promise<{
+  oauth: OAuthSessionContext;
+  runtime: Awaited<ReturnType<typeof registerAgentSession>>;
+}> {
   await initializedPromise;
 
   const clientInfo = server.server.getClientVersion();
@@ -56,20 +58,20 @@ export async function bootstrapRegisteredRuntime(
       : undefined
   );
 
-  let auth = await ensureAuthenticated();
+  let oauth = await ensureMcpOAuthSession();
 
   const registerRuntime = async (
-    oauth: (typeof auth)["oauth"]
-  ): Promise<Awaited<ReturnType<typeof registerAgent>>> => {
-    const keyNamespace = buildHostKeyNamespace(oauth);
-    const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauth);
+    oauthContext: OAuthSessionContext
+  ): Promise<Awaited<ReturnType<typeof registerAgentSession>>> => {
+    const keyNamespace = buildHostKeyNamespace(oauthContext);
+    const bootstrapAuth = await prepareBootstrapRegistrationAuth(oauthContext);
     const hostId = await ensureHostRegistered(
       config.zentityUrl,
       bootstrapAuth,
       "@zentity/mcp-server",
       keyNamespace
     );
-    return registerAgent(
+    return registerAgentSession(
       config.zentityUrl,
       bootstrapAuth,
       hostId,
@@ -79,26 +81,26 @@ export async function bootstrapRegisteredRuntime(
   };
 
   try {
-    const runtime = await registerRuntime(auth.oauth);
-    return { ...auth, runtime };
+    const runtime = await registerRuntime(oauth);
+    return { oauth, runtime };
   } catch (error) {
     if (error instanceof AgentRegistrationError && error.status === 404) {
       console.error(
         "[auth] Cached host registration is stale, re-registering the durable host..."
       );
-      clearCachedHostId(config.zentityUrl, buildHostKeyNamespace(auth.oauth));
-      const runtime = await registerRuntime(auth.oauth);
-      return { ...auth, runtime };
+      clearCachedHostId(config.zentityUrl, buildHostKeyNamespace(oauth));
+      const runtime = await registerRuntime(oauth);
+      return { oauth, runtime };
     }
 
     if (error instanceof AgentRegistrationError && error.status === 403) {
       console.error(
         "[auth] Stored credentials no longer satisfy agent registration, re-authenticating..."
       );
-      clearTokenCredentials(config.zentityUrl);
-      auth = await ensureAuthenticated();
-      const runtime = await registerRuntime(auth.oauth);
-      return { ...auth, runtime };
+      await clearMcpOAuthTokens();
+      oauth = await ensureMcpOAuthSession();
+      const runtime = await registerRuntime(oauth);
+      return { oauth, runtime };
     }
     throw error;
   }
@@ -109,25 +111,24 @@ async function runAuth(
   initializedPromise: Promise<void>
 ): Promise<void> {
   setDefaultAuth(undefined);
-  agentRuntimeManager.clear();
+  agentRuntimeStateStore.clear();
 
   try {
-    const { oauth, runtime, tokenManager } = await bootstrapRegisteredRuntime(
+    const { oauth, runtime } = await bootstrapRegisteredRuntime(
       server,
       initializedPromise
     );
-    agentRuntimeManager.setState(runtime);
+    agentRuntimeStateStore.setState(runtime);
     setDefaultAuth({ oauth, runtime });
 
     if (refreshTimer) {
       clearInterval(refreshTimer);
     }
 
-    let currentOauth = oauth;
     refreshTimer = setInterval(async () => {
       try {
-        currentOauth = await refreshAuthContext(tokenManager, currentOauth);
-        const currentRuntime = agentRuntimeManager.getState();
+        const currentOauth = await refreshMcpOAuthSession();
+        const currentRuntime = agentRuntimeStateStore.getState();
         if (!currentRuntime) {
           throw new Error(
             "Agent runtime is not initialized — complete host and session registration first"
@@ -153,7 +154,7 @@ export async function startStdio(): Promise<void> {
   const initializedPromise = waitForInitialized(server);
 
   const shutdown = async () => {
-    const runtime = agentRuntimeManager.getState();
+    const runtime = agentRuntimeStateStore.getState();
     if (runtime) {
       try {
         const auth = getAuthContext();

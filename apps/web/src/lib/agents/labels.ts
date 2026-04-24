@@ -19,6 +19,7 @@ const GRANT_SOURCE_LABELS: Record<string, string> = {
 
 const HOST_TIER_LABELS: Record<string, string> = {
   attested: "Verified",
+  "self-declared": "Self-declared",
   unverified: "Unverified",
 };
 

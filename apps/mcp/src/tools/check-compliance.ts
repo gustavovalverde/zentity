@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { zentityFetch } from "../auth/api-client.js";
-import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
+import { requireAuth } from "../runtime/auth-context.js";
+import { zentityFetch } from "../services/zentity-api.js";
 
 interface AttestationStatus {
   attested: boolean;
@@ -72,8 +72,10 @@ export function registerCheckComplianceTool(server: McpServer): void {
       const data = (await response.json()) as {
         result: { data: AttestationStatus };
       };
-      const structuredContent =
-        data.result.data as unknown as Record<string, unknown>;
+      const structuredContent = data.result.data as unknown as Record<
+        string,
+        unknown
+      >;
       return {
         content: [
           {

@@ -14,16 +14,13 @@ import { useCallback, useState } from "react";
 import { AgentChat } from "@/components/aether/agent-chat";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
-import {
-  SHOPPING_TASKS,
-  type ShoppingTask,
-  type TrustTier,
-} from "@/data/aether";
+import { SHOPPING_TASKS, type ShoppingTask } from "@/data/aether";
 import { useCibaFlow } from "@/hooks/use-ciba-flow";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
-import { getScenario } from "@/lib/scenarios";
+import type { TrustTier } from "@/lib/agent-runtime-storage";
+import { aetherScenario } from "@/scenarios/aether";
 
-const scenario = getScenario("aether");
+const scenario = aetherScenario;
 
 export default function AetherPage() {
   const {
@@ -225,13 +222,7 @@ function LandingView({
         </div>
 
         <div className="space-y-4">
-          <DcrRegistration
-            clientName={scenario.dcr.clientName}
-            defaultScopes={scenario.dcr.defaultScopes}
-            grantTypes={scenario.dcr.grantTypes}
-            onRegistered={onDcrRegistered}
-            providerId={scenario.id}
-          />
+          <DcrRegistration onRegistered={onDcrRegistered} scenario={scenario} />
           <Button
             className="h-12 w-full rounded-lg bg-white font-medium text-primary hover:bg-white/90 disabled:opacity-40"
             disabled={!dcrReady}

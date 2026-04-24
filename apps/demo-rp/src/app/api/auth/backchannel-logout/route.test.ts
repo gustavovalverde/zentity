@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routeMocks = vi.hoisted(() => ({
-  createRemoteJWKSet: vi.fn(() => "jwks"),
-  findProviderByClientId: vi.fn(),
+  createOpenIdTokenVerifier: vi.fn(),
+  findRouteScenarioByClientId: vi.fn(),
   getDb: vi.fn(),
-  jwtVerify: vi.fn(),
   readDcrClientId: vi.fn(),
+  verifyToken: vi.fn(),
 }));
 
-vi.mock("jose", () => ({
-  createRemoteJWKSet: routeMocks.createRemoteJWKSet,
-  jwtVerify: routeMocks.jwtVerify,
+vi.mock("@zentity/sdk/rp", () => ({
+  createOpenIdTokenVerifier: routeMocks.createOpenIdTokenVerifier,
 }));
 
 vi.mock("@/lib/db/connection", () => ({
@@ -18,9 +17,13 @@ vi.mock("@/lib/db/connection", () => ({
 }));
 
 vi.mock("@/lib/dcr", () => ({
-  PROVIDER_IDS: ["x402"],
-  findProviderByClientId: routeMocks.findProviderByClientId,
+  findRouteScenarioByClientId: routeMocks.findRouteScenarioByClientId,
   readDcrClientId: routeMocks.readDcrClientId,
+}));
+
+vi.mock("@/scenarios/route-scenario-registry", () => ({
+  ROUTE_SCENARIO_IDS: ["x402"],
+  getOAuthProviderId: (scenarioId: string) => `zentity-${scenarioId}`,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -84,9 +87,12 @@ describe("POST /api/auth/backchannel-logout", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    routeMocks.createOpenIdTokenVerifier.mockReturnValue({
+      verify: routeMocks.verifyToken,
+    });
     routeMocks.readDcrClientId.mockResolvedValue("client-123");
-    routeMocks.findProviderByClientId.mockResolvedValue("x402");
-    routeMocks.jwtVerify.mockResolvedValue({
+    routeMocks.findRouteScenarioByClientId.mockResolvedValue("x402");
+    routeMocks.verifyToken.mockResolvedValue({
       payload: {
         aud: "client-123",
         events: {
@@ -95,21 +101,6 @@ describe("POST /api/auth/backchannel-logout", () => {
         sub: "pairwise-sub",
       },
     });
-    routeMocks.createRemoteJWKSet.mockReturnValue("jwks");
-    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            issuer: "http://zentity.example",
-            jwks_uri: "http://zentity.example/api/auth/oauth2/jwks",
-          }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
-        ),
-      ),
-    );
   });
 
   it("deletes RP sessions for a valid backchannel logout token", async () => {
@@ -127,7 +118,7 @@ describe("POST /api/auth/backchannel-logout", () => {
   it("rejects logout tokens that carry a nonce claim", async () => {
     const { db, mocks } = createDbMock();
     routeMocks.getDb.mockReturnValue(db);
-    routeMocks.jwtVerify.mockResolvedValueOnce({
+    routeMocks.verifyToken.mockResolvedValueOnce({
       payload: {
         aud: "client-123",
         events: {
@@ -152,7 +143,7 @@ describe("POST /api/auth/backchannel-logout", () => {
   it("rejects replayed logout token jti values", async () => {
     const { db, mocks } = createDbMock();
     routeMocks.getDb.mockReturnValue(db);
-    routeMocks.jwtVerify.mockResolvedValue({
+    routeMocks.verifyToken.mockResolvedValue({
       payload: {
         aud: "client-123",
         events: {
@@ -177,23 +168,17 @@ describe("POST /api/auth/backchannel-logout", () => {
     expect(mocks.deleteRun).toHaveBeenCalledOnce();
   });
 
-  it("refreshes discovery metadata after the cache TTL expires", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  it("returns 503 when no RP client ids are registered", async () => {
+    routeMocks.readDcrClientId.mockResolvedValue(null);
     const { db } = createDbMock();
     routeMocks.getDb.mockReturnValue(db);
     const POST = await loadRoute();
 
-    try {
-      const firstResponse = await POST(makeRequest("logout-token-a"));
-      vi.setSystemTime(new Date("2026-01-01T00:06:00.000Z"));
-      const secondResponse = await POST(makeRequest("logout-token-b"));
+    const response = await POST(makeRequest());
 
-      expect(firstResponse.status).toBe(200);
-      expect(secondResponse.status).toBe(200);
-      expect(fetch).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "No registered clients — cannot validate logout token",
+    });
   });
 });

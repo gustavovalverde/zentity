@@ -37,10 +37,6 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { env } from "@/env";
-import {
-  loadAapProfileForCibaRequest,
-  persistAapSnapshotForCibaToken,
-} from "@/lib/agents/act-claim";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
 import {
   deriveCapabilityName,
@@ -51,6 +47,10 @@ import {
   AGENT_BOOTSTRAP_SCOPES,
   bindAgentAssertionToCibaRequest,
 } from "@/lib/agents/session";
+import {
+  persistCibaTokenSnapshot,
+  resolveTokenSnapshotForCibaRequest,
+} from "@/lib/agents/token-snapshot";
 import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { reportRejection } from "@/lib/async-handler";
@@ -69,6 +69,10 @@ import {
   isUrlClientId,
   resolveCimdClient,
 } from "@/lib/auth/oidc/client-id-metadata";
+import {
+  persistDcrClientExtensions,
+  readDcrClientExtensions,
+} from "@/lib/auth/oidc/dcr-client-extensions";
 import {
   buildOidcVerifiedClaims,
   buildProofClaims,
@@ -431,6 +435,7 @@ const oidc4vciDeferredIssuance = isOidcE2e
 
 const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
+const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev =
   process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
 
@@ -625,6 +630,19 @@ async function validateDcrRegistration(
     });
   }
 
+  const protectedResource =
+    typeof body[PROTECTED_RESOURCE_METADATA_FIELD] === "string"
+      ? body[PROTECTED_RESOURCE_METADATA_FIELD]
+      : undefined;
+  if (protectedResource) {
+    const result = validateResourceUri(protectedResource);
+    if (!result.valid) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: `${PROTECTED_RESOURCE_METADATA_FIELD}: ${result.error}`,
+      });
+    }
+  }
+
   // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
   const softwareStatement =
     typeof body.software_statement === "string"
@@ -712,6 +730,50 @@ async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
+  }
+}
+
+async function readReturnedResponseBody(
+  returned: unknown
+): Promise<Record<string, unknown> | null> {
+  if (returned instanceof Response) {
+    return (await returned
+      .clone()
+      .json()
+      .catch(() => null)) as Record<string, unknown> | null;
+  }
+
+  if (!(returned && typeof returned === "object")) {
+    return null;
+  }
+
+  if ("response" in returned) {
+    const response = returned.response;
+    return response && typeof response === "object"
+      ? (response as Record<string, unknown>)
+      : null;
+  }
+
+  return returned as Record<string, unknown>;
+}
+
+async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
+  const extensions = readDcrClientExtensions(
+    ctx.body as Record<string, unknown> | undefined
+  );
+  if (!extensions) {
+    return;
+  }
+
+  const returned = (ctx.context as { returned?: unknown }).returned;
+  const responseBody = await readReturnedResponseBody(returned);
+  if (!responseBody) {
+    return;
+  }
+
+  const clientId = responseBody.client_id;
+  if (typeof clientId === "string") {
+    await persistDcrClientExtensions(clientId, extensions);
   }
 }
 
@@ -953,26 +1015,26 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
     extensions: {
       "oauth-provider": {
         tokenClaims: {
-          id: async (info) =>
-            buildIdTokenDisclosureClaims({
-              ...((info as { authContextId?: string | null }).authContextId ===
-              undefined
+          id: (rawInfo: unknown) => {
+            const info = rawInfo as {
+              authContextId?: string | null;
+              referenceId?: string;
+              scopes: string[];
+              sessionId?: string | null;
+              user: { id: string };
+            };
+            return buildIdTokenDisclosureClaims({
+              ...(info.authContextId === undefined
                 ? {}
-                : {
-                    authContextId: (info as { authContextId?: string | null })
-                      .authContextId,
-                  }),
+                : { authContextId: info.authContextId }),
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
-              ...((info as { sessionId?: string | null }).sessionId ===
-              undefined
+              ...(info.sessionId === undefined
                 ? {}
-                : {
-                    sessionId: (info as { sessionId?: string | null })
-                      .sessionId,
-                  }),
+                : { sessionId: info.sessionId }),
               user: info.user,
-            }),
+            });
+          },
         },
       },
     },
@@ -1593,6 +1655,10 @@ export const auth = betterAuth({
     }),
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
+      if (ctx.path === "/oauth2/register") {
+        await afterDcrRegisterPersistExtensions(ctx);
+        return;
+      }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         await afterConsentStoreHmac(ctx);
@@ -1794,21 +1860,15 @@ export const auth = betterAuth({
         }
 
         if (referenceId && clientId) {
-          const aapSnapshot = await loadAapProfileForCibaRequest(
+          const tokenSnapshot = await resolveTokenSnapshotForCibaRequest(
             referenceId,
             clientId
           );
           if (cibaAuth) {
             claims.jti = referenceId;
           }
-          if (aapSnapshot) {
-            Object.assign(
-              claims,
-              aapSnapshot.aap.agent?.id
-                ? { act: { sub: aapSnapshot.aap.agent.id } }
-                : {},
-              aapSnapshot.aap
-            );
+          if (tokenSnapshot) {
+            Object.assign(claims, tokenSnapshot.claims);
           }
         }
 
@@ -1820,9 +1880,15 @@ export const auth = betterAuth({
           claims[AUTHENTICATION_CONTEXT_CLAIM] = authContextId;
         }
 
-        if (referenceId && (await hasReleaseContext(referenceId))) {
-          await touchReleaseContext(referenceId, Date.now() + 3600 * 1000);
-          claims.zentity_release_id = referenceId;
+        const releaseContext = referenceId
+          ? await loadReleaseContext(referenceId)
+          : null;
+        if (releaseContext) {
+          await touchReleaseContext(
+            releaseContext.releaseId,
+            Date.now() + 3600 * 1000
+          );
+          claims.jti ??= releaseContext.releaseId;
         }
 
         return claims;
@@ -1835,12 +1901,14 @@ export const auth = betterAuth({
               azp?: string;
               client_id?: string;
               jti?: string;
-              zentity_release_id?: string;
             };
           }
         ).jwt;
         const clientId = jwt?.azp ?? jwt?.client_id;
-        const releaseId = jwt?.zentity_release_id;
+        const releaseId =
+          typeof jwt?.jti === "string" && (await hasReleaseContext(jwt.jti))
+            ? jwt.jti
+            : undefined;
         const scopeList = toScopeList(scopes);
         const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
 
@@ -2026,7 +2094,7 @@ export const auth = betterAuth({
         if (authCtxId) {
           pendingCibaAuthContext.set(cibaRequest.authReqId, authCtxId);
         }
-        const accessTokenClaims = await persistAapSnapshotForCibaToken(
+        const accessTokenClaims = await persistCibaTokenSnapshot(
           cibaRequest.authReqId,
           cibaRequest.clientId
         );
@@ -2046,7 +2114,6 @@ export const auth = betterAuth({
             cibaRequest.authReqId,
             Date.now() + 3600 * 1000
           );
-          claims.zentity_release_id = cibaRequest.authReqId;
         }
 
         if (!accessTokenClaims) {
@@ -2055,9 +2122,6 @@ export const auth = betterAuth({
 
         return {
           ...claims,
-          ...(accessTokenClaims.agent?.id
-            ? { act: { sub: accessTokenClaims.agent.id } }
-            : {}),
           ...(accessTokenClaims as unknown as Record<string, unknown>),
         };
       },

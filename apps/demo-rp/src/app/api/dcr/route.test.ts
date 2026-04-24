@@ -1,12 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dcrMocks = vi.hoisted(() => ({
-  isValidProviderId: vi.fn(),
+  getRouteScenario: vi.fn(),
+  isRouteScenarioId: vi.fn(),
   readDcrClientId: vi.fn(),
   saveDcrClientId: vi.fn(),
 }));
 
-vi.mock("@/lib/dcr", () => dcrMocks);
+vi.mock("@/lib/dcr", () => ({
+  readDcrClientId: dcrMocks.readDcrClientId,
+  saveDcrClientId: dcrMocks.saveDcrClientId,
+}));
+vi.mock("@/scenarios/route-scenario-registry", () => ({
+  ROUTE_SCENARIO_IDS: ["bank"],
+  getRouteScenario: dcrMocks.getRouteScenario,
+  isRouteScenarioId: dcrMocks.isRouteScenarioId,
+}));
 
 vi.mock("@/lib/env", () => ({
   env: {
@@ -20,7 +29,14 @@ import { POST } from "./route";
 describe("/api/dcr POST", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    dcrMocks.isValidProviderId.mockReturnValue(true);
+    dcrMocks.isRouteScenarioId.mockReturnValue(true);
+    dcrMocks.getRouteScenario.mockReturnValue({
+      dcr: {
+        clientName: "Velocity Private",
+        requestedScopes: "openid email proof:verification",
+      },
+      oauthProviderId: "zentity-bank",
+    });
     dcrMocks.saveDcrClientId.mockResolvedValue(undefined);
   });
 
@@ -37,9 +53,7 @@ describe("/api/dcr POST", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          providerId: "bank",
-          clientName: "Velocity Private",
-          scopes: "openid email proof:verification",
+          scenarioId: "bank",
         }),
       })
     );
@@ -86,9 +100,7 @@ describe("/api/dcr POST", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          providerId: "bank",
-          clientName: "Velocity Private",
-          scopes: "openid email proof:verification",
+          scenarioId: "bank",
         }),
       })
     );

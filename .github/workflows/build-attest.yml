@@ -17,6 +17,10 @@ on:
       - "apps/fhe/**"
       - "apps/ocr/**"
       - "apps/web/**"
+      - "packages/sdk/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/build-attest.yml"
       - ".github/workflows/reusable-build-service.yml"
   pull_request:
@@ -54,6 +58,10 @@ jobs:
           filters: |
             demo-rp:
               - 'apps/demo-rp/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
               - '.github/workflows/build-attest.yml'
               - '.github/workflows/reusable-build-service.yml'
             fhe:
@@ -66,6 +74,10 @@ jobs:
               - '.github/workflows/reusable-build-service.yml'
             web:
               - 'apps/web/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
               - '.github/workflows/build-attest.yml'
               - '.github/workflows/reusable-build-service.yml'
 
@@ -77,7 +89,8 @@ jobs:
     uses: ./.github/workflows/reusable-build-service.yml
     with:
       service_name: demo-rp
-      context_path: apps/demo-rp
+      context_path: .
+      dockerfile_path: apps/demo-rp/Dockerfile
     secrets:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
@@ -124,7 +137,8 @@ jobs:
     uses: ./.github/workflows/reusable-build-service.yml
     with:
       service_name: web
-      context_path: apps/web
+      context_path: .
+      dockerfile_path: apps/web/Dockerfile
     secrets:
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:

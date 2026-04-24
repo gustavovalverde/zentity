@@ -10,21 +10,23 @@
     "dist"
   ],
   "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target node --format esm && printf '#!/usr/bin/env node\\n' | cat - dist/index.js > dist/tmp && mv dist/tmp dist/index.js && chmod +x dist/index.js",
+    "build:sdk": "pnpm --filter @zentity/sdk build",
+    "dev": "pnpm run build:sdk && bun run --watch src/index.ts",
+    "build": "pnpm run build:sdk && bun build src/index.ts --outdir dist --target node --format esm && printf '#!/usr/bin/env node\\n' | cat - dist/index.js > dist/tmp && mv dist/tmp dist/index.js && chmod +x dist/index.js",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --transport http",
     "lint": "pnpm exec ultracite fix",
     "lint:check": "pnpm exec ultracite check",
     "lint:fix": "pnpm exec ultracite fix",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:e2e": "bun run scripts/e2e-smoke.ts"
+    "typecheck": "pnpm run build:sdk && tsc --noEmit",
+    "test": "pnpm run build:sdk && vitest run",
+    "test:e2e": "pnpm run build:sdk && bun run scripts/e2e-smoke.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@serenity-kit/opaque": "^1.1.0",
+    "@zentity/sdk": "workspace:*",
     "hono": "^4.12.14",
     "jose": "^6.2.1",
     "zod": "^4.3.6"
@@ -35,15 +37,5 @@
     "typescript": "^5.9.3",
     "ultracite": "7.3.2",
     "vitest": "^4.1.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "vite": "7.3.2",
-      "path-to-regexp": "^8.4.0",
-      "picomatch@<2.3.2": "^2.3.2",
-      "picomatch@>=4.0.0 <4.0.4": "^4.0.4",
-      "brace-expansion@<1.1.13": "^1.1.13",
-      "brace-expansion@>=2 <5.0.5": "^5.0.5"
-    }
   }
 }

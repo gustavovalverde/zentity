@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { ComplianceBadge } from "@/lib/scenarios";
+import type { ComplianceBadge } from "@/scenarios/route-scenario";
 
 export function ComplianceBadges({
   compliance,

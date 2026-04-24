@@ -1,31 +1,18 @@
+import { createOpenIdTokenVerifier } from "@zentity/sdk/rp";
 import { and, eq, inArray } from "drizzle-orm";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
 
 import { getDb } from "@/lib/db/connection";
 import { account, session } from "@/lib/db/schema";
-import {
-  findProviderByClientId,
-  PROVIDER_IDS,
-  readDcrClientId,
-} from "@/lib/dcr";
+import { findRouteScenarioByClientId, readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import {
+  getOAuthProviderId,
+  ROUTE_SCENARIO_IDS,
+} from "@/scenarios/route-scenario-registry";
 
 const BCL_EVENT_URI = "http://schemas.openid.net/event/backchannel-logout";
 const DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS = 5 * 60 * 1000;
-const OIDC_DISCOVERY_TTL_MS = 5 * 60 * 1000;
-
-interface OidcDiscovery {
-  issuer: string;
-  jwks: ReturnType<typeof createRemoteJWKSet>;
-}
-
-let cached:
-  | {
-      expiresAt: number;
-      value: OidcDiscovery;
-    }
-  | null = null;
 const logoutTokenReplayExpiryByJti = new Map<string, number>();
 
 function pruneExpiredLogoutTokenReplayEntries(now: number) {
@@ -36,9 +23,7 @@ function pruneExpiredLogoutTokenReplayEntries(now: number) {
   }
 }
 
-function resolveLogoutTokenReplayExpiry(payload: {
-  exp?: unknown;
-}): number {
+function resolveLogoutTokenReplayExpiry(payload: { exp?: unknown }): number {
   if (typeof payload.exp === "number" && Number.isFinite(payload.exp)) {
     return payload.exp * 1000;
   }
@@ -46,32 +31,17 @@ function resolveLogoutTokenReplayExpiry(payload: {
   return Date.now() + DEFAULT_LOGOUT_TOKEN_REPLAY_TTL_MS;
 }
 
-async function getOidcConfig(): Promise<OidcDiscovery> {
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.value;
-  }
-  const discoveryUrl = `${env.ZENTITY_URL}/.well-known/openid-configuration`;
-  const res = await fetch(discoveryUrl);
-  const meta = (await res.json()) as { issuer: string; jwks_uri: string };
-  cached = {
-    value: {
-      issuer: meta.issuer,
-      jwks: createRemoteJWKSet(new URL(meta.jwks_uri)),
-    },
-    expiresAt: Date.now() + OIDC_DISCOVERY_TTL_MS,
-  };
-  return cached.value;
+let oidcTokenVerifier: ReturnType<typeof createOpenIdTokenVerifier> | undefined;
+function getOidcTokenVerifier() {
+  oidcTokenVerifier ??= createOpenIdTokenVerifier({
+    issuerUrl: env.ZENTITY_URL,
+  });
+  return oidcTokenVerifier;
 }
 
 async function getAllClientIds(): Promise<string[]> {
-  const ids: string[] = [];
-  for (const providerId of PROVIDER_IDS) {
-    const clientId = await readDcrClientId(providerId);
-    if (clientId) {
-      ids.push(clientId);
-    }
-  }
-  return ids;
+  const ids = await Promise.all(ROUTE_SCENARIO_IDS.map(readDcrClientId));
+  return ids.filter((id): id is string => Boolean(id));
 }
 
 /**
@@ -97,7 +67,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const oidc = await getOidcConfig();
     const clientIds = await getAllClientIds();
     if (clientIds.length === 0) {
       return NextResponse.json(
@@ -105,8 +74,7 @@ export async function POST(request: Request): Promise<Response> {
         { status: 503 }
       );
     }
-    const { payload } = await jwtVerify(logoutToken, oidc.jwks, {
-      issuer: oidc.issuer,
+    const { payload } = await getOidcTokenVerifier().verify(logoutToken, {
       audience: clientIds,
     });
 
@@ -150,13 +118,13 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
-    const provider = aud ? await findProviderByClientId(aud) : null;
+    const scenarioId = aud ? await findRouteScenarioByClientId(aud) : null;
 
     const db = getDb();
-    const accountFilter = provider
+    const accountFilter = scenarioId
       ? and(
           eq(account.accountId, sub),
-          eq(account.providerId, `zentity-${provider}`)
+          eq(account.providerId, getOAuthProviderId(scenarioId))
         )
       : eq(account.accountId, sub);
     const matchingAccounts = await db
@@ -166,29 +134,15 @@ export async function POST(request: Request): Promise<Response> {
       .all();
     const userIds = [...new Set(matchingAccounts.map((row) => row.userId))];
 
-    if (provider) {
-      // Revoke only the targeted provider's tokens — other providers stay active
-      await db
-        .update(account)
-        .set({
-          accessToken: null,
-          refreshToken: null,
-          idToken: null,
-        })
-        .where(accountFilter)
-        .run();
-    } else {
-      // Fallback: unknown provider — revoke all accounts matching sub
-      await db
-        .update(account)
-        .set({
-          accessToken: null,
-          refreshToken: null,
-          idToken: null,
-        })
-        .where(accountFilter)
-        .run();
-    }
+    await db
+      .update(account)
+      .set({
+        accessToken: null,
+        refreshToken: null,
+        idToken: null,
+      })
+      .where(accountFilter)
+      .run();
 
     if (userIds.length > 0) {
       await db.delete(session).where(inArray(session.userId, userIds)).run();

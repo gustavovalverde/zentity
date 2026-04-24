@@ -35,6 +35,7 @@ describe("POST /api/auth/oauth2/register", () => {
           rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
           scope: "openid email offline_access",
           token_endpoint_auth_method: "none",
+          zentity_protected_resource: "http://localhost:3300",
         }),
       })
     );
@@ -60,6 +61,7 @@ describe("POST /api/auth/oauth2/register", () => {
         "http://localhost:3102/api/auth/backchannel-logout",
       rp_validity_notice_enabled: true,
       rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+      zentity_protected_resource: "http://localhost:3300",
     });
 
     await expect(listBackchannelLogoutClients()).resolves.toEqual([

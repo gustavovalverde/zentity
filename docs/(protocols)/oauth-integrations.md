@@ -466,7 +466,7 @@ sequenceDiagram
   Note over AS: Claims deleted after delivery
 ```
 
-PII is delivered exclusively via the userinfo endpoint and never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token may contain standard session claims (`sub`, optional `email`, `email_verified`), authentication context claims (`acr`, `amr`, `at_hash`, `sid`), proof claims (except the access-token-only `proof:sybil`), and an opaque `zentity_release_id` pointer when an identity release context exists, but never the identity payload itself.
+PII is delivered exclusively via the userinfo endpoint and never embedded in id_tokens. This prevents identity data from persisting in JWT artifacts (browser caches, logs, forwarded tokens). The id_token may contain standard session claims (`sub`, optional `email`, `email_verified`), authentication context claims (`acr`, `amr`, `at_hash`, `sid`), and proof claims except the access-token-only `proof:sybil`, but never the identity payload itself. Release lookup is server-side and bound to the access token correlation id.
 
 For CIBA flows, the same mechanism applies with a 10-minute TTL: the agent calls the standard userinfo endpoint with the CIBA access token after approval.
 

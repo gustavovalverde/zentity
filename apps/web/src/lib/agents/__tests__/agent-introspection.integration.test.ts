@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
@@ -23,6 +25,20 @@ const TEST_CLIENT_ID = "ciba-test-agent";
 const INTROSPECTOR_CLIENT_ID = "agent-introspector";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
+const HOST_DID = encodeEd25519DidKeyFromJwk({
+  crv: "Ed25519",
+  kty: "OKP",
+  x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+});
+const AAP_CLAIM_KEYS = [
+  "act",
+  "task",
+  "capabilities",
+  "oversight",
+  "audit",
+  "delegation",
+  "aap_claims_version",
+] as const;
 
 async function createOAuthClient(
   clientId: string,
@@ -76,7 +92,11 @@ async function createRegisteredAgent(
     .values({
       userId,
       clientId: TEST_CLIENT_ID,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
       publicKeyThumbprint: `host-thumbprint-${crypto.randomUUID()}`,
       name: "Test Host",
       attestationProvider: "AgentPass",
@@ -95,7 +115,11 @@ async function createRegisteredAgent(
       idleTtlSec: sessionOverrides?.idleTtlSec,
       lastActiveAt: sessionOverrides?.lastActiveAt,
       maxLifetimeSec: sessionOverrides?.maxLifetimeSec,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      }),
       publicKeyThumbprint: `agent-thumbprint-${crypto.randomUUID()}`,
       displayName: "Test Agent",
       runtime: "test-runner",
@@ -117,7 +141,7 @@ async function issueAgentToken(
   sessionId: string,
   hostId: string
 ) {
-  const { authReqId } = await createTestCibaRequest({
+  const { authContextId, authReqId } = await createTestCibaRequest({
     clientId: TEST_CLIENT_ID,
     userId,
     scope: "openid",
@@ -150,7 +174,11 @@ async function issueAgentToken(
     throw new Error(`Expected CIBA token issuance to succeed, got ${status}`);
   }
 
-  return json.access_token as string;
+  return {
+    accessToken: json.access_token as string,
+    authContextId,
+    authReqId,
+  };
 }
 
 async function issueIntrospectorToken() {
@@ -237,7 +265,11 @@ describe("Agent Introspection", () => {
 
   it("returns top-level AAP claims and zentity lifecycle metadata", async () => {
     const { hostId, sessionId } = await createRegisteredAgent(userId);
-    const accessToken = await issueAgentToken(userId, sessionId, hostId);
+    const { accessToken, authContextId, authReqId } = await issueAgentToken(
+      userId,
+      sessionId,
+      hostId
+    );
     const caller = await issueIntrospectorToken();
 
     const result = await introspect(accessToken, caller);
@@ -245,22 +277,37 @@ describe("Agent Introspection", () => {
     expect(result.body.active).toBe(true);
     expect(result.body.client_id).toBe(TEST_CLIENT_ID);
     expect(result.body.scope).toBe("openid");
+    expect(result.body).not.toHaveProperty("agent_sub");
+    expect(result.body).not.toHaveProperty("zentity_context_id");
+    expect(result.body).not.toHaveProperty("zentity_release_id");
+
+    if (accessToken.split(".").length === 3) {
+      const payload = decodeJwt(accessToken);
+      for (const claimKey of AAP_CLAIM_KEYS) {
+        expect(result.body[claimKey]).toEqual(payload[claimKey]);
+      }
+    }
 
     const expectedActorId = await resolveAgentSubForClient(
       sessionId,
-      INTROSPECTOR_CLIENT_ID
+      TEST_CLIENT_ID
     );
 
     expect(result.body.sub).toBe(userId);
-    expect(result.body.agent).toEqual({
-      id: expectedActorId,
+    expect(result.body.act).toEqual({
+      did: HOST_DID,
+      host_attestation: "attested",
+      host_id: hostId,
+      session_id: sessionId,
+      sub: expectedActorId,
       type: "mcp-agent",
-      model: { id: "gpt-4", version: "1.0.0" },
-      runtime: { environment: "test-runner", attested: true },
     });
     expect(result.body.task).toEqual({
-      id: "task-123",
-      purpose: "purchase",
+      constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+      created_at: expect.any(Number),
+      description: "purchase",
+      expires_at: expect.any(Number),
+      hash: expect.any(String),
     });
     expect(result.body.capabilities).toEqual([
       {
@@ -269,13 +316,22 @@ describe("Agent Introspection", () => {
       },
     ]);
     expect(result.body.oversight).toEqual({
-      approval_reference: "grant-123",
-      requires_human_approval_for: ["purchase"],
+      approval_id: "grant-123",
+      approved_at: expect.any(Number),
+      method: "session",
     });
     expect(result.body.audit).toEqual({
-      trace_id: expect.any(String),
-      session_id: expectedActorId,
+      ciba_request_id: authReqId,
+      context_id: authContextId,
+      release_id: "dev",
+      request_id: authReqId,
     });
+    expect(result.body.delegation).toEqual({
+      depth: 0,
+      max_depth: 1,
+      parent_jti: null,
+    });
+    expect(result.body.aap_claims_version).toBe(1);
     expect(result.body.zentity).toEqual({
       attestation: {
         provider: "AgentPass",
@@ -299,7 +355,7 @@ describe("Agent Introspection", () => {
       lastActiveAt: new Date(Date.now() - 7_200_000),
       maxLifetimeSec: 86_400,
     });
-    const accessToken = await issueAgentToken(userId, sessionId, hostId);
+    const { accessToken } = await issueAgentToken(userId, sessionId, hostId);
     const caller = await issueIntrospectorToken();
 
     const result = await introspect(accessToken, caller);
@@ -327,7 +383,7 @@ describe("Agent Introspection", () => {
     const { hostId, sessionId } = await createRegisteredAgent(userId, {
       status: "revoked",
     });
-    const accessToken = await issueAgentToken(userId, sessionId, hostId);
+    const { accessToken } = await issueAgentToken(userId, sessionId, hostId);
     const caller = await issueIntrospectorToken();
 
     const result = await introspect(accessToken, caller);

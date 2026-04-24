@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockSummary = vi.fn();
 
-vi.mock("../../src/auth/context.js", () => ({
+vi.mock("../../src/runtime/auth-context.js", () => ({
   requireAuth: () => Promise.resolve({}),
 }));
 
@@ -54,7 +54,11 @@ describe("whoami", () => {
     expect(parsed.email).toBe("user@example.com");
     expect(parsed.tierName).toBe("Verified");
     expect(parsed.profileToolHint).toBe("my_profile");
-    expect(parsed.vaultFieldsAvailable).toEqual(["name", "address", "birthdate"]);
+    expect(parsed.vaultFieldsAvailable).toEqual([
+      "name",
+      "address",
+      "birthdate",
+    ]);
     expect(parsed.name).toBeUndefined();
   });
 
@@ -79,6 +83,10 @@ describe("whoami", () => {
     );
 
     expect(parsed.email).toBeNull();
-    expect(parsed.vaultFieldsAvailable).toEqual(["name", "address", "birthdate"]);
+    expect(parsed.vaultFieldsAvailable).toEqual([
+      "name",
+      "address",
+      "birthdate",
+    ]);
   });
 });

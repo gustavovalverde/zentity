@@ -9,7 +9,7 @@ export function createServer(surface?: ServerSurface): {
   server: McpServer;
   cleanup: () => Promise<void>;
 };
-export function createServer(surface: ServerSurface = "full"): {
+export function createServer(_surface: ServerSurface = "full"): {
   server: McpServer;
   cleanup: () => Promise<void>;
 } {

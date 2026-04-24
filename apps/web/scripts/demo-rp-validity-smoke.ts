@@ -30,7 +30,8 @@ const demoRpDbUrl =
     path.join(currentDir, "..", "..", "demo-rp", ".data", "demo-rp.db")
   );
 const demoRpDir = path.join(currentDir, "..", "..", "demo-rp");
-const providerId = "aid";
+const scenarioId = "aid";
+const oauthProviderId = `zentity-${scenarioId}`;
 const adminApiKey = process.env.ZENTITY_ADMIN_API_KEY;
 
 function normalizeBaseUrl(value: string): string {
@@ -138,20 +139,20 @@ async function resetAidProviderState(): Promise<void> {
   try {
     await client.batch([
       {
-        sql: "delete from validity_notice where providerId = ?",
-        args: [providerId],
+        sql: "delete from validity_notice where scenarioId = ?",
+        args: [scenarioId],
       },
       {
-        sql: "delete from dcr_client where providerId = ?",
-        args: [providerId],
+        sql: "delete from dcr_client where scenarioId = ?",
+        args: [scenarioId],
       },
       {
-        sql: "delete from oauth_dpop_key where providerId = ?",
-        args: [`zentity-${providerId}`],
+        sql: "delete from oauth_dpop_key where oauthProviderId = ?",
+        args: [oauthProviderId],
       },
       {
         sql: "delete from account where providerId = ?",
-        args: [`zentity-${providerId}`],
+        args: [oauthProviderId],
       },
     ]);
   } finally {
@@ -267,7 +268,7 @@ async function seedVerifiedIdentity(userId: string): Promise<void> {
 
 async function readAidClientId(): Promise<string> {
   const response = await fetch(
-    `${demoRpBaseUrl}/api/dcr?providerId=${encodeURIComponent(providerId)}`
+    `${demoRpBaseUrl}/api/dcr?scenarioId=${encodeURIComponent(scenarioId)}`
   );
   await expectResponseStatus(response, 200, "Unable to read demo-rp DCR state");
 
@@ -307,15 +308,15 @@ async function waitForValidityState(
   await expect
     .poll(
       async () => {
-        lastBody = await page.evaluate(async (currentProviderId) => {
+        lastBody = await page.evaluate(async (currentScenarioId) => {
           const response = await fetch(
-            `/api/auth/validity-state?providerId=${encodeURIComponent(currentProviderId)}`
+            `/api/auth/validity-state?scenarioId=${encodeURIComponent(currentScenarioId)}`
           );
           if (!response.ok) {
             return null;
           }
           return (await response.json()) as Record<string, unknown>;
-        }, providerId);
+        }, scenarioId);
 
         const snapshot = lastBody?.snapshot as
           | { validityStatus?: string }
@@ -436,7 +437,7 @@ async function run(): Promise<void> {
     });
     page = await context.newPage();
 
-    await page.goto(`${demoRpBaseUrl}/${providerId}`, {
+    await page.goto(`${demoRpBaseUrl}/${scenarioId}`, {
       waitUntil: "networkidle",
     });
     console.log(`[smoke] opened ${page.url()}`);
@@ -449,12 +450,16 @@ async function run(): Promise<void> {
     });
     if (await registerButton.isVisible().catch(() => false)) {
       await registerButton.click();
-      await expect(verifyIdentityButton).toBeEnabled({ timeout: 10_000 });
+      await expect
+        .poll(() => verifyIdentityButton.isEnabled(), { timeout: 10_000 })
+        .toBe(true);
       console.log("[smoke] registered demo-rp client");
     }
 
-    await expect(verifyIdentityButton).toBeEnabled({ timeout: 10_000 });
-    const aidUrl = `${demoRpBaseUrl}/${providerId}`;
+    await expect
+      .poll(() => verifyIdentityButton.isEnabled(), { timeout: 10_000 })
+      .toBe(true);
+    const aidUrl = `${demoRpBaseUrl}/${scenarioId}`;
     await verifyIdentityButton.click();
     await page.waitForURL((url) => url.toString() !== aidUrl, {
       timeout: 30_000,
@@ -500,7 +505,7 @@ async function run(): Promise<void> {
         "Issuer browser session was not bootstrapped. The smoke flow landed on /sign-in."
       );
     } else {
-      await page.waitForURL(`${demoRpBaseUrl}/${providerId}`, {
+      await page.waitForURL(`${demoRpBaseUrl}/${scenarioId}`, {
         timeout: 30_000,
       });
       console.log(`[smoke] returned without consent -> ${page.url()}`);

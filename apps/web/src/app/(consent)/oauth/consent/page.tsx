@@ -22,10 +22,18 @@ import {
   extractMetadataHostname,
 } from "./consent-view-model";
 
+const CONSENT_ERROR_MESSAGES: Record<string, string> = {
+  consent_failed: "Unable to process consent request.",
+};
+
 export default async function OAuthConsentPage({
   searchParams,
 }: Readonly<{
-  searchParams: Promise<{ client_id?: string; scope?: string }>;
+  searchParams: Promise<{
+    client_id?: string;
+    consent_error?: string;
+    scope?: string;
+  }>;
 }>) {
   const params = await searchParams;
   const clientId = params.client_id ?? null;
@@ -134,6 +142,12 @@ export default async function OAuthConsentPage({
       clientHostname={clientHostname}
       clientId={clientId}
       clientMeta={clientMeta}
+      initialErrorMessage={
+        params.consent_error
+          ? (CONSENT_ERROR_MESSAGES[params.consent_error] ??
+            "Unable to process consent request.")
+          : null
+      }
       isLocalApp={isLocalApp}
       optionalScopes={optionalScopes}
       scopeParam={params.scope ?? ""}

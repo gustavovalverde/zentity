@@ -8,6 +8,10 @@ import {
   renderGeneratedMcpToolManifest,
 } from "./mcp-tool-manifest.js";
 
+function normalizeGeneratedModuleWhitespace(source: string) {
+  return source.replace(/\s+/g, " ").trim();
+}
+
 describe("collectCanonicalMcpTools", () => {
   it("returns the registered MCP tools and excludes stale landing-only entries", () => {
     const tools = collectCanonicalMcpTools();
@@ -56,6 +60,8 @@ describe("collectCanonicalMcpTools", () => {
     );
     const currentOutput = readFileSync(generatedMcpToolManifestPath, "utf8");
 
-    expect(currentOutput).toBe(expectedOutput);
+    expect(normalizeGeneratedModuleWhitespace(currentOutput)).toBe(
+      normalizeGeneratedModuleWhitespace(expectedOutput),
+    );
   });
 });

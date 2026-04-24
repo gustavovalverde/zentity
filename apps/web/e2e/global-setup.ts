@@ -1,11 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createClient } from "@libsql/client";
-import { type APIResponse, type FullConfig, request } from "@playwright/test";
+import { encode } from "@msgpack/msgpack";
+import { type APIResponse, request } from "@playwright/test";
+import {
+  client as opaqueProtocolClient,
+  ready as opaqueProtocolReady,
+} from "@serenity-kit/opaque";
+
+import { createE2EOpaqueSecret } from "./opaque-secret-seed";
 
 const currentDir =
   typeof import.meta.dirname === "string"
@@ -13,13 +20,46 @@ const currentDir =
     : dirname(fileURLToPath(import.meta.url));
 const AUTH_STATE_PATH = join(currentDir, ".auth", "user.json");
 const AUTH_SEED_PATH = join(currentDir, ".auth", "seed.json");
+const CURRENT_POLICY_VERSION = "compliance-policy-2025-12-28";
 const E2E_DB_PATH =
   process.env.E2E_DATABASE_PATH ?? join(currentDir, ".data", "e2e.db");
 const DEFAULT_APP_DB_PATH = join(currentDir, "..", ".data", "dev.db");
 const SELECT_QUERY_REGEX = /^select\s/i;
+const WHITESPACE_REGEX = /\s+/;
 const IS_OIDC_ONLY = process.env.E2E_OIDC_ONLY === "true";
+type IdentitySeedVariant = "incomplete" | "verified_with_profile";
+const identitySeedVariant: IdentitySeedVariant =
+  process.env.E2E_IDENTITY_SEED_VARIANT === "verified_with_profile"
+    ? "verified_with_profile"
+    : "incomplete";
 
 type ApiContext = Awaited<ReturnType<typeof request.newContext>>;
+
+function base64ToBytes(base64: string): Uint8Array {
+  if (typeof Buffer !== "undefined") {
+    return new Uint8Array(Buffer.from(base64, "base64"));
+  }
+
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.codePointAt(index) ?? 0;
+  }
+  return bytes;
+}
+
+function normalizeBase64(base64: string): string {
+  const normalized = base64.replaceAll("-", "+").replaceAll("_", "/");
+  const padLength = normalized.length % 4;
+  if (padLength === 0) {
+    return normalized;
+  }
+  return `${normalized}${"=".repeat(4 - padLength)}`;
+}
+
+function base64UrlToBytes(base64Url: string): Uint8Array {
+  return base64ToBytes(normalizeBase64(base64Url));
+}
 
 async function postWithRetries(
   api: ApiContext,
@@ -215,18 +255,350 @@ async function ensureUserExists(
   return userId;
 }
 
-async function seedVerifiedIdentity(
-  dbUrl: string,
-  email: string,
-  name: string
-) {
-  const userId = await ensureUserExists(dbUrl, email, name);
-  if (!userId) {
+function escapeSqlString(value: string): string {
+  return value.replaceAll("'", "''");
+}
+
+function sha256Hex(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+async function clearSeededIdentityState(dbUrl: string, userId: string) {
+  await runSql(
+    dbUrl,
+    `DELETE FROM verification_checks WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM proof_artifacts WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM zk_challenges WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM proof_sessions WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM signed_claims WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM encrypted_attributes WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM secret_wrappers
+     WHERE user_id = '${escapeSqlString(userId)}'
+       AND secret_id IN (
+         SELECT id FROM encrypted_secrets
+         WHERE user_id = '${escapeSqlString(userId)}'
+           AND secret_type IN ('profile', 'fhe_keys')
+       );`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM encrypted_secrets
+     WHERE user_id = '${escapeSqlString(userId)}'
+       AND secret_type IN ('profile', 'fhe_keys');`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM identity_bundles WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+  await runSql(
+    dbUrl,
+    `DELETE FROM identity_verifications WHERE user_id = '${escapeSqlString(userId)}';`
+  );
+}
+
+async function deriveOpaqueExportKey(
+  api: ApiContext,
+  password: string
+): Promise<Uint8Array> {
+  await opaqueProtocolReady;
+
+  const { clientLoginState, startLoginRequest } =
+    opaqueProtocolClient.startLogin({ password });
+
+  const challengeResponse = await api.post(
+    "/api/auth/password/opaque/verify/challenge",
+    {
+      data: { loginRequest: startLoginRequest },
+    }
+  );
+
+  if (!challengeResponse.ok()) {
     throw new Error(
-      `E2E seed user not found and could not be created for ${email}`
+      `OPAQUE verify challenge failed: ${await challengeResponse.text()}`
     );
   }
 
+  const challengeBody = (await challengeResponse.json()) as {
+    challenge?: string;
+    state?: string;
+  };
+
+  if (!(challengeBody.challenge && challengeBody.state)) {
+    throw new Error("OPAQUE verify challenge response was invalid.");
+  }
+
+  const verifyResult = opaqueProtocolClient.finishLogin({
+    clientLoginState,
+    loginResponse: challengeBody.challenge,
+    password,
+  });
+  if (!verifyResult) {
+    throw new Error("OPAQUE login completion did not produce a client result.");
+  }
+
+  const completeResponse = await api.post(
+    "/api/auth/password/opaque/verify/complete",
+    {
+      data: {
+        loginResult: verifyResult.finishLoginRequest,
+        encryptedServerState: challengeBody.state,
+      },
+    }
+  );
+
+  if (!completeResponse.ok()) {
+    throw new Error(
+      `OPAQUE verify completion failed: ${await completeResponse.text()}`
+    );
+  }
+
+  return base64UrlToBytes(verifyResult.exportKey);
+}
+
+async function ensureOpaquePasswordRegistration(
+  api: ApiContext,
+  password: string
+): Promise<void> {
+  await opaqueProtocolReady;
+
+  const { clientRegistrationState, registrationRequest } =
+    opaqueProtocolClient.startRegistration({ password });
+
+  const challengeResponse = await api.post(
+    "/api/auth/password/opaque/registration/challenge",
+    {
+      data: { registrationRequest },
+    }
+  );
+
+  if (!challengeResponse.ok()) {
+    throw new Error(
+      `OPAQUE registration challenge failed: ${await challengeResponse.text()}`
+    );
+  }
+
+  const challengeBody = (await challengeResponse.json()) as {
+    challenge?: string;
+  };
+
+  if (!challengeBody.challenge) {
+    throw new Error("OPAQUE registration challenge response was invalid.");
+  }
+
+  const registrationResult = opaqueProtocolClient.finishRegistration({
+    clientRegistrationState,
+    registrationResponse: challengeBody.challenge,
+    password,
+  });
+
+  if (!registrationResult) {
+    throw new Error(
+      "OPAQUE registration completion did not produce a client result."
+    );
+  }
+
+  const completeResponse = await api.post(
+    "/api/auth/password/opaque/registration/complete",
+    {
+      data: {
+        registrationRecord: registrationResult.registrationRecord,
+      },
+    }
+  );
+
+  if (!completeResponse.ok()) {
+    throw new Error(
+      `OPAQUE registration completion failed: ${await completeResponse.text()}`
+    );
+  }
+}
+
+function buildProfileSecretPayload(name: string) {
+  const parts = name.trim().split(WHITESPACE_REGEX).filter(Boolean);
+  const firstName = parts[0] ?? "E2E";
+  const lastName = parts.length > 1 ? parts.slice(1).join(" ") : "User";
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  return {
+    addressCountryCode: "US",
+    birthYear: 1990,
+    dateOfBirth: "1990-01-01",
+    documentHash: `doc_${randomUUID().replaceAll("-", "")}`,
+    documentNumber: "E2E123456",
+    documentOrigin: "USA",
+    documentType: "passport",
+    expiryDateInt: 20_300_101,
+    firstName,
+    fullName,
+    lastName,
+    nationality: "United States",
+    nationalityCode: "USA",
+    residentialAddress: "123 Market Street, San Francisco, CA 94105, USA",
+    updatedAt: new Date().toISOString(),
+    userSalt: `salt_${randomUUID().replaceAll("-", "")}`,
+  };
+}
+
+function buildFheKeySecretPayload(createdAt: string) {
+  return encode({
+    clientKey: randomBytes(32),
+    publicKey: randomBytes(32),
+    serverKey: randomBytes(32),
+    createdAt,
+  });
+}
+
+async function seedOpaqueSecret(
+  api: ApiContext,
+  dbUrl: string,
+  userId: string,
+  password: string,
+  params: {
+    envelopeFormat: "json" | "msgpack";
+    metadata?: Record<string, unknown>;
+    plaintext: Uint8Array;
+    secretId?: string;
+    secretType: "fhe_keys" | "profile";
+  }
+) {
+  const exportKey = await deriveOpaqueExportKey(api, password);
+  const secretId = params.secretId ?? randomUUID();
+  const { envelope, wrapper } = await createE2EOpaqueSecret({
+    secretId,
+    userId,
+    exportKey,
+    secretType: params.secretType,
+    plaintext: params.plaintext,
+    envelopeFormat: params.envelopeFormat,
+  });
+
+  const blobResponse = await api.post("/api/secrets/blob", {
+    data: Buffer.from(envelope.encryptedBlob),
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Secret-Id": secretId,
+      "X-Secret-Type": params.secretType,
+    },
+  });
+
+  if (!blobResponse.ok()) {
+    throw new Error(
+      `${params.secretType} blob upload failed: ${await blobResponse.text()}`
+    );
+  }
+
+  const blobBody = (await blobResponse.json()) as { blobRef?: string };
+  if (!blobBody.blobRef) {
+    throw new Error(`${params.secretType} blob upload response was invalid.`);
+  }
+
+  const blobHash = sha256Hex(envelope.encryptedBlob);
+  const metadata = escapeSqlString(
+    JSON.stringify({
+      envelopeFormat: envelope.envelopeFormat,
+      ...(params.metadata ?? {}),
+    })
+  );
+
+  await runSql(
+    dbUrl,
+    `INSERT INTO encrypted_secrets (
+      id,
+      user_id,
+      secret_type,
+      encrypted_blob,
+      blob_ref,
+      blob_hash,
+      blob_size,
+      metadata
+    ) VALUES (
+      '${escapeSqlString(secretId)}',
+      '${escapeSqlString(userId)}',
+      '${escapeSqlString(params.secretType)}',
+      '',
+      '${escapeSqlString(blobBody.blobRef)}',
+      '${blobHash}',
+      ${envelope.encryptedBlob.byteLength},
+      '${metadata}'
+    );`
+  );
+
+  await runSql(
+    dbUrl,
+    `INSERT INTO secret_wrappers (
+      id,
+      secret_id,
+      user_id,
+      credential_id,
+      wrapped_dek,
+      prf_salt,
+      kek_source,
+      base_commitment
+    ) VALUES (
+      '${randomUUID()}',
+      '${escapeSqlString(secretId)}',
+      '${escapeSqlString(userId)}',
+      '${escapeSqlString(wrapper.credentialId)}',
+      '${escapeSqlString(wrapper.wrappedDek)}',
+      NULL,
+      '${escapeSqlString(wrapper.kekSource)}',
+      NULL
+    );`
+  );
+
+  return secretId;
+}
+
+async function seedProfileSecret(
+  api: ApiContext,
+  dbUrl: string,
+  userId: string,
+  password: string,
+  name: string
+) {
+  const payload = buildProfileSecretPayload(name);
+  await seedOpaqueSecret(api, dbUrl, userId, password, {
+    envelopeFormat: "json",
+    plaintext: new TextEncoder().encode(JSON.stringify(payload)),
+    secretType: "profile",
+  });
+}
+
+async function seedFheKeySecret(
+  api: ApiContext,
+  dbUrl: string,
+  userId: string,
+  password: string,
+  keyId: string
+) {
+  return await seedOpaqueSecret(api, dbUrl, userId, password, {
+    envelopeFormat: "msgpack",
+    metadata: { keyId },
+    plaintext: buildFheKeySecretPayload(new Date().toISOString()),
+    secretId: keyId,
+    secretType: "fhe_keys",
+  });
+}
+
+async function seedIncompleteVerificationState(dbUrl: string, userId: string) {
   const now = new Date().toISOString();
   const verificationId = randomUUID();
   const bundleId = userId;
@@ -237,13 +609,15 @@ async function seedVerifiedIdentity(
   const identityBundleSql = `
     INSERT OR REPLACE INTO identity_bundles (
       user_id,
-      status,
+      effective_verification_id,
+      validity_status,
       policy_version,
       issuer_id,
       created_at,
       updated_at
     ) VALUES (
       '${bundleId}',
+      '${verificationId}',
       'verified',
       '${policyVersion}',
       'zentity-kyc',
@@ -401,12 +775,352 @@ async function seedVerifiedIdentity(
       ('${randomUUID()}', '${userId}', '${verificationId}', 'age', 1, 'e2e_seed', '${now}', '${now}');
   `;
 
-  await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, identityVerificationSql);
+  await runSql(dbUrl, identityBundleSql);
   await runSql(dbUrl, signedClaimsSql);
   await runSql(dbUrl, proofArtifactsSql);
   await runSql(dbUrl, encryptedAttributesSql);
   await runSql(dbUrl, verificationChecksSql);
+}
+
+async function seedVerifiedWithProfileState(
+  api: ApiContext,
+  dbUrl: string,
+  userId: string,
+  password: string,
+  name: string
+) {
+  const now = new Date().toISOString();
+  const nowEpochMs = Date.now();
+  const proofSessionId = randomUUID();
+  const verificationId = randomUUID();
+  const fheKeyId = `fhe_${randomUUID().replaceAll("-", "")}`;
+  const dedupKey = `dedup_${randomUUID().replaceAll("-", "")}`;
+  const docHash = `doc_${randomUUID().replaceAll("-", "")}`;
+  const nameCommitment = `name_${randomUUID().replaceAll("-", "")}`;
+  const nationalityCommitment = `nat_${randomUUID().replaceAll("-", "")}`;
+  const policyVersion = CURRENT_POLICY_VERSION;
+
+  const identityBundleSql = `
+    INSERT OR REPLACE INTO identity_bundles (
+      user_id,
+      effective_verification_id,
+      validity_status,
+      fhe_key_id,
+      fhe_status,
+      policy_version,
+      issuer_id,
+      created_at,
+      updated_at
+    ) VALUES (
+      '${userId}',
+      '${verificationId}',
+      'verified',
+      '${fheKeyId}',
+      'complete',
+      '${policyVersion}',
+      'zentity-attestation',
+      '${now}',
+      '${now}'
+    );
+  `;
+
+  const identityVerificationSql = `
+    INSERT OR REPLACE INTO identity_verifications (
+      id,
+      user_id,
+      method,
+      document_type,
+      issuer_country,
+      document_hash,
+      dedup_key,
+      name_commitment,
+      nationality_commitment,
+      verified_at,
+      confidence_score,
+      status,
+      created_at,
+      updated_at
+    ) VALUES (
+      '${verificationId}',
+      '${userId}',
+      'ocr',
+      'passport',
+      'USA',
+      '${docHash}',
+      '${dedupKey}',
+      '${nameCommitment}',
+      '${nationalityCommitment}',
+      '${now}',
+      0.99,
+      'verified',
+      '${now}',
+      '${now}'
+    );
+  `;
+
+  const proofSessionSql = `
+    INSERT OR REPLACE INTO proof_sessions (
+      id,
+      user_id,
+      verification_id,
+      msg_sender,
+      audience,
+      policy_version,
+      created_at,
+      expires_at,
+      closed_at
+    ) VALUES (
+      '${proofSessionId}',
+      '${userId}',
+      '${verificationId}',
+      'did:key:z6MkfE2ESeedRuntime',
+      'zentity://e2e-seed',
+      '${policyVersion}',
+      ${nowEpochMs},
+      ${nowEpochMs + 300_000},
+      NULL
+    );
+  `;
+
+  const signedClaimsSql = `
+    INSERT OR REPLACE INTO signed_claims (
+      id,
+      user_id,
+      verification_id,
+      claim_type,
+      claim_payload,
+      signature,
+      issued_at,
+      created_at
+    ) VALUES
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'ocr_result',
+        '{"type":"ocr_result","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"documentType":"passport","issuerCountry":"USA"}}',
+        'e2e-signature',
+        '${now}',
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'liveness_score',
+        '{"type":"liveness_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"antispoofScore":0.98,"liveScore":0.97}}',
+        'e2e-signature',
+        '${now}',
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'face_match_score',
+        '{"type":"face_match_score","userId":"${userId}","issuedAt":"${now}","version":1,"data":{"passed":true,"confidence":0.93}}',
+        'e2e-signature',
+        '${now}',
+        '${now}'
+      );
+  `;
+
+  const proofArtifactsSql = `
+    INSERT OR REPLACE INTO proof_artifacts (
+      id,
+      user_id,
+      verification_id,
+      proof_system,
+      proof_type,
+      proof_hash,
+      proof_session_id,
+      proof_payload,
+      public_inputs,
+      generation_time_ms,
+      nonce,
+      policy_version,
+      metadata,
+      verified,
+      created_at
+    ) VALUES
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'noir_ultrahonk',
+        'age_verification',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        '${proofSessionId}',
+        'mock-proof',
+        '["1990","18","${randomUUID()}","1"]',
+        1240,
+        '${randomUUID()}',
+        '${policyVersion}',
+        '{"circuitType":"age_verification","isOver18":true}',
+        1,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'noir_ultrahonk',
+        'doc_validity',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        '${proofSessionId}',
+        'mock-proof',
+        '["20300101","${randomUUID()}"]',
+        1180,
+        '${randomUUID()}',
+        '${policyVersion}',
+        '{"circuitType":"doc_validity"}',
+        1,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'noir_ultrahonk',
+        'nationality_membership',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        '${proofSessionId}',
+        'mock-proof',
+        '["USA","${randomUUID()}"]',
+        1120,
+        '${randomUUID()}',
+        '${policyVersion}',
+        '{"circuitType":"nationality_membership"}',
+        1,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'noir_ultrahonk',
+        'face_match',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        '${proofSessionId}',
+        'mock-proof',
+        '["0.95","${randomUUID()}"]',
+        980,
+        '${randomUUID()}',
+        '${policyVersion}',
+        '{"circuitType":"face_match"}',
+        1,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        '${verificationId}',
+        'noir_ultrahonk',
+        'identity_binding',
+        'proof_${randomUUID().replaceAll("-", "")}',
+        '${proofSessionId}',
+        'mock-proof',
+        '["binding","${randomUUID()}"]',
+        1010,
+        '${randomUUID()}',
+        '${policyVersion}',
+        '{"circuitType":"identity_binding"}',
+        1,
+        '${now}'
+      );
+  `;
+
+  const encryptedAttributesSql = `
+    INSERT OR REPLACE INTO encrypted_attributes (
+      id,
+      user_id,
+      source,
+      attribute_type,
+      ciphertext,
+      key_id,
+      encryption_time_ms,
+      created_at
+    ) VALUES
+      (
+        '${randomUUID()}',
+        '${userId}',
+        'e2e_seed',
+        'birth_year_offset',
+        'mock-ciphertext',
+        'default',
+        42,
+        '${now}'
+      ),
+      (
+        '${randomUUID()}',
+        '${userId}',
+        'e2e_seed',
+        'liveness_score',
+        'mock-ciphertext',
+        'default',
+        42,
+        '${now}'
+      );
+  `;
+
+  const verificationChecksSql = `
+    INSERT OR REPLACE INTO verification_checks (
+      id, user_id, verification_id, check_type, passed, source, created_at, updated_at
+    ) VALUES
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'document', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'liveness', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'face_match', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'age', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'nationality', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'identity_binding', 1, 'e2e_seed', '${now}', '${now}'),
+      ('${randomUUID()}', '${userId}', '${verificationId}', 'sybil_resistant', 1, 'e2e_seed', '${now}', '${now}');
+  `;
+
+  await runSql(dbUrl, identityVerificationSql);
+  await runSql(dbUrl, identityBundleSql);
+  await runSql(dbUrl, proofSessionSql);
+  await runSql(dbUrl, signedClaimsSql);
+  await runSql(dbUrl, proofArtifactsSql);
+  await runSql(dbUrl, encryptedAttributesSql);
+  await runSql(dbUrl, verificationChecksSql);
+  await seedFheKeySecret(api, dbUrl, userId, password, fheKeyId);
+  await seedProfileSecret(api, dbUrl, userId, password, name);
+}
+
+async function seedIdentityState(params: {
+  api: ApiContext;
+  dbUrl: string;
+  email: string;
+  name: string;
+  password: string;
+  variant: IdentitySeedVariant;
+}) {
+  const userId = await ensureUserExists(
+    params.dbUrl,
+    params.email,
+    params.name
+  );
+  if (!userId) {
+    throw new Error(
+      `E2E seed user not found and could not be created for ${params.email}`
+    );
+  }
+
+  await clearSeededIdentityState(params.dbUrl, userId);
+
+  if (params.variant === "verified_with_profile") {
+    await seedVerifiedWithProfileState(
+      params.api,
+      params.dbUrl,
+      userId,
+      params.password,
+      params.name
+    );
+    return;
+  }
+
+  await seedIncompleteVerificationState(params.dbUrl, userId);
 }
 
 async function resetTwoFactor(dbUrl: string, email: string) {
@@ -468,12 +1182,23 @@ async function resetBlockchainState(dbUrl: string) {
   await runSql(dbUrl, "DELETE FROM blockchain_attestations;");
 }
 
-export default async function globalSetup(config: FullConfig) {
+interface GlobalSetupProjectConfig {
+  use?: {
+    baseURL?: string;
+  };
+}
+
+interface GlobalSetupConfig {
+  projects: GlobalSetupProjectConfig[];
+}
+
+export default async function globalSetup(config: GlobalSetupConfig) {
   const baseURL = config.projects[0]?.use?.baseURL ?? "http://localhost:3000";
 
   console.log("[global-setup] Starting E2E global setup");
   console.log("[global-setup] E2E_DB_URL:", E2E_DB_URL);
   console.log("[global-setup] DEFAULT_APP_DB_URL:", DEFAULT_APP_DB_URL);
+  console.log("[global-setup] identitySeedVariant:", identitySeedVariant);
 
   mkdirSync(dirname(AUTH_STATE_PATH), { recursive: true });
 
@@ -553,9 +1278,25 @@ export default async function globalSetup(config: FullConfig) {
     );
   }
 
-  await seedVerifiedIdentity(E2E_DB_URL, email, name);
+  await ensureOpaquePasswordRegistration(api, password);
+
+  await seedIdentityState({
+    api,
+    dbUrl: E2E_DB_URL,
+    email,
+    name,
+    password,
+    variant: identitySeedVariant,
+  });
   if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
-    await seedVerifiedIdentity(DEFAULT_APP_DB_URL, email, name);
+    await seedIdentityState({
+      api,
+      dbUrl: DEFAULT_APP_DB_URL,
+      email,
+      name,
+      password,
+      variant: identitySeedVariant,
+    });
   }
 
   await api.storageState({ path: AUTH_STATE_PATH });

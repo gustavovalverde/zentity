@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockClearCachedHostId,
-  mockClearTokenCredentials,
-  mockEnsureAuthenticated,
+  mockClearMcpOAuthTokens,
+  mockEnsureMcpOAuthSession,
   mockEnsureHostRegistered,
   mockPrepareBootstrapRegistrationAuth,
-  mockRefreshAuthContext,
-  mockRegisterAgent,
+  mockRefreshMcpOAuthSession,
+  mockRegisterAgentSession,
 } = vi.hoisted(() => ({
   mockClearCachedHostId: vi.fn(),
-  mockEnsureAuthenticated: vi.fn(),
-  mockRefreshAuthContext: vi.fn(),
-  mockClearTokenCredentials: vi.fn(),
+  mockEnsureMcpOAuthSession: vi.fn(),
+  mockRefreshMcpOAuthSession: vi.fn(),
+  mockClearMcpOAuthTokens: vi.fn(),
   mockEnsureHostRegistered: vi.fn(),
   mockPrepareBootstrapRegistrationAuth: vi.fn(),
-  mockRegisterAgent: vi.fn(),
+  mockRegisterAgentSession: vi.fn(),
 }));
 
 vi.mock("../../src/config.js", () => ({
@@ -24,42 +24,38 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/auth/bootstrap.js", () => ({
-  ensureAuthenticated: mockEnsureAuthenticated,
-  refreshAuthContext: mockRefreshAuthContext,
+vi.mock("../../src/oauth-client.js", () => ({
+  clearMcpOAuthTokens: mockClearMcpOAuthTokens,
+  ensureMcpOAuthSession: mockEnsureMcpOAuthSession,
+  refreshMcpOAuthSession: mockRefreshMcpOAuthSession,
 }));
 
-vi.mock("../../src/auth/credentials.js", () => ({
-  clearTokenCredentials: mockClearTokenCredentials,
-}));
-
-vi.mock("../../src/auth/agent-registration.js", async () => {
+vi.mock("../../src/runtime/agent-registration.js", async () => {
   const actual = await vi.importActual<
-    typeof import("../../src/auth/agent-registration.js")
-  >("../../src/auth/agent-registration.js");
+    typeof import("../../src/runtime/agent-registration.js")
+  >("../../src/runtime/agent-registration.js");
   return {
     ...actual,
     clearCachedHostId: mockClearCachedHostId,
     ensureHostRegistered: mockEnsureHostRegistered,
     prepareBootstrapRegistrationAuth: mockPrepareBootstrapRegistrationAuth,
-    registerAgent: mockRegisterAgent,
+    registerAgentSession: mockRegisterAgentSession,
   };
 });
 
-import {
-  AgentRegistrationError,
-  buildHostKeyNamespace,
-} from "../../src/auth/agent-registration.js";
+import { AgentRegistrationError, buildHostKeyNamespace } from "@zentity/sdk";
 import { bootstrapRegisteredRuntime } from "../../src/transports/stdio.js";
 
 const baseOauth = {
   accessToken: "access-token",
+  accountSub: "",
   clientId: "test-client",
   dpopKey: {
     privateJwk: { crv: "P-256", kty: "EC" },
     publicJwk: { crv: "P-256", kty: "EC" },
   },
   loginHint: "user-123",
+  scopes: [],
 };
 
 const runtime = {
@@ -71,9 +67,11 @@ const runtime = {
   },
   grants: [],
   hostId: "host-123",
+  sessionDid: "did:key:zSession",
   sessionId: "session-123",
   sessionPrivateKey: { crv: "Ed25519", d: "priv", kty: "OKP", x: "pub" },
   sessionPublicKey: { crv: "Ed25519", kty: "OKP", x: "pub" },
+  status: "active",
 };
 
 const hostKeyNamespace = buildHostKeyNamespace(baseOauth);
@@ -100,21 +98,18 @@ function deferredPromise() {
 
 describe("bootstrapRegisteredRuntime", () => {
   beforeEach(() => {
-    mockEnsureAuthenticated.mockReset();
-    mockRefreshAuthContext.mockReset();
+    mockEnsureMcpOAuthSession.mockReset();
+    mockRefreshMcpOAuthSession.mockReset();
     mockClearCachedHostId.mockReset();
-    mockClearTokenCredentials.mockReset();
+    mockClearMcpOAuthTokens.mockReset();
     mockEnsureHostRegistered.mockReset();
     mockPrepareBootstrapRegistrationAuth.mockReset();
-    mockRegisterAgent.mockReset();
+    mockRegisterAgentSession.mockReset();
 
-    mockEnsureAuthenticated.mockResolvedValue({
-      oauth: baseOauth,
-      tokenManager: { getAccessToken: vi.fn() },
-    });
+    mockEnsureMcpOAuthSession.mockResolvedValue(baseOauth);
     mockPrepareBootstrapRegistrationAuth.mockResolvedValue(bootstrapOauth);
     mockEnsureHostRegistered.mockResolvedValue("host-123");
-    mockRegisterAgent.mockResolvedValue(runtime);
+    mockRegisterAgentSession.mockResolvedValue(runtime);
   });
 
   afterEach(() => {
@@ -131,16 +126,16 @@ describe("bootstrapRegisteredRuntime", () => {
     );
 
     await Promise.resolve();
-    expect(mockEnsureAuthenticated).not.toHaveBeenCalled();
+    expect(mockEnsureMcpOAuthSession).not.toHaveBeenCalled();
 
     initialized.resolve();
     await bootstrapPromise;
 
-    expect(mockEnsureAuthenticated).toHaveBeenCalledTimes(1);
+    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(1);
     expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(
       baseOauth
     );
-    expect(mockRegisterAgent).toHaveBeenCalledWith(
+    expect(mockRegisterAgentSession).toHaveBeenCalledWith(
       "http://localhost:3000",
       bootstrapOauth,
       "host-123",
@@ -161,7 +156,7 @@ describe("bootstrapRegisteredRuntime", () => {
       Promise.resolve()
     );
 
-    expect(mockRegisterAgent).toHaveBeenCalledWith(
+    expect(mockRegisterAgentSession).toHaveBeenCalledWith(
       "http://localhost:3000",
       bootstrapOauth,
       "host-123",
@@ -187,15 +182,9 @@ describe("bootstrapRegisteredRuntime", () => {
       ...baseOauth,
       accessToken: "fresh-token",
     };
-    mockEnsureAuthenticated
-      .mockResolvedValueOnce({
-        oauth: baseOauth,
-        tokenManager: { getAccessToken: vi.fn() },
-      })
-      .mockResolvedValueOnce({
-        oauth: refreshedOauth,
-        tokenManager: { getAccessToken: vi.fn() },
-      });
+    mockEnsureMcpOAuthSession
+      .mockResolvedValueOnce(baseOauth)
+      .mockResolvedValueOnce(refreshedOauth);
     mockEnsureHostRegistered
       .mockRejectedValueOnce(
         new AgentRegistrationError(
@@ -205,7 +194,7 @@ describe("bootstrapRegisteredRuntime", () => {
         )
       )
       .mockResolvedValueOnce("host-456");
-    mockRegisterAgent.mockResolvedValueOnce({
+    mockRegisterAgentSession.mockResolvedValueOnce({
       ...runtime,
       hostId: "host-456",
     });
@@ -215,15 +204,13 @@ describe("bootstrapRegisteredRuntime", () => {
       Promise.resolve()
     );
 
-    expect(mockClearTokenCredentials).toHaveBeenCalledWith(
-      "http://localhost:3000"
-    );
-    expect(mockEnsureAuthenticated).toHaveBeenCalledTimes(2);
+    expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
+    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
     expect(result.oauth.accessToken).toBe("fresh-token");
   });
 
   it("re-registers the durable host when the cached host id is stale", async () => {
-    mockRegisterAgent
+    mockRegisterAgentSession
       .mockRejectedValueOnce(
         new AgentRegistrationError(
           "Agent registration failed: 404 Host not found",
@@ -247,12 +234,12 @@ describe("bootstrapRegisteredRuntime", () => {
     );
     expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalled();
     expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(2);
-    expect(mockRegisterAgent).toHaveBeenCalledTimes(2);
+    expect(mockRegisterAgentSession).toHaveBeenCalledTimes(2);
     expect(result.runtime.sessionId).toBe("session-456");
   });
 
   it("does not auto-heal host key mismatches", async () => {
-    mockRegisterAgent.mockRejectedValueOnce(
+    mockRegisterAgentSession.mockRejectedValueOnce(
       new AgentRegistrationError(
         "Agent registration failed: 401 Invalid host JWT",
         401,
@@ -268,8 +255,8 @@ describe("bootstrapRegisteredRuntime", () => {
     ).rejects.toThrow("Agent registration failed: 401 Invalid host JWT");
 
     expect(mockClearCachedHostId).not.toHaveBeenCalled();
-    expect(mockClearTokenCredentials).not.toHaveBeenCalled();
+    expect(mockClearMcpOAuthTokens).not.toHaveBeenCalled();
     expect(mockEnsureHostRegistered).toHaveBeenCalledTimes(1);
-    expect(mockRegisterAgent).toHaveBeenCalledTimes(1);
+    expect(mockRegisterAgentSession).toHaveBeenCalledTimes(1);
   });
 });

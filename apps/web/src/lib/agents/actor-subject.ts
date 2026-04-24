@@ -18,7 +18,6 @@ interface ClientPairwiseConfig {
   clientId: string;
   metadata: string | null;
   redirectUris: string[];
-  subjectType: string | null;
 }
 
 type AgentSubjectType = "pairwise" | "public";
@@ -32,11 +31,11 @@ function getAgentSubjectType(client: ClientPairwiseConfig): AgentSubjectType {
         return configured;
       }
     } catch {
-      // Fall through to the user subject setting when metadata is malformed.
+      // Malformed metadata falls through to the privacy-preserving default.
     }
   }
 
-  return client.subjectType === "public" ? "public" : "pairwise";
+  return "pairwise";
 }
 
 async function getClientPairwiseConfig(
@@ -47,7 +46,6 @@ async function getClientPairwiseConfig(
       clientId: oauthClients.clientId,
       metadata: oauthClients.metadata,
       redirectUris: oauthClients.redirectUris,
-      subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
     .where(eq(oauthClients.clientId, clientId))

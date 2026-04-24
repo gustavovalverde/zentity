@@ -1,3 +1,9 @@
+import {
+  AAP_CLAIMS_VERSION,
+  ACT_DID_EMISSION_POLICY,
+  AGENT_DID_METHODS_SUPPORTED,
+} from "@zentity/sdk/protocol";
+
 import { env } from "@/env";
 import {
   AGENT_BOOTSTRAP_SCOPES,
@@ -29,6 +35,10 @@ function buildAgentConfiguration(): AgentConfiguration {
 
   return agentConfigurationSchema.parse({
     issuer: baseUrl,
+    aap_claims_version: AAP_CLAIMS_VERSION,
+    act_did_emission_policy: ACT_DID_EMISSION_POLICY,
+    delegation_chains: false,
+    did_methods_supported: [...AGENT_DID_METHODS_SUPPORTED],
 
     // Registration
     registration_endpoint: `${baseUrl}/api/auth/agent/register`,

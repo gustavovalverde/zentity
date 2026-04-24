@@ -83,7 +83,7 @@ describe("BBS credentials router", () => {
 
       expect(result.credential.format).toBe("bbs+vc");
       expect(result.credential.issuer).toBe("did:web:zentity.xyz");
-      expect(result.credential.holder).toBe("did:key:user-test-user-123");
+      expect(result.credential.holder).toBe("urn:zentity:user:test-user-123");
       expect(result.credential.subject.walletCommitment).toBe(
         "0x1234567890abcdef"
       );

@@ -1,3 +1,5 @@
+export type { ProofOfHumanClaims as PohClaims } from "@zentity/sdk/rp";
+
 import {
   CloudIcon,
   DashboardSquare01Icon,
@@ -136,13 +138,6 @@ const EXPLORER_URLS: Record<string, string> = {
 export function getExplorerUrl(network: string, txHash: string): string | null {
   const base = EXPLORER_URLS[network];
   return base ? `${base}${txHash}` : null;
-}
-
-export interface PohClaims {
-  method: string | null;
-  sybil_resistant: boolean;
-  tier: number;
-  verified: boolean;
 }
 
 export interface AccessOutcome {

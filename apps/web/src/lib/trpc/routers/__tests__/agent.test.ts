@@ -17,6 +17,10 @@ import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "agent-router-client";
 
+function buildTestEd25519X(seed: string): string {
+  return Buffer.from(seed.padEnd(32, "0").slice(0, 32)).toString("base64url");
+}
+
 async function createCaller(userId: string | null) {
   const { agentRouter } = await import("@/lib/trpc/routers/agent");
   const session = userId
@@ -93,7 +97,7 @@ async function createHost(params: {
       publicKey: JSON.stringify({
         crv: "Ed25519",
         kty: "OKP",
-        x: `${params.thumbprint}-pub`,
+        x: buildTestEd25519X(`${params.thumbprint}-pub`),
       }),
       publicKeyThumbprint: params.thumbprint,
       userId: params.userId,
@@ -133,7 +137,7 @@ async function createSession(params: {
       publicKey: JSON.stringify({
         crv: "Ed25519",
         kty: "OKP",
-        x: `${params.thumbprint}-pub`,
+        x: buildTestEd25519X(`${params.thumbprint}-pub`),
       }),
       publicKeyThumbprint: params.thumbprint,
       runtime: params.runtime ?? null,

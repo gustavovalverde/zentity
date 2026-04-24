@@ -9,7 +9,8 @@ ARG BUILD_TIME=unknown
 ARG APP_UID=10001
 ARG APP_GID=${APP_UID}
 ARG APP_USER=nextjs
-ARG APP_HOME=/app
+ARG REPO_HOME=/workspace/zentity
+ARG APP_HOME=/workspace/zentity/apps/web
 
 # --- Stage 1: Dependencies ---
 FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS deps
@@ -17,6 +18,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SOURCE_DATE_EPOCH
 ARG APP_HOME
+ARG REPO_HOME
 
 ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 ENV PNPM_HOME="/pnpm"
@@ -30,23 +32,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-WORKDIR ${APP_HOME}
+WORKDIR ${REPO_HOME}
 
 # Copy package files first for dependency caching
-COPY --link package.json pnpm-lock.yaml .npmrc ./
-# Include vendored dependencies and pnpm patches
-COPY --link vendor ./vendor
-COPY --link patches ./patches
+COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --link apps/web/package.json ./apps/web/package.json
+COPY --link apps/web/.npmrc ./apps/web/.npmrc
+COPY --link apps/web/vendor ./apps/web/vendor
+COPY --link apps/web/patches ./apps/web/patches
+COPY --link packages/sdk/package.json ./packages/sdk/package.json
 
 # Install dependencies with BuildKit cache mount for pnpm
 # Cache persists across builds, significantly speeds up installs (Railway cache ID)
+WORKDIR ${APP_HOME}
 RUN --mount=type=cache,id=s/a0dbf135-6670-4cf9-8c14-247262ab102f-/pnpm/store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+    pnpm --filter frontend... install --frozen-lockfile
+WORKDIR ${REPO_HOME}
 
 # --- Stage 2: Builder ---
 FROM deps AS builder
 COPY --link . .
 
+ARG REPO_HOME
+ARG APP_HOME
 ARG GIT_SHA
 ARG BUILD_TIME
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
@@ -91,7 +99,7 @@ ENV BUILD_TIME=${BUILD_TIME}
 
 # Build Next.js
 ENV NODE_OPTIONS="--max-old-space-size=6144"
-RUN pnpm run build
+RUN pnpm --filter @zentity/sdk build && pnpm --filter frontend build
 
 # --- Stage 3: Runtime ---
 FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS runner
@@ -103,6 +111,7 @@ ARG APP_UID
 ARG APP_GID
 ARG APP_USER
 ARG APP_HOME
+ARG REPO_HOME
 
 RUN apt-get update && apt-get install -y --no-install-recommends gosu curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* /tmp/*
@@ -121,17 +130,20 @@ ENV BB_CRS_PATH=/var/lib/zentity/bb-crs
 RUN groupadd --gid ${APP_GID} nodejs && \
     useradd --uid ${APP_UID} --gid nodejs --shell /sbin/nologin ${APP_USER}
 
+# Copy workspace dependency roots so pnpm symlinks remain valid at runtime.
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${REPO_HOME}/node_modules ${REPO_HOME}/node_modules
+COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules ./node_modules
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${REPO_HOME}/packages ${REPO_HOME}/packages
+
 # Copy app metadata and configuration
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/package.json ./package.json
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/next.config.ts ./next.config.ts
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/tsconfig.json ./tsconfig.json
+COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/drizzle.config.ts ./drizzle.config.ts
 
 # Copy Next.js build output
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next ./.next
-
-# Copy all node_modules (no standalone tracing, so we need the full dependencies)
-COPY --link --from=deps --chown=${APP_UID}:${APP_GID} ${APP_HOME}/node_modules ./node_modules
 
 # Copy custom server for Socket.io support
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/server.mjs ./server.mjs

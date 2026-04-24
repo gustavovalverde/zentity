@@ -1,8 +1,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { zentityFetch } from "../auth/api-client.js";
-import { requireAuth } from "../auth/context.js";
 import { config } from "../config.js";
+import { requireAuth } from "../runtime/auth-context.js";
+import { zentityFetch } from "../services/zentity-api.js";
 
 /**
  * Proof claims delivered by the userinfo endpoint when the token carries
@@ -69,7 +69,7 @@ export function registerMyProofsTool(server: McpServer): void {
           z.object({
             type: z.string(),
             passed: z.boolean(),
-          }),
+          })
         ),
       },
       annotations: {
@@ -112,11 +112,12 @@ export function registerMyProofsTool(server: McpServer): void {
       const checks = mapProofClaimsToChecks(claims);
       const ageCheck = checks.find((c) => c.type === "age");
 
-      const verificationMethod = claims.chip_verified
-        ? claims.chip_verification_method ?? "nfc"
-        : claims.verified
-          ? "ocr"
-          : null;
+      let verificationMethod: string | null = null;
+      if (claims.chip_verified) {
+        verificationMethod = claims.chip_verification_method ?? "nfc";
+      } else if (claims.verified) {
+        verificationMethod = "ocr";
+      }
 
       const structuredContent = {
         verificationMethod,
@@ -135,6 +136,6 @@ export function registerMyProofsTool(server: McpServer): void {
         ],
         structuredContent,
       };
-    },
+    }
   );
 }

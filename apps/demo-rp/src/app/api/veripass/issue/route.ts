@@ -1,11 +1,13 @@
+import {
+  createDpopClient,
+  encodeBase64Url,
+  encodeStringBase64Url,
+} from "@zentity/sdk/rp";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { getAuth } from "@/lib/auth";
-import { createDpopClient } from "@/lib/dpop";
 import { env } from "@/lib/env";
-
-const TRAILING_PADDING_RE = /=+$/;
 
 interface CredentialOffer {
   credential_configuration_ids: string[];
@@ -252,29 +254,15 @@ async function createProofJwt(
     iat: Math.floor(Date.now() / 1000),
   };
 
-  const headerB64 = toBase64Url(JSON.stringify(header));
-  const payloadB64 = toBase64Url(JSON.stringify(payload));
+  const headerB64 = encodeStringBase64Url(JSON.stringify(header));
+  const payloadB64 = encodeStringBase64Url(JSON.stringify(payload));
   const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
   const signature = await crypto.subtle.sign(
     "Ed25519",
     holderPrivateKey,
     signingInput
   );
-  const sigB64 = arrayToBase64Url(new Uint8Array(signature));
+  const sigB64 = encodeBase64Url(new Uint8Array(signature));
 
   return `${headerB64}.${payloadB64}.${sigB64}`;
-}
-
-function toBase64Url(str: string): string {
-  return btoa(str)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(TRAILING_PADDING_RE, "");
-}
-
-function arrayToBase64Url(arr: Uint8Array): string {
-  return btoa(String.fromCharCode(...arr))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(TRAILING_PADDING_RE, "");
 }

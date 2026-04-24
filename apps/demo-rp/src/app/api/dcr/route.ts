@@ -1,21 +1,26 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { isValidProviderId, readDcrClientId, saveDcrClientId } from "@/lib/dcr";
+import { readDcrClientId, saveDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import {
+  getRouteScenario,
+  isRouteScenarioId,
+  ROUTE_SCENARIO_IDS,
+} from "@/scenarios/route-scenario-registry";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const providerId = searchParams.get("providerId");
+  const scenarioId = searchParams.get("scenarioId");
 
-  if (!(providerId && isValidProviderId(providerId))) {
+  if (!(scenarioId && isRouteScenarioId(scenarioId))) {
     return NextResponse.json(
-      { error: "Invalid or missing providerId" },
+      { error: "Invalid or missing scenarioId" },
       { status: 400 }
     );
   }
 
-  const clientId = await readDcrClientId(providerId);
+  const clientId = await readDcrClientId(scenarioId);
   if (clientId) {
     return NextResponse.json({ registered: true, client_id: clientId });
   }
@@ -24,30 +29,21 @@ export async function GET(request: Request) {
 }
 
 const postSchema = z.object({
-  providerId: z.string(),
-  clientName: z.string().min(1),
-  scopes: z
-    .union([z.string().min(1), z.array(z.string().min(1))])
-    .transform((v) => (Array.isArray(v) ? v.join(" ") : v)),
-  grantTypes: z.array(z.string()).optional(),
+  scenarioId: z.enum(ROUTE_SCENARIO_IDS),
 });
 
 export async function POST(request: Request) {
   const parsed = postSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "providerId, clientName, and scopes are required" },
+      { error: "Invalid or missing scenarioId" },
       { status: 400 }
     );
   }
 
-  const { providerId, clientName, scopes, grantTypes } = parsed.data;
-
-  if (!isValidProviderId(providerId)) {
-    return NextResponse.json({ error: "Invalid providerId" }, { status: 400 });
-  }
-
-  const redirectUri = `${env.NEXT_PUBLIC_APP_URL}/api/auth/oauth2/callback/zentity-${providerId}`;
+  const { scenarioId } = parsed.data;
+  const scenario = getRouteScenario(scenarioId);
+  const redirectUri = `${env.NEXT_PUBLIC_APP_URL}/api/auth/oauth2/callback/${scenario.oauthProviderId}`;
 
   try {
     const response = await fetch(
@@ -56,11 +52,11 @@ export async function POST(request: Request) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          client_name: clientName,
+          client_name: scenario.dcr.clientName,
           redirect_uris: [redirectUri],
-          scope: scopes,
+          scope: scenario.dcr.requestedScopes,
           token_endpoint_auth_method: "none",
-          grant_types: grantTypes ?? ["authorization_code"],
+          grant_types: scenario.dcr.grantTypes ?? ["authorization_code"],
           response_types: ["code"],
           backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
           rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
@@ -85,7 +81,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await saveDcrClientId(providerId, result.client_id);
+    await saveDcrClientId(scenarioId, result.client_id);
 
     return NextResponse.json({
       client_id: result.client_id,

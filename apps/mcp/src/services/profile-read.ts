@@ -1,22 +1,21 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prefixBindingMessage } from "../agent.js";
-import { signAgentAssertion } from "../auth/agent-registration.js";
-import { getOAuthContext, requireAuth, tryGetRuntimeState } from "../auth/context.js";
+import { config } from "../config.js";
+import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
-  beginOrResumeInteractiveFlow,
-} from "../auth/interactive-tool-flow.js";
+  getOAuthContext,
+  requireAuth,
+  tryGetRuntimeState,
+} from "../runtime/auth-context.js";
+import { type IdentityClaims, redeemRelease } from "./identity-release.js";
+import { beginOrResumeInteractiveFlow } from "./interactive-approval.js";
 import {
-  type PublicProfileField,
   buildIdentityScopeString,
   buildProfileFieldKey,
   getProtectedProfileFields,
   normalizeProfileFields,
-} from "../auth/profile-fields.js";
-import {
-  type IdentityClaims,
-  redeemRelease,
-} from "../auth/identity.js";
-import { config } from "../config.js";
+  type PublicProfileField,
+} from "./profile-fields.js";
 
 const PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -48,7 +47,12 @@ export interface ProfileReadResult {
   profile: ProfileShape;
   requestedFields: PublicProfileField[];
   returnedFields: PublicProfileField[];
-  status: "complete" | "denied" | "expired" | "needs_user_action" | "unavailable";
+  status:
+    | "complete"
+    | "denied"
+    | "expired"
+    | "needs_user_action"
+    | "unavailable";
 }
 
 const profileCache = new Map<string, CachedProfileEntry>();

@@ -58,7 +58,11 @@ async function createAgentSession(userId: string, clientId: string) {
     .values({
       userId,
       clientId,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "host" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      }),
       publicKeyThumbprint: `host-thumbprint-${crypto.randomUUID()}`,
       name: "Test Host",
     })
@@ -71,7 +75,11 @@ async function createAgentSession(userId: string, clientId: string) {
     .insert(agentSessions)
     .values({
       hostId: host.id,
-      publicKey: JSON.stringify({ crv: "Ed25519", kty: "OKP", x: "agent" }),
+      publicKey: JSON.stringify({
+        crv: "Ed25519",
+        kty: "OKP",
+        x: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+      }),
       publicKeyThumbprint: `agent-thumbprint-${crypto.randomUUID()}`,
       displayName: "Test Agent",
     })
@@ -129,6 +137,19 @@ describe("pairwise agent identifiers", () => {
     const agentSub = await resolveAgentSubForClient(sessionId, clientId);
 
     expect(userSub).toBe(userId);
+    expect(agentSub).not.toBe(sessionId);
+    expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
+      sessionId
+    );
+  });
+
+  it("defaults agent identifiers to pairwise even when human subjects are public", async () => {
+    const clientId = "public-user-default-agent";
+    await createClient({ clientId, subjectType: "public" });
+    const sessionId = await createAgentSession(userId, clientId);
+
+    const agentSub = await resolveAgentSubForClient(sessionId, clientId);
+
     expect(agentSub).not.toBe(sessionId);
     expect(await resolveAgentSessionIdFromPairwiseSub(agentSub, clientId)).toBe(
       sessionId

@@ -6,10 +6,10 @@ import { VpRequest } from "@/components/shared/vp-request";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { VerifierScenario } from "@/data/veripass";
-import { VERIFIER_SCENARIOS } from "@/data/veripass";
 import { useVpFlow } from "@/hooks/use-vp-flow";
 import { getMissingVeripassClaims } from "@/lib/veripass-claims";
+import { VERIFIER_SCENARIOS } from "@/scenarios/veripass/verifier-registry";
+import type { VerifierScenario } from "@/scenarios/veripass/verifier-scenario";
 
 interface VerifierScenariosProps {
   onSelect: (scenario: VerifierScenario) => void;
