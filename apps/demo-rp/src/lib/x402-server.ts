@@ -1,8 +1,8 @@
 import "server-only";
 
 import type { X402Resource } from "@/data/x402";
-import { getRegistryAddress } from "@/lib/chain";
 import { env } from "@/lib/env";
+import { getMirrorAddress } from "@/lib/on-chain-compliance";
 
 // The x402 v2 wire format for PaymentRequirements. Field names must match
 // what @x402/evm's ExactEvmScheme reads: `amount`, `maxTimeoutSeconds`.
@@ -26,11 +26,12 @@ export function buildRouteConfig(resource: X402Resource): X402RouteConfig {
   const extensions: Record<string, unknown> = {};
 
   if (resource.requiredTier > 0) {
+    const mirrorAddress = getMirrorAddress();
     extensions.zentity = {
       minComplianceLevel: resource.requiredTier,
       pohIssuer: env.NEXT_PUBLIC_ZENTITY_URL,
-      ...(resource.requireOnChain && getRegistryAddress()
-        ? { identityRegistry: getRegistryAddress() }
+      ...(resource.requireOnChain && mirrorAddress
+        ? { identityRegistryMirror: mirrorAddress }
         : {}),
     };
   }

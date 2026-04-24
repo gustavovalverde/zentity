@@ -3,7 +3,7 @@ title: Attestation & Privacy
 description: Attestation schema, data classification, and privacy boundaries
 ---
 
-Zentity's attestation model classifies every piece of identity data by who can access it (server, client, on-chain) and what form it takes (plaintext, ciphertext, hash, proof), ensuring that no single storage layer contains enough information to reconstruct a user's identity without their credential. This document is the single source of truth for the attestation schema, data classification boundaries, and privacy guarantees. The four cryptographic pillars that make this possible are covered in [Cryptographic Pillars](cryptographic-pillars.md).
+Zentity's attestation model classifies every piece of identity data by who can access it (server, client, on-chain) and what form it takes (plaintext, ciphertext, hash, proof), ensuring that no single storage layer contains enough information to reconstruct a user's identity without their credential. This document is the single source of truth for the attestation schema, data classification boundaries, and privacy guarantees. The four cryptographic pillars that make this possible are covered in [Cryptographic Pillars](<../(concepts)/cryptographic-pillars.md>).
 
 ## Executive Summary
 
@@ -13,8 +13,9 @@ The system separates identity data into distinct artifact types, each stored in 
 - **FHE ciphertexts**: DOB days for server-side threshold computation, liveness score for threshold checks.
 - **Commitments + hashes**: document hash, name commitment, DOB commitment, address commitment, proof hashes.
 - **Screening attestations**: PEP/sanctions screening results as signed claims.
-- **Credential-wrapped secrets**: FHE keys and profile data encrypted with passkey PRF, OPAQUE export key, or wallet signature; only the user can unwrap them in the browser. See [FHE Key Lifecycle](fhe-key-lifecycle.md) for the full encryption hierarchy.
+- **Credential-wrapped secrets**: FHE keys and profile data encrypted with passkey PRF, OPAQUE export key, or wallet signature; only the user can unwrap them in the browser. See [FHE Key Lifecycle](<../(protocols)/fhe-key-lifecycle.md>) for the full encryption hierarchy.
 - **Evidence pack**: `policy_hash` + `proof_set_hash` for durable auditability.
+- **Public compliance mirror**: wallet address, active mirrored attestation state, and current numeric compliance level for Base `isCompliant(address,uint8)` reads.
 
 This model supports multi-document identities, an account-scoped current snapshot, revocable and stale validity states, periodic re-verification, and auditable disclosures across Web2 and Web3.
 
@@ -25,7 +26,7 @@ The persistence model separates snapshot state from history and downstream deliv
 - `identity_bundles` stores the current account snapshot (`validityStatus`, `effectiveVerificationId`, `nullifierSeed`, `verificationExpiresAt`, and related metadata).
 - `identity_verifications` stores credential history for OCR and NFC verification rows, including supersession lineage.
 - `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`.
-- `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, back-channel logout, CIBA cancellation, and blockchain revocation delivery.
+- `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, back-channel logout, CIBA cancellation, blockchain revocation delivery, and Base mirror writes.
 
 ### Regulatory Alignment
 
@@ -98,7 +99,8 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | Nationality in allowlist | ✅ | ◐ | Merkle root | — | Group membership only (EU, US, etc.). |
 | Face match >= threshold | ✅ | — | Proof hash | — | Pass/fail only. |
 | Liveness score | — | ✅ | Signed claim | — | Score stays private; server attests. |
-| Compliance level | — | ✅ | Server-derived | — | Policy gating input. Computed by a pure function from ZK proof existence + signed claim types (no mutable booleans). See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine). |
+| Compliance level | — | ✅ | Server-derived | — | Policy gating input. Computed by a pure function from ZK proof existence + signed claim types (no mutable booleans). See [Architecture: Compliance Derivation Engine](<../(concepts)/architecture.md#compliance-derivation-engine>). |
+| Public compliance mirror state | — | — | — | — | Public Base derivative containing wallet address, active mirrored attestation state, and numeric compliance level only. See [ADR-0005](../adr/fhe/0005-base-compliance-mirror-for-payment-reads.md). |
 
 ### DOB Storage (Production)
 
@@ -183,7 +185,7 @@ This system intentionally splits data across server storage and client-only acce
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts, JWKS private keys (AES-256-GCM envelope via `KEY_ENCRYPTION_KEY`, format `{"v":1,"iv":"...","ct":"..."}`) | Client‑decrypt only for user secrets (PRF‑, OPAQUE‑, or wallet‑derived keys); server‑decrypt for JWKS (server‑held KEK) | User‑controlled privacy + encrypted computation + key-at-rest protection |
 | **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
-| **On‑chain (optional)** | Encrypted attestations + public metadata | User‑decrypt only | Auditable compliance checks without PII |
+| **On‑chain (optional)** | Encrypted attestations, public metadata, and Base mirror attested/level state | User‑decrypt only for encrypted attestations; public for mirror reads | Auditable compliance checks and payment-time predicates without PII |
 
 ### Why some data exists in two forms
 
@@ -214,6 +216,7 @@ The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrapp
 14. **Sybil HMAC deduplication**: same identity document always produces the same `dedup_key` via `HMAC-SHA256(DEDUP_HMAC_SECRET, docNumber+issuerCountry+dob)`, enforcing one-verification-per-document across accounts without storing PII.
 15. **FHE public key fingerprint**: SHA-256 fingerprint computed client-side at keygen, verified on every key load; prevents server-side key substitution. See [Tamper Model](tamper-model.md#fhe-public-key-substitution).
 16. **Client-computed blob hash**: secret blob integrity hash computed client-side before upload, cross-validated against server record; prevents coordinated blob+hash replacement. See [Tamper Model](tamper-model.md#secret-blob-integrity).
+17. **Public mirror minimization**: the Base mirror exposes only wallet address, active mirrored attestation state, and numeric compliance level. It does not expose PII, proof hashes, commitments, ciphertext handles, age, jurisdiction, sanctions state, or document metadata. See [ADR-0005](../adr/fhe/0005-base-compliance-mirror-for-payment-reads.md).
 
 ## Attestation Schema
 
@@ -288,7 +291,7 @@ This enables auditors and relying parties to validate **exactly which proofs** a
 
 ## Compliance Derivation
 
-Compliance status (none, basic, full, chip) is computed from the attestation artifacts stored by this schema. The derivation engine is the canonical source of truth for how 7 boolean checks (document, liveness, age, face match, nationality, identity binding, sybil resistance) map to compliance levels. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix and level definitions.
+Compliance status (none, basic, full, chip) is computed from the attestation artifacts stored by this schema. The derivation engine is the canonical source of truth for how 7 boolean checks (document, liveness, age, face match, nationality, identity binding, sybil resistance) map to compliance levels. See [Architecture: Compliance Derivation Engine](<../(concepts)/architecture.md#compliance-derivation-engine>) for the full check matrix and level definitions.
 
 ---
 
@@ -358,6 +361,6 @@ Verifiers validate KB-JWT holder binding: issuer signature → disclosure decode
 
 ## Implementation Notes
 
-- FHE keys are generated in the browser and stored server-side as credential-wrapped encrypted secrets (no plaintext at rest). See [FHE Key Lifecycle](fhe-key-lifecycle.md) for the full encryption hierarchy.
+- FHE keys are generated in the browser and stored server-side as credential-wrapped encrypted secrets (no plaintext at rest). See [FHE Key Lifecycle](<../(protocols)/fhe-key-lifecycle.md>) for the full encryption hierarchy.
 - Integrity controls (HMAC binding, key fingerprinting, consent scope verification) are detailed in [Tamper Model](tamper-model.md).
-- Pairwise subject identifiers and selective disclosure mechanics are detailed in [OAuth Integrations](oauth-integrations.md).
+- Pairwise subject identifiers and selective disclosure mechanics are detailed in [OAuth Integrations](<../(protocols)/oauth-integrations.md>).

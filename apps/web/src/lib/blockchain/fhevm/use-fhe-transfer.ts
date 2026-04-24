@@ -14,7 +14,7 @@
  * 4. Contract enforces compliance (silent failure if non-compliant)
  */
 import { useAppKitAccount } from "@reown/appkit/react";
-import { CompliantERC20ABI } from "@zentity/fhevm-contracts";
+import { compliantErc20Abi } from "@zentity/contracts";
 import { useCallback, useMemo } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 
@@ -145,7 +145,7 @@ export function useFheTransfer({ contractAddress }: UseFheTransferParams) {
       // Submit transaction - user signs with their wallet
       const hash = await writeContractAsync({
         address: contractAddress,
-        abi: CompliantERC20ABI,
+        abi: compliantErc20Abi,
         functionName: "transfer",
         args: [to, encryptedAmount, inputProof],
         account: walletAddress,

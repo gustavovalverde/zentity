@@ -72,7 +72,7 @@ const nextConfig: NextConfig = {
 
     // Blockchain / FHEVM (Hardhat utils, contract ABIs, viem)
     "@fhevm/mock-utils",
-    "@zentity/fhevm-contracts",
+    "@zentity/contracts",
     "viem",
 
     // Post-quantum cryptography

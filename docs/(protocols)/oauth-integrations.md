@@ -214,7 +214,7 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
-CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. See [Agent Architecture](agent-architecture.md) for the host registration and session lifecycle model.
+CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
 
 The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`. Push notifications route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome). The dashboard-integrated page at `/dashboard/ciba/approve` is a secondary entry point.
 
@@ -535,7 +535,7 @@ Zentity can act as a verifier requesting presentations from wallets using DCQL (
 
 **KB-JWT verification** order: issuer signature → disclosure decode → `cnf.jkt` match → KB-JWT signature → nonce/audience/freshness.
 
-See [SSI Architecture](ssi-architecture.md) for the complete model.
+See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete model.
 
 ---
 

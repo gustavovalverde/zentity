@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppKitAccount } from "@reown/appkit/react";
-import { ATTR, IdentityRegistryABI, Purpose } from "@zentity/fhevm-contracts";
+import { ATTR, identityRegistryAbi, Purpose } from "@zentity/contracts";
 /**
  * Compliance Access Card
  *
@@ -155,7 +155,7 @@ export function ComplianceAccessCard({
       const attributeMask = ATTR.COMPLIANCE | ATTR.BLACKLIST;
       await writeContractAsync({
         address: identityRegistry,
-        abi: IdentityRegistryABI,
+        abi: identityRegistryAbi,
         functionName: "grantAttributeAccess",
         args: [complianceRules, attributeMask, selectedPurpose],
         ...txOverrides,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+
 import {
   buildPaymentRequiredPayload,
   createPaymentRequired,
@@ -33,15 +34,17 @@ describe("createPaymentRequired", () => {
     const payload = await response.json();
     expect(payload).toEqual(
       buildPaymentRequiredPayload({
-        accepts: {
-          scheme: "exact",
-          network: "eip155:84532",
-          payTo: "0x000000000000000000000000000000000000dEaD",
-          amount: "1",
-          maxTimeoutSeconds: 300,
-          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-          extra: { name: "USDC", version: "2" },
-        },
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:84532",
+            payTo: "0x000000000000000000000000000000000000dEaD",
+            amount: "1",
+            maxTimeoutSeconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            extra: { name: "USDC", version: "2" },
+          },
+        ],
         resource: { url: "/api/x402/access" },
         description: "Tier-gated resource",
         extensions: {
@@ -53,6 +56,10 @@ describe("createPaymentRequired", () => {
       })
     );
 
+    expect(payload.resource).toMatchObject({
+      description: "Tier-gated resource",
+      url: "/api/x402/access",
+    });
     expect(response.headers.get(PAYMENT_REQUIRED_HEADER)).toBe(
       Buffer.from(JSON.stringify(payload)).toString("base64")
     );

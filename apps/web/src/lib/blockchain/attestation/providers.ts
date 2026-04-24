@@ -1,5 +1,5 @@
 /**
- * Attestation Provider (v2)
+ * Attestation provider
  *
  * One provider class + factory for all networks (Hardhat + Sepolia).
  * Server-side responsibilities:
@@ -15,8 +15,8 @@ import {
   ATTEST_PERMIT_TYPES,
   type AttestPermitData,
   getAttestPermitDomain,
-  IdentityRegistryABI,
-} from "@zentity/fhevm-contracts";
+  identityRegistryAbi,
+} from "@zentity/contracts";
 import {
   createWalletClient,
   decodeFunctionData,
@@ -25,8 +25,6 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
-
-import { env } from "@/env";
 
 import {
   getNetworkById,
@@ -123,6 +121,10 @@ const VIEM_CHAINS = {
   31337: hardhat,
 } as const;
 
+export function toHexPrefixed(value: string): `0x${string}` {
+  return (value.startsWith("0x") ? value : `0x${value}`) as `0x${string}`;
+}
+
 const TX_LOOKUP_MAX_ATTEMPTS = 20;
 const TX_LOOKUP_RETRY_MS = 1000;
 
@@ -189,13 +191,14 @@ export class AttestationProvider implements IAttestationProvider {
     this.config = config;
     this.networkId = config.id;
     this.networkName = config.name;
-    this.registrarPrivateKey =
-      config.registrarPrivateKey || env.REGISTRAR_PRIVATE_KEY || "";
+    this.registrarPrivateKey = config.registrarPrivateKey || "";
   }
 
   private getWalletClient() {
     if (!this.registrarPrivateKey) {
-      throw new Error("REGISTRAR_PRIVATE_KEY not configured");
+      throw new Error(
+        `Registrar private key is not configured for ${this.networkId}`
+      );
     }
 
     const chain = VIEM_CHAINS[this.config.chainId as keyof typeof VIEM_CHAINS];
@@ -204,9 +207,7 @@ export class AttestationProvider implements IAttestationProvider {
     }
 
     const account = privateKeyToAccount(
-      (this.registrarPrivateKey.startsWith("0x")
-        ? this.registrarPrivateKey
-        : `0x${this.registrarPrivateKey}`) as `0x${string}`
+      toHexPrefixed(this.registrarPrivateKey)
     );
 
     return createWalletClient({
@@ -239,7 +240,7 @@ export class AttestationProvider implements IAttestationProvider {
 
     const nonce = (await client.readContract({
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "nonces",
       args: [userAddr],
     })) as bigint;
@@ -359,7 +360,7 @@ export class AttestationProvider implements IAttestationProvider {
         }
 
         const decoded = decodeFunctionData({
-          abi: IdentityRegistryABI,
+          abi: identityRegistryAbi,
           data: tx.input,
         });
 
@@ -402,19 +403,19 @@ export class AttestationProvider implements IAttestationProvider {
       const [isAttested, attestationId, timestamp] = await Promise.all([
         client.readContract({
           address: contractAddress,
-          abi: IdentityRegistryABI,
+          abi: identityRegistryAbi,
           functionName: "isAttested",
           args: [addr],
         }),
         client.readContract({
           address: contractAddress,
-          abi: IdentityRegistryABI,
+          abi: identityRegistryAbi,
           functionName: "currentAttestationId",
           args: [addr],
         }),
         client.readContract({
           address: contractAddress,
-          abi: IdentityRegistryABI,
+          abi: identityRegistryAbi,
           functionName: "attestationTimestamp",
           args: [addr],
         }),
@@ -437,7 +438,7 @@ export class AttestationProvider implements IAttestationProvider {
     const client = this.getWalletClient();
     const txHash = await client.writeContract({
       address: this.getContractAddress(),
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "revokeIdentityFor",
       args: [userAddress as `0x${string}`],
     });

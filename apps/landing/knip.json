@@ -1,10 +1,19 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": [
+    "app/markdown-content.d.ts",
+    "scripts/fix-vite-manifest.js",
+    "scripts/mcp-tool-manifest.js",
+    "scripts/sync-docs.js",
+    "scripts/sync-mcp-tool-manifest.js"
+  ],
   "rules": {
     "types": "warn"
   },
   "ignoreIssues": {
+    "app/components/mdx.tsx": ["exports"],
     "app/components/ui/**": ["exports", "types"],
+    "source.config.ts": ["exports"],
     "app/routes/whitepaper.tsx": ["unresolved"]
   }
 }

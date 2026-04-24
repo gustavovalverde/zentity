@@ -46,7 +46,7 @@ const LEVEL_NUMERIC: Record<ComplianceLevel, number> = {
   none: 1,
 };
 
-const EMPTY_CHECKS: ComplianceChecks = {
+export const EMPTY_CHECKS: ComplianceChecks = {
   documentVerified: false,
   livenessVerified: false,
   ageVerified: false,
@@ -78,11 +78,31 @@ export function deriveComplianceStatus(
       ? deriveNfcChecks(input)
       : deriveOcrChecks(input);
 
+  const { level, numericLevel, verified } = deriveLevelFromChecks(
+    checks,
+    input.verificationMethod
+  );
+
+  return { verified, level, numericLevel, birthYearOffset, checks };
+}
+
+export function deriveLevelFromChecks(
+  checks: ComplianceChecks,
+  verificationMethod: "ocr" | "nfc_chip" | null
+): { level: ComplianceLevel; numericLevel: number; verified: boolean } {
+  if (!verificationMethod) {
+    return {
+      level: "none",
+      numericLevel: LEVEL_NUMERIC.none,
+      verified: false,
+    };
+  }
+
   const passedCount = Object.values(checks).filter(Boolean).length;
   const totalCount = Object.keys(checks).length;
 
   let level: ComplianceLevel;
-  if (input.verificationMethod === "nfc_chip" && checks.sybilResistant) {
+  if (verificationMethod === "nfc_chip" && checks.sybilResistant) {
     level = "chip";
   } else if (passedCount === totalCount) {
     level = "full";
@@ -93,11 +113,9 @@ export function deriveComplianceStatus(
   }
 
   return {
-    verified: level === "full" || level === "chip",
     level,
     numericLevel: LEVEL_NUMERIC[level],
-    birthYearOffset,
-    checks,
+    verified: level === "full" || level === "chip",
   };
 }
 

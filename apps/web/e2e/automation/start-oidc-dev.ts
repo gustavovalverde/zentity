@@ -39,6 +39,13 @@ function resetSqliteFile(dbFile: string) {
   }
 }
 
+function resetNextArtifacts() {
+  const nextDir = path.join(webRoot, ".next");
+  if (existsSync(nextDir)) {
+    rmSync(nextDir, { recursive: true, force: true });
+  }
+}
+
 function startDevServer() {
   if (shouldResetDb) {
     const dbFile =
@@ -51,11 +58,7 @@ function startDevServer() {
     }
   }
 
-  // Clean up stale Next.js dev lock file to prevent startup issues
-  const lockFile = path.join(webRoot, ".next", "dev", "lock");
-  if (existsSync(lockFile)) {
-    rmSync(lockFile, { force: true });
-  }
+  resetNextArtifacts();
 
   const env = {
     ...process.env,

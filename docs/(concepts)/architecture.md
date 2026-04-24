@@ -15,7 +15,7 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 | ZK proofs | Noir, bb.js (Barretenberg), UltraHonk | Client-side proving in Web Workers; server-side verification. |
 | Liveness + face match | Human.js + tfjs-node | Multi-gesture liveness and face match; real-time guidance on client, verification on server. |
 | OCR | RapidOCR (PPOCRv5), python-stdnum | Document parsing, field extraction, and validation. |
-| FHE | TFHE-rs (Rust), fhEVM | Encrypted computation off-chain and optional on-chain attestation. |
+| FHE and Web3 | TFHE-rs (Rust), fhEVM, Base mirror | Encrypted computation off-chain, encrypted on-chain attestation, and narrow public payment-time predicates. |
 | Storage | SQLite (libSQL/Turso), Drizzle ORM | Privacy-first storage of commitments, proofs, and encrypted blobs. |
 | Auth + key custody | Better Auth + WebAuthn + PRF + OPAQUE + EIP-712 Wallet | Passkey, OPAQUE password, or wallet signature authentication; all three derive client-held keys for sealing secrets. |
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
@@ -74,13 +74,15 @@ flowchart LR
   API -->|"encrypt"| FHE
   FHE -->|"ciphertext"| API
   API -->|"recovery signing"| SIGNER
+  API -->|"encrypted attestation"| FHEVM["fhEVM Sepolia"]
+  API -->|"mirror delivery"| BASE["Base Mirror\nisCompliant"]
 ```
 
 ---
 
 ## Cryptographic Foundation
 
-Four cryptographic pillars (auth + key custody, ZK proofs, FHE, and commitments) interlock to eliminate plaintext data handling. This document focuses on flow and system boundaries; see [Cryptographic Pillars](cryptographic-pillars.md) for how the primitives bind together, [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification, [ZK Architecture](zk-architecture.md) for proof system design, and [Web3 Architecture](web3-architecture.md) for on-chain attestation.
+Four cryptographic pillars (auth + key custody, ZK proofs, FHE, and commitments) interlock to eliminate plaintext data handling. This document focuses on flow and system boundaries; see [Cryptographic Pillars](cryptographic-pillars.md) for how the primitives bind together, [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>) for data classification, [ZK Architecture](<../(protocols)/zk-architecture.md>) for proof system design, and [Web3 Architecture](<../(architecture)/web3-architecture.md>) for on-chain attestation.
 
 ---
 
@@ -96,12 +98,13 @@ We persist only the minimum required for verification and auditability:
 - **Account snapshot state** in `identity_bundles` (`validityStatus`, `effectiveVerificationId`, `verificationExpiresAt`, `nullifierSeed`, and other non-sensitive operational metadata)
 - **Credential history** in `identity_verifications` (OCR and NFC verification rows, supersession lineage, and method-specific metadata)
 - **Validity transition and delivery ledgers** in `identity_validity_events` and `identity_validity_deliveries`
+- **Public Base mirror state** containing only wallet address, active mirrored attestation state, and numeric compliance level
 
 ### Key Custody
 
-A two-layer encryption scheme (DEK wrapped by a credential-derived KEK) ensures the server stores only encrypted blobs it cannot decrypt. Users decrypt locally after an explicit credential unlock. See [FHE Key Lifecycle](fhe-key-lifecycle.md) for the full key hierarchy and credential-specific derivation paths.
+A two-layer encryption scheme (DEK wrapped by a credential-derived KEK) ensures the server stores only encrypted blobs it cannot decrypt. Users decrypt locally after an explicit credential unlock. See [FHE Key Lifecycle](<../(protocols)/fhe-key-lifecycle.md>) for the full key hierarchy and credential-specific derivation paths.
 
-Raw document images, selfies, plaintext PII, and biometric templates are never stored. Full classification and storage boundaries live in [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
+Raw document images, selfies, plaintext PII, and biometric templates are never stored. Full classification and storage boundaries live in [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>).
 
 ---
 
@@ -256,7 +259,7 @@ sequenceDiagram
   API-->>RP: Identity PII + scope-filtered proof claims
 ```
 
-All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](oauth-integrations.md) for protocol details.
+All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for protocol details.
 
 ### Agent Authorization (CIBA)
 
@@ -280,7 +283,7 @@ sequenceDiagram
   Agent->>AS: Userinfo (identity PII if scoped)
 ```
 
-The access token includes an `act` claim identifying both the human and the agent. See [Agent Architecture](agent-architecture.md) for host registration, session lifecycle, protocol composition, and security properties. See [OAuth Integrations](oauth-integrations.md) for endpoints, scopes, and configuration.
+The access token includes an `act` claim identifying both the human and the agent. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for host registration, session lifecycle, protocol composition, and security properties. See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for endpoints, scopes, and configuration.
 
 ---
 
@@ -298,7 +301,7 @@ The access token includes an `act` claim identifying both the human and the agen
 - The **server** re-verifies frames with Human.js (tfjs-node) and issues signed liveness/face-match claims.
 - This split keeps UX responsive while preserving server-side integrity.
 
-For detailed liveness policy and integrity guarantees, see [Tamper Model](tamper-model.md) and [Attestation & Privacy Architecture](attestation-privacy-architecture.md).
+For detailed liveness policy and integrity guarantees, see [Tamper Model](<../(architecture)/tamper-model.md>) and [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>).
 
 ---
 
@@ -306,7 +309,9 @@ For detailed liveness policy and integrity guarantees, see [Tamper Model](tamper
 
 Zentity can **attest verified identity on-chain** using fhEVM while keeping attributes encrypted. The server (registrar) encrypts identity attributes and submits attestation; users authorize access with explicit grants.
 
-See [Web3 Architecture](web3-architecture.md).
+For payment-time and resource-server checks, Zentity also writes a narrow public Base mirror that exposes only `isCompliant(address,uint8)`, active mirrored attestation state, and numeric compliance level. The mirror is a delivery surface of the identity validity pipeline, not a second identity authority.
+
+See [Web3 Architecture](<../(architecture)/web3-architecture.md>) and [ADR-0005](../adr/fhe/0005-base-compliance-mirror-for-payment-reads.md).
 
 ---
 
@@ -322,7 +327,7 @@ External wallets can receive and hold credentials; third-party verifiers can req
 
 Credentials contain only derived claims, never raw PII. Claims like `verified`, `age_verified`, and `verification_level` indicate verification status without exposing underlying data.
 
-See [SSI Architecture](ssi-architecture.md) for the complete Self-Sovereign Identity model.
+See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete Self-Sovereign Identity model.
 
 ---
 
@@ -333,7 +338,7 @@ Zentity models identity as one account-scoped snapshot plus credential history.
 - `identity_bundles` is the current account snapshot. It stores the authoritative `effectiveVerificationId`, current `validityStatus`, the freshness deadline (`verificationExpiresAt`), and the bundle-owned `nullifierSeed` used for stable per-RP anti-abuse claims.
 - `identity_verifications` is credential history. OCR and NFC credentials append here, and older authoritative rows can become explicitly superseded without being deleted.
 - `reconcileIdentityBundle(userId)` is the only bundle reconciler. Verification lifecycle checkpoints call it to select the authoritative credential, compute freshness state, and preserve or reseed the RP nullifier seed according to bundle policy.
-- `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`. `identity_validity_deliveries` tracks downstream effects such as credential-status updates, back-channel logout, RP validity notice, CIBA cancellation, and blockchain revocation delivery.
+- `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`. `identity_validity_deliveries` tracks downstream effects such as credential-status updates, back-channel logout, RP validity notice, CIBA cancellation, blockchain revocation delivery, and Base mirror writes.
 
 This split is what lets OCR and NFC credentials coexist on one account without making disclosure, assurance, or operator reads re-rank raw rows ad hoc.
 
@@ -393,7 +398,7 @@ For NFC chip checks, only claim type presence matters; boolean payloads inside t
 
 A privacy-preserving age representation: `currentYear - birthYear`. Validated to the range 0–255 (uint8). Stored in `identity_verifications` as a proof output, never client-supplied.
 
-See [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for the full data classification table and [SSI Architecture](ssi-architecture.md) for how compliance level feeds into verifiable credential claims.
+See [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>) for the full data classification table and [SSI Architecture](<../(architecture)/ssi-architecture.md>) for how compliance level feeds into verifiable credential claims.
 
 ---
 
@@ -404,7 +409,7 @@ Identity revocation is part of the same validity pipeline that handles freshness
 - Admin revocation, self-service revocation, and chain-ingested revocation all converge on the same validity transition boundary.
 - The account snapshot in `identity_bundles` becomes `revoked`, clears `effectiveVerificationId`, and clears `nullifierSeed` so a later full re-verification can establish a new unlinkable seed.
 - Credential history is preserved. Verification rows are retained for audit; current trust lives on the bundle snapshot and in the validity ledger.
-- Downstream effects fan out through the delivery ledger: issued credential status updates, back-channel logout, pending CIBA cancellation, RP validity notice, and blockchain attestation revocation.
+- Downstream effects fan out through the delivery ledger: issued credential status updates, back-channel logout, pending CIBA cancellation, RP validity notice, blockchain attestation revocation, and Base mirror revocation.
 
 After revocation, the user's assurance posture drops, current proof claims stop reflecting a valid identity, and document-level dedup guards are released according to the current product policy.
 
@@ -412,4 +417,4 @@ After revocation, the user's assurance posture drops, current proof claims stop 
 
 ## Storage Model
 
-Database schema and table relationships are documented in [Attestation & Privacy Architecture](attestation-privacy-architecture.md). The Drizzle schema is the authoritative source for column-level detail.
+Database schema and table relationships are documented in [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>). The Drizzle schema is the authoritative source for column-level detail.

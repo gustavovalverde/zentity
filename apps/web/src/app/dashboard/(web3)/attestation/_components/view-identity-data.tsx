@@ -26,7 +26,7 @@ import {
 /** Matches a valid hex string with 0x prefix */
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
 
-import { IdentityRegistryABI } from "@zentity/fhevm-contracts";
+import { identityRegistryAbi } from "@zentity/contracts";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useChainId, useReadContract } from "wagmi";
 
@@ -215,7 +215,7 @@ export function ViewIdentityData() {
   const { data: rawIsAttested, isLoading: isAttestedLoading } = useReadContract(
     {
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "isAttested",
       args: address ? [address] : undefined,
       account: address,
@@ -226,7 +226,7 @@ export function ViewIdentityData() {
   const { data: rawBirthYearHandle, isLoading: isBirthYearLoading } =
     useReadContract({
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "getBirthYearOffset",
       args: address ? [address] : undefined,
       account: address,
@@ -236,7 +236,7 @@ export function ViewIdentityData() {
   const { data: rawCountryCodeHandle, isLoading: isCountryLoading } =
     useReadContract({
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "getCountryCode",
       args: address ? [address] : undefined,
       account: address,
@@ -246,7 +246,7 @@ export function ViewIdentityData() {
   const { data: rawComplianceLevelHandle, isLoading: isComplianceLoading } =
     useReadContract({
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "getComplianceLevel",
       args: address ? [address] : undefined,
       account: address,
@@ -256,7 +256,7 @@ export function ViewIdentityData() {
   const { data: rawBlacklistHandle, isLoading: isBlacklistLoading } =
     useReadContract({
       address: contractAddress,
-      abi: IdentityRegistryABI,
+      abi: identityRegistryAbi,
       functionName: "getBlacklistStatus",
       args: address ? [address] : undefined,
       account: address,

@@ -13,7 +13,7 @@ Decentralize the attestation signing authority by replacing the single registrar
 
 ## Problem Statement
 
-Currently, the `IdentityRegistry` contract is controlled by a single registrar address derived from `REGISTRAR_PRIVATE_KEY`. This creates:
+Currently, the `IdentityRegistry` contract is controlled by a single registrar address derived from the network-specific registrar private key. This creates:
 
 - **Single point of compromise**: If the key is leaked, attackers can forge attestations
 - **No separation of duties**: One entity controls all attestations
@@ -288,7 +288,7 @@ All signing sessions logged with: session ID, message hash, participating signer
 - Deploy SchnorrRegistrar
 - Add as additional registrar
 - Route new attestations through FROST
-- Keep existing registrar as fallback
+- Keep the existing registrar authorized until cutover criteria pass
 
 ### Phase 2: Full Migration
 

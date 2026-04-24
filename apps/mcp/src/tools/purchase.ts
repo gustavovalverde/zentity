@@ -6,7 +6,9 @@ import {
 } from "@zentity/sdk";
 import {
   createDpopClientFromKeyPair,
+  PAYMENT_RESPONSE_HEADER,
   type ProofOfHumanClaims,
+  parsePaymentResponseHeader,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
 import { z } from "zod";
@@ -31,6 +33,7 @@ const purchaseOutputSchema = {
     "denied",
     "expired",
     "compliance_insufficient",
+    "payment_bounds_exceeded",
   ]),
   approved: z.boolean().nullable(),
   bindingMessage: z.string(),
@@ -53,6 +56,7 @@ const purchaseOutputSchema = {
   x402: z
     .object({
       level_used: z.number().nullable(),
+      payment_response: z.unknown().nullable(),
       poh_issuer: z.string().nullable(),
       response: z.unknown().nullable(),
       retried: z.boolean(),
@@ -103,7 +107,10 @@ interface PurchaseParams {
   currency: string;
   description?: string | undefined;
   item: string;
+  maxAmount?: number | undefined;
+  maxComplianceLevel?: number | undefined;
   merchant: string;
+  network?: string | undefined;
   requires_age_verification?: boolean | undefined;
   url?: string | undefined;
 }
@@ -137,6 +144,13 @@ class PurchaseAuthorizationEndedError extends Error {
     );
     this.name = "PurchaseAuthorizationEndedError";
     this.status = status;
+  }
+}
+
+class PaymentBoundsExceededError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PaymentBoundsExceededError";
   }
 }
 
@@ -189,6 +203,11 @@ function buildX402PurchaseFingerprint(
     params.amount.toFixed(2),
     params.currency,
     params.description?.trim() ?? "",
+    params.maxAmount === undefined ? "" : params.maxAmount.toFixed(2),
+    params.maxComplianceLevel === undefined
+      ? ""
+      : String(params.maxComplianceLevel),
+    params.network ?? "",
   ].join(":");
 }
 
@@ -208,6 +227,56 @@ async function readResponsePayload(response: Response): Promise<unknown> {
     return JSON.parse(text);
   } catch {
     return text;
+  }
+}
+
+function readPaymentResponseHeader(response: Response): unknown {
+  const header = response.headers.get(PAYMENT_RESPONSE_HEADER);
+  if (!header) {
+    return null;
+  }
+
+  try {
+    return parsePaymentResponseHeader(header);
+  } catch {
+    return null;
+  }
+}
+
+function getRequiredPaymentAmount(context: X402PaymentContext): number | null {
+  const amount = context.selectedPaymentRequirement.amount;
+  if (typeof amount !== "string") {
+    return null;
+  }
+
+  const parsed = Number(amount);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function assertX402Bounds(params: PurchaseParams, context: X402PaymentContext) {
+  const requirement = context.selectedPaymentRequirement;
+
+  const requiredAmount = getRequiredPaymentAmount(context);
+  const maxAmount = params.maxAmount ?? params.amount;
+  if (requiredAmount !== null && requiredAmount > maxAmount) {
+    throw new PaymentBoundsExceededError(
+      `x402 payment amount ${requiredAmount} exceeds maxAmount ${maxAmount}`
+    );
+  }
+
+  if (params.network && requirement.network !== params.network) {
+    throw new PaymentBoundsExceededError(
+      `x402 network ${requirement.network} does not match ${params.network}`
+    );
+  }
+
+  if (
+    params.maxComplianceLevel !== undefined &&
+    context.requirement.minComplianceLevel > params.maxComplianceLevel
+  ) {
+    throw new PaymentBoundsExceededError(
+      `x402 compliance level ${context.requirement.minComplianceLevel} exceeds maxComplianceLevel ${params.maxComplianceLevel}`
+    );
   }
 }
 
@@ -258,6 +327,7 @@ async function fetchX402Purchase(input: {
   const fetchWithX402 = createX402Fetch(fetch, {
     getPohToken: async (minComplianceLevel, context) => {
       x402Context = context;
+      assertX402Bounds(input.params, context);
       const outcome = await beginOrResumeInteractiveFlow({
         server: input.server,
         toolName: "purchase",
@@ -325,6 +395,7 @@ async function fetchX402Purchase(input: {
     x402: { autoPayWithProofOfHuman: true },
   });
   const responsePayload = await readResponsePayload(response);
+  const paymentResponse = readPaymentResponseHeader(response);
 
   return {
     status: "complete",
@@ -336,6 +407,7 @@ async function fetchX402Purchase(input: {
         proofOfHumanClaims?.tier ??
         x402Context?.requirement.minComplianceLevel ??
         null,
+      payment_response: paymentResponse,
       poh_issuer: x402Context?.requirement.pohIssuer ?? null,
       response: responsePayload,
       retried: Boolean(x402Context),
@@ -387,11 +459,20 @@ async function runX402PurchaseTool(input: {
         fulfillment: null,
       });
     }
+    if (error instanceof PaymentBoundsExceededError) {
+      return buildPurchaseResponse({
+        status: "payment_bounds_exceeded",
+        approved: false,
+        bindingMessage: input.bindingMessage,
+        error: error.message,
+        fulfillment: null,
+      });
+    }
     throw error;
   }
 }
 
-async function runLegacyPurchaseTool(input: {
+async function runDirectPurchaseTool(input: {
   agentAssertion?: string | undefined;
   bindingMessage: string;
   oauth: ReturnType<typeof getOAuthContext>;
@@ -509,7 +590,7 @@ async function runPurchaseTool(server: McpServer, params: PurchaseParams) {
 
   return params.url
     ? runX402PurchaseTool(purchaseInput)
-    : runLegacyPurchaseTool(purchaseInput);
+    : runDirectPurchaseTool(purchaseInput);
 }
 
 export function registerPurchaseTool(server: McpServer): void {
@@ -528,6 +609,21 @@ export function registerPurchaseTool(server: McpServer): void {
           .describe("Additional purchase context"),
         item: z.string().describe("Item being purchased"),
         merchant: z.string().describe("Merchant name"),
+        maxAmount: z
+          .number()
+          .optional()
+          .describe("Maximum acceptable x402 payment amount"),
+        maxComplianceLevel: z
+          .number()
+          .int()
+          .min(1)
+          .max(4)
+          .optional()
+          .describe("Maximum compliance tier the merchant may require"),
+        network: z
+          .string()
+          .optional()
+          .describe("Required x402 payment network, e.g. eip155:84532"),
         requires_age_verification: z
           .boolean()
           .optional()
@@ -552,6 +648,9 @@ export function registerPurchaseTool(server: McpServer): void {
       description,
       item,
       merchant,
+      maxAmount,
+      maxComplianceLevel,
+      network,
       requires_age_verification,
       url,
     }) => {
@@ -561,6 +660,9 @@ export function registerPurchaseTool(server: McpServer): void {
         description,
         item,
         merchant,
+        maxAmount,
+        maxComplianceLevel,
+        network,
         requires_age_verification,
         url,
       });

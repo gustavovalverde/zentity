@@ -3,8 +3,8 @@ import type { X402Resource } from "@/data/x402";
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("@/lib/chain", () => ({
-  getRegistryAddress: () => "0xa90723A47A14437500645Ece6049d0128A2f256D",
+vi.mock("@/lib/on-chain-compliance", () => ({
+  getMirrorAddress: () => "0xa90723A47A14437500645Ece6049d0128A2f256D",
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -42,6 +42,7 @@ describe("buildRouteConfig", () => {
 
     expect(routeConfig.extensions).toMatchObject({
       zentity: {
+        identityRegistryMirror: "0xa90723A47A14437500645Ece6049d0128A2f256D",
         pohIssuer: "https://app.zentity.xyz",
       },
     });

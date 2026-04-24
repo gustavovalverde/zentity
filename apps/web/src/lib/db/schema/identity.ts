@@ -59,6 +59,8 @@ export const validityDeliveryTargetEnum = [
   "ciba_request_cancellation",
   "backchannel_logout",
   "blockchain_attestation_revocation",
+  "mirror_compliance_write",
+  "mirror_revocation_write",
   "rp_validity_notice",
 ] as const;
 

@@ -50,6 +50,13 @@ function runCommand(command: string, args: string[], env: NodeJS.ProcessEnv) {
   }
 }
 
+function resetNextArtifacts() {
+  const nextDir = join(demoRpRoot, ".next");
+  if (existsSync(nextDir)) {
+    rmSync(nextDir, { recursive: true, force: true });
+  }
+}
+
 function startDevServer() {
   if (shouldResetDb) {
     const dbFile =
@@ -61,10 +68,7 @@ function startDevServer() {
     }
   }
 
-  const lockFile = join(demoRpRoot, ".next", "dev", "lock");
-  if (existsSync(lockFile)) {
-    rmSync(lockFile, { force: true });
-  }
+  resetNextArtifacts();
 
   const env = {
     ...process.env,

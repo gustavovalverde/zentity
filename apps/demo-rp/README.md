@@ -18,7 +18,7 @@ The three scope families follow the disclosure profile contract:
 
 No admin pre-approval is required — the user controls data access at the consent page.
 
-## Five Scenarios
+## Seven Scenarios
 
 | Scenario | Sign-In Scopes | Step-Up Scopes | Step-Up Action |
 |----------|---------------|----------------|----------------|
@@ -28,6 +28,7 @@ No admin pre-approval is required — the user controls data access at the conse
 | **Relief Global** | `openid email proof:verification` | `identity.name identity.nationality` | Claim Aid |
 | **VeriPass** | Digital credential wallet with OID4VP verifier | eIDAS 2.0, NIST 800-63-4 | SD-JWT VC, DCQL, OID4VP, OID4VCI |
 | **Aether AI** | `/aether` | CIBA agent authorization | Purchase approval via backchannel auth |
+| **x402** | `openid email proof:verification` | Proof-of-Human + Base mirror compliance | HTTP 402, `PAYMENT-SIGNATURE`, `isCompliant` |
 
 ## Quick Start
 
@@ -105,6 +106,37 @@ Each scenario page shows a DCR registration step, then sign-in, then step-up.
 
 Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OAuth code flow used by other scenarios.
 
+**x402 (payment + compliance):**
+
+1. Navigate to <http://localhost:3102/x402>
+2. Sign in with Zentity and connect a wallet
+3. Select a regulated resource and run the flow
+4. The RP returns `PAYMENT-REQUIRED`; the wallet signs `PAYMENT-SIGNATURE`
+5. Zentity proof data is carried under `PaymentPayload.extensions.zentity`
+6. On-chain resources check Base `IdentityRegistryMirror.isCompliant(payer, requiredLevel)`
+
+For the on-chain tier, the demo uses the Base Sepolia deployment manifest from `@zentity/contracts`. Set `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` only when you need to point at a different mirror deployment. If no package manifest or override is available, the demo reports `identity_registry_mirror_not_configured` instead of silently falling back to a mock.
+
+### x402 User Journey
+
+The `/x402` page demonstrates three payment-time access patterns. Each pattern starts with the same visible user flow: the user signs in with Zentity, connects a Base Sepolia wallet, selects a resource, and runs the request. The resource server then returns `402 Payment Required`, the wallet signs the x402 payment payload, and the client retries with `PAYMENT-SIGNATURE`.
+
+| Resource | User precondition | Runtime journey | What the RP learns |
+|----------|-------------------|-----------------|--------------------|
+| Public API | Wallet can sign and pay | Payment-only retry. No Proof-of-Human token is requested. | Payment settlement result only |
+| Verified Identity | User has a Zentity verification tier of 2 or higher | The 402 response advertises `extensions.zentity.minComplianceLevel`. The client obtains a short-lived Proof-of-Human token and attaches it under `PaymentPayload.extensions.zentity.pohToken` before retrying. | Verified tier, sybil-resistance status, and payment settlement result |
+| Regulated Financial API | User has Tier 3+ and a mirrored wallet attestation on Base Sepolia | The client performs the Proof-of-Human retry, then the resource server verifies that the wallet which signed the payment is compliant through `IdentityRegistryMirror.isCompliant(payer, requiredLevel)`. | Proof result, Base mirror boolean, payer wallet address, and payment settlement result |
+
+The important privacy boundary is that payment-time access does not disclose raw identity data. The resource server receives no document fields, proof hashes, commitments, FHE ciphertext handles, or decrypted attributes. For the on-chain scenario, the public mirror exposes only wallet address, active mirrored attestation state, and numeric compliance level.
+
+Common failure states are visible in the protocol trace:
+
+1. Missing payment header: the server returns `PAYMENT-REQUIRED`.
+2. Missing or invalid Proof-of-Human token: the server rejects the retry before settlement.
+3. Wallet mismatch: the server rejects on-chain checks when the caller-provided wallet differs from the payment payer.
+4. Mirror not configured or unavailable: the server returns a chain configuration or availability error.
+5. Insufficient mirrored compliance: the server rejects access before settlement.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -121,6 +153,8 @@ Aether uses the `useCibaFlow` polling hook, architecturally distinct from the OA
 | `VERIFIER_CA_PEM` | — | Base64 CA certificate PEM (production) |
 | `VERIFIER_LEAF_KEY_PEM` | — | Base64 leaf private key PEM (production) |
 | `ZENTITY_JWKS_URL` | — | Override JWKS endpoint for VP token verification |
+| `BASE_SEPOLIA_RPC_URL` | <https://sepolia.base.org> | Base Sepolia RPC for x402 mirror reads |
+| `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR` | Package manifest | Optional deployed `IdentityRegistryMirror` override for x402 on-chain checks |
 | `DATABASE_AUTH_TOKEN` | — | Turso auth token (for remote database) |
 
 ## Architecture

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireAdminApiKey } from "@/lib/http/admin-auth";
-import { ingestChainRevocations } from "@/lib/identity/validity/chain-ingest";
+import { ingestChainValidityEvents } from "@/lib/identity/validity/chain-ingest";
 
 export async function POST(request: Request): Promise<Response> {
   const unauthorized = requireAdminApiKey(request);
@@ -21,7 +21,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const result = await ingestChainRevocations({
+  const result = await ingestChainValidityEvents({
     networkId: body.networkId,
     ...(typeof body.fromBlock === "number"
       ? { fromBlock: body.fromBlock }

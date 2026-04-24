@@ -8,10 +8,10 @@ import type { X402Resource } from "@/data/x402";
 
 const mocks = vi.hoisted(() => ({
   buildRouteConfig: vi.fn(),
-  checkOnChainAttestation: vi.fn(),
   createProofOfHumanTokenVerifier: vi.fn(),
   findResource: vi.fn(),
-  getRegistryAddress: vi.fn(),
+  getMirrorAddress: vi.fn(),
+  readOnChainCompliance: vi.fn(),
   getStoredDpopJkt: vi.fn(),
   settlePayment: vi.fn(),
   verifyPayment: vi.fn(),
@@ -31,9 +31,9 @@ vi.mock("@/data/x402", () => ({
   findResource: mocks.findResource,
 }));
 
-vi.mock("@/lib/chain", () => ({
-  checkOnChainAttestation: mocks.checkOnChainAttestation,
-  getRegistryAddress: mocks.getRegistryAddress,
+vi.mock("@/lib/on-chain-compliance", () => ({
+  getMirrorAddress: mocks.getMirrorAddress,
+  readOnChainCompliance: mocks.readOnChainCompliance,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -96,6 +96,29 @@ function makeRequest(
   });
 }
 
+function makePaymentSignatureHeader(pohToken = "poh-token"): string {
+  return Buffer.from(
+    JSON.stringify({
+      x402Version: 2,
+      accepted: {
+        scheme: "exact",
+        network: "eip155:84532",
+        payTo: "0x000000000000000000000000000000000000dEaD",
+        amount: "1",
+        maxTimeoutSeconds: 300,
+        asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        extra: {},
+      },
+      payload: {},
+      extensions: {
+        zentity: {
+          pohToken,
+        },
+      },
+    })
+  ).toString("base64");
+}
+
 describe("/api/x402/access POST", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -113,7 +136,7 @@ describe("/api/x402/access POST", () => {
         extra: {},
       },
     });
-    mocks.getRegistryAddress.mockReturnValue(
+    mocks.getMirrorAddress.mockReturnValue(
       "0xa90723A47A14437500645Ece6049d0128A2f256D"
     );
     mocks.verifyPayment.mockResolvedValue({
@@ -130,7 +153,13 @@ describe("/api/x402/access POST", () => {
         method: "ocr",
       },
     });
-    mocks.checkOnChainAttestation.mockResolvedValue(true);
+    mocks.readOnChainCompliance.mockResolvedValue({
+      address: WALLET_A,
+      compliant: true,
+      contract: "0xa90723A47A14437500645Ece6049d0128A2f256D",
+      minComplianceLevel: 3,
+      network: "eip155:84532",
+    });
     mocks.settlePayment.mockResolvedValue({
       success: true,
       transaction: `0x${"1".repeat(64)}`,
@@ -195,10 +224,9 @@ describe("/api/x402/access POST", () => {
       makeRequest(
         {
           resourceId: "resource-1",
-          pohToken: "poh-token",
           walletAddress: WALLET_B,
         },
-        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: makePaymentSignatureHeader() }
       )
     );
 
@@ -206,33 +234,32 @@ describe("/api/x402/access POST", () => {
     await expect(response.json()).resolves.toEqual({
       error: "wallet_address_mismatch",
       detail:
-        "On-chain attestation must match the wallet that signed the payment.",
+        "On-chain compliance must match the wallet that signed the payment.",
       payer: WALLET_A,
     });
-    expect(mocks.checkOnChainAttestation).not.toHaveBeenCalled();
+    expect(mocks.readOnChainCompliance).not.toHaveBeenCalled();
     expect(mocks.settlePayment).not.toHaveBeenCalled();
   });
 
-  it("checks on-chain attestation against the verified payer wallet", async () => {
+  it("checks on-chain compliance against the verified payer wallet", async () => {
     mocks.findResource.mockReturnValue(makeResource());
 
     const response = await POST(
       makeRequest(
         {
           resourceId: "resource-1",
-          pohToken: "poh-token",
         },
-        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: makePaymentSignatureHeader() }
       )
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.checkOnChainAttestation).toHaveBeenCalledWith(WALLET_A);
+    expect(mocks.readOnChainCompliance).toHaveBeenCalledWith(WALLET_A, 3);
     expect(mocks.settlePayment).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({
       access: "granted",
       onChain: {
-        status: "attested",
+        status: "compliant",
         address: WALLET_A,
       },
     });

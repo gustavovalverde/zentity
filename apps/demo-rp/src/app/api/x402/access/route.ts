@@ -1,30 +1,36 @@
 import {
+  asObjectRecord,
   createPaymentRequired,
   createProofOfHumanTokenVerifier,
   encodePaymentResponseHeader,
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   type ProofOfHumanClaims,
+  parsePaymentSignatureHeader,
   type VerifiedProofOfHumanToken,
 } from "@zentity/sdk/rp";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { X402Resource } from "@/data/x402";
 import { findResource } from "@/data/x402";
-import { checkOnChainAttestation, getRegistryAddress } from "@/lib/chain";
 import { env } from "@/lib/env";
 import { settlePayment, verifyPayment } from "@/lib/facilitator";
+import {
+  getMirrorAddress,
+  readOnChainCompliance,
+} from "@/lib/on-chain-compliance";
 import { getStoredDpopJkt } from "@/lib/poh-client";
-import { buildRouteConfig } from "@/lib/x402-server";
+import { buildRouteConfig, type X402RouteConfig } from "@/lib/x402-server";
 
 const bodySchema = z.object({
   resourceId: z.string().min(1),
-  pohToken: z.string().optional(),
   walletAddress: z
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/)
     .optional(),
 });
+
+type SettlementResult = Awaited<ReturnType<typeof settlePayment>>;
 
 let proofOfHumanTokenVerifier:
   | ReturnType<typeof createProofOfHumanTokenVerifier>
@@ -38,9 +44,10 @@ function getProofOfHumanTokenVerifier() {
   return proofOfHumanTokenVerifier;
 }
 
-function buildPaymentRequired(resource: X402Resource) {
-  const routeConfig = buildRouteConfig(resource);
-
+function buildPaymentRequired(
+  resource: X402Resource,
+  routeConfig: X402RouteConfig
+) {
   return createPaymentRequired({
     accepts: Array.isArray(routeConfig.accepts)
       ? routeConfig.accepts
@@ -77,7 +84,7 @@ function resolveVerifiedOnChainWallet(
         {
           error: "payment_payer_unavailable",
           detail:
-            "Payment verification did not return the payer address required for on-chain attestation.",
+            "Payment verification did not return the payer address required for on-chain compliance.",
         },
         { status: 502 }
       ),
@@ -94,7 +101,7 @@ function resolveVerifiedOnChainWallet(
         {
           error: "wallet_address_mismatch",
           detail:
-            "On-chain attestation must match the wallet that signed the payment.",
+            "On-chain compliance must match the wallet that signed the payment.",
           payer: verification.payer,
         },
         { status: 403 }
@@ -108,22 +115,23 @@ function resolveVerifiedOnChainWallet(
   };
 }
 
-async function resolveOnChain(
-  walletAddress: string | undefined
+async function validateOnChainCompliance(
+  walletAddress: string | undefined,
+  minComplianceLevel: number
 ): Promise<
   | { ok: true; data: Record<string, unknown> }
   | { ok: false; response: NextResponse }
 > {
-  const registry = getRegistryAddress();
+  const mirrorAddress = getMirrorAddress();
 
-  if (!registry) {
+  if (!mirrorAddress) {
     return {
       ok: false,
       response: NextResponse.json(
         {
-          error: "registry_not_configured",
+          error: "identity_registry_mirror_not_configured",
           detail:
-            "Set IDENTITY_REGISTRY_ADDRESS to the deployed IdentityRegistry contract.",
+            "Set BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR to the deployed IdentityRegistryMirror contract.",
         },
         { status: 503 }
       ),
@@ -136,39 +144,43 @@ async function resolveOnChain(
       response: NextResponse.json(
         {
           error: "wallet_address_required",
-          detail: "On-chain attestation requires a wallet address.",
-          contract: registry,
+          detail: "On-chain compliance requires a wallet address.",
+          contract: mirrorAddress,
         },
         { status: 403 }
       ),
     };
   }
 
-  const attested = await checkOnChainAttestation(walletAddress);
+  const compliance = await readOnChainCompliance(
+    walletAddress,
+    minComplianceLevel
+  );
 
-  if (attested === null) {
+  if (compliance === null) {
     return {
       ok: false,
       response: NextResponse.json(
         {
           error: "chain_unavailable",
-          detail: "On-chain attestation check failed — chain unreachable.",
+          detail: "On-chain compliance check failed — chain unreachable.",
           address: walletAddress,
-          contract: registry,
+          contract: mirrorAddress,
         },
         { status: 503 }
       ),
     };
   }
 
-  if (!attested) {
+  if (!compliance.compliant) {
     return {
       ok: false,
       response: NextResponse.json(
         {
-          error: "not_attested_on_chain",
+          error: "not_compliant_on_chain",
           address: walletAddress,
-          contract: registry,
+          minComplianceLevel,
+          contract: mirrorAddress,
         },
         { status: 403 }
       ),
@@ -177,16 +189,26 @@ async function resolveOnChain(
 
   return {
     ok: true,
-    data: { status: "attested", address: walletAddress, contract: registry },
+    data: { status: "compliant", ...compliance },
   };
+}
+
+function getProofOfHumanTokenFromPayment(
+  paymentSignature: string
+): string | undefined {
+  try {
+    const paymentPayload = parsePaymentSignatureHeader(paymentSignature);
+    const extension = asObjectRecord(paymentPayload.extensions?.zentity);
+    const pohToken = extension?.pohToken;
+    return typeof pohToken === "string" ? pohToken : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function buildSuccess(
   resource: X402Resource,
-  settlement?: {
-    transaction?: string | undefined;
-    network?: string | undefined;
-  },
+  settlement: SettlementResult,
   poh?: ProofOfHumanClaims,
   onChain?: Record<string, unknown>
 ) {
@@ -194,7 +216,7 @@ function buildSuccess(
     access: "granted",
     resource: resource.name,
     data: resource.responseData,
-    ...(settlement ? { settlement } : {}),
+    settlement,
     ...(poh ? { poh } : {}),
     ...(onChain ? { onChain } : {}),
   };
@@ -202,7 +224,7 @@ function buildSuccess(
   const response = NextResponse.json(body);
   response.headers.set(
     PAYMENT_RESPONSE_HEADER,
-    encodePaymentResponseHeader(settlement ?? { success: true })
+    encodePaymentResponseHeader(settlement)
   );
   return response;
 }
@@ -224,14 +246,17 @@ async function validatePohToken(
     };
   }
 
-  const verified = await getProofOfHumanTokenVerifier()
-    .verify(pohToken)
-    .catch((e: unknown) => e as Error);
-  if (verified instanceof Error) {
+  let verified: VerifiedProofOfHumanToken;
+  try {
+    verified = await getProofOfHumanTokenVerifier().verify(pohToken);
+  } catch (error) {
     return {
       ok: false,
       response: NextResponse.json(
-        { error: "invalid_poh_token", detail: verified.message },
+        {
+          error: "invalid_poh_token",
+          detail: error instanceof Error ? error.message : "Invalid PoH token",
+        },
         { status: 401 }
       ),
     };
@@ -281,16 +306,16 @@ export async function POST(request: Request) {
   if (!resource) {
     return NextResponse.json({ error: "unknown_resource" }, { status: 404 });
   }
+  const routeConfig = buildRouteConfig(resource);
 
   const paymentSignature = request.headers.get(PAYMENT_SIGNATURE_HEADER);
 
   // No payment → 402
   if (!paymentSignature) {
-    return buildPaymentRequired(resource);
+    return buildPaymentRequired(resource, routeConfig);
   }
 
   // Verify payment via the x402 facilitator
-  const routeConfig = buildRouteConfig(resource);
   const paymentRequirements = Array.isArray(routeConfig.accepts)
     ? routeConfig.accepts[0]
     : routeConfig.accepts;
@@ -319,13 +344,11 @@ export async function POST(request: Request) {
       return buildSettlementFailedResponse(settlement);
     }
 
-    return buildSuccess(resource, {
-      transaction: settlement.transaction,
-      network: settlement.network,
-    });
+    return buildSuccess(resource, settlement);
   }
 
-  const pohResult = await validatePohToken(body.pohToken, resource);
+  const pohToken = getProofOfHumanTokenFromPayment(paymentSignature);
+  const pohResult = await validatePohToken(pohToken, resource);
   if (!pohResult.ok) {
     return pohResult.response;
   }
@@ -341,7 +364,10 @@ export async function POST(request: Request) {
       return verifiedWallet.response;
     }
 
-    const chain = await resolveOnChain(verifiedWallet.walletAddress);
+    const chain = await validateOnChainCompliance(
+      verifiedWallet.walletAddress,
+      resource.requiredTier
+    );
     if (!chain.ok) {
       return chain.response;
     }
@@ -353,10 +379,5 @@ export async function POST(request: Request) {
     return buildSettlementFailedResponse(settlement);
   }
 
-  return buildSuccess(
-    resource,
-    { transaction: settlement.transaction, network: settlement.network },
-    verified.poh,
-    onChain
-  );
+  return buildSuccess(resource, settlement, verified.poh, onChain);
 }

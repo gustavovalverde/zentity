@@ -172,6 +172,6 @@ EXPOSE ${PORT}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/api/health || exit 1
+    CMD curl -f http://localhost:${PORT}/api/status/health || exit 1
 
 CMD ["./scripts/docker-entrypoint.sh"]

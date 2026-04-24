@@ -67,7 +67,7 @@ function onChainClassName(status: string): string {
 
 function onChainText(status: string, error?: string): string {
   if (status === "pass") {
-    return "✓ attested";
+    return "✓ compliant";
   }
   if (status === "required") {
     return "pending";
@@ -78,7 +78,7 @@ function onChainText(status: string, error?: string): string {
   if (error === "chain_unavailable") {
     return "✗ chain down";
   }
-  return "✗ not attested";
+  return "✗ not compliant";
 }
 
 function OnChainLabel({
@@ -113,18 +113,18 @@ function RequirementCheck({
 
   const meetsTier = pohClaims.tier >= resource.requiredTier;
 
-  // For on-chain resources, the final verdict depends on both tier AND attestation
+  // For on-chain resources, the final verdict depends on both tier and Base mirror compliance.
   let onChainStatus: "pass" | "fail" | "required" = "pass";
   if (resource.requireOnChain) {
     if (!accessOutcome) {
       onChainStatus = "required";
     } else if (
       accessOutcome.error === "wallet_address_required" ||
-      accessOutcome.error === "not_attested_on_chain" ||
+      accessOutcome.error === "not_compliant_on_chain" ||
       accessOutcome.error === "chain_unavailable"
     ) {
       onChainStatus = "fail";
-    } else if (accessOutcome.onChain?.status === "attested") {
+    } else if (accessOutcome.onChain?.status === "compliant") {
       onChainStatus = "pass";
     } else {
       onChainStatus = "required";
@@ -156,7 +156,7 @@ function RequirementCheck({
         </div>
         {resource.requireOnChain && (
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">On-chain attestation</span>
+            <span className="text-muted-foreground">Base mirror</span>
             <OnChainLabel error={accessOutcome?.error} status={onChainStatus} />
           </div>
         )}

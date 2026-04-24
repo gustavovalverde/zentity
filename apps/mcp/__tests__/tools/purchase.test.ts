@@ -88,14 +88,17 @@ describe("purchase", () => {
     return Buffer.from(
       JSON.stringify({
         x402Version: 2,
-        accepts: {
-          scheme: "exact",
-          network: "eip155:84532",
-          payTo: "0x000000000000000000000000000000000000dEaD",
-          amount: "1",
-          maxTimeoutSeconds: 300,
-          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        },
+        accepts: [
+          {
+            scheme: "exact",
+            network: "eip155:84532",
+            payTo: "0x000000000000000000000000000000000000dEaD",
+            amount: "1",
+            maxTimeoutSeconds: 300,
+            asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            extra: {},
+          },
+        ],
         resource: { url: "https://merchant.example/api/purchase" },
         extensions: {
           zentity: {

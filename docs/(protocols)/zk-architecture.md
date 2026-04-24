@@ -106,7 +106,7 @@ The re-auth dialog blocks proof generation until credential material is availabl
 - **Context hashes** (`msg_sender_hash`, `audience_hash`) bind identity proofs to the authenticated caller and relying-party audience.
 - **Verifier metadata** stores circuit/version identifiers for audit.
 
-See [Tamper Model](tamper-model.md) for integrity rules and [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification.
+See [Tamper Model](<../(architecture)/tamper-model.md>) for integrity rules and [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>) for data classification.
 
 ## Performance & UX Notes
 

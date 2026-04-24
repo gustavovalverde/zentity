@@ -15,9 +15,9 @@ import "server-only";
 import { TRPCError } from "@trpc/server";
 import {
   ATTR,
-  CompliantERC20ABI,
-  IdentityRegistryABI,
-} from "@zentity/fhevm-contracts";
+  compliantErc20Abi,
+  identityRegistryAbi,
+} from "@zentity/contracts";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { hardhat, sepolia } from "viem/chains";
 import { z } from "zod";
@@ -42,7 +42,7 @@ const VIEM_CHAINS = {
 } as const;
 
 // CompliantERC20 ABI (kept in sync with contracts package)
-const COMPLIANT_ERC20_ABI = CompliantERC20ABI;
+const COMPLIANT_ERC20_ABI = compliantErc20Abi;
 
 // Rate limiting for mint requests
 const MINT_RATE_LIMIT_MAX = 3;
@@ -512,7 +512,7 @@ export const compliantTokenRouter = router({
       try {
         const grantedAttributes = await client.readContract({
           address: identityRegistry as `0x${string}`,
-          abi: IdentityRegistryABI,
+          abi: identityRegistryAbi,
           functionName: "getGrantedAttributes",
           args: [
             input.walletAddress as `0x${string}`,

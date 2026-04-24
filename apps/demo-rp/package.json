@@ -32,6 +32,7 @@
     "@x402/evm": "^2.8.0",
     "@x402/fetch": "^2.8.0",
     "@x402/next": "^2.8.0",
+    "@zentity/contracts": "^0.6.0",
     "@zentity/sdk": "workspace:*",
     "better-auth": "file:../web/vendor/better-auth-1.6.0.tgz",
     "class-variance-authority": "^0.7.1",

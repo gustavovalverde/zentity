@@ -3,7 +3,9 @@ title: Web3 Architecture
 description: FHEVM hooks, encryption/decryption flows, and on-chain compliance
 ---
 
-Zentity's Web3 layer keeps identity verification off-chain and uses the blockchain solely for encrypted attestation and compliance checks, so that on-chain contracts never see plaintext identity data. This document maps the Web2-to-Web3 transition from verification to on-chain attestation, with the trust boundary between the registrar (server) and the ACL (on-chain) as the axis of variation.
+Zentity's Web3 layer keeps identity verification off-chain and uses the blockchain solely for encrypted attestation, encrypted compliance checks, and minimal public compliance mirroring. On-chain contracts never see plaintext identity data. The Base mirror stores only attested/unattested state and the current compliance level for `isCompliant(address,uint8)` reads.
+
+The decision record for the public-read mirror is [ADR-0005: Base compliance mirror for payment-time reads](../adr/fhe/0005-base-compliance-mirror-for-payment-reads.md). This page describes the runtime architecture and operational flow.
 
 ## System Context
 
@@ -14,6 +16,7 @@ The registrar encrypts identity attributes and submits attestations to fhEVM. Us
 | Technology | Purpose |
 |---|---|
 | **FHEVM** | Encrypted smart contract operations |
+| **Base Sepolia mirror** | Public, level-aware compliance reads for x402 and resource servers |
 | **Reown AppKit** | Wallet connection UX |
 | **Wagmi** | Wallet state + Ethereum hooks |
 | **tRPC** | Type-safe API between frontend and backend |
@@ -25,6 +28,7 @@ The registrar encrypts identity attributes and submits attestations to fhEVM. Us
 - **Server-side attestation**: registrar encrypts identity attributes and submits attestations.
 - **User-controlled access**: decryption and access are gated by user-authorized grants.
 - **FHE-based compliance**: contracts evaluate policies on encrypted data.
+- **Base mirror compliance**: contracts and resource servers can read `isCompliant(user,minLevel)` without learning underlying PII.
 
 ### Auth & session gating
 
@@ -72,6 +76,7 @@ sequenceDiagram
   participant IR as IdentityRegistry
   participant CR as ComplianceRules
   participant ERC as CompliantERC20
+  participant Mirror as IdentityRegistryMirror
 
   Note over User,Verifier: Phase 1 - Web2 Verification
   User->>UI: Complete verification flow
@@ -88,6 +93,8 @@ sequenceDiagram
   UI->>BE: Request on-chain attestation
   BE->>Registrar: Encrypt identity attributes
   Registrar->>IR: attestIdentity(user, handles, proof)
+  BE->>BE: Record chain-confirmed validity event
+  BE->>Mirror: recordCompliance(user, numericLevel)
 
   Note over User,ERC: Phase 3 - Compliance-Gated Actions
   User->>IR: grantAccessTo(ComplianceRules)
@@ -95,6 +102,10 @@ sequenceDiagram
   ERC->>CR: checkCompliance(user)
   CR->>IR: Read encrypted attributes (ACL-protected)
   CR-->>ERC: Encrypted compliance result
+
+  Note over User,Mirror: Base/x402 public read path
+  User->>Mirror: isCompliant(user, requiredLevel)
+  Mirror-->>User: Public boolean
 ```
 
 ### What stays in Web2
@@ -112,6 +123,7 @@ sequenceDiagram
 - **ACL-gated access** to ciphertexts
 - **Encrypted compliance checks** (no plaintext)
 - **Optional encrypted asset transfers** (demo)
+- **Public Base compliance mirror** for `isCompliant(user,minLevel)` reads
 - **Typical encrypted fields**: date of birth (dobDays), country code, compliance tier, and sanctions status
 
 ### Encryption boundaries
@@ -124,7 +136,7 @@ sequenceDiagram
 
 1. **Client-side encryption** for user-initiated encrypted transfers.
 2. **Server-side encryption** for on-chain attestations.
-3. **Never encrypted**: wallet addresses, transaction hashes, and event metadata.
+3. **Never encrypted**: wallet addresses, transaction hashes, event metadata, and Base mirror attested/level state.
 
 ### Computation under encryption
 
@@ -214,6 +226,7 @@ Public:
 - Wallet addresses and transaction existence
 - Contract interactions and event metadata
 - Gas usage
+- Base mirror attested/unattested status and numeric compliance level
 
 ---
 
@@ -401,7 +414,22 @@ On-chain attestation revocation is one delivery target of the canonical validity
 4. If the chain call fails, the delivery stays retryable and the attestation moves to `revocation_pending`.
 5. The same delivery framework handles retries and operator visibility; `admin.retryOnChainRevocation` is an operational convenience, not a second revocation architecture.
 
-Chain-originated revocations also feed back through the same validity pipeline, so "revoked on chain" and "revoked in product" converge on one lifecycle model.
+Chain-originated revocations and confirmations also feed back through the same validity pipeline, so "confirmed on chain," "revoked on chain," and "valid in product" converge on one lifecycle model.
+
+### Base Mirror Flow
+
+The Base mirror is a delivery target of the same validity pipeline:
+
+1. A Sepolia `IdentityAttested` event is observed or an attestation refresh confirms a transaction.
+2. Zentity records a chain-sourced `verified` validity event.
+3. The delivery worker schedules `mirror_compliance_write`.
+4. The mirror writer reads the current compliance level from the identity read model at execution time.
+5. The writer calls Base `IdentityRegistryMirror.recordCompliance(user, level)`.
+6. A revoke transition schedules `mirror_revocation_write`, which calls `revokeAttestation(user)`.
+
+This keeps the mirror eventually consistent with the canonical read model while avoiding a parallel queue or mirror-specific table.
+
+The mirror is not a second source of identity truth. It is a public delivery surface for payment-time reads, and any new public predicate must go through a separate privacy review before it is added.
 
 ---
 

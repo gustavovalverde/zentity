@@ -37,7 +37,21 @@ if [ "$(id -u)" = "0" ]; then
   fi
 fi
 
-echo "[entrypoint] Schema is managed via manual drizzle-kit push (no runtime migrations)."
+if [ "${ZENTITY_DB_PUSH_ON_START:-false}" = "true" ]; then
+  if [ "${DB_URL#file:}" = "$DB_URL" ]; then
+    echo "[entrypoint] ZENTITY_DB_PUSH_ON_START only supports local file: SQLite URLs."
+    exit 1
+  fi
+
+  echo "[entrypoint] Applying local SQLite schema with drizzle-kit push..."
+  if [ "$(id -u)" = "0" ]; then
+    gosu nextjs ./node_modules/.bin/drizzle-kit push --config drizzle.config.ts
+  else
+    ./node_modules/.bin/drizzle-kit push --config drizzle.config.ts
+  fi
+else
+  echo "[entrypoint] Schema push disabled; expecting database schema to exist."
+fi
 
 echo "[entrypoint] Starting Next.js server with Socket.io..."
 

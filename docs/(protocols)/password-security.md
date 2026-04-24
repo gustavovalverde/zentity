@@ -3,7 +3,7 @@ title: Password Security
 description: OPAQUE protocol implementation and server-side password handling
 ---
 
-Password authentication in Zentity uses OPAQUE, an augmented PAKE protocol that ensures the server never receives or stores the plaintext password. This document explains the protocol's security properties, the breach impact model, and the layered password policy. The axis of variation is where each defense operates: the protocol layer (OPAQUE), the policy layer (HIBP blocking), or the UX layer (client-side pre-checks). For users without passkey support, OPAQUE provides password-based authentication. For Web3-native users, wallet-based authentication (EIP-712) is available as an alternative that requires no password at all; see [Cryptographic Pillars](cryptographic-pillars.md) for the wallet KEK derivation model.
+Password authentication in Zentity uses OPAQUE, an augmented PAKE protocol that ensures the server never receives or stores the plaintext password. This document explains the protocol's security properties, the breach impact model, and the layered password policy. The axis of variation is where each defense operates: the protocol layer (OPAQUE), the policy layer (HIBP blocking), or the UX layer (client-side pre-checks). For users without passkey support, OPAQUE provides password-based authentication. For Web3-native users, wallet-based authentication (EIP-712) is available as an alternative that requires no password at all; see [Cryptographic Pillars](<../(concepts)/cryptographic-pillars.md>) for the wallet KEK derivation model.
 
 ## OPAQUE Protocol
 

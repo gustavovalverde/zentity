@@ -75,9 +75,7 @@ const sepoliaNetwork = {
 const sepoliaEnabled =
   process.env.E2E_SEPOLIA === "true" &&
   Boolean(sepoliaRpcUrl) &&
-  Boolean(
-    process.env.FHEVM_REGISTRAR_PRIVATE_KEY || process.env.REGISTRAR_PRIVATE_KEY
-  ) &&
+  Boolean(process.env.FHEVM_REGISTRAR_PRIVATE_KEY) &&
   Boolean(process.env.FHEVM_IDENTITY_REGISTRY) &&
   Boolean(process.env.FHEVM_COMPLIANCE_RULES) &&
   Boolean(process.env.FHEVM_COMPLIANT_ERC20);

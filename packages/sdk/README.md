@@ -53,6 +53,13 @@ const agent = createAgent({
 - `@zentity/sdk/node`: Node/Bun installed-client helpers and file storage
 - `@zentity/sdk/testing`: fixture keys, PoH token mocks, mock issuer
 
+## x402 Selection
+
+`createX402Fetch()` selects the first advertised `PAYMENT-REQUIRED.accepts`
+entry for the retry and exposes it as `context.selectedPaymentRequirement`.
+Callers that enforce amount or network bounds should validate that selected
+requirement.
+
 ## Error Codes
 
 `@zentity/sdk/protocol` exports the stable `SdkErrorCode` union. Runtime
