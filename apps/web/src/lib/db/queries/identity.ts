@@ -21,6 +21,10 @@ import { computeFreshnessDeadline } from "@/lib/identity/validity/freshness";
 import { recordValidityTransition } from "@/lib/identity/validity/transition";
 import { deriveComplianceStatus } from "@/lib/identity/verification/compliance";
 import { computeDedupKey } from "@/lib/identity/verification/dedup";
+import {
+  computeSecretBlobRef,
+  secretBlobExists,
+} from "@/lib/privacy/secrets/storage.server";
 
 import { db } from "../connection";
 import { pushSubscriptions } from "../schema/ciba";
@@ -114,7 +118,7 @@ async function getSignedClaimTypesForVerification(
  */
 export async function hasProfileSecret(userId: string): Promise<boolean> {
   const row = await db
-    .select({ id: encryptedSecrets.id })
+    .select({ blobRef: encryptedSecrets.blobRef, id: encryptedSecrets.id })
     .from(encryptedSecrets)
     .innerJoin(secretWrappers, eq(secretWrappers.secretId, encryptedSecrets.id))
     .where(
@@ -126,7 +130,11 @@ export async function hasProfileSecret(userId: string): Promise<boolean> {
     .limit(1)
     .get();
 
-  return !!row;
+  if (!row?.blobRef) {
+    return false;
+  }
+
+  return secretBlobExists(computeSecretBlobRef(row.id));
 }
 
 export async function getVerificationById(

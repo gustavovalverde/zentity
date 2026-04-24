@@ -11,6 +11,7 @@ import type { EnrollmentCredential, EnvelopeFormat } from "./types";
 
 import { parseBirthYearFromDob } from "@/lib/identity/verification/birth-year";
 
+import { downloadSecretBlob } from "./storage";
 import { SECRET_TYPES } from "./types";
 
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
@@ -186,9 +187,26 @@ async function getProfileSecretBundle() {
   });
 }
 
-export async function assertProfileSecretStored(): Promise<void> {
+async function hasUsableProfileSecret(): Promise<boolean> {
   const bundle = await getProfileSecretBundle();
-  if (!(bundle?.secret && bundle.wrappers?.length)) {
+  if (
+    !(bundle?.secret?.id && bundle.secret.blobRef && bundle.wrappers?.length)
+  ) {
+    return false;
+  }
+
+  try {
+    await downloadSecretBlob(bundle.secret.id, {
+      expectedHash: bundle.secret.blobHash,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function assertProfileSecretStored(): Promise<void> {
+  if (!(await hasUsableProfileSecret())) {
     throw new Error(PROFILE_SECRET_MISSING_ERROR);
   }
 }
@@ -219,8 +237,7 @@ export async function storeProfileSecret(params: {
   const { storeSecretWithCredential } = await import("./vault");
 
   // Check if profile secret already exists
-  const bundle = await getProfileSecretBundle();
-  if (bundle?.secret && bundle.wrappers?.length) {
+  if (await hasUsableProfileSecret()) {
     return;
   }
 

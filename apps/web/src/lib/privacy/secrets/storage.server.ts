@@ -142,3 +142,17 @@ export async function readSecretBlob(params: {
   const stream = createReadStream(filePath);
   return Readable.toWeb(stream) as unknown as ReadableStream<Uint8Array>;
 }
+
+export async function secretBlobExists(blobRef: string): Promise<boolean> {
+  const dir = await ensureBlobDir();
+  if (!isValidSecretBlobRef(blobRef)) {
+    return false;
+  }
+
+  try {
+    await access(resolveBlobPath(dir, blobRef), constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}

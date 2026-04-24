@@ -1,8 +1,11 @@
 import crypto from "node:crypto";
+import { unlink } from "node:fs/promises";
+import { join } from "node:path";
 
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
 import { db } from "@/lib/db/connection";
 import {
@@ -12,6 +15,7 @@ import {
   getAccountIdentity,
   getIdentityBundleByUserId,
   getLatestVerification,
+  hasProfileSecret,
   reconcileIdentityBundle,
   revokeIdentity,
   updateIdentityBundleAttestationState,
@@ -28,7 +32,12 @@ import {
   identityValidityEvents,
   identityVerifications,
 } from "@/lib/db/schema/identity";
+import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import { recordValidityTransition } from "@/lib/identity/validity/transition";
+import {
+  computeSecretBlobRef,
+  writeSecretBlob,
+} from "@/lib/privacy/secrets/storage.server";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 describe("identity queries", () => {
@@ -64,6 +73,71 @@ describe("identity queries", () => {
     expect(updated?.policyVersion).toBe("policy-v2");
     expect(updated?.issuerId).toBe("issuer-1");
     expect(updated?.attestationExpiresAt).toBe("2025-01-01T00:00:00Z");
+  });
+
+  it("does not treat profile secret metadata as usable when the blob is missing", async () => {
+    const userId = await createTestUser();
+    const secretId = crypto.randomUUID();
+
+    await db.insert(encryptedSecrets).values({
+      id: secretId,
+      userId,
+      secretType: "profile",
+      encryptedBlob: "",
+      blobRef: computeSecretBlobRef(secretId),
+      blobHash: "0".repeat(64),
+      blobSize: 7,
+      metadata: JSON.stringify({ envelopeFormat: "json" }),
+    });
+    await db.insert(secretWrappers).values({
+      id: crypto.randomUUID(),
+      secretId,
+      userId,
+      credentialId: "credential-1",
+      wrappedDek: "wrapped-dek",
+      prfSalt: "salt",
+      kekSource: "prf",
+    });
+
+    expect(await hasProfileSecret(userId)).toBe(false);
+  });
+
+  it("treats profile secret metadata as usable when the blob exists", async () => {
+    const userId = await createTestUser();
+    const secretId = crypto.randomUUID();
+    const blobRef = computeSecretBlobRef(secretId);
+
+    try {
+      await writeSecretBlob({
+        secretId,
+        body: new Response("profile").body as ReadableStream<Uint8Array>,
+      });
+      await db.insert(encryptedSecrets).values({
+        id: secretId,
+        userId,
+        secretType: "profile",
+        encryptedBlob: "",
+        blobRef,
+        blobHash: "0".repeat(64),
+        blobSize: 7,
+        metadata: JSON.stringify({ envelopeFormat: "json" }),
+      });
+      await db.insert(secretWrappers).values({
+        id: crypto.randomUUID(),
+        secretId,
+        userId,
+        credentialId: "credential-1",
+        wrappedDek: "wrapped-dek",
+        prfSalt: "salt",
+        kekSource: "prf",
+      });
+
+      expect(await hasProfileSecret(userId)).toBe(true);
+    } finally {
+      await unlink(join(env.SECRET_BLOB_DIR, `${blobRef}.bin`)).catch(
+        () => undefined
+      );
+    }
   });
 
   it("freezes the RP nullifier seed while promoting a newer verified NFC credential", async () => {
