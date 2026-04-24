@@ -31,6 +31,7 @@ jobs:
       mcp: ${{ steps.filter.outputs.mcp }}
       python: ${{ steps.filter.outputs.python }}
       rust: ${{ steps.filter.outputs.rust }}
+      sdk: ${{ steps.filter.outputs.sdk }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -43,13 +44,26 @@ jobs:
             web:
               - 'apps/web/**'
               - 'apps/demo-rp/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             mcp:
               - 'apps/mcp/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             python:
               - 'apps/ocr/**'
             rust:
               - 'apps/fhe/**'
               - 'apps/signer/**'
+            sdk:
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             ci:
               - '.github/workflows/test.yml'
 
@@ -74,6 +88,7 @@ jobs:
       - name: Install MCP deps (for mcp-http integration test subprocess)
         run: pnpm install --frozen-lockfile
         working-directory: apps/mcp
+      - run: pnpm --filter @zentity/sdk build
 
       - name: Unit tests
         run: pnpm test:unit --coverage
@@ -94,8 +109,29 @@ jobs:
       - name: Demo-RP tests
         run: |
           pnpm install --frozen-lockfile
+          pnpm --filter @zentity/sdk build
           pnpm test
         working-directory: apps/demo-rp
+
+  sdk-test:
+    name: SDK Tests
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: packages/sdk
+      - run: pnpm run build
+        working-directory: packages/sdk
+      - run: pnpm test
+        working-directory: packages/sdk
 
   # ============================================
   # MCP Server (apps/mcp)
@@ -168,21 +204,17 @@ jobs:
   summary:
     name: Test Summary
     if: always()
-    needs: [changes, web-test, mcp-test, python-test, rust-test]
+    needs: [changes, web-test, sdk-test, mcp-test, python-test, rust-test]
     runs-on: ubuntu-latest
     steps:
       - name: Generate summary
         env:
           WEB_RESULT: ${{ needs.web-test.result }}
+          SDK_RESULT: ${{ needs.sdk-test.result }}
           MCP_RESULT: ${{ needs.mcp-test.result }}
           PYTHON_RESULT: ${{ needs.python-test.result }}
           RUST_RESULT: ${{ needs.rust-test.result }}
         run: |
-          echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Suite | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-
           format_status() {
             case "$1" in
               success)  echo "Passed" ;;
@@ -192,14 +224,24 @@ jobs:
             esac
           }
 
-          echo "| Web (unit + integration) | $(format_status "$WEB_RESULT") |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| MCP Server | $(format_status "$MCP_RESULT") |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Python (OCR) | $(format_status "$PYTHON_RESULT") |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Rust (FHE + Signer) | $(format_status "$RUST_RESULT") |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Test Results"
+            echo ""
+            echo "| Suite | Status |"
+            echo "|-------|--------|"
+            echo "| Web (unit + integration) | $(format_status "$WEB_RESULT") |"
+            echo "| SDK | $(format_status "$SDK_RESULT") |"
+            echo "| MCP Server | $(format_status "$MCP_RESULT") |"
+            echo "| Python (OCR) | $(format_status "$PYTHON_RESULT") |"
+            echo "| Rust (FHE + Signer) | $(format_status "$RUST_RESULT") |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$WEB_RESULT" = "failure" ] || [ "$MCP_RESULT" = "failure" ] || \
+          if [ "$WEB_RESULT" = "failure" ] || [ "$SDK_RESULT" = "failure" ] || \
+             [ "$MCP_RESULT" = "failure" ] || \
              [ "$PYTHON_RESULT" = "failure" ] || [ "$RUST_RESULT" = "failure" ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "One or more test suites failed." >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo ""
+              echo "One or more test suites failed."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

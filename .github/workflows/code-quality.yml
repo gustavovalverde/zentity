@@ -31,6 +31,7 @@ jobs:
       landing: ${{ steps.filter.outputs.landing }}
       python: ${{ steps.filter.outputs.python }}
       rust: ${{ steps.filter.outputs.rust }}
+      sdk: ${{ steps.filter.outputs.sdk }}
       markdown: ${{ steps.filter.outputs.markdown }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
@@ -44,6 +45,10 @@ jobs:
             web:
               - 'apps/web/**'
               - 'apps/demo-rp/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             landing:
               - 'apps/landing/**'
             python:
@@ -51,6 +56,11 @@ jobs:
             rust:
               - 'apps/fhe/**'
               - 'apps/signer/**'
+            sdk:
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
             markdown:
               - '**/*.md'
               - '.markdownlint.json'
@@ -113,12 +123,33 @@ jobs:
       - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
+      - run: pnpm --filter @zentity/sdk build
       - run: pnpm run lint:check
         working-directory: apps/web
       - run: pnpm run type-check
         working-directory: apps/web
       - run: pnpm run knip
         working-directory: apps/web
+
+  sdk-lint:
+    name: SDK (tsc + build)
+    needs: changes
+    if: needs.changes.outputs.sdk == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: packages/sdk
+      - run: pnpm run typecheck
+        working-directory: packages/sdk
+      - run: pnpm run build
+        working-directory: packages/sdk
 
   web-security:
     name: Web (Security Audit)
@@ -268,6 +299,6 @@ jobs:
       - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
-      - name: Run markdownlint (repo-wide)
-        run: pnpm exec markdownlint "../../**/*.md" --config ../../.markdownlint.json --ignore "**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**" --ignore "../../docs/internal/**"
+      - name: Run markdownlint (maintained docs)
+        run: pnpm exec markdownlint "../../**/*.md" --config ../../.markdownlint.json --ignore "../../**/node_modules/**" --ignore "**/venv/**" --ignore "../../docs/archive/**" --ignore "../../docs/internal/**" --ignore "../../docs/ietf/**" --ignore "../../docs/papers/**" --ignore "../../docs/plans/**" --ignore "../../docs/research/**" --ignore "../../docs/rfcs/**" --ignore "../../presentations/**"
         working-directory: apps/web

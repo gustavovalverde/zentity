@@ -17,6 +17,10 @@ on:
       - "apps/fhe/**"
       - "apps/ocr/**"
       - "apps/web/**"
+      - "packages/sdk/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/build-attest.yml"
       - ".github/workflows/reusable-build-service.yml"
   pull_request:
@@ -54,6 +58,10 @@ jobs:
           filters: |
             demo-rp:
               - 'apps/demo-rp/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
               - '.github/workflows/build-attest.yml'
               - '.github/workflows/reusable-build-service.yml'
             fhe:
@@ -66,6 +74,10 @@ jobs:
               - '.github/workflows/reusable-build-service.yml'
             web:
               - 'apps/web/**'
+              - 'packages/sdk/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
               - '.github/workflows/build-attest.yml'
               - '.github/workflows/reusable-build-service.yml'
 
