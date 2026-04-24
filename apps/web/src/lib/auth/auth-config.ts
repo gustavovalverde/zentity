@@ -436,8 +436,7 @@ const oidc4vciDeferredIssuance = isOidcE2e
 const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
-const isDev =
-  process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+const isDev = process.env.NODE_ENV !== "production";
 
 const x5cChain = loadX5cChain();
 
