@@ -3,7 +3,7 @@ title: Recovery Trust Model
 description: Guardian-based key recovery architecture and trust assumptions
 ---
 
-Key recovery in Zentity implements a guardian-mediated threshold model where cryptographic authorization (FROST signatures) is entangled with key custody (DEK unwrapping), so that no single party, including the server, can recover a user's keys without meeting the guardian threshold. This document maps the trust assumptions, the gap between server-mediated and guardian-controlled models, and the trade-offs involved in moving between them. The key hierarchy (DEK/KEK wrapping) is covered in [FHE Key Lifecycle](fhe-key-lifecycle.md); this document focuses on recovery-specific trust boundaries.
+Key recovery in Zentity implements a guardian-mediated threshold model where cryptographic authorization (FROST signatures) is entangled with key custody (DEK unwrapping), so that no single party, including the server, can recover a user's keys without meeting the guardian threshold. This document maps the trust assumptions, the gap between server-mediated and guardian-controlled models, and the trade-offs involved in moving between them. The key hierarchy (DEK/KEK wrapping) is covered in [FHE Key Lifecycle](<../(protocols)/fhe-key-lifecycle.md>); this document focuses on recovery-specific trust boundaries.
 
 ## Glossary
 

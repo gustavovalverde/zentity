@@ -1,12 +1,11 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { hardhat, sepolia } from "viem/chains";
 
 import { getNetworkById } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
-import { getBlockchainAttestationByNetworkAndWallet } from "@/lib/db/queries/attestation";
 import {
   getIdentityValiditySnapshot,
   getIdentityValiditySourceCursor,
@@ -20,6 +19,9 @@ import {
 import { recordValidityTransition } from "./transition";
 
 const MAX_BLOCK_RANGE = 50_000;
+const IDENTITY_ATTESTED_EVENT = parseAbiItem(
+  "event IdentityAttested(address indexed user)"
+);
 const IDENTITY_REVOKED_EVENT = parseAbiItem(
   "event IdentityRevoked(address indexed user)"
 );
@@ -46,7 +48,72 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
-export async function ingestChainRevocations(args: {
+interface ChainLogMetadata {
+  blockNumber?: bigint | null;
+  logIndex?: number | null;
+  transactionHash?: string | null;
+}
+
+function getLogBlockNumber(log: ChainLogMetadata): number | null {
+  return log.blockNumber === null || log.blockNumber === undefined
+    ? null
+    : Number(log.blockNumber);
+}
+
+function getLogSourceEventId(log: ChainLogMetadata): string {
+  return `${log.transactionHash ?? "unknown"}:${log.logIndex?.toString() ?? "0"}`;
+}
+
+function compareLogPosition(
+  left: ChainLogMetadata,
+  right: ChainLogMetadata
+): number {
+  const leftBlock = left.blockNumber ?? -1n;
+  const rightBlock = right.blockNumber ?? -1n;
+  if (leftBlock < rightBlock) {
+    return -1;
+  }
+  if (leftBlock > rightBlock) {
+    return 1;
+  }
+
+  return (left.logIndex ?? -1) - (right.logIndex ?? -1);
+}
+
+async function recordChainAttestationConfirmed(args: {
+  blockNumber?: number | null;
+  networkId: string;
+  sourceEventId: string;
+  userId: string;
+}): Promise<boolean> {
+  const snapshot = await getIdentityValiditySnapshot(args.userId);
+  if (!snapshot) {
+    return false;
+  }
+
+  try {
+    await recordValidityTransition({
+      userId: args.userId,
+      verificationId: snapshot.effectiveVerificationId ?? null,
+      eventKind: "verified",
+      source: "chain",
+      sourceEventId: args.sourceEventId,
+      sourceNetwork: args.networkId,
+      sourceBlockNumber: args.blockNumber ?? null,
+      reason: "blockchain_attestation_confirmed",
+    });
+
+    return true;
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+export async function ingestChainValidityEvents(args: {
   fromBlock?: number;
   networkId: string;
 }): Promise<{
@@ -55,8 +122,10 @@ export async function ingestChainRevocations(args: {
   fromBlock: number;
   networkId: string;
   skippedDuplicate: number;
+  skippedUnknownAttestation: number;
   skippedUnknownSubject: number;
   skippedUserAlreadyRevoked: number;
+  attestationsConfirmed: number;
   toBlock: number;
   transitionsCreated: number;
 }> {
@@ -95,120 +164,196 @@ export async function ingestChainRevocations(args: {
       fromBlock,
       toBlock,
       eventsSeen: 0,
+      attestationsConfirmed: 0,
       transitionsCreated: 0,
       skippedDuplicate: 0,
+      skippedUnknownAttestation: 0,
       skippedUnknownSubject: 0,
       skippedUserAlreadyRevoked: 0,
       cursorAdvancedTo: cursor?.lastSeenBlockNumber ?? null,
     };
   }
 
-  const logs = await client.getLogs({
-    address: network.contracts.identityRegistry as `0x${string}`,
-    event: IDENTITY_REVOKED_EVENT,
-    fromBlock: BigInt(fromBlock),
-    toBlock: BigInt(toBlock),
-  });
+  const [attestationLogs, revocationLogs] = await Promise.all([
+    client.getLogs({
+      address: network.contracts.identityRegistry as `0x${string}`,
+      event: IDENTITY_ATTESTED_EVENT,
+      fromBlock: BigInt(fromBlock),
+      toBlock: BigInt(toBlock),
+    }),
+    client.getLogs({
+      address: network.contracts.identityRegistry as `0x${string}`,
+      event: IDENTITY_REVOKED_EVENT,
+      fromBlock: BigInt(fromBlock),
+      toBlock: BigInt(toBlock),
+    }),
+  ]);
 
+  let attestationsConfirmed = 0;
   let transitionsCreated = 0;
   let skippedDuplicate = 0;
+  let skippedUnknownAttestation = 0;
   let skippedUnknownSubject = 0;
   let skippedUserAlreadyRevoked = 0;
 
-  for (const log of logs) {
+  const orderedLogs = [
+    ...attestationLogs.map((log) => ({ kind: "attested" as const, log })),
+    ...revocationLogs.map((log) => ({ kind: "revoked" as const, log })),
+  ].sort((left, right) => compareLogPosition(left.log, right.log));
+
+  const walletAddresses = new Set<string>();
+  for (const { log } of orderedLogs) {
+    if (typeof log.args.user === "string") {
+      walletAddresses.add(log.args.user.toLowerCase());
+    }
+  }
+
+  const attestationRows =
+    walletAddresses.size === 0
+      ? []
+      : await db
+          .select()
+          .from(blockchainAttestations)
+          .where(
+            and(
+              eq(blockchainAttestations.networkId, args.networkId),
+              inArray(
+                sql<string>`lower(${blockchainAttestations.walletAddress})`,
+                [...walletAddresses]
+              )
+            )
+          )
+          .all();
+  const attestationByWallet = new Map(
+    attestationRows.map((attestation) => [
+      attestation.walletAddress.toLowerCase(),
+      attestation,
+    ])
+  );
+
+  for (const event of orderedLogs) {
+    const { log } = event;
     const walletAddress = log.args.user;
     if (typeof walletAddress !== "string") {
       continue;
     }
 
-    const attestation = await getBlockchainAttestationByNetworkAndWallet(
-      args.networkId,
-      walletAddress
-    );
-    if (!attestation) {
-      skippedUnknownSubject += 1;
-      continue;
-    }
-
-    const sourceEventId = `${log.transactionHash ?? "unknown"}:${log.logIndex?.toString() ?? "0"}`;
-    const occurredAt = new Date().toISOString();
-
-    try {
-      let createdTransition = false;
-
-      await db.transaction(async (tx) => {
-        const snapshot = await getIdentityValiditySnapshot(
-          attestation.userId,
-          tx
-        );
-
-        await tx
-          .update(blockchainAttestations)
-          .set({
-            status: "revoked",
-            revokedAt: occurredAt,
-            blockNumber:
-              log.blockNumber === null || log.blockNumber === undefined
-                ? attestation.blockNumber
-                : Number(log.blockNumber),
-            updatedAt: occurredAt,
-          })
-          .where(eq(blockchainAttestations.id, attestation.id))
-          .run();
-
-        if (snapshot?.validityStatus === "revoked") {
-          skippedUserAlreadyRevoked += 1;
-          return;
-        }
-
-        await tx
-          .update(identityBundles)
-          .set({
-            effectiveVerificationId: null,
-            nullifierSeed: null,
-            updatedAt: occurredAt,
-          })
-          .where(eq(identityBundles.userId, attestation.userId))
-          .run();
-
-        await recordValidityTransition({
-          executor: tx,
-          userId: attestation.userId,
-          verificationId: snapshot?.effectiveVerificationId ?? null,
-          eventKind: "revoked",
-          source: "chain",
-          sourceEventId,
-          sourceNetwork: args.networkId,
-          sourceBlockNumber:
-            log.blockNumber === null || log.blockNumber === undefined
-              ? null
-              : Number(log.blockNumber),
-          occurredAt,
-          reason: "blockchain_attestation_revoked",
-          bundleSnapshot: {
-            effectiveVerificationId: null,
-            freshnessCheckedAt: snapshot?.freshnessCheckedAt ?? null,
-            verificationExpiresAt: snapshot?.verificationExpiresAt ?? null,
-            validityStatus: "revoked",
-            revokedAt: occurredAt,
-            revokedBy: "chain",
-            revokedReason: "blockchain_attestation_revoked",
-          },
-        });
-
-        createdTransition = true;
-      });
-
-      if (createdTransition) {
-        transitionsCreated += 1;
-      }
-    } catch (error) {
-      if (isUniqueConstraintError(error)) {
-        skippedDuplicate += 1;
+    if (event.kind === "revoked") {
+      const attestation = attestationByWallet.get(walletAddress.toLowerCase());
+      if (!attestation) {
+        skippedUnknownSubject += 1;
         continue;
       }
 
-      throw error;
+      const sourceEventId = getLogSourceEventId(log);
+      const occurredAt = new Date().toISOString();
+
+      try {
+        let createdTransition = false;
+
+        await db.transaction(async (tx) => {
+          const snapshot = await getIdentityValiditySnapshot(
+            attestation.userId,
+            tx
+          );
+
+          await tx
+            .update(blockchainAttestations)
+            .set({
+              status: "revoked",
+              revokedAt: occurredAt,
+              blockNumber: getLogBlockNumber(log) ?? attestation.blockNumber,
+              updatedAt: occurredAt,
+            })
+            .where(eq(blockchainAttestations.id, attestation.id))
+            .run();
+
+          if (snapshot?.validityStatus === "revoked") {
+            skippedUserAlreadyRevoked += 1;
+            return;
+          }
+
+          await tx
+            .update(identityBundles)
+            .set({
+              effectiveVerificationId: null,
+              nullifierSeed: null,
+              updatedAt: occurredAt,
+            })
+            .where(eq(identityBundles.userId, attestation.userId))
+            .run();
+
+          await recordValidityTransition({
+            executor: tx,
+            userId: attestation.userId,
+            verificationId: snapshot?.effectiveVerificationId ?? null,
+            eventKind: "revoked",
+            source: "chain",
+            sourceEventId,
+            sourceNetwork: args.networkId,
+            sourceBlockNumber: getLogBlockNumber(log),
+            occurredAt,
+            reason: "blockchain_attestation_revoked",
+            bundleSnapshot: {
+              effectiveVerificationId: null,
+              freshnessCheckedAt: snapshot?.freshnessCheckedAt ?? null,
+              verificationExpiresAt: snapshot?.verificationExpiresAt ?? null,
+              validityStatus: "revoked",
+              revokedAt: occurredAt,
+              revokedBy: "chain",
+              revokedReason: "blockchain_attestation_revoked",
+            },
+          });
+
+          createdTransition = true;
+        });
+
+        if (createdTransition) {
+          transitionsCreated += 1;
+        }
+      } catch (error) {
+        if (isUniqueConstraintError(error)) {
+          skippedDuplicate += 1;
+          continue;
+        }
+
+        throw error;
+      }
+
+      continue;
+    }
+
+    const attestation = attestationByWallet.get(walletAddress.toLowerCase());
+    if (!attestation) {
+      skippedUnknownAttestation += 1;
+      continue;
+    }
+
+    const sourceEventId = getLogSourceEventId(log);
+    const blockNumber = getLogBlockNumber(log);
+
+    await db
+      .update(blockchainAttestations)
+      .set({
+        status: "confirmed",
+        blockNumber,
+        confirmedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(blockchainAttestations.id, attestation.id))
+      .run();
+
+    const created = await recordChainAttestationConfirmed({
+      userId: attestation.userId,
+      networkId: args.networkId,
+      sourceEventId,
+      blockNumber,
+    });
+
+    if (created) {
+      attestationsConfirmed += 1;
+    } else {
+      skippedDuplicate += 1;
     }
   }
 
@@ -229,9 +374,11 @@ export async function ingestChainRevocations(args: {
     networkId: args.networkId,
     fromBlock,
     toBlock,
-    eventsSeen: logs.length,
+    eventsSeen: attestationLogs.length + revocationLogs.length,
+    attestationsConfirmed,
     transitionsCreated,
     skippedDuplicate,
+    skippedUnknownAttestation,
     skippedUnknownSubject,
     skippedUserAlreadyRevoked,
     cursorAdvancedTo: toBlock,

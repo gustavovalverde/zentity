@@ -111,7 +111,6 @@ export const env = createEnv({
     FHEVM_COMPLIANT_ERC20: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 
     // ========== WALLET KEYS ==========
-    REGISTRAR_PRIVATE_KEY: z.string().optional(),
     FHEVM_REGISTRAR_PRIVATE_KEY: z.string().optional(),
     LOCAL_REGISTRAR_PRIVATE_KEY: z.string().optional(),
 

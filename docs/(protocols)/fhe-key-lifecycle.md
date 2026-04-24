@@ -163,7 +163,7 @@ Every FHE ciphertext stored in encrypted attributes includes an HMAC-SHA256 tag 
 
 ### FHE Public Key Fingerprint
 
-A SHA-256 fingerprint is computed at keygen time and persisted in the secret's metadata. On load, the fingerprint is recomputed and the key is rejected on mismatch. Existing keys without a fingerprint are accepted for backward compatibility, with the fingerprint added on the next operation. See [Tamper Model](tamper-model.md#fhe-public-key-fingerprint) for the threat model.
+A SHA-256 fingerprint is computed at keygen time and persisted in the secret's metadata. On load, the fingerprint is recomputed and the key is rejected on mismatch. Existing keys without a fingerprint are accepted for backward compatibility, with the fingerprint added on the next operation. See [Tamper Model](<../(architecture)/tamper-model.md#fhe-public-key-fingerprint>) for the threat model.
 
 ### Server-Side FHE Input Validation
 
@@ -175,4 +175,4 @@ Users can have multiple credentials wrapping the same DEK: primary passkey plus 
 
 ## Related Documentation
 
-- [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification and privacy boundaries
+- [Attestation & Privacy Architecture](<../(architecture)/attestation-privacy-architecture.md>) for data classification and privacy boundaries

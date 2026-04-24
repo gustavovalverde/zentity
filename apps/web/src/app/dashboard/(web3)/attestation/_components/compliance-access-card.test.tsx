@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ATTR, Purpose } from "@zentity/fhevm-contracts";
+import { ATTR, Purpose } from "@zentity/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const appKitMocks = vi.hoisted(() => ({

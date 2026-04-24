@@ -182,7 +182,7 @@ function ComparisonVisual() {
               <span className={str}>{'"/.well-known/proof-of-human"'}</span>
               {",\n"}
               {"      "}
-              <span className={prop}>{'"identityRegistry"'}</span>
+              <span className={prop}>{'"identityRegistryMirror"'}</span>
               {": "}
               <span className={str}>{'"0x7a3F..."'}</span>
               {"\n"}

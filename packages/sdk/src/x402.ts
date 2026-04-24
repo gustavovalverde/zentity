@@ -1,255 +1,222 @@
+import type { PaymentPayload } from "@x402/core/types";
+
 import {
-  PAYMENT_REQUIRED_HEADER,
-  PAYMENT_SIGNATURE_HEADER,
-  type PaymentRequiredPayload,
+	asObjectRecord,
+	attachProofOfHumanToken,
+	encodePaymentSignatureHeader,
+	PAYMENT_REQUIRED_HEADER,
+	PAYMENT_SIGNATURE_HEADER,
+	type PaymentRequiredPayload,
+	type PaymentSignaturePayload,
+	parsePaymentRequiredHeader,
 } from "./rp/payment-required";
 
 export interface X402ComplianceRequirement {
-  identityRegistry?: string;
-  minComplianceLevel: number;
-  pohIssuer: string;
+	identityRegistryMirror?: string;
+	minComplianceLevel: number;
+	pohIssuer: string;
 }
 
 export interface X402PaymentContext {
-  paymentRequired: PaymentRequiredPayload;
-  request: Request;
-  requirement: X402ComplianceRequirement;
+	paymentRequired: PaymentRequiredPayload;
+	request: Request;
+	requirement: X402ComplianceRequirement;
+	/**
+	 * The x402 payment requirement selected for the retry. The SDK currently
+	 * chooses the first advertised requirement and uses the same requirement in
+	 * the generated PAYMENT-SIGNATURE payload.
+	 */
+	selectedPaymentRequirement: PaymentRequiredPayload["accepts"][number];
 }
 
 export interface CreateX402FetchOptions {
-  getPohToken(
-    minComplianceLevel: number,
-    context: X402PaymentContext
-  ): Promise<string>;
-  onRetryForbidden?(context: X402PaymentContext): void;
+	createPaymentPayload?(
+		context: X402PaymentContext,
+	): Promise<PaymentPayload> | PaymentPayload;
+	getPohToken(
+		minComplianceLevel: number,
+		context: X402PaymentContext,
+	): Promise<string>;
+	onRetryForbidden?(context: X402PaymentContext): void;
 }
 
 export interface X402FetchOptions extends RequestInit {
-  x402?: {
-    autoPayWithProofOfHuman?: boolean;
-  };
+	x402?: {
+		autoPayWithProofOfHuman?: boolean;
+	};
 }
 
 export type X402Fetch = (
-  input: RequestInfo | URL,
-  init?: X402FetchOptions
+	input: RequestInfo | URL,
+	init?: X402FetchOptions,
 ) => Promise<Response>;
 
-interface PaymentSignaturePayload {
-  paymentRequired: PaymentRequiredPayload;
-  pohToken: string;
-  x402Version: 2;
-}
-
-function decodeBase64(encoded: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(encoded, "base64").toString("utf8");
-  }
-
-  if (typeof atob === "function") {
-    return atob(encoded);
-  }
-
-  throw new Error("Base64 decoding is unavailable in this runtime");
-}
-
-function encodeBase64(text: string): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(text, "utf8").toString("base64");
-  }
-
-  if (typeof btoa === "function") {
-    return btoa(text);
-  }
-
-  throw new Error("Base64 encoding is unavailable in this runtime");
-}
-
-function parsePaymentRequiredHeader(
-  headerValue: string | null
+function parsePaymentRequired(
+	headerValue: string | null,
 ): PaymentRequiredPayload | undefined {
-  if (!headerValue) {
-    return undefined;
-  }
+	if (!headerValue) {
+		return undefined;
+	}
 
-  const json = headerValue.trim().startsWith("{")
-    ? headerValue
-    : decodeBase64(headerValue);
-  const parsed = JSON.parse(json) as unknown;
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return undefined;
-  }
-
-  const paymentRequired = parsed as Partial<PaymentRequiredPayload>;
-  return paymentRequired.x402Version === 2
-    ? (paymentRequired as PaymentRequiredPayload)
-    : undefined;
+	try {
+		return parsePaymentRequiredHeader(headerValue);
+	} catch {
+		return undefined;
+	}
 }
 
 function parseComplianceRequirement(
-  paymentRequired: PaymentRequiredPayload
+	paymentRequired: PaymentRequiredPayload,
 ): X402ComplianceRequirement | undefined {
-  const extension =
-    paymentRequired.extensions?.zentity ??
-    (paymentRequired as unknown as { zentity?: unknown }).zentity;
-  if (!extension || typeof extension !== "object" || Array.isArray(extension)) {
-    return undefined;
-  }
+	const extension = asObjectRecord(paymentRequired.extensions?.zentity);
+	if (!extension) {
+		return undefined;
+	}
 
-  const fields = extension as Record<string, unknown>;
-  const pohIssuer = resolvePohIssuerResource(fields.pohIssuer);
-  if (typeof fields.minComplianceLevel !== "number" || !pohIssuer) {
-    return undefined;
-  }
+	const pohIssuer = resolvePohIssuerResource(extension.pohIssuer);
+	if (typeof extension.minComplianceLevel !== "number" || !pohIssuer) {
+		return undefined;
+	}
 
-  return {
-    minComplianceLevel: fields.minComplianceLevel,
-    pohIssuer,
-    ...(typeof fields.identityRegistry === "string"
-      ? { identityRegistry: fields.identityRegistry }
-      : {}),
-  };
+	return {
+		minComplianceLevel: extension.minComplianceLevel,
+		pohIssuer,
+		...(typeof extension.identityRegistryMirror === "string"
+			? { identityRegistryMirror: extension.identityRegistryMirror }
+			: {}),
+	};
 }
 
 function resolvePohIssuerResource(issuer: unknown): string | undefined {
-  if (typeof issuer !== "string") {
-    return undefined;
-  }
+	if (typeof issuer !== "string") {
+		return undefined;
+	}
 
-  const trimmed = issuer.trim();
-  if (!trimmed) {
-    return undefined;
-  }
+	const trimmed = issuer.trim();
+	if (!trimmed) {
+		return undefined;
+	}
 
-  try {
-    return new URL(trimmed).origin;
-  } catch {
-    return undefined;
-  }
+	try {
+		return new URL(trimmed).origin;
+	} catch {
+		return undefined;
+	}
 }
 
-function encodePaymentSignaturePayload(
-  payload: PaymentSignaturePayload
-): string {
-  return encodeBase64(JSON.stringify(payload));
+function selectPaymentRequirement(
+	paymentRequired: PaymentRequiredPayload,
+): PaymentRequiredPayload["accepts"][number] {
+	const accepted = paymentRequired.accepts[0];
+	if (!accepted) {
+		throw new Error(
+			"x402 PaymentRequired did not include payment requirements",
+		);
+	}
+
+	return accepted;
 }
 
-function requestHasJsonBody(request: Request): boolean {
-  const contentType = request.headers.get("content-type") ?? "";
-  return contentType.toLowerCase().includes("application/json");
-}
-
-function requestMethodAllowsBody(request: Request): boolean {
-  return request.method !== "GET" && request.method !== "HEAD";
-}
-
-async function buildJsonRetryRequest(
-  request: Request,
-  headers: Headers,
-  pohToken: string
-): Promise<Request> {
-  const bodyText = await request.clone().text();
-  const parsed = bodyText ? JSON.parse(bodyText) : {};
-  const body =
-    parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? { ...parsed, pohToken }
-      : { pohToken };
-
-  return new Request(request.url, {
-    method: request.method,
-    headers,
-    body: JSON.stringify(body),
-    cache: request.cache,
-    credentials: request.credentials,
-    integrity: request.integrity,
-    keepalive: request.keepalive,
-    mode: request.mode,
-    redirect: request.redirect,
-    referrer: request.referrer,
-    referrerPolicy: request.referrerPolicy,
-    signal: request.signal,
-  });
+function buildProofOnlyPaymentPayload(
+	context: X402PaymentContext,
+): PaymentSignaturePayload {
+	return {
+		x402Version: 2,
+		resource: context.paymentRequired.resource,
+		accepted: context.selectedPaymentRequirement,
+		payload: {},
+		...(context.paymentRequired.extensions
+			? { extensions: context.paymentRequired.extensions }
+			: {}),
+	};
 }
 
 async function buildRetryRequest(
-  request: Request,
-  paymentRequired: PaymentRequiredPayload,
-  pohToken: string
+	request: Request,
+	context: X402PaymentContext,
+	pohToken: string,
+	createPaymentPayload?: CreateX402FetchOptions["createPaymentPayload"],
 ): Promise<Request> {
-  const headers = new Headers(request.headers);
-  headers.set(
-    PAYMENT_SIGNATURE_HEADER,
-    encodePaymentSignaturePayload({
-      x402Version: 2,
-      paymentRequired,
-      pohToken,
-    })
-  );
+	const basePaymentPayload = createPaymentPayload
+		? await createPaymentPayload(context)
+		: buildProofOnlyPaymentPayload(context);
+	const paymentPayload = attachProofOfHumanToken(
+		basePaymentPayload,
+		context.paymentRequired,
+		pohToken,
+	);
+	const headers = new Headers(request.headers);
 
-  if (requestMethodAllowsBody(request) && requestHasJsonBody(request)) {
-    return buildJsonRetryRequest(request, headers, pohToken);
-  }
+	headers.set(
+		PAYMENT_SIGNATURE_HEADER,
+		encodePaymentSignatureHeader(paymentPayload),
+	);
 
-  return new Request(request, { headers });
+	return new Request(request, { headers });
 }
 
 function shouldHandleX402(init: X402FetchOptions | undefined): boolean {
-  return init?.x402?.autoPayWithProofOfHuman !== false;
+	return init?.x402?.autoPayWithProofOfHuman !== false;
 }
 
 function stripX402Options(
-  init: X402FetchOptions | undefined
+	init: X402FetchOptions | undefined,
 ): RequestInit | undefined {
-  if (!init || !("x402" in init)) {
-    return init;
-  }
+	if (!(init && "x402" in init)) {
+		return init;
+	}
 
-  const { x402: _x402, ...requestInit } = init;
-  return requestInit;
+	const { x402: _x402, ...requestInit } = init;
+	return requestInit;
 }
 
 export function createX402Fetch(
-  fetchFn: typeof globalThis.fetch,
-  options: CreateX402FetchOptions
+	fetchFn: typeof globalThis.fetch,
+	options: CreateX402FetchOptions,
 ): X402Fetch {
-  return async (input, init) => {
-    const request = new Request(input, stripX402Options(init));
-    const response = await fetchFn(request.clone());
+	return async (input, init) => {
+		const request = new Request(input, stripX402Options(init));
+		const response = await fetchFn(request.clone());
 
-    if (response.status !== 402 || !shouldHandleX402(init)) {
-      return response;
-    }
+		if (response.status !== 402 || !shouldHandleX402(init)) {
+			return response;
+		}
 
-    const paymentRequired = parsePaymentRequiredHeader(
-      response.headers.get(PAYMENT_REQUIRED_HEADER)
-    );
-    if (!paymentRequired) {
-      return response;
-    }
+		const paymentRequired = parsePaymentRequired(
+			response.headers.get(PAYMENT_REQUIRED_HEADER),
+		);
+		if (!paymentRequired) {
+			return response;
+		}
 
-    const requirement = parseComplianceRequirement(paymentRequired);
-    if (!requirement) {
-      return response;
-    }
+		const requirement = parseComplianceRequirement(paymentRequired);
+		if (!requirement) {
+			return response;
+		}
 
-    const context: X402PaymentContext = {
-      paymentRequired,
-      request,
-      requirement,
-    };
-    const pohToken = await options.getPohToken(
-      requirement.minComplianceLevel,
-      context
-    );
-    const retryResponse = await fetchFn(
-      await buildRetryRequest(request, paymentRequired, pohToken)
-    );
+		const context: X402PaymentContext = {
+			paymentRequired,
+			request,
+			requirement,
+			selectedPaymentRequirement: selectPaymentRequirement(paymentRequired),
+		};
+		const pohToken = await options.getPohToken(
+			requirement.minComplianceLevel,
+			context,
+		);
+		const retryResponse = await fetchFn(
+			await buildRetryRequest(
+				request,
+				context,
+				pohToken,
+				options.createPaymentPayload,
+			),
+		);
 
-    if (retryResponse.status === 403) {
-      options.onRetryForbidden?.(context);
-    }
+		if (retryResponse.status === 403) {
+			options.onRetryForbidden?.(context);
+		}
 
-    return retryResponse;
-  };
+		return retryResponse;
+	};
 }

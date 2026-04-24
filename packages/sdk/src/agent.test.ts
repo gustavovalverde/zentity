@@ -1,7 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
-import { createAgent } from "./agent";
 import type { DpopClient } from "./rp/dpop-client";
-import { PAYMENT_REQUIRED_HEADER } from "./rp/payment-required";
+
+import { describe, expect, it, vi } from "vitest";
+
+import { createAgent } from "./agent";
+import {
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+  parsePaymentSignatureHeader,
+} from "./rp/payment-required";
 
 const FUTURE_EXP = Math.floor(Date.now() / 1000) + 3600;
 
@@ -48,14 +54,17 @@ function createPaymentRequiredHeader(): string {
   return Buffer.from(
     JSON.stringify({
       x402Version: 2,
-      accepts: {
-        scheme: "exact",
-        network: "eip155:84532",
-        payTo: "0x000000000000000000000000000000000000dEaD",
-        amount: "1",
-        maxTimeoutSeconds: 300,
-        asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      },
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:84532",
+          payTo: "0x000000000000000000000000000000000000dEaD",
+          amount: "1",
+          maxTimeoutSeconds: 300,
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          extra: {},
+        },
+      ],
       resource: { url: "https://merchant.example/api/purchase" },
       extensions: {
         zentity: {
@@ -170,7 +179,9 @@ describe("createAgent", () => {
           { status: 200 }
         )
       )
-      .mockResolvedValueOnce(new Response(JSON.stringify({ access: "granted" })));
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access: "granted" }))
+      );
 
     const agent = createAgent({
       issuerUrl: "https://issuer.example",
@@ -193,8 +204,13 @@ describe("createAgent", () => {
     const cibaBody = fetchFn.mock.calls[2]?.[1]?.body as URLSearchParams;
     expect(cibaBody.get("resource")).toBe("https://issuer.example");
     const retryRequest = fetchFn.mock.calls[5]?.[0] as Request;
-    await expect(retryRequest.json()).resolves.toMatchObject({
+    await expect(retryRequest.json()).resolves.toEqual({
       resourceId: "resource-1",
+    });
+    const paymentPayload = parsePaymentSignatureHeader(
+      retryRequest.headers.get(PAYMENT_SIGNATURE_HEADER) as string
+    );
+    expect(paymentPayload.extensions?.zentity).toMatchObject({
       pohToken: expect.any(String),
     });
     vi.useRealTimers();

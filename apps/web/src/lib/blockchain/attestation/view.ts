@@ -5,7 +5,7 @@
  * flow. Safe to import from both client and server contexts.
  */
 
-import { getConsentRevision } from "@zentity/fhevm-contracts";
+import { getConsentRevision } from "@zentity/contracts";
 
 type OnChainAttestationStatus = "attested" | "not_attested" | "unknown";
 

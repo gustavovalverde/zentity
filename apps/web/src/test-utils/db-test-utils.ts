@@ -18,6 +18,9 @@ import {
   attestationEvidence,
   blockchainAttestations,
   identityBundles,
+  identityValidityDeliveries,
+  identityValidityEvents,
+  identityValiditySourceCursors,
   identityVerificationDrafts,
   identityVerificationJobs,
   identityVerifications,
@@ -80,6 +83,9 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(proofArtifacts).run();
     await tx.delete(identityVerificationJobs).run();
     await tx.delete(identityVerificationDrafts).run();
+    await tx.delete(identityValidityDeliveries).run();
+    await tx.delete(identityValidityEvents).run();
+    await tx.delete(identityValiditySourceCursors).run();
     await tx.delete(identityVerifications).run();
     await tx.delete(identityBundles).run();
     await tx.delete(jwks).run();

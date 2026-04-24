@@ -14,10 +14,11 @@ The integrity model applies to both deployment modes. What changes between them 
 | **Proof verification** | Backend verifies ZK proofs | Backend for ZK proofs; on-chain InputVerifier for FHE inputs |
 | **FHE inputs** | Server-derived + server-side encryption | FHEVM InputVerifier on-chain (wallet/registrar inputs) |
 | **Nonce issuance** | Server-issued nonces for ZK proofs | Same ZK challenge flow (not used for attestation/transfer) |
-| **Attestation authority** | Server database records | IdentityRegistry contract |
+| **Attestation authority** | Server database records | IdentityRegistry contract for encrypted attestations; Zentity validity pipeline for Base mirror delivery |
+| **Public compliance mirror** | Not applicable | Base `IdentityRegistryMirror` exposes only active mirrored attestation state and numeric compliance level |
 | **Replay resistance** | Single-use nonces in DB (ZK proofs) | On-chain state + InputVerifier proofs |
 
-In Web3 mode, the blockchain enforces immutability and ACL permissions. In Web2 mode, the server is the sole authority.
+In Web3 mode, the blockchain enforces immutability and ACL permissions. In Web2 mode, the server is the sole authority. The Base mirror is a public derivative of Zentity's validity model, so its integrity depends on registrar authorization and retryable delivery, not on encrypted computation.
 
 ## Trust Boundaries
 
@@ -26,6 +27,7 @@ Three components participate in the verification pipeline, each with a different
 - **Browser (hostile)**: Users can modify UI code, API calls, and client-side logic. Any value computed in the browser can be forged.
 - **Server (trusted for integrity)**: The server is the verification authority but should minimize access to plaintext.
 - **Blockchain (integrity via consensus)**: Provides immutability, but all inputs must be independently verifiable through proofs or signatures.
+- **Base mirror (public derivative)**: Provides public payment-time reads only. It must not become an identity database or expose richer predicates without a new privacy review.
 
 The browser generates ZK proofs (private inputs remain local), encrypts data for FHEVM and TFHE, and decrypts data intended for the user. The browser must not be trusted for liveness score calculation, face match scoring, document OCR extraction, compliance decisions, or VP token authenticity. These must be verified by the backend or by on-chain cryptographic checks.
 
@@ -110,7 +112,7 @@ Every control in this section addresses the same class of attack: a hostile brow
 - Nonces are single-use and short-lived.
 - Proof verification rejects stale or reused nonces.
 - Verification validates public input length against the verification key before cryptographic checks.
-- Proof metadata stores circuit and verification key hashes for audit and registry alignment (see [ZK Architecture](zk-architecture.md)).
+- Proof metadata stores circuit and verification key hashes for audit and registry alignment (see [ZK Architecture](<../(protocols)/zk-architecture.md>)).
 
 ### Claim Signing
 
@@ -311,5 +313,6 @@ The end-to-end verification pipeline enforces the controls above in sequence:
 5. Backend verifies proofs and signatures.
 6. Backend updates evidence pack (policy_hash + proof_set_hash).
 7. Backend issues attestation.
+8. Validity delivery writes or revokes the Base mirror when a public compliance predicate is configured.
 
 Privacy, integrity, and auditability reinforce each other at every step: the client retains sensitive inputs so proofs reveal only eligibility, the server verifies all claims with proofs and signatures, and signed claims combined with evidence pack hashes enable durable audits.

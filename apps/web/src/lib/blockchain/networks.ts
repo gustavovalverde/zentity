@@ -4,7 +4,7 @@
  * Defines supported blockchain networks for identity attestation.
  * Networks can be enabled/disabled via environment variables.
  *
- * To add a new network:
+ * To add a new fhEVM attestation network:
  * 1. Add entry to NETWORKS with unique id
  * 2. Set type to "fhevm" (encrypted)
  * 3. Configure contracts addresses via env vars
@@ -12,7 +12,11 @@
  */
 import "server-only";
 
-import { resolveContractAddresses } from "@zentity/fhevm-contracts";
+import {
+  chainIdByNetwork,
+  getFhevmContractAddresses,
+  getIdentityRegistryMirrorAddress,
+} from "@zentity/contracts";
 
 import { env } from "@/env";
 
@@ -49,6 +53,29 @@ export interface NetworkConfig {
   type: NetworkType;
 }
 
+interface BaseMirrorConfig {
+  /** EVM chain ID */
+  chainId: number;
+  /** Deployed mirror contract addresses */
+  contracts: {
+    identityRegistryMirror: string;
+  };
+  /** Whether the mirror writer/read path is enabled */
+  enabled: boolean;
+  /** Block explorer URL (for tx links) */
+  explorer: string;
+  /** Unique identifier */
+  id: "base_sepolia";
+  /** Display name */
+  name: string;
+  /** Registrar private key for this network (server-side only) */
+  registrarPrivateKey: string;
+  /** RPC endpoint URL */
+  rpcUrl: string;
+  /** Provider type */
+  type: "mirror";
+}
+
 /**
  * Registry of all supported networks.
  *
@@ -60,6 +87,8 @@ const FHEVM_NETWORK_ID = "fhevm_sepolia";
 const FHEVM_CHAIN_ID = 11_155_111;
 const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
 const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
+const BASE_SEPOLIA_NETWORK_ID = "base_sepolia";
+const BASE_SEPOLIA_EXPLORER_URL = "https://sepolia.basescan.org";
 function toOverrides(values: Record<ContractName, string | undefined>) {
   const overrides = Object.fromEntries(
     Object.entries(values).filter(([, value]) => Boolean(value?.trim()))
@@ -74,8 +103,8 @@ function resolveNetworkContracts(
   overrides?: Partial<Record<ContractName, string>>
 ) {
   const contracts = overrides
-    ? resolveContractAddresses(chainId, { prefer, overrides })
-    : resolveContractAddresses(chainId, { prefer });
+    ? getFhevmContractAddresses(chainId, { prefer, overrides })
+    : getFhevmContractAddresses(chainId, { prefer });
 
   return {
     identityRegistry: contracts.IdentityRegistry,
@@ -84,9 +113,25 @@ function resolveNetworkContracts(
   };
 }
 
+function resolveBaseSepoliaMirrorAddress(): string | null {
+  const configuredAddress =
+    env.BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR?.trim() || undefined;
+
+  try {
+    return getIdentityRegistryMirrorAddress("baseSepolia", {
+      overrides: configuredAddress
+        ? { IdentityRegistryMirror: configuredAddress }
+        : undefined,
+    });
+  } catch {
+    return configuredAddress ?? null;
+  }
+}
+
 const FHEVM_ENABLED = env.NEXT_PUBLIC_ENABLE_FHEVM;
 const HARDHAT_ENABLED =
   process.env.NODE_ENV === "development" && env.NEXT_PUBLIC_ENABLE_HARDHAT;
+const BASE_SEPOLIA_ENABLED = env.NEXT_PUBLIC_ENABLE_BASE_SEPOLIA;
 
 const FHEVM_CONTRACTS = FHEVM_ENABLED
   ? resolveNetworkContracts(
@@ -112,14 +157,17 @@ const LOCAL_CONTRACTS = HARDHAT_ENABLED
     )
   : null;
 
+const BASE_SEPOLIA_MIRROR_ADDRESS = BASE_SEPOLIA_ENABLED
+  ? resolveBaseSepoliaMirrorAddress()
+  : null;
+
 const NETWORKS: Record<string, NetworkConfig> = {
   [FHEVM_NETWORK_ID]: {
     id: FHEVM_NETWORK_ID,
     name: FHEVM_NETWORK_NAME,
     chainId: FHEVM_CHAIN_ID,
     rpcUrl: env.NEXT_PUBLIC_FHEVM_RPC_URL,
-    registrarPrivateKey:
-      env.FHEVM_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
+    registrarPrivateKey: env.FHEVM_REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
     features: ["encrypted"],
     contracts: {
@@ -135,8 +183,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
     name: "Local (Hardhat)",
     chainId: 31_337,
     rpcUrl: env.LOCAL_RPC_URL,
-    registrarPrivateKey:
-      env.LOCAL_REGISTRAR_PRIVATE_KEY || env.REGISTRAR_PRIVATE_KEY || "",
+    registrarPrivateKey: env.LOCAL_REGISTRAR_PRIVATE_KEY || "",
     type: "fhevm",
     features: ["encrypted"],
     contracts: {
@@ -160,6 +207,20 @@ const NETWORKS: Record<string, NetworkConfig> = {
   // },
 };
 
+const BASE_SEPOLIA_MIRROR: BaseMirrorConfig = {
+  id: BASE_SEPOLIA_NETWORK_ID,
+  name: "Base Sepolia",
+  chainId: chainIdByNetwork.baseSepolia,
+  rpcUrl: env.BASE_SEPOLIA_RPC_URL || env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
+  registrarPrivateKey: env.BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY || "",
+  type: "mirror",
+  contracts: {
+    identityRegistryMirror: BASE_SEPOLIA_MIRROR_ADDRESS ?? "",
+  },
+  explorer: BASE_SEPOLIA_EXPLORER_URL,
+  enabled: BASE_SEPOLIA_ENABLED,
+};
+
 /**
  * Get all networks that are enabled and have contracts configured.
  */
@@ -174,6 +235,19 @@ export function getEnabledNetworks(): NetworkConfig[] {
  */
 export function getNetworkById(id: string): NetworkConfig | undefined {
   return NETWORKS[id];
+}
+
+export function getBaseSepoliaMirrorConfig(): BaseMirrorConfig | null {
+  if (
+    !(
+      BASE_SEPOLIA_MIRROR.enabled &&
+      BASE_SEPOLIA_MIRROR.contracts.identityRegistryMirror
+    )
+  ) {
+    return null;
+  }
+
+  return BASE_SEPOLIA_MIRROR;
 }
 
 /**

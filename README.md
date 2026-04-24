@@ -39,7 +39,7 @@ standard OAuth 2.1 and OpenID Connect, without storing plaintext personal data.
 - [Zentity](#zentity)
   - [Contents](#contents)
   - [Three audiences, one protocol](#three-audiences-one-protocol)
-  - [Two integration paths](#two-integration-paths)
+  - [Integration paths](#integration-paths)
   - [What a relying party receives](#what-a-relying-party-receives)
   - [How the pieces connect](#how-the-pieces-connect)
   - [Key custody in plain English](#key-custody-in-plain-english)
@@ -58,13 +58,15 @@ standard OAuth 2.1 and OpenID Connect, without storing plaintext personal data.
 
 - **Users** prove facts (age, nationality, verification status) without revealing the data behind them.
 - **Companies** verify compliance without collecting or storing identity documents.
-- **Developers** integrate via standard OAuth 2.1 and OpenID Connect. No SDK, no custom protocol, no cryptography code.
+- **Developers** integrate via standard OAuth 2.1 and OpenID Connect for disclosures, or x402-compatible payment checks for resource access. No custom cryptography code.
 
-## Two integration paths
+## Integration paths
 
 **Full-stack verification:** For applications without existing identity verification. Zentity handles document OCR, liveness detection, face matching, proof generation, and credential delivery. The relying party integrates via OAuth 2.1.
 
 **Proof layer:** The same cryptographic primitives work over externally-verified identity. When a trusted provider verifies identity, Zentity generates zero-knowledge proofs over those signed claims and delivers them via OIDC. The relying party receives proofs instead of raw identity data. The verification provider never learns which service requested the proof.
+
+**Payment-time compliance:** x402 resource servers can request a Zentity proof and, when they need an on-chain check, read Base `IdentityRegistryMirror.isCompliant(payer, minLevel)`. The mirror exposes only wallet address, active attestation state, and numeric compliance level.
 
 ## What a relying party receives
 
@@ -72,6 +74,7 @@ The protocol distinguishes between **proof scopes** and **identity scopes**:
 
 - `proof:age`, `proof:verification`, `proof:nationality`: boolean flags derived from ZK proofs. The relying party learns "eligible" without seeing the underlying data.
 - `identity.name`, `identity.dob`: actual PII, delivered ephemerally via the `userinfo` endpoint only after explicit user consent and credential unlock.
+- x402 payment checks: a short-lived Proof-of-Human token and optional Base mirror read. The resource server does not receive PII, proof hashes, commitments, or ciphertext handles.
 
 Most integrations need only proof scopes.
 
@@ -90,6 +93,7 @@ Most integrations need only proof scopes.
 4. **Delivery**:
    - Relying parties request privacy-preserving signals via standard OIDC scopes.
    - Raw attributes are never shared with integrators unless explicitly authorized.
+   - Payment-time integrations use x402 extensions plus the Base compliance mirror when a public on-chain predicate is required.
 
 ## Key custody in plain English
 
@@ -102,34 +106,35 @@ Most integrations need only proof scopes.
 
 | Capability | Tech | Why | Deep dive |
 | --- | --- | --- | --- |
-| ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
-| Encrypted computation | TFHE-rs + fhEVM | Compute on encrypted attributes and support optional on-chain attestations | [Web3 Architecture](docs/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md) |
+| ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/%28protocols%29/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
+| Encrypted computation and payment-time compliance | TFHE-rs + fhEVM + Base mirror | Compute on encrypted attributes, support optional on-chain attestations, and expose a narrow public predicate for x402/resource-server reads | [Web3 Architecture](docs/%28architecture%29/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md), [ADR-0005](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) |
 | Auth + key custody | Passkey PRF + OPAQUE + EIP-712 Wallet | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
-| Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT + DCQL + JARM | Standards-based wallet interoperability with selective disclosure and encrypted responses | [SSI Architecture](docs/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
-| HAIP compliance | DPoP, PAR, wallet attestation, DCQL, JARM, x5c | High Assurance Interoperability Profile for regulated wallet integrations (eIDAS 2.0 alignment) | [OAuth Integrations](docs/oauth-integrations.md) |
-| Data integrity | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
-| Document extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/architecture.md) |
+| Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT + DCQL + JARM | Standards-based wallet interoperability with selective disclosure and encrypted responses | [SSI Architecture](docs/%28architecture%29/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
+| HAIP compliance | DPoP, PAR, wallet attestation, DCQL, JARM, x5c | High Assurance Interoperability Profile for regulated wallet integrations (eIDAS 2.0 alignment) | [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) |
+| Data integrity | SHA256 commitments + salts | Bind data without storing it and allow erasure by deleting salt | [Tamper Model](docs/%28architecture%29/tamper-model.md), [ADR Privacy](docs/adr/privacy/0005-hash-only-claims-and-audit-hashes.md) |
+| Document extraction | OCR + liveness services | Extract structured attributes and validate liveness without storing raw media | [System Architecture](docs/%28concepts%29/architecture.md) |
 
 ## Documentation map
 
 **Start here (recommended order)**:
 
-1. [docs/architecture.md](docs/architecture.md) - system map and data flow
-2. [docs/cryptographic-pillars.md](docs/cryptographic-pillars.md) - the four cryptographic primitives and why each is necessary
-3. [docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md) - data classification and privacy boundaries
-4. [docs/ssi-architecture.md](docs/ssi-architecture.md) - Self-Sovereign Identity and verifiable credentials
-5. [docs/tamper-model.md](docs/tamper-model.md) - integrity controls and threat model
+1. [System Architecture](docs/%28concepts%29/architecture.md) - system map and data flow
+2. [Cryptographic Pillars](docs/%28concepts%29/cryptographic-pillars.md) - the four cryptographic primitives and why each is necessary
+3. [Attestation & Privacy Architecture](docs/%28architecture%29/attestation-privacy-architecture.md) - data classification and privacy boundaries
+4. [SSI Architecture](docs/%28architecture%29/ssi-architecture.md) - Self-Sovereign Identity and verifiable credentials
+5. [Tamper Model](docs/%28architecture%29/tamper-model.md) - integrity controls and threat model
 
 **Deep dives (pick what you need)**:
 
-- [docs/zk-architecture.md](docs/zk-architecture.md) - Noir circuits and proof system
-- [docs/zk-nationality-proofs.md](docs/zk-nationality-proofs.md) - Merkle membership proofs
-- [docs/web3-architecture.md](docs/web3-architecture.md) - Web2-to-Web3 transition and on-chain flow
-- [docs/blockchain-setup.md](docs/blockchain-setup.md) - fhEVM envs and deployment
-- [docs/oauth-integrations.md](docs/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
-- [docs/password-security.md](docs/password-security.md) - OPAQUE password model and breach checks
-- [docs/verification.md](docs/verification.md) - deployment verification
-- [docs/adr/README.md](docs/adr/README.md) - decision records
+- [ZK Architecture](docs/%28protocols%29/zk-architecture.md) - Noir circuits and proof system
+- [ZK Nationality Proofs](docs/%28protocols%29/zk-nationality-proofs.md) - Merkle membership proofs
+- [Web3 Architecture](docs/%28architecture%29/web3-architecture.md) - Web2-to-Web3 transition, encrypted attestations, and Base mirror flow
+- [ADR-0005: Base compliance mirror for payment-time reads](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) - rationale for the x402/Base public-read boundary
+- [Blockchain Setup](docs/internal/blockchain-setup.md) - fhEVM and Base mirror envs and deployment
+- [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
+- [Password Security](docs/%28protocols%29/password-security.md) - OPAQUE password model and breach checks
+- [Deployment Verification](docs/internal/verification.md) - deployment verification
+- [Architecture Decision Records](docs/adr/README.md) - decision records
 - [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md) - API collection
 
 ## TL;DR run and test
@@ -148,9 +153,8 @@ npx @serenity-kit/opaque@latest create-server-setup
 # npx @serenity-kit/opaque@latest get-server-public-key "<OPAQUE_SERVER_SETUP>"
 # Paste it into .env as NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY
 
-# Optional: increase FHE request body limit if key registration fails
-# Default is 64MB
-# FHE_BODY_LIMIT_MB=64
+# Local Compose applies the SQLite schema on startup.
+# Set ZENTITY_DB_PUSH_ON_START=false if you want to manage db:push manually.
 
 docker compose up --build
 ```
@@ -212,6 +216,7 @@ flowchart LR
   OCR[OCR :5004]
   FHE[FHE :5001]
   BC[Blockchain<br/>fhEVM]
+  BM[Base Mirror<br/>isCompliant]
 
   UI -->|doc + selfie| API
   API --> OCR
@@ -219,6 +224,7 @@ flowchart LR
   W -->|proofs| API
   API --> DB
   API -->|attestation| BC
+  API -->|validity delivery| BM
 ```
 
 ## What's implemented
@@ -241,6 +247,7 @@ flowchart LR
 - VeriPass demo verifier (4 OID4VP scenarios: border control, background check, age-restricted venue, financial KYC)
 - MCP identity server with OAuth-authenticated tools (whoami, my_profile, my_proofs, check_compliance, purchase)
 - Agent authorization via CIBA: AI agent initiates backchannel auth, user approves via push notification, agent receives identity data
+- x402 compliance flow: reactive `PAYMENT-REQUIRED` retry, Proof-of-Human token attachment, and Base mirror `isCompliant` reads for payment-time access checks
 
 ## Scenarios
 
@@ -270,6 +277,7 @@ The system stores a mix of auth data and cryptographic artifacts; it does **not*
 - Non-reversible at rest: salted commitments (SHA256)
 - Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
 - On-chain (optional): encrypted identity attestation via fhEVM; registrar encrypts, only user can decrypt
+- Public chain mirror: wallet address, active attestation state, and numeric compliance level on Base for `isCompliant(address,uint8)` reads
 
 **User-controlled privacy:** The credential vault derives encryption keys using
 WebAuthn PRF, OPAQUE export keys, or wallet signatures via HKDF. These keys seal the profile and wrap FHE keys, so the
@@ -279,8 +287,8 @@ wrappers. The server registers only public + server keys (evaluation keys) for
 computation and cannot decrypt user data. Only the user can decrypt their own
 encrypted attributes after an explicit credential unlock.
 
-Details: [docs/architecture.md](docs/architecture.md) |
-[docs/attestation-privacy-architecture.md](docs/attestation-privacy-architecture.md)
+Details: [System Architecture](docs/%28concepts%29/architecture.md) |
+[Attestation & Privacy Architecture](docs/%28architecture%29/attestation-privacy-architecture.md)
 
 ## Services and ports
 

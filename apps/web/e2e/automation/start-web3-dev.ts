@@ -173,8 +173,8 @@ function startDevServer(contracts: ContractsEnv) {
     LOCAL_IDENTITY_REGISTRY: contracts.identityRegistry || "",
     LOCAL_COMPLIANCE_RULES: contracts.complianceRules || "",
     LOCAL_COMPLIANT_ERC20: contracts.compliantErc20 || "",
-    REGISTRAR_PRIVATE_KEY:
-      process.env.REGISTRAR_PRIVATE_KEY ||
+    LOCAL_REGISTRAR_PRIVATE_KEY:
+      process.env.LOCAL_REGISTRAR_PRIVATE_KEY ||
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
     FHEVM_PROVIDER_ID: "mock",
     NEXT_PUBLIC_FHEVM_PROVIDER_ID: "mock",

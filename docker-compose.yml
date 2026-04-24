@@ -2,8 +2,8 @@ services:
   frontend:
     platform: linux/amd64
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       args:
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
         - NEXT_PUBLIC_PROJECT_ID=${NEXT_PUBLIC_PROJECT_ID:-}
@@ -24,19 +24,26 @@ services:
       # App
       - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-http://127.0.0.1:3000,http://[::1]:3000}
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-your-super-secret-key-change-in-production}
-      - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-}
-      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-runtime-secret-32-chars-min}
+      - OPAQUE_SERVER_SETUP=${OPAQUE_SERVER_SETUP:-local-docker-opaque-server-setup}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-docker-internal-token-32-chars}
       # Cryptographic secrets
-      - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-}
+      - CLAIM_SIGNING_SECRET=${CLAIM_SIGNING_SECRET:-local-docker-claim-signing-secret-32-chars}
+      - CIPHERTEXT_HMAC_SECRET=${CIPHERTEXT_HMAC_SECRET:-local-docker-ciphertext-hmac-secret-32-chars}
+      - KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY:-local-docker-key-encryption-secret-32-chars}
+      - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-local-docker-bbs-issuer-secret-32-chars}
       - RECOVERY_ML_KEM_SECRET_KEY=${RECOVERY_ML_KEM_SECRET_KEY:-}
-      - PAIRWISE_SECRET=${PAIRWISE_SECRET:-}
+      - DEDUP_HMAC_SECRET=${DEDUP_HMAC_SECRET:-local-docker-dedup-hmac-secret-32-chars}
+      - PAIRWISE_SECRET=${PAIRWISE_SECRET:-local-docker-pairwise-secret-32-chars}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-local-docker-vapid-public-key}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-local-docker-vapid-private-key}
       # Inter-service (Docker DNS)
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
       # Database
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}
+      - ZENTITY_DB_PUSH_ON_START=${ZENTITY_DB_PUSH_ON_START:-true}
       - BB_CRS_PATH=/var/lib/zentity/bb-crs
       # Blockchain attestation (server-side)
       - REGISTRAR_PRIVATE_KEY=${REGISTRAR_PRIVATE_KEY:-}

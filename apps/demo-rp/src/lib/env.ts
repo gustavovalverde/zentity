@@ -36,12 +36,8 @@ export const env = createEnv({
     VERIFIER_LEAF_KEY_PEM: z.string().optional(),
     ZENTITY_JWKS_URL: z.string().optional(),
 
-    CHAIN_RPC_URL: z
-      .string()
-      .default("https://ethereum-sepolia-rpc.publicnode.com"),
-    IDENTITY_REGISTRY_ADDRESS: z
-      .string()
-      .default("0xa90723A47A14437500645Ece6049d0128A2f256D"),
+    BASE_SEPOLIA_RPC_URL: z.string().default("https://sepolia.base.org"),
+    BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR: z.string().optional(),
   },
 
   client: {
@@ -67,8 +63,9 @@ export const env = createEnv({
     VERIFIER_CA_PEM: process.env.VERIFIER_CA_PEM,
     VERIFIER_LEAF_KEY_PEM: process.env.VERIFIER_LEAF_KEY_PEM,
     ZENTITY_JWKS_URL: process.env.ZENTITY_JWKS_URL,
-    CHAIN_RPC_URL: process.env.CHAIN_RPC_URL,
-    IDENTITY_REGISTRY_ADDRESS: process.env.IDENTITY_REGISTRY_ADDRESS,
+    BASE_SEPOLIA_RPC_URL: process.env.BASE_SEPOLIA_RPC_URL,
+    BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR:
+      process.env.BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_ZENTITY_URL: process.env.NEXT_PUBLIC_ZENTITY_URL,
   },

@@ -13,9 +13,14 @@ import {
   sendBackchannelLogoutToClient,
 } from "@/lib/auth/oidc/backchannel-logout";
 import {
+  writeMirrorCompliance,
+  writeMirrorRevocation,
+} from "@/lib/blockchain/attestation/mirror-writer";
+import {
   canCreateProvider,
   createProvider,
 } from "@/lib/blockchain/attestation/providers";
+import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import {
   listPendingCibaRequestIdsByUserId,
@@ -47,6 +52,8 @@ const MAX_ATTEMPTS_BY_TARGET: Record<ValidityDeliveryTarget, number> = {
   ciba_request_cancellation: 1,
   backchannel_logout: 3,
   blockchain_attestation_revocation: 3,
+  mirror_compliance_write: 3,
+  mirror_revocation_write: 3,
   rp_validity_notice: 3,
 };
 
@@ -55,6 +62,8 @@ const RETRY_DELAY_MS_BY_TARGET: Record<ValidityDeliveryTarget, number[]> = {
   ciba_request_cancellation: [],
   backchannel_logout: [1000, 3000],
   blockchain_attestation_revocation: [1000, 3000],
+  mirror_compliance_write: [1000, 3000],
+  mirror_revocation_write: [1000, 3000],
   rp_validity_notice: [1000, 3000],
 };
 
@@ -77,6 +86,7 @@ async function buildRevocationDeliveryTargets(
   userId: string,
   executor: DeliveryExecutor = db
 ): Promise<DeliveryTargetDescriptor[]> {
+  const mirrorEnabled = Boolean(getBaseSepoliaMirrorConfig());
   const [
     issuedCredentials,
     pendingCibaRequests,
@@ -130,7 +140,42 @@ async function buildRevocationDeliveryTargets(
       target: "blockchain_attestation_revocation" as const,
       targetKey: attestation.id,
     })),
+    ...(mirrorEnabled
+      ? attestations.map((attestation) => ({
+          target: "mirror_revocation_write" as const,
+          targetKey: attestation.id,
+        }))
+      : []),
   ];
+}
+
+async function buildMirrorComplianceWriteTargets(
+  userId: string,
+  sourceNetwork: string | null,
+  executor: DeliveryExecutor = db
+): Promise<DeliveryTargetDescriptor[]> {
+  if (!getBaseSepoliaMirrorConfig()) {
+    return [];
+  }
+
+  const conditions = [
+    eq(blockchainAttestations.userId, userId),
+    eq(blockchainAttestations.status, "confirmed"),
+  ];
+  if (sourceNetwork) {
+    conditions.push(eq(blockchainAttestations.networkId, sourceNetwork));
+  }
+
+  return (
+    await executor
+      .select({ id: blockchainAttestations.id })
+      .from(blockchainAttestations)
+      .where(and(...conditions))
+      .all()
+  ).map((attestation) => ({
+    target: "mirror_compliance_write" as const,
+    targetKey: attestation.id,
+  }));
 }
 
 async function buildRpValidityNoticeTargets(): Promise<
@@ -142,6 +187,19 @@ async function buildRpValidityNoticeTargets(): Promise<
     target: "rp_validity_notice" as const,
     targetKey: client.clientId,
   }));
+}
+
+async function buildValidityChangeDeliveryTargets(
+  userId: string,
+  sourceNetwork: string | null,
+  executor: DeliveryExecutor = db
+): Promise<DeliveryTargetDescriptor[]> {
+  const [rpValidityTargets, mirrorComplianceTargets] = await Promise.all([
+    buildRpValidityNoticeTargets(),
+    buildMirrorComplianceWriteTargets(userId, sourceNetwork, executor),
+  ]);
+
+  return [...rpValidityTargets, ...mirrorComplianceTargets];
 }
 
 export async function scheduleValidityDeliveries(
@@ -172,7 +230,11 @@ export async function scheduleValidityDeliveries(
     case "verified":
     case "stale":
     case "superseded":
-      targets = await buildRpValidityNoticeTargets();
+      targets = await buildValidityChangeDeliveryTargets(
+        event.userId,
+        event.source === "chain" ? event.sourceNetwork : null,
+        executor
+      );
       break;
     case "failed":
       targets = [];
@@ -310,6 +372,18 @@ async function deliverRpValidityNotice(
   });
 }
 
+async function deliverMirrorComplianceWrite(
+  delivery: IdentityValidityDelivery
+): Promise<void> {
+  await writeMirrorCompliance(delivery.targetKey);
+}
+
+async function deliverMirrorRevocationWrite(
+  delivery: IdentityValidityDelivery
+): Promise<void> {
+  await writeMirrorRevocation(delivery.targetKey);
+}
+
 async function deliverValidityTarget(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
@@ -325,6 +399,12 @@ async function deliverValidityTarget(
       return;
     case "blockchain_attestation_revocation":
       await deliverBlockchainAttestationRevocation(delivery);
+      return;
+    case "mirror_compliance_write":
+      await deliverMirrorComplianceWrite(delivery);
+      return;
+    case "mirror_revocation_write":
+      await deliverMirrorRevocationWrite(delivery);
       return;
     case "rp_validity_notice":
       await deliverRpValidityNotice(delivery);

@@ -7,7 +7,7 @@ import {
   rotateSigningKey,
 } from "@/lib/auth/oidc/jwt-signer";
 import { listIdentityValiditySourceCursors } from "@/lib/db/queries/identity-validity";
-import { ingestChainRevocations } from "@/lib/identity/validity/chain-ingest";
+import { ingestChainValidityEvents } from "@/lib/identity/validity/chain-ingest";
 import { deliverPendingValidityDeliveries } from "@/lib/identity/validity/delivery";
 import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness-worker";
 
@@ -48,7 +48,7 @@ export const adminRouter = router({
       })
     )
     .mutation(({ input }) =>
-      ingestChainRevocations({
+      ingestChainValidityEvents({
         networkId: input.networkId,
         ...(input.fromBlock === undefined
           ? {}

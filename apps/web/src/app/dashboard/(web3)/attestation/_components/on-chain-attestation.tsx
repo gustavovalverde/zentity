@@ -12,8 +12,8 @@ import {
   ATTR,
   CONSENT_TYPES,
   getAttestPermitDomain,
-  IdentityRegistryABI,
-} from "@zentity/fhevm-contracts";
+  identityRegistryAbi,
+} from "@zentity/contracts";
 import {
   AlertTriangle,
   CheckCircle,
@@ -174,7 +174,7 @@ export function OnChainAttestation({
   const { mutateAsync: writeContractAsync } = useWriteContract();
   const { data: currentRevision } = useReadContract({
     address: registryAddress,
-    abi: IdentityRegistryABI,
+    abi: identityRegistryAbi,
     functionName: "revisions",
     args: address ? [address as `0x${string}`] : undefined,
     query: { enabled: Boolean(registryAddress && address) },
@@ -368,7 +368,7 @@ export function OnChainAttestation({
       const txHash = await writeContractAsync({
         chainId: selectedNetworkData.chainId,
         address: registryAddress,
-        abi: IdentityRegistryABI,
+        abi: identityRegistryAbi,
         functionName: "attestWithPermit",
         args: [
           {

@@ -1,19 +1,21 @@
 import type { PohClaims } from "@/data/x402";
-import { SOLIDITY_FACILITATOR, SOLIDITY_ISATTESTED } from "@/data/x402";
+import { SOLIDITY_FACILITATOR, SOLIDITY_IS_COMPLIANT } from "@/data/x402";
 
 const KEYWORD_SET = new Set([
   "contract",
   "function",
+  "interface",
   "external",
+  "view",
   "returns",
   "public",
   "immutable",
   "address",
   "uint8",
 ]);
-const TYPE_SET = new Set(["ebool", "euint64", "IIdentityRegistry", "bool"]);
+const TYPE_SET = new Set(["IIdentityRegistryMirror", "bool"]);
 const TOKEN_RE =
-  /\b(contract|function|external|returns|public|immutable|address|uint8|ebool|euint64|IIdentityRegistry|bool|FHE\.\w+|registry\.\w+)\b|\/\//;
+  /\b(contract|function|interface|external|view|returns|public|immutable|address|uint8|IIdentityRegistryMirror|bool|mirror\.\w+)\b|\/\//;
 
 function classifyWord(word: string): string {
   if (KEYWORD_SET.has(word)) {
@@ -22,7 +24,7 @@ function classifyWord(word: string): string {
   if (TYPE_SET.has(word)) {
     return "text-sky-700";
   }
-  if (word.startsWith("FHE.") || word.startsWith("registry.")) {
+  if (word.startsWith("mirror.")) {
     return "text-amber-700 font-bold";
   }
   return "text-foreground";
@@ -101,7 +103,7 @@ export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
   return (
     <div className="space-y-4">
       <CodeBlock code={SOLIDITY_FACILITATOR} title="x402 Facilitator Pattern" />
-      <CodeBlock code={SOLIDITY_ISATTESTED} title="HTTP-Level Check" />
+      <CodeBlock code={SOLIDITY_IS_COMPLIANT} title="HTTP-Level Check" />
 
       {pohClaims && (
         <div className="rounded-md border border-primary/20 bg-primary/5 p-3">

@@ -64,6 +64,13 @@ SIGNER_COORDINATOR_URL=http://localhost:5002
 SIGNER_ENDPOINTS=http://localhost:5101,http://localhost:5102,http://localhost:5103
 INTERNAL_SERVICE_TOKEN=dev-internal-token
 
+# Blockchain delivery targets
+FHEVM_REGISTRAR_PRIVATE_KEY=...        # Ethereum Sepolia fhEVM attestation writes
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY=... # Base mirror writes
+BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR=...
+NEXT_PUBLIC_ENABLE_BASE_SEPOLIA=true
+
 # Recovery keys (server-side, ML-KEM-768)
 RECOVERY_ML_KEM_SECRET_KEY=...          # production (base64 of 2400 bytes)
 RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
@@ -244,7 +251,7 @@ bits and **must be reduced** before use:
 const reduced = rawValue % BN254_FR_MODULUS;
 ```
 
-See `docs/zk-architecture.md#bn254-field-constraints` for details.
+See `../../docs/(protocols)/zk-architecture.md#bn254-field-constraints` for details.
 
 ### Worker Debug Logs
 
@@ -269,16 +276,20 @@ The web application implements privacy-preserving patterns:
 5. **Compliance Derivation** — `deriveComplianceStatus()` pure function derives
    compliance level (`none`/`basic`/`full`/`chip`) from ZK proof existence +
    signed claim types, with no mutable booleans or DB access
-6. **Transient Processing** — Images processed and discarded immediately
-7. **Password Security** — Server-side blocked breached passwords
+6. **Base Compliance Mirror** — the validity delivery worker writes only wallet
+   address, active attestation state, and numeric compliance level to Base for
+   `isCompliant(address,uint8)` reads
+7. **Transient Processing** — Images processed and discarded immediately
+8. **Password Security** — Server-side blocked breached passwords
    (Better Auth) + privacy-preserving UX pre-check
 
 No raw ID document images or extracted document fields are stored in plaintext
 beyond minimal metadata. (Authentication still stores account email/name as
 required for login.)
 
-Details: `../../docs/attestation-privacy-architecture.md` |
-`../../docs/password-security.md`
+Details: `../../docs/(architecture)/attestation-privacy-architecture.md` |
+`../../docs/(protocols)/password-security.md` |
+`../../docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md`
 
 ## Commitment & Proof Model
 
@@ -328,14 +339,16 @@ For a clean reset, delete the SQLite DB and rerun `pnpm run db:push`.
 
 ### Local + Docker Compose
 
-Create the local DB file (bind-mounted into the container) before starting
-Docker:
+Docker Compose starts the web container with `ZENTITY_DB_PUSH_ON_START=true`,
+which applies the schema to the bind-mounted local SQLite file before the server
+starts:
 
 ```bash
-mkdir -p apps/web/.data
-TURSO_DATABASE_URL=file:./apps/web/.data/dev.db pnpm run db:push
 docker compose up --build
 ```
+
+Set `ZENTITY_DB_PUSH_ON_START=false` when you want to manage schema application
+manually with `pnpm run db:push`.
 
 ### Turso (production / CI)
 

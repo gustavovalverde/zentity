@@ -5,13 +5,32 @@ import type {
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
+import {
+  type ComplianceChecks,
+  deriveLevelFromChecks,
+  EMPTY_CHECKS,
+} from "@/lib/identity/verification/compliance";
+
 import { db } from "../connection";
 import {
   attestationEvidence,
   blockchainAttestations,
+  identityBundles,
+  identityVerifications,
 } from "../schema/identity";
+import { verificationChecks } from "../schema/privacy";
 
 type AttestationExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
+const CHECK_TYPE_TO_COMPLIANCE_KEY = {
+  document: "documentVerified",
+  age: "ageVerified",
+  liveness: "livenessVerified",
+  face_match: "faceMatchVerified",
+  nationality: "nationalityVerified",
+  identity_binding: "identityBound",
+  sybil_resistant: "sybilResistant",
+} as const;
 
 export async function upsertAttestationEvidence(
   args: {
@@ -107,7 +126,7 @@ export async function createBlockchainAttestation(data: {
   return attestation;
 }
 
-async function getBlockchainAttestationById(
+export async function getBlockchainAttestationById(
   id: string
 ): Promise<BlockchainAttestation | null> {
   const row = await db
@@ -118,6 +137,57 @@ async function getBlockchainAttestationById(
     .get();
 
   return row ?? null;
+}
+
+export async function getCurrentMirrorComplianceLevel(
+  userId: string
+): Promise<number> {
+  const rows = await db
+    .select({
+      method: identityVerifications.method,
+      checkType: verificationChecks.checkType,
+      passed: verificationChecks.passed,
+      validityStatus: identityBundles.validityStatus,
+    })
+    .from(identityBundles)
+    .leftJoin(
+      identityVerifications,
+      eq(identityVerifications.id, identityBundles.effectiveVerificationId)
+    )
+    .leftJoin(
+      verificationChecks,
+      eq(
+        verificationChecks.verificationId,
+        identityBundles.effectiveVerificationId
+      )
+    )
+    .where(eq(identityBundles.userId, userId))
+    .all();
+
+  if (rows[0]?.validityStatus !== "verified") {
+    return deriveLevelFromChecks(EMPTY_CHECKS, null).numericLevel;
+  }
+
+  const method = rows[0]?.method;
+  if (!method) {
+    return deriveLevelFromChecks(EMPTY_CHECKS, null).numericLevel;
+  }
+
+  const checks: ComplianceChecks = { ...EMPTY_CHECKS };
+  for (const row of rows) {
+    if (!row.checkType) {
+      continue;
+    }
+    const key =
+      CHECK_TYPE_TO_COMPLIANCE_KEY[
+        row.checkType as keyof typeof CHECK_TYPE_TO_COMPLIANCE_KEY
+      ];
+    if (key) {
+      checks[key] = Boolean(row.passed);
+    }
+  }
+
+  return deriveLevelFromChecks(checks, method).numericLevel;
 }
 
 export async function getBlockchainAttestationByUserAndNetwork(

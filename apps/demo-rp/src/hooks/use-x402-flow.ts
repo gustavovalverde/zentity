@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  attachProofOfHumanToken,
+  encodePaymentSignatureHeader,
+  PAYMENT_SIGNATURE_HEADER,
+  type PaymentRequiredPayload,
+  parsePaymentSignatureHeader,
+} from "@zentity/sdk/rp";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
 import { getWalletClient } from "wagmi/actions";
@@ -24,6 +31,25 @@ function makeId(): string {
 
 function entry(partial: Omit<TraceEntry, "id" | "timestamp">): TraceEntry {
   return { id: makeId(), timestamp: Date.now(), ...partial };
+}
+
+function attachPohTokenToPaymentHeaders(
+  paymentHeaders: Record<string, string> | null,
+  paymentRequired: PaymentRequiredPayload,
+  pohToken: string
+): Record<string, string> | null {
+  const paymentSignature = paymentHeaders?.[PAYMENT_SIGNATURE_HEADER];
+  if (!paymentSignature) {
+    return paymentHeaders;
+  }
+
+  const paymentPayload = parsePaymentSignatureHeader(paymentSignature);
+  return {
+    ...paymentHeaders,
+    [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader(
+      attachProofOfHumanToken(paymentPayload, paymentRequired, pohToken)
+    ),
+  };
 }
 
 interface UseX402FlowReturn {
@@ -165,16 +191,13 @@ export function useX402Flow(): UseX402FlowReturn {
             const paymentRequired = httpClient.getPaymentRequiredResponse(
               (name: string) => res402.headers.get(name) ?? undefined,
               body402
-            );
+            ) as PaymentRequiredPayload;
             const paymentPayload =
               await httpClient.createPaymentPayload(paymentRequired);
             paymentHeaders =
               httpClient.encodePaymentSignatureHeader(paymentPayload);
 
-            const sig =
-              paymentHeaders["PAYMENT-SIGNATURE"] ??
-              paymentHeaders["X-PAYMENT"] ??
-              "";
+            const sig = paymentHeaders["PAYMENT-SIGNATURE"] ?? "";
             push(
               entry({
                 type: "response",
@@ -252,6 +275,7 @@ export function useX402Flow(): UseX402FlowReturn {
           }
 
           const claims = pohBody.claims as PohClaims;
+          const pohToken = pohBody.token as string;
           setPohClaims(claims);
 
           push(
@@ -260,7 +284,7 @@ export function useX402Flow(): UseX402FlowReturn {
               status: 200,
               statusText: "OK",
               body: {
-                token: `${(pohBody.token as string).substring(0, 40)}...`,
+                token: `${pohToken.substring(0, 40)}...`,
                 claims,
               },
             })
@@ -286,8 +310,13 @@ export function useX402Flow(): UseX402FlowReturn {
           const retryHeaders: Record<string, string> = {
             "Content-Type": "application/json",
           };
-          if (paymentHeaders) {
-            Object.assign(retryHeaders, paymentHeaders);
+          const paymentHeadersWithPoh = attachPohTokenToPaymentHeaders(
+            paymentHeaders,
+            body402,
+            pohToken
+          );
+          if (paymentHeadersWithPoh) {
+            Object.assign(retryHeaders, paymentHeadersWithPoh);
           }
 
           push(
@@ -304,7 +333,6 @@ export function useX402Flow(): UseX402FlowReturn {
               },
               body: {
                 resourceId: resource.id,
-                pohToken: "(attached)",
                 ...(walletAddress ? { walletAddress } : {}),
               },
             })
@@ -315,7 +343,6 @@ export function useX402Flow(): UseX402FlowReturn {
             headers: retryHeaders,
             body: JSON.stringify({
               resourceId: resource.id,
-              pohToken: pohBody.token,
               walletAddress,
             }),
           });

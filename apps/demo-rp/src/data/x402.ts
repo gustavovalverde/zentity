@@ -75,7 +75,7 @@ export const RESOURCES: X402Resource[] = [
   {
     id: "regulated-finance",
     name: "Regulated Financial API",
-    description: "Cross-border settlement — Tier 3 + on-chain attestation",
+    description: "Cross-border settlement — Tier 3 + Base compliance mirror",
     endpoint: "/api/defi/settle",
     icon: ShieldKeyIcon,
     price: "$0.000001",
@@ -148,36 +148,32 @@ export interface AccessOutcome {
 
 // --- Solidity reference snippets ---
 
-export const SOLIDITY_FACILITATOR = `// x402 Facilitator — inline compliance check
+export const SOLIDITY_FACILITATOR = `// x402 Facilitator — Base mirror check
+interface IIdentityRegistryMirror {
+  function isCompliant(
+    address user,
+    uint8 minLevel
+  ) external view returns (bool);
+}
+
 contract Facilitator {
-  IIdentityRegistry public immutable registry;
+  IIdentityRegistryMirror public immutable mirror;
   uint8 public requiredLevel;
 
-  function settleWithCompliance(
+  function canSettle(
     address payer
-  ) external returns (ebool) {
-    // FHE comparison: is payer's level >= required?
-    ebool compliant = registry.checkCompliance(
-      payer, requiredLevel
-    );
-
-    // Conditional transfer: compliant ? amount : 0
-    euint64 amount = FHE.asEuint64(10000);
-    euint64 zero   = FHE.asEuint64(0);
-    euint64 actual = FHE.select(
-      compliant, amount, zero
-    );
-
-    return compliant;
+  ) external view returns (bool) {
+    return mirror.isCompliant(payer, requiredLevel);
   }
 }`;
 
-export const SOLIDITY_ISATTESTED = `// Simple view check (no FHE needed)
-function isAttested(
-  address user
+export const SOLIDITY_IS_COMPLIANT = `// Simple view check on Base
+function isCompliant(
+  address user,
+  uint8 minLevel
 ) external view returns (bool);
 
-// Returns true if the user has a valid
-// on-chain attestation from a registrar.
-// Used for HTTP-level gating; the FHE-based
-// checkCompliance() is for on-chain settlement.`;
+// Returns true when the user has a mirrored
+// attestation and currentLevel >= minLevel.
+// Used for HTTP-level gating and x402
+// settlement contracts on Base.`;

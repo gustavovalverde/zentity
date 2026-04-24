@@ -1,5 +1,5 @@
 /**
- * Attestation Router (v2 — permit-based)
+ * Attestation router
  *
  * Handles on-chain identity attestation with the EIP-712 permit model:
  * - Server signs permits (registrar authorization)

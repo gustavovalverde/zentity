@@ -83,7 +83,7 @@ export function renderGeneratedMcpToolManifest(tools) {
   const entries = tools
     .map(
       (tool) =>
-        `  {\n    name: ${JSON.stringify(tool.name)},\n    description: ${JSON.stringify(tool.description)},\n  },`,
+        `  {\n    name: ${JSON.stringify(tool.name)},\n    description:\n      ${JSON.stringify(tool.description)},\n  },`,
     )
     .join("\n");
 

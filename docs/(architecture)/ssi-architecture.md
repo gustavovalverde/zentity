@@ -171,7 +171,7 @@ sequenceDiagram
 
 **Important:** Credentials derive claims from existing verification artifacts (ZK proofs, signed claims). No new PII collection is required for credential issuance.
 
-**Compliance derivation:** `verification_level` and all boolean check claims are computed at request time by a pure function with no DB access, taking ZK proofs, signed claims, and flags as input. There are no mutable boolean columns; values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](architecture.md#compliance-derivation-engine) for the full check matrix.
+**Compliance derivation:** `verification_level` and all boolean check claims are computed at request time by a pure function with no DB access, taking ZK proofs, signed claims, and flags as input. There are no mutable boolean columns; values cannot be flipped by DB manipulation. See [Architecture: Compliance Derivation Engine](<../(concepts)/architecture.md#compliance-derivation-engine>) for the full check matrix.
 
 **Validity contract:** issuance and RP-facing proof semantics read the account snapshot (`identity_bundles`) plus its `effectiveVerificationId`. Explicit revoke fans out to OIDC4VCI credential-status revocation through the shared validity pipeline. `stale` and `superseded` do not delete history; they tell relying parties to evaluate trust against the authoritative or fresher snapshot rather than against an older row alone.
 
@@ -200,7 +200,7 @@ Credentials are cryptographically bound to the holder's key to prevent theft and
 
 ### Pairwise Subject Identifiers
 
-Each relying party receives a unique opaque `sub` derived from the user ID, client ID, and a server secret, preventing cross-RP correlation. See [OAuth Integrations](oauth-integrations.md#pairwise-subject-identifiers) for the derivation mechanism and sector identifier rules.
+Each relying party receives a unique opaque `sub` derived from the user ID, client ID, and a server secret, preventing cross-RP correlation. See [OAuth Integrations](<../(protocols)/oauth-integrations.md#pairwise-subject-identifiers>) for the derivation mechanism and sector identifier rules.
 
 ### Selective disclosure (SD-JWT)
 
@@ -267,5 +267,5 @@ For binary eligibility checks, ZK proofs reveal nothing beyond the answer:
 ## Related Documentation
 
 - [Attestation & Privacy Architecture](attestation-privacy-architecture.md) for data classification and storage boundaries
-- [Cryptographic Pillars](cryptographic-pillars.md) for ZK, FHE, commitments, key custody
-- [OAuth Integrations](oauth-integrations.md) for OIDC4VCI/VP endpoint details
+- [Cryptographic Pillars](<../(concepts)/cryptographic-pillars.md>) for ZK, FHE, commitments, key custody
+- [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for OIDC4VCI/VP endpoint details
