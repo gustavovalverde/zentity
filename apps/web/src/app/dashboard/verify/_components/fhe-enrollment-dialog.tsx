@@ -79,6 +79,7 @@ function formatEnrollmentError(message: string): string {
   const lowerMessage = message.toLowerCase();
   if (
     lowerMessage === "failed to fetch" ||
+    lowerMessage.includes("fhe key generation timed out") ||
     lowerMessage.includes("zk proof generation timed out") ||
     lowerMessage.includes("failed to load noir wasm") ||
     lowerMessage.includes("failed to compile bb wasm")

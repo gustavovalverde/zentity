@@ -7,18 +7,22 @@ vi.mock("@/lib/observability/client-metrics", () => ({
 
 describe("keygen-client", () => {
   let postMessageSpy: ReturnType<typeof vi.fn>;
+  let terminateSpy: ReturnType<typeof vi.fn>;
   let onmessageHandler: ((event: MessageEvent) => void) | null = null;
 
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.useRealTimers();
     onmessageHandler = null;
     postMessageSpy = vi.fn();
+    terminateSpy = vi.fn();
 
     vi.stubGlobal(
       "Worker",
       class MockWorker {
         postMessage = postMessageSpy;
+        terminate = terminateSpy;
         onerror: ((event: Event) => void) | null = null;
 
         get onmessage() {
@@ -121,5 +125,27 @@ describe("keygen-client", () => {
     const result = await genPromise;
     expect(result.durationMs).toBe(5000);
     expect(result.storedKeys.clientKey).toEqual(new Uint8Array([1, 2, 3]));
+  });
+
+  it("rejects and resets the worker when key generation does not respond", async () => {
+    vi.useFakeTimers();
+    const { generateFheKeyMaterialInWorker } = await import(
+      "@/lib/privacy/fhe/keygen-client"
+    );
+
+    const genPromise = generateFheKeyMaterialInWorker();
+    const rejection = expect(genPromise).rejects.toThrow(
+      "FHE key generation timed out after 120000ms."
+    );
+
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    await rejection;
+    expect(terminateSpy).toHaveBeenCalledOnce();
+    expect(recordMetric).toHaveBeenCalledWith({
+      name: "client.tfhe.keygen.worker.duration",
+      value: 120_000,
+      attributes: { result: "timeout" },
+    });
   });
 });
