@@ -122,6 +122,34 @@ export async function sendEmailVerification(params: {
   });
 }
 
+/**
+ * Sent when someone tries to sign up with an email that already belongs to
+ * an account. The sign-up endpoint returns success either way to prevent
+ * account enumeration; this email is the only signal the legitimate owner
+ * receives. If the attempt was the owner, they sign in via the link; if it
+ * was an attacker, the owner can ignore it (no action was taken).
+ */
+export async function sendAccountExistsAlert(params: {
+  email: string;
+  signInUrl: string;
+}): Promise<void> {
+  await send({
+    to: [params.email],
+    subject: "Sign-up attempt on your Zentity account",
+    text: `Someone just tried to sign up for Zentity using this email address.\n\nIf this was you: an account already exists. Sign in: ${params.signInUrl}\n\nIf this wasn't you, you can safely ignore this email. No changes were made to your account.\n\nZentity`,
+    html: `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
+<h2 style="margin-bottom:4px;">Sign-up attempt on your account</h2>
+<p>Someone just tried to sign up for Zentity using this email address.</p>
+<p>If this was you, an account already exists.</p>
+<p style="margin:24px 0;">
+<a href="${params.signInUrl}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Sign In</a>
+</p>
+<p style="color:#9ca3af;font-size:13px;">If this wasn't you, you can safely ignore this email. No changes were made to your account.</p>
+</div>`,
+    tags: ["auth", "account-exists-alert"],
+  });
+}
+
 export async function sendChangeEmailConfirmation(params: {
   user: { email: string; name?: string };
   newEmail: string;

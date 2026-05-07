@@ -37,6 +37,7 @@ export function SignUpForm() {
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // PRF support check
@@ -74,7 +75,7 @@ export function SignUpForm() {
 
   const completeAccountCreation = async (params?: {
     wallet?: { address: string; chainId: number };
-  }) => {
+  }): Promise<{ email: string | null }> => {
     const resolvedEmail = resolveEmail();
 
     if (resolvedEmail && resolvedEmail !== email.trim()) {
@@ -90,6 +91,8 @@ export function SignUpForm() {
     // via Drizzle, bypassing better-auth's session cookie cache. Clear the stale
     // session_data cookie so the dashboard reads fresh data from the database.
     invalidateSessionDataCache();
+
+    return { email: resolvedEmail || null };
   };
 
   const handleCreatePasskey = async () => {
@@ -149,8 +152,12 @@ export function SignUpForm() {
         );
       }
 
-      await completeAccountCreation();
-      finalizeSignUp();
+      const { email: submitted } = await completeAccountCreation();
+      if (submitted) {
+        setSubmittedEmail(submitted);
+      } else {
+        finalizeSignUp();
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -172,8 +179,12 @@ export function SignUpForm() {
     setError(null);
 
     try {
-      await completeAccountCreation();
-      finalizeSignUp();
+      const { email: submitted } = await completeAccountCreation();
+      if (submitted) {
+        setSubmittedEmail(submitted);
+      } else {
+        finalizeSignUp();
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -194,10 +205,14 @@ export function SignUpForm() {
     setError(null);
 
     try {
-      await completeAccountCreation({
+      const { email: submitted } = await completeAccountCreation({
         wallet: { address: result.address, chainId: result.chainId },
       });
-      finalizeSignUp("/dashboard/settings?tab=recovery&walletRisk=1");
+      if (submitted) {
+        setSubmittedEmail(submitted);
+      } else {
+        finalizeSignUp("/dashboard/settings?tab=recovery&walletRisk=1");
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -244,6 +259,25 @@ export function SignUpForm() {
       ? prfStatus.reason ||
         "Passkeys with encryption support are not available on this device or browser."
       : null;
+
+  if (submittedEmail) {
+    // Privacy: this view renders identically whether the email belongs to a
+    // new account (verification email sent) or an existing one (alert email
+    // sent to the legitimate owner). The link in the email routes to the
+    // right destination — the response and UI here never disclose which.
+    return (
+      <div className="space-y-4 py-4 text-center">
+        <h2 className="font-semibold text-lg">Check your inbox</h2>
+        <p className="text-muted-foreground text-sm">
+          We sent a confirmation email to <strong>{submittedEmail}</strong>.
+          Click the link in the email to finish setting up your account.
+        </p>
+        <p className="text-muted-foreground text-xs">
+          The link expires in 1 hour. You can close this window.
+        </p>
+      </div>
+    );
+  }
 
   if (isRedirecting) {
     return (

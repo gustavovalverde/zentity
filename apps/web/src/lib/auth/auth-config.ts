@@ -129,6 +129,7 @@ import {
 } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
+import { getAppOrigin, getTrustedOrigins } from "@/lib/auth/origin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
@@ -219,53 +220,6 @@ function toDisclosureApiError(error: DisclosureBindingError): APIError {
     ? invalidGrantDisclosureError(error.reason)
     : invalidTokenDisclosureError(error.reason);
 }
-
-// Build trusted origins based on environment
-// In production: only the configured app URL + any explicit TRUSTED_ORIGINS
-// In development: also trust all localhost variants (IPv4/IPv6)
-const getAppOrigin = (): string => {
-  const base = env.NEXT_PUBLIC_APP_URL;
-  try {
-    return new URL(base).origin;
-  } catch {
-    return "http://localhost:3000";
-  }
-};
-
-const getTrustedOrigins = (): string[] => {
-  const origins: string[] = [];
-
-  const appOrigin = getAppOrigin();
-  if (appOrigin) {
-    origins.push(appOrigin);
-  }
-
-  // Allow additional trusted origins via env var (comma-separated)
-  // Useful for local Docker development where NODE_ENV=production but localhost access is needed
-  const additionalOrigins = env.TRUSTED_ORIGINS;
-  if (additionalOrigins) {
-    origins.push(
-      ...additionalOrigins
-        .split(",")
-        .map((o) => o.trim())
-        .filter(Boolean)
-    );
-  }
-
-  // Node.js v17+ prefers IPv6, so browsers may access via [::1] instead of localhost
-  // Add all localhost variants in development to handle IPv4/IPv6 resolution differences
-  // Also add host.docker.internal for Docker container interoperability (demo stack, walt.id, etc.)
-  if (process.env.NODE_ENV !== "production") {
-    origins.push(
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://[::1]:3000",
-      "http://host.docker.internal:3000"
-    );
-  }
-
-  return origins;
-};
 
 const parseGenericOAuthConfig = () => {
   const raw = env.GENERIC_OAUTH_PROVIDERS;

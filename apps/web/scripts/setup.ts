@@ -62,6 +62,7 @@ console.log("Generating cryptographic secrets...\n");
 
 const betterAuthSecret = randomBase64(32);
 const internalServiceToken = randomBase64(32);
+const cronSecret = randomBase64(32);
 const bbsIssuerSecret = randomHex(32);
 const pairwiseSecret = randomHex(32);
 const dedupHmacSecret = randomHex(32);
@@ -70,6 +71,7 @@ const ciphertextHmacSecret = randomHex(32);
 
 console.log("  BETTER_AUTH_SECRET       done");
 console.log("  INTERNAL_SERVICE_TOKEN   done");
+console.log("  CRON_SECRET              done");
 console.log("  BBS_ISSUER_SECRET        done");
 console.log("  DEDUP_HMAC_SECRET        done");
 console.log("  PAIRWISE_SECRET          done");
@@ -99,6 +101,7 @@ const replacements: Record<string, string> = {
   OPAQUE_SERVER_SETUP: serverSetup,
   NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY: publicKey,
   INTERNAL_SERVICE_TOKEN: internalServiceToken,
+  CRON_SECRET: cronSecret,
   BBS_ISSUER_SECRET: bbsIssuerSecret,
   DEDUP_HMAC_SECRET: dedupHmacSecret,
   PAIRWISE_SECRET: pairwiseSecret,

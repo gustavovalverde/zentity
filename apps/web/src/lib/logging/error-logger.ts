@@ -32,33 +32,70 @@ interface ErrorContext {
   userId?: string;
 }
 
+interface CauseFrame {
+  code?: string;
+  message: string;
+  name: string;
+}
+
+/**
+ * Walks `Error.cause` (up to MAX_CAUSE_DEPTH levels) to surface wrapped
+ * error details. Drizzle wraps libsql errors as `Error("Failed query: ...")`
+ * and stashes the original `LibsqlError` (with `code` and the actual
+ * "UNIQUE constraint failed: <table>.<column>" message) on `.cause`. Surfacing
+ * the chain makes the difference between "failed query" and the specific
+ * constraint visible to operators without exposing it to the user.
+ */
+const MAX_CAUSE_DEPTH = 4;
+
+function collectCauseChain(err: Error): CauseFrame[] {
+  const frames: CauseFrame[] = [];
+  let current: unknown = err.cause;
+  let depth = 0;
+  while (current instanceof Error && depth < MAX_CAUSE_DEPTH) {
+    const frame: CauseFrame = {
+      name: current.name,
+      message: sanitizeLogMessage(current.message),
+    };
+    if ("code" in current && typeof current.code === "string") {
+      frame.code = current.code;
+    }
+    frames.push(frame);
+    current = current.cause;
+    depth += 1;
+  }
+  return frames;
+}
+
 /**
  * Extracts structured context from known error types.
  * This provides richer log data for debugging without exposing sensitive info.
  */
 function extractErrorContext(error: unknown): Record<string, unknown> {
+  const ctx: Record<string, unknown> = {};
+
   if (error instanceof FheServiceError) {
-    return {
-      errorType: "FheServiceError",
-      operation: error.operation,
-      kind: error.kind,
-      status: error.status,
-    };
+    ctx.errorType = "FheServiceError";
+    ctx.operation = error.operation;
+    ctx.kind = error.kind;
+    ctx.status = error.status;
+  } else if (error instanceof HttpError) {
+    ctx.errorType = "HttpError";
+    ctx.status = error.status;
+    ctx.statusText = error.statusText;
+  } else if (error instanceof TRPCError) {
+    ctx.errorType = "TRPCError";
+    ctx.code = error.code;
   }
-  if (error instanceof HttpError) {
-    return {
-      errorType: "HttpError",
-      status: error.status,
-      statusText: error.statusText,
-    };
+
+  if (error instanceof Error && error.cause) {
+    const chain = collectCauseChain(error);
+    if (chain.length > 0) {
+      ctx.causeChain = chain;
+    }
   }
-  if (error instanceof TRPCError) {
-    return {
-      errorType: "TRPCError",
-      code: error.code,
-    };
-  }
-  return {};
+
+  return ctx;
 }
 
 /**

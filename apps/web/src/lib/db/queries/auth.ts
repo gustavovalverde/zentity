@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, ne, or } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
 import { cache } from "react";
 import { getAddress } from "viem";
 
@@ -137,6 +137,54 @@ export const userHasPassword = cache(async function userHasPassword(
   }
   return Boolean(row.password && row.password.length > 0);
 });
+
+/**
+ * Reaps anonymous users older than `maxAgeMs`. Cascades sessions, accounts,
+ * passkeys, wallet addresses, etc. via FK `ON DELETE CASCADE`. Used by the
+ * scheduled cleanup cron to keep orphaned sign-up state bounded.
+ *
+ * `createdAt` is stored as text holding epoch-ms numerals; cast to INTEGER
+ * for numeric comparison.
+ */
+export async function deleteExpiredAnonymousUsers(
+  maxAgeMs: number
+): Promise<number> {
+  const cutoff = Date.now() - maxAgeMs;
+  const result = await db
+    .delete(users)
+    .where(
+      and(
+        eq(users.isAnonymous, true),
+        sql`CAST(${users.createdAt} AS INTEGER) < ${cutoff}`
+      )
+    )
+    .run();
+  return result.rowsAffected ?? 0;
+}
+
+/**
+ * Returns true if a non-anonymous user other than `excludeUserId` already
+ * owns this email. Used by sign-up to detect collisions privately, before
+ * any UPDATE that would surface a UNIQUE-constraint conflict.
+ */
+export async function emailBelongsToAnotherAccount(
+  email: string,
+  excludeUserId: string
+): Promise<boolean> {
+  const row = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(
+      and(
+        eq(users.email, email),
+        eq(users.isAnonymous, false),
+        ne(users.id, excludeUserId)
+      )
+    )
+    .limit(1)
+    .get();
+  return Boolean(row);
+}
 
 /**
  * Deletes any anonymous user rows that hold a given email, excluding the

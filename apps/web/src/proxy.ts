@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { NextResponse } from "next/server";
 
-import { env } from "@/env";
+import { getTrustedOrigins } from "@/lib/auth/origin";
 
 const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
@@ -24,32 +24,12 @@ function resolveFlowId(request: NextRequest): string | null {
   );
 }
 
-function getAllowedOrigins(): string[] {
-  const origins = new Set<string>();
-  const fromEnv = env.TRUSTED_ORIGINS;
-  if (fromEnv) {
-    for (const origin of fromEnv.split(",")) {
-      const trimmed = origin.trim();
-      if (trimmed) {
-        origins.add(trimmed);
-      }
-    }
-  }
-  if (process.env.NODE_ENV !== "production") {
-    origins.add("http://localhost:3000");
-    origins.add("http://127.0.0.1:3000");
-    origins.add("http://[::1]:3000");
-  }
-  return Array.from(origins);
-}
-
 function getCorsOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (!origin) {
     return null;
   }
-  const allowed = getAllowedOrigins();
-  return allowed.includes(origin) ? origin : null;
+  return getTrustedOrigins().includes(origin) ? origin : null;
 }
 
 export function proxy(request: NextRequest) {

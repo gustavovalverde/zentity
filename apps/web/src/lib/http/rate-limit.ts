@@ -152,6 +152,7 @@ export function rateLimitResponse(retryAfter = 60): Response {
 // ---------------------------------------------------------------------------
 
 const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 
 /** OCR proxy: 5 req/min per session. */
 export const ocrLimiter = createRateLimiter({ windowMs: MINUTE, max: 5 });
@@ -179,3 +180,14 @@ export const secretsBlobLimiter = createRateLimiter({
 
 /** Public endpoints (logging, metrics, pwned): 30 req/min per IP. */
 export const publicLimiter = createRateLimiter({ windowMs: MINUTE, max: 30 });
+
+/**
+ * Account-exists alert email: 1 per recipient per hour. Key is the SHA-256
+ * hash of the email (never the plaintext). Prevents weaponizing the alert
+ * channel — an attacker iterating sign-up with a victim's email can't flood
+ * the inbox.
+ */
+export const accountAlertLimiter = createRateLimiter({
+  windowMs: HOUR,
+  max: 1,
+});
