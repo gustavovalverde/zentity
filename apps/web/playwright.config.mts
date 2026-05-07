@@ -54,6 +54,19 @@ const webServerEnv = {
   PORT: webPort,
   TRUSTED_AGENT_ATTESTERS:
     process.env.TRUSTED_AGENT_ATTESTERS ?? "http://localhost:4999/jwks",
+  NEXT_PUBLIC_WORLD_ID_ENABLED:
+    process.env.NEXT_PUBLIC_WORLD_ID_ENABLED ?? "true",
+  NEXT_PUBLIC_WORLD_ID_APP_ID:
+    process.env.NEXT_PUBLIC_WORLD_ID_APP_ID ??
+    "app_e2e000000000000000000000000000",
+  WORLD_ID_RP_ID: process.env.WORLD_ID_RP_ID ?? "rp_e2e0000000000000",
+  WORLD_ID_RP_SIGNING_KEY:
+    process.env.WORLD_ID_RP_SIGNING_KEY ??
+    "0x1111111111111111111111111111111111111111111111111111111111111111",
+  WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT ?? "staging",
+  HUMAN_SIGNAL_HMAC_SECRET:
+    process.env.HUMAN_SIGNAL_HMAC_SECRET ??
+    "e2e-human-signal-hmac-secret-32-chars-min",
   ...(process.env.E2E_OIDC_ONLY
     ? { E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY }
     : {}),

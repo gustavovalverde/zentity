@@ -103,6 +103,15 @@ export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
 
 export type RiskLevel = (typeof riskLevelEnum)[number];
 
+export const humanSignalProviderEnum = ["world_id"] as const;
+
+export type HumanSignalProvider = (typeof humanSignalProviderEnum)[number];
+
+export const humanSignalSubjectKindEnum = ["nullifier"] as const;
+
+export type HumanSignalSubjectKind =
+  (typeof humanSignalSubjectKindEnum)[number];
+
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {
@@ -114,6 +123,9 @@ export const identityBundles = sqliteTable(
       { onDelete: "set null" }
     ),
     nullifierSeed: text("nullifier_seed"),
+    hasHumanSignal: integer("has_human_signal", { mode: "boolean" }).default(
+      false
+    ),
     walletAddress: text("wallet_address"),
     validityStatus: text("validity_status", {
       enum: validityStatusEnum,
@@ -167,6 +179,60 @@ export const identityBundles = sqliteTable(
   },
   (table) => [
     index("idx_identity_bundles_validity_status").on(table.validityStatus),
+  ]
+);
+
+export const humanSignals = sqliteTable(
+  "human_signals",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: humanSignalProviderEnum }).notNull(),
+    providerSubjectHash: text("provider_subject_hash").notNull(),
+    providerSubjectKind: text("provider_subject_kind", {
+      enum: humanSignalSubjectKindEnum,
+    }).notNull(),
+    attachedAt: text("attached_at").notNull().default(sql`(datetime('now'))`),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_human_signals_user_provider").on(table.userId, table.provider),
+    uniqueIndex("human_signals_active_subject_unique")
+      .on(table.provider, table.providerSubjectHash)
+      .where(sql`revoked_at is null`),
+    uniqueIndex("human_signals_active_user_provider_unique")
+      .on(table.userId, table.provider)
+      .where(sql`revoked_at is null`),
+  ]
+);
+
+export const humanSignalChallenges = sqliteTable(
+  "human_signal_challenges",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider", { enum: humanSignalProviderEnum }).notNull(),
+    nonce: text("nonce").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    consumedAt: text("consumed_at"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_human_signal_challenges_user_provider").on(
+      table.userId,
+      table.provider
+    ),
+    index("idx_human_signal_challenges_expires_at").on(table.expiresAt),
+    uniqueIndex("human_signal_challenges_provider_nonce_unique").on(
+      table.provider,
+      table.nonce
+    ),
   ]
 );
 
@@ -404,6 +470,12 @@ export const identityVerificationJobs = sqliteTable(
 
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;
+
+export type HumanSignal = typeof humanSignals.$inferSelect;
+export type NewHumanSignal = typeof humanSignals.$inferInsert;
+
+export type HumanSignalChallenge = typeof humanSignalChallenges.$inferSelect;
+export type NewHumanSignalChallenge = typeof humanSignalChallenges.$inferInsert;
 
 export type IdentityValidityEvent = typeof identityValidityEvents.$inferSelect;
 export type NewIdentityValidityEvent =

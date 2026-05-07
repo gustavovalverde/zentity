@@ -15,7 +15,9 @@
     "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],
     "src/lib/terminology.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
+    "src/lib/identity/human-signal.ts": ["exports"],
     "src/lib/identity/liveness/human/server.ts": ["exports"],
+    "src/lib/identity/world-id.ts": ["types"],
     "src/lib/observability/client-metrics.ts": ["types"],
     "src/lib/trpc/routers/recovery.ts": ["exports"],
     "src/lib/trpc/routers/zk.ts": ["exports"]

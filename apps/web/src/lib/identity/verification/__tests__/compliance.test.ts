@@ -10,8 +10,8 @@ function makeInput(overrides: Partial<ComplianceInput> = {}): ComplianceInput {
     birthYearOffset: null,
     zkProofs: [],
     signedClaims: [],
-    encryptedAttributes: [],
-    hasUniqueIdentifier: false,
+    hasDocumentSybilSignal: false,
+    hasHumanUniquenessSignal: false,
     hasNationalityCommitment: false,
     ...overrides,
   };
@@ -37,6 +37,25 @@ describe("deriveComplianceStatus", () => {
       expect(result.numericLevel).toBe(1);
       expect(result.verified).toBe(false);
       expect(Object.values(result.checks).every((v) => v === false)).toBe(true);
+    });
+
+    it("returns human_verified when only a human uniqueness signal exists", () => {
+      const result = deriveComplianceStatus(
+        makeInput({ hasHumanUniquenessSignal: true })
+      );
+
+      expect(result.level).toBe("human_verified");
+      expect(result.numericLevel).toBe(1.5);
+      expect(result.verified).toBe(false);
+      expect(result.checks).toEqual({
+        documentVerified: false,
+        livenessVerified: false,
+        ageVerified: false,
+        faceMatchVerified: false,
+        nationalityVerified: false,
+        identityBound: false,
+        sybilResistant: true,
+      });
     });
   });
 
@@ -122,7 +141,7 @@ describe("deriveComplianceStatus", () => {
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
-          hasUniqueIdentifier: true,
+          hasDocumentSybilSignal: true,
         })
       );
       expect(result.level).toBe("full");
@@ -161,27 +180,44 @@ describe("deriveComplianceStatus", () => {
       expect(result.checks.faceMatchVerified).toBe(true);
     });
 
-    it("sybilResistant requires hasUniqueIdentifier", () => {
+    it("sybilResistant requires a document or human uniqueness signal", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
-          hasUniqueIdentifier: false,
+          hasDocumentSybilSignal: false,
+          hasHumanUniquenessSignal: false,
         })
       );
       expect(result.checks.sybilResistant).toBe(false);
       expect(result.level).toBe("basic");
     });
+
+    it("uses human uniqueness as the OCR sybil-resistant signal", () => {
+      const result = deriveComplianceStatus(
+        makeInput({
+          verificationMethod: "ocr",
+          zkProofs: ALL_OCR_PROOFS,
+          signedClaims: ALL_OCR_CLAIMS,
+          hasDocumentSybilSignal: false,
+          hasHumanUniquenessSignal: true,
+        })
+      );
+
+      expect(result.checks.sybilResistant).toBe(true);
+      expect(result.level).toBe("full");
+      expect(result.verified).toBe(true);
+    });
   });
 
   describe("NFC chip path", () => {
-    it("returns chip when hasUniqueIdentifier is true", () => {
+    it("returns chip when hasDocumentSybilSignal is true", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [{ claimType: "chip_verification" }],
-          hasUniqueIdentifier: true,
+          hasDocumentSybilSignal: true,
           hasNationalityCommitment: true,
         })
       );
@@ -202,7 +238,7 @@ describe("deriveComplianceStatus", () => {
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [{ claimType: "chip_verification" }],
-          hasUniqueIdentifier: true,
+          hasDocumentSybilSignal: true,
           hasNationalityCommitment: false,
         })
       );
@@ -212,12 +248,12 @@ describe("deriveComplianceStatus", () => {
       expect(result.checks.nationalityVerified).toBe(false);
     });
 
-    it("returns chip even without signed claim if hasUniqueIdentifier is true", () => {
+    it("returns chip even without signed claim if hasDocumentSybilSignal is true", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [],
-          hasUniqueIdentifier: true,
+          hasDocumentSybilSignal: true,
         })
       );
       expect(result.level).toBe("chip");
@@ -226,12 +262,13 @@ describe("deriveComplianceStatus", () => {
       expect(result.checks.faceMatchVerified).toBe(false);
     });
 
-    it("falls through to regular levels when hasUniqueIdentifier is false", () => {
+    it("falls through to regular levels when no sybil signal exists", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [{ claimType: "chip_verification" }],
-          hasUniqueIdentifier: false,
+          hasDocumentSybilSignal: false,
+          hasHumanUniquenessSignal: false,
           hasNationalityCommitment: true,
         })
       );
@@ -244,10 +281,26 @@ describe("deriveComplianceStatus", () => {
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [],
-          hasUniqueIdentifier: false,
+          hasDocumentSybilSignal: false,
         })
       );
       expect(result.checks.documentVerified).toBe(true);
+    });
+
+    it("uses human uniqueness as the NFC sybil-resistant signal without identity-binding it", () => {
+      const result = deriveComplianceStatus(
+        makeInput({
+          verificationMethod: "nfc_chip",
+          signedClaims: [{ claimType: "chip_verification" }],
+          hasDocumentSybilSignal: false,
+          hasHumanUniquenessSignal: true,
+          hasNationalityCommitment: true,
+        })
+      );
+
+      expect(result.checks.identityBound).toBe(false);
+      expect(result.checks.sybilResistant).toBe(true);
+      expect(result.level).toBe("chip");
     });
   });
 
@@ -285,7 +338,7 @@ describe("deriveComplianceStatus", () => {
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
-          hasUniqueIdentifier: false,
+          hasDocumentSybilSignal: false,
         })
       );
       expect(sixChecks.level).toBe("basic");
@@ -295,7 +348,7 @@ describe("deriveComplianceStatus", () => {
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
-          hasUniqueIdentifier: true,
+          hasDocumentSybilSignal: true,
         })
       );
       expect(sevenChecks.level).toBe("full");
@@ -313,19 +366,6 @@ describe("deriveComplianceStatus", () => {
       );
       expect(result.level).toBe("none");
       expect(result.verified).toBe(false);
-    });
-
-    it("encryptedAttributes are accepted but do not affect derivation", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          encryptedAttributes: [
-            { attributeType: "dob_days" },
-            { attributeType: "liveness_score" },
-          ],
-        })
-      );
-      expect(result.level).toBe("none");
     });
   });
 });

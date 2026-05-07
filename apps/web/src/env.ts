@@ -2,12 +2,16 @@ import { createEnv } from "@t3-oss/env-nextjs";
 import { z } from "zod";
 
 const TRAILING_SLASHES = /\/+$/;
+const WORLD_ID_PRIVATE_KEY_HEX_REGEX = /^(0x)?[0-9a-fA-F]{64}$/;
 const DEFAULT_MCP_PUBLIC_URL = "http://localhost:3300";
 const booleanTransform = (v: string) => v === "true" || v === "1";
 
 const booleanString = z
   .enum(["true", "false", "0", "1"])
   .transform(booleanTransform);
+
+const isTruthyEnvValue = (value: string | undefined) =>
+  value === "true" || value === "1";
 
 const booleanStringWithDefault = (defaultValue: "true" | "false") =>
   z
@@ -101,6 +105,21 @@ export const env = createEnv({
 
     // Identity & auth
     DEDUP_HMAC_SECRET: z.string().min(32),
+    HUMAN_SIGNAL_HMAC_SECRET: z
+      .string()
+      .optional()
+      .refine((value) => !value || value.length >= 32, {
+        message: "HUMAN_SIGNAL_HMAC_SECRET must be at least 32 characters",
+      })
+      .refine(
+        (value) =>
+          !isTruthyEnvValue(process.env.NEXT_PUBLIC_WORLD_ID_ENABLED) ||
+          Boolean(value),
+        {
+          message:
+            "HUMAN_SIGNAL_HMAC_SECRET is required when NEXT_PUBLIC_WORLD_ID_ENABLED is true",
+        }
+      ),
     PAIRWISE_SECRET: z.string().min(32),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
@@ -112,6 +131,29 @@ export const env = createEnv({
       .string()
       .default(DEFAULT_MCP_PUBLIC_URL)
       .transform((value) => value.replace(TRAILING_SLASHES, "")),
+    WORLD_ID_RP_ID: z
+      .string()
+      .optional()
+      .refine((value) => !value || value.startsWith("rp_"), {
+        message: "WORLD_ID_RP_ID must start with rp_",
+      }),
+    WORLD_ID_RP_SIGNING_KEY: z
+      .string()
+      .optional()
+      .refine((value) => !value || WORLD_ID_PRIVATE_KEY_HEX_REGEX.test(value), {
+        message: "WORLD_ID_RP_SIGNING_KEY must be a 32-byte hex private key",
+      }),
+    WORLD_ID_VERIFY_URL: serviceUrl(
+      "https://developer.world.org/api/v4/verify"
+    ),
+    WORLD_ID_ENVIRONMENT: z
+      .enum(["production", "staging"])
+      .default("production"),
+    WORLD_ID_RP_SIGNATURE_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(300),
 
     // Blockchain (server-only secrets/overrides)
     FHEVM_REGISTRAR_PRIVATE_KEY: z.string().optional(),
@@ -194,6 +236,13 @@ export const env = createEnv({
     NEXT_PUBLIC_ENABLE_HARDHAT: booleanStringWithDefault("false"),
     NEXT_PUBLIC_ENABLE_BASE_SEPOLIA: booleanStringWithDefault("false"),
     NEXT_PUBLIC_ZKPASSPORT_ENABLED: booleanStringWithDefault("false"),
+    NEXT_PUBLIC_WORLD_ID_ENABLED: booleanStringWithDefault("false"),
+    NEXT_PUBLIC_WORLD_ID_APP_ID: z
+      .string()
+      .optional()
+      .refine((value) => !value || value.startsWith("app_"), {
+        message: "NEXT_PUBLIC_WORLD_ID_APP_ID must start with app_",
+      }),
 
     // Web3
     NEXT_PUBLIC_PROJECT_ID: z.string().optional(),
@@ -246,6 +295,7 @@ export const env = createEnv({
     GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
     GENERIC_OAUTH_PROVIDERS: process.env.GENERIC_OAUTH_PROVIDERS,
     DEDUP_HMAC_SECRET: process.env.DEDUP_HMAC_SECRET,
+    HUMAN_SIGNAL_HMAC_SECRET: process.env.HUMAN_SIGNAL_HMAC_SECRET,
     PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
@@ -255,6 +305,12 @@ export const env = createEnv({
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS:
       process.env.TRUSTED_SOFTWARE_STATEMENT_ISSUERS,
     MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
+    WORLD_ID_RP_ID: process.env.WORLD_ID_RP_ID,
+    WORLD_ID_RP_SIGNING_KEY: process.env.WORLD_ID_RP_SIGNING_KEY,
+    WORLD_ID_VERIFY_URL: process.env.WORLD_ID_VERIFY_URL,
+    WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT,
+    WORLD_ID_RP_SIGNATURE_TTL_SECONDS:
+      process.env.WORLD_ID_RP_SIGNATURE_TTL_SECONDS,
     FHEVM_REGISTRAR_PRIVATE_KEY: process.env.FHEVM_REGISTRAR_PRIVATE_KEY,
     LOCAL_REGISTRAR_PRIVATE_KEY: process.env.LOCAL_REGISTRAR_PRIVATE_KEY,
     LOCAL_RPC_URL: process.env.LOCAL_RPC_URL,
@@ -323,6 +379,8 @@ export const env = createEnv({
     NEXT_PUBLIC_NOIR_DEBUG: process.env.NEXT_PUBLIC_NOIR_DEBUG,
     NEXT_PUBLIC_NOIR_WORKERS: process.env.NEXT_PUBLIC_NOIR_WORKERS,
     NEXT_PUBLIC_ZKPASSPORT_ENABLED: process.env.NEXT_PUBLIC_ZKPASSPORT_ENABLED,
+    NEXT_PUBLIC_WORLD_ID_ENABLED: process.env.NEXT_PUBLIC_WORLD_ID_ENABLED,
+    NEXT_PUBLIC_WORLD_ID_APP_ID: process.env.NEXT_PUBLIC_WORLD_ID_APP_ID,
   },
 });
 

@@ -8,46 +8,30 @@
  * Idempotent: calling twice for the same verification produces the same rows.
  */
 
-import type { ComplianceChecks } from "./compliance";
-
 import crypto from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import { getVerificationById, isChipVerified } from "@/lib/db/queries/identity";
+import {
+  getVerificationById,
+  isChipVerified,
+  resolveSybilResistanceEvidence,
+} from "@/lib/db/queries/identity";
+import { humanSignals } from "@/lib/db/schema/identity";
 import {
   proofArtifacts,
   signedClaims,
   verificationChecks,
 } from "@/lib/db/schema/privacy";
 
-import { deriveComplianceStatus } from "./compliance";
+import {
+  CHECK_TYPE_TO_COMPLIANCE_KEY,
+  deriveComplianceStatus,
+  VERIFICATION_CHECK_TYPES,
+  type VerificationCheckType,
+} from "./compliance";
 import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
-
-// ─── Check type constants ────────────────────────────────────────────
-
-const CHECK_TYPES = [
-  "document",
-  "age",
-  "liveness",
-  "face_match",
-  "nationality",
-  "identity_binding",
-  "sybil_resistant",
-] as const;
-
-type CheckType = (typeof CHECK_TYPES)[number];
-
-const CHECK_TO_COMPLIANCE_KEY: Record<CheckType, keyof ComplianceChecks> = {
-  document: "documentVerified",
-  age: "ageVerified",
-  liveness: "livenessVerified",
-  face_match: "faceMatchVerified",
-  nationality: "nationalityVerified",
-  identity_binding: "identityBound",
-  sybil_resistant: "sybilResistant",
-};
 
 type VerificationMaterializationExecutor = Pick<
   typeof db,
@@ -67,7 +51,7 @@ export async function materializeVerificationChecks(
   }
 
   // Fetch evidence in parallel
-  const [proofRows, claimRows] = await Promise.all([
+  const [proofRows, claimRows, activeHumanSignal] = await Promise.all([
     executor
       .select({
         id: proofArtifacts.id,
@@ -99,7 +83,21 @@ export async function materializeVerificationChecks(
         )
       )
       .all(),
+    executor
+      .select({ id: humanSignals.id })
+      .from(humanSignals)
+      .where(
+        and(
+          eq(humanSignals.userId, userId),
+          eq(humanSignals.provider, "world_id"),
+          isNull(humanSignals.revokedAt)
+        )
+      )
+      .limit(1)
+      .get(),
   ]);
+
+  const humanSignalId = activeHumanSignal?.id ?? null;
 
   // Build compliance input and derive checks
   const claimTypes = claimRows.map((c) => ({ claimType: c.claimType }));
@@ -116,10 +114,10 @@ export async function materializeVerificationChecks(
       verified: p.verified ?? false,
     })),
     signedClaims: claimTypes,
-    encryptedAttributes: [],
-    hasUniqueIdentifier: Boolean(
+    hasDocumentSybilSignal: Boolean(
       verification.dedupKey || verification.chipNullifier
     ),
+    hasHumanUniquenessSignal: Boolean(humanSignalId),
     hasNationalityCommitment: Boolean(verification.nationalityCommitment),
   });
 
@@ -130,12 +128,18 @@ export async function materializeVerificationChecks(
   const claimByType = new Map(claimRows.map((c) => [c.claimType, c.id]));
 
   // Upsert all 7 checks
-  for (const checkType of CHECK_TYPES) {
-    const complianceKey = CHECK_TO_COMPLIANCE_KEY[checkType];
+  for (const checkType of VERIFICATION_CHECK_TYPES) {
+    const complianceKey = CHECK_TYPE_TO_COMPLIANCE_KEY[checkType];
     const passed = result.checks[complianceKey];
     const evidence = chipVerified
-      ? resolveNfcEvidence(checkType, verificationId, claimByType)
-      : resolveOcrEvidence(checkType, verificationId, proofByType, claimByType);
+      ? resolveNfcEvidence(checkType, verification, claimByType, humanSignalId)
+      : resolveOcrEvidence(
+          checkType,
+          verification,
+          proofByType,
+          claimByType,
+          humanSignalId
+        );
 
     await executor
       .insert(verificationChecks)
@@ -172,10 +176,11 @@ interface Evidence {
 }
 
 function resolveOcrEvidence(
-  checkType: CheckType,
-  verificationId: string,
+  checkType: VerificationCheckType,
+  verification: NonNullable<Awaited<ReturnType<typeof getVerificationById>>>,
   proofByType: Map<string, string>,
-  claimByType: Map<string, string>
+  claimByType: Map<string, string>,
+  humanSignalId: string | null
 ): Evidence {
   switch (checkType) {
     case "document":
@@ -211,31 +216,44 @@ function resolveOcrEvidence(
         ref: claimByType.get("liveness_score") ?? null,
       };
     case "sybil_resistant":
-      return { source: "dedup_key", ref: verificationId };
+      return resolveSybilResistanceEvidence({
+        hasDocumentSybilSignal: Boolean(
+          verification.dedupKey || verification.chipNullifier
+        ),
+        humanSignalId,
+        verificationId: verification.id,
+      });
     default:
       return { source: "unknown", ref: null };
   }
 }
 
 function resolveNfcEvidence(
-  checkType: CheckType,
-  verificationId: string,
-  claimByType: Map<string, string>
+  checkType: VerificationCheckType,
+  verification: NonNullable<Awaited<ReturnType<typeof getVerificationById>>>,
+  claimByType: Map<string, string>,
+  humanSignalId: string | null
 ): Evidence {
   const chipClaimId = claimByType.get("chip_verification") ?? null;
 
   switch (checkType) {
     case "document":
-      return { source: "chip_claim", ref: verificationId };
+      return { source: "chip_claim", ref: verification.id };
     case "age":
     case "liveness":
     case "face_match":
       return { source: "chip_claim", ref: chipClaimId };
     case "nationality":
-      return { source: "commitment", ref: verificationId };
+      return { source: "commitment", ref: verification.id };
     case "identity_binding":
     case "sybil_resistant":
-      return { source: "nullifier", ref: verificationId };
+      return resolveSybilResistanceEvidence({
+        hasDocumentSybilSignal: Boolean(
+          verification.dedupKey || verification.chipNullifier
+        ),
+        humanSignalId,
+        verificationId: verification.id,
+      });
     default:
       return { source: "unknown", ref: null };
   }

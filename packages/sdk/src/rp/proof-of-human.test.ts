@@ -85,6 +85,34 @@ describe("createProofOfHumanTokenVerifier", () => {
       "Proof-of-human token missing poh claim"
     );
   });
+
+  it("accepts human-verified tier 1.5 tokens without a document method", async () => {
+    verifierMocks.verify.mockResolvedValue({
+      payload: {
+        cnf: { jkt: "thumbprint-1" },
+        exp: 1_800_000_000,
+        poh: {
+          tier: 1.5,
+          verified: false,
+          sybil_resistant: true,
+        },
+        sub: "pairwise-sub",
+      },
+    });
+
+    const verifier = createProofOfHumanTokenVerifier({
+      jwksUrl: "https://issuer.example/jwks",
+    });
+
+    await expect(verifier.verify("poh-token")).resolves.toMatchObject({
+      poh: {
+        tier: 1.5,
+        verified: false,
+        sybil_resistant: true,
+        method: null,
+      },
+    });
+  });
 });
 
 describe("requestProofOfHumanToken", () => {

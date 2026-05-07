@@ -7,8 +7,6 @@
  */
 import "server-only";
 
-import type { ComplianceChecks, ComplianceLevel } from "./compliance";
-
 import { and, eq } from "drizzle-orm";
 import { cache } from "react";
 
@@ -25,6 +23,14 @@ import {
 } from "@/lib/db/queries/privacy";
 import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 
+import {
+  CHECK_TYPE_TO_COMPLIANCE_KEY,
+  type ComplianceChecks,
+  type ComplianceLevel,
+  deriveLevelFromChecks,
+  EMPTY_CHECKS,
+  type VerificationCheckType,
+} from "./compliance";
 import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
 
 // ─── Types ─────────────────────────────────────────────────────────
@@ -58,6 +64,7 @@ export interface VerificationReadModel {
   bundle: {
     exists: boolean;
     fheKeyId: string | null;
+    hasHumanSignal: boolean;
     policyVersion: string | null;
     attestationExpiresAt: string | null;
     verificationExpiresAt: string | null;
@@ -109,74 +116,34 @@ function isFheComplete(attributeTypes: string[]): boolean {
 
 // ─── Compliance derivation from materialized checks ────────────────
 
-const LEVEL_NUMERIC: Record<ComplianceLevel, number> = {
-  chip: 4,
-  full: 3,
-  basic: 2,
-  none: 1,
-};
-
-const EMPTY_COMPLIANCE_CHECKS: ComplianceChecks = {
-  documentVerified: false,
-  livenessVerified: false,
-  ageVerified: false,
-  faceMatchVerified: false,
-  nationalityVerified: false,
-  identityBound: false,
-  sybilResistant: false,
-};
-
-const CHECK_TYPE_TO_COMPLIANCE_KEY: Record<string, keyof ComplianceChecks> = {
-  document: "documentVerified",
-  age: "ageVerified",
-  liveness: "livenessVerified",
-  face_match: "faceMatchVerified",
-  nationality: "nationalityVerified",
-  identity_binding: "identityBound",
-  sybil_resistant: "sybilResistant",
-};
-
 function deriveComplianceFromChecks(
   rows: VerificationCheck[],
   method: "ocr" | "nfc_chip",
-  birthYearOffset: number | null
+  birthYearOffset: number | null,
+  hasHumanSignal: boolean
 ): VerificationReadModel["compliance"] {
-  if (rows.length === 0) {
-    return {
-      level: "none",
-      numericLevel: LEVEL_NUMERIC.none,
-      verified: false,
-      birthYearOffset,
-      checks: EMPTY_COMPLIANCE_CHECKS,
-    };
-  }
-
-  const checks: ComplianceChecks = { ...EMPTY_COMPLIANCE_CHECKS };
+  const checks: ComplianceChecks = {
+    ...EMPTY_CHECKS,
+    sybilResistant: hasHumanSignal,
+  };
   for (const row of rows) {
-    const key = CHECK_TYPE_TO_COMPLIANCE_KEY[row.checkType];
+    const key =
+      CHECK_TYPE_TO_COMPLIANCE_KEY[row.checkType as VerificationCheckType];
     if (key) {
       checks[key] = row.passed;
     }
   }
+  checks.sybilResistant = checks.sybilResistant || hasHumanSignal;
 
-  const passedCount = rows.filter((r) => r.passed).length;
-  const totalCount = 7;
-
-  let level: ComplianceLevel;
-  if (method === "nfc_chip" && checks.sybilResistant) {
-    level = "chip";
-  } else if (passedCount === totalCount) {
-    level = "full";
-  } else if (passedCount >= Math.ceil(totalCount / 2)) {
-    level = "basic";
-  } else {
-    level = "none";
-  }
+  const { level, numericLevel, verified } = deriveLevelFromChecks(
+    checks,
+    method
+  );
 
   return {
     level,
-    numericLevel: LEVEL_NUMERIC[level],
-    verified: level === "full" || level === "chip",
+    numericLevel,
+    verified,
     birthYearOffset,
     checks,
   };
@@ -280,6 +247,7 @@ function buildBundle(bundle: BundleData) {
   return {
     exists: bundle !== null,
     fheKeyId: bundle?.fheKeyId ?? null,
+    hasHumanSignal: Boolean(bundle?.hasHumanSignal),
     policyVersion: bundle?.policyVersion ?? null,
     attestationExpiresAt: bundle?.attestationExpiresAt ?? null,
     verificationExpiresAt: bundle?.verificationExpiresAt ?? null,
@@ -288,7 +256,13 @@ function buildBundle(bundle: BundleData) {
   };
 }
 
-function applyBundleValidityToCompliance(
+function isHumanSignalUsable(bundle: BundleData): boolean {
+  return (
+    Boolean(bundle?.hasHumanSignal) && bundle?.validityStatus !== "revoked"
+  );
+}
+
+function gateVerifiedFlagByBundleValidity(
   compliance: VerificationReadModel["compliance"],
   bundle: BundleData
 ): VerificationReadModel["compliance"] {
@@ -309,17 +283,23 @@ function buildEmptyModel(
   attested: boolean,
   groupedIdentity: VerificationReadModel["groupedIdentity"]
 ): VerificationReadModel {
+  const checks = {
+    ...EMPTY_CHECKS,
+    sybilResistant: isHumanSignalUsable(bundle),
+  };
+  const { level, numericLevel, verified } = deriveLevelFromChecks(checks, null);
+
   return {
     method: null,
     verificationId: null,
     verifiedAt: null,
     issuerCountry: null,
     compliance: {
-      level: "none",
-      numericLevel: LEVEL_NUMERIC.none,
-      verified: false,
+      level,
+      numericLevel,
+      verified,
       birthYearOffset: null,
-      checks: EMPTY_COMPLIANCE_CHECKS,
+      checks,
     },
     checks: [],
     proofs: [],
@@ -401,11 +381,12 @@ export const getVerificationReadModel = cache(
       reprocessPromise,
     ]);
 
-    const compliance = applyBundleValidityToCompliance(
+    const compliance = gateVerifiedFlagByBundleValidity(
       deriveComplianceFromChecks(
         checks,
         method,
-        verification.birthYearOffset ?? null
+        verification.birthYearOffset ?? null,
+        isHumanSignalUsable(bundle)
       ),
       bundle
     );

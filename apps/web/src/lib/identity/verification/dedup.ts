@@ -1,6 +1,4 @@
-import { createHmac } from "node:crypto";
-
-import { encodeAad } from "@/lib/privacy/primitives/symmetric";
+import { hmacSha256Hex } from "@/lib/privacy/primitives/symmetric";
 
 const DEDUP_KEY_AAD = "zentity:dedup-key:v1";
 const RP_NULLIFIER_AAD = "zentity:rp-nullifier:v1";
@@ -22,10 +20,6 @@ function canonicalizeDocumentNumber(docNumber: string): string {
   return docNumber.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 
-function hmacHex(secret: string, parts: string[]): string {
-  return createHmac("sha256", secret).update(encodeAad(parts)).digest("hex");
-}
-
 /**
  * Compute a deterministic dedup key from identity attributes.
  *
@@ -38,7 +32,7 @@ export function computeDedupKey(
   issuerCountry: string,
   dob: string
 ): string {
-  return hmacHex(secret, [
+  return hmacSha256Hex(secret, [
     DEDUP_KEY_AAD,
     canonicalizeDocumentNumber(docNumber),
     issuerCountry.toUpperCase(),
@@ -57,7 +51,7 @@ export function computeRpNullifier(
   nullifierSeed: string,
   clientId: string
 ): string {
-  return hmacHex(secret, [RP_NULLIFIER_AAD, nullifierSeed, clientId]);
+  return hmacSha256Hex(secret, [RP_NULLIFIER_AAD, nullifierSeed, clientId]);
 }
 
 /**
@@ -73,5 +67,5 @@ export function computeNullifierSeed(
   rawKey: string,
   source: NullifierSeedSource
 ): string {
-  return hmacHex(secret, [NULLIFIER_SEED_AAD, source, rawKey]);
+  return hmacSha256Hex(secret, [NULLIFIER_SEED_AAD, source, rawKey]);
 }

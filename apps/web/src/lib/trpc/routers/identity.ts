@@ -507,6 +507,7 @@ const getOverviewProcedure = adminProcedure
             validityStatus: accountIdentity.bundle.validityStatus,
             effectiveVerificationId:
               accountIdentity.bundle.effectiveVerificationId,
+            hasHumanSignal: accountIdentity.bundle.hasHumanSignal,
             walletAddress: accountIdentity.bundle.walletAddress,
             policyVersion: accountIdentity.bundle.policyVersion,
             issuerId: accountIdentity.bundle.issuerId,

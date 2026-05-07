@@ -57,6 +57,11 @@ export const accountRouter = router({
         validityStatus: verificationModel.bundle.validityStatus,
         checks: verificationModel.compliance.checks,
       },
+      humanSignal: {
+        provider: verificationModel.bundle.hasHumanSignal
+          ? ("world_id" as const)
+          : null,
+      },
       groupedIdentity: verificationModel.groupedIdentity,
       documentVerified: verificationModel.groupedIdentity.credentials.some(
         (credential) =>

@@ -14,6 +14,9 @@ interface AssuranceProfile {
 interface AccountData {
   createdAt: string;
   email: string;
+  humanSignal?: {
+    provider: "world_id" | null;
+  };
   verification: {
     level: string;
     checks: Record<string, boolean>;
@@ -24,6 +27,9 @@ export interface AccountSummary {
   authStrength: string | null;
   checks: Record<string, boolean> | null;
   email: string | null;
+  humanSignal: {
+    provider: "world_id" | null;
+  };
   loginMethod: string | null;
   memberSince: string | null;
   profileToolHint: "my_profile";
@@ -62,6 +68,7 @@ export async function fetchAccountSummary(): Promise<AccountSummary> {
     authStrength: profile?.authStrength ?? null,
     loginMethod: profile?.loginMethod ?? null,
     checks: account?.verification?.checks ?? profile?.details ?? null,
+    humanSignal: account?.humanSignal ?? { provider: null },
     vaultFieldsAvailable: [...PROFILE_FIELDS],
     profileToolHint: "my_profile",
   };

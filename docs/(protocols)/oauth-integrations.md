@@ -399,9 +399,13 @@ Proof claims are projected from the account identity snapshot. The issuer reads 
 | `proof:nationality` | `nationality_verified`, `nationality_group` |
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` |
 | `proof:chip` | `chip_verified`, `chip_verification_method` |
-| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier (access tokens only) |
+| `proof:sybil` | `sybil_nullifier` — per-RP pseudonymous nullifier from document/chip credentials (access tokens only) |
+| `proof:human_uniqueness` | `human_uniqueness_source`, `human_uniqueness_nullifier` — per-RP nullifier from an external human signal (e.g. World ID), access tokens only |
+| `poh` | (no id_token/userinfo claims) — gates the [Proof of Human resource endpoint](#proof-of-human) |
 
 `proof:sybil` derives from the bundle-owned `nullifierSeed`. At credential write time the system derives the seed as `HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)` (where `rawKey` is the OCR `dedupKey` or the raw NFC chip nullifier, and `source` domain-separates the two inputs). Verification finalization seeds `nullifierSeed` from the authoritative verified credential, and token issuance derives `sybil_nullifier = HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. This keeps the nullifier stable across credential additions, prevents any raw ZKPassport chip identifier from reaching the bundle, and resets only after full identity revocation.
+
+`proof:human_uniqueness` is the parallel claim sourced from an external human signal (today: World ID). It is independent from `proof:sybil`: the document/chip nullifier reflects "we have seen this credential before"; the human-uniqueness nullifier reflects "an external uniqueness verifier has seen this person before". Both are per-RP pseudonymous and never appear in id_tokens or userinfo. See [Human signals](#human-signals) for how the underlying state is attached to an account.
 
 ### Identity scopes (`identity.*`)
 
@@ -478,11 +482,102 @@ Identity scopes are never persisted in consent records. The consent page reappea
 
 | Path | Standard | Delivery |
 | --- | --- | --- |
-| `proof:*` scopes (except `proof:sybil`) | OAuth 2.1 custom scopes | id_token + userinfo |
-| `proof:sybil` | OAuth 2.1 custom scopes | access_token only |
+| `proof:*` scopes (except `proof:sybil` and `proof:human_uniqueness`) | OAuth 2.1 custom scopes | id_token + userinfo |
+| `proof:sybil`, `proof:human_uniqueness` | OAuth 2.1 custom scopes | access_token only |
+| `poh` (Proof of Human JWT) | Resource scope | dedicated endpoint, not id_token/userinfo |
 | `identity.*` scopes | OAuth 2.1 custom scopes | userinfo only (PII never in id_token) |
 | `verified_claims` parameter | OIDC for Identity Assurance | userinfo |
 | SD-JWT VC | OIDC4VCI | Holder-controlled at presentation |
+
+## Proof of Human
+
+> **Endpoint:** `POST /api/auth/oauth2/proof-of-human`
+> **Required scope:** `poh` (granted at consent like any other scope)
+> **Code authority:** `apps/web/src/app/api/auth/oauth2/proof-of-human/route.ts`
+
+Some relying parties only need to know "is this a real, unique human?" — not anything about who that person is. The PoH endpoint exists for that case. It returns a compact, DPoP-bound JWT that asserts the user's verification tier without disclosing PII, and uses the access token's pairwise `sub` so two RPs cannot cross-link the same user.
+
+### When to use it
+
+| Use case | Right tool |
+| --- | --- |
+| RP needs to know the user is verified at all (boolean flag in id_token) | `proof:verification` |
+| RP needs a per-RP nullifier to dedupe humans within its own user base | `proof:sybil` (document/chip-sourced) and/or `proof:human_uniqueness` (external-signal-sourced) |
+| RP needs to forward a portable, signed assertion of "is human" to a downstream service or to chain | `poh` |
+| RP needs verified PII (name, DOB, document) | `identity.*` scopes |
+
+The PoH JWT is a *forward-portable* credential. `proof:*` claims are scoped to the issued tokens. The PoH JWT can be passed to a third party (or onto a smart contract) without granting them access to the original OAuth tokens.
+
+### Token shape
+
+```json
+{
+  "iss": "https://app.zentity.xyz",
+  "sub": "<pairwise sub from access token>",
+  "iat": 1778164474,
+  "exp": 1778168074,
+  "scope": "poh",
+  "cnf": { "jkt": "<DPoP key thumbprint>" },
+  "poh": {
+    "tier": 1.5,
+    "verified": false,
+    "sybil_resistant": true
+  }
+}
+```
+
+The `poh` claim carries three fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `tier` | number | Numeric compliance level: `1` (account only), `1.5` (human-verified via human signal), `2` (basic), `3` (full), `4` (chip) |
+| `verified` | boolean | True when full document or chip verification has been completed end-to-end (tier `3` or `4`). False at tiers `1` and `1.5` |
+| `sybil_resistant` | boolean | True when the user has at least one uniqueness signal — either a document/chip-sourced `dedupKey`/`chipNullifier` or an external human signal (today: World ID). Independent of `verified` |
+
+### Issuance contract
+
+- Caller presents an OAuth access token granted with `poh` scope.
+- Token must be DPoP-bound. The issued PoH JWT carries the same DPoP `jkt` in its `cnf` claim, so it cannot be replayed by a different client.
+- Issuer reads the user's verification read-model and projects the three fields above. No PII is read or returned.
+- Returns `403 not_verified` when the user has no verification at all (tier `none`). A user with only an attached human signal sits at tier `1.5` and receives `verified: false, sybil_resistant: true`.
+- Lifetime: 1 hour.
+
+The `verified` and `sybil_resistant` fields are deliberately decoupled. A user can be `sybil_resistant: true` without being `verified: true` (World ID linked, no document). The reverse is also possible (document-verified, no human signal — though `proof:sybil` still produces a per-RP nullifier in that case).
+
+## Human signals
+
+> **Code authority:** `apps/web/src/lib/identity/human-signal.ts`, `apps/web/src/app/api/world-id/`
+> **Schema:** `apps/web/src/lib/db/schema/identity.ts` (`humanSignals`, `humanSignalChallenges`)
+
+Zentity treats external uniqueness providers as *human signals* — a separate evidence type from document/chip verification. A human signal proves that a third-party uniqueness verifier has observed a unique human under its own protocol. It does not by itself produce verified PII, does not satisfy document verification, and does not change Zentity's compliance ladder beyond establishing a `human_verified` (`1.5`) tier.
+
+The first supported provider is **World ID** (Worldcoin). The data model and scope contract are intentionally generic; future providers (e.g. Proof of Humanity, Gitcoin Passport) plug into the same `human_signals` table and the same `proof:human_uniqueness` scope.
+
+### What the user sees
+
+A "Link World ID" button on the dashboard runs the IDKit flow against Zentity's RP context, the user proves uniqueness in the World App, and the resulting nullifier is HMAC-derived and stored as the user's active human signal. The raw nullifier never lands in persistent storage — only `HMAC-SHA256(HUMAN_SIGNAL_HMAC_SECRET, "zentity:human-signal-subject:v1" || provider || subject_kind || nullifier)`. A "Remove" action revokes the signal (preserves the row as audit history; clears `identity_bundles.has_human_signal`).
+
+For the user, a linked human signal:
+
+- Establishes Tier 1.5 (`human_verified`) without uploading a document or scanning a chip
+- Satisfies the `sybil_resistant` check that flows through to RPs via `proof:verification` and the PoH endpoint
+- Is detachable any time, with no effect on document/chip verification state
+
+### What an RP sees
+
+A relying party requesting `proof:human_uniqueness` (alongside `openid` and the rest of its needed scopes) receives, in the **access token only**:
+
+- `human_uniqueness_source`: `"world_id"` (or another provider name in the future)
+- `human_uniqueness_nullifier`: per-RP HMAC-derived value, stable for that user across that RP's tokens, different across RPs by construction
+
+Privacy properties that follow from this:
+
+- **No PII** — the RP never sees the user's name, DOB, document, or biometric data through this scope
+- **No cross-RP linkability** — the per-RP nullifier is derived as `HMAC-SHA256(HUMAN_SIGNAL_HMAC_SECRET, "zentity:human-uniqueness-nullifier:v1" || provider || stored_subject_hash || clientId)`; two different RPs receive two different nullifiers for the same user
+- **No raw provider identifiers** — even Zentity's own database stores only the HMAC-derived subject hash, not the raw World ID nullifier
+- **Survives account-level state changes** — the human signal is independent of identity verification; the user can later complete document verification (tier 2/3) without affecting the nullifier the RP has already stored
+
+The user remains in control: revoking the signal at the dashboard immediately stops `proof:human_uniqueness` from resolving, and stops the PoH endpoint from returning `sybil_resistant: true` if the human signal was the sole uniqueness source.
 
 ## Identity Validity Transport
 

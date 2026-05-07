@@ -46,8 +46,14 @@ Proof claims are derived from the user's account identity snapshot. No PII is in
 | `proof:compliance` | `policy_version`, `verification_time`, `attestation_expires_at` | id_token, userinfo |
 | `proof:chip` | `chip_verified`, `chip_verification_method` | id_token, userinfo |
 | `proof:sybil` | `sybil_nullifier` | **access_token only** |
+| `proof:human_uniqueness` | `human_uniqueness_source`, `human_uniqueness_nullifier` | **access_token only** |
+| `poh` | (no id_token/userinfo claims) | dedicated [Proof of Human endpoint](oauth-integrations.md#proof-of-human) |
 
 `proof:sybil` is special: its claim (`sybil_nullifier`) is a per-RP pseudonymous nullifier derived from `HMAC-SHA256(DEDUP_HMAC_SECRET, nullifierSeed + "|rp|" + clientId)`. `nullifierSeed` is bundle-owned state stored on `identity_bundles`, itself an HMAC-derived value computed at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier reaches the bundle. The seed is written from the first verified credential, preserved across later credential additions, and cleared only on full identity revocation. The claim appears only in access tokens, never in id_tokens or userinfo, because putting per-RP pseudonyms in shared claim surfaces would create correlation vectors.
+
+`proof:human_uniqueness` is the parallel claim sourced from an external human signal (today: World ID). It is independent from `proof:sybil` and `proof:verification.sybil_resistant`: the document/chip nullifier reflects "we have seen this credential before"; the human-uniqueness nullifier reflects "an external uniqueness verifier has seen this person before". Derivation: `HMAC-SHA256(HUMAN_SIGNAL_HMAC_SECRET, "zentity:human-uniqueness-nullifier:v1" || provider || stored_subject_hash || clientId)`, where `stored_subject_hash` is itself an HMAC of the raw provider nullifier — so neither the raw provider identifier nor a cross-RP-stable nullifier is ever derivable by an RP.
+
+`poh` is a *resource scope*: it carries no id_token or userinfo claims, but grants the access token permission to call `POST /api/auth/oauth2/proof-of-human` and receive a forward-portable, DPoP-bound JWT asserting the user's verification tier. See [Proof of Human](oauth-integrations.md#proof-of-human) for the JWT contract.
 
 When the snapshot is `stale` or `revoked`, disclosure surfaces stop treating the account as verified even though historical credential rows remain available for audit and operator reads.
 
@@ -91,7 +97,9 @@ These control resource access with no claim payload.
 |-------------|----------|----------|--------------|
 | Standard (`sub`, `email`) | yes | yes | — |
 | Proof (verification status) | yes | yes | — |
-| Sybil nullifier | — | — | yes |
+| Sybil nullifier (`proof:sybil`) | — | — | yes |
+| Human uniqueness nullifier (`proof:human_uniqueness`) | — | — | yes |
+| Proof of Human JWT (`poh`) | — | — | dedicated endpoint |
 | Identity PII | **no** | **yes (single-consume)** | — |
 | Verified claims (OIDC4IDA) | — | yes | — |
 | Assurance (`acr`, `amr`, `aal`) | yes | — | — |

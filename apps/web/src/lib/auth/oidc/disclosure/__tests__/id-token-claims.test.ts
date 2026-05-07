@@ -71,6 +71,9 @@ function setVerifiedUser() {
       ],
     },
     bundle: {
+      exists: true,
+      fheKeyId: null,
+      hasHumanSignal: false,
       policyVersion: "policy-1",
       issuerId: "issuer-1",
       attestationExpiresAt: "2030-01-01T00:00:00.000Z",

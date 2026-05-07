@@ -170,6 +170,7 @@ import {
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { validateSafeUrl } from "@/lib/http/url-safety";
+import { resolveHumanUniquenessNullifier } from "@/lib/identity/human-signal";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 
@@ -319,6 +320,7 @@ const defaultClientScopes = [
 const allowedClientScopes = [
   ...defaultClientScopes,
   "email",
+  "proof:human_uniqueness",
   "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
@@ -1809,6 +1811,17 @@ export const auth = betterAuth({
           const nullifier = await resolveSybilNullifier(user.id, clientId);
           if (nullifier) {
             claims.sybil_nullifier = nullifier;
+          }
+        }
+
+        if (scopeList.includes("proof:human_uniqueness") && clientId) {
+          const humanUniqueness = await resolveHumanUniquenessNullifier(
+            user.id,
+            clientId
+          );
+          if (humanUniqueness) {
+            claims.human_uniqueness_source = humanUniqueness.source;
+            claims.human_uniqueness_nullifier = humanUniqueness.nullifier;
           }
         }
 

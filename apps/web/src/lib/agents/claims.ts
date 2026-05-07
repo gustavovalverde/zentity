@@ -46,6 +46,10 @@ const OVERSIGHT_METHOD_RANK: Record<OversightMethod, number> = {
   biometric: 3,
 };
 
+function getOversightMethodRank(method: OversightMethod): number {
+  return OVERSIGHT_METHOD_RANK[method] ?? 0;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -82,7 +86,7 @@ export function resolveOversightMethod(
 
   return remainingMethods.reduce<OversightMethod>(
     (strongest, method) =>
-      OVERSIGHT_METHOD_RANK[method] > OVERSIGHT_METHOD_RANK[strongest]
+      getOversightMethodRank(method) > getOversightMethodRank(strongest)
         ? method
         : strongest,
     initialMethod

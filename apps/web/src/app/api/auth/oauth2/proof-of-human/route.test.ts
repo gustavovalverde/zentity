@@ -103,6 +103,7 @@ function makeVerifiedModel(
     bundle: {
       exists: true,
       fheKeyId: "fhe-1",
+      hasHumanSignal: false,
       policyVersion: null,
       attestationExpiresAt: null,
       verificationExpiresAt: null,
@@ -273,7 +274,24 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.resolveUserIdFromSub.mockResolvedValue("user-456");
     mocks.getVerificationReadModel.mockResolvedValue(
-      makeVerifiedModel({ verificationId: null })
+      makeVerifiedModel({
+        verificationId: null,
+        compliance: {
+          level: "none",
+          numericLevel: 1,
+          verified: false,
+          birthYearOffset: null,
+          checks: {
+            documentVerified: false,
+            livenessVerified: false,
+            ageVerified: false,
+            faceMatchVerified: false,
+            nationalityVerified: false,
+            identityBound: false,
+            sybilResistant: false,
+          },
+        },
+      })
     );
 
     const response = await POST(makeDpopRequest());
@@ -282,6 +300,43 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("not_verified");
     expect(mocks.signJwt).not.toHaveBeenCalled();
+  });
+
+  it("issues a tier 1.5 token for a human-verified account without document verification", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.getVerificationReadModel.mockResolvedValue(
+      makeVerifiedModel({
+        verificationId: null,
+        method: null,
+        compliance: {
+          level: "human_verified",
+          numericLevel: 1.5,
+          verified: false,
+          birthYearOffset: null,
+          checks: {
+            documentVerified: false,
+            livenessVerified: false,
+            ageVerified: false,
+            faceMatchVerified: false,
+            nationalityVerified: false,
+            identityBound: false,
+            sybilResistant: true,
+          },
+        },
+      })
+    );
+    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
+
+    const response = await POST(makeDpopRequest());
+
+    expect(response.status).toBe(200);
+    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.poh).toEqual({
+      tier: 1.5,
+      verified: false,
+      sybil_resistant: true,
+    });
   });
 
   it("reflects the correct tier for a basic-level user", async () => {

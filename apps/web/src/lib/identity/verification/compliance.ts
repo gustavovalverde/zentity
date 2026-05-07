@@ -9,9 +9,9 @@
 
 interface ComplianceInput {
   birthYearOffset: number | null;
-  encryptedAttributes: ReadonlyArray<{ attributeType: string }>;
+  hasDocumentSybilSignal: boolean;
+  hasHumanUniquenessSignal: boolean;
   hasNationalityCommitment: boolean;
-  hasUniqueIdentifier: boolean;
   signedClaims: ReadonlyArray<{ claimType: string }>;
   verificationMethod: "ocr" | "nfc_chip" | null;
   zkProofs: ReadonlyArray<{ proofType: string; verified: boolean }>;
@@ -27,7 +27,12 @@ export interface ComplianceChecks {
   sybilResistant: boolean;
 }
 
-export type ComplianceLevel = "none" | "basic" | "full" | "chip";
+export type ComplianceLevel =
+  | "none"
+  | "human_verified"
+  | "basic"
+  | "full"
+  | "chip";
 
 export interface ComplianceResult {
   birthYearOffset: number | null;
@@ -39,10 +44,11 @@ export interface ComplianceResult {
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const LEVEL_NUMERIC: Record<ComplianceLevel, number> = {
+const COMPLIANCE_LEVEL_NUMERIC: Record<ComplianceLevel, number> = {
   chip: 4,
   full: 3,
   basic: 2,
+  human_verified: 1.5,
   none: 1,
 };
 
@@ -56,6 +62,31 @@ export const EMPTY_CHECKS: ComplianceChecks = {
   sybilResistant: false,
 };
 
+export const VERIFICATION_CHECK_TYPES = [
+  "document",
+  "age",
+  "liveness",
+  "face_match",
+  "nationality",
+  "identity_binding",
+  "sybil_resistant",
+] as const;
+
+export type VerificationCheckType = (typeof VERIFICATION_CHECK_TYPES)[number];
+
+export const CHECK_TYPE_TO_COMPLIANCE_KEY: Record<
+  VerificationCheckType,
+  keyof ComplianceChecks
+> = {
+  document: "documentVerified",
+  age: "ageVerified",
+  liveness: "livenessVerified",
+  face_match: "faceMatchVerified",
+  nationality: "nationalityVerified",
+  identity_binding: "identityBound",
+  sybil_resistant: "sybilResistant",
+};
+
 // ─── Derivation engine ─────────────────────────────────────────────
 
 export function deriveComplianceStatus(
@@ -64,12 +95,21 @@ export function deriveComplianceStatus(
   const birthYearOffset = validateBirthYearOffset(input.birthYearOffset);
 
   if (!input.verificationMethod) {
+    const checks = {
+      ...EMPTY_CHECKS,
+      sybilResistant: input.hasHumanUniquenessSignal,
+    };
+    const { level, numericLevel, verified } = deriveLevelFromChecks(
+      checks,
+      null
+    );
+
     return {
-      verified: false,
-      level: "none",
-      numericLevel: LEVEL_NUMERIC.none,
+      verified,
+      level,
+      numericLevel,
       birthYearOffset,
-      checks: EMPTY_CHECKS,
+      checks,
     };
   }
 
@@ -91,9 +131,17 @@ export function deriveLevelFromChecks(
   verificationMethod: "ocr" | "nfc_chip" | null
 ): { level: ComplianceLevel; numericLevel: number; verified: boolean } {
   if (!verificationMethod) {
+    if (checks.sybilResistant) {
+      return {
+        level: "human_verified",
+        numericLevel: COMPLIANCE_LEVEL_NUMERIC.human_verified,
+        verified: false,
+      };
+    }
+
     return {
       level: "none",
-      numericLevel: LEVEL_NUMERIC.none,
+      numericLevel: COMPLIANCE_LEVEL_NUMERIC.none,
       verified: false,
     };
   }
@@ -108,13 +156,15 @@ export function deriveLevelFromChecks(
     level = "full";
   } else if (passedCount >= Math.ceil(totalCount / 2)) {
     level = "basic";
+  } else if (checks.sybilResistant) {
+    level = "human_verified";
   } else {
     level = "none";
   }
 
   return {
     level,
-    numericLevel: LEVEL_NUMERIC[level],
+    numericLevel: COMPLIANCE_LEVEL_NUMERIC[level],
     verified: level === "full" || level === "chip",
   };
 }
@@ -132,8 +182,9 @@ function deriveNfcChecks(input: ComplianceInput): ComplianceChecks {
     ageVerified: hasChipClaim,
     faceMatchVerified: hasChipClaim,
     nationalityVerified: input.hasNationalityCommitment,
-    identityBound: input.hasUniqueIdentifier,
-    sybilResistant: input.hasUniqueIdentifier,
+    identityBound: input.hasDocumentSybilSignal,
+    sybilResistant:
+      input.hasDocumentSybilSignal || input.hasHumanUniquenessSignal,
   };
 }
 
@@ -153,7 +204,8 @@ function deriveOcrChecks(input: ComplianceInput): ComplianceChecks {
       verifiedTypes.has("face_match") || claimTypes.has("face_match_score"),
     nationalityVerified: verifiedTypes.has("nationality_membership"),
     identityBound: verifiedTypes.has("identity_binding"),
-    sybilResistant: input.hasUniqueIdentifier,
+    sybilResistant:
+      input.hasDocumentSybilSignal || input.hasHumanUniquenessSignal,
   };
 }
 

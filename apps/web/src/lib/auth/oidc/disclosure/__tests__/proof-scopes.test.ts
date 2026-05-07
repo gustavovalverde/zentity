@@ -49,20 +49,26 @@ describe("proof scopes", () => {
     const claimsWithSybil = {
       ...proofClaims,
       sybil_nullifier: "nullifier-abc",
+      human_uniqueness_source: "world_id",
+      human_uniqueness_nullifier: "human-nullifier-abc",
     };
 
     const idToken = filterProofClaimsByScopes(
       claimsWithSybil,
-      ["proof:identity", "proof:sybil"],
+      ["proof:identity", "proof:sybil", "proof:human_uniqueness"],
       "id_token"
     );
     const userinfo = filterProofClaimsByScopes(
       claimsWithSybil,
-      ["proof:identity", "proof:sybil"],
+      ["proof:identity", "proof:sybil", "proof:human_uniqueness"],
       "userinfo"
     );
 
     expect(idToken).not.toHaveProperty("sybil_nullifier");
+    expect(idToken).not.toHaveProperty("human_uniqueness_source");
+    expect(idToken).not.toHaveProperty("human_uniqueness_nullifier");
     expect(userinfo).not.toHaveProperty("sybil_nullifier");
+    expect(userinfo).not.toHaveProperty("human_uniqueness_source");
+    expect(userinfo).not.toHaveProperty("human_uniqueness_nullifier");
   });
 });

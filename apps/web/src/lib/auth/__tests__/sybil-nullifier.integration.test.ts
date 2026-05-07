@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { db } from "@/lib/db/connection";
 import {
+  attachHumanSignal,
   createVerification,
+  detachHumanSignal,
   reconcileIdentityBundle,
   revokeIdentity,
 } from "@/lib/db/queries/identity";
@@ -67,6 +69,38 @@ async function issueSybilToken(clientId: string, userId: string) {
     userId,
     resource: VALID_RESOURCE,
     scope: "openid proof:sybil",
+    status: "approved",
+  });
+
+  const response = await postTokenWithDpop({
+    grant_type: CIBA_GRANT_TYPE,
+    auth_req_id: authReqId,
+    client_id: clientId,
+  });
+
+  if (response.status !== 200) {
+    throw new Error(
+      `Expected token exchange to succeed, received ${response.status}`
+    );
+  }
+
+  const accessToken = response.json.access_token;
+  if (typeof accessToken !== "string") {
+    throw new Error("Expected CIBA token response to include an access token");
+  }
+
+  return {
+    accessToken,
+    dpopKeyPair: response.dpopKeyPair,
+  };
+}
+
+async function issueHumanUniquenessToken(clientId: string, userId: string) {
+  const { authReqId } = await createTestCibaRequest({
+    clientId,
+    userId,
+    resource: VALID_RESOURCE,
+    scope: "openid proof:human_uniqueness",
     status: "approved",
   });
 
@@ -206,5 +240,92 @@ describe("sybil nullifier disclosure", () => {
       preRevocationClaims.sybil_nullifier
     );
     await assertNoInternalIdentifiersInClaims(postRevocationClaims, userId);
+  });
+
+  it("derives a stable per-RP human uniqueness nullifier without userinfo disclosure", async () => {
+    const subjectHash = `world-subject-${crypto.randomUUID()}`;
+    await attachHumanSignal({
+      userId,
+      provider: "world_id",
+      providerSubjectKind: "nullifier",
+      providerSubjectHash: subjectHash,
+    });
+
+    const firstPrimaryToken = await issueHumanUniquenessToken(
+      PRIMARY_CLIENT_ID,
+      userId
+    );
+    const secondPrimaryToken = await issueHumanUniquenessToken(
+      PRIMARY_CLIENT_ID,
+      userId
+    );
+    const secondaryToken = await issueHumanUniquenessToken(
+      SECONDARY_CLIENT_ID,
+      userId
+    );
+
+    const firstPrimaryClaims = decodeJwt(firstPrimaryToken.accessToken);
+    const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
+    const secondaryClaims = decodeJwt(secondaryToken.accessToken);
+
+    expect(firstPrimaryClaims.human_uniqueness_source).toBe("world_id");
+    expect(typeof firstPrimaryClaims.human_uniqueness_nullifier).toBe("string");
+    expect(firstPrimaryClaims.human_uniqueness_nullifier).toBe(
+      secondPrimaryClaims.human_uniqueness_nullifier
+    );
+    expect(firstPrimaryClaims.human_uniqueness_nullifier).not.toBe(
+      secondaryClaims.human_uniqueness_nullifier
+    );
+    expect(firstPrimaryClaims.human_uniqueness_nullifier).not.toBe(subjectHash);
+    await assertNoInternalIdentifiersInClaims(firstPrimaryClaims, userId);
+    await assertNoInternalIdentifiersInClaims(secondPrimaryClaims, userId);
+    await assertNoInternalIdentifiersInClaims(secondaryClaims, userId);
+
+    const userinfoProof = await buildDpopProof(
+      firstPrimaryToken.dpopKeyPair,
+      "GET",
+      USERINFO_URL
+    );
+    const userinfoResponse = await authRouteGet(
+      new Request(USERINFO_URL, {
+        method: "GET",
+        headers: {
+          authorization: `DPoP ${firstPrimaryToken.accessToken}`,
+          DPoP: userinfoProof,
+        },
+      })
+    );
+    const userinfoBody = await userinfoResponse.text();
+
+    expect(userinfoBody).not.toContain(subjectHash);
+    expect(userinfoBody).not.toContain("human_uniqueness_source");
+    expect(userinfoBody).not.toContain("human_uniqueness_nullifier");
+  });
+
+  it("omits human uniqueness claims after the signal is detached", async () => {
+    await attachHumanSignal({
+      userId,
+      provider: "world_id",
+      providerSubjectKind: "nullifier",
+      providerSubjectHash: `world-subject-${crypto.randomUUID()}`,
+    });
+
+    const linkedToken = await issueHumanUniquenessToken(
+      PRIMARY_CLIENT_ID,
+      userId
+    );
+    const linkedClaims = decodeJwt(linkedToken.accessToken);
+    expect(typeof linkedClaims.human_uniqueness_nullifier).toBe("string");
+
+    await detachHumanSignal({ userId, provider: "world_id" });
+
+    const detachedToken = await issueHumanUniquenessToken(
+      PRIMARY_CLIENT_ID,
+      userId
+    );
+    const detachedClaims = decodeJwt(detachedToken.accessToken);
+
+    expect(detachedClaims.human_uniqueness_source).toBeUndefined();
+    expect(detachedClaims.human_uniqueness_nullifier).toBeUndefined();
   });
 });

@@ -150,6 +150,17 @@ const SYBIL_ENTRY = {
   description: "A unique, anonymous ID for this app",
 } as const satisfies ScopeEntry;
 
+const HUMAN_UNIQUENESS_ENTRY = {
+  scope: "proof:human_uniqueness",
+  family: "proof",
+  claims: ["human_uniqueness_source", "human_uniqueness_nullifier"],
+  delivery: ["access_token"],
+  vaultRequired: false,
+  exactBindingRequired: false,
+  description:
+    "A unique, anonymous ID for this app, from your linked human-check",
+} as const satisfies ScopeEntry;
+
 const POH_ENTRY = {
   scope: "poh",
   family: "proof",
@@ -318,6 +329,7 @@ const ALL_ENTRIES: readonly ScopeEntry[] = [
   PROOF_UMBRELLA,
   ...PROOF_ENTRIES,
   SYBIL_ENTRY,
+  HUMAN_UNIQUENESS_ENTRY,
   POH_ENTRY,
   ...IDENTITY_ENTRIES,
   ...OPERATIONAL_ENTRIES,

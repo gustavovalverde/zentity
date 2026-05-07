@@ -105,6 +105,7 @@
     "@vladmandic/human": "3.3.6",
     "@vladmandic/human-models": "3.0.4",
     "@wagmi/core": "3.4.5",
+    "@worldcoin/idkit": "4.1.2",
     "@zama-fhe/relayer-sdk": "0.4.0",
     "@zentity/contracts": "^0.6.0",
     "@zentity/sdk": "workspace:*",

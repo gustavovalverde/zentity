@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import {
+  humanSignals,
   identityBundles,
   identityVerifications,
 } from "@/lib/db/schema/identity";
@@ -25,7 +26,7 @@ export async function assertNoInternalIdentifiersInClaims(
     }
   }
 
-  const [bundle, verifications] = await Promise.all([
+  const [bundle, verifications, signals] = await Promise.all([
     db
       .select({ nullifierSeed: identityBundles.nullifierSeed })
       .from(identityBundles)
@@ -39,6 +40,11 @@ export async function assertNoInternalIdentifiersInClaims(
       })
       .from(identityVerifications)
       .where(eq(identityVerifications.userId, userId))
+      .all(),
+    db
+      .select({ providerSubjectHash: humanSignals.providerSubjectHash })
+      .from(humanSignals)
+      .where(eq(humanSignals.userId, userId))
       .all(),
   ]);
 
@@ -57,6 +63,9 @@ export async function assertNoInternalIdentifiersInClaims(
       secrets.add(row.nullifierSeed);
     }
   }
+  for (const row of signals) {
+    secrets.add(row.providerSubjectHash);
+  }
 
   if (secrets.size === 0) {
     return;
@@ -73,6 +82,15 @@ export async function assertNoInternalIdentifiersInClaims(
     for (const secret of secrets) {
       if (claims.sybil_nullifier === secret) {
         throw new Error("sybil_nullifier matched a raw internal identifier");
+      }
+    }
+  }
+  if (typeof claims.human_uniqueness_nullifier === "string") {
+    for (const secret of secrets) {
+      if (claims.human_uniqueness_nullifier === secret) {
+        throw new Error(
+          "human_uniqueness_nullifier matched a raw internal identifier"
+        );
       }
     }
   }

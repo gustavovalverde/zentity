@@ -312,6 +312,7 @@ describe("attestation router", () => {
       bundle: {
         exists: true,
         fheKeyId: "k-1",
+        hasHumanSignal: false,
         policyVersion: "v1",
         attestationExpiresAt: null,
         updatedAt: null,

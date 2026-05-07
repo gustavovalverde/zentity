@@ -138,6 +138,10 @@ const nextConfig: NextConfig = {
       "https://cca-lite.coinbase.com",
     ].join(" ");
 
+    // World ID domains: IDKit 4.x uses the Wallet Bridge from the browser.
+    // Proof verification still happens server-side through WORLD_ID_VERIFY_URL.
+    const worldIdDomains = ["https://bridge.worldcoin.org"].join(" ");
+
     // CSP: strict in production; permissive in dev for HMR/fast-refresh
     const cspValue =
       process.env.NODE_ENV === "production"
@@ -148,7 +152,7 @@ const nextConfig: NextConfig = {
             "style-src 'self' 'unsafe-inline'",
             "font-src 'self' data: https://fonts.reown.com",
             // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
-            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains}`,
+            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
             // data:/blob: for document scans and selfie processing; react-circle-flags CDN for country flags
             "img-src 'self' data: blob: https://react-circle-flags.pages.dev",
             // blob: for WASM thread workers
@@ -160,7 +164,7 @@ const nextConfig: NextConfig = {
         : [
             "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
             // http://127.0.0.1:8545 for local Hardhat RPC (127.0.0.1 !== localhost in CSP)
-            `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${zkPassportDomains} ${web3Domains}`,
+            `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
             "worker-src 'self' blob:",
           ].join("; ");
 
@@ -225,6 +229,14 @@ const nextConfig: NextConfig = {
           { key: "Content-Encoding", value: "gzip" },
         ],
       },
+      // Base security headers. More specific rules below override duplicate
+      // COOP/COEP keys for routes that need stronger isolation or wallet popups.
+      { source: "/(.*)", headers: securityHeaders },
+      // Dashboard routes: cross-origin isolated for multi-threaded WASM
+      {
+        source: "/dashboard/:path*",
+        headers: isolatedHeaders,
+      },
       // Verify routes: require-corp COEP for guaranteed multi-threaded WASM.
       // The bare path must be listed explicitly — :path* requires ≥1 segment.
       {
@@ -235,13 +247,6 @@ const nextConfig: NextConfig = {
         source: "/dashboard/verify/:path*",
         headers: verifyIsolatedHeaders,
       },
-      // Dashboard routes: cross-origin isolated for multi-threaded WASM
-      {
-        source: "/dashboard/:path*",
-        headers: isolatedHeaders,
-      },
-      // All other routes: standard security headers (no COOP restriction)
-      { source: "/(.*)", headers: securityHeaders },
       // Web3 wallet pages — MUST be last so they override both catch-alls.
       // Relaxed COOP (same-origin-allow-popups) for MetaMask popup signing.
       // COEP: unsafe-none because these pages don't need SharedArrayBuffer

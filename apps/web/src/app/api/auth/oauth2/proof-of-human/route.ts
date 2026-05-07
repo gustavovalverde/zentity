@@ -16,7 +16,7 @@ const TRAILING_SLASHES = /\/+$/;
  * Requires an access token with the `poh` scope.
  *
  * The PoH token asserts the user's verification tier without PII:
- * - `poh.tier` — numeric assurance level (1–4)
+ * - `poh.tier` — numeric compliance level (1, 1.5, 2, 3, or 4)
  * - `poh.verified` — whether the user meets full compliance
  * - `poh.sybil_resistant` — whether a uniqueness check passed
  */
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   const model = await getVerificationReadModel(principal.userId);
 
-  if (!model.verificationId) {
+  if (model.compliance.level === "none") {
     return NextResponse.json({ error: "not_verified" }, { status: 403 });
   }
 

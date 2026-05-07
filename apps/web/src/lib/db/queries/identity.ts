@@ -1,6 +1,10 @@
 import type { ComplianceResult } from "@/lib/identity/verification/compliance";
 import type {
   FheStatus,
+  HumanSignal,
+  HumanSignalChallenge,
+  HumanSignalProvider,
+  HumanSignalSubjectKind,
   IdentityBundle,
   IdentityJobStatus,
   IdentityVerification,
@@ -11,7 +15,9 @@ import type {
   ValidityTransitionSource,
 } from "../schema/identity";
 
-import { and, desc, eq, ne, sql } from "drizzle-orm";
+import crypto from "node:crypto";
+
+import { and, desc, eq, isNull, lt, ne, sql } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
@@ -30,6 +36,8 @@ import { db } from "../connection";
 import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
+  humanSignalChallenges,
+  humanSignals,
   identityBundles,
   identityValidityEvents,
   identityVerificationDrafts,
@@ -43,11 +51,18 @@ import {
   proofSessions,
   secretWrappers,
   signedClaims,
+  verificationChecks,
   zkChallenges,
 } from "../schema/privacy";
 
 export function isChipVerified(v: IdentityVerification | null): boolean {
   return v?.method === "nfc_chip" && v.status === "verified";
+}
+
+function hasUsableHumanSignal(bundle: IdentityBundle | null): boolean {
+  return (
+    Boolean(bundle?.hasHumanSignal) && bundle?.validityStatus !== "revoked"
+  );
 }
 
 interface AccountIdentity {
@@ -57,6 +72,15 @@ interface AccountIdentity {
 }
 
 type IdentityExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
+export class HumanSignalAlreadyAttachedError extends Error {
+  readonly code = "human_signal_already_attached";
+
+  constructor(message = "Human signal is already attached") {
+    super(message);
+    this.name = "HumanSignalAlreadyAttachedError";
+  }
+}
 
 function deriveBundleValidityStatusFromVerifications(
   verifications: readonly IdentityVerification[]
@@ -191,6 +215,300 @@ export async function resolveDedupKeyForUser(args: {
   return { dedupKey, duplicateForOther };
 }
 
+export function resolveSybilResistanceEvidence(args: {
+  hasDocumentSybilSignal: boolean;
+  humanSignalId: string | null;
+  verificationId: string;
+}): {
+  ref: string | null;
+  source: string;
+} {
+  const hasHumanSignal = Boolean(args.humanSignalId);
+  if (args.hasDocumentSybilSignal && hasHumanSignal) {
+    return {
+      source: "document_and_human_signal",
+      ref: args.humanSignalId,
+    };
+  }
+  if (args.hasDocumentSybilSignal) {
+    return { source: "document_signal", ref: args.verificationId };
+  }
+  if (hasHumanSignal) {
+    return { source: "human_signal", ref: args.humanSignalId };
+  }
+
+  return { source: "none", ref: null };
+}
+
+async function syncHumanSignalVerificationChecks(args: {
+  executor: IdentityExecutor;
+  humanSignalId: string | null;
+  userId: string;
+}): Promise<void> {
+  const verifications = await args.executor
+    .select({
+      id: identityVerifications.id,
+      dedupKey: identityVerifications.dedupKey,
+      chipNullifier: identityVerifications.chipNullifier,
+    })
+    .from(identityVerifications)
+    .where(eq(identityVerifications.userId, args.userId))
+    .all();
+
+  for (const verification of verifications) {
+    const hasDocumentSybilSignal = Boolean(
+      verification.dedupKey || verification.chipNullifier
+    );
+    const evidence = resolveSybilResistanceEvidence({
+      hasDocumentSybilSignal,
+      humanSignalId: args.humanSignalId,
+      verificationId: verification.id,
+    });
+
+    await args.executor
+      .update(verificationChecks)
+      .set({
+        passed: hasDocumentSybilSignal || Boolean(args.humanSignalId),
+        source: evidence.source,
+        evidenceRef: evidence.ref,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(verificationChecks.verificationId, verification.id),
+          eq(verificationChecks.checkType, "sybil_resistant")
+        )
+      )
+      .run();
+  }
+}
+
+export async function getActiveHumanSignal(
+  userId: string,
+  provider: HumanSignalProvider
+): Promise<HumanSignal | null> {
+  const row = await db
+    .select()
+    .from(humanSignals)
+    .where(
+      and(
+        eq(humanSignals.userId, userId),
+        eq(humanSignals.provider, provider),
+        isNull(humanSignals.revokedAt)
+      )
+    )
+    .limit(1)
+    .get();
+
+  return row ?? null;
+}
+
+async function cleanupExpiredHumanSignalChallenges(): Promise<number> {
+  const result = await db
+    .delete(humanSignalChallenges)
+    .where(lt(humanSignalChallenges.expiresAt, new Date().toISOString()))
+    .run();
+  return result.rowsAffected;
+}
+
+export async function createHumanSignalChallenge(args: {
+  expiresAt: string;
+  id: string;
+  nonce: string;
+  provider: HumanSignalProvider;
+  userId: string;
+}): Promise<HumanSignalChallenge> {
+  await cleanupExpiredHumanSignalChallenges();
+
+  await db
+    .insert(humanSignalChallenges)
+    .values({
+      id: args.id,
+      userId: args.userId,
+      provider: args.provider,
+      nonce: args.nonce,
+      expiresAt: args.expiresAt,
+    })
+    .run();
+
+  const challenge = await db
+    .select()
+    .from(humanSignalChallenges)
+    .where(eq(humanSignalChallenges.id, args.id))
+    .get();
+
+  if (!challenge) {
+    throw new Error("Failed to create human signal challenge");
+  }
+  return challenge;
+}
+
+export async function consumeHumanSignalChallenge(args: {
+  id: string;
+  nonce: string;
+  provider: HumanSignalProvider;
+  userId: string;
+}): Promise<HumanSignalChallenge | null> {
+  return await db.transaction(async (tx) => {
+    const challenge = await tx
+      .select()
+      .from(humanSignalChallenges)
+      .where(
+        and(
+          eq(humanSignalChallenges.id, args.id),
+          eq(humanSignalChallenges.userId, args.userId),
+          eq(humanSignalChallenges.provider, args.provider),
+          eq(humanSignalChallenges.nonce, args.nonce),
+          isNull(humanSignalChallenges.consumedAt)
+        )
+      )
+      .limit(1)
+      .get();
+
+    if (!challenge || challenge.expiresAt <= new Date().toISOString()) {
+      return null;
+    }
+
+    const consumedAt = new Date().toISOString();
+    await tx
+      .update(humanSignalChallenges)
+      .set({ consumedAt })
+      .where(eq(humanSignalChallenges.id, challenge.id))
+      .run();
+
+    return { ...challenge, consumedAt };
+  });
+}
+
+export async function attachHumanSignal(args: {
+  provider: HumanSignalProvider;
+  providerSubjectHash: string;
+  providerSubjectKind: HumanSignalSubjectKind;
+  userId: string;
+}): Promise<HumanSignal> {
+  return await db.transaction(async (tx) => {
+    const existingSubject = await tx
+      .select()
+      .from(humanSignals)
+      .where(
+        and(
+          eq(humanSignals.provider, args.provider),
+          eq(humanSignals.providerSubjectHash, args.providerSubjectHash),
+          isNull(humanSignals.revokedAt)
+        )
+      )
+      .limit(1)
+      .get();
+
+    if (existingSubject) {
+      if (existingSubject.userId !== args.userId) {
+        throw new HumanSignalAlreadyAttachedError();
+      }
+      return existingSubject;
+    }
+
+    const existingProvider = await tx
+      .select()
+      .from(humanSignals)
+      .where(
+        and(
+          eq(humanSignals.userId, args.userId),
+          eq(humanSignals.provider, args.provider),
+          isNull(humanSignals.revokedAt)
+        )
+      )
+      .limit(1)
+      .get();
+
+    if (existingProvider) {
+      throw new HumanSignalAlreadyAttachedError(
+        "Human signal provider is already attached"
+      );
+    }
+
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    await tx
+      .insert(humanSignals)
+      .values({
+        id,
+        userId: args.userId,
+        provider: args.provider,
+        providerSubjectHash: args.providerSubjectHash,
+        providerSubjectKind: args.providerSubjectKind,
+        attachedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+
+    await upsertIdentityBundle(
+      { userId: args.userId, hasHumanSignal: true },
+      tx
+    );
+    await syncHumanSignalVerificationChecks({
+      executor: tx,
+      humanSignalId: id,
+      userId: args.userId,
+    });
+
+    const attached = await tx
+      .select()
+      .from(humanSignals)
+      .where(eq(humanSignals.id, id))
+      .get();
+
+    if (!attached) {
+      throw new Error("Failed to attach human signal");
+    }
+    return attached;
+  });
+}
+
+export async function detachHumanSignal(args: {
+  provider: HumanSignalProvider;
+  userId: string;
+}): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const now = new Date().toISOString();
+    const result = await tx
+      .update(humanSignals)
+      .set({ revokedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(humanSignals.userId, args.userId),
+          eq(humanSignals.provider, args.provider),
+          isNull(humanSignals.revokedAt)
+        )
+      )
+      .run();
+
+    const activeSignal = await tx
+      .select({ id: humanSignals.id })
+      .from(humanSignals)
+      .where(
+        and(
+          eq(humanSignals.userId, args.userId),
+          isNull(humanSignals.revokedAt)
+        )
+      )
+      .limit(1)
+      .get();
+
+    await upsertIdentityBundle(
+      { userId: args.userId, hasHumanSignal: Boolean(activeSignal) },
+      tx
+    );
+    await syncHumanSignalVerificationChecks({
+      executor: tx,
+      humanSignalId: activeSignal?.id ?? null,
+      userId: args.userId,
+    });
+
+    return result.rowsAffected;
+  });
+}
+
 export async function deleteIdentityData(userId: string): Promise<void> {
   await db.transaction(async (tx) => {
     await tx
@@ -201,6 +519,11 @@ export async function deleteIdentityData(userId: string): Promise<void> {
       .delete(attestationEvidence)
       .where(eq(attestationEvidence.userId, userId))
       .run();
+    await tx
+      .delete(humanSignalChallenges)
+      .where(eq(humanSignalChallenges.userId, userId))
+      .run();
+    await tx.delete(humanSignals).where(eq(humanSignals.userId, userId)).run();
     await tx.delete(signedClaims).where(eq(signedClaims.userId, userId)).run();
     await tx
       .delete(encryptedAttributes)
@@ -251,6 +574,7 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
 ): Promise<ComplianceResult> {
   const accountIdentity = await getAccountIdentity(userId);
   const selectedVerification = accountIdentity.effectiveVerification;
+  const hasHumanUniquenessSignal = hasUsableHumanSignal(accountIdentity.bundle);
 
   if (!selectedVerification) {
     return deriveComplianceStatus({
@@ -258,8 +582,8 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
       birthYearOffset: null,
       zkProofs: [],
       signedClaims: [],
-      encryptedAttributes: [],
-      hasUniqueIdentifier: false,
+      hasDocumentSybilSignal: false,
+      hasHumanUniquenessSignal,
       hasNationalityCommitment: false,
     });
   }
@@ -277,8 +601,8 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
       birthYearOffset: selectedVerification.birthYearOffset ?? null,
       zkProofs: [],
       signedClaims: claimTypes.map((t) => ({ claimType: t })),
-      encryptedAttributes: [],
-      hasUniqueIdentifier: Boolean(selectedVerification.chipNullifier),
+      hasDocumentSybilSignal: Boolean(selectedVerification.chipNullifier),
+      hasHumanUniquenessSignal,
       hasNationalityCommitment: Boolean(
         selectedVerification.nationalityCommitment
       ),
@@ -361,10 +685,10 @@ export const getComplianceStatus = cache(async function getComplianceStatus(
       verified: true,
     })),
     signedClaims: signedClaimTypes.map((t) => ({ claimType: t })),
-    encryptedAttributes: [],
-    hasUniqueIdentifier: Boolean(
+    hasDocumentSybilSignal: Boolean(
       selectedVerification.dedupKey || selectedVerification.chipNullifier
     ),
+    hasHumanUniquenessSignal,
     hasNationalityCommitment: Boolean(
       selectedVerification.nationalityCommitment
     ),
@@ -781,6 +1105,7 @@ export async function upsertIdentityBundle(
     revokedBy?: string | null;
     revokedReason?: string | null;
     nullifierSeed?: string | null;
+    hasHumanSignal?: boolean;
     verificationExpiresAt?: string | null;
     userId: string;
     validityStatus?: ValidityStatus;
@@ -793,6 +1118,7 @@ export async function upsertIdentityBundle(
     userId: data.userId,
     effectiveVerificationId: data.effectiveVerificationId ?? null,
     nullifierSeed: data.nullifierSeed ?? null,
+    hasHumanSignal: data.hasHumanSignal ?? false,
     walletAddress: data.walletAddress ?? null,
     validityStatus: data.validityStatus ?? "pending",
     policyVersion: data.policyVersion ?? null,
@@ -819,6 +1145,9 @@ export async function upsertIdentityBundle(
   }
   if (data.nullifierSeed !== undefined) {
     updateSet.nullifierSeed = data.nullifierSeed;
+  }
+  if (data.hasHumanSignal !== undefined) {
+    updateSet.hasHumanSignal = data.hasHumanSignal;
   }
   if (data.walletAddress !== undefined) {
     updateSet.walletAddress = data.walletAddress;

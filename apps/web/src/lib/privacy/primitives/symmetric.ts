@@ -1,3 +1,5 @@
+import { createHmac } from "node:crypto";
+
 // ---------------------------------------------------------------------------
 // Additional authenticated data (AAD) encoding
 // ---------------------------------------------------------------------------
@@ -36,6 +38,18 @@ export function encodeAad(parts: string[]): Uint8Array {
   }
 
   return bytesOut;
+}
+
+// ---------------------------------------------------------------------------
+// HMAC-SHA256 over length-prefixed AAD parts
+// ---------------------------------------------------------------------------
+
+/**
+ * Length-prefixed HMAC-SHA256 helper.
+ * Pairs with `encodeAad` so call sites stay collision-free.
+ */
+export function hmacSha256Hex(secret: string, parts: string[]): string {
+  return createHmac("sha256", secret).update(encodeAad(parts)).digest("hex");
 }
 
 // ---------------------------------------------------------------------------

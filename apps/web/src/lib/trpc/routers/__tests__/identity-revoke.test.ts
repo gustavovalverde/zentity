@@ -86,6 +86,7 @@ describe("revoke procedures", () => {
       bundle: {
         validityStatus: "verified",
         effectiveVerificationId: "ver-1",
+        hasHumanSignal: false,
         walletAddress: null,
         policyVersion: "policy-v1",
         issuerId: "issuer-1",
@@ -273,6 +274,7 @@ describe("revoke procedures", () => {
         bundle: {
           validityStatus: "verified",
           effectiveVerificationId: "ver-1",
+          hasHumanSignal: false,
           walletAddress: null,
           policyVersion: "policy-v1",
           issuerId: "issuer-1",

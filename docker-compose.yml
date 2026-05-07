@@ -14,6 +14,8 @@ services:
         - NEXT_PUBLIC_FHEVM_RPC_URL=${NEXT_PUBLIC_FHEVM_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
         - NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV:-local}
         - NEXT_PUBLIC_NOIR_DEBUG=${NEXT_PUBLIC_NOIR_DEBUG:-true}
+        - NEXT_PUBLIC_WORLD_ID_ENABLED=${NEXT_PUBLIC_WORLD_ID_ENABLED:-false}
+        - NEXT_PUBLIC_WORLD_ID_APP_ID=${NEXT_PUBLIC_WORLD_ID_APP_ID:-}
         # Build-time secret for Next.js static generation (not in final image due to multi-stage build)
         - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-build-secret-change-in-production}
     ports:
@@ -34,9 +36,16 @@ services:
       - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-local-docker-bbs-issuer-secret-32-chars}
       - RECOVERY_ML_KEM_SECRET_KEY=${RECOVERY_ML_KEM_SECRET_KEY:-}
       - DEDUP_HMAC_SECRET=${DEDUP_HMAC_SECRET:-local-docker-dedup-hmac-secret-32-chars}
+      - HUMAN_SIGNAL_HMAC_SECRET=${HUMAN_SIGNAL_HMAC_SECRET:-local-docker-human-signal-hmac-secret-32-chars}
       - PAIRWISE_SECRET=${PAIRWISE_SECRET:-local-docker-pairwise-secret-32-chars}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-local-docker-vapid-public-key}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-local-docker-vapid-private-key}
+      - NEXT_PUBLIC_WORLD_ID_ENABLED=${NEXT_PUBLIC_WORLD_ID_ENABLED:-false}
+      - NEXT_PUBLIC_WORLD_ID_APP_ID=${NEXT_PUBLIC_WORLD_ID_APP_ID:-}
+      - WORLD_ID_RP_ID=${WORLD_ID_RP_ID:-}
+      - WORLD_ID_RP_SIGNING_KEY=${WORLD_ID_RP_SIGNING_KEY:-}
+      - WORLD_ID_ENVIRONMENT=${WORLD_ID_ENVIRONMENT:-production}
+      - WORLD_ID_VERIFY_URL=${WORLD_ID_VERIFY_URL:-https://developer.world.org/api/v4/verify}
       # Inter-service (Docker DNS)
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004

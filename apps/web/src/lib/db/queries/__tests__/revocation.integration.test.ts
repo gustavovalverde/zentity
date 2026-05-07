@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import {
+  attachHumanSignal,
   createVerification,
+  getComplianceStatus,
   getLatestVerification,
   isNullifierUsedByOtherUser,
   reconcileIdentityBundle,
@@ -159,6 +161,24 @@ describe("identity revocation cascade", () => {
       .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
       .all();
     expect(deliveries).toEqual([]);
+  });
+
+  it("does not count a retained human signal after revocation", async () => {
+    await attachHumanSignal({
+      userId,
+      provider: "world_id",
+      providerSubjectKind: "nullifier",
+      providerSubjectHash: "subject-hash-revocation-compliance",
+    });
+
+    await revokeIdentity(userId, "admin@zentity.app", "fraud", "admin");
+
+    const compliance = await getComplianceStatus(userId);
+
+    expect(compliance.level).toBe("none");
+    expect(compliance.numericLevel).toBe(1);
+    expect(compliance.verified).toBe(false);
+    expect(compliance.checks.sybilResistant).toBe(false);
   });
 
   it("processes blockchain revocation through the delivery worker", async () => {

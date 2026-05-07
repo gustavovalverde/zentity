@@ -372,11 +372,12 @@ Compliance level is computed by a pure function that takes ZK proofs, signed cla
 | Level | Numeric | Criteria |
 |---|---|---|
 | `none` | 1 | Default; fewer than half of the 7 checks pass |
+| `human_verified` | 1.5 | An external [human signal](<../(protocols)/oauth-integrations.md#human-signals>) (e.g. World ID) is attached. Below `basic` because no document/chip evidence is available; above `none` because uniqueness is established |
 | `basic` | 2 | At least half of the 7 checks pass |
 | `full` | 3 | All 7 checks pass |
 | `chip` | 4 | NFC chip verification + sybil resistance |
 
-`verified` is `true` only for `full` or `chip`.
+`verified` is `true` only for `full` or `chip`. `human_verified` users are sybil-resistant but not document-verified.
 
 ### The 7 Boolean Checks
 
