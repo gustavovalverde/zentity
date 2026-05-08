@@ -79,6 +79,7 @@ export function ZkPassportFlow({
   const [proofsGenerated, setProofsGenerated] = useState(0);
   const [proofsTotal, setProofsTotal] = useState(0);
   const proofsRef = useRef<ProofResult[]>([]);
+  const errorsRef = useRef<string[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const fhePollRef = useRef<ReturnType<typeof setTimeout>>(null);
   const startedRef = useRef(false);
@@ -372,6 +373,7 @@ export function ZkPassportFlow({
     setProofsGenerated(0);
     setProofsTotal(0);
     proofsRef.current = [];
+    errorsRef.current = [];
     disclosedRef.current = null;
     vaultSkippedRef.current = false;
     setBindingAuthOpen(false);
@@ -414,19 +416,38 @@ export function ZkPassportFlow({
 
       setUrl(request.url);
 
+      const requestUrl = new URL(request.url);
+      // TEMP diagnostic: confirms what the mobile app receives.
+      console.log("[zkpassport-debug] request", {
+        devFlag: requestUrl.searchParams.get("dev"),
+        sdkVersion: requestUrl.searchParams.get("v"),
+        domain: requestUrl.searchParams.get("d"),
+        appEnv: env.NEXT_PUBLIC_APP_ENV,
+        isDevMode,
+        query: request.query,
+      });
+
       timeoutRef.current = setTimeout(() => {
         setStage("timeout");
       }, TIMEOUT_MS);
 
       request.onRequestReceived(() => {
+        console.log("[zkpassport-bridge] onRequestReceived");
         setStage("scanning");
       });
 
       request.onGeneratingProof(() => {
+        console.log("[zkpassport-bridge] onGeneratingProof");
         setStage("generating");
       });
 
       request.onProofGenerated((proof: ProofResult) => {
+        console.log("[zkpassport-bridge] onProofGenerated", {
+          name: proof.name,
+          version: proof.version,
+          total: proof.total,
+          vkeyHash: proof.vkeyHash,
+        });
         proofsRef.current.push(proof);
         setProofsGenerated((prev) => prev + 1);
         if (proof.total) {
@@ -435,15 +456,33 @@ export function ZkPassportFlow({
       });
 
       request.onResult(
-        (response: { verified: boolean; result: QueryResult }) => {
+        (response: {
+          verified: boolean;
+          result: QueryResult;
+          queryResultErrors?: unknown;
+          uniqueIdentifier?: string;
+          uniqueIdentifierType?: number;
+        }) => {
+          console.log("[zkpassport-bridge] onResult", {
+            verified: response.verified,
+            proofCount: proofsRef.current.length,
+            collectedErrors: errorsRef.current,
+            queryResultErrors: response.queryResultErrors,
+            result: response.result,
+            uniqueIdentifier: response.uniqueIdentifier,
+            uniqueIdentifierType: response.uniqueIdentifierType,
+          });
+
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
           }
 
-          if (!response.verified) {
-            setErrorMessage(
-              "Verification failed. The proofs could not be verified."
-            );
+          if (proofsRef.current.length === 0 || !response.verified) {
+            const detail =
+              errorsRef.current.length > 0
+                ? `Mobile app errors: ${errorsRef.current.join("; ")}`
+                : "Verification failed. The proofs could not be verified.";
+            setErrorMessage(detail);
             setStage("error");
             return;
           }
@@ -459,6 +498,7 @@ export function ZkPassportFlow({
       );
 
       request.onReject(() => {
+        console.log("[zkpassport-bridge] onReject");
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
@@ -466,12 +506,10 @@ export function ZkPassportFlow({
         setStage("error");
       });
 
+      // Non-fatal: collect errors and let onResult report the full picture.
       request.onError((error: string) => {
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-        setErrorMessage(error);
-        setStage("error");
+        console.warn("[zkpassport-bridge] onError (non-fatal)", error);
+        errorsRef.current.push(error);
       });
     } catch (error) {
       setErrorMessage(

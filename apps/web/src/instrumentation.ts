@@ -47,6 +47,11 @@ export async function register() {
     );
     await ensureWalletClientExists();
 
+    const { startScheduler } = await import(
+      "@/lib/identity/validity/scheduler"
+    );
+    startScheduler();
+
     markWarmupComplete();
   }
 }

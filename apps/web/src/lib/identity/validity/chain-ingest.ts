@@ -16,7 +16,11 @@ import {
   identityBundles,
 } from "@/lib/db/schema/identity";
 
-import { recordValidityTransition } from "./transition";
+import {
+  isDuplicateValidityEvent,
+  recordChainAttestationConfirmed,
+  recordValidityTransition,
+} from "./transition";
 
 const MAX_BLOCK_RANGE = 50_000;
 const IDENTITY_ATTESTED_EVENT = parseAbiItem(
@@ -35,17 +39,6 @@ function getViemChain(chainId: number) {
     default:
       return undefined;
   }
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return (
-    error.message.includes("identity_validity_events_source_event_unique") ||
-    error.message.includes("SQLITE_CONSTRAINT_UNIQUE")
-  );
 }
 
 interface ChainLogMetadata {
@@ -78,39 +71,6 @@ function compareLogPosition(
   }
 
   return (left.logIndex ?? -1) - (right.logIndex ?? -1);
-}
-
-async function recordChainAttestationConfirmed(args: {
-  blockNumber?: number | null;
-  networkId: string;
-  sourceEventId: string;
-  userId: string;
-}): Promise<boolean> {
-  const snapshot = await getIdentityValiditySnapshot(args.userId);
-  if (!snapshot) {
-    return false;
-  }
-
-  try {
-    await recordValidityTransition({
-      userId: args.userId,
-      verificationId: snapshot.effectiveVerificationId ?? null,
-      eventKind: "verified",
-      source: "chain",
-      sourceEventId: args.sourceEventId,
-      sourceNetwork: args.networkId,
-      sourceBlockNumber: args.blockNumber ?? null,
-      reason: "blockchain_attestation_confirmed",
-    });
-
-    return true;
-  } catch (error) {
-    if (isUniqueConstraintError(error)) {
-      return false;
-    }
-
-    throw error;
-  }
 }
 
 export async function ingestChainValidityEvents(args: {
@@ -312,7 +272,7 @@ export async function ingestChainValidityEvents(args: {
           transitionsCreated += 1;
         }
       } catch (error) {
-        if (isUniqueConstraintError(error)) {
+        if (isDuplicateValidityEvent(error)) {
           skippedDuplicate += 1;
           continue;
         }

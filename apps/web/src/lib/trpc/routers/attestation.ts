@@ -35,6 +35,7 @@ import {
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
+import { recordChainAttestationConfirmed } from "@/lib/identity/validity/transition";
 import {
   complianceOnchainTier,
   countryCodeToNumeric,
@@ -428,6 +429,18 @@ export const attestationRouter = router({
       }
 
       if (attestation.status === "confirmed") {
+        // Self-heal for rows confirmed before the validity-pipeline trigger
+        // landed in attestation.refresh: idempotent thanks to the
+        // (source, sourceNetwork, sourceEventId) unique index, so safe to
+        // call on every refresh.
+        if (attestation.txHash) {
+          await recordChainAttestationConfirmed({
+            userId: ctx.userId,
+            networkId: input.networkId,
+            sourceEventId: `tx:${attestation.txHash}`,
+            blockNumber: attestation.blockNumber,
+          });
+        }
         return { status: "confirmed", blockNumber: attestation.blockNumber };
       }
 
@@ -460,6 +473,18 @@ export const attestationRouter = router({
             attestation.id,
             txStatus.blockNumber ?? null
           );
+
+          // Fan out: schedules mirror_compliance_write + RP validity notices.
+          // Distinct sourceEventId scheme ("tx:<hash>") so a future
+          // chain-ingest pass over the same tx (which uses "<hash>:<logIndex>")
+          // doesn't collide with this row.
+          await recordChainAttestationConfirmed({
+            userId: ctx.userId,
+            networkId: input.networkId,
+            sourceEventId: `tx:${attestation.txHash}`,
+            blockNumber: txStatus.blockNumber ?? null,
+          });
+
           return { status: "confirmed", blockNumber: txStatus.blockNumber };
         }
 
