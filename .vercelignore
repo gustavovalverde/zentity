@@ -1,11 +1,50 @@
-# Only apps/landing is deployed to Vercel — exclude everything else
-/apps/web
+# Repo-root ignores for Vercel deploys (landing + demo-rp).
+# Vercel's Root Directory project setting selects which app builds; the upload
+# itself ships only what both projects might consume.
+
+# Apps not deployed to Vercel (Rust/Python services or local-only)
 /apps/fhe
 /apps/ocr
 /apps/signer
-/apps/demo-rp
+/apps/mcp
+
+# demo-rp depends on @better-auth tarballs in apps/web/vendor/ and on
+# @zentity/sdk in packages/sdk/, so apps/web and packages/ must remain
+# in the upload. Trim the heavy parts of apps/web that neither app needs:
+/apps/web/src
+/apps/web/scripts
+/apps/web/public
+/apps/web/e2e
+/apps/web/noir-circuits
+/apps/web/playwright.config.mts
+/apps/web/biome.json
+/apps/web/.cache-synpress
+/apps/web/.next
+/apps/web/.next-prod
+/apps/web/.data
+/apps/web/coverage
+/apps/web/playwright-report
+/apps/web/test-results
+/apps/web/.synpress-wallet-setup-dist
+/apps/web/.claude
+/apps/web/.cursor
+/apps/web/Dockerfile
+/apps/web/railway.toml
+
+# Common
 /fixtures
 node_modules
+**/node_modules
 .git
+.turbo
+.vercel
 .playwright-mcp
+.idea
+.vscode
+.claude
+.codex
+.cursor
 *.log
+**/__pycache__
+**/*.pyc
+**/.DS_Store

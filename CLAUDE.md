@@ -195,13 +195,23 @@ docker-compose up -d     # Detached mode
 
 ## Deployment
 
-### Vercel (Landing Page)
+### Vercel
 
-The landing page (`apps/landing`) deploys to Vercel. Configuration is in `apps/landing/vercel.json`. The Vercel project has `rootDirectory: apps/landing`, so **deploy from the monorepo root** (not from `apps/landing/`):
+Two apps deploy to Vercel from the repo root: `apps/landing` and `apps/demo-rp`. Both Vercel projects use a Root Directory pointing into the monorepo, with the upload coming from the repo root so workspace deps (`@zentity/sdk`, `apps/web/vendor/*` tarballs) are visible to the build.
+
+**Landing page** (`apps/landing`): the repo-root `.vercel/project.json` link is bound to this project (`rootDirectory: apps/landing`). Deploy from the repo root:
 
 ```bash
-vercel --prod            # Run from repo root
+vercel --prod
 ```
+
+**demo-rp** (`apps/demo-rp`): Vercel project has `rootDirectory: apps/demo-rp`, install/build commands = `pnpm install` / `pnpm run build`. The app depends on `apps/web/vendor/*` (better-auth tarballs) and `packages/sdk` (workspace), which is why the upload spans the whole repo. Deploy via the helper script — it swaps the repo-root link from landing to demo-rp, runs `vercel deploy --prod`, then restores the landing link on exit:
+
+```bash
+./apps/demo-rp/scripts/deploy-to-vercel.sh --prod
+```
+
+`.vercelignore` at the repo root trims the parts of `apps/web` not needed by demo-rp (src, public, `.next`, etc.) while keeping `apps/web/vendor/` and `apps/web/patches/`. Vercel's serverless filesystem is read-only outside `/tmp`, so any code that persists generated keys must use `/tmp` when `process.env.VERCEL` is set (see `apps/demo-rp/src/lib/attestation.ts`).
 
 ### Railway (Backend Services)
 

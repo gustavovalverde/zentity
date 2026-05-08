@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 
-const KEY_PATH = resolve(process.cwd(), ".data/attestation-key.json");
+const KEY_PATH = process.env.VERCEL
+  ? "/tmp/attestation-key.json"
+  : resolve(process.cwd(), ".data/attestation-key.json");
 
 interface AttestationKeyPair {
   privateKey: CryptoKey;
