@@ -497,14 +497,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       '@zkpassport/registry':
-        specifier: ^0.13.0
-        version: 0.13.1(typescript@5.9.3)
+        specifier: ^0.14.0
+        version: 0.14.0(typescript@5.9.3)
       '@zkpassport/sdk':
-        specifier: ^0.12.5
-        version: 0.12.5(typescript@5.9.3)(zod@4.3.6)
+        specifier: ^0.14.2
+        version: 0.14.2(typescript@5.9.3)(zod@4.3.6)
       '@zkpassport/utils':
-        specifier: ^0.35.0
-        version: 0.35.0(typescript@5.9.3)
+        specifier: ^0.36.0
+        version: 0.36.0(typescript@5.9.3)
       better-auth:
         specifier: file:vendor/better-auth-1.6.0.tgz
         version: file:apps/web/vendor/better-auth-1.6.0.tgz(eeb9a9700757c8d5df2684b3190758c3)
@@ -785,12 +785,12 @@ packages:
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
 
-  '@aztec/bb.js@2.0.3':
-    resolution: {integrity: sha512-sI8lA2L8RMACsi6iBtcuKgGLx4crMzoAaTNtfP3VAaOpjoIwB3O/AMETz5IDGdkOA6tOqM2R0nWh1J+wDYPlVQ==}
-    hasBin: true
-
   '@aztec/bb.js@4.0.4':
     resolution: {integrity: sha512-p+YKb3xGMhknJ1EgKhgmAB+5nz6W0c4/MtKM2KHCd2VuxoWXyvyeTNYvtAdY6wkWNeVx7N37DV+yWgPBEOdeyw==}
+    hasBin: true
+
+  '@aztec/bb.js@4.2.0-aztecnr-rc.2':
+    resolution: {integrity: sha512-ksFWHrm8QYAXP059paItEKCM/UhpHg5Dwl/eSp2BI6EAtD9+JlonkOwJ+94TYai2y5Gz0qnrgd65dsvDwJelVQ==}
     hasBin: true
 
   '@babel/code-frame@7.29.0':
@@ -6120,6 +6120,18 @@ packages:
   '@tabler/icons@3.41.1':
     resolution: {integrity: sha512-OaRnVbRmH2nHtFeg+RmMJ/7m2oBIF9XCJAUD5gQnMrpK9f05ydj8MZrAf3NZQqOXyxGN1UBL0D5IKLLEUfr74Q==}
 
+  '@taceo/oprf-client@0.9.0':
+    resolution: {integrity: sha512-kokCCLYjLSH3I7n4D2Yhg1ybNquMRnbHh3r/YTgHIiXxJ+FLsbE9AGT8vhwTmwe2m4X1U3r57yKMsIiaeu/DAg==}
+    engines: {node: '>=22'}
+
+  '@taceo/oprf-core@0.4.0':
+    resolution: {integrity: sha512-Mlo2pjb8O9HDGvjpcun06ZWrW7oBblQESr9EDhW1WvHLDkKDgdlKdx43EVzJMGHcFXaVT4/1MnC1De/5KTQTNg==}
+    engines: {node: '>=22'}
+
+  '@taceo/poseidon2@0.2.0':
+    resolution: {integrity: sha512-+EyFO7zaRrlsdzNEvzTLELDkrgjUgZgSlxGUSQghmmtlZ14nZklYX7D+gecyOkVe/47AGDtA+uZ9sdXiNB8rng==}
+    engines: {node: '>=22'}
+
   '@tailwindcss/node@4.2.1':
     resolution: {integrity: sha512-jlx6sLk4EOwO6hHe1oCGm1Q4AN/s0rSrTTPBGPM0/RQ6Uylwq17FuU8IeJJKEjtc6K6O07zsvP+gDO6MMWo7pg==}
 
@@ -7088,28 +7100,18 @@ packages:
   '@zkpassport/poseidon2@0.6.2':
     resolution: {integrity: sha512-6sFHX9kAcrmDmBEEndvjZ8DA9FomunirQ5oCV6oD7bqr/lP0n0OBSRn86SZgQBXwRR+vq7sk16y31OgRBIOJ5Q==}
 
-  '@zkpassport/registry@0.13.0':
-    resolution: {integrity: sha512-g9iaeAyGrJFoqrIrnuqXszd9UhtrGY9nzrkTZksL7EqJgWRdT3yPluBhMFA9/tJx8n8sjOYk/XTC0GHUCheM2Q==}
+  '@zkpassport/registry@0.14.0':
+    resolution: {integrity: sha512-6E6740NYx3wYIPZyWyIpNgnExJFHzSdZ4jzspTGHfKJalfpIQ8QMpTPSAruuHEymWD0c8qtz1kL9ioTjAp7GBA==}
     peerDependencies:
       typescript: ^5.0.0
 
-  '@zkpassport/registry@0.13.1':
-    resolution: {integrity: sha512-URqab2yz7Y6aHWA9DG9A6UMjrfbSuUBGAKabUmUw6FZrlENtX22kU+KjxMvIXdAckBDFjCN0AIf3mGo9rGHhNA==}
+  '@zkpassport/sdk@0.14.2':
+    resolution: {integrity: sha512-OdcRZ9WjNqzPZdatafQAZrV7w58B6e1DPa0JYJn/rwvMooQP8B85WnWlsaDcoBrly4b00zSHsJ3j3M7xLEEyEA==}
     peerDependencies:
       typescript: ^5.0.0
 
-  '@zkpassport/sdk@0.12.5':
-    resolution: {integrity: sha512-5ma4uzYR5d2L3DoyuJFKQvZlFnPPVZNZuMizqlNHrxXnVA7Jd3dWIRUpiTS4J10kGeI/4oai8WQkVRr3O41eYw==}
-    peerDependencies:
-      typescript: ^5.0.0
-
-  '@zkpassport/utils@0.33.3':
-    resolution: {integrity: sha512-qDK3rpRTJbI/P42RbwSS3hhnORIe6oSzCQPIZB2ynO+IM8SKKXnX+v6PB2+0R4j4N8M4CfHUjqeyNVMRNSohzQ==}
-    peerDependencies:
-      typescript: ^5.0.0
-
-  '@zkpassport/utils@0.35.0':
-    resolution: {integrity: sha512-faZ8mPxm4m++g4keexKxde9tlvWlcw0mXAwSsyo3UGjoNqysQH/l8kLaTd8+KJba/LKgCzu9aXvGkJd47YrRlQ==}
+  '@zkpassport/utils@0.36.0':
+    resolution: {integrity: sha512-FL1NCIqHASdSabnjIJIohm0HQi664XUhCxWPyZSdsN0KwXiBhrY3C7YGrW5XToxcXPnbVTy8/LAd3AXdVZcffQ==}
     peerDependencies:
       typescript: ^5.0.0
 
@@ -11300,10 +11302,6 @@ packages:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
     hasBin: true
 
-  pino@9.14.0:
-    resolution: {integrity: sha512-8OEwKp5juEvb/MjpIc4hjqfgCNysrS94RIOMXYvpYCdm/jglrKEiAYmiumbmGhCvs+IcInsphYDFwqrjr7398w==}
-    hasBin: true
-
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
@@ -13490,17 +13488,16 @@ snapshots:
 
   '@asamuzakjp/nwsapi@2.3.9': {}
 
-  '@aztec/bb.js@2.0.3':
+  '@aztec/bb.js@4.0.4':
     dependencies:
       comlink: 4.4.2
       commander: 12.1.0
       idb-keyval: 6.2.2
       msgpackr: 1.11.10
       pako: 2.1.0
-      pino: 9.14.0
       tslib: 2.8.1
 
-  '@aztec/bb.js@4.0.4':
+  '@aztec/bb.js@4.2.0-aztecnr-rc.2':
     dependencies:
       comlink: 4.4.2
       commander: 12.1.0
@@ -20083,6 +20080,22 @@ snapshots:
 
   '@tabler/icons@3.41.1': {}
 
+  '@taceo/oprf-client@0.9.0':
+    dependencies:
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@taceo/oprf-core': 0.4.0
+
+  '@taceo/oprf-core@0.4.0':
+    dependencies:
+      '@noble/curves': 2.2.0
+      '@noble/hashes': 2.2.0
+      '@taceo/poseidon2': 0.2.0
+
+  '@taceo/poseidon2@0.2.0':
+    dependencies:
+      '@noble/curves': 2.2.0
+
   '@tailwindcss/node@4.2.1':
     dependencies:
       '@jridgewell/remapping': 2.3.5
@@ -21855,10 +21868,10 @@ snapshots:
 
   '@zkpassport/poseidon2@0.6.2': {}
 
-  '@zkpassport/registry@0.13.0(typescript@5.9.3)':
+  '@zkpassport/registry@0.14.0(typescript@5.9.3)':
     dependencies:
       '@zkpassport/poseidon2': 0.6.2
-      '@zkpassport/utils': 0.33.3(typescript@5.9.3)
+      '@zkpassport/utils': 0.36.0(typescript@5.9.3)
       debug: 4.4.3
       tslib: 2.8.1
       typescript: 5.9.3
@@ -21867,27 +21880,15 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@zkpassport/registry@0.13.1(typescript@5.9.3)':
+  '@zkpassport/sdk@0.14.2(typescript@5.9.3)(zod@4.3.6)':
     dependencies:
-      '@zkpassport/poseidon2': 0.6.2
-      '@zkpassport/utils': 0.35.0(typescript@5.9.3)
-      debug: 4.4.3
-      tslib: 2.8.1
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
-  '@zkpassport/sdk@0.12.5(typescript@5.9.3)(zod@4.3.6)':
-    dependencies:
-      '@aztec/bb.js': 2.0.3
+      '@aztec/bb.js': 4.2.0-aztecnr-rc.2
       '@noble/ciphers': 1.3.0
       '@noble/hashes': 2.2.0
       '@noble/secp256k1': 2.3.0
       '@obsidion/bridge': 0.11.2(typescript@5.9.3)
-      '@zkpassport/registry': 0.13.0(typescript@5.9.3)
-      '@zkpassport/utils': 0.33.3(typescript@5.9.3)
+      '@zkpassport/registry': 0.14.0(typescript@5.9.3)
+      '@zkpassport/utils': 0.36.0(typescript@5.9.3)
       buffer: 6.0.3
       i18n-iso-countries: 7.14.0
       pako: 2.1.0
@@ -21901,7 +21902,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@zkpassport/utils@0.33.3(typescript@5.9.3)':
+  '@zkpassport/utils@0.36.0(typescript@5.9.3)':
     dependencies:
       '@lapo/asn1js': 2.1.3
       '@noble/ciphers': 1.3.0
@@ -21914,29 +21915,7 @@ snapshots:
       '@peculiar/asn1-schema': 2.6.0
       '@peculiar/asn1-x509': 2.6.1
       '@peculiar/x509': 1.14.3
-      '@zk-kit/utils': 1.4.1
-      '@zkpassport/poseidon2': 0.6.2
-      date-fns: 4.1.0
-      i18n-iso-countries: 7.14.0
-      tslib: 2.8.1
-      typescript: 5.9.3
-    transitivePeerDependencies:
-      - bufferutil
-      - utf-8-validate
-
-  '@zkpassport/utils@0.35.0(typescript@5.9.3)':
-    dependencies:
-      '@lapo/asn1js': 2.1.3
-      '@noble/ciphers': 1.3.0
-      '@noble/curves': 2.2.0
-      '@noble/hashes': 2.2.0
-      '@noble/secp256k1': 2.3.0
-      '@peculiar/asn1-cms': 2.6.1
-      '@peculiar/asn1-ecc': 2.6.1
-      '@peculiar/asn1-rsa': 2.6.1
-      '@peculiar/asn1-schema': 2.6.0
-      '@peculiar/asn1-x509': 2.6.1
-      '@peculiar/x509': 1.14.3
+      '@taceo/oprf-client': 0.9.0
       '@zk-kit/utils': 1.4.1
       '@zkpassport/poseidon2': 0.6.2
       date-fns: 4.1.0
@@ -26946,20 +26925,6 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.0.0
-
-  pino@9.14.0:
-    dependencies:
-      '@pinojs/redact': 0.4.0
-      atomic-sleep: 1.0.0
-      on-exit-leak-free: 2.1.2
-      pino-abstract-transport: 2.0.0
-      pino-std-serializers: 7.1.0
-      process-warning: 5.0.0
-      quick-format-unescaped: 4.0.4
-      real-require: 0.2.0
-      safe-stable-stringify: 2.5.0
-      sonic-boom: 4.2.1
-      thread-stream: 3.1.0
 
   pirates@4.0.7: {}
 

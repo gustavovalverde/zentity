@@ -70,7 +70,6 @@ import {
   SECONDS_BETWEEN_1900_AND_1970,
 } from "@zkpassport/utils";
 
-import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 import { getBarretenberg } from "@/lib/privacy/primitives/barretenberg";
 
@@ -137,11 +136,16 @@ const FACEMATCH_ALLOWED_ROOT_KEYS = new Set([
   "0x0e1889bec6c1d686abcf08360ff404f803ab345881ea8cba6aad33b7f7f7ffe0",
 ]);
 const ROOT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const SEPOLIA_CHAIN_ID = 11_155_111;
+const ETHEREUM_MAINNET_CHAIN_ID = 1;
+const ETHEREUM_SEPOLIA_CHAIN_ID = 11_155_111;
+
+function chainIdForDevMode(devMode: boolean): number {
+  return devMode ? ETHEREUM_SEPOLIA_CHAIN_ID : ETHEREUM_MAINNET_CHAIN_ID;
+}
 
 let verifierBackend: UltraHonkVerifierBackend | null = null;
 let backendInitPromise: Promise<UltraHonkVerifierBackend> | null = null;
-let registryClient: RegistryClient | null = null;
+const registryClients = new Map<number, RegistryClient>();
 let prewarmPromise: Promise<void> | null = null;
 
 const manifestCache = new Map<string, Promise<CircuitManifest>>();
@@ -170,9 +174,13 @@ const PROOF_SORT_ORDER = [
 // Singleton accessors
 // ---------------------------------------------------------------------------
 
-function getRegistry(): RegistryClient {
-  registryClient ??= new RegistryClient({ chainId: SEPOLIA_CHAIN_ID });
-  return registryClient;
+function getRegistry(chainId: number): RegistryClient {
+  let client = registryClients.get(chainId);
+  if (!client) {
+    client = new RegistryClient({ chainId });
+    registryClients.set(chainId, client);
+  }
+  return client;
 }
 
 function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
@@ -201,28 +209,32 @@ function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
 // Caching helpers
 // ---------------------------------------------------------------------------
 
-function getCachedManifest(version: string): Promise<CircuitManifest> {
-  let promise = manifestCache.get(version);
+function getCachedManifest(
+  version: string,
+  chainId: number
+): Promise<CircuitManifest> {
+  const cacheKey = `${chainId}:${version}`;
+  let promise = manifestCache.get(cacheKey);
   if (!promise) {
-    promise = getRegistry().getCircuitManifest(undefined, { version });
-    manifestCache.set(version, promise);
-    promise.catch(() => manifestCache.delete(version));
+    promise = getRegistry(chainId).getCircuitManifest(undefined, { version });
+    manifestCache.set(cacheKey, promise);
+    promise.catch(() => manifestCache.delete(cacheKey));
   }
   return promise;
 }
 
 function getCachedVk(
   circuitName: string,
-  manifest: CircuitManifest
+  manifest: CircuitManifest,
+  chainId: number
 ): Promise<Uint8Array> {
-  const cacheKey = `${circuitName}:${manifest.root}`;
+  const cacheKey = `${chainId}:${circuitName}:${manifest.root}`;
   let promise = vkCache.get(cacheKey);
   if (!promise) {
     promise = (async () => {
-      const circuit: PackagedCircuit = await getRegistry().getPackagedCircuit(
-        circuitName,
-        manifest
-      );
+      const circuit: PackagedCircuit = await getRegistry(
+        chainId
+      ).getPackagedCircuit(circuitName, manifest);
       return Buffer.from(circuit.vkey, "base64");
     })();
     vkCache.set(cacheKey, promise);
@@ -233,15 +245,16 @@ function getCachedVk(
 
 async function validateRootOnChain(
   type: "certificate" | "circuit",
-  root: string
+  root: string,
+  chainId: number
 ): Promise<boolean> {
-  const cacheKey = `${type}:${root}`;
+  const cacheKey = `${chainId}:${type}:${root}`;
   const cached = rootValidityCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return cached.valid;
   }
 
-  const registry = getRegistry();
+  const registry = getRegistry(chainId);
   let valid: boolean;
   try {
     valid =
@@ -1619,6 +1632,7 @@ async function checkPublicInputs(
   domain: string,
   proofs: ProofResult[],
   queryResult: QueryResult,
+  chainId: number,
   validity?: number,
   scope?: string
 ): Promise<PublicInputResult> {
@@ -1657,7 +1671,8 @@ async function checkPublicInputs(
       const certRoot = getCertificateRegistryRootFromOuterProof(proofData);
       const certValid = await validateRootOnChain(
         "certificate",
-        certRoot.toString(16)
+        certRoot.toString(16),
+        chainId
       );
       if (!certValid) {
         isCorrect = false;
@@ -1675,7 +1690,8 @@ async function checkPublicInputs(
       const circuitRoot = getCircuitRegistryRootFromOuterProof(proofData);
       const circuitValid = await validateRootOnChain(
         "circuit",
-        circuitRoot.toString(16)
+        circuitRoot.toString(16),
+        chainId
       );
       if (!circuitValid) {
         isCorrect = false;
@@ -1772,7 +1788,8 @@ async function checkPublicInputs(
       const merkleRoot = getMerkleRootFromDSCProof(proofData);
       const rootValid = await validateRootOnChain(
         "certificate",
-        merkleRoot.toString(16)
+        merkleRoot.toString(16),
+        chainId
       );
       if (!rootValid) {
         isCorrect = false;
@@ -2287,13 +2304,14 @@ async function computeExpectedDisclosureCommitment(
 async function verifyProofCryptographic(
   proof: ProofResult,
   manifest: CircuitManifest,
-  backend: UltraHonkVerifierBackend
+  backend: UltraHonkVerifierBackend,
+  chainId: number
 ): Promise<boolean> {
   const name = proof.name ?? "";
   const proofHex = proof.proof ?? "";
   try {
     const proofData = getProofData(proofHex, getNumberOfPublicInputs(name));
-    const vk = await getCachedVk(name, manifest);
+    const vk = await getCachedVk(name, manifest, chainId);
     const proofBytes = Buffer.from(proofData.proof.join(""), "hex");
     return await backend.verifyProof({
       proof: proofBytes,
@@ -2320,7 +2338,7 @@ async function verifyOuterEvmProofOnChain(params: {
   validity?: number;
 }): Promise<boolean> {
   try {
-    const [{ ZKPassport }, { createPublicClient, http }, { sepolia }] =
+    const [{ ZKPassport }, { createPublicClient, http }, { mainnet, sepolia }] =
       await Promise.all([
         import("@zkpassport/sdk"),
         import("viem"),
@@ -2329,9 +2347,14 @@ async function verifyOuterEvmProofOnChain(params: {
 
     const sdk = new ZKPassport(params.domain);
     const { address, abi, functionName } = sdk.getSolidityVerifierDetails();
+    const isDev = params.devMode === true;
     const client = createPublicClient({
-      chain: sepolia,
-      transport: http("https://ethereum-sepolia-rpc.publicnode.com"),
+      chain: isDev ? sepolia : mainnet,
+      transport: http(
+        isDev
+          ? "https://ethereum-sepolia-rpc.publicnode.com"
+          : "https://ethereum-rpc.publicnode.com"
+      ),
     });
     const solidityParams: {
       proof: ProofResult;
@@ -2370,46 +2393,6 @@ async function verifyOuterEvmProofOnChain(params: {
     );
     return false;
   }
-}
-
-async function verifyWithSdkFallback(
-  params: VerifyParams
-): Promise<Omit<VerifyResult, "verificationTimeMs">> {
-  const { ZKPassport } = await import("@zkpassport/sdk");
-  const sdk = new ZKPassport(params.domain);
-  const verifyParams: {
-    devMode?: boolean;
-    proofs: ProofResult[];
-    queryResult: QueryResult;
-    scope?: string;
-    validity?: number;
-    writingDirectory?: string;
-  } = {
-    proofs: params.proofs,
-    queryResult: params.queryResult,
-    writingDirectory: env.BB_CRS_PATH,
-  };
-
-  if (params.validity !== undefined) {
-    verifyParams.validity = params.validity;
-  }
-  if (params.scope !== undefined) {
-    verifyParams.scope = params.scope;
-  }
-  if (params.devMode !== undefined) {
-    verifyParams.devMode = params.devMode;
-  }
-
-  const result = await sdk.verify(verifyParams);
-
-  return {
-    verified: result.verified,
-    chipNullifier: result.uniqueIdentifier,
-    chipNullifierType: result.uniqueIdentifierType,
-    queryResultErrors: result.queryResultErrors as
-      | Record<string, unknown>
-      | undefined,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2453,23 +2436,18 @@ export async function verifyZkPassportProofs(
   try {
     const formattedResult = formatQueryResultDates(queryResult);
 
+    const chainId = chainIdForDevMode(devMode);
+
     // Phase 1: Validate public inputs
-    console.log(
-      "[zkpassport-verifier] Starting verification for",
-      proofs.length,
-      "proofs, domain:",
-      domain,
-      "devMode:",
-      devMode
-    );
     const { isCorrect, nullifier, nullifierType, errors } =
-      await checkPublicInputs(domain, proofs, formattedResult, validity, scope);
-    console.log("[zkpassport-verifier] Public input check:", {
-      isCorrect,
-      nullifier,
-      nullifierType: nullifierType as number,
-      errors,
-    });
+      await checkPublicInputs(
+        domain,
+        proofs,
+        formattedResult,
+        chainId,
+        validity,
+        scope
+      );
 
     // Mock nullifier rejection (unless devMode)
     if (
@@ -2489,14 +2467,12 @@ export async function verifyZkPassportProofs(
 
     // Phase 2: Cryptographic proof verification (only if public inputs passed)
     let verified = isCorrect;
-    let cryptographicFailureProofName: string | undefined;
-    let queryResultErrors = Object.keys(errors).length > 0 ? errors : undefined;
-    let chipNullifier = nullifier;
-    let chipNullifierType = nullifierType;
+    const queryResultErrors =
+      Object.keys(errors).length > 0 ? errors : undefined;
     if (verified) {
       const [backend, manifest] = await Promise.all([
         getVerifierBackend(),
-        getCachedManifest(proofs[0]?.version ?? ""),
+        getCachedManifest(proofs[0]?.version ?? "", chainId),
       ]);
 
       for (const proof of proofs) {
@@ -2509,63 +2485,19 @@ export async function verifyZkPassportProofs(
           ? await verifyOuterEvmProofOnChain({
               proof,
               domain,
+              devMode,
               ...(scope === undefined ? {} : { scope }),
-              ...(devMode === undefined ? {} : { devMode }),
               ...(validity === undefined ? {} : { validity }),
             })
-          : await verifyProofCryptographic(proof, manifest, backend);
+          : await verifyProofCryptographic(proof, manifest, backend, chainId);
         if (!proofValid) {
           verified = false;
-          cryptographicFailureProofName = name;
           logger.warn(
             { proofName: name },
             "ZKPassport cryptographic verification failed for a proof"
           );
           break;
         }
-      }
-    }
-
-    if (!verified && isCorrect) {
-      try {
-        logger.warn(
-          {
-            failedProofName: cryptographicFailureProofName,
-            proofCount: proofs.length,
-          },
-          "Fast ZKPassport verification disagreed after public input checks; retrying with SDK verifier"
-        );
-        const fallbackParams: VerifyParams = {
-          domain,
-          proofs,
-          queryResult: formattedResult,
-        };
-        if (devMode !== undefined) {
-          fallbackParams.devMode = devMode;
-        }
-        if (scope !== undefined) {
-          fallbackParams.scope = scope;
-        }
-        if (validity !== undefined) {
-          fallbackParams.validity = validity;
-        }
-        if (timeoutMs !== undefined) {
-          fallbackParams.timeoutMs = timeoutMs;
-        }
-
-        const fallback = await verifyWithSdkFallback(fallbackParams);
-        verified = fallback.verified;
-        chipNullifier = fallback.chipNullifier;
-        chipNullifierType = fallback.chipNullifierType;
-        queryResultErrors = fallback.queryResultErrors;
-      } catch (error) {
-        logger.warn(
-          {
-            error: error instanceof Error ? error.message : String(error),
-            failedProofName: cryptographicFailureProofName,
-          },
-          "SDK fallback verification failed"
-        );
       }
     }
 
@@ -2577,8 +2509,8 @@ export async function verifyZkPassportProofs(
 
     return {
       verified,
-      chipNullifier: verified ? chipNullifier : undefined,
-      chipNullifierType: verified ? chipNullifierType : undefined,
+      chipNullifier: verified ? nullifier : undefined,
+      chipNullifierType: verified ? nullifierType : undefined,
       queryResultErrors,
       verificationTimeMs: elapsed,
     };
@@ -2600,8 +2532,6 @@ export function warmupZkPassportVerifier(): Promise<void> {
     const start = performance.now();
     try {
       await getVerifierBackend();
-      // Also pre-create the registry client
-      getRegistry();
       const elapsed = performance.now() - start;
       logger.info(
         { durationMs: Math.round(elapsed) },
@@ -2638,7 +2568,7 @@ interface VerifierTestApi {
     rootValidityCache.clear();
     verifierBackend = null;
     backendInitPromise = null;
-    registryClient = null;
+    registryClients.clear();
     prewarmPromise = null;
   },
   computeExpectedDisclosureCommitment,

@@ -42,6 +42,7 @@ vi.mock("viem", () => ({
 }));
 
 vi.mock("viem/chains", () => ({
+  mainnet: { id: 1 },
   sepolia: { id: 11_155_111 },
 }));
 
@@ -60,7 +61,8 @@ interface VerifierTestApi {
   reset(): void;
   validateRootOnChain: (
     rootType: "certificate" | "circuit",
-    rootHex: string
+    rootHex: string,
+    chainId: number
   ) => Promise<boolean>;
   verifyOuterEvmProofOnChain: (params: {
     proof: unknown;
@@ -103,13 +105,13 @@ describe("zkpassport-verifier root validation", () => {
     const testApi = await getTestApi();
 
     await expect(
-      testApi.validateRootOnChain("certificate", "deadbeef")
+      testApi.validateRootOnChain("certificate", "deadbeef", 1)
     ).resolves.toBe(false);
     await expect(
-      testApi.validateRootOnChain("certificate", "deadbeef")
+      testApi.validateRootOnChain("certificate", "deadbeef", 1)
     ).resolves.toBe(true);
     await expect(
-      testApi.validateRootOnChain("certificate", "deadbeef")
+      testApi.validateRootOnChain("certificate", "deadbeef", 1)
     ).resolves.toBe(true);
 
     expect(mockRegistryClient.isCertificateRootValid).toHaveBeenCalledTimes(2);
@@ -123,13 +125,13 @@ describe("zkpassport-verifier root validation", () => {
     const testApi = await getTestApi();
 
     await expect(
-      testApi.validateRootOnChain("circuit", "feedface")
+      testApi.validateRootOnChain("circuit", "feedface", 1)
     ).resolves.toBe(false);
     await expect(
-      testApi.validateRootOnChain("circuit", "feedface")
+      testApi.validateRootOnChain("circuit", "feedface", 1)
     ).resolves.toBe(true);
     await expect(
-      testApi.validateRootOnChain("circuit", "feedface")
+      testApi.validateRootOnChain("circuit", "feedface", 1)
     ).resolves.toBe(true);
 
     expect(mockRegistryClient.isCircuitRootValid).toHaveBeenCalledTimes(2);
