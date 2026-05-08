@@ -207,14 +207,23 @@ vercel --prod            # Run from repo root
 
 Backend services deploy to Railway using Dockerfiles. Each service has a `railway.toml` for configuration.
 
-**Important**: Use `--path-as-root` flag to deploy from service subdirectories in this monorepo.
+**Web service** depends on the `@zentity/sdk` workspace package, so its Dockerfile builds with the repo root as Docker context. Deploy via the staging script — it rsyncs only what the Dockerfile needs into a temp directory, places `railway.toml` at the upload root (so `[deploy]` settings persist), then runs `railway up`:
 
 ```bash
-# Deploy individual services
+./apps/web/scripts/deploy-to-railway.sh
+```
+
+**Other services** are self-contained and deploy with `--path-as-root`:
+
+```bash
 railway up apps/fhe --path-as-root --service fhe
 railway up apps/ocr --path-as-root --service ocr
-railway up apps/web --path-as-root --service web
 ```
+
+Notes:
+
+- Railway CLI honors `.gitignore` (not `.dockerignore`) when filtering uploads. The web staging script works around this by rsync-filtering before upload.
+- The web service has `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile` set so Railway finds the Dockerfile inside the repo-root upload.
 
 **Service URLs (production)**:
 
@@ -229,6 +238,11 @@ railway up apps/web --path-as-root --service web
 - `DEDUP_HMAC_SECRET` (min 32 chars, sybil dedup & per-RP nullifiers)
 - `PAIRWISE_SECRET` (min 32 chars, HAIP pairwise subject identifiers)
 - `KEY_ENCRYPTION_KEY` (min 32 chars, AES-256-GCM for JWKS at rest)
+- `CRON_SECRET` (min 32 chars, Bearer auth for `/api/cron/*` triggers)
+- `CLAIM_SIGNING_SECRET` (min 32 chars, signed claim issuer secret)
+- `CIPHERTEXT_HMAC_SECRET` (min 32 chars, FHE ciphertext integrity)
+- `BBS_ISSUER_SECRET` (BBS+ issuer signing key)
+- `SECRET_BLOB_DIR` (typically `/var/lib/zentity/web/secret-blobs`, persisted via volume)
 - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web push)
@@ -240,6 +254,11 @@ railway up apps/web --path-as-root --service web
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
 - `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
 - `X5C_LEAF_PEM`, `X5C_CA_PEM`
+
+**Conditional env vars** (required only when the corresponding feature is enabled):
+
+- World ID PoH (when `NEXT_PUBLIC_WORLD_ID_ENABLED=true`): `HUMANITY_HMAC_SECRET` (min 32 chars), `NEXT_PUBLIC_WORLD_ID_APP_ID`, `WORLD_ID_RP_ID`, `WORLD_ID_RP_SIGNING_KEY` (32-byte hex), `WORLD_ID_ENVIRONMENT` (`production` or `staging`)
+- Base Sepolia mirror (when `NEXT_PUBLIC_ENABLE_BASE_SEPOLIA=true`): `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY`, `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR`
 
 ### Manual Setup (without Docker)
 

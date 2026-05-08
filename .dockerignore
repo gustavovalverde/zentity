@@ -1,18 +1,78 @@
+# Repo-root ignores for `railway up --service web` (uploads from repo root)
+
+# VCS / IDE / agent caches
 .git
 .turbo
 .vercel
+.idea
+.vscode
+.claude
+.codex
+.cursor
+.playwright-mcp
 
+# Node
+node_modules
 **/node_modules
+
+# Next.js / build artifacts
 **/.next
+**/.next-prod
 **/dist
 **/build
 **/coverage
 **/playwright-report
 **/test-results
+**/tsconfig.tsbuildinfo
+**/.tsbuildinfo
+
+# Local data and venvs
 **/.data
 **/.venv
 **/__pycache__
 **/*.pyc
+**/*.log
 
-apps/fhe/target
-apps/signer/target
+# Synpress / e2e wallet caches (multi-hundred MB)
+**/.cache-synpress
+**/.synpress-wallet-setup-dist
+
+# Rust targets
+**/target
+
+# Sibling apps (not needed for web build)
+apps/landing
+apps/demo-rp
+apps/mcp
+apps/ocr
+apps/fhe
+apps/signer
+
+# Web app non-build content
+apps/web/e2e
+apps/web/coverage
+apps/web/playwright-report
+apps/web/test-results
+apps/web/.next
+apps/web/.next-prod
+apps/web/.cache-synpress
+apps/web/.data
+apps/web/.synpress-wallet-setup-dist
+apps/web/.claude
+apps/web/.cursor
+apps/web/tsconfig.tsbuildinfo
+
+# Generated public assets (rebuilt from node_modules in image via setup-coep-assets)
+apps/web/public/bb
+apps/web/public/fhevm
+apps/web/public/tfhe
+
+# Top-level docs and tooling
+docs
+e2e
+plans
+ai-prompts
+
+# Misc
+**/.DS_Store
+fixtures

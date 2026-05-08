@@ -70,7 +70,7 @@ NEXT_PUBLIC_APP_URL = "https://app.zentity.xyz"
 NEXT_PUBLIC_ZKPASSPORT_ENABLED = "true"
 
 [deploy]
-healthcheckPath = "/api/health"
+healthcheckPath = "/api/status/health"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
 numReplicas = 1
