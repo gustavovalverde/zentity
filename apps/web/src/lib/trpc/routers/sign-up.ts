@@ -143,7 +143,16 @@ export const signUpRouter = router({
           .sendVerificationEmail({
             body: { email, callbackURL: "/dashboard" },
           })
-          .catch(() => undefined);
+          .catch((sendError: unknown) => {
+            ctx.log.error(
+              {
+                event: "verification_email_send_failed",
+                emailHash: hashIdentifier(email),
+                err: sendError,
+              },
+              "failed to send verification email"
+            );
+          });
       }
 
       return { success: true };

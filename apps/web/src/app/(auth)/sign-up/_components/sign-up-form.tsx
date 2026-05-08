@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -273,8 +274,11 @@ export function SignUpForm() {
           Click the link in the email to finish setting up your account.
         </p>
         <p className="text-muted-foreground text-xs">
-          The link expires in 1 hour. You can close this window.
+          The link expires in 1 hour.
         </p>
+        <Button asChild variant="outline">
+          <Link href="/dashboard">Continue to dashboard</Link>
+        </Button>
       </div>
     );
   }
