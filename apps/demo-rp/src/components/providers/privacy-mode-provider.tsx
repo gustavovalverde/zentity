@@ -24,7 +24,7 @@ interface PrivacyModeContextValue {
 }
 
 const PrivacyModeContext = createContext<PrivacyModeContextValue>({
-  privacyMode: false,
+  privacyMode: true,
   // biome-ignore lint/suspicious/noEmptyBlockStatements: default no-op
   togglePrivacyMode: () => {},
 });
@@ -46,11 +46,13 @@ function subscribe(onStoreChange: () => void) {
 }
 
 function getSnapshot() {
-  return localStorage.getItem(STORAGE_KEY) === "true";
+  // Default to hidden. Only reveal when the user has explicitly opted out by
+  // storing "false". Treat any other value (including missing) as hidden.
+  return localStorage.getItem(STORAGE_KEY) !== "false";
 }
 
 function getServerSnapshot() {
-  return false;
+  return true;
 }
 
 function usePrivacyModeStore() {
