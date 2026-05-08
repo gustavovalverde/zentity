@@ -4,6 +4,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
 
+// Vercel's serverless filesystem is read-only outside /tmp. /tmp persists for
+// the lifetime of a function instance only — keys regen on cold start, which
+// rotates JWKS for verifiers (e.g. web's TRUSTED_AGENT_ATTESTERS). Acceptable
+// for demo flows where attestation lifetime < instance lifetime. For stable
+// keys, replace with an env-var-based JWK (ATTESTATION_PRIVATE_JWK).
 const KEY_PATH = process.env.VERCEL
   ? "/tmp/attestation-key.json"
   : resolve(process.cwd(), ".data/attestation-key.json");
