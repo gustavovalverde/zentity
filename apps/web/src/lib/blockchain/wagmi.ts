@@ -17,7 +17,7 @@ import type { AppKitNetwork } from "@reown/appkit/networks";
 import { hardhat, sepolia } from "@reown/appkit/networks";
 import { useAppKitAccount } from "@reown/appkit/react";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
-import { cookieStorage, createStorage, injected } from "@wagmi/core";
+import { cookieStorage, createStorage } from "@wagmi/core";
 import { BrowserProvider, type Eip1193Provider, type Signer } from "ethers";
 import { useCallback, useEffect, useState } from "react";
 import { usePublicClient } from "wagmi";
@@ -101,7 +101,10 @@ export const networks = getEnabledNetworks();
 
 /**
  * Single wagmi adapter shared by AppKit and WagmiProvider.
- * Wallet connections are browser-level — no per-user scoping needed.
+ * Connectors are registered by AppKit (EIP-6963 + WalletConnect + Coinbase)
+ * via the createAppKit feature flags; declaring them here too registers the
+ * same wallet twice and breaks the connect handshake (state lands on one
+ * connector, hooks read the other).
  */
 export const wagmiAdapter = new WagmiAdapter({
   storage: createStorage({
@@ -110,7 +113,6 @@ export const wagmiAdapter = new WagmiAdapter({
   ssr: true,
   projectId,
   networks,
-  connectors: [injected({ shimDisconnect: true })],
 });
 
 // ---------------------------------------------------------------------------
