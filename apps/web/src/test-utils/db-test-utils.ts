@@ -17,8 +17,8 @@ import { cibaRequests, pushSubscriptions } from "@/lib/db/schema/ciba";
 import {
   attestationEvidence,
   blockchainAttestations,
-  humanSignalChallenges,
-  humanSignals,
+  humanityChallenges,
+  humanityCredentials,
   identityBundles,
   identityValidityDeliveries,
   identityValidityEvents,
@@ -77,8 +77,8 @@ export async function resetDatabase(): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(attestationEvidence).run();
     await tx.delete(blockchainAttestations).run();
-    await tx.delete(humanSignalChallenges).run();
-    await tx.delete(humanSignals).run();
+    await tx.delete(humanityChallenges).run();
+    await tx.delete(humanityCredentials).run();
     await tx.delete(signedClaims).run();
     await tx.delete(encryptedAttributes).run();
     await tx.delete(secretWrappers).run();

@@ -3,6 +3,7 @@ import {
   createPaymentRequired,
   createProofOfHumanTokenVerifier,
   encodePaymentResponseHeader,
+  identityStrengthTier,
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   type ProofOfHumanClaims,
@@ -275,14 +276,15 @@ async function validatePohToken(
     }
   }
 
-  if (verified.poh.tier < resource.requiredTier) {
+  const actualTier = identityStrengthTier(verified.poh);
+  if (actualTier < resource.requiredTier) {
     return {
       ok: false,
       response: NextResponse.json(
         {
           error: "insufficient_tier",
           required: resource.requiredTier,
-          actual: verified.poh.tier,
+          actual: actualTier,
         },
         { status: 403 }
       ),

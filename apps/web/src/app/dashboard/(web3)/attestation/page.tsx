@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { isWeb3Enabled } from "@/env";
 import { getCachedSession } from "@/lib/auth/session";
-import { getComplianceStatus } from "@/lib/db/queries/identity";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 
 import { OnChainAttestation } from "./_components/on-chain-attestation";
 import { ViewIdentityData } from "./_components/view-identity-data";
@@ -19,7 +19,7 @@ export default async function AttestationPage() {
 
   // Only fetch verification status for OnChainAttestation
   const verificationStatus = userId ? await getComplianceStatus(userId) : null;
-  const isVerified = verificationStatus?.verified ?? false;
+  const isVerified = verificationStatus?.identity.verified ?? false;
 
   return (
     <div className="space-y-6">

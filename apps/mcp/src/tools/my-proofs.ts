@@ -15,6 +15,7 @@ interface ProofClaims {
   chip_verified?: boolean;
   document_verified?: boolean;
   face_match_verified?: boolean;
+  humanity_proven?: boolean;
   identity_bound?: boolean;
   liveness_verified?: boolean;
   nationality_group?: string;
@@ -62,8 +63,9 @@ export function registerMyProofsTool(server: McpServer): void {
         "Check the user's proofs and verification-derived facts such as age status, proof inventory, and verification method. Use this for 'what proofs do I have?' or 'am I over 18?'.",
       outputSchema: {
         verificationMethod: z.string().nullable(),
-        verificationLevel: z.string(),
+        verificationStrength: z.string(),
         verified: z.boolean(),
+        humanityProven: z.boolean(),
         isOver18: z.boolean().nullable(),
         checks: z.array(
           z.object({
@@ -121,8 +123,9 @@ export function registerMyProofsTool(server: McpServer): void {
 
       const structuredContent = {
         verificationMethod,
-        verificationLevel: claims.verification_level ?? "none",
+        verificationStrength: claims.verification_level ?? "none",
         verified: claims.verified ?? false,
+        humanityProven: claims.humanity_proven ?? false,
         isOver18: ageCheck?.passed ?? null,
         checks,
       };

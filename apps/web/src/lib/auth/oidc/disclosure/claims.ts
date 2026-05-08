@@ -10,7 +10,7 @@
  *   tampering between record creation and disclosure.
  */
 
-import type { ComplianceLevel } from "@/lib/identity/verification/compliance";
+import type { ComplianceResult } from "@/lib/identity/verification/compliance";
 
 import { createHmac } from "node:crypto";
 
@@ -25,6 +25,7 @@ import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 export const PROOF_DISCLOSURE_KEYS = [
   "verification_level",
   "verified",
+  "humanity_proven",
   "document_verified",
   "liveness_verified",
   "age_verification",
@@ -47,44 +48,36 @@ interface VerificationClaims extends Record<string, unknown> {
   chip_verified: boolean;
   document_verified: boolean;
   face_match_verified: boolean;
+  humanity_proven: boolean;
   identity_bound: boolean;
   liveness_verified: boolean;
   nationality_group?: string | undefined;
   nationality_verified: boolean;
   policy_version?: string | undefined;
   sybil_resistant: boolean;
-  verification_level: ComplianceLevel;
+  verification_level: string;
   verification_time?: string | undefined;
   verified: boolean;
 }
 
-function mapComplianceToClaims(compliance: {
-  level: ComplianceLevel;
-  verified: boolean;
-  checks: {
-    documentVerified: boolean;
-    livenessVerified: boolean;
-    ageVerified: boolean;
-    faceMatchVerified: boolean;
-    nationalityVerified: boolean;
-    identityBound: boolean;
-    sybilResistant: boolean;
-  };
-}): VerificationClaims {
-  const isChip = compliance.level === "chip";
+function mapComplianceToClaims(
+  compliance: ComplianceResult
+): VerificationClaims {
+  const isChip = compliance.identity.strength === "cryptographic_chip";
   return {
-    verification_level: compliance.level,
-    verified: compliance.verified,
-    document_verified: compliance.checks.documentVerified,
-    liveness_verified: compliance.checks.livenessVerified,
-    age_verification: compliance.checks.ageVerified,
-    face_match_verified: compliance.checks.faceMatchVerified,
-    nationality_verified: compliance.checks.nationalityVerified,
-    nationality_group: compliance.checks.nationalityVerified
+    verification_level: compliance.identity.strength,
+    verified: compliance.identity.verified,
+    humanity_proven: compliance.humanity.proven,
+    document_verified: compliance.policy.checks.documentVerified,
+    liveness_verified: compliance.policy.checks.livenessVerified,
+    age_verification: compliance.policy.checks.ageVerified,
+    face_match_verified: compliance.policy.checks.faceMatchVerified,
+    nationality_verified: compliance.policy.checks.nationalityVerified,
+    nationality_group: compliance.policy.checks.nationalityVerified
       ? NATIONALITY_GROUP
       : undefined,
-    identity_bound: compliance.checks.identityBound,
-    sybil_resistant: compliance.checks.sybilResistant,
+    identity_bound: compliance.policy.checks.identityBound,
+    sybil_resistant: compliance.policy.checks.sybilResistant,
     chip_verified: isChip,
     chip_verification_method: isChip ? "nfc" : undefined,
   };
@@ -116,13 +109,13 @@ export async function buildOidcVerifiedClaims(userId: string): Promise<{
 } | null> {
   const model = await getVerificationReadModel(userId);
 
-  if (!model.compliance.verified) {
+  if (!model.compliance.identity.verified) {
     return null;
   }
 
   const verification: Record<string, unknown> = {
     trust_framework: "eidas",
-    assurance_level: model.compliance.level,
+    assurance_level: model.compliance.identity.strength,
   };
   const verificationTime = model.verifiedAt ?? model.bundle.updatedAt ?? null;
   if (verificationTime) {

@@ -8,7 +8,10 @@ import {
 import { createDiscoveryResolver } from "./fpa/discovery";
 import type { AccessTokenClaims, CapabilityClaim } from "./protocol/index";
 import type { DpopClient } from "./rp/dpop-client";
-import { requestProofOfHumanToken } from "./rp/proof-of-human";
+import {
+  identityStrengthTier,
+  requestProofOfHumanToken,
+} from "./rp/proof-of-human";
 import {
   createX402Fetch,
   type X402Fetch,
@@ -267,12 +270,10 @@ export function createAgent(config: AgentConfig): Agent {
     }
 
     const requiredLevel = options.minComplianceLevel;
-    if (
-      typeof requiredLevel === "number" &&
-      proofOfHuman.unverifiedClaims.tier < requiredLevel
-    ) {
+    const actualLevel = identityStrengthTier(proofOfHuman.unverifiedClaims);
+    if (typeof requiredLevel === "number" && actualLevel < requiredLevel) {
       throw new ComplianceInsufficientError({
-        actualLevel: proofOfHuman.unverifiedClaims.tier,
+        actualLevel,
         issuerUrl: config.issuerUrl,
         requiredLevel,
       });

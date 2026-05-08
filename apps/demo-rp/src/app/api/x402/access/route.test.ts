@@ -147,10 +147,12 @@ describe("/api/x402/access POST", () => {
       sub: "user-123",
       exp: 1_800_000_000,
       poh: {
-        tier: 3,
-        verified: true,
-        sybil_resistant: true,
-        method: "ocr",
+        identity: {
+          verified: true,
+          strength: "cryptographic_chip",
+        },
+        humanity: { proven: true },
+        policy: { version: "v1.0" },
       },
     });
     mocks.readOnChainCompliance.mockResolvedValue({

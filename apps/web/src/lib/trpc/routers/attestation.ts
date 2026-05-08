@@ -35,7 +35,10 @@ import {
   upsertAttestationEvidence,
 } from "@/lib/db/queries/attestation";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
-import { countryCodeToNumeric } from "@/lib/identity/verification/compliance";
+import {
+  complianceOnchainTier,
+  countryCodeToNumeric,
+} from "@/lib/identity/verification/compliance";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { protectedProcedure, requireFeature, router } from "../server";
@@ -218,7 +221,7 @@ export const attestationRouter = router({
       }
 
       // Validate identity data
-      if (model.compliance.birthYearOffset === null) {
+      if (model.compliance.policy.birthYearOffset === null) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message:
@@ -233,9 +236,9 @@ export const attestationRouter = router({
         bundle?.sanctionsScreeningResult === "match";
 
       const identityData = {
-        birthYearOffset: model.compliance.birthYearOffset,
+        birthYearOffset: model.compliance.policy.birthYearOffset,
         countryCode: countryCodeToNumeric(model.issuerCountry || ""),
-        complianceLevel: model.compliance.numericLevel,
+        complianceLevel: complianceOnchainTier(model.compliance),
         isBlacklisted,
       };
 

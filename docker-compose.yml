@@ -36,7 +36,7 @@ services:
       - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-local-docker-bbs-issuer-secret-32-chars}
       - RECOVERY_ML_KEM_SECRET_KEY=${RECOVERY_ML_KEM_SECRET_KEY:-}
       - DEDUP_HMAC_SECRET=${DEDUP_HMAC_SECRET:-local-docker-dedup-hmac-secret-32-chars}
-      - HUMAN_SIGNAL_HMAC_SECRET=${HUMAN_SIGNAL_HMAC_SECRET:-local-docker-human-signal-hmac-secret-32-chars}
+      - HUMANITY_HMAC_SECRET=${HUMANITY_HMAC_SECRET:-local-docker-humanity-hmac-secret-32-chars-min}
       - PAIRWISE_SECRET=${PAIRWISE_SECRET:-local-docker-pairwise-secret-32-chars}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-local-docker-vapid-public-key}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-local-docker-vapid-private-key}

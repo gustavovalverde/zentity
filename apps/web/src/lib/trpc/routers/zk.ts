@@ -31,7 +31,6 @@ import { db } from "@/lib/db/connection";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
   getAccountIdentity,
-  getComplianceStatus,
   reconcileIdentityBundle,
   updateIdentityBundleAttestationState,
 } from "@/lib/db/queries/identity";
@@ -54,7 +53,10 @@ import {
 } from "@/lib/identity/verification/birth-year";
 import { invalidateVerificationCache } from "@/lib/identity/verification/job-processor";
 import { materializeVerificationChecks } from "@/lib/identity/verification/materialize";
-import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
+import {
+  getComplianceStatus,
+  getVerificationReadModel,
+} from "@/lib/identity/verification/read-model";
 import { withSpan } from "@/lib/observability/telemetry";
 import { createPresentation } from "@/lib/privacy/bbs/holder";
 import { deriveBbsKeyPair } from "@/lib/privacy/bbs/keygen";
@@ -858,8 +860,9 @@ const getChecksProcedure = protectedProcedure.query(async ({ ctx }) => {
   const model = await getVerificationReadModel(ctx.userId);
   return {
     method: model.method,
-    level: model.compliance.level,
-    verified: model.compliance.verified,
+    identityStrength: model.compliance.identity.strength,
+    identityVerified: model.compliance.identity.verified,
+    humanityProven: model.compliance.humanity.proven,
     checks: model.checks,
   };
 });
@@ -1130,7 +1133,7 @@ const storeProofProcedure = protectedProcedure
     });
 
     const verificationStatus = await getComplianceStatus(ctx.userId);
-    if (verificationStatus.verified) {
+    if (verificationStatus.identity.verified) {
       await updateIdentityBundleAttestationState({
         userId: ctx.userId,
         policyVersion: POLICY_VERSION,

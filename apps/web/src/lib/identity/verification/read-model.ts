@@ -3,7 +3,7 @@
  *
  * Single function all consumers call to get a user's verification state.
  * Reads from the materialized verification_checks table plus supplementary
- * tables for bundle, FHE, vault, and attestation status.
+ * tables for bundle, FHE, vault, attestation, and humanity status.
  */
 import "server-only";
 
@@ -12,6 +12,7 @@ import { cache } from "react";
 
 import { db } from "@/lib/db/connection";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
+import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import {
   getAccountIdentity,
   hasProfileSecret,
@@ -26,10 +27,13 @@ import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 import {
   CHECK_TYPE_TO_COMPLIANCE_KEY,
   type ComplianceChecks,
-  type ComplianceLevel,
-  deriveLevelFromChecks,
+  type ComplianceResult,
+  DEFAULT_POLICY_VERSION,
+  deriveComplianceStatus,
   EMPTY_CHECKS,
+  type IdentityEvidenceStrength,
   type VerificationCheckType,
+  type VerificationMethod,
 } from "./compliance";
 import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
 
@@ -60,11 +64,17 @@ export interface GroupedIdentityCredential {
   verifiedAt: string | null;
 }
 
+export interface HumanityCredentialSummary {
+  attachedAt: string;
+  expiresAt: string | null;
+  provider: string;
+  providerSubjectKind: string;
+}
+
 export interface VerificationReadModel {
   bundle: {
     exists: boolean;
     fheKeyId: string | null;
-    hasHumanSignal: boolean;
     policyVersion: string | null;
     attestationExpiresAt: string | null;
     verificationExpiresAt: string | null;
@@ -74,13 +84,7 @@ export interface VerificationReadModel {
 
   checks: VerificationCheck[];
 
-  compliance: {
-    level: ComplianceLevel;
-    numericLevel: number;
-    verified: boolean;
-    birthYearOffset: number | null;
-    checks: ComplianceChecks;
-  };
+  compliance: ComplianceResult;
 
   fhe: {
     complete: boolean;
@@ -90,8 +94,10 @@ export interface VerificationReadModel {
     effectiveVerificationId: string | null;
     credentials: GroupedIdentityCredential[];
   };
+  /** Active humanity credentials for the user (provider list, no nullifiers). */
+  humanityCredentials: HumanityCredentialSummary[];
   issuerCountry: string | null;
-  method: "ocr" | "nfc_chip" | null;
+  method: VerificationMethod;
   needsDocumentReprocessing: boolean;
 
   onChainAttested: boolean;
@@ -120,11 +126,11 @@ function deriveComplianceFromChecks(
   rows: VerificationCheck[],
   method: "ocr" | "nfc_chip",
   birthYearOffset: number | null,
-  hasHumanSignal: boolean
-): VerificationReadModel["compliance"] {
+  hasHumanityCredential: boolean
+): ComplianceResult {
   const checks: ComplianceChecks = {
     ...EMPTY_CHECKS,
-    sybilResistant: hasHumanSignal,
+    sybilResistant: hasHumanityCredential,
   };
   for (const row of rows) {
     const key =
@@ -133,20 +139,48 @@ function deriveComplianceFromChecks(
       checks[key] = row.passed;
     }
   }
-  checks.sybilResistant = checks.sybilResistant || hasHumanSignal;
+  checks.sybilResistant = checks.sybilResistant || hasHumanityCredential;
 
-  const { level, numericLevel, verified } = deriveLevelFromChecks(
-    checks,
-    method
-  );
+  const verified = method !== null && Object.values(checks).every(Boolean);
 
   return {
-    level,
-    numericLevel,
-    verified,
-    birthYearOffset,
-    checks,
+    identity: {
+      verified,
+      method,
+      strength: deriveIdentityStrength(checks, method),
+    },
+    humanity: {
+      proven: hasHumanityCredential,
+    },
+    policy: {
+      version: DEFAULT_POLICY_VERSION,
+      checks,
+      birthYearOffset,
+    },
   };
+}
+
+function deriveIdentityStrength(
+  checks: ComplianceChecks,
+  method: "ocr" | "nfc_chip"
+): IdentityEvidenceStrength {
+  if (method === "nfc_chip" && checks.documentVerified) {
+    return "cryptographic_chip";
+  }
+  if (method === "ocr") {
+    const corePassed =
+      checks.documentVerified &&
+      checks.livenessVerified &&
+      checks.faceMatchVerified &&
+      checks.ageVerified;
+    if (corePassed) {
+      return "documentary_full";
+    }
+    if (checks.documentVerified) {
+      return "documentary";
+    }
+  }
+  return "none";
 }
 
 // ─── DB queries ─────────────────────────────────────────────────────
@@ -247,7 +281,6 @@ function buildBundle(bundle: BundleData) {
   return {
     exists: bundle !== null,
     fheKeyId: bundle?.fheKeyId ?? null,
-    hasHumanSignal: Boolean(bundle?.hasHumanSignal),
     policyVersion: bundle?.policyVersion ?? null,
     attestationExpiresAt: bundle?.attestationExpiresAt ?? null,
     verificationExpiresAt: bundle?.verificationExpiresAt ?? null,
@@ -256,59 +289,64 @@ function buildBundle(bundle: BundleData) {
   };
 }
 
-function isHumanSignalUsable(bundle: BundleData): boolean {
-  return (
-    Boolean(bundle?.hasHumanSignal) && bundle?.validityStatus !== "revoked"
-  );
+function isHumanityUsable(hasActive: boolean, bundle: BundleData): boolean {
+  return hasActive && bundle?.validityStatus !== "revoked";
 }
 
 function gateVerifiedFlagByBundleValidity(
-  compliance: VerificationReadModel["compliance"],
+  compliance: ComplianceResult,
   bundle: BundleData
-): VerificationReadModel["compliance"] {
+): ComplianceResult {
   if (!bundle || bundle.validityStatus === "verified") {
     return compliance;
   }
 
   return {
     ...compliance,
-    verified: false,
+    identity: {
+      ...compliance.identity,
+      verified: false,
+    },
   };
 }
 
-function buildEmptyModel(
-  bundle: BundleData,
-  fheTypes: string[],
-  profileExists: boolean,
-  attested: boolean,
-  groupedIdentity: VerificationReadModel["groupedIdentity"]
-): VerificationReadModel {
-  const checks = {
-    ...EMPTY_CHECKS,
-    sybilResistant: isHumanSignalUsable(bundle),
-  };
-  const { level, numericLevel, verified } = deriveLevelFromChecks(checks, null);
+function buildEmptyModel(args: {
+  attested: boolean;
+  bundle: BundleData;
+  fheTypes: string[];
+  groupedIdentity: VerificationReadModel["groupedIdentity"];
+  humanityCredentials: HumanityCredentialSummary[];
+  humanityUsable: boolean;
+  profileExists: boolean;
+}): VerificationReadModel {
+  const compliance = deriveComplianceStatus({
+    verificationMethod: null,
+    birthYearOffset: null,
+    zkProofs: [],
+    signedClaims: [],
+    hasDocumentSybilSignal: false,
+    hasHumanityCredential: args.humanityUsable,
+    hasNationalityCommitment: false,
+  });
 
   return {
     method: null,
     verificationId: null,
     verifiedAt: null,
     issuerCountry: null,
-    compliance: {
-      level,
-      numericLevel,
-      verified,
-      birthYearOffset: null,
-      checks,
-    },
+    compliance,
     checks: [],
     proofs: [],
-    bundle: buildBundle(bundle),
-    fhe: { complete: isFheComplete(fheTypes), attributeTypes: fheTypes },
-    vault: { hasProfileSecret: profileExists },
-    onChainAttested: attested,
+    bundle: buildBundle(args.bundle),
+    fhe: {
+      complete: isFheComplete(args.fheTypes),
+      attributeTypes: args.fheTypes,
+    },
+    vault: { hasProfileSecret: args.profileExists },
+    onChainAttested: args.attested,
     needsDocumentReprocessing: false,
-    groupedIdentity,
+    groupedIdentity: args.groupedIdentity,
+    humanityCredentials: args.humanityCredentials,
   };
 }
 
@@ -339,26 +377,38 @@ export const getVerificationReadModel = cache(
     userId: string
   ): Promise<VerificationReadModel> {
     // Batch 1: independent queries
-    const [accountIdentity, fheTypes, profileExists, attested] =
+    const [accountIdentity, fheTypes, profileExists, attested, humanityRows] =
       await Promise.all([
         getAccountIdentity(userId),
         getEncryptedAttributeTypesByUserId(userId),
         hasProfileSecret(userId),
         hasConfirmedAttestation(userId),
+        getActiveHumanityCredentials(userId),
       ]);
 
     const verification = accountIdentity.effectiveVerification;
     const bundle = accountIdentity.bundle;
     const groupedIdentity = buildGroupedIdentity(accountIdentity);
+    const humanityCredentials: HumanityCredentialSummary[] = humanityRows.map(
+      (row) => ({
+        provider: row.provider,
+        providerSubjectKind: row.providerSubjectKind,
+        attachedAt: row.attachedAt,
+        expiresAt: row.expiresAt ?? null,
+      })
+    );
+    const humanityUsable = isHumanityUsable(humanityRows.length > 0, bundle);
 
     if (!verification) {
-      return buildEmptyModel(
+      return buildEmptyModel({
         bundle,
         fheTypes,
         profileExists,
         attested,
-        groupedIdentity
-      );
+        groupedIdentity,
+        humanityCredentials,
+        humanityUsable,
+      });
     }
 
     const verificationId = verification.id;
@@ -386,7 +436,7 @@ export const getVerificationReadModel = cache(
         checks,
         method,
         verification.birthYearOffset ?? null,
-        isHumanSignalUsable(bundle)
+        humanityUsable
       ),
       bundle
     );
@@ -404,8 +454,20 @@ export const getVerificationReadModel = cache(
       vault: { hasProfileSecret: profileExists },
       onChainAttested: attested,
       needsDocumentReprocessing:
-        compliance.checks.documentVerified && needsDocumentReprocessing,
+        compliance.policy.checks.documentVerified && needsDocumentReprocessing,
       groupedIdentity,
+      humanityCredentials,
     };
   }
 );
+
+/**
+ * Convenience accessor for callers that only need the compliance projection.
+ * Replaces the legacy `getComplianceStatus` and ensures a single source of
+ * truth: there is no separate raw-query path.
+ */
+export const getComplianceStatus = cache(async function getComplianceStatus(
+  userId: string
+): Promise<ComplianceResult> {
+  return (await getVerificationReadModel(userId)).compliance;
+});

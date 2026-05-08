@@ -132,6 +132,15 @@ const PROOF_ENTRIES = [
     exactBindingRequired: false,
     description: "Passport chip verification",
   },
+  {
+    scope: "proof:humanity",
+    family: "proof",
+    claims: ["humanity_proven"],
+    delivery: ["id_token", "userinfo"],
+    vaultRequired: false,
+    exactBindingRequired: false,
+    description: "Whether an external provider has attested this user is human",
+  },
 ] as const satisfies readonly ScopeEntry[];
 
 /**
@@ -150,15 +159,20 @@ const SYBIL_ENTRY = {
   description: "A unique, anonymous ID for this app",
 } as const satisfies ScopeEntry;
 
-const HUMAN_UNIQUENESS_ENTRY = {
-  scope: "proof:human_uniqueness",
+/**
+ * Per-RP humanity pseudonym, derived from the union of the user's active
+ * humanity credentials. Access-token-only — id_token/userinfo delivery
+ * would create a cross-RP correlation surface. Excluded from `proof:identity`
+ * umbrella: clients must explicitly request it.
+ */
+const HUMANITY_RP_UNIQUE_ENTRY = {
+  scope: "proof:humanity:rp_unique",
   family: "proof",
-  claims: ["human_uniqueness_source", "human_uniqueness_nullifier"],
+  claims: ["rp_unique_humanity_id"],
   delivery: ["access_token"],
   vaultRequired: false,
   exactBindingRequired: false,
-  description:
-    "A unique, anonymous ID for this app, from your linked human-check",
+  description: "Per-RP unique pseudonym derived from humanity credentials",
 } as const satisfies ScopeEntry;
 
 const POH_ENTRY = {
@@ -329,7 +343,7 @@ const ALL_ENTRIES: readonly ScopeEntry[] = [
   PROOF_UMBRELLA,
   ...PROOF_ENTRIES,
   SYBIL_ENTRY,
-  HUMAN_UNIQUENESS_ENTRY,
+  HUMANITY_RP_UNIQUE_ENTRY,
   POH_ENTRY,
   ...IDENTITY_ENTRIES,
   ...OPERATIONAL_ENTRIES,

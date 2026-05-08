@@ -4,15 +4,26 @@ import { requireAuth } from "../runtime/auth-context.js";
 import { fetchAccountSummary } from "../services/account-summary.js";
 import { PROFILE_FIELDS } from "../services/profile-fields.js";
 
+const humanityCredentialSchema = z.object({
+  attachedAt: z.string(),
+  expiresAt: z.string().nullable(),
+  provider: z.string(),
+  providerSubjectKind: z.string(),
+});
+
 const whoamiOutputSchema = {
   email: z.string().nullable(),
   memberSince: z.string().nullable(),
   tier: z.number().nullable(),
   tierName: z.string().nullable(),
-  verificationLevel: z.string().nullable(),
+  verificationStrength: z.string().nullable(),
   authStrength: z.string().nullable(),
   loginMethod: z.string().nullable(),
   checks: z.record(z.string(), z.boolean()).nullable(),
+  humanity: z.object({
+    proven: z.boolean(),
+    sources: z.array(humanityCredentialSchema),
+  }),
   vaultFieldsAvailable: z.array(z.enum(PROFILE_FIELDS)),
   profileToolHint: z.literal("my_profile"),
 };

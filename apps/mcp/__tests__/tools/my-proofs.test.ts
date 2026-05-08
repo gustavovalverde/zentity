@@ -66,7 +66,7 @@ describe("my_proofs", () => {
     // Userinfo returns OIDC proof claims (flat key-value, scope-filtered)
     const userinfoResponse = {
       sub: "user-sub",
-      verification_level: "full",
+      verification_level: "documentary_full",
       verified: true,
       document_verified: true,
       age_verification: true,
@@ -93,7 +93,7 @@ describe("my_proofs", () => {
     );
     expect(parsed.isOver18).toBe(true);
     expect(parsed.verificationMethod).toBe("ocr");
-    expect(parsed.verificationLevel).toBe("full");
+    expect(parsed.verificationStrength).toBe("documentary_full");
     expect(parsed.verified).toBe(true);
     expect(parsed.checks).toContainEqual({ type: "age", passed: true });
     expect(parsed.checks).toContainEqual({ type: "document", passed: true });
@@ -122,7 +122,7 @@ describe("my_proofs", () => {
     );
     expect(parsed.isOver18).toBeNull();
     expect(parsed.verified).toBe(false);
-    expect(parsed.verificationLevel).toBe("none");
+    expect(parsed.verificationStrength).toBe("none");
     expect(parsed.verificationMethod).toBeNull();
     expect(parsed.checks).toHaveLength(0);
   });

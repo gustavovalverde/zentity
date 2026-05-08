@@ -32,22 +32,21 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { env } from "@/env";
-import {
-  getAccountIdentity,
-  getComplianceStatus,
-} from "@/lib/db/queries/identity";
+import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
+import { getAccountIdentity } from "@/lib/db/queries/identity";
 import {
   getEncryptedAttributeTypesByUserId,
   getLatestEncryptedAttributeByUserAndType,
   getProofTypesByUserAndVerification,
   getSignedClaimTypesByUserAndVerification,
 } from "@/lib/db/queries/privacy";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 
 import { VerificationFinalizationNotice } from "../verify/_components/verification-finalization-notice";
 import { FheStatusPoller } from "./fhe-lifecycle";
 import { TransparencySection } from "./transparency-section";
 import { VerificationDetails } from "./verification-details";
-import { WorldIdHumanSignal } from "./world-id-human-signal";
+import { WorldIdLink } from "./world-id-link";
 
 interface IdentityCardProps {
   posture: SecurityPosture | null;
@@ -93,9 +92,9 @@ export async function IdentityCard({
   const assurance = posture?.assurance ?? null;
   const tier = assurance?.tier ?? 0;
   const details = assurance?.details;
-  const humanSignalLinked =
+  const humanityLinked =
     env.NEXT_PUBLIC_WORLD_ID_ENABLED && userId
-      ? Boolean((await getAccountIdentity(userId)).bundle?.hasHumanSignal)
+      ? (await getActiveHumanityCredentials(userId)).length > 0
       : false;
 
   // Tier 0 or 1: Show CTA or incomplete proofs warning
@@ -187,10 +186,7 @@ export async function IdentityCard({
                     </Link>
                   </Button>
                   {env.NEXT_PUBLIC_WORLD_ID_ENABLED && userId && (
-                    <WorldIdHumanSignal
-                      linked={humanSignalLinked}
-                      userId={userId}
-                    />
+                    <WorldIdLink linked={humanityLinked} userId={userId} />
                   )}
                 </div>
               </EmptyContent>
@@ -249,7 +245,7 @@ export async function IdentityCard({
               </Link>
             </Button>
             {env.NEXT_PUBLIC_WORLD_ID_ENABLED && userId && (
-              <WorldIdHumanSignal linked={humanSignalLinked} userId={userId} />
+              <WorldIdLink linked={humanityLinked} userId={userId} />
             )}
           </div>
         </CardContent>
@@ -272,7 +268,7 @@ export async function IdentityCard({
           <CardContent className="pt-2">
             <div className="space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
-                {verificationStatus.checks.ageVerified && (
+                {verificationStatus.policy.checks.ageVerified && (
                   <div className="flex items-center gap-3">
                     <CheckCircle className="h-5 w-5 shrink-0 text-success" />
                     <div>
@@ -298,10 +294,7 @@ export async function IdentityCard({
                 )}
               </div>
               {env.NEXT_PUBLIC_WORLD_ID_ENABLED && userId && (
-                <WorldIdHumanSignal
-                  linked={humanSignalLinked}
-                  userId={userId}
-                />
+                <WorldIdLink linked={humanityLinked} userId={userId} />
               )}
             </div>
           </CardContent>
@@ -374,7 +367,7 @@ export async function IdentityCard({
               verification={verification}
             />
             {env.NEXT_PUBLIC_WORLD_ID_ENABLED && userId && (
-              <WorldIdHumanSignal linked={humanSignalLinked} userId={userId} />
+              <WorldIdLink linked={humanityLinked} userId={userId} />
             )}
           </div>
         </CardContent>

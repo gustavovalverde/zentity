@@ -64,9 +64,8 @@ const webServerEnv = {
     process.env.WORLD_ID_RP_SIGNING_KEY ??
     "0x1111111111111111111111111111111111111111111111111111111111111111",
   WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT ?? "staging",
-  HUMAN_SIGNAL_HMAC_SECRET:
-    process.env.HUMAN_SIGNAL_HMAC_SECRET ??
-    "e2e-human-signal-hmac-secret-32-chars-min",
+  HUMANITY_HMAC_SECRET:
+    process.env.HUMANITY_HMAC_SECRET ?? "e2e-humanity-hmac-secret-32-chars-min",
   ...(process.env.E2E_OIDC_ONLY
     ? { E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY }
     : {}),

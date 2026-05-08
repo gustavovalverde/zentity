@@ -42,18 +42,24 @@ function setVerifiedUser() {
     verifiedAt: "2026-01-02T00:00:00.000Z",
     issuerCountry: "PT",
     compliance: {
-      verified: true,
-      level: "full",
-      numericLevel: 3,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        nationalityVerified: true,
-        faceMatchVerified: true,
-        identityBound: true,
-        sybilResistant: true,
+      identity: {
+        verified: true,
+        method: "ocr",
+        strength: "documentary_full",
+      },
+      humanity: { proven: false },
+      policy: {
+        version: "v1.0",
+        birthYearOffset: null,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          nationalityVerified: true,
+          faceMatchVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
       },
     },
     checks: [],
@@ -73,12 +79,12 @@ function setVerifiedUser() {
     bundle: {
       exists: true,
       fheKeyId: null,
-      hasHumanSignal: false,
       policyVersion: "policy-1",
       issuerId: "issuer-1",
       attestationExpiresAt: "2030-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    humanityCredentials: [],
     fhe: {
       complete: true,
       attributeTypes: [],
@@ -129,7 +135,7 @@ describe("ID token proof claim projection", () => {
       "proof:verification",
     ]);
 
-    expect(result).toHaveProperty("verification_level", "full");
+    expect(result).toHaveProperty("verification_level", "documentary_full");
     expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("identity_bound", true);
     expect(result).not.toHaveProperty("given_name");
@@ -141,7 +147,7 @@ describe("ID token proof claim projection", () => {
       "proof:identity",
     ]);
 
-    expect(result).toHaveProperty("verification_level", "full");
+    expect(result).toHaveProperty("verification_level", "documentary_full");
     expect(result).toHaveProperty("verified", true);
     expect(result).toHaveProperty("age_verification", true);
     expect(result).toHaveProperty("document_verified", true);

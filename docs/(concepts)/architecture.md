@@ -365,19 +365,28 @@ This split is what lets OCR and NFC credentials coexist on one account without m
 
 ## Compliance Derivation Engine
 
-Compliance level is computed by a pure function that takes ZK proofs, signed claims, encrypted attribute presence, and flags as input, with no DB access, no mutable booleans, and no side effects.
+Compliance is computed by a pure function (`deriveComplianceStatus`) that projects ZK proofs, signed claims, sybil signals, and humanity credentials onto **three orthogonal axes**. The function has no DB access, no mutable booleans, and no side effects.
 
-### Levels
+### The three axes
 
-| Level | Numeric | Criteria |
+| Axis | Question it answers | Source of truth |
 |---|---|---|
-| `none` | 1 | Default; fewer than half of the 7 checks pass |
-| `human_verified` | 1.5 | An external [human signal](<../(protocols)/oauth-integrations.md#human-signals>) (e.g. World ID) is attached. Below `basic` because no document/chip evidence is available; above `none` because uniqueness is established |
-| `basic` | 2 | At least half of the 7 checks pass |
-| `full` | 3 | All 7 checks pass |
-| `chip` | 4 | NFC chip verification + sybil resistance |
+| `identity` | Has the user's real-world identity been proven, and how strongly? | ZK proofs + signed claims + document/chip evidence |
+| `humanity` | Has any external provider attested they are unique humans? | Active `humanity_credentials` rows (e.g. World ID) |
+| `policy`   | What policy version applies, and which of the 7 canonical checks pass? | `verification_checks` table, materialized from the same pure function |
 
-`verified` is `true` only for `full` or `chip`. `human_verified` users are sybil-resistant but not document-verified.
+`identity.verified` is `true` only when every required check passes for the active verification path. `humanity.proven` is independent of identity verification — a user can be human-but-not-identified (Tier 1 with humanity), identified-but-no-humanity-credential (Tier 2/3 without humanity), or both. RPs compose policy by reading the axes they need.
+
+### Identity-evidence strength (uint8 ladder for on-chain)
+
+| `identity.strength` | uint8 | Criteria |
+|---|---|---|
+| `none` | `0` | No document or chip evidence |
+| `documentary` | `1` | OCR document parse only |
+| `documentary_full` | `2` | OCR + liveness + face-match + age all verified |
+| `cryptographic_chip` | `3` | NFC chip read with strong cryptographic binding |
+
+Humanity does NOT contribute to the on-chain numeric tier — it is exposed via separate OAuth scopes (`proof:humanity`, `proof:humanity:rp_unique`) and never aggregated into a single integer. This avoids the "what number do I write to a `uint8`?" question that arises when you collapse three axes into one scalar.
 
 ### The 7 Boolean Checks
 

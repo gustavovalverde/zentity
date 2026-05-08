@@ -5,11 +5,55 @@ import {
   type JwksTokenVerifierOptions,
 } from "./token-verifier";
 
-export interface ProofOfHumanClaims {
-  method: "ocr" | "nfc_chip" | null;
-  sybil_resistant: boolean;
-  tier: number;
+export type IdentityEvidenceStrength =
+  | "none"
+  | "documentary"
+  | "documentary_full"
+  | "cryptographic_chip";
+
+export interface ProofOfHumanIdentityAxis {
+  strength: IdentityEvidenceStrength;
   verified: boolean;
+}
+
+export interface ProofOfHumanHumanityAxis {
+  proven: boolean;
+}
+
+export interface ProofOfHumanPolicyAxis {
+  version: string;
+}
+
+/**
+ * Orthogonal-axes proof-of-human payload. RPs compose policy by reading the
+ * axis they need; e.g. `verified human` = `identity.verified && humanity.proven`.
+ *
+ * The token is forward-portable; a downstream service can verify the
+ * issuer signature plus the DPoP `cnf` thumbprint. No PII or per-RP
+ * pseudonym appears in the PoH JWT.
+ */
+export interface ProofOfHumanClaims {
+  humanity: ProofOfHumanHumanityAxis;
+  identity: ProofOfHumanIdentityAxis;
+  policy: ProofOfHumanPolicyAxis;
+}
+
+/**
+ * uint8 ladder mapping identity-evidence strength to an integer for callers
+ * that compare a numeric threshold (e.g. `minComplianceLevel`). Mirrors the
+ * issuer-side `COMPLIANCE_ONCHAIN_TIERS` constant so RP and chain agree on
+ * what each tier means.
+ */
+export const IDENTITY_STRENGTH_TIERS: Record<IdentityEvidenceStrength, number> =
+  {
+    none: 0,
+    documentary: 1,
+    documentary_full: 2,
+    cryptographic_chip: 3,
+  };
+
+export function identityStrengthTier(claims: ProofOfHumanClaims): number {
+  return IDENTITY_STRENGTH_TIERS[claims.identity.strength];
 }
 
 export interface VerifiedProofOfHumanToken {
@@ -51,25 +95,47 @@ export type ProofOfHumanTokenRequestResult =
   | ProofOfHumanTokenRequestFailure
   | ProofOfHumanTokenRequestSuccess;
 
+const VALID_STRENGTHS = new Set<IdentityEvidenceStrength>([
+  "none",
+  "documentary",
+  "documentary_full",
+  "cryptographic_chip",
+]);
+
+function asStrength(value: unknown): IdentityEvidenceStrength {
+  return typeof value === "string" && VALID_STRENGTHS.has(value as never)
+    ? (value as IdentityEvidenceStrength)
+    : "none";
+}
+
 export function parseProofOfHumanClaims(claims: unknown): ProofOfHumanClaims {
   if (!claims || typeof claims !== "object" || Array.isArray(claims)) {
     throw new Error("Proof-of-human token missing poh claim");
   }
 
-  const proofOfHumanClaims = claims as Record<string, unknown>;
-  if (typeof proofOfHumanClaims.tier !== "number") {
-    throw new Error("Proof-of-human token missing poh claim");
+  const root = claims as Record<string, unknown>;
+  const identity = (root.identity ?? {}) as Record<string, unknown>;
+  const humanity = (root.humanity ?? {}) as Record<string, unknown>;
+  const policy = (root.policy ?? {}) as Record<string, unknown>;
+
+  if (
+    typeof identity.verified !== "boolean" ||
+    typeof humanity.proven !== "boolean"
+  ) {
+    throw new Error("Proof-of-human token missing required axis flags");
   }
 
   return {
-    tier: proofOfHumanClaims.tier,
-    verified: Boolean(proofOfHumanClaims.verified),
-    sybil_resistant: Boolean(proofOfHumanClaims.sybil_resistant),
-    method:
-      proofOfHumanClaims.method === "ocr" ||
-      proofOfHumanClaims.method === "nfc_chip"
-        ? proofOfHumanClaims.method
-        : null,
+    identity: {
+      verified: identity.verified,
+      strength: asStrength(identity.strength),
+    },
+    humanity: {
+      proven: humanity.proven,
+    },
+    policy: {
+      version: typeof policy.version === "string" ? policy.version : "v1.0",
+    },
   };
 }
 

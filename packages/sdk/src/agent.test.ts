@@ -170,9 +170,12 @@ describe("createAgent", () => {
               sub: "user-1",
               exp: FUTURE_EXP,
               poh: {
-                tier: 2,
-                verified: true,
-                sybil_resistant: true,
+                identity: {
+                  verified: true,
+                  strength: "documentary_full",
+                },
+                humanity: { proven: false },
+                policy: { version: "v1.0" },
               },
             }),
           }),

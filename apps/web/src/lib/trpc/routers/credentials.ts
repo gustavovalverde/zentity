@@ -15,7 +15,7 @@ import {
   buildProofClaims,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/disclosure/claims";
-import { getComplianceStatus } from "@/lib/db/queries/identity";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 
 import { protectedProcedure, router } from "../server";
 
@@ -49,9 +49,10 @@ export const credentialsRouter = router({
     });
 
     return {
-      verified: status.verified,
-      level: status.level,
-      checks: status.checks,
+      verified: status.identity.verified,
+      level: status.identity.strength,
+      checks: status.policy.checks,
+      humanityProven: status.humanity.proven,
       verifiedClaims,
     };
   }),
@@ -65,7 +66,7 @@ export const credentialsRouter = router({
     .mutation(async ({ ctx }) => {
       // Verify user has completed identity verification
       const status = await getComplianceStatus(ctx.userId);
-      if (!status.verified) {
+      if (!status.identity.verified) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message:

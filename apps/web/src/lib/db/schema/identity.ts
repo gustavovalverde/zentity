@@ -103,14 +103,25 @@ export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
 
 export type RiskLevel = (typeof riskLevelEnum)[number];
 
-export const humanSignalProviderEnum = ["world_id"] as const;
+/**
+ * Humanity provider id. Open `text()` column following the `proof_system`
+ * precedent — adding a provider does not require a schema migration.
+ *
+ * Current value: `world_id_orb`, `world_id_document`, `world_id_device`.
+ * Future values: `proof_of_humanity_v1`, `gitcoin_passport_v1`, `civic_pass`,
+ * `bright_id`, etc. The registry at `src/lib/identity/humanity/registry.ts`
+ * is the source of truth for which provider ids are accepted.
+ */
+export type HumanityProvider = string;
 
-export type HumanSignalProvider = (typeof humanSignalProviderEnum)[number];
-
-export const humanSignalSubjectKindEnum = ["nullifier"] as const;
-
-export type HumanSignalSubjectKind =
-  (typeof humanSignalSubjectKindEnum)[number];
+/**
+ * What kind of identifier the provider commits to. Open `text()`.
+ * `nullifier` for context-scoped one-way pseudonyms (World ID, Semaphore),
+ * `registry_entry` for on-chain registry references (Proof of Humanity),
+ * `score_threshold` for aggregator providers (Gitcoin Passport),
+ * `attestation_token` for tokenized passes (Civic).
+ */
+export type HumanityProviderSubjectKind = string;
 
 export const identityBundles = sqliteTable(
   "identity_bundles",
@@ -123,9 +134,6 @@ export const identityBundles = sqliteTable(
       { onDelete: "set null" }
     ),
     nullifierSeed: text("nullifier_seed"),
-    hasHumanSignal: integer("has_human_signal", { mode: "boolean" }).default(
-      false
-    ),
     walletAddress: text("wallet_address"),
     validityStatus: text("validity_status", {
       enum: validityStatusEnum,
@@ -182,54 +190,67 @@ export const identityBundles = sqliteTable(
   ]
 );
 
-export const humanSignals = sqliteTable(
-  "human_signals",
+/**
+ * Humanity credential — one row per (user, provider) external uniqueness
+ * attestation. The provider column is open `text()`; new providers register
+ * via `src/lib/identity/humanity/registry.ts`, no DB migration required.
+ *
+ * `provider_subject_hash` is HMAC-derived from the raw provider identifier;
+ * the raw identifier never lands in the DB. `provider_metadata` carries
+ * provider-specific JSON (e.g. World ID's verification level).
+ */
+export const humanityCredentials = sqliteTable(
+  "humanity_credentials",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    provider: text("provider", { enum: humanSignalProviderEnum }).notNull(),
+    provider: text("provider").notNull(),
+    providerSubjectKind: text("provider_subject_kind").notNull(),
     providerSubjectHash: text("provider_subject_hash").notNull(),
-    providerSubjectKind: text("provider_subject_kind", {
-      enum: humanSignalSubjectKindEnum,
-    }).notNull(),
+    providerMetadata: text("provider_metadata"),
     attachedAt: text("attached_at").notNull().default(sql`(datetime('now'))`),
+    expiresAt: text("expires_at"),
     revokedAt: text("revoked_at"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
-    index("idx_human_signals_user_provider").on(table.userId, table.provider),
-    uniqueIndex("human_signals_active_subject_unique")
+    index("idx_humanity_credentials_user_provider").on(
+      table.userId,
+      table.provider
+    ),
+    index("idx_humanity_credentials_expires_at").on(table.expiresAt),
+    uniqueIndex("humanity_credentials_active_subject_unique")
       .on(table.provider, table.providerSubjectHash)
       .where(sql`revoked_at is null`),
-    uniqueIndex("human_signals_active_user_provider_unique")
+    uniqueIndex("humanity_credentials_active_user_provider_unique")
       .on(table.userId, table.provider)
       .where(sql`revoked_at is null`),
   ]
 );
 
-export const humanSignalChallenges = sqliteTable(
-  "human_signal_challenges",
+export const humanityChallenges = sqliteTable(
+  "humanity_challenges",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    provider: text("provider", { enum: humanSignalProviderEnum }).notNull(),
+    provider: text("provider").notNull(),
     nonce: text("nonce").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   },
   (table) => [
-    index("idx_human_signal_challenges_user_provider").on(
+    index("idx_humanity_challenges_user_provider").on(
       table.userId,
       table.provider
     ),
-    index("idx_human_signal_challenges_expires_at").on(table.expiresAt),
-    uniqueIndex("human_signal_challenges_provider_nonce_unique").on(
+    index("idx_humanity_challenges_expires_at").on(table.expiresAt),
+    uniqueIndex("humanity_challenges_provider_nonce_unique").on(
       table.provider,
       table.nonce
     ),
@@ -471,11 +492,11 @@ export const identityVerificationJobs = sqliteTable(
 export type IdentityBundle = typeof identityBundles.$inferSelect;
 export type NewIdentityBundle = typeof identityBundles.$inferInsert;
 
-export type HumanSignal = typeof humanSignals.$inferSelect;
-export type NewHumanSignal = typeof humanSignals.$inferInsert;
+export type HumanityCredential = typeof humanityCredentials.$inferSelect;
+export type NewHumanityCredential = typeof humanityCredentials.$inferInsert;
 
-export type HumanSignalChallenge = typeof humanSignalChallenges.$inferSelect;
-export type NewHumanSignalChallenge = typeof humanSignalChallenges.$inferInsert;
+export type HumanityChallenge = typeof humanityChallenges.$inferSelect;
+export type NewHumanityChallenge = typeof humanityChallenges.$inferInsert;
 
 export type IdentityValidityEvent = typeof identityValidityEvents.$inferSelect;
 export type NewIdentityValidityEvent =

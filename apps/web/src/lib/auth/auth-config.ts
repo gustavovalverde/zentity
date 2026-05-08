@@ -132,6 +132,7 @@ import { opaque } from "@/lib/auth/opaque/server";
 import { getAppOrigin, getTrustedOrigins } from "@/lib/auth/origin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
+import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import {
   deleteRecoveryGuardian,
   getRecoveryConfigByUserId,
@@ -170,7 +171,7 @@ import {
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { validateSafeUrl } from "@/lib/http/url-safety";
-import { resolveHumanUniquenessNullifier } from "@/lib/identity/human-signal";
+import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 
@@ -320,7 +321,8 @@ const defaultClientScopes = [
 const allowedClientScopes = [
   ...defaultClientScopes,
   "email",
-  "proof:human_uniqueness",
+  "proof:humanity",
+  "proof:humanity:rp_unique",
   "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
@@ -1814,14 +1816,16 @@ export const auth = betterAuth({
           }
         }
 
-        if (scopeList.includes("proof:human_uniqueness") && clientId) {
-          const humanUniqueness = await resolveHumanUniquenessNullifier(
-            user.id,
-            clientId
-          );
-          if (humanUniqueness) {
-            claims.human_uniqueness_source = humanUniqueness.source;
-            claims.human_uniqueness_nullifier = humanUniqueness.nullifier;
+        if (scopeList.includes("proof:humanity:rp_unique") && clientId) {
+          const credentials = await getActiveHumanityCredentials(user.id);
+          const humanity = resolveRpUniqueHumanityClaim({
+            clientId,
+            providerSubjectHashes: credentials.map(
+              (credential) => credential.providerSubjectHash
+            ),
+          });
+          if (humanity) {
+            claims.rp_unique_humanity_id = humanity.rp_unique_humanity_id;
           }
         }
 

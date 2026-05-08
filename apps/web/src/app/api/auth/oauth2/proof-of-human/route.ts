@@ -15,10 +15,18 @@ const TRAILING_SLASHES = /\/+$/;
  * Issues a compact, DPoP-bound Proof-of-Human JWT.
  * Requires an access token with the `poh` scope.
  *
- * The PoH token asserts the user's verification tier without PII:
- * - `poh.tier` — numeric compliance level (1, 1.5, 2, 3, or 4)
- * - `poh.verified` — whether the user meets full compliance
- * - `poh.sybil_resistant` — whether a uniqueness check passed
+ * The PoH token asserts orthogonal axes about the user, without PII:
+ *   - `poh.identity`  — was the user's real-world identity proven? how strong?
+ *   - `poh.humanity`  — has any external provider attested they are unique?
+ *   - `poh.policy`    — version + canonical 7-check booleans
+ *
+ * `identity.method` (OCR vs NFC) is intentionally omitted: forwarding it
+ * lets RPs discriminate by verification path, which is a privacy regression
+ * for users on the OCR track. Clients that genuinely need the method can
+ * request `proof:verification` separately.
+ *
+ * The token is forward-portable: an RP can hand it to a downstream service
+ * and the downstream verifies the issuer signature plus the DPoP `cnf`.
  */
 export async function POST(request: Request) {
   const principal = await resolveProtectedResourcePrincipal(request);
@@ -32,8 +40,12 @@ export async function POST(request: Request) {
   }
 
   const model = await getVerificationReadModel(principal.userId);
+  const compliance = model.compliance;
 
-  if (model.compliance.level === "none") {
+  // Reject only when the user has no signal at all. A user with humanity
+  // alone (`identity.verified=false, humanity.proven=true`) still gets a
+  // token — RPs that require verified identity gate on `identity.verified`.
+  if (!(compliance.identity.verified || compliance.humanity.proven)) {
     return NextResponse.json({ error: "not_verified" }, { status: 403 });
   }
 
@@ -50,9 +62,16 @@ export async function POST(request: Request) {
     scope: "poh",
     cnf: { jkt: principal.dpopJkt },
     poh: {
-      tier: model.compliance.numericLevel,
-      verified: model.compliance.verified,
-      sybil_resistant: model.compliance.checks.sybilResistant,
+      identity: {
+        verified: compliance.identity.verified,
+        strength: compliance.identity.strength,
+      },
+      humanity: {
+        proven: compliance.humanity.proven,
+      },
+      policy: {
+        version: compliance.policy.version,
+      },
     },
   });
 

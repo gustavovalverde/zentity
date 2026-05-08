@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveComplianceStatus } from "../compliance";
+import {
+  COMPLIANCE_ONCHAIN_TIERS,
+  complianceOnchainTier,
+  deriveComplianceStatus,
+} from "../compliance";
 
 type ComplianceInput = Parameters<typeof deriveComplianceStatus>[0];
 
@@ -11,7 +15,7 @@ function makeInput(overrides: Partial<ComplianceInput> = {}): ComplianceInput {
     zkProofs: [],
     signedClaims: [],
     hasDocumentSybilSignal: false,
-    hasHumanUniquenessSignal: false,
+    hasHumanityCredential: false,
     hasNationalityCommitment: false,
     ...overrides,
   };
@@ -31,23 +35,26 @@ const ALL_OCR_CLAIMS = ["liveness_score", "face_match_score"].map(
 
 describe("deriveComplianceStatus", () => {
   describe("no verification", () => {
-    it("returns none when verificationMethod is null", () => {
+    it("returns unverified identity with empty checks", () => {
       const result = deriveComplianceStatus(makeInput());
-      expect(result.level).toBe("none");
-      expect(result.numericLevel).toBe(1);
-      expect(result.verified).toBe(false);
-      expect(Object.values(result.checks).every((v) => v === false)).toBe(true);
+      expect(result.identity.verified).toBe(false);
+      expect(result.identity.method).toBeNull();
+      expect(result.identity.strength).toBe("none");
+      expect(result.humanity.proven).toBe(false);
+      expect(
+        Object.values(result.policy.checks).every((value) => value === false)
+      ).toBe(true);
     });
 
-    it("returns human_verified when only a human uniqueness signal exists", () => {
+    it("flags humanity-only accounts as proven without identity", () => {
       const result = deriveComplianceStatus(
-        makeInput({ hasHumanUniquenessSignal: true })
+        makeInput({ hasHumanityCredential: true })
       );
 
-      expect(result.level).toBe("human_verified");
-      expect(result.numericLevel).toBe(1.5);
-      expect(result.verified).toBe(false);
-      expect(result.checks).toEqual({
+      expect(result.identity.verified).toBe(false);
+      expect(result.identity.strength).toBe("none");
+      expect(result.humanity.proven).toBe(true);
+      expect(result.policy.checks).toEqual({
         documentVerified: false,
         livenessVerified: false,
         ageVerified: false,
@@ -62,80 +69,45 @@ describe("deriveComplianceStatus", () => {
   describe("birthYearOffset validation", () => {
     it("passes through valid offset", () => {
       const result = deriveComplianceStatus(makeInput({ birthYearOffset: 25 }));
-      expect(result.birthYearOffset).toBe(25);
+      expect(result.policy.birthYearOffset).toBe(25);
     });
 
-    it("passes through 0 (minimum)", () => {
-      const result = deriveComplianceStatus(makeInput({ birthYearOffset: 0 }));
-      expect(result.birthYearOffset).toBe(0);
+    it("passes through 0 and 255 boundaries", () => {
+      expect(
+        deriveComplianceStatus(makeInput({ birthYearOffset: 0 })).policy
+          .birthYearOffset
+      ).toBe(0);
+      expect(
+        deriveComplianceStatus(makeInput({ birthYearOffset: 255 })).policy
+          .birthYearOffset
+      ).toBe(255);
     });
 
-    it("passes through 255 (maximum)", () => {
-      const result = deriveComplianceStatus(
-        makeInput({ birthYearOffset: 255 })
-      );
-      expect(result.birthYearOffset).toBe(255);
-    });
-
-    it("returns null for negative offset", () => {
-      const result = deriveComplianceStatus(makeInput({ birthYearOffset: -1 }));
-      expect(result.birthYearOffset).toBeNull();
-    });
-
-    it("returns null for offset > 255", () => {
-      const result = deriveComplianceStatus(
-        makeInput({ birthYearOffset: 256 })
-      );
-      expect(result.birthYearOffset).toBeNull();
-    });
-
-    it("returns null for non-integer", () => {
-      const result = deriveComplianceStatus(
-        makeInput({ birthYearOffset: 25.5 })
-      );
-      expect(result.birthYearOffset).toBeNull();
-    });
-
-    it("returns null for null input", () => {
-      const result = deriveComplianceStatus(
-        makeInput({ birthYearOffset: null })
-      );
-      expect(result.birthYearOffset).toBeNull();
+    it("rejects out-of-range or non-integer values", () => {
+      for (const value of [-1, 256, 25.5]) {
+        const result = deriveComplianceStatus(
+          makeInput({ birthYearOffset: value })
+        );
+        expect(result.policy.birthYearOffset).toBeNull();
+      }
     });
   });
 
   describe("OCR path", () => {
-    it("returns none with 0 verified proofs", () => {
-      const result = deriveComplianceStatus(
-        makeInput({ verificationMethod: "ocr" })
-      );
-      expect(result.level).toBe("none");
-      expect(result.numericLevel).toBe(1);
-      expect(result.verified).toBe(false);
-    });
-
-    it("returns basic when 4+ checks pass", () => {
+    it("returns documentary strength when only the document proof verifies", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "ocr",
-          zkProofs: [
-            { proofType: "age_verification", verified: true },
-            { proofType: "doc_validity", verified: true },
-            { proofType: "face_match", verified: true },
-            { proofType: "identity_binding", verified: true },
-          ],
+          zkProofs: [{ proofType: "doc_validity", verified: true }],
         })
       );
-      expect(result.level).toBe("basic");
-      expect(result.numericLevel).toBe(2);
-      expect(result.verified).toBe(false);
-      expect(result.checks.ageVerified).toBe(true);
-      expect(result.checks.documentVerified).toBe(true);
-      expect(result.checks.faceMatchVerified).toBe(true);
-      expect(result.checks.identityBound).toBe(true);
+      expect(result.identity.method).toBe("ocr");
+      expect(result.identity.strength).toBe("documentary");
+      expect(result.identity.verified).toBe(false);
+      expect(result.policy.checks.documentVerified).toBe(true);
     });
 
-    it("returns full when all 7 checks pass", () => {
+    it("returns documentary_full when doc + liveness + face_match + age pass", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "ocr",
@@ -144,75 +116,46 @@ describe("deriveComplianceStatus", () => {
           hasDocumentSybilSignal: true,
         })
       );
-      expect(result.level).toBe("full");
-      expect(result.numericLevel).toBe(3);
-      expect(result.verified).toBe(true);
-      expect(result.checks.documentVerified).toBe(true);
-      expect(result.checks.livenessVerified).toBe(true);
-      expect(result.checks.ageVerified).toBe(true);
-      expect(result.checks.faceMatchVerified).toBe(true);
-      expect(result.checks.nationalityVerified).toBe(true);
-      expect(result.checks.identityBound).toBe(true);
-      expect(result.checks.sybilResistant).toBe(true);
-    });
-
-    it("ignores unverified proofs", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: [
-            { proofType: "age_verification", verified: false },
-            { proofType: "doc_validity", verified: true },
-          ],
-        })
+      expect(result.identity.strength).toBe("documentary_full");
+      expect(result.identity.verified).toBe(true);
+      expect(complianceOnchainTier(result)).toBe(
+        COMPLIANCE_ONCHAIN_TIERS.documentary_full
       );
-      expect(result.checks.ageVerified).toBe(false);
-      expect(result.checks.documentVerified).toBe(true);
     });
 
-    it("face_match_score claim satisfies faceMatchVerified", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          signedClaims: [{ claimType: "face_match_score" }],
-        })
-      );
-      expect(result.checks.faceMatchVerified).toBe(true);
-    });
-
-    it("sybilResistant requires a document or human uniqueness signal", () => {
+    it("sybilResistant requires document or humanity signal", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
           hasDocumentSybilSignal: false,
-          hasHumanUniquenessSignal: false,
+          hasHumanityCredential: false,
         })
       );
-      expect(result.checks.sybilResistant).toBe(false);
-      expect(result.level).toBe("basic");
+      expect(result.policy.checks.sybilResistant).toBe(false);
+      expect(result.identity.verified).toBe(false);
     });
 
-    it("uses human uniqueness as the OCR sybil-resistant signal", () => {
+    it("uses humanity as the OCR sybil-resistant signal", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "ocr",
           zkProofs: ALL_OCR_PROOFS,
           signedClaims: ALL_OCR_CLAIMS,
           hasDocumentSybilSignal: false,
-          hasHumanUniquenessSignal: true,
+          hasHumanityCredential: true,
         })
       );
 
-      expect(result.checks.sybilResistant).toBe(true);
-      expect(result.level).toBe("full");
-      expect(result.verified).toBe(true);
+      expect(result.policy.checks.sybilResistant).toBe(true);
+      expect(result.humanity.proven).toBe(true);
+      expect(result.identity.verified).toBe(true);
     });
   });
 
   describe("NFC chip path", () => {
-    it("returns chip when hasDocumentSybilSignal is true", () => {
+    it("reaches cryptographic_chip when chip claim and sybil signal present", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
@@ -221,19 +164,16 @@ describe("deriveComplianceStatus", () => {
           hasNationalityCommitment: true,
         })
       );
-      expect(result.level).toBe("chip");
-      expect(result.numericLevel).toBe(4);
-      expect(result.verified).toBe(true);
-      expect(result.checks.documentVerified).toBe(true);
-      expect(result.checks.livenessVerified).toBe(true);
-      expect(result.checks.ageVerified).toBe(true);
-      expect(result.checks.faceMatchVerified).toBe(true);
-      expect(result.checks.nationalityVerified).toBe(true);
-      expect(result.checks.identityBound).toBe(true);
-      expect(result.checks.sybilResistant).toBe(true);
+      expect(result.identity.method).toBe("nfc_chip");
+      expect(result.identity.strength).toBe("cryptographic_chip");
+      expect(result.identity.verified).toBe(true);
+      expect(result.policy.checks.nationalityVerified).toBe(true);
+      expect(complianceOnchainTier(result)).toBe(
+        COMPLIANCE_ONCHAIN_TIERS.cryptographic_chip
+      );
     });
 
-    it("derives checks from claim type presence, not boolean payloads", () => {
+    it("treats chip-only as cryptographic_chip even without nationality", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
@@ -242,130 +182,45 @@ describe("deriveComplianceStatus", () => {
           hasNationalityCommitment: false,
         })
       );
-      expect(result.checks.ageVerified).toBe(true);
-      expect(result.checks.faceMatchVerified).toBe(true);
-      expect(result.checks.livenessVerified).toBe(true);
-      expect(result.checks.nationalityVerified).toBe(false);
+      expect(result.identity.strength).toBe("cryptographic_chip");
+      expect(result.policy.checks.nationalityVerified).toBe(false);
     });
 
-    it("returns chip even without signed claim if hasDocumentSybilSignal is true", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "nfc_chip",
-          signedClaims: [],
-          hasDocumentSybilSignal: true,
-        })
-      );
-      expect(result.level).toBe("chip");
-      expect(result.checks.livenessVerified).toBe(false);
-      expect(result.checks.ageVerified).toBe(false);
-      expect(result.checks.faceMatchVerified).toBe(false);
-    });
-
-    it("falls through to regular levels when no sybil signal exists", () => {
+    it("uses humanity as NFC sybil-resistant signal without identity-binding it", () => {
       const result = deriveComplianceStatus(
         makeInput({
           verificationMethod: "nfc_chip",
           signedClaims: [{ claimType: "chip_verification" }],
           hasDocumentSybilSignal: false,
-          hasHumanUniquenessSignal: false,
-          hasNationalityCommitment: true,
-        })
-      );
-      expect(result.level).toBe("basic");
-      expect(result.checks.sybilResistant).toBe(false);
-    });
-
-    it("documentVerified is always true for NFC", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "nfc_chip",
-          signedClaims: [],
-          hasDocumentSybilSignal: false,
-        })
-      );
-      expect(result.checks.documentVerified).toBe(true);
-    });
-
-    it("uses human uniqueness as the NFC sybil-resistant signal without identity-binding it", () => {
-      const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "nfc_chip",
-          signedClaims: [{ claimType: "chip_verification" }],
-          hasDocumentSybilSignal: false,
-          hasHumanUniquenessSignal: true,
+          hasHumanityCredential: true,
           hasNationalityCommitment: true,
         })
       );
 
-      expect(result.checks.identityBound).toBe(false);
-      expect(result.checks.sybilResistant).toBe(true);
-      expect(result.level).toBe("chip");
+      expect(result.policy.checks.identityBound).toBe(false);
+      expect(result.policy.checks.sybilResistant).toBe(true);
+      expect(result.identity.strength).toBe("cryptographic_chip");
     });
   });
 
-  describe("level transitions", () => {
-    it("none → basic at 4 checks", () => {
-      const threeChecks = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: [
-            { proofType: "age_verification", verified: true },
-            { proofType: "doc_validity", verified: true },
-            { proofType: "face_match", verified: true },
-          ],
-        })
-      );
-      expect(threeChecks.level).toBe("none");
-
-      const fourChecks = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: [
-            { proofType: "age_verification", verified: true },
-            { proofType: "doc_validity", verified: true },
-            { proofType: "face_match", verified: true },
-            { proofType: "identity_binding", verified: true },
-          ],
-        })
-      );
-      expect(fourChecks.level).toBe("basic");
+  describe("on-chain encoding", () => {
+    it("maps strengths to integer uint8 tiers", () => {
+      expect(COMPLIANCE_ONCHAIN_TIERS.none).toBe(0);
+      expect(COMPLIANCE_ONCHAIN_TIERS.documentary).toBe(1);
+      expect(COMPLIANCE_ONCHAIN_TIERS.documentary_full).toBe(2);
+      expect(COMPLIANCE_ONCHAIN_TIERS.cryptographic_chip).toBe(3);
     });
 
-    it("basic → full at 7 checks", () => {
-      const sixChecks = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: ALL_OCR_PROOFS,
-          signedClaims: ALL_OCR_CLAIMS,
-          hasDocumentSybilSignal: false,
-        })
-      );
-      expect(sixChecks.level).toBe("basic");
-
-      const sevenChecks = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: ALL_OCR_PROOFS,
-          signedClaims: ALL_OCR_CLAIMS,
-          hasDocumentSybilSignal: true,
-        })
-      );
-      expect(sevenChecks.level).toBe("full");
+    it("returns 0 for users with no identity evidence", () => {
+      const result = deriveComplianceStatus(makeInput());
+      expect(complianceOnchainTier(result)).toBe(0);
     });
-  });
 
-  describe("edge cases", () => {
-    it("empty proofs array with OCR method", () => {
+    it("returns 0 for humanity-only users (humanity does not contribute on-chain)", () => {
       const result = deriveComplianceStatus(
-        makeInput({
-          verificationMethod: "ocr",
-          zkProofs: [],
-          signedClaims: [],
-        })
+        makeInput({ hasHumanityCredential: true })
       );
-      expect(result.level).toBe("none");
-      expect(result.verified).toBe(false);
+      expect(complianceOnchainTier(result)).toBe(0);
     });
   });
 });

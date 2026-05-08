@@ -29,7 +29,8 @@ function toAccountAssuranceInput(
   model: VerificationReadModel,
   isAuthenticated: boolean
 ) {
-  const chipVerified = model.method === "nfc_chip" && model.compliance.verified;
+  const chipVerified =
+    model.method === "nfc_chip" && model.compliance.identity.verified;
   const documentVerified =
     chipVerified || (model.method === "ocr" && model.verifiedAt !== null);
   const zkProofsComplete = hasRequiredOcrProofTypes(
@@ -41,8 +42,8 @@ function toAccountAssuranceInput(
     hasSecuredKeys: model.bundle.fheKeyId !== null,
     chipVerified,
     documentVerified,
-    livenessVerified: model.compliance.checks.livenessVerified,
-    faceMatchVerified: model.compliance.checks.faceMatchVerified,
+    livenessVerified: model.compliance.policy.checks.livenessVerified,
+    faceMatchVerified: model.compliance.policy.checks.faceMatchVerified,
     zkProofsComplete,
     fheComplete: model.fhe.complete,
     onChainAttested: model.onChainAttested,

@@ -293,18 +293,24 @@ describe("attestation router", () => {
       verifiedAt: "2026-01-01T00:00:00.000Z",
       issuerCountry: "USA",
       compliance: {
-        level: "full",
-        numericLevel: 3,
-        verified: true,
-        birthYearOffset: 25,
-        checks: {
-          documentVerified: true,
-          livenessVerified: true,
-          ageVerified: true,
-          faceMatchVerified: true,
-          nationalityVerified: true,
-          identityBound: true,
-          sybilResistant: true,
+        identity: {
+          verified: true,
+          method: "ocr",
+          strength: "documentary_full",
+        },
+        humanity: { proven: false },
+        policy: {
+          version: "v1.0",
+          birthYearOffset: 25,
+          checks: {
+            documentVerified: true,
+            livenessVerified: true,
+            ageVerified: true,
+            faceMatchVerified: true,
+            nationalityVerified: true,
+            identityBound: true,
+            sybilResistant: true,
+          },
         },
       },
       checks: [],
@@ -312,11 +318,11 @@ describe("attestation router", () => {
       bundle: {
         exists: true,
         fheKeyId: "k-1",
-        hasHumanSignal: false,
         policyVersion: "v1",
         attestationExpiresAt: null,
         updatedAt: null,
       },
+      humanityCredentials: [],
       fhe: { complete: true, attributeTypes: [] },
       vault: { hasProfileSecret: true },
       onChainAttested: false,
@@ -360,18 +366,24 @@ describe("attestation router", () => {
 
   it("rejects submission when network is unavailable", async () => {
     mockGetComplianceStatus.mockReturnValue({
-      verified: true,
-      level: "full",
-      numericLevel: 3,
-      birthYearOffset: 25,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        nationalityVerified: true,
-        faceMatchVerified: true,
-        identityBound: true,
-        sybilResistant: true,
+      identity: {
+        verified: true,
+        method: "ocr",
+        strength: "documentary_full",
+      },
+      humanity: { proven: false },
+      policy: {
+        version: "v1.0",
+        birthYearOffset: 25,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          nationalityVerified: true,
+          faceMatchVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
       },
     });
     mockGetNetworkById.mockReturnValue({

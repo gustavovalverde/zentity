@@ -86,7 +86,6 @@ describe("revoke procedures", () => {
       bundle: {
         validityStatus: "verified",
         effectiveVerificationId: "ver-1",
-        hasHumanSignal: false,
         walletAddress: null,
         policyVersion: "policy-v1",
         issuerId: "issuer-1",
@@ -113,8 +112,25 @@ describe("revoke procedures", () => {
       method: "ocr",
       verifiedAt: "2026-04-20T12:00:00.000Z",
       compliance: {
-        level: "full",
-        verified: true,
+        identity: {
+          verified: true,
+          method: "ocr",
+          strength: "documentary_full",
+        },
+        humanity: { proven: false },
+        policy: {
+          version: "v1.0",
+          birthYearOffset: null,
+          checks: {
+            documentVerified: true,
+            livenessVerified: true,
+            ageVerified: true,
+            faceMatchVerified: true,
+            nationalityVerified: true,
+            identityBound: true,
+            sybilResistant: true,
+          },
+        },
       },
       groupedIdentity: {
         effectiveVerificationId: "ver-1",
@@ -274,7 +290,6 @@ describe("revoke procedures", () => {
         bundle: {
           validityStatus: "verified",
           effectiveVerificationId: "ver-1",
-          hasHumanSignal: false,
           walletAddress: null,
           policyVersion: "policy-v1",
           issuerId: "issuer-1",
@@ -310,8 +325,9 @@ describe("revoke procedures", () => {
           verificationId: "ver-1",
           method: "ocr",
           verifiedAt: "2026-04-20T12:00:00.000Z",
-          level: "full",
-          checked: true,
+          identityStrength: "documentary_full",
+          identityVerified: true,
+          humanityProven: false,
         },
         latestValidityEvent: {
           verificationId: "ver-1",

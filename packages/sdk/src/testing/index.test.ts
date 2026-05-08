@@ -11,7 +11,6 @@ describe("@zentity/sdk/testing", () => {
 			confirmationJkt: "test-jkt",
 			issuer: "https://mock-issuer.zentity.test",
 			subject: "user-123",
-			tier: 3,
 		});
 		const verifier = createProofOfHumanTokenVerifier({
 			issuer: "https://mock-issuer.zentity.test",
@@ -25,20 +24,21 @@ describe("@zentity/sdk/testing", () => {
 			const verified = await verifier.verify(token);
 			expect(verified.sub).toBe("user-123");
 			expect(verified.cnf?.jkt).toBe("test-jkt");
-			expect(verified.poh.tier).toBe(3);
-			expect(verified.poh.verified).toBe(true);
-			expect(verified.poh.sybil_resistant).toBe(true);
+			expect(verified.poh.identity.verified).toBe(true);
+			expect(verified.poh.identity.strength).toBe("documentary_full");
+			expect(verified.poh.humanity.proven).toBe(false);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}
 	});
 
-	it("mockPohToken can omit the verification method", async () => {
+	it("mockPohToken builds humanity-only tokens (identity unverified)", async () => {
 		const token = await mockPohToken({
 			issuer: "https://mock-issuer.zentity.test",
-			method: null,
 			subject: "user-123",
-			tier: 2,
+			identityStrength: "none",
+			identityVerified: false,
+			humanityProven: true,
 		});
 		const verifier = createProofOfHumanTokenVerifier({
 			issuer: "https://mock-issuer.zentity.test",
@@ -50,7 +50,9 @@ describe("@zentity/sdk/testing", () => {
 
 		try {
 			const verified = await verifier.verify(token);
-			expect(verified.poh.method).toBeNull();
+			expect(verified.poh.identity.verified).toBe(false);
+			expect(verified.poh.identity.strength).toBe("none");
+			expect(verified.poh.humanity.proven).toBe(true);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

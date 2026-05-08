@@ -24,6 +24,21 @@ function createJwt(payload: Record<string, unknown>): string {
   ].join(".");
 }
 
+const verifiedDocumentaryFullPoh = {
+  identity: {
+    verified: true,
+    strength: "documentary_full",
+  },
+  humanity: { proven: false },
+  policy: { version: "v1.0" },
+};
+
+const humanityOnlyPoh = {
+  identity: { verified: false, strength: "none" },
+  humanity: { proven: true },
+  policy: { version: "v1.0" },
+};
+
 describe("createProofOfHumanTokenVerifier", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -32,17 +47,12 @@ describe("createProofOfHumanTokenVerifier", () => {
     });
   });
 
-  it("verifies proof-of-human tokens and normalizes their claims", async () => {
+  it("verifies proof-of-human tokens and normalizes their orthogonal axes", async () => {
     verifierMocks.verify.mockResolvedValue({
       payload: {
         cnf: { jkt: "thumbprint-1" },
         exp: 1_800_000_000,
-        poh: {
-          tier: 3,
-          verified: true,
-          sybil_resistant: true,
-          method: "ocr",
-        },
+        poh: verifiedDocumentaryFullPoh,
         sub: "pairwise-sub",
       },
     });
@@ -55,12 +65,7 @@ describe("createProofOfHumanTokenVerifier", () => {
     await expect(verifier.verify("poh-token")).resolves.toEqual({
       cnf: { jkt: "thumbprint-1" },
       exp: 1_800_000_000,
-      poh: {
-        tier: 3,
-        verified: true,
-        sybil_resistant: true,
-        method: "ocr",
-      },
+      poh: verifiedDocumentaryFullPoh,
       sub: "pairwise-sub",
     });
     expect(verifierMocks.verify).toHaveBeenCalledWith("poh-token", {
@@ -68,11 +73,11 @@ describe("createProofOfHumanTokenVerifier", () => {
     });
   });
 
-  it("rejects proof-of-human tokens without a tiered poh claim", async () => {
+  it("rejects proof-of-human tokens missing required axis flags", async () => {
     verifierMocks.verify.mockResolvedValue({
       payload: {
         exp: 1_800_000_000,
-        poh: { verified: true },
+        poh: { policy: { version: "v1.0" } },
         sub: "pairwise-sub",
       },
     });
@@ -82,20 +87,16 @@ describe("createProofOfHumanTokenVerifier", () => {
     });
 
     await expect(verifier.verify("poh-token")).rejects.toThrow(
-      "Proof-of-human token missing poh claim"
+      "Proof-of-human token missing required axis flags"
     );
   });
 
-  it("accepts human-verified tier 1.5 tokens without a document method", async () => {
+  it("accepts humanity-only tokens (verified=false, proven=true)", async () => {
     verifierMocks.verify.mockResolvedValue({
       payload: {
         cnf: { jkt: "thumbprint-1" },
         exp: 1_800_000_000,
-        poh: {
-          tier: 1.5,
-          verified: false,
-          sybil_resistant: true,
-        },
+        poh: humanityOnlyPoh,
         sub: "pairwise-sub",
       },
     });
@@ -105,12 +106,7 @@ describe("createProofOfHumanTokenVerifier", () => {
     });
 
     await expect(verifier.verify("poh-token")).resolves.toMatchObject({
-      poh: {
-        tier: 1.5,
-        verified: false,
-        sybil_resistant: true,
-        method: null,
-      },
+      poh: humanityOnlyPoh,
     });
   });
 });
@@ -123,12 +119,7 @@ describe("requestProofOfHumanToken", () => {
   it("requests a proof-of-human token with DPoP and normalizes the response", async () => {
     const token = createJwt({
       cnf: { jkt: "thumbprint-1" },
-      poh: {
-        tier: 3,
-        verified: true,
-        sybil_resistant: true,
-        method: "ocr",
-      },
+      poh: verifiedDocumentaryFullPoh,
     });
     const proofFor = vi.fn(async () => "dpop-proof");
     const withNonceRetry = async <T,>(
@@ -167,12 +158,7 @@ describe("requestProofOfHumanToken", () => {
       ok: true,
       token,
       confirmationJkt: "thumbprint-1",
-      unverifiedClaims: {
-        tier: 3,
-        verified: true,
-        sybil_resistant: true,
-        method: "ocr",
-      },
+      unverifiedClaims: verifiedDocumentaryFullPoh,
     });
   });
 

@@ -37,10 +37,11 @@ describe("whoami", () => {
       memberSince: "2026-01-01",
       tier: 2,
       tierName: "Verified",
-      verificationLevel: "full",
+      verificationStrength: "documentary_full",
       authStrength: "strong",
       loginMethod: "passkey",
       checks: { document: true },
+      humanity: { proven: false, sources: [] },
       vaultFieldsAvailable: ["name", "address", "birthdate"],
       profileToolHint: "my_profile",
     });
@@ -53,6 +54,8 @@ describe("whoami", () => {
 
     expect(parsed.email).toBe("user@example.com");
     expect(parsed.tierName).toBe("Verified");
+    expect(parsed.verificationStrength).toBe("documentary_full");
+    expect(parsed.humanity).toEqual({ proven: false, sources: [] });
     expect(parsed.profileToolHint).toBe("my_profile");
     expect(parsed.vaultFieldsAvailable).toEqual([
       "name",
@@ -68,10 +71,11 @@ describe("whoami", () => {
       memberSince: "2026-01-01",
       tier: 2,
       tierName: "Verified",
-      verificationLevel: "full",
+      verificationStrength: "documentary_full",
       authStrength: "strong",
       loginMethod: "passkey",
       checks: { document: true },
+      humanity: { proven: false, sources: [] },
       vaultFieldsAvailable: ["name", "address", "birthdate"],
       profileToolHint: "my_profile",
     });

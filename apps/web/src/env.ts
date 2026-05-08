@@ -13,6 +13,20 @@ const booleanString = z
 const isTruthyEnvValue = (value: string | undefined) =>
   value === "true" || value === "1";
 
+/**
+ * Public feature flags that gate at least one humanity-credential provider.
+ * The HMAC secret is required when any of these is enabled. Extend this list
+ * as new providers ship (e.g. NEXT_PUBLIC_PROOF_OF_HUMANITY_ENABLED).
+ */
+const HUMANITY_PROVIDER_FEATURE_FLAGS = [
+  "NEXT_PUBLIC_WORLD_ID_ENABLED",
+] as const;
+
+const isAnyHumanityProviderEnabled = () =>
+  HUMANITY_PROVIDER_FEATURE_FLAGS.some((flag) =>
+    isTruthyEnvValue(process.env[flag])
+  );
+
 const booleanStringWithDefault = (defaultValue: "true" | "false") =>
   z
     .enum(["true", "false", "0", "1"])
@@ -105,21 +119,16 @@ export const env = createEnv({
 
     // Identity & auth
     DEDUP_HMAC_SECRET: z.string().min(32),
-    HUMAN_SIGNAL_HMAC_SECRET: z
+    HUMANITY_HMAC_SECRET: z
       .string()
       .optional()
       .refine((value) => !value || value.length >= 32, {
-        message: "HUMAN_SIGNAL_HMAC_SECRET must be at least 32 characters",
+        message: "HUMANITY_HMAC_SECRET must be at least 32 characters",
       })
-      .refine(
-        (value) =>
-          !isTruthyEnvValue(process.env.NEXT_PUBLIC_WORLD_ID_ENABLED) ||
-          Boolean(value),
-        {
-          message:
-            "HUMAN_SIGNAL_HMAC_SECRET is required when NEXT_PUBLIC_WORLD_ID_ENABLED is true",
-        }
-      ),
+      .refine((value) => !isAnyHumanityProviderEnabled() || Boolean(value), {
+        message:
+          "HUMANITY_HMAC_SECRET is required when any humanity provider is enabled",
+      }),
     PAIRWISE_SECRET: z.string().min(32),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
@@ -295,7 +304,7 @@ export const env = createEnv({
     GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
     GENERIC_OAUTH_PROVIDERS: process.env.GENERIC_OAUTH_PROVIDERS,
     DEDUP_HMAC_SECRET: process.env.DEDUP_HMAC_SECRET,
-    HUMAN_SIGNAL_HMAC_SECRET: process.env.HUMAN_SIGNAL_HMAC_SECRET,
+    HUMANITY_HMAC_SECRET: process.env.HUMANITY_HMAC_SECRET,
     PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,

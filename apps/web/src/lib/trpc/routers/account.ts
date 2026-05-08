@@ -52,16 +52,13 @@ export const accountRouter = router({
       createdAt,
       hasPassword,
       verification: {
-        level: verificationModel.compliance.level,
+        identity: verificationModel.compliance.identity,
+        humanity: verificationModel.compliance.humanity,
+        policy: verificationModel.compliance.policy,
         verificationExpiresAt: verificationModel.bundle.verificationExpiresAt,
         validityStatus: verificationModel.bundle.validityStatus,
-        checks: verificationModel.compliance.checks,
       },
-      humanSignal: {
-        provider: verificationModel.bundle.hasHumanSignal
-          ? ("world_id" as const)
-          : null,
-      },
+      humanityCredentials: verificationModel.humanityCredentials,
       groupedIdentity: verificationModel.groupedIdentity,
       documentVerified: verificationModel.groupedIdentity.credentials.some(
         (credential) =>

@@ -1,6 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { SolidityPanel } from "@/components/x402/solidity-panel";
-import type { AccessOutcome, PohClaims, X402Resource } from "@/data/x402";
+import {
+  type AccessOutcome,
+  formatPohIdentityStrength,
+  getPohIdentityTier,
+  type PohClaims,
+  type X402Resource,
+} from "@/data/x402";
 
 function TierIndicator({ tier }: { tier: number }) {
   return (
@@ -32,24 +38,24 @@ function TierCard({ pohClaims }: { pohClaims: PohClaims | null }) {
     );
   }
 
+  const identityTier = getPohIdentityTier(pohClaims);
+
   return (
     <div className="fade-in animate-in rounded-lg border border-border/50 p-4 duration-300">
       <h4 className="mb-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
         Verification Tier
       </h4>
-      <TierIndicator tier={pohClaims.tier} />
+      <TierIndicator tier={identityTier} />
       <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge variant={pohClaims.verified ? "default" : "secondary"}>
-          {pohClaims.verified ? "Verified" : "Not Verified"}
+        <Badge variant={pohClaims.identity.verified ? "default" : "secondary"}>
+          {pohClaims.identity.verified ? "Verified" : "Not Verified"}
         </Badge>
-        <Badge variant={pohClaims.sybil_resistant ? "default" : "secondary"}>
-          {pohClaims.sybil_resistant ? "Sybil Resistant" : "No Sybil Check"}
+        <Badge variant={pohClaims.humanity.proven ? "default" : "secondary"}>
+          {pohClaims.humanity.proven ? "Unique Human" : "No Humanity Proof"}
         </Badge>
-        {pohClaims.method && (
-          <Badge variant="outline">
-            {pohClaims.method === "nfc_chip" ? "NFC Chip" : "OCR"}
-          </Badge>
-        )}
+        <Badge variant="outline">
+          {formatPohIdentityStrength(pohClaims.identity.strength)}
+        </Badge>
       </div>
     </div>
   );
@@ -111,7 +117,8 @@ function RequirementCheck({
     return null;
   }
 
-  const meetsTier = pohClaims.tier >= resource.requiredTier;
+  const identityTier = getPohIdentityTier(pohClaims);
+  const meetsTier = identityTier >= resource.requiredTier;
 
   // For on-chain resources, the final verdict depends on both tier and Base mirror compliance.
   let onChainStatus: "pass" | "fail" | "required" = "pass";
@@ -151,7 +158,7 @@ function RequirementCheck({
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">Your tier</span>
           <span className={meetsTier ? "text-emerald-700" : "text-red-600"}>
-            {pohClaims.tier}
+            {identityTier}
           </span>
         </div>
         {resource.requireOnChain && (

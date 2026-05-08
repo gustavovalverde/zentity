@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { isWeb3Enabled } from "@/env";
 import { getCachedSession } from "@/lib/auth/session";
 import { getBlockchainAttestationsByUserId } from "@/lib/db/queries/attestation";
-import { getComplianceStatus } from "@/lib/db/queries/identity";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 
 import { DefiDemoClient } from "./_components/defi-demo-client";
 
@@ -28,7 +28,7 @@ export default async function DefiDemoPage() {
 
   // Find confirmed attestation (prefer hardhat for local dev)
   const confirmedAttestation = attestations.find(
-    (a) => a.status === "confirmed"
+    (attestation) => attestation.status === "confirmed"
   );
 
   return (
@@ -43,7 +43,7 @@ export default async function DefiDemoPage() {
       <DefiDemoClient
         attestedNetworkId={confirmedAttestation?.networkId ?? null}
         attestedWallet={confirmedAttestation?.walletAddress ?? null}
-        isVerified={verificationStatus?.verified ?? false}
+        isVerified={verificationStatus?.identity.verified ?? false}
       />
     </div>
   );

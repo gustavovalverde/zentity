@@ -50,13 +50,17 @@ const VerificationBadge = memo(function VerificationBadge({
 });
 
 const VERIFICATION_LEVEL_VARIANTS = {
-  full: "success",
-  basic: "warning",
+  cryptographic_chip: "success",
+  documentary_full: "success",
+  documentary: "warning",
+  none: "outline",
 } as const;
 
 const VERIFICATION_LEVEL_LABELS = {
-  full: "Fully Verified",
-  basic: "Partially Verified",
+  cryptographic_chip: "Chip Verified",
+  documentary_full: "Document Verified",
+  documentary: "Document on File",
+  none: "Not Verified",
 } as const;
 
 const VALIDITY_STATUS_LABELS = {
@@ -274,7 +278,9 @@ export function UserDataSection() {
                   ]
                 }
               </Badge>
-              <VerificationLevelBadge level={data.verification.level} />
+              <VerificationLevelBadge
+                level={data.verification.identity.strength}
+              />
             </div>
           </div>
           {data.verification.verificationExpiresAt ? (
@@ -286,27 +292,27 @@ export function UserDataSection() {
           <div className="flex flex-wrap gap-2">
             <VerificationBadge
               label="Document"
-              passed={data.verification.checks.documentVerified}
+              passed={data.verification.policy.checks.documentVerified}
             />
             <VerificationBadge
               label="Liveness"
-              passed={data.verification.checks.livenessVerified}
+              passed={data.verification.policy.checks.livenessVerified}
             />
             <VerificationBadge
               label="Face Match"
-              passed={data.verification.checks.faceMatchVerified}
+              passed={data.verification.policy.checks.faceMatchVerified}
             />
             <VerificationBadge
               label="Age (18+)"
-              passed={data.verification.checks.ageVerified}
+              passed={data.verification.policy.checks.ageVerified}
             />
             <VerificationBadge
               label="Nationality"
-              passed={data.verification.checks.nationalityVerified}
+              passed={data.verification.policy.checks.nationalityVerified}
             />
             <VerificationBadge
               label="Identity Bound"
-              passed={data.verification.checks.identityBound}
+              passed={data.verification.policy.checks.identityBound}
             />
           </div>
         </div>

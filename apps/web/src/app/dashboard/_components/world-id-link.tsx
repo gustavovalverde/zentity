@@ -10,15 +10,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { reportRejection } from "@/lib/async-handler";
 
-interface WorldIdRequest {
+/**
+ * Provider id used by the dashboard "Link World ID" button. We currently
+ * surface the orb-level credential; document and device variants register
+ * via the same `/api/humanity/{provider}/...` route family if a separate
+ * UI surface is added.
+ */
+const DEFAULT_WORLD_ID_PROVIDER_ID = "world_id_orb" as const;
+
+interface WorldIdChallengePayload {
   action: string;
   appId: `app_${string}`;
-  challengeId: string;
   environment: "production" | "staging";
   rpContext: RpContext;
 }
 
-interface WorldIdHumanSignalProps {
+interface HumanityChallengeResponse {
+  challengeId: string;
+  expiresAt: string;
+  nonce: string;
+  payload: WorldIdChallengePayload;
+  provider: string;
+}
+
+interface WorldIdLinkProps {
   linked: boolean;
   userId: string;
 }
@@ -29,14 +44,11 @@ type WorldIdRuntime = Pick<
 >;
 
 interface WorldIdWidgetState {
-  request: WorldIdRequest;
+  challenge: HumanityChallengeResponse;
   runtime: WorldIdRuntime;
 }
 
-export function WorldIdHumanSignal({
-  linked,
-  userId,
-}: Readonly<WorldIdHumanSignalProps>) {
+export function WorldIdLink({ linked, userId }: Readonly<WorldIdLinkProps>) {
   const router = useRouter();
   const [widget, setWidget] = useState<WorldIdWidgetState | null>(null);
   const [pending, setPending] = useState(false);
@@ -46,20 +58,21 @@ export function WorldIdHumanSignal({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/world-id/rp-context", {
-        method: "POST",
-      });
+      const response = await fetch(
+        `/api/humanity/${DEFAULT_WORLD_ID_PROVIDER_ID}/challenge`,
+        { method: "POST" }
+      );
       if (!response.ok) {
         throw new Error("World ID is unavailable");
       }
-      const request = (await response.json()) as WorldIdRequest;
+      const challenge = (await response.json()) as HumanityChallengeResponse;
       const runtime = await import("@worldcoin/idkit");
       setWidget({
+        challenge,
         runtime: {
           IDKitRequestWidget: runtime.IDKitRequestWidget,
           orbLegacy: runtime.orbLegacy,
         },
-        request,
       });
     } catch (startError) {
       setError(
@@ -74,9 +87,10 @@ export function WorldIdHumanSignal({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/world-id/detach", {
-        method: "POST",
-      });
+      const response = await fetch(
+        `/api/humanity/${DEFAULT_WORLD_ID_PROVIDER_ID}/detach`,
+        { method: "POST" }
+      );
       if (!response.ok) {
         throw new Error("Could not remove World ID");
       }
@@ -92,16 +106,20 @@ export function WorldIdHumanSignal({
 
   async function attach(result: IDKitResult) {
     if (!widget) {
-      throw new Error("Missing World ID request");
+      throw new Error("Missing humanity challenge");
     }
-    const response = await fetch("/api/world-id/attach", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        challengeId: widget.request.challengeId,
-        idkitResult: result,
-      }),
-    });
+    const response = await fetch(
+      `/api/humanity/${widget.challenge.provider}/attach`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeId: widget.challenge.challengeId,
+          nonce: widget.challenge.nonce,
+          proof: result,
+        }),
+      }
+    );
     if (!response.ok) {
       throw new Error("World ID verification failed");
     }
@@ -169,17 +187,17 @@ export function WorldIdHumanSignal({
 
       {widget && (
         <widget.runtime.IDKitRequestWidget
-          action={widget.request.action}
+          action={widget.challenge.payload.action}
           allow_legacy_proofs
-          app_id={widget.request.appId}
-          environment={widget.request.environment}
+          app_id={widget.challenge.payload.appId}
+          environment={widget.challenge.payload.environment}
           handleVerify={attach}
           onError={() => setError("World ID verification failed")}
           onOpenChange={handleOpenChange}
           onSuccess={handleSuccess}
           open
           preset={widget.runtime.orbLegacy({ signal: userId })}
-          rp_context={widget.request.rpContext}
+          rp_context={widget.challenge.payload.rpContext}
         />
       )}
     </div>

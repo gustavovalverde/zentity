@@ -2,23 +2,20 @@
  * Verification check materialization engine.
  *
  * Materializes the 7 boolean compliance checks into the verification_checks
- * table. This is a cache of deriveComplianceStatus — the pure function remains
- * the source of truth.
+ * table. This is a cache of `deriveComplianceStatus` — the pure function
+ * remains the source of truth.
  *
  * Idempotent: calling twice for the same verification produces the same rows.
  */
 
 import crypto from "node:crypto";
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
-import {
-  getVerificationById,
-  isChipVerified,
-  resolveSybilResistanceEvidence,
-} from "@/lib/db/queries/identity";
-import { humanSignals } from "@/lib/db/schema/identity";
+import { listActiveHumanityCredentials } from "@/lib/db/queries/humanity";
+import { getVerificationById, isChipVerified } from "@/lib/db/queries/identity";
+import { identityVerifications } from "@/lib/db/schema/identity";
 import {
   proofArtifacts,
   signedClaims,
@@ -32,10 +29,11 @@ import {
   type VerificationCheckType,
 } from "./compliance";
 import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
+import { resolveSybilEvidence } from "./sybil-evidence";
 
 type VerificationMaterializationExecutor = Pick<
   typeof db,
-  "insert" | "select" | "update"
+  "delete" | "insert" | "select" | "update"
 >;
 
 // ─── Materialization ──────────────────────────────────────────────────
@@ -50,8 +48,7 @@ export async function materializeVerificationChecks(
     return;
   }
 
-  // Fetch evidence in parallel
-  const [proofRows, claimRows, activeHumanSignal] = await Promise.all([
+  const [proofRows, claimRows, activeHumanity] = await Promise.all([
     executor
       .select({
         id: proofArtifacts.id,
@@ -83,23 +80,10 @@ export async function materializeVerificationChecks(
         )
       )
       .all(),
-    executor
-      .select({ id: humanSignals.id })
-      .from(humanSignals)
-      .where(
-        and(
-          eq(humanSignals.userId, userId),
-          eq(humanSignals.provider, "world_id"),
-          isNull(humanSignals.revokedAt)
-        )
-      )
-      .limit(1)
-      .get(),
+    listActiveHumanityCredentials(userId, executor),
   ]);
+  const activeHumanityIds = activeHumanity.map((row) => row.id);
 
-  const humanSignalId = activeHumanSignal?.id ?? null;
-
-  // Build compliance input and derive checks
   const claimTypes = claimRows.map((c) => ({ claimType: c.claimType }));
   const chipVerified = isChipVerified(verification);
   const selectedProofRows = chipVerified
@@ -117,54 +101,84 @@ export async function materializeVerificationChecks(
     hasDocumentSybilSignal: Boolean(
       verification.dedupKey || verification.chipNullifier
     ),
-    hasHumanUniquenessSignal: Boolean(humanSignalId),
+    hasHumanityCredential: activeHumanityIds.length > 0,
     hasNationalityCommitment: Boolean(verification.nationalityCommitment),
   });
 
-  // Build evidence index for lookups
   const proofByType = new Map(
     selectedProofRows.map((proofRow) => [proofRow.proofType, proofRow.id])
   );
   const claimByType = new Map(claimRows.map((c) => [c.claimType, c.id]));
+  const updatedAt = new Date().toISOString();
 
-  // Upsert all 7 checks
-  for (const checkType of VERIFICATION_CHECK_TYPES) {
-    const complianceKey = CHECK_TYPE_TO_COMPLIANCE_KEY[checkType];
-    const passed = result.checks[complianceKey];
+  const rows = VERIFICATION_CHECK_TYPES.map((checkType) => {
     const evidence = chipVerified
-      ? resolveNfcEvidence(checkType, verification, claimByType, humanSignalId)
+      ? resolveNfcEvidence(
+          checkType,
+          verification,
+          claimByType,
+          activeHumanityIds
+        )
       : resolveOcrEvidence(
           checkType,
           verification,
           proofByType,
           claimByType,
-          humanSignalId
+          activeHumanityIds
         );
+    return {
+      id: crypto.randomUUID(),
+      userId,
+      verificationId,
+      checkType,
+      passed: result.policy.checks[CHECK_TYPE_TO_COMPLIANCE_KEY[checkType]],
+      source: evidence.source,
+      evidenceRef: evidence.ref,
+    };
+  });
 
-    await executor
-      .insert(verificationChecks)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        verificationId,
-        checkType,
-        passed,
-        source: evidence.source,
-        evidenceRef: evidence.ref,
-      })
-      .onConflictDoUpdate({
-        target: [
-          verificationChecks.verificationId,
-          verificationChecks.checkType,
-        ],
-        set: {
-          passed,
-          source: evidence.source,
-          evidenceRef: evidence.ref,
-          updatedAt: new Date().toISOString(),
-        },
-      })
-      .run();
+  await executor
+    .insert(verificationChecks)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: [verificationChecks.verificationId, verificationChecks.checkType],
+      set: {
+        passed: sql`excluded.passed`,
+        source: sql`excluded.source`,
+        evidenceRef: sql`excluded.evidence_ref`,
+        updatedAt,
+      },
+    })
+    .run();
+}
+
+/**
+ * Re-materialize every non-revoked verification owned by `userId`.
+ *
+ * Used by the humanity-credential attach/detach routes: changing the active
+ * humanity-credential set affects only the `sybil_resistant` row, but the
+ * cleanest invariant is "after a write, every materialized check for the
+ * user is consistent with the source-of-truth derivation function." Callers
+ * with no verifications get a no-op; the read model still surfaces humanity
+ * via its own override.
+ */
+export async function rematerializeAllUserVerifications(
+  userId: string,
+  executor: VerificationMaterializationExecutor = db
+): Promise<void> {
+  const rows = await executor
+    .select({ id: identityVerifications.id })
+    .from(identityVerifications)
+    .where(
+      and(
+        eq(identityVerifications.userId, userId),
+        ne(identityVerifications.status, "revoked")
+      )
+    )
+    .all();
+
+  for (const row of rows) {
+    await materializeVerificationChecks(userId, row.id, executor);
   }
 }
 
@@ -180,7 +194,7 @@ function resolveOcrEvidence(
   verification: NonNullable<Awaited<ReturnType<typeof getVerificationById>>>,
   proofByType: Map<string, string>,
   claimByType: Map<string, string>,
-  humanSignalId: string | null
+  activeHumanityIds: readonly string[]
 ): Evidence {
   switch (checkType) {
     case "document":
@@ -216,11 +230,11 @@ function resolveOcrEvidence(
         ref: claimByType.get("liveness_score") ?? null,
       };
     case "sybil_resistant":
-      return resolveSybilResistanceEvidence({
+      return resolveSybilEvidence({
         hasDocumentSybilSignal: Boolean(
           verification.dedupKey || verification.chipNullifier
         ),
-        humanSignalId,
+        humanityCredentialIds: activeHumanityIds,
         verificationId: verification.id,
       });
     default:
@@ -232,7 +246,7 @@ function resolveNfcEvidence(
   checkType: VerificationCheckType,
   verification: NonNullable<Awaited<ReturnType<typeof getVerificationById>>>,
   claimByType: Map<string, string>,
-  humanSignalId: string | null
+  activeHumanityIds: readonly string[]
 ): Evidence {
   const chipClaimId = claimByType.get("chip_verification") ?? null;
 
@@ -246,12 +260,18 @@ function resolveNfcEvidence(
     case "nationality":
       return { source: "commitment", ref: verification.id };
     case "identity_binding":
+      // Identity binding on chip path is established by the chip nullifier
+      // itself, never by an external humanity credential. The evidence ref
+      // points at the verification row that holds the nullifier.
+      return verification.chipNullifier
+        ? { source: "chip_nullifier", ref: verification.id }
+        : { source: "none", ref: null };
     case "sybil_resistant":
-      return resolveSybilResistanceEvidence({
+      return resolveSybilEvidence({
         hasDocumentSybilSignal: Boolean(
           verification.dedupKey || verification.chipNullifier
         ),
-        humanSignalId,
+        humanityCredentialIds: activeHumanityIds,
         verificationId: verification.id,
       });
     default:

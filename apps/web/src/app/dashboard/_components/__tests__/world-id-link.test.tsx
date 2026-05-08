@@ -12,11 +12,11 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-import { WorldIdHumanSignal } from "../world-id-human-signal";
+import { WorldIdLink } from "../world-id-link";
 
-describe("WorldIdHumanSignal", () => {
-  it("shows the link action when no World ID signal is linked", () => {
-    render(<WorldIdHumanSignal linked={false} userId="user-test" />);
+describe("WorldIdLink", () => {
+  it("shows the link action when no World ID credential is linked", () => {
+    render(<WorldIdLink linked={false} userId="user-test" />);
 
     expect(
       screen.getByRole("button", { name: LINK_WORLD_ID_BUTTON_NAME })
@@ -24,7 +24,7 @@ describe("WorldIdHumanSignal", () => {
   });
 
   it("shows the linked status and remove action when World ID is linked", () => {
-    render(<WorldIdHumanSignal linked={true} userId="user-test" />);
+    render(<WorldIdLink linked={true} userId="user-test" />);
 
     expect(screen.getByText("World ID Linked")).toBeTruthy();
     expect(

@@ -6,6 +6,7 @@ import {
 } from "@zentity/sdk";
 import {
   createDpopClientFromKeyPair,
+  identityStrengthTier,
   PAYMENT_RESPONSE_HEADER,
   type ProofOfHumanClaims,
   parsePaymentResponseHeader,
@@ -299,9 +300,10 @@ async function requestProofOfHumanForPurchase(input: {
     );
   }
 
-  if (proofOfHuman.unverifiedClaims.tier < input.minComplianceLevel) {
+  const actualLevel = identityStrengthTier(proofOfHuman.unverifiedClaims);
+  if (actualLevel < input.minComplianceLevel) {
     throw new ComplianceInsufficientError({
-      actualLevel: proofOfHuman.unverifiedClaims.tier,
+      actualLevel,
       issuerUrl: config.zentityUrl,
       requiredLevel: input.minComplianceLevel,
     });
@@ -404,7 +406,9 @@ async function fetchX402Purchase(input: {
     fulfillment: null,
     x402: {
       level_used:
-        proofOfHumanClaims?.tier ??
+        (proofOfHumanClaims
+          ? identityStrengthTier(proofOfHumanClaims)
+          : undefined) ??
         x402Context?.requirement.minComplianceLevel ??
         null,
       payment_response: paymentResponse,

@@ -1,11 +1,16 @@
-export type { ProofOfHumanClaims as PohClaims } from "@zentity/sdk/rp";
-
 import {
   CloudIcon,
   DashboardSquare01Icon,
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import {
+  type IdentityEvidenceStrength,
+  identityStrengthTier,
+  type ProofOfHumanClaims,
+} from "@zentity/sdk/rp";
+
+export type PohClaims = ProofOfHumanClaims;
 
 export interface X402Resource {
   amount: string;
@@ -144,6 +149,23 @@ export interface AccessOutcome {
   error?: string | undefined;
   granted: boolean;
   onChain?: { status: string } | undefined;
+}
+
+const IDENTITY_STRENGTH_LABELS: Record<IdentityEvidenceStrength, string> = {
+  none: "No identity evidence",
+  documentary: "Document parsed",
+  documentary_full: "Document verified",
+  cryptographic_chip: "NFC chip verified",
+};
+
+export function getPohIdentityTier(claims: PohClaims): number {
+  return identityStrengthTier(claims);
+}
+
+export function formatPohIdentityStrength(
+  strength: IdentityEvidenceStrength
+): string {
+  return IDENTITY_STRENGTH_LABELS[strength];
 }
 
 // --- Solidity reference snippets ---

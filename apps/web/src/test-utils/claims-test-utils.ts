@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import {
-  humanSignals,
+  humanityCredentials,
   identityBundles,
   identityVerifications,
 } from "@/lib/db/schema/identity";
@@ -26,7 +26,7 @@ export async function assertNoInternalIdentifiersInClaims(
     }
   }
 
-  const [bundle, verifications, signals] = await Promise.all([
+  const [bundle, verifications, credentials] = await Promise.all([
     db
       .select({ nullifierSeed: identityBundles.nullifierSeed })
       .from(identityBundles)
@@ -42,9 +42,9 @@ export async function assertNoInternalIdentifiersInClaims(
       .where(eq(identityVerifications.userId, userId))
       .all(),
     db
-      .select({ providerSubjectHash: humanSignals.providerSubjectHash })
-      .from(humanSignals)
-      .where(eq(humanSignals.userId, userId))
+      .select({ providerSubjectHash: humanityCredentials.providerSubjectHash })
+      .from(humanityCredentials)
+      .where(eq(humanityCredentials.userId, userId))
       .all(),
   ]);
 
@@ -63,7 +63,7 @@ export async function assertNoInternalIdentifiersInClaims(
       secrets.add(row.nullifierSeed);
     }
   }
-  for (const row of signals) {
+  for (const row of credentials) {
     secrets.add(row.providerSubjectHash);
   }
 
@@ -85,11 +85,11 @@ export async function assertNoInternalIdentifiersInClaims(
       }
     }
   }
-  if (typeof claims.human_uniqueness_nullifier === "string") {
+  if (typeof claims.rp_unique_humanity_id === "string") {
     for (const secret of secrets) {
-      if (claims.human_uniqueness_nullifier === secret) {
+      if (claims.rp_unique_humanity_id === secret) {
         throw new Error(
-          "human_uniqueness_nullifier matched a raw internal identifier"
+          "rp_unique_humanity_id matched a raw internal identifier"
         );
       }
     }

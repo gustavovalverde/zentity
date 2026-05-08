@@ -172,8 +172,8 @@ export const oauth2IdentityLimiter = createRateLimiter({
   max: 10,
 });
 
-/** Human signal attach/detach endpoints: 10 req/min per user. */
-export const humanSignalLimiter = createRateLimiter({
+/** Humanity-credential attach/detach endpoints: 10 req/min per user. */
+export const humanityCredentialLimiter = createRateLimiter({
   windowMs: MINUTE,
   max: 10,
 });

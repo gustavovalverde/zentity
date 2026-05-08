@@ -29,8 +29,8 @@ if (
   process.env.OPAQUE_SERVER_SETUP = opaqueServer.createSetup();
 }
 process.env.DEDUP_HMAC_SECRET ||= "test-dedup-hmac-secret-minimum-32-chars";
-process.env.HUMAN_SIGNAL_HMAC_SECRET ||=
-  "test-human-signal-hmac-secret-minimum-32-chars";
+process.env.HUMANITY_HMAC_SECRET ||=
+  "test-humanity-hmac-secret-minimum-32-chars";
 process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 process.env.CLAIM_SIGNING_SECRET ||= "test-claim-signing-secret-min-32-chars";
 process.env.CIPHERTEXT_HMAC_SECRET ||= "test-ciphertext-hmac-secret-min-32ch";

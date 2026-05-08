@@ -45,30 +45,41 @@ describe("proof scopes", () => {
     expect(filtered.identity_bound).toBe(true);
   });
 
-  it("excludes sybil_nullifier from id_token and userinfo surfaces", () => {
-    const claimsWithSybil = {
+  it("excludes per-RP nullifiers from id_token and userinfo surfaces", () => {
+    const claimsWithPerRpIds = {
       ...proofClaims,
       sybil_nullifier: "nullifier-abc",
-      human_uniqueness_source: "world_id",
-      human_uniqueness_nullifier: "human-nullifier-abc",
+      humanity_proven: true,
+      rp_unique_humanity_id: "humanity-rp-id-abc",
     };
 
     const idToken = filterProofClaimsByScopes(
-      claimsWithSybil,
-      ["proof:identity", "proof:sybil", "proof:human_uniqueness"],
+      claimsWithPerRpIds,
+      [
+        "proof:identity",
+        "proof:sybil",
+        "proof:humanity",
+        "proof:humanity:rp_unique",
+      ],
       "id_token"
     );
     const userinfo = filterProofClaimsByScopes(
-      claimsWithSybil,
-      ["proof:identity", "proof:sybil", "proof:human_uniqueness"],
+      claimsWithPerRpIds,
+      [
+        "proof:identity",
+        "proof:sybil",
+        "proof:humanity",
+        "proof:humanity:rp_unique",
+      ],
       "userinfo"
     );
 
     expect(idToken).not.toHaveProperty("sybil_nullifier");
-    expect(idToken).not.toHaveProperty("human_uniqueness_source");
-    expect(idToken).not.toHaveProperty("human_uniqueness_nullifier");
+    expect(idToken).not.toHaveProperty("rp_unique_humanity_id");
     expect(userinfo).not.toHaveProperty("sybil_nullifier");
-    expect(userinfo).not.toHaveProperty("human_uniqueness_source");
-    expect(userinfo).not.toHaveProperty("human_uniqueness_nullifier");
+    expect(userinfo).not.toHaveProperty("rp_unique_humanity_id");
+    // The proven boolean IS allowed in id_token/userinfo
+    expect(idToken).toHaveProperty("humanity_proven", true);
+    expect(userinfo).toHaveProperty("humanity_proven", true);
   });
 });

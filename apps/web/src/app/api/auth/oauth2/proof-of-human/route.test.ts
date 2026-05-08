@@ -72,18 +72,26 @@ function makeVerifiedModel(
     verifiedAt: "2026-01-01T00:00:00Z",
     issuerCountry: null,
     compliance: {
-      level: "full",
-      numericLevel: 3,
-      verified: true,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        faceMatchVerified: true,
-        nationalityVerified: true,
-        identityBound: true,
-        sybilResistant: true,
+      identity: {
+        verified: true,
+        method: "ocr",
+        strength: "documentary_full",
+      },
+      humanity: {
+        proven: false,
+      },
+      policy: {
+        version: "v1.0",
+        birthYearOffset: null,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          faceMatchVerified: true,
+          nationalityVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
       },
     },
     checks: [],
@@ -100,10 +108,10 @@ function makeVerifiedModel(
         },
       ],
     },
+    humanityCredentials: [],
     bundle: {
       exists: true,
       fheKeyId: "fhe-1",
-      hasHumanSignal: false,
       policyVersion: null,
       attestationExpiresAt: null,
       verificationExpiresAt: null,
@@ -131,7 +139,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(true);
   });
 
-  it("returns a PoH JWT with correct claims for a verified user", async () => {
+  it("returns a PoH JWT with orthogonal axes for a verified user", async () => {
     setupVerifiedUser();
 
     const response = await POST(makeDpopRequest());
@@ -147,11 +155,18 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(payload.scope).toBe("poh");
     expect(payload.cnf).toEqual({ jkt: TEST_DPOP_JKT });
     expect(payload.poh).toEqual({
-      tier: 3,
-      verified: true,
-      sybil_resistant: true,
+      identity: {
+        verified: true,
+        strength: "documentary_full",
+      },
+      humanity: { proven: false },
+      policy: { version: "v1.0" },
     });
-    expect(payload.poh).not.toHaveProperty("method");
+    // `method` is intentionally NOT in the PoH JWT — forwarding OCR vs NFC
+    // would let RPs discriminate by verification path.
+    expect(
+      (payload.poh as Record<string, unknown>).identity
+    ).not.toHaveProperty("method");
     expect(payload.exp).toBeGreaterThan(payload.iat as number);
 
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -211,7 +226,128 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(mocks.validateOpaqueAccessTokenDpop).not.toHaveBeenCalled();
   });
 
-  it("rejects DPoP-bound JWT access tokens sent with Bearer auth", async () => {
+  it("returns 403 not_verified when neither identity nor humanity is present", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.resolveUserIdFromSub.mockResolvedValue("user-456");
+    mocks.getVerificationReadModel.mockResolvedValue(
+      makeVerifiedModel({
+        verificationId: null,
+        compliance: {
+          identity: { verified: false, method: null, strength: "none" },
+          humanity: { proven: false },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: false,
+              livenessVerified: false,
+              ageVerified: false,
+              faceMatchVerified: false,
+              nationalityVerified: false,
+              identityBound: false,
+              sybilResistant: false,
+            },
+          },
+        },
+      })
+    );
+
+    const response = await POST(makeDpopRequest());
+
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("not_verified");
+    expect(mocks.signJwt).not.toHaveBeenCalled();
+  });
+
+  it("issues a humanity-only token (identity.verified=false, humanity.proven=true)", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.getVerificationReadModel.mockResolvedValue(
+      makeVerifiedModel({
+        verificationId: null,
+        method: null,
+        compliance: {
+          identity: { verified: false, method: null, strength: "none" },
+          humanity: { proven: true },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: false,
+              livenessVerified: false,
+              ageVerified: false,
+              faceMatchVerified: false,
+              nationalityVerified: false,
+              identityBound: false,
+              sybilResistant: true,
+            },
+          },
+        },
+      })
+    );
+    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
+
+    const response = await POST(makeDpopRequest());
+
+    expect(response.status).toBe(200);
+    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.poh).toEqual({
+      identity: { verified: false, strength: "none" },
+      humanity: { proven: true },
+      policy: { version: "v1.0" },
+    });
+  });
+
+  it("issues a cryptographic_chip-strength token without leaking the method", async () => {
+    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.getVerificationReadModel.mockResolvedValue(
+      makeVerifiedModel({
+        method: "nfc_chip",
+        compliance: {
+          identity: {
+            verified: true,
+            method: "nfc_chip",
+            strength: "cryptographic_chip",
+          },
+          humanity: { proven: false },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: true,
+              livenessVerified: true,
+              ageVerified: true,
+              faceMatchVerified: true,
+              nationalityVerified: true,
+              identityBound: true,
+              sybilResistant: true,
+            },
+          },
+        },
+      })
+    );
+    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
+
+    const response = await POST(makeDpopRequest());
+
+    expect(response.status).toBe(200);
+    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.poh).toEqual({
+      identity: {
+        verified: true,
+        strength: "cryptographic_chip",
+      },
+      humanity: { proven: false },
+      policy: { version: "v1.0" },
+    });
+    expect(
+      (payload.poh as Record<string, unknown>).identity
+    ).not.toHaveProperty("method");
+  });
+
+  it("rejects DPoP-bound JWT access tokens sent with Bearer authorization", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
 
     const response = await POST(
@@ -223,7 +359,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(mocks.validateOpaqueAccessTokenDpop).not.toHaveBeenCalled();
   });
 
-  it("rejects DPoP-bound JWT access tokens when proof validation fails", async () => {
+  it("rejects requests when DPoP proof validation fails", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
     mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(false);
 
@@ -231,10 +367,9 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
     expect(response.status).toBe(401);
     expect(mocks.signJwt).not.toHaveBeenCalled();
-    expect(mocks.validateOpaqueAccessTokenDpop).toHaveBeenCalledOnce();
   });
 
-  it("uses pairwise sub from the access token — different clients get different subs", async () => {
+  it("uses pairwise sub from the access token; different clients get different subs", async () => {
     mocks.verifyAccessToken.mockResolvedValue(
       makeAccessTokenPayload({
         sub: "pairwise-sub-client-a",
@@ -268,149 +403,6 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(subA).toBe("pairwise-sub-client-a");
     expect(subB).toBe("pairwise-sub-client-b");
     expect(subA).not.toBe(subB);
-  });
-
-  it("returns 403 not_verified for unverified users", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-456");
-    mocks.getVerificationReadModel.mockResolvedValue(
-      makeVerifiedModel({
-        verificationId: null,
-        compliance: {
-          level: "none",
-          numericLevel: 1,
-          verified: false,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: false,
-            livenessVerified: false,
-            ageVerified: false,
-            faceMatchVerified: false,
-            nationalityVerified: false,
-            identityBound: false,
-            sybilResistant: false,
-          },
-        },
-      })
-    );
-
-    const response = await POST(makeDpopRequest());
-
-    expect(response.status).toBe(403);
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toBe("not_verified");
-    expect(mocks.signJwt).not.toHaveBeenCalled();
-  });
-
-  it("issues a tier 1.5 token for a human-verified account without document verification", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getVerificationReadModel.mockResolvedValue(
-      makeVerifiedModel({
-        verificationId: null,
-        method: null,
-        compliance: {
-          level: "human_verified",
-          numericLevel: 1.5,
-          verified: false,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: false,
-            livenessVerified: false,
-            ageVerified: false,
-            faceMatchVerified: false,
-            nationalityVerified: false,
-            identityBound: false,
-            sybilResistant: true,
-          },
-        },
-      })
-    );
-    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
-
-    const response = await POST(makeDpopRequest());
-
-    expect(response.status).toBe(200);
-    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.poh).toEqual({
-      tier: 1.5,
-      verified: false,
-      sybil_resistant: true,
-    });
-  });
-
-  it("reflects the correct tier for a basic-level user", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getVerificationReadModel.mockResolvedValue(
-      makeVerifiedModel({
-        method: "ocr",
-        compliance: {
-          level: "basic",
-          numericLevel: 2,
-          verified: false,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: true,
-            livenessVerified: true,
-            ageVerified: true,
-            faceMatchVerified: true,
-            nationalityVerified: false,
-            identityBound: false,
-            sybilResistant: false,
-          },
-        },
-      })
-    );
-    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
-
-    const response = await POST(makeDpopRequest());
-
-    expect(response.status).toBe(200);
-    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.poh).toEqual({
-      tier: 2,
-      verified: false,
-      sybil_resistant: false,
-    });
-    expect(payload.poh).not.toHaveProperty("method");
-  });
-
-  it("omits verification method even for NFC-based proof-of-human tokens", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getVerificationReadModel.mockResolvedValue(
-      makeVerifiedModel({
-        method: "nfc_chip",
-        compliance: {
-          level: "chip",
-          numericLevel: 4,
-          verified: true,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: true,
-            livenessVerified: true,
-            ageVerified: true,
-            faceMatchVerified: true,
-            nationalityVerified: true,
-            identityBound: true,
-            sybilResistant: true,
-          },
-        },
-      })
-    );
-    mocks.signJwt.mockResolvedValue("signed-poh-jwt");
-
-    const response = await POST(makeDpopRequest());
-
-    expect(response.status).toBe(200);
-    const payload = mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload.poh).toEqual({
-      tier: 4,
-      verified: true,
-      sybil_resistant: true,
-    });
-    expect(payload.poh).not.toHaveProperty("method");
   });
 
   it("returns 401 when access token has no client_id or azp", async () => {

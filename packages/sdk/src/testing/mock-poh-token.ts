@@ -4,12 +4,16 @@ import { getFixtureEd25519PrivateKey } from "./fixture-keys";
 export interface MockPohTokenOptions {
 	confirmationJkt?: string;
 	expiresInSeconds?: number;
+	humanityProven?: boolean;
+	identityStrength?:
+		| "none"
+		| "documentary"
+		| "documentary_full"
+		| "cryptographic_chip";
+	identityVerified?: boolean;
 	issuer?: string;
-	method?: "ocr" | "nfc_chip" | null;
+	policyVersion?: string;
 	subject: string;
-	sybilResistant?: boolean;
-	tier: number;
-	verified?: boolean;
 }
 
 const DEFAULT_ISSUER = "https://mock-issuer.zentity.test";
@@ -21,10 +25,12 @@ export async function mockPohToken(
 	const now = Math.floor(Date.now() / 1000);
 	const privateKey = await getFixtureEd25519PrivateKey();
 	const pohClaims = {
-		...(options.method === null ? {} : { method: options.method ?? "ocr" }),
-		sybil_resistant: options.sybilResistant ?? true,
-		tier: options.tier,
-		verified: options.verified ?? true,
+		identity: {
+			verified: options.identityVerified ?? true,
+			strength: options.identityStrength ?? "documentary_full",
+		},
+		humanity: { proven: options.humanityProven ?? false },
+		policy: { version: options.policyVersion ?? "v1.0" },
 	};
 
 	return new SignJWT({

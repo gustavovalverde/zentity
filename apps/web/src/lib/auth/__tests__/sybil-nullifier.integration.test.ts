@@ -6,9 +6,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { db } from "@/lib/db/connection";
 import {
-  attachHumanSignal,
+  attachHumanityCredential,
+  detachHumanityCredential,
+} from "@/lib/db/queries/humanity";
+import {
   createVerification,
-  detachHumanSignal,
   reconcileIdentityBundle,
   revokeIdentity,
 } from "@/lib/db/queries/identity";
@@ -95,12 +97,12 @@ async function issueSybilToken(clientId: string, userId: string) {
   };
 }
 
-async function issueHumanUniquenessToken(clientId: string, userId: string) {
+async function issueHumanityRpUniqueToken(clientId: string, userId: string) {
   const { authReqId } = await createTestCibaRequest({
     clientId,
     userId,
     resource: VALID_RESOURCE,
-    scope: "openid proof:human_uniqueness",
+    scope: "openid proof:humanity:rp_unique",
     status: "approved",
   });
 
@@ -242,24 +244,24 @@ describe("sybil nullifier disclosure", () => {
     await assertNoInternalIdentifiersInClaims(postRevocationClaims, userId);
   });
 
-  it("derives a stable per-RP human uniqueness nullifier without userinfo disclosure", async () => {
+  it("derives a stable per-RP humanity pseudonym without userinfo disclosure", async () => {
     const subjectHash = `world-subject-${crypto.randomUUID()}`;
-    await attachHumanSignal({
+    await attachHumanityCredential({
       userId,
-      provider: "world_id",
+      provider: "world_id_orb",
       providerSubjectKind: "nullifier",
       providerSubjectHash: subjectHash,
     });
 
-    const firstPrimaryToken = await issueHumanUniquenessToken(
+    const firstPrimaryToken = await issueHumanityRpUniqueToken(
       PRIMARY_CLIENT_ID,
       userId
     );
-    const secondPrimaryToken = await issueHumanUniquenessToken(
+    const secondPrimaryToken = await issueHumanityRpUniqueToken(
       PRIMARY_CLIENT_ID,
       userId
     );
-    const secondaryToken = await issueHumanUniquenessToken(
+    const secondaryToken = await issueHumanityRpUniqueToken(
       SECONDARY_CLIENT_ID,
       userId
     );
@@ -268,15 +270,14 @@ describe("sybil nullifier disclosure", () => {
     const secondPrimaryClaims = decodeJwt(secondPrimaryToken.accessToken);
     const secondaryClaims = decodeJwt(secondaryToken.accessToken);
 
-    expect(firstPrimaryClaims.human_uniqueness_source).toBe("world_id");
-    expect(typeof firstPrimaryClaims.human_uniqueness_nullifier).toBe("string");
-    expect(firstPrimaryClaims.human_uniqueness_nullifier).toBe(
-      secondPrimaryClaims.human_uniqueness_nullifier
+    expect(typeof firstPrimaryClaims.rp_unique_humanity_id).toBe("string");
+    expect(firstPrimaryClaims.rp_unique_humanity_id).toBe(
+      secondPrimaryClaims.rp_unique_humanity_id
     );
-    expect(firstPrimaryClaims.human_uniqueness_nullifier).not.toBe(
-      secondaryClaims.human_uniqueness_nullifier
+    expect(firstPrimaryClaims.rp_unique_humanity_id).not.toBe(
+      secondaryClaims.rp_unique_humanity_id
     );
-    expect(firstPrimaryClaims.human_uniqueness_nullifier).not.toBe(subjectHash);
+    expect(firstPrimaryClaims.rp_unique_humanity_id).not.toBe(subjectHash);
     await assertNoInternalIdentifiersInClaims(firstPrimaryClaims, userId);
     await assertNoInternalIdentifiersInClaims(secondPrimaryClaims, userId);
     await assertNoInternalIdentifiersInClaims(secondaryClaims, userId);
@@ -298,34 +299,32 @@ describe("sybil nullifier disclosure", () => {
     const userinfoBody = await userinfoResponse.text();
 
     expect(userinfoBody).not.toContain(subjectHash);
-    expect(userinfoBody).not.toContain("human_uniqueness_source");
-    expect(userinfoBody).not.toContain("human_uniqueness_nullifier");
+    expect(userinfoBody).not.toContain("rp_unique_humanity_id");
   });
 
-  it("omits human uniqueness claims after the signal is detached", async () => {
-    await attachHumanSignal({
+  it("omits humanity claims after the credential is detached", async () => {
+    await attachHumanityCredential({
       userId,
-      provider: "world_id",
+      provider: "world_id_orb",
       providerSubjectKind: "nullifier",
       providerSubjectHash: `world-subject-${crypto.randomUUID()}`,
     });
 
-    const linkedToken = await issueHumanUniquenessToken(
+    const linkedToken = await issueHumanityRpUniqueToken(
       PRIMARY_CLIENT_ID,
       userId
     );
     const linkedClaims = decodeJwt(linkedToken.accessToken);
-    expect(typeof linkedClaims.human_uniqueness_nullifier).toBe("string");
+    expect(typeof linkedClaims.rp_unique_humanity_id).toBe("string");
 
-    await detachHumanSignal({ userId, provider: "world_id" });
+    await detachHumanityCredential({ userId, provider: "world_id_orb" });
 
-    const detachedToken = await issueHumanUniquenessToken(
+    const detachedToken = await issueHumanityRpUniqueToken(
       PRIMARY_CLIENT_ID,
       userId
     );
     const detachedClaims = decodeJwt(detachedToken.accessToken);
 
-    expect(detachedClaims.human_uniqueness_source).toBeUndefined();
-    expect(detachedClaims.human_uniqueness_nullifier).toBeUndefined();
+    expect(detachedClaims.rp_unique_humanity_id).toBeUndefined();
   });
 });

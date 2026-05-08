@@ -37,10 +37,20 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
     getAccountIdentity: (...args: unknown[]) => mockGetAccountIdentity(...args),
     reconcileIdentityBundle: (...args: unknown[]) =>
       mockReconcileIdentityBundle(...args),
-    getComplianceStatus: (...args: unknown[]) =>
-      mockGetComplianceStatus(...args),
     updateIdentityBundleAttestationState: (...args: unknown[]) =>
       mockUpdateIdentityBundleAttestationState(...args),
+  };
+});
+
+vi.mock("@/lib/identity/verification/read-model", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/lib/identity/verification/read-model")
+    >();
+  return {
+    ...actual,
+    getComplianceStatus: (...args: unknown[]) =>
+      mockGetComplianceStatus(...args),
   };
 });
 
@@ -271,7 +281,25 @@ describe("proof router replay and context binding", () => {
     });
     mockRecordValidityTransition.mockResolvedValue(undefined);
     mockGetComplianceStatus.mockResolvedValue({
-      verified: true,
+      identity: {
+        verified: true,
+        method: "ocr",
+        strength: "documentary_full",
+      },
+      humanity: { proven: false },
+      policy: {
+        version: "v1.0",
+        birthYearOffset: null,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          faceMatchVerified: true,
+          nationalityVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
+      },
     });
     mockUpdateIdentityBundleAttestationState.mockResolvedValue(undefined);
     mockInsertProofArtifact.mockResolvedValue(undefined);

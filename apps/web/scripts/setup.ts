@@ -66,7 +66,7 @@ const cronSecret = randomBase64(32);
 const bbsIssuerSecret = randomHex(32);
 const pairwiseSecret = randomHex(32);
 const dedupHmacSecret = randomHex(32);
-const humanSignalHmacSecret = randomHex(32);
+const humanityHmacSecret = randomHex(32);
 const claimSigningSecret = randomHex(32);
 const ciphertextHmacSecret = randomHex(32);
 
@@ -75,7 +75,7 @@ console.log("  INTERNAL_SERVICE_TOKEN   done");
 console.log("  CRON_SECRET              done");
 console.log("  BBS_ISSUER_SECRET        done");
 console.log("  DEDUP_HMAC_SECRET        done");
-console.log("  HUMAN_SIGNAL_HMAC_SECRET done");
+console.log("  HUMANITY_HMAC_SECRET     done");
 console.log("  PAIRWISE_SECRET          done");
 console.log("  CLAIM_SIGNING_SECRET     done");
 console.log("  CIPHERTEXT_HMAC_SECRET   done");
@@ -106,7 +106,7 @@ const replacements: Record<string, string> = {
   CRON_SECRET: cronSecret,
   BBS_ISSUER_SECRET: bbsIssuerSecret,
   DEDUP_HMAC_SECRET: dedupHmacSecret,
-  HUMAN_SIGNAL_HMAC_SECRET: humanSignalHmacSecret,
+  HUMANITY_HMAC_SECRET: humanityHmacSecret,
   PAIRWISE_SECRET: pairwiseSecret,
   CLAIM_SIGNING_SECRET: claimSigningSecret,
   CIPHERTEXT_HMAC_SECRET: ciphertextHmacSecret,

@@ -7,7 +7,6 @@ import { after } from "next/server";
 import { isFheComplete } from "@/lib/assurance/compute";
 import {
   getAccountIdentity,
-  getComplianceStatus,
   getIdentityBundleByUserId,
   updateIdentityBundleFheStatus,
 } from "@/lib/db/queries/identity";
@@ -16,6 +15,8 @@ import {
   getLatestEncryptedAttributeByUserAndType,
   insertEncryptedAttribute,
 } from "@/lib/db/queries/privacy";
+import { complianceOnchainTier } from "@/lib/identity/verification/compliance";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
@@ -108,8 +109,8 @@ async function runFheEncryption(
         verification?.livenessScore ?? context?.livenessScore ?? undefined;
 
       const verificationStatus = await getComplianceStatus(userId);
-      const complianceLevel = verificationStatus.verified
-        ? verificationStatus.numericLevel
+      const complianceLevel = verificationStatus.identity.verified
+        ? complianceOnchainTier(verificationStatus)
         : null;
 
       // Parallelize independent attribute lookups
@@ -157,7 +158,7 @@ async function runFheEncryption(
         await updateIdentityBundleFheStatus({
           userId,
           fheStatus:
-            verificationStatus.verified && !missingInputs
+            verificationStatus.identity.verified && !missingInputs
               ? "complete"
               : "pending",
           fheError: null,
@@ -261,7 +262,7 @@ async function runFheEncryption(
         await updateIdentityBundleFheStatus({
           userId,
           fheStatus:
-            verificationStatus.verified && fheActuallyComplete
+            verificationStatus.identity.verified && fheActuallyComplete
               ? "complete"
               : "pending",
           fheError: null,

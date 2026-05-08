@@ -6,8 +6,8 @@ import type {
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import {
+  COMPLIANCE_ONCHAIN_TIERS,
   type ComplianceChecks,
-  deriveLevelFromChecks,
   EMPTY_CHECKS,
 } from "@/lib/identity/verification/compliance";
 
@@ -165,12 +165,12 @@ export async function getCurrentMirrorComplianceLevel(
     .all();
 
   if (rows[0]?.validityStatus !== "verified") {
-    return deriveLevelFromChecks(EMPTY_CHECKS, null).numericLevel;
+    return COMPLIANCE_ONCHAIN_TIERS.none;
   }
 
   const method = rows[0]?.method;
   if (!method) {
-    return deriveLevelFromChecks(EMPTY_CHECKS, null).numericLevel;
+    return COMPLIANCE_ONCHAIN_TIERS.none;
   }
 
   const checks: ComplianceChecks = { ...EMPTY_CHECKS };
@@ -187,7 +187,23 @@ export async function getCurrentMirrorComplianceLevel(
     }
   }
 
-  return deriveLevelFromChecks(checks, method).numericLevel;
+  if (method === "nfc_chip" && checks.documentVerified) {
+    return COMPLIANCE_ONCHAIN_TIERS.cryptographic_chip;
+  }
+  if (method === "ocr") {
+    const corePassed =
+      checks.documentVerified &&
+      checks.livenessVerified &&
+      checks.faceMatchVerified &&
+      checks.ageVerified;
+    if (corePassed) {
+      return COMPLIANCE_ONCHAIN_TIERS.documentary_full;
+    }
+    if (checks.documentVerified) {
+      return COMPLIANCE_ONCHAIN_TIERS.documentary;
+    }
+  }
+  return COMPLIANCE_ONCHAIN_TIERS.none;
 }
 
 export async function getBlockchainAttestationByUserAndNetwork(

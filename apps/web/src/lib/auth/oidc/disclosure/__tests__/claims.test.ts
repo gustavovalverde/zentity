@@ -17,18 +17,24 @@ function makeModel(overrides: Record<string, unknown> = {}) {
     verifiedAt: "2026-01-02T00:00:00.000Z",
     issuerCountry: "USA",
     compliance: {
-      level: "full",
-      numericLevel: 3,
-      verified: true,
-      birthYearOffset: null,
-      checks: {
-        documentVerified: true,
-        livenessVerified: true,
-        ageVerified: true,
-        faceMatchVerified: true,
-        nationalityVerified: true,
-        identityBound: true,
-        sybilResistant: true,
+      identity: {
+        verified: true,
+        method: "ocr",
+        strength: "documentary_full",
+      },
+      humanity: { proven: false },
+      policy: {
+        version: "v1.0",
+        birthYearOffset: null,
+        checks: {
+          documentVerified: true,
+          livenessVerified: true,
+          ageVerified: true,
+          faceMatchVerified: true,
+          nationalityVerified: true,
+          identityBound: true,
+          sybilResistant: true,
+        },
       },
     },
     checks: [],
@@ -48,11 +54,11 @@ function makeModel(overrides: Record<string, unknown> = {}) {
     bundle: {
       exists: true,
       fheKeyId: "fhe-1",
-      hasHumanSignal: false,
       policyVersion: "policy-1",
       attestationExpiresAt: "2030-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
+    humanityCredentials: [],
     fhe: { complete: true, attributeTypes: [] },
     vault: { hasProfileSecret: true },
     onChainAttested: false,
@@ -70,7 +76,7 @@ describe("oidc claim mapping", () => {
     const claims = await buildProofClaims("user-1");
 
     expect(claims).toMatchObject({
-      verification_level: "full",
+      verification_level: "documentary_full",
       verified: true,
       document_verified: true,
       liveness_verified: true,
@@ -93,12 +99,12 @@ describe("oidc claim mapping", () => {
     expect(verifiedClaims).toMatchObject({
       verification: {
         trust_framework: "eidas",
-        assurance_level: "full",
+        assurance_level: "documentary_full",
         policy_version: "policy-1",
         attestation_expires_at: "2030-01-01T00:00:00.000Z",
       },
       claims: {
-        verification_level: "full",
+        verification_level: "documentary_full",
         verified: true,
         document_verified: true,
         identity_bound: true,
@@ -111,18 +117,24 @@ describe("oidc claim mapping", () => {
       makeModel({
         method: "nfc_chip",
         compliance: {
-          level: "chip",
-          numericLevel: 4,
-          verified: true,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: true,
-            livenessVerified: true,
-            ageVerified: true,
-            nationalityVerified: true,
-            faceMatchVerified: true,
-            identityBound: true,
-            sybilResistant: true,
+          identity: {
+            verified: true,
+            method: "nfc_chip",
+            strength: "cryptographic_chip",
+          },
+          humanity: { proven: false },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: true,
+              livenessVerified: true,
+              ageVerified: true,
+              nationalityVerified: true,
+              faceMatchVerified: true,
+              identityBound: true,
+              sybilResistant: true,
+            },
           },
         },
       })
@@ -131,7 +143,7 @@ describe("oidc claim mapping", () => {
     const claims = await buildProofClaims("user-chip");
 
     expect(claims).toMatchObject({
-      verification_level: "chip",
+      verification_level: "cryptographic_chip",
       verified: true,
       chip_verified: true,
       chip_verification_method: "nfc",
@@ -151,18 +163,24 @@ describe("oidc claim mapping", () => {
       makeModel({
         method: "nfc_chip",
         compliance: {
-          level: "chip",
-          numericLevel: 4,
-          verified: true,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: true,
-            livenessVerified: true,
-            ageVerified: true,
-            nationalityVerified: true,
-            faceMatchVerified: false,
-            identityBound: true,
-            sybilResistant: true,
+          identity: {
+            verified: true,
+            method: "nfc_chip",
+            strength: "cryptographic_chip",
+          },
+          humanity: { proven: false },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: true,
+              livenessVerified: true,
+              ageVerified: true,
+              nationalityVerified: true,
+              faceMatchVerified: false,
+              identityBound: true,
+              sybilResistant: true,
+            },
           },
         },
       })
@@ -173,10 +191,10 @@ describe("oidc claim mapping", () => {
     expect(verifiedClaims).toMatchObject({
       verification: {
         trust_framework: "eidas",
-        assurance_level: "chip",
+        assurance_level: "cryptographic_chip",
       },
       claims: {
-        verification_level: "chip",
+        verification_level: "cryptographic_chip",
         verified: true,
         chip_verified: true,
         chip_verification_method: "nfc",
@@ -191,18 +209,20 @@ describe("oidc claim mapping", () => {
         method: null,
         verifiedAt: null,
         compliance: {
-          level: "none",
-          numericLevel: 1,
-          verified: false,
-          birthYearOffset: null,
-          checks: {
-            documentVerified: false,
-            livenessVerified: false,
-            ageVerified: false,
-            nationalityVerified: false,
-            faceMatchVerified: false,
-            identityBound: false,
-            sybilResistant: false,
+          identity: { verified: false, method: null, strength: "none" },
+          humanity: { proven: false },
+          policy: {
+            version: "v1.0",
+            birthYearOffset: null,
+            checks: {
+              documentVerified: false,
+              livenessVerified: false,
+              ageVerified: false,
+              nationalityVerified: false,
+              faceMatchVerified: false,
+              identityBound: false,
+              sybilResistant: false,
+            },
           },
         },
       })

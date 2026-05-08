@@ -1,5 +1,9 @@
-import type { PohClaims } from "@/data/x402";
-import { SOLIDITY_FACILITATOR, SOLIDITY_IS_COMPLIANT } from "@/data/x402";
+import {
+  getPohIdentityTier,
+  type PohClaims,
+  SOLIDITY_FACILITATOR,
+  SOLIDITY_IS_COMPLIANT,
+} from "@/data/x402";
 
 const KEYWORD_SET = new Set([
   "contract",
@@ -100,6 +104,8 @@ function CodeBlock({ code, title }: { code: string; title: string }) {
 }
 
 export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
+  const identityTier = pohClaims ? getPohIdentityTier(pohClaims) : null;
+
   return (
     <div className="space-y-4">
       <CodeBlock code={SOLIDITY_FACILITATOR} title="x402 Facilitator Pattern" />
@@ -117,14 +123,18 @@ export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
               <span className="text-muted-foreground"> → userTier: </span>
               <span
                 className={
-                  pohClaims.tier >= 2 ? "text-emerald-700" : "text-red-600"
+                  identityTier !== null && identityTier >= 2
+                    ? "text-emerald-700"
+                    : "text-red-600"
                 }
               >
-                {pohClaims.tier}
+                {identityTier}
               </span>
               <span className="text-muted-foreground">
                 {" "}
-                {pohClaims.tier >= 2 ? "✓ passes" : "✗ fails"}
+                {identityTier !== null && identityTier >= 2
+                  ? "✓ passes"
+                  : "✗ fails"}
               </span>
             </div>
             <div>
@@ -133,10 +143,12 @@ export function SolidityPanel({ pohClaims }: { pohClaims: PohClaims | null }) {
               </span>
               <span
                 className={
-                  pohClaims.verified ? "text-emerald-700" : "text-orange-600"
+                  pohClaims.identity.verified
+                    ? "text-emerald-700"
+                    : "text-orange-600"
                 }
               >
-                {pohClaims.verified ? "amount" : "zero"}
+                {pohClaims.identity.verified ? "amount" : "zero"}
               </span>
             </div>
           </div>

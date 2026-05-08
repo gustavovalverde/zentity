@@ -4,10 +4,9 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
+import { attachHumanityCredential } from "@/lib/db/queries/humanity";
 import {
-  attachHumanSignal,
   createVerification,
-  getComplianceStatus,
   getLatestVerification,
   isNullifierUsedByOtherUser,
   reconcileIdentityBundle,
@@ -31,6 +30,7 @@ import {
   scheduleValidityDeliveries,
 } from "@/lib/identity/validity/delivery";
 import { getRpValidityState } from "@/lib/identity/validity/rp-notice";
+import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 import {
   createTestCibaRequest,
   createTestUser,
@@ -163,10 +163,11 @@ describe("identity revocation cascade", () => {
     expect(deliveries).toEqual([]);
   });
 
-  it("does not count a retained human signal after revocation", async () => {
-    await attachHumanSignal({
+  it("does not count a retained humanity credential when the bundle is revoked", async () => {
+    await seedVerifiedIdentity(userId);
+    await attachHumanityCredential({
       userId,
-      provider: "world_id",
+      provider: "world_id_orb",
       providerSubjectKind: "nullifier",
       providerSubjectHash: "subject-hash-revocation-compliance",
     });
@@ -175,10 +176,10 @@ describe("identity revocation cascade", () => {
 
     const compliance = await getComplianceStatus(userId);
 
-    expect(compliance.level).toBe("none");
-    expect(compliance.numericLevel).toBe(1);
-    expect(compliance.verified).toBe(false);
-    expect(compliance.checks.sybilResistant).toBe(false);
+    expect(compliance.identity.verified).toBe(false);
+    expect(compliance.identity.strength).toBe("none");
+    expect(compliance.humanity.proven).toBe(false);
+    expect(compliance.policy.checks.sybilResistant).toBe(false);
   });
 
   it("processes blockchain revocation through the delivery worker", async () => {

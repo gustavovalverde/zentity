@@ -158,7 +158,7 @@ describe("identity validity mirror deliveries", () => {
     const { attestationId, userId, verificationId } =
       await seedConfirmedAttestation();
 
-    expect(await getCurrentMirrorComplianceLevel(userId)).toBe(1);
+    expect(await getCurrentMirrorComplianceLevel(userId)).toBe(0);
 
     await db
       .insert(verificationChecks)
@@ -202,7 +202,7 @@ describe("identity validity mirror deliveries", () => {
       },
     });
 
-    expect(await getCurrentMirrorComplianceLevel(userId)).toBe(1);
+    expect(await getCurrentMirrorComplianceLevel(userId)).toBe(0);
 
     const staleDeliveries = await db
       .select()
