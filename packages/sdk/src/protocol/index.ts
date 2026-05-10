@@ -18,3 +18,10 @@ export type {
   StandardAccessTokenClaims,
 } from "./claims";
 export * from "./did-key";
+export {
+  decodeBase64UrlJsonStrict,
+  decodeJwtHeaderStrict,
+  decodeJwtPayloadStrict,
+  parseStrictJson,
+  parseStrictJsonObject,
+} from "./json-strict";

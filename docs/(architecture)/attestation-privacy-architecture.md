@@ -72,6 +72,8 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - High-risk measurements (OCR results, liveness, face match) are **server-signed claims**.
 - Proofs are **bound to a claim hash** to prevent client tampering.
 - **Identity binding proofs** cryptographically link proofs to a specific user via Poseidon2 commitment, preventing proof replay across users or documents. No proofs can be generated without binding. Works with all three auth modes (passkey PRF, OPAQUE export key, wallet signature).
+- **Credential binding commitments** are stored separately from encrypted secret wrappers. A commitment is accepted only after a fresh matching credential ceremony and only if the same credential already wraps the user's FHE key secret. This keeps identity-proof admission separate from key-custody storage.
+- **ZKPassport proof sessions** bind NFC proof responses to a short-lived server session using stable `scope` plus one-time `custom_data`. The stable scope preserves duplicate-detection nullifiers; the one-time binding prevents replay into a different session.
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
 - OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
@@ -135,6 +137,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 | Address (full plaintext) | — | — | — | ✅ | Plaintext only in vault. |
 | User salt (for commitments) | — | — | — | ✅ | Lives with profile; delete breaks linkability. |
 | FHE client keys (secret key material) | — | — | — | ✅ | Stored as encrypted secrets + wrappers. |
+| Credential binding commitment | ✅ | — | ✅ | — | Poseidon2 commitment for identity binding. Stored in `credential_binding_commitments` after fresh credential confirmation; not stored on `secret_wrappers`. |
 
 **Document metadata** (`documentType`, `issuerCountry`) is stored directly on `identity_verifications` for operational use. Full PII lives only in the profile vault. It also exists in:
 
@@ -183,7 +186,7 @@ This system intentionally splits data across server storage and client-only acce
 |---|---|---|---|
 | **Server DB (plaintext)** | Account email, auth metadata (passkey public keys, wallet addresses), OPAQUE registration records, OAuth operational metadata (client/consent/token records), PAR request objects (`haip_pushed_request`), OID4VP session state (`haip_vp_session`), status fields | Server readable | Required for basic UX, auth, and workflow state |
 | **Server DB (encrypted)** | Passkey‑sealed profile, passkey/OPAQUE/wallet‑wrapped FHE keys, FHE ciphertexts, JWKS private keys (AES-256-GCM envelope via `KEY_ENCRYPTION_KEY`, format `{"v":1,"iv":"...","ct":"..."}`) | Client‑decrypt only for user secrets (PRF‑, OPAQUE‑, or wallet‑derived keys); server‑decrypt for JWKS (server‑held KEK) | User‑controlled privacy + encrypted computation + key-at-rest protection |
-| **Server DB (non‑reversible)** | Commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
+| **Server DB (non‑reversible)** | Commitments, credential binding commitments, proof hashes, evidence pack hashes | Irreversible hashes | Auditability, dedup, integrity checks |
 | **Client memory (ephemeral)** | Plaintext profile data, decrypted secrets, OCR previews | In‑memory only, cleared after session | Prevent persistent PII exposure |
 | **On‑chain (optional)** | Encrypted attestations, public metadata, and Base mirror attested/level state | User‑decrypt only for encrypted attestations; public for mirror reads | Auditable compliance checks and payment-time predicates without PII |
 
@@ -230,6 +233,8 @@ erDiagram
   USERS ||--|| IDENTITY_BUNDLES : owns
   USERS ||--o{ IDENTITY_VERIFICATIONS : verifies
   USERS ||--o{ ENCRYPTED_SECRETS : stores
+  USERS ||--o{ IDENTITY_VERIFICATION_SESSIONS : starts
+  USERS ||--o{ CREDENTIAL_BINDING_COMMITMENTS : binds
   USERS ||--o{ PUSH_SUBSCRIPTIONS : subscribes
 
   IDENTITY_BUNDLES ||--o{ IDENTITY_VERIFICATIONS : contains
@@ -239,6 +244,7 @@ erDiagram
   IDENTITY_VERIFICATIONS ||--o| ATTESTATION_EVIDENCE : audits
 
   ENCRYPTED_SECRETS ||--o{ SECRET_WRAPPERS : wraps
+  ENCRYPTED_SECRETS ||--o{ CREDENTIAL_BINDING_COMMITMENTS : admits
 
   USERS ||--o{ OAUTH_CONSENT : consents
   USERS ||--o{ SESSIONS : maintains
@@ -265,6 +271,11 @@ erDiagram
 ### Core Tables
 
 The diagram above shows cardinality only. The Drizzle schema is the authoritative source for column definitions and constraints.
+
+Two tables carry security-critical binding state:
+
+- `credential_binding_commitments` stores credential-confirmed identity-binding commitments for FHE key secrets. These rows are consulted by identity proof verification; `secret_wrappers` are not.
+- `identity_verification_sessions` stores short-lived NFC proof sessions. Each row carries the expected provider/method, stable proof scope, one-time proof binding, query-profile hash, expiry, and consumption metadata.
 
 ---
 

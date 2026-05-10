@@ -285,6 +285,8 @@ The MCP sends `Agent-Assertion` on CIBA requests. That assertion is a short-live
 - `task_id`
 - `task_hash`
 
+Before Zentity uses an unverified assertion payload to choose a session key, it parses the JWT with duplicate-key rejection. This keeps issuer/session selection deterministic even if a malicious assertion contains repeated JSON member names.
+
 When Zentity receives a valid assertion, it snapshots server-owned runtime metadata onto the CIBA request:
 
 - `agent_session_id`

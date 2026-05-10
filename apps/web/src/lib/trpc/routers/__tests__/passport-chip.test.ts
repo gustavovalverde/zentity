@@ -7,6 +7,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 const mockVerify = vi.fn();
 const mockGetIdentityBundleByUserId = vi.fn();
 const mockCreateVerification = vi.fn();
+const mockCreateIdentityVerificationSession = vi.fn();
+const mockGetIdentityVerificationSessionById = vi.fn();
+const mockConsumeIdentityVerificationSession = vi.fn();
 const mockGetAccountIdentity = vi.fn();
 const mockIsNullifierUsedByOtherUser = vi.fn();
 const mockResolveDedupKeyForUser = vi.fn();
@@ -36,6 +39,12 @@ vi.mock("@/lib/db/queries/identity", async (importOriginal) => {
     ...actual,
     getIdentityBundleByUserId: (...args: unknown[]) =>
       mockGetIdentityBundleByUserId(...args),
+    createIdentityVerificationSession: (...args: unknown[]) =>
+      mockCreateIdentityVerificationSession(...args),
+    getIdentityVerificationSessionById: (...args: unknown[]) =>
+      mockGetIdentityVerificationSessionById(...args),
+    consumeIdentityVerificationSession: (...args: unknown[]) =>
+      mockConsumeIdentityVerificationSession(...args),
     getAccountIdentity: (...args: unknown[]) => mockGetAccountIdentity(...args),
     isNullifierUsedByOtherUser: (...args: unknown[]) =>
       mockIsNullifierUsedByOtherUser(...args),
@@ -123,6 +132,7 @@ const verifiedNullifier = "0xabc123nullifier";
 
 const mockQueryResult = {
   age: { gte: { expected: 18, result: true } },
+  bind: { custom_data: "proof-binding-123" },
   birthdate: { disclose: { result: "1990-05-15" } },
   nationality: { disclose: { result: "USA" } },
   fullname: { disclose: { result: "John Doe" } },
@@ -158,6 +168,7 @@ async function createCaller(session: Session | null) {
 
 function validInput() {
   return {
+    verificationSessionId: "verification-session-123",
     requestId: "req-001",
     proofs: mockProofs as Record<string, unknown>[],
     result: mockQueryResult as Record<string, unknown>,
@@ -180,6 +191,26 @@ describe("passportChip.submitResult", () => {
       verified: true,
       chipNullifier: verifiedNullifier,
     });
+    mockCreateIdentityVerificationSession.mockImplementation(
+      async (data) => data
+    );
+    mockGetIdentityVerificationSessionById.mockResolvedValue({
+      id: "verification-session-123",
+      userId: "user-123",
+      method: "nfc_chip",
+      provider: "zkpassport",
+      status: "pending",
+      requestId: null,
+      proofScope: "zentity:nfc-chip:identity-verification:v1",
+      proofBinding: "proof-binding-123",
+      queryHash:
+        "afff12ea879acba5a4ffe331ed2264f000195c0a5e3ac92a24cd641db29281be",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      consumedAt: null,
+      verificationId: null,
+    });
+    mockConsumeIdentityVerificationSession.mockResolvedValue(undefined);
     mockGetIdentityBundleByUserId.mockResolvedValue(bundleWithFhe);
     mockGetAccountIdentity.mockResolvedValue({
       bundle: bundleWithFhe,
@@ -217,6 +248,116 @@ describe("passportChip.submitResult", () => {
     await expect(caller.submitResult(validInput())).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+  });
+
+  it("rejects missing verification sessions before proof verification", async () => {
+    mockGetIdentityVerificationSessionById.mockResolvedValue(null);
+
+    const caller = await createCaller(authedSession);
+    await expect(caller.submitResult(validInput())).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Invalid passport chip verification session",
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects already consumed verification sessions before proof verification", async () => {
+    mockGetIdentityVerificationSessionById.mockResolvedValue({
+      id: "verification-session-123",
+      userId: "user-123",
+      method: "nfc_chip",
+      provider: "zkpassport",
+      status: "pending",
+      requestId: "req-000",
+      proofScope: "zentity:nfc-chip:identity-verification:v1",
+      proofBinding: "proof-binding-123",
+      queryHash:
+        "afff12ea879acba5a4ffe331ed2264f000195c0a5e3ac92a24cd641db29281be",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      consumedAt: Date.now(),
+      verificationId: "verification-id",
+    });
+
+    const caller = await createCaller(authedSession);
+    await expect(caller.submitResult(validInput())).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "Passport chip verification session already used",
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects expired verification sessions before proof verification", async () => {
+    mockGetIdentityVerificationSessionById.mockResolvedValue({
+      id: "verification-session-123",
+      userId: "user-123",
+      method: "nfc_chip",
+      provider: "zkpassport",
+      status: "pending",
+      requestId: null,
+      proofScope: "zentity:nfc-chip:identity-verification:v1",
+      proofBinding: "proof-binding-123",
+      queryHash:
+        "afff12ea879acba5a4ffe331ed2264f000195c0a5e3ac92a24cd641db29281be",
+      createdAt: Date.now() - 120_000,
+      expiresAt: Date.now() - 60_000,
+      consumedAt: null,
+      verificationId: null,
+    });
+
+    const caller = await createCaller(authedSession);
+    await expect(caller.submitResult(validInput())).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Passport chip verification session expired",
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects proof results not bound to the verification session", async () => {
+    const caller = await createCaller(authedSession);
+    await expect(
+      caller.submitResult({
+        ...validInput(),
+        result: {
+          ...mockQueryResult,
+          bind: { custom_data: "different-proof-binding" },
+        } as Record<string, unknown>,
+      })
+    ).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Passport chip proof is not bound to this session",
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects unexpected query profiles before proof verification", async () => {
+    mockGetIdentityVerificationSessionById.mockResolvedValue({
+      id: "verification-session-123",
+      userId: "user-123",
+      method: "nfc_chip",
+      provider: "zkpassport",
+      status: "pending",
+      requestId: null,
+      proofScope: "zentity:nfc-chip:identity-verification:v1",
+      proofBinding: "proof-binding-123",
+      queryHash: "wrong-query-profile",
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      consumedAt: null,
+      verificationId: null,
+    });
+
+    const caller = await createCaller(authedSession);
+    await expect(caller.submitResult(validInput())).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Passport chip verification query profile mismatch",
+    });
+
+    expect(mockVerify).not.toHaveBeenCalled();
   });
 
   // --- Proof verification ---
@@ -320,6 +461,18 @@ describe("passportChip.submitResult", () => {
 
     expect(mockVerify).toHaveBeenCalledWith(
       expect.objectContaining({ devMode: false })
+    );
+  });
+
+  it("verifies proofs with the server-issued scope and session lifetime", async () => {
+    const caller = await createCaller(authedSession);
+    await caller.submitResult(validInput());
+
+    expect(mockVerify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "zentity:nfc-chip:identity-verification:v1",
+        validity: 600,
+      })
     );
   });
 
@@ -496,6 +649,7 @@ describe("passportChip.submitResult", () => {
   it("handles missing optional disclosed fields gracefully", async () => {
     const minimalResult = {
       age: { gte: { expected: 18, result: true } },
+      bind: { custom_data: "proof-binding-123" },
       sanctions: { passed: false },
     };
 

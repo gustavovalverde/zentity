@@ -10,6 +10,9 @@ const secretsMocks = vi.hoisted(() => ({
 }));
 
 const trpcMocks = vi.hoisted(() => ({
+  credentialBindings: {
+    register: { mutate: vi.fn() },
+  },
   secrets: {
     updateSecretMetadata: { mutate: vi.fn() },
   },

@@ -1,6 +1,7 @@
 import { hkdfSync } from "node:crypto";
 
-import { describe, expect, it, vi } from "vitest";
+import { decodeJwt } from "jose";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // vmThreads leaks vi.mock("@/env") factories across test files. A partial mock
 // from another file (e.g. only BETTER_AUTH_SECRET) leaves CLAIM_SIGNING_SECRET
@@ -200,6 +201,31 @@ describe("signed-claims", () => {
 
     it("rejects empty token", async () => {
       await expect(verifyAttestationClaim("")).rejects.toThrow();
+    });
+  });
+
+  describe("verifyAttestationClaim - temporal validity", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("issues claims with exp and iat one hour apart", async () => {
+      const token = await signAttestationClaim(validLivenessClaim);
+      const decoded = decodeJwt(token);
+
+      expect(typeof decoded.iat).toBe("number");
+      expect(typeof decoded.exp).toBe("number");
+      expect((decoded.exp as number) - (decoded.iat as number)).toBe(3600);
+    });
+
+    it("rejects claims past their expiration", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-05-10T00:00:00Z"));
+      const token = await signAttestationClaim(validLivenessClaim);
+
+      // jose enforces exp with a small built-in clock tolerance; jump past it.
+      vi.setSystemTime(new Date("2026-05-10T01:00:31Z"));
+      await expect(verifyAttestationClaim(token)).rejects.toThrow();
     });
   });
 

@@ -92,4 +92,68 @@ describe("verifyVpToken", () => {
       claims: { name: "Alice" },
     });
   });
+
+  it("rejects duplicate disclosure claim names", async () => {
+    rpMocks.verify.mockResolvedValueOnce({
+      payload: { cnf: { jkt: HOLDER_THUMBPRINT, jwk: HOLDER_JWK } },
+    });
+
+    const vpToken = [
+      "issuer-jwt",
+      disclosure("name", "Alice"),
+      disclosure("name", "Mallory"),
+      "kb-jwt",
+    ].join("~");
+
+    const result = await verifyVpToken(
+      vpToken,
+      "expected-nonce",
+      "https://rp.example"
+    );
+
+    expect(result).toEqual({ verified: false, claims: {} });
+    expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects disclosures with duplicate JSON keys", async () => {
+    rpMocks.verify.mockResolvedValueOnce({
+      payload: { cnf: { jkt: HOLDER_THUMBPRINT, jwk: HOLDER_JWK } },
+    });
+
+    const duplicateJsonDisclosure = base64url(
+      '["salt","address",{"country":"US","country":"CA"}]'
+    );
+    const vpToken = `issuer-jwt~${duplicateJsonDisclosure}~kb-jwt`;
+
+    const result = await verifyVpToken(
+      vpToken,
+      "expected-nonce",
+      "https://rp.example"
+    );
+
+    expect(result).toEqual({ verified: false, claims: {} });
+    expect(joseMocks.jwtVerify).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate KB-JWT header keys before importing holder keys", async () => {
+    rpMocks.verify.mockResolvedValueOnce({
+      payload: { cnf: { jkt: HOLDER_THUMBPRINT } },
+    });
+    const kbJwt = `${base64url(
+      `{"jwk":{"kty":"OKP"},"jwk":${JSON.stringify(HOLDER_JWK)}}`
+    )}.payload.signature`;
+    const vpToken = `issuer-jwt~${disclosure("name", "Alice")}~${kbJwt}`;
+
+    const result = await verifyVpToken(
+      vpToken,
+      "expected-nonce",
+      "https://rp.example"
+    );
+
+    expect(result).toEqual({
+      verified: false,
+      claims: { name: "Alice" },
+    });
+    expect(joseMocks.importJWK).not.toHaveBeenCalled();
+  });
 });

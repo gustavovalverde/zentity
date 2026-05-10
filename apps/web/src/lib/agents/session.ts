@@ -2,6 +2,7 @@ import {
   AAP_CLAIMS_VERSION,
   ACT_DID_EMISSION_POLICY,
   AGENT_DID_METHODS_SUPPORTED,
+  decodeJwtPayloadStrict,
 } from "@zentity/sdk/protocol";
 import { eq, inArray, lt } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
@@ -183,9 +184,7 @@ async function verifyAgentAssertion(
       return null;
     }
 
-    const rawPayload = JSON.parse(
-      Buffer.from(payloadB64, "base64url").toString("utf-8")
-    ) as { iss?: string };
+    const rawPayload = decodeJwtPayloadStrict(jwt) as { iss?: string };
     const sessionId = rawPayload.iss;
     if (!sessionId) {
       return null;

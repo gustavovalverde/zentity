@@ -261,6 +261,77 @@ export function createSessionAuthenticationContext(
   });
 }
 
+export function replaceSessionAuthenticationContext(
+  input: CreateSessionAuthenticationContextInput
+): Promise<AuthenticationState> {
+  const loginMethod = assertSessionLoginMethod(input.loginMethod);
+  return db.transaction(async (tx) => {
+    const session = await tx
+      .select({
+        id: sessions.id,
+        userId: sessions.userId,
+      })
+      .from(sessions)
+      .where(eq(sessions.id, input.sessionId))
+      .limit(1)
+      .get();
+
+    if (!session) {
+      throw new Error(
+        `Cannot replace authentication context: session ${input.sessionId} was not found`
+      );
+    }
+
+    if (session.userId !== input.userId) {
+      throw new Error(
+        `Cannot replace authentication context: session ${input.sessionId} belongs to a different user`
+      );
+    }
+
+    const amr = loginMethodToAmr(loginMethod);
+    const authStrength = deriveAuthStrength(loginMethod);
+    const [row] = await tx
+      .insert(authenticationContexts)
+      .values({
+        userId: input.userId,
+        sourceKind: input.sourceKind,
+        loginMethod,
+        amr: JSON.stringify(amr),
+        authStrength,
+        authenticatedAt: new Date(),
+        sourceSessionId: input.sessionId,
+        referenceType: "session",
+        referenceId: input.sessionId,
+      } satisfies NewAuthenticationContext)
+      .returning({
+        id: authenticationContexts.id,
+        loginMethod: authenticationContexts.loginMethod,
+        amr: authenticationContexts.amr,
+        authStrength: authenticationContexts.authStrength,
+        authenticatedAt: authenticationContexts.authenticatedAt,
+        sourceKind: authenticationContexts.sourceKind,
+      });
+
+    if (!row) {
+      throw new Error("Failed to replace authentication context");
+    }
+
+    await tx
+      .update(sessions)
+      .set({ authContextId: row.id })
+      .where(eq(sessions.id, input.sessionId))
+      .run();
+
+    return toAuthenticationState({
+      ...row,
+      authenticatedAt:
+        row.authenticatedAt instanceof Date
+          ? row.authenticatedAt
+          : new Date(row.authenticatedAt),
+    });
+  });
+}
+
 async function getAuthenticationStateById(
   authContextId: string | null | undefined
 ): Promise<AuthenticationState | null> {

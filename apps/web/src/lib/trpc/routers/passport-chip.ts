@@ -13,9 +13,12 @@ import { POLICY_HASH } from "@/lib/blockchain/attestation/policy-hash";
 import { db } from "@/lib/db/connection";
 import { upsertAttestationEvidence } from "@/lib/db/queries/attestation";
 import {
+  consumeIdentityVerificationSession,
+  createIdentityVerificationSession,
   createVerification,
   getAccountIdentity,
   getIdentityBundleByUserId,
+  getIdentityVerificationSessionById,
   hasProfileSecret,
   isChipVerified,
   isNullifierUsedByOtherUser,
@@ -49,6 +52,34 @@ function sha256(data: string): string {
   return crypto.createHash("sha256").update(data).digest("hex");
 }
 
+const PASSPORT_CHIP_SESSION_TTL_MS = 10 * 60 * 1000;
+const PASSPORT_CHIP_PROOF_SCOPE = "zentity:nfc-chip:identity-verification:v1";
+const PASSPORT_CHIP_QUERY_PROFILE = "passport-chip-v1";
+
+function buildProofBinding(sessionId: string): string {
+  return `zentity:nfc-chip:${sessionId}:${crypto.randomBytes(16).toString("hex")}`;
+}
+
+function expectedQueryHash(): string {
+  return sha256(
+    JSON.stringify({
+      profile: PASSPORT_CHIP_QUERY_PROFILE,
+      minAge: 18,
+      disclosures: [
+        "birthdate",
+        "nationality",
+        "fullname",
+        "document_type",
+        "issuing_country",
+      ],
+      sanctions: "all",
+      facematch: "strict-when-supported",
+      bind: "custom_data",
+      scope: PASSPORT_CHIP_PROOF_SCOPE,
+    })
+  );
+}
+
 /**
  * Extract disclosed birthdate string from QueryResult.
  * ZKPassport discloses dates as Date objects.
@@ -72,9 +103,37 @@ function extractString(
 }
 
 export const passportChipRouter = router({
+  createSession: protectedProcedure.mutation(async ({ ctx }) => {
+    const now = Date.now();
+    const id = crypto.randomUUID();
+    const session = await createIdentityVerificationSession({
+      id,
+      userId: ctx.userId,
+      method: "nfc_chip",
+      provider: "zkpassport",
+      status: "pending",
+      proofScope: PASSPORT_CHIP_PROOF_SCOPE,
+      proofBinding: buildProofBinding(id),
+      queryHash: expectedQueryHash(),
+      createdAt: now,
+      expiresAt: now + PASSPORT_CHIP_SESSION_TTL_MS,
+      consumedAt: null,
+      requestId: null,
+      verificationId: null,
+    });
+
+    return {
+      verificationSessionId: session.id,
+      proofScope: session.proofScope,
+      proofBinding: session.proofBinding,
+      expiresAt: session.expiresAt,
+    };
+  }),
+
   submitResult: protectedProcedure
     .input(
       z.object({
+        verificationSessionId: z.string().min(1),
         requestId: z.string(),
         proofs: z.array(z.record(z.string(), z.unknown())),
         result: z.record(z.string(), z.unknown()),
@@ -82,17 +141,58 @@ export const passportChipRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
+      const verificationSession = await getIdentityVerificationSessionById(
+        input.verificationSessionId
+      );
+      if (
+        !verificationSession ||
+        verificationSession.userId !== userId ||
+        verificationSession.method !== "nfc_chip" ||
+        verificationSession.provider !== "zkpassport"
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid passport chip verification session",
+        });
+      }
+      if (verificationSession.consumedAt) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Passport chip verification session already used",
+        });
+      }
+      if (verificationSession.expiresAt < Date.now()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Passport chip verification session expired",
+        });
+      }
+      if (verificationSession.queryHash !== expectedQueryHash()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Passport chip verification query profile mismatch",
+        });
+      }
 
       const devMode =
         env.NEXT_PUBLIC_APP_ENV === "development" ||
         env.NEXT_PUBLIC_APP_ENV === "test";
       const domain = new URL(env.NEXT_PUBLIC_APP_URL).hostname;
+      const result = input.result as QueryResult;
+      if (result.bind?.custom_data !== verificationSession.proofBinding) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Passport chip proof is not bound to this session",
+        });
+      }
 
       const verifyResult = await verifyZkPassportProofs({
         domain,
         proofs: input.proofs as ProofResult[],
-        queryResult: input.result as QueryResult,
+        queryResult: result,
         devMode,
+        scope: verificationSession.proofScope,
+        validity: Math.floor(PASSPORT_CHIP_SESSION_TTL_MS / 1000),
       });
 
       if (!verifyResult.verified) {
@@ -159,7 +259,6 @@ export const passportChipRouter = router({
       }
 
       // Extract from the verified QueryResult — trusted because proofs passed
-      const result = input.result as QueryResult;
       const birthdate = extractBirthdate(result);
       const nationality = extractString(result.nationality);
       const fullname = extractString(result.fullname);
@@ -311,6 +410,14 @@ export const passportChipRouter = router({
           }
 
           await materializeVerificationChecks(userId, verificationId, tx);
+          await consumeIdentityVerificationSession(
+            {
+              id: verificationSession.id,
+              requestId: input.requestId,
+              verificationId,
+            },
+            tx
+          );
           const reconcileResult = await reconcileIdentityBundle(userId, tx);
           await recordValidityTransition({
             executor: tx,
@@ -336,6 +443,14 @@ export const passportChipRouter = router({
           requestId: ctx.requestId,
           flowId: ctx.flowId ?? undefined,
           reason: "passport_chip_verified",
+        });
+      }
+
+      if (isReVerifyForVault) {
+        await consumeIdentityVerificationSession({
+          id: verificationSession.id,
+          requestId: input.requestId,
+          verificationId,
         });
       }
 

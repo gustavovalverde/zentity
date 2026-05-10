@@ -15,6 +15,8 @@ import {
 import { setSessionCookie } from "better-auth/cookies";
 import { z } from "zod";
 
+import { replaceSessionAuthenticationContext } from "@/lib/auth/auth-context";
+
 import { finishOpaqueLogin, OpaqueLoginError, startOpaqueLogin } from "./login";
 import {
   decryptServerLoginState,
@@ -282,6 +284,16 @@ export const opaque = (options: OpaquePluginOptions) => {
             registrationRecord: ctx.body.registrationRecord,
           });
 
+          const sessionId = ctx.context.session?.session?.id;
+          if (sessionId) {
+            await replaceSessionAuthenticationContext({
+              userId,
+              loginMethod: "opaque",
+              sourceKind: "better_auth",
+              sessionId,
+            });
+          }
+
           return ctx.json({ success: true });
         }
       ),
@@ -365,6 +377,16 @@ export const opaque = (options: OpaquePluginOptions) => {
           if (!sessionKey) {
             throw new APIError("UNAUTHORIZED", {
               message: "Invalid password",
+            });
+          }
+
+          const sessionId = ctx.context.session?.session?.id;
+          if (sessionId) {
+            await replaceSessionAuthenticationContext({
+              userId,
+              loginMethod: "opaque",
+              sourceKind: "better_auth",
+              sessionId,
             });
           }
 

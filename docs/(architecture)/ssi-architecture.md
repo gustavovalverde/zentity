@@ -206,6 +206,8 @@ Each relying party receives a unique opaque `sub` derived from the user ID, clie
 
 Users reveal only the claims needed. The holder controls which disclosure keys are included in the presentation.
 
+Verifiers must decode SD-JWT disclosures strictly: malformed disclosures, duplicate disclosed claim names, and duplicate JSON member names are rejected before holder keys are imported or KB-JWT verification proceeds. This keeps selective-disclosure parsing deterministic across verifier implementations.
+
 ### ZK proofs for predicates
 
 For binary eligibility checks, ZK proofs reveal nothing beyond the answer:

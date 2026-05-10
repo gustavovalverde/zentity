@@ -421,6 +421,32 @@ export const identityVerifications = sqliteTable(
   ]
 );
 
+export const identityVerificationSessions = sqliteTable(
+  "identity_verification_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    method: text("method", { enum: verificationMethodEnum }).notNull(),
+    provider: text("provider").notNull(),
+    status: text("status").notNull().default("pending"),
+    requestId: text("request_id"),
+    proofScope: text("proof_scope").notNull(),
+    proofBinding: text("proof_binding").notNull(),
+    queryHash: text("query_hash").notNull(),
+    createdAt: integer("created_at").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+    consumedAt: integer("consumed_at"),
+    verificationId: text("verification_id"),
+  },
+  (table) => [
+    index("idx_identity_verification_sessions_user_id").on(table.userId),
+    index("idx_identity_verification_sessions_expires_at").on(table.expiresAt),
+    index("idx_identity_verification_sessions_status").on(table.status),
+  ]
+);
+
 export const identityVerificationDrafts = sqliteTable(
   "identity_verification_drafts",
   {
@@ -514,6 +540,11 @@ export type NewIdentityValidityDelivery =
 
 export type IdentityVerification = typeof identityVerifications.$inferSelect;
 export type NewIdentityVerification = typeof identityVerifications.$inferInsert;
+
+export type IdentityVerificationSession =
+  typeof identityVerificationSessions.$inferSelect;
+export type NewIdentityVerificationSession =
+  typeof identityVerificationSessions.$inferInsert;
 
 export type IdentityVerificationDraft =
   typeof identityVerificationDrafts.$inferSelect;

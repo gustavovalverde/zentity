@@ -54,6 +54,7 @@ export async function GET(request: Request): Promise<Response> {
   let sub: string;
   let sid: string | undefined;
   let tokenAzp: string | undefined;
+  let tokenAudiences: string[] = [];
   try {
     const jwksResolver = await getLocalJwks();
     const { payload } = await jwtVerify(idTokenHint, jwksResolver, {
@@ -69,13 +70,15 @@ export async function GET(request: Request): Promise<Response> {
     if (typeof payload.sid === "string") {
       sid = payload.sid;
     }
-    // Extract authorized party for redirect URI validation fallback
     if (typeof payload.azp === "string") {
       tokenAzp = payload.azp;
-    } else if (typeof payload.aud === "string") {
-      tokenAzp = payload.aud;
-    } else if (Array.isArray(payload.aud) && payload.aud.length === 1) {
-      tokenAzp = payload.aud[0] as string;
+    }
+    if (typeof payload.aud === "string") {
+      tokenAudiences = [payload.aud];
+    } else if (Array.isArray(payload.aud)) {
+      tokenAudiences = payload.aud.filter(
+        (value): value is string => typeof value === "string"
+      );
     }
   } catch {
     return NextResponse.json(
@@ -84,29 +87,72 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  // OIDC RP-Initiated Logout 1.0 §2: when both client_id and id_token_hint
-  // are present, verify they refer to the same RP.
-  if (clientId && tokenAzp && clientId !== tokenAzp) {
+  // The id_token MUST identify the RP it was issued for. Resolve a single
+  // client either from azp, a single-element aud, or an explicit client_id
+  // query parameter that is also present in aud. Tokens without a resolvable
+  // client cannot be safely used to terminate sessions or to fire BCL.
+  let effectiveClientId: string | null = null;
+  if (clientId) {
+    if (tokenAzp && tokenAzp !== clientId) {
+      return NextResponse.json(
+        { error: "client_id does not match id_token_hint" },
+        { status: 400 }
+      );
+    }
+    if (tokenAudiences.length > 0 && !tokenAudiences.includes(clientId)) {
+      return NextResponse.json(
+        { error: "client_id is not in id_token_hint aud" },
+        { status: 400 }
+      );
+    }
+    effectiveClientId = clientId;
+  } else if (tokenAzp) {
+    effectiveClientId = tokenAzp;
+  } else if (tokenAudiences.length === 1) {
+    effectiveClientId = tokenAudiences[0] ?? null;
+  } else if (tokenAudiences.length > 1) {
     return NextResponse.json(
-      { error: "client_id does not match id_token_hint" },
+      {
+        error:
+          "id_token_hint with multiple audiences requires an explicit client_id",
+      },
       { status: 400 }
     );
   }
 
-  // Look up client once for both redirect validation and pairwise resolution
-  const effectiveClientId = clientId ?? tokenAzp;
-  const client = effectiveClientId
-    ? await db
-        .select({
-          subjectType: oauthClients.subjectType,
-          redirectUris: oauthClients.redirectUris,
-          postLogoutRedirectUris: oauthClients.postLogoutRedirectUris,
-        })
-        .from(oauthClients)
-        .where(eq(oauthClients.clientId, effectiveClientId))
-        .limit(1)
-        .get()
-    : undefined;
+  if (!effectiveClientId) {
+    return NextResponse.json(
+      { error: "id_token_hint must identify a client" },
+      { status: 400 }
+    );
+  }
+
+  const client = await db
+    .select({
+      subjectType: oauthClients.subjectType,
+      redirectUris: oauthClients.redirectUris,
+      postLogoutRedirectUris: oauthClients.postLogoutRedirectUris,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, effectiveClientId))
+    .limit(1)
+    .get();
+
+  if (!client) {
+    // When a redirect was supplied, return the same error shape as a
+    // legitimate redirect mismatch so we do not disclose whether the
+    // client_id exists.
+    if (postLogoutRedirectUri) {
+      return NextResponse.json(
+        { error: "post_logout_redirect_uri not registered" },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json(
+      { error: "id_token_hint references an unknown client" },
+      { status: 400 }
+    );
+  }
 
   // Strict redirect URI validation (OIDC RP-Initiated Logout 1.0 §2):
   // post_logout_redirect_uri MUST be validated against registered values.
@@ -130,19 +176,10 @@ export async function GET(request: Request): Promise<Response> {
   }
 
   // Resolve pairwise sub → raw userId for session/BCL/CIBA operations
-  let userId: string | null;
-  if (client) {
-    userId = await resolveUserIdFromSubForClient(sub, {
-      subjectType: client.subjectType,
-      redirectUris: parseStoredStringArray(client.redirectUris),
-    });
-  } else if (effectiveClientId) {
-    // Token references a client that no longer exists
-    userId = null;
-  } else {
-    // No client identification — treat sub as raw userId
-    userId = sub;
-  }
+  const userId = await resolveUserIdFromSubForClient(sub, {
+    subjectType: client.subjectType,
+    redirectUris: parseStoredStringArray(client.redirectUris),
+  });
 
   if (!userId) {
     return NextResponse.json(

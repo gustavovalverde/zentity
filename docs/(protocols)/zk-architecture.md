@@ -65,6 +65,15 @@ binding_commitment = Poseidon2(binding_secret, user_id_hash, document_hash, msg_
 
 The circuit returns `pub bool` (`is_bound`), which is `true` when both commitments match; otherwise the circuit panics via `assert`. This is a return value, not a public input.
 
+`base_commitment` is a circuit-level term. At the application boundary it is stored as a **credential binding commitment** in `credential_binding_commitments`, not on `secret_wrappers`. This separation is intentional: `secret_wrappers` prove that a DEK can be unwrapped by a credential, while `credential_binding_commitments` prove that an identity-binding commitment was registered after a fresh matching credential ceremony. The server accepts a credential binding commitment only through `credentialBindings.register`, and only when all of these conditions hold:
+
+- the current authentication context matches the credential kind (`passkey`, `opaque`, or wallet-backed `eip712`)
+- that authentication context is fresh
+- the referenced secret is an FHE key secret owned by the same user
+- the same credential already has a matching FHE secret wrapper
+
+Developers should not add identity-binding fields back to secret wrappers. That would mix encryption custody with proof admission and would reintroduce a broad "authenticated user can claim any commitment" footgun.
+
 This ensures that:
 
 - Same user + same document + same auth secret + same caller/audience context = same commitment (deterministic)
@@ -87,7 +96,7 @@ Binding requires the user's raw credential material (PRF output, OPAQUE export k
 3. **Cleared after proof storage**: the cache is cleared after all proofs are stored, regardless of success or failure.
 4. **TTL safety net**: if cleanup doesn't run (e.g., tab crash), the cache auto-expires.
 
-For the ZKPassport NFC flow, credential material is still required for identity binding but the WebAuthn prompt can be suppressed via the `promptPasskey` option when the cache is warm.
+For the ZKPassport NFC flow, the browser Noir identity-binding circuit is not the verifier. ZKPassport proofs are request-bound through a server-created verification session, described in [ZKPassport NFC Chip Verification](#zkpassport-nfc-chip-verification). The user's credential is still required before NFC verification because FHE key enrollment and credential binding are verification preflights.
 
 If the cache is expired when proofs are generated (user was idle, page refreshed, TTL fired), the behavior depends on auth mode:
 
@@ -176,6 +185,8 @@ Key differences from browser-based Noir proving:
 - **Verification**: Server-side via `zkpassport.verify()`, not `UltraHonkVerifierBackend`
 - **Liveness**: Synthetic score (1.0), since NFC chip challenge-response proves physical possession
 - **Nullifier**: `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents the same passport from being registered across multiple accounts
+- **Proof scope**: A stable Zentity scope (`zentity:nfc-chip:identity-verification:v1`) is passed to ZKPassport verification so the passport nullifier remains stable for duplicate detection. Do not randomize this scope.
+- **Session binding**: Each flow starts with `passportChip.createSession`, which creates a short-lived `identity_verification_sessions` row containing a one-time `proofBinding`, the stable proof scope, and a hash of the expected query profile. The mobile request binds `custom_data` to that one-time value. `passportChip.submitResult` rejects missing, expired, consumed, wrong-profile, or wrong-binding sessions before proof verification.
 - **Country/document pre-check**: `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support before showing the option
 - **Dev mode**: `devMode` flag relaxes proof verification in `development`/`test` environments; production enforces strict verification
 
@@ -189,7 +200,7 @@ Zentity prevents the same identity document from being registered under multiple
 
 **OCR path:** `computeDedupKey(DEDUP_HMAC_SECRET, docNumber, issuerCountry, dob)` → `HMAC-SHA256` stored as `dedupKey` on `identity_verifications` (unique constraint). Any attempt to register the same document under a different account is rejected at the DB level.
 
-**NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `chipNullifier` (a nullifier from the NFC chip proof; the SDK returns it as `uniqueIdentifier` and Zentity translates it at the verifier boundary). Cross-method dedup (same passport via both OCR and NFC) is handled only by `chipNullifier`.
+**NFC path:** ZKPassport does not expose the document number. Deduplication relies solely on `chipNullifier` (a nullifier from the NFC chip proof; the SDK returns it as `uniqueIdentifier` and Zentity translates it at the verifier boundary). The stable ZKPassport scope is part of this contract; changing it changes the nullifier namespace and can break duplicate detection. Cross-method dedup (same passport via both OCR and NFC) is handled only by `chipNullifier`.
 
 **Per-RP nullifier:** An HMAC-SHA256 derived from the account-scoped `nullifierSeed` and the client ID is delivered via the `proof:sybil` scope as `sybil_nullifier` in access tokens (not id_tokens). The seed itself is HMAC-derived at credential write time (`HMAC-SHA256(DEDUP_HMAC_SECRET, rawKey || source)`) so no raw chip identifier enters the bundle. It is written once from the first verified credential, survives later credential additions, and is cleared only on full identity revocation. Each RP receives a unique pseudonymous nullifier; the same account produces the same nullifier for the same RP, but different RPs cannot correlate users.
 

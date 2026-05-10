@@ -1,4 +1,7 @@
-import { decodeEd25519DidKeyToJwk } from "@zentity/sdk/protocol";
+import {
+  decodeEd25519DidKeyToJwk,
+  decodeJwtPayloadStrict,
+} from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import { importJWK, jwtVerify } from "jose";
 import { NextResponse } from "next/server";
@@ -27,13 +30,7 @@ export const runtime = "nodejs";
 
 function decodeHostJwtIssuer(hostJwt: string): string | null {
   try {
-    const payloadB64 = hostJwt.split(".")[1];
-    if (!payloadB64) {
-      return null;
-    }
-    const payload = JSON.parse(
-      Buffer.from(payloadB64, "base64url").toString("utf-8")
-    ) as { iss?: string };
+    const payload = decodeJwtPayloadStrict(hostJwt) as { iss?: string };
     return typeof payload.iss === "string" ? payload.iss : null;
   } catch {
     return null;

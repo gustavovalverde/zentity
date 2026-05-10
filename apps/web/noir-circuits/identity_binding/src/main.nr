@@ -38,7 +38,10 @@ fn main(
     base_commitment: pub Field,      // Public: pre-registered base commitment
     binding_commitment: pub Field    // Public: pre-computed commitment to verify
 ) -> pub bool {
-    // Nonce is included as public input for replay resistance
+    // The nonce is bound to the proof through UltraHonk's public-input integrity
+    // (the verifier rejects if the public inputs are altered after proving), so
+    // the application layer can enforce single-use by consuming the nonce in its
+    // challenge store. The circuit itself does not need to constrain the value.
     let _ = nonce;
 
     // The base commitment binds strictly to the user's secret

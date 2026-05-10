@@ -21,6 +21,7 @@ import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
+import { decodeJwtPayloadStrict } from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
@@ -615,13 +616,7 @@ async function validateDcrRegistration(
 
     let claims: Record<string, unknown>;
     try {
-      const payload = parts[1];
-      if (!payload) {
-        throw new Error("missing payload");
-      }
-      claims = JSON.parse(
-        Buffer.from(payload, "base64url").toString()
-      ) as Record<string, unknown>;
+      claims = decodeJwtPayloadStrict(softwareStatement);
     } catch {
       throw new APIError("BAD_REQUEST", {
         error_description: "software_statement payload is not valid JSON",

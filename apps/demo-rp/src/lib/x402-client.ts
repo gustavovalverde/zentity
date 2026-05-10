@@ -1,4 +1,4 @@
-import { x402HTTPClient, x402Client } from "@x402/core/client";
+import { x402Client, x402HTTPClient } from "@x402/core/client";
 import type { ClientEvmSigner } from "@x402/evm";
 import { ExactEvmScheme } from "@x402/evm/exact/client";
 import type { Account, Chain, Transport, WalletClient } from "viem";

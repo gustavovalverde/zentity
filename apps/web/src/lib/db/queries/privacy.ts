@@ -1,4 +1,5 @@
 import type {
+  CredentialBindingCommitmentRecord,
   EncryptedSecretRecord,
   NewEncryptedAttribute,
   ProofSessionRecord,
@@ -8,13 +9,14 @@ import type {
 
 import crypto from "node:crypto";
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
 import { db } from "../connection";
 import {
+  credentialBindingCommitments,
   encryptedAttributes,
   encryptedSecrets,
   proofArtifacts,
@@ -203,7 +205,6 @@ export async function upsertSecretWrapper(data: {
   wrappedDek: string;
   prfSalt?: string | null | undefined;
   kekSource?: string | undefined;
-  baseCommitment?: string | null | undefined;
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
 
@@ -217,7 +218,6 @@ export async function upsertSecretWrapper(data: {
       wrappedDek: data.wrappedDek,
       prfSalt: data.prfSalt ?? null,
       kekSource,
-      baseCommitment: data.baseCommitment ?? null,
     })
     .onConflictDoUpdate({
       target: [secretWrappers.secretId, secretWrappers.credentialId],
@@ -225,7 +225,6 @@ export async function upsertSecretWrapper(data: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
         kekSource,
-        baseCommitment: data.baseCommitment ?? null,
         updatedAt: sql`datetime('now')`,
       },
     })
@@ -532,14 +531,72 @@ export async function insertSignedClaim(
     .run();
 }
 
-export async function getUserBaseCommitments(
+export async function upsertCredentialBindingCommitment(data: {
+  authContextId?: string | null | undefined;
+  commitment: string;
+  credentialId: string;
+  credentialKind: "passkey" | "opaque" | "wallet";
+  id: string;
+  secretId: string;
+  userId: string;
+}): Promise<CredentialBindingCommitmentRecord> {
+  await db
+    .insert(credentialBindingCommitments)
+    .values({
+      id: data.id,
+      secretId: data.secretId,
+      userId: data.userId,
+      credentialId: data.credentialId,
+      credentialKind: data.credentialKind,
+      commitment: data.commitment,
+      authContextId: data.authContextId ?? null,
+      revokedAt: null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        credentialBindingCommitments.secretId,
+        credentialBindingCommitments.credentialId,
+      ],
+      set: {
+        credentialKind: data.credentialKind,
+        commitment: data.commitment,
+        authContextId: data.authContextId ?? null,
+        revokedAt: null,
+      },
+    })
+    .run();
+
+  const row = await db
+    .select()
+    .from(credentialBindingCommitments)
+    .where(
+      and(
+        eq(credentialBindingCommitments.secretId, data.secretId),
+        eq(credentialBindingCommitments.credentialId, data.credentialId)
+      )
+    )
+    .limit(1)
+    .get();
+
+  if (!row) {
+    throw new Error("Failed to upsert credential binding commitment");
+  }
+  return row;
+}
+
+export async function getActiveCredentialBindingCommitments(
   userId: string
 ): Promise<string[]> {
   const rows = await db
-    .select({ baseCommitment: secretWrappers.baseCommitment })
-    .from(secretWrappers)
-    .where(eq(secretWrappers.userId, userId));
-  return rows.map((r) => r.baseCommitment).filter(Boolean) as string[];
+    .select({ commitment: credentialBindingCommitments.commitment })
+    .from(credentialBindingCommitments)
+    .where(
+      and(
+        eq(credentialBindingCommitments.userId, userId),
+        isNull(credentialBindingCommitments.revokedAt)
+      )
+    );
+  return rows.map((r) => r.commitment);
 }
 
 export async function getLatestSignedClaimByUserTypeAndVerification(

@@ -379,6 +379,8 @@ export function ZkPassportFlow({
     setBindingAuthOpen(false);
 
     try {
+      const verificationSession =
+        await trpc.passportChip.createSession.mutate();
       const { ZKPassport } = await import("@zkpassport/sdk");
       const zkpassport = new ZKPassport(
         typeof window === "undefined" ? undefined : window.location.hostname
@@ -394,6 +396,7 @@ export function ZkPassportFlow({
         logo: `${env.NEXT_PUBLIC_APP_URL}/icon.png`,
         purpose:
           "Verify your document for the highest level of identity assurance",
+        scope: verificationSession.proofScope,
         devMode: isDevMode,
       });
 
@@ -404,6 +407,7 @@ export function ZkPassportFlow({
         .disclose("fullname")
         .disclose("document_type")
         .disclose("issuing_country")
+        .bind("custom_data", verificationSession.proofBinding)
         .sanctions("all", "all");
 
       try {
@@ -490,6 +494,7 @@ export function ZkPassportFlow({
           setStage("verifying");
 
           submitResult.mutate({
+            verificationSessionId: verificationSession.verificationSessionId,
             requestId: request.requestId,
             proofs: proofsRef.current as Record<string, unknown>[],
             result: response.result as unknown as Record<string, unknown>,

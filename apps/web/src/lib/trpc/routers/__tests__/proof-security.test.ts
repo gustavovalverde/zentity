@@ -22,7 +22,7 @@ const mockGetProofTypesByUserVerificationAndSession = vi.fn();
 const mockGetProofHashesByUserVerificationAndSession = vi.fn();
 const mockCloseProofSession = vi.fn();
 const mockCreateProofSession = vi.fn();
-const mockGetUserBaseCommitments = vi.fn();
+const mockGetActiveCredentialBindingCommitments = vi.fn();
 const mockInsertProofArtifact = vi.fn();
 const mockUpsertAttestationEvidence = vi.fn();
 const mockMaterializeVerificationChecks = vi.fn();
@@ -88,8 +88,8 @@ vi.mock("@/lib/db/queries/privacy", async (importOriginal) => {
       mockGetProofHashesByUserVerificationAndSession(...args),
     closeProofSession: (...args: unknown[]) => mockCloseProofSession(...args),
     createProofSession: (...args: unknown[]) => mockCreateProofSession(...args),
-    getUserBaseCommitments: (...args: unknown[]) =>
-      mockGetUserBaseCommitments(...args),
+    getActiveCredentialBindingCommitments: (...args: unknown[]) =>
+      mockGetActiveCredentialBindingCommitments(...args),
     insertProofArtifact: (...args: unknown[]) =>
       mockInsertProofArtifact(...args),
   };
@@ -267,7 +267,9 @@ describe("proof router replay and context binding", () => {
     mockGetProofHashesByUserVerificationAndSession.mockResolvedValue([]);
     mockCloseProofSession.mockResolvedValue(undefined);
     mockCreateProofSession.mockResolvedValue(undefined);
-    mockGetUserBaseCommitments.mockResolvedValue([baseCommitment]);
+    mockGetActiveCredentialBindingCommitments.mockResolvedValue([
+      baseCommitment,
+    ]);
     mockGetActiveChallengeCount.mockResolvedValue(1);
     mockReconcileIdentityBundle.mockResolvedValue({
       changed: false,

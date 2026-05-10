@@ -1,11 +1,10 @@
 import "server-only";
 
 import {
-  decodeProtectedHeader,
-  importJWK,
-  type JWTPayload,
-  jwtVerify,
-} from "jose";
+  decodeJwtHeaderStrict,
+  decodeJwtPayloadStrict,
+} from "@zentity/sdk/protocol";
+import { importJWK, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { getHardenedJWKSet } from "@/lib/auth/jwt";
@@ -66,21 +65,17 @@ export async function verifyAgentAttestation(
   }
 
   try {
-    const header = decodeProtectedHeader(attestationJwt);
-    const iss = header.iss as string | undefined;
+    const header = decodeJwtHeaderStrict(attestationJwt);
+    const issuer = typeof header.iss === "string" ? header.iss : undefined;
 
-    if (!iss) {
-      const [, payloadB64] = attestationJwt.split(".");
-      if (!payloadB64) {
-        return FAILED;
-      }
-      const payload = JSON.parse(
-        Buffer.from(payloadB64, "base64url").toString()
-      ) as JWTPayload;
+    if (!issuer) {
+      const payload = decodeJwtPayloadStrict(attestationJwt);
+      const payloadIssuer =
+        typeof payload.iss === "string" ? payload.iss : undefined;
       return await verifyWithIssuer(
         attestationJwt,
         attestationPopJwt,
-        payload.iss,
+        payloadIssuer,
         audience,
         attesters
       );
@@ -89,7 +84,7 @@ export async function verifyAgentAttestation(
     return await verifyWithIssuer(
       attestationJwt,
       attestationPopJwt,
-      iss,
+      issuer,
       audience,
       attesters
     );

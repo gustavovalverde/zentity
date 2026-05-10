@@ -5,7 +5,9 @@ import type {
   IdentityVerification,
   IdentityVerificationDraft,
   IdentityVerificationJob,
+  IdentityVerificationSession,
   NewIdentityVerification,
+  NewIdentityVerificationSession,
   ValidityStatus,
   ValidityTransitionSource,
 } from "../schema/identity";
@@ -34,6 +36,7 @@ import {
   identityValidityEvents,
   identityVerificationDrafts,
   identityVerificationJobs,
+  identityVerificationSessions,
   identityVerifications,
 } from "../schema/identity";
 import {
@@ -57,6 +60,51 @@ interface AccountIdentity {
 }
 
 type IdentityExecutor = Pick<typeof db, "insert" | "select" | "update">;
+
+export async function createIdentityVerificationSession(
+  data: NewIdentityVerificationSession
+): Promise<IdentityVerificationSession> {
+  const [row] = await db
+    .insert(identityVerificationSessions)
+    .values(data)
+    .returning();
+  if (!row) {
+    throw new Error("Failed to create identity verification session");
+  }
+  return row;
+}
+
+export async function getIdentityVerificationSessionById(
+  id: string
+): Promise<IdentityVerificationSession | null> {
+  const row = await db
+    .select()
+    .from(identityVerificationSessions)
+    .where(eq(identityVerificationSessions.id, id))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
+
+export async function consumeIdentityVerificationSession(
+  params: {
+    id: string;
+    requestId: string;
+    verificationId: string;
+  },
+  executor: IdentityExecutor = db
+): Promise<void> {
+  await executor
+    .update(identityVerificationSessions)
+    .set({
+      requestId: params.requestId,
+      status: "verified",
+      consumedAt: Date.now(),
+      verificationId: params.verificationId,
+    })
+    .where(eq(identityVerificationSessions.id, params.id))
+    .run();
+}
 
 function deriveBundleValidityStatusFromVerifications(
   verifications: readonly IdentityVerification[]

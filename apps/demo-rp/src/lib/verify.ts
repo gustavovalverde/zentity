@@ -1,5 +1,6 @@
 import "server-only";
 
+import { decodeBase64UrlJsonStrict } from "@zentity/sdk/protocol";
 import { createJwksTokenVerifier } from "@zentity/sdk/rp";
 import type { JWK } from "jose";
 import { calculateJwkThumbprint, importJWK, jwtVerify } from "jose";
@@ -21,19 +22,29 @@ interface VerifyResult {
   verified: boolean;
 }
 
-function decodeDisclosures(disclosureParts: string[]): Record<string, unknown> {
+function decodeDisclosures(
+  disclosureParts: string[]
+): Record<string, unknown> | null {
   const claims: Record<string, unknown> = {};
   for (const disc of disclosureParts) {
     try {
-      const decoded = JSON.parse(
-        Buffer.from(disc, "base64url").toString("utf8")
-      );
+      const decoded = decodeBase64UrlJsonStrict(disc);
       // SD-JWT disclosure format: [salt, claim_name, claim_value]
-      if (Array.isArray(decoded) && decoded.length >= 3) {
-        claims[decoded[1] as string] = decoded[2];
+      if (
+        !Array.isArray(decoded) ||
+        decoded.length !== 3 ||
+        typeof decoded[1] !== "string" ||
+        decoded[1].length === 0
+      ) {
+        return null;
       }
+      const claimName = decoded[1];
+      if (Object.hasOwn(claims, claimName)) {
+        return null;
+      }
+      claims[claimName] = decoded[2];
     } catch {
-      // Skip invalid disclosures
+      return null;
     }
   }
   return claims;
@@ -50,9 +61,7 @@ function resolveHolderJwk(
   if (!headerB64) {
     return null;
   }
-  const header = JSON.parse(
-    Buffer.from(headerB64, "base64url").toString("utf8")
-  ) as { jwk?: JWK };
+  const header = decodeBase64UrlJsonStrict(headerB64) as { jwk?: JWK };
   return header.jwk ?? null;
 }
 
@@ -124,6 +133,9 @@ export async function verifyVpToken(
   }
 
   const disclosedClaims = decodeDisclosures(disclosureParts);
+  if (!disclosedClaims) {
+    return { verified: false, claims: {} };
+  }
 
   try {
     const valid = await verifyKbJwt(

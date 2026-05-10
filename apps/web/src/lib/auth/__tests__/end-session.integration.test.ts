@@ -335,4 +335,99 @@ describe("OIDC RP-Initiated Logout (end-session)", () => {
       expect(body.error).toBe("client_id does not match id_token_hint");
     });
   });
+
+  describe("audience binding", () => {
+    function mintIdTokenWithAud(
+      sub: string,
+      aud: string | string[],
+      azp?: string
+    ): Promise<string> {
+      const claims: Record<string, unknown> = {
+        iss: authIssuer,
+        sub,
+        aud,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      };
+      if (azp !== undefined) {
+        claims.azp = azp;
+      }
+      return new SignJWT(claims)
+        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
+        .sign(testKeyPair.privateKey);
+    }
+
+    it("accepts multi-aud token when client_id resolves to a registered aud", async () => {
+      await createClient();
+      await createTestSession(userId);
+      const idToken = await mintIdTokenWithAud(userId, [
+        TEST_CLIENT_ID,
+        "other-client",
+      ]);
+
+      const response = await GET(
+        endSessionRequest({
+          id_token_hint: idToken,
+          client_id: TEST_CLIENT_ID,
+        })
+      );
+
+      expect(response.status).toBe(200);
+    });
+
+    it("rejects multi-aud token without explicit client_id", async () => {
+      await createClient();
+      const idToken = await mintIdTokenWithAud(userId, [
+        TEST_CLIENT_ID,
+        "other-client",
+      ]);
+
+      const response = await GET(endSessionRequest({ id_token_hint: idToken }));
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe(
+        "id_token_hint with multiple audiences requires an explicit client_id"
+      );
+    });
+
+    it("rejects multi-aud token when client_id is not in aud", async () => {
+      await createClient();
+      const idToken = await mintIdTokenWithAud(userId, [
+        "other-client-a",
+        "other-client-b",
+      ]);
+
+      const response = await GET(
+        endSessionRequest({
+          id_token_hint: idToken,
+          client_id: TEST_CLIENT_ID,
+        })
+      );
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("client_id is not in id_token_hint aud");
+    });
+
+    it("rejects token with no audience or azp", async () => {
+      await createClient();
+      // jose's SignJWT requires an audience to be set; bypass by signing
+      // raw claims that omit aud.
+      const idToken = await new SignJWT({
+        iss: authIssuer,
+        sub: userId,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })
+        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
+        .sign(testKeyPair.privateKey);
+
+      const response = await GET(endSessionRequest({ id_token_hint: idToken }));
+
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: string };
+      expect(body.error).toBe("id_token_hint must identify a client");
+    });
+  });
 });

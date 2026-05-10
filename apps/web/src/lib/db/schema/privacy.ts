@@ -214,7 +214,6 @@ export const secretWrappers = sqliteTable(
     wrappedDek: text("wrapped_dek").notNull(),
     prfSalt: text("prf_salt"),
     kekSource: text("kek_source").notNull().default("prf"),
-    baseCommitment: text("base_commitment"),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },
@@ -223,6 +222,37 @@ export const secretWrappers = sqliteTable(
     index("idx_secret_wrappers_credential_id").on(table.credentialId),
     index("idx_secret_wrappers_kek_source").on(table.kekSource),
     uniqueIndex("secret_wrappers_secret_credential_unique").on(
+      table.secretId,
+      table.credentialId
+    ),
+  ]
+);
+
+export const credentialBindingCommitments = sqliteTable(
+  "credential_binding_commitments",
+  {
+    id: text("id").primaryKey(),
+    secretId: text("secret_id")
+      .notNull()
+      .references(() => encryptedSecrets.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialId: text("credential_id").notNull(),
+    credentialKind: text("credential_kind", {
+      enum: ["passkey", "opaque", "wallet"],
+    }).notNull(),
+    commitment: text("commitment").notNull(),
+    authContextId: text("auth_context_id"),
+    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    index("idx_credential_binding_commitments_user_id").on(table.userId),
+    index("idx_credential_binding_commitments_credential_id").on(
+      table.credentialId
+    ),
+    uniqueIndex("credential_binding_secret_credential_unique").on(
       table.secretId,
       table.credentialId
     ),
@@ -252,3 +282,8 @@ export type NewEncryptedSecret = typeof encryptedSecrets.$inferInsert;
 
 export type SecretWrapperRecord = typeof secretWrappers.$inferSelect;
 export type NewSecretWrapper = typeof secretWrappers.$inferInsert;
+
+export type CredentialBindingCommitmentRecord =
+  typeof credentialBindingCommitments.$inferSelect;
+export type NewCredentialBindingCommitment =
+  typeof credentialBindingCommitments.$inferInsert;

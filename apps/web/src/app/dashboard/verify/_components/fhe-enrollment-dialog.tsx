@@ -415,7 +415,7 @@ export function FheEnrollmentDialog({
         prfOutput,
       });
       const proofInputs = prepareBindingProofInputs(secretParams);
-      const baseCommitment = await generateBaseCommitment(
+      const credentialBindingCommitment = await generateBaseCommitment(
         proofInputs.bindingSecretField,
         proofInputs.userIdHashField
       );
@@ -427,7 +427,7 @@ export function FheEnrollmentDialog({
           type: "passkey",
           context: { userId, credentialId, prfOutput, prfSalt },
         },
-        baseCommitment,
+        credentialBindingCommitment,
       });
 
       advanceStage("registering");
@@ -497,7 +497,7 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
       const proofInputs = prepareBindingProofInputs(secretParams);
-      const baseCommitment = await generateBaseCommitment(
+      const credentialBindingCommitment = await generateBaseCommitment(
         proofInputs.bindingSecretField,
         proofInputs.userIdHashField
       );
@@ -509,7 +509,7 @@ export function FheEnrollmentDialog({
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
-        baseCommitment,
+        credentialBindingCommitment,
       });
 
       advanceStage("registering");
@@ -582,7 +582,7 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
       const proofInputs = prepareBindingProofInputs(secretParams);
-      const baseCommitment = await generateBaseCommitment(
+      const credentialBindingCommitment = await generateBaseCommitment(
         proofInputs.bindingSecretField,
         proofInputs.userIdHashField
       );
@@ -594,7 +594,7 @@ export function FheEnrollmentDialog({
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
-        baseCommitment,
+        credentialBindingCommitment,
       });
 
       advanceStage("registering");
@@ -629,6 +629,15 @@ export function FheEnrollmentDialog({
       }
 
       advanceStage("unlocking");
+      const signInResult = await authClient.signIn.eip712({
+        address: walletCtx.address,
+        chainId: walletCtx.chainId,
+        signTypedData: walletCtx.signTypedData,
+      });
+      if (signInResult.user.id !== userId) {
+        throw new Error("Wallet confirmation returned a different account.");
+      }
+
       const typedData = buildKekSignatureTypedData({
         userId,
         chainId: walletCtx.chainId,
@@ -688,7 +697,7 @@ export function FheEnrollmentDialog({
         signatureBytes,
       });
       const proofInputs = prepareBindingProofInputs(secretParams);
-      const baseCommitment = await generateBaseCommitment(
+      const credentialBindingCommitment = await generateBaseCommitment(
         proofInputs.bindingSecretField,
         proofInputs.userIdHashField
       );
@@ -707,7 +716,7 @@ export function FheEnrollmentDialog({
             expiresAt,
           },
         },
-        baseCommitment,
+        credentialBindingCommitment,
       });
 
       advanceStage("registering");

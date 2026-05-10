@@ -8,6 +8,10 @@ import { getClaimSigningKey } from "@/lib/privacy/primitives/derived-keys";
 
 const CLAIMS_ISSUER = "zentity-attestation";
 const CLAIMS_AUDIENCE = "zentity-claims";
+// Internal pipeline claims (OCR, liveness, face match, chip verification) are
+// consumed within a single verification flow. One hour gives ample buffer for
+// slow networks and human delays while bounding replay if a signature leaks.
+const CLAIMS_TTL = "1h";
 
 type AttestationClaimType =
   | "liveness_score"
@@ -81,6 +85,7 @@ export async function signAttestationClaim(
     .setAudience(CLAIMS_AUDIENCE)
     .setSubject(payload.userId)
     .setIssuedAt()
+    .setExpirationTime(CLAIMS_TTL)
     .setJti(crypto.randomUUID())
     .sign(key);
 }

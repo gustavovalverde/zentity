@@ -37,11 +37,11 @@ import {
 import {
   closeProofSession,
   createProofSession,
+  getActiveCredentialBindingCommitments,
   getLatestSignedClaimByUserTypeAndVerification,
   getProofHashesByUserVerificationAndSession,
   getProofSessionById,
   getProofTypesByUserVerificationAndSession,
-  getUserBaseCommitments,
   insertProofArtifact,
 } from "@/lib/db/queries/privacy";
 import { resolveAudience } from "@/lib/http/url-safety";
@@ -572,7 +572,7 @@ async function verifyProofInternal(args: {
           HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
         ),
         hashContextToField(args.audience, HASH_TO_FIELD_INFO.IDENTITY_AUDIENCE),
-        getUserBaseCommitments(args.userId),
+        getActiveCredentialBindingCommitments(args.userId),
       ]);
 
     if (providedMsgSenderHash !== expectedMsgSenderHash) {

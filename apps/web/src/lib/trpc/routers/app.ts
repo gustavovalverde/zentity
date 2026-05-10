@@ -11,6 +11,7 @@
  * - assurance: Tier profile and feature gating
  * - attestation: On-chain identity attestation (multi-network)
  * - compliantToken: CompliantERC20 token operations (DeFi demo)
+ * - credentialBindings: Credential-owned commitments for identity binding proofs
  * - credentials: Verifiable credential issuance (OIDC4VCI)
  * - identity: Identity verification (document OCR, proofs, revocation)
  * - liveness: Multi-gesture liveness detection sessions
@@ -29,6 +30,7 @@ import { agentRouter } from "./agent";
 import { assuranceRouter } from "./assurance";
 import { attestationRouter } from "./attestation";
 import { compliantTokenRouter } from "./compliant-token";
+import { credentialBindingsRouter } from "./credential-bindings";
 import { credentialsRouter } from "./credentials";
 import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
@@ -44,6 +46,7 @@ export const appRouter = router({
   agent: agentRouter,
   assurance: assuranceRouter,
   attestation: attestationRouter,
+  credentialBindings: credentialBindingsRouter,
   credentials: credentialsRouter,
   zk: zkRouter,
   identity: identityRouter,

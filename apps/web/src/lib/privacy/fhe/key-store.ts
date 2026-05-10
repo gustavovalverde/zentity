@@ -4,6 +4,8 @@ import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
 
 import { decode, encode } from "@msgpack/msgpack";
 
+import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
+import { getWalletCredentialId } from "@/lib/privacy/credentials/wallet";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
 import {
   type EnrollmentCredential,
@@ -85,7 +87,7 @@ function getCachedKeys(): StoredFheKeys | null {
 export async function storeFheKeysWithCredential(params: {
   keys: StoredFheKeys;
   credential: EnrollmentCredential;
-  baseCommitment?: string;
+  credentialBindingCommitment?: string;
 }): Promise<{ secretId: string }> {
   const secretPayload = serializeKeys(params.keys);
   const result = await storeSecretWithCredential({
@@ -93,12 +95,46 @@ export async function storeFheKeysWithCredential(params: {
     plaintext: secretPayload,
     credential: params.credential,
     envelopeFormat: FHE_ENVELOPE_FORMAT,
-    baseCommitment: params.baseCommitment,
   });
+
+  if (params.credentialBindingCommitment) {
+    const binding = getCredentialBindingRegistration(params.credential);
+    await trpc.credentialBindings.register.mutate({
+      secretId: result.secretId,
+      credentialId: binding.credentialId,
+      credentialKind: binding.credentialKind,
+      credentialBindingCommitment: params.credentialBindingCommitment,
+    });
+  }
 
   cacheKeys(result.secretId, params.keys);
 
   return { secretId: result.secretId };
+}
+
+function getCredentialBindingRegistration(credential: EnrollmentCredential): {
+  credentialId: string;
+  credentialKind: "passkey" | "opaque" | "wallet";
+} {
+  if (credential.type === "passkey") {
+    return {
+      credentialId: credential.context.credentialId,
+      credentialKind: "passkey",
+    };
+  }
+  if (credential.type === "opaque") {
+    return {
+      credentialId: OPAQUE_CREDENTIAL_ID,
+      credentialKind: "opaque",
+    };
+  }
+  return {
+    credentialId: getWalletCredentialId({
+      address: credential.context.address,
+      chainId: credential.context.chainId,
+    }),
+    credentialKind: "wallet",
+  };
 }
 
 export async function getStoredFheKeys(): Promise<StoredFheKeys | null> {

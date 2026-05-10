@@ -6,6 +6,8 @@ import { setSessionCookie } from "better-auth/cookies";
 import { getAddress } from "viem";
 import { z } from "zod";
 
+import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
+
 import {
   buildDefaultTypedData,
   nonceIdentifier,
@@ -264,6 +266,12 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             });
           }
 
+          await createSessionAuthenticationContext({
+            userId,
+            loginMethod: "eip712",
+            sourceKind: "better_auth",
+            sessionId: newSession.id,
+          });
           await setSessionCookie(ctx, { session: newSession, user });
 
           return ctx.json({
@@ -344,6 +352,12 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             });
           }
 
+          await createSessionAuthenticationContext({
+            userId: user.id,
+            loginMethod: "eip712",
+            sourceKind: "better_auth",
+            sessionId: newSession.id,
+          });
           await setSessionCookie(ctx, { session: newSession, user });
 
           return ctx.json({
