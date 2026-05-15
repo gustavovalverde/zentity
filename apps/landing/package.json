@@ -30,7 +30,7 @@
     "fumadocs-ui": "^16.7.4",
     "isbot": "^5",
     "marked": "^17.0.5",
-    "mermaid": "^11.13.0",
+    "mermaid": "^11.15.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router": "^7.13.1",
