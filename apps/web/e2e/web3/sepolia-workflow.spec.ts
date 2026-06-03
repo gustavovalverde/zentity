@@ -24,7 +24,7 @@ const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
 const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
-const FHE_INITIALIZING_TEXT = /Initializing FHE encryption/i;
+const CONFIDENTIAL_INITIALIZING_TEXT = /Initializing encryption/i;
 const RECIPIENT_NOT_ATTESTED_TEXT = /Recipient not attested/i;
 const RECIPIENT_ATTESTED_TEXT = /Recipient is attested/i;
 const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
@@ -33,20 +33,20 @@ const TRANSFER_REVERTED_TEXT = /transfer.*reverted/i;
 
 const sepoliaRpcUrl =
   process.env.E2E_SEPOLIA_RPC_URL ??
-  process.env.NEXT_PUBLIC_FHEVM_RPC_URL ??
-  process.env.FHEVM_RPC_URL ??
+  process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL ??
+  process.env.CONFIDENTIAL_CHAIN_RPC_URL ??
   "";
 const sepoliaChainId = Number(
   process.env.E2E_SEPOLIA_CHAIN_ID ??
-    process.env.NEXT_PUBLIC_FHEVM_CHAIN_ID ??
-    process.env.FHEVM_CHAIN_ID ??
+    process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_ID ??
+    process.env.CONFIDENTIAL_CHAIN_ID ??
     11_155_111
 );
 const sepoliaNetworkName =
   process.env.E2E_SEPOLIA_NETWORK_NAME ??
-  process.env.FHEVM_NETWORK_NAME ??
-  process.env.NEXT_PUBLIC_FHEVM_NETWORK_NAME ??
-  "fhEVM (Sepolia)";
+  process.env.CONFIDENTIAL_CHAIN_NETWORK_NAME ??
+  process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_NETWORK_NAME ??
+  "Zama Confidential Sepolia";
 const sepoliaSymbol = process.env.E2E_SEPOLIA_SYMBOL ?? "SepoliaETH";
 const sepoliaExplorer = process.env.E2E_SEPOLIA_EXPLORER_URL ?? "";
 
@@ -75,10 +75,10 @@ const sepoliaNetwork = {
 const sepoliaEnabled =
   process.env.E2E_SEPOLIA === "true" &&
   Boolean(sepoliaRpcUrl) &&
-  Boolean(process.env.FHEVM_REGISTRAR_PRIVATE_KEY) &&
-  Boolean(process.env.FHEVM_IDENTITY_REGISTRY) &&
-  Boolean(process.env.FHEVM_COMPLIANCE_RULES) &&
-  Boolean(process.env.FHEVM_COMPLIANT_ERC20);
+  Boolean(process.env.CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY) &&
+  Boolean(process.env.CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY) &&
+  Boolean(process.env.CONFIDENTIAL_CHAIN_COMPLIANCE_RULES) &&
+  Boolean(process.env.CONFIDENTIAL_CHAIN_COMPLIANT_ERC20);
 const runFullFlow = process.env.E2E_SEPOLIA_FULL === "true";
 
 function readAuthSeed() {
@@ -116,7 +116,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
   test.describe.configure({ timeout: 300_000 });
   test.skip(
     !sepoliaEnabled,
-    "Set E2E_SEPOLIA=true and configure FHEVM_* contract addresses + RPC URL to run Sepolia E2E."
+    "Set E2E_SEPOLIA=true and configure CONFIDENTIAL_CHAIN_* contract addresses + RPC URL to run Sepolia E2E."
   );
 
   test("attest, decrypt, grant compliance (and optionally mint + transfer)", async ({
@@ -300,7 +300,7 @@ test.describe("Web3 workflow (Sepolia)", () => {
     await expect(
       page.getByText("Transfer", { exact: true }).first()
     ).toBeVisible();
-    await expect(page.getByText(FHE_INITIALIZING_TEXT)).toBeHidden({
+    await expect(page.getByText(CONFIDENTIAL_INITIALIZING_TEXT)).toBeHidden({
       timeout: 60_000,
     });
 

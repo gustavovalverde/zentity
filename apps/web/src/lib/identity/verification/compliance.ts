@@ -13,7 +13,7 @@
  * materialization engine (`materialize.ts`); read them via the read model
  * (`read-model.ts`).
  *
- * On-chain encoders (FHEVM mirror, EIP-712 permit) consume `complianceOnchainTier`,
+ * On-chain encoders (confidential mirror, EIP-712 permit) consume `complianceOnchainTier`,
  * which produces a `uint8` derived solely from `identity.strength`. Humanity
  * does NOT contribute to the on-chain numeric tier — it is its own surface.
  */
@@ -63,7 +63,7 @@ export interface HumanityAxis {
 }
 
 export interface PolicyAxis {
-  /** Birth-year offset (0–255) for FHEVM-friendly age encoding. */
+  /** Birth-year offset (0-255) for confidential-chain age encoding. */
   birthYearOffset: number | null;
   /** The seven canonical compliance checks. */
   checks: ComplianceChecks;

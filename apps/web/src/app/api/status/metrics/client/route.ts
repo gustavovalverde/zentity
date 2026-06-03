@@ -11,12 +11,12 @@ import {
   type ClientMetricName,
 } from "@/lib/observability/client-metrics";
 import {
+  recordClientConfidentialDecryptDuration,
+  recordClientConfidentialEncryptDuration,
+  recordClientConfidentialEncryptProofBytes,
+  recordClientConfidentialInitDuration,
   recordClientFheEnrollmentStageDuration,
   recordClientFheEnrollmentTotalDuration,
-  recordClientFhevmDecryptDuration,
-  recordClientFhevmEncryptDuration,
-  recordClientFhevmEncryptProofBytes,
-  recordClientFhevmInitDuration,
   recordClientNoirProofBytes,
   recordClientNoirProofDuration,
   recordClientOpaqueDuration,
@@ -73,32 +73,35 @@ const handlers: Record<
       CLIENT_METRIC_DEFINITIONS["client.noir.proof.bytes"].attributes
     ),
   },
-  "client.fhevm.encrypt.duration": {
+  "client.confidential.encrypt.duration": {
     unit: "ms",
-    record: recordClientFhevmEncryptDuration,
+    record: recordClientConfidentialEncryptDuration,
     attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhevm.encrypt.duration"].attributes
+      CLIENT_METRIC_DEFINITIONS["client.confidential.encrypt.duration"]
+        .attributes
     ),
   },
-  "client.fhevm.encrypt.proof.bytes": {
+  "client.confidential.encrypt.proof.bytes": {
     unit: "By",
-    record: recordClientFhevmEncryptProofBytes,
+    record: recordClientConfidentialEncryptProofBytes,
     attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhevm.encrypt.proof.bytes"].attributes
+      CLIENT_METRIC_DEFINITIONS["client.confidential.encrypt.proof.bytes"]
+        .attributes
     ),
   },
-  "client.fhevm.decrypt.duration": {
+  "client.confidential.decrypt.duration": {
     unit: "ms",
-    record: recordClientFhevmDecryptDuration,
+    record: recordClientConfidentialDecryptDuration,
     attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhevm.decrypt.duration"].attributes
+      CLIENT_METRIC_DEFINITIONS["client.confidential.decrypt.duration"]
+        .attributes
     ),
   },
-  "client.fhevm.init.duration": {
+  "client.confidential.init.duration": {
     unit: "ms",
-    record: recordClientFhevmInitDuration,
+    record: recordClientConfidentialInitDuration,
     attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhevm.init.duration"].attributes
+      CLIENT_METRIC_DEFINITIONS["client.confidential.init.duration"].attributes
     ),
   },
   "client.tfhe.load.duration": {

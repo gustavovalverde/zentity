@@ -63,7 +63,7 @@ function startDevServer() {
   const env = {
     ...process.env,
     NEXT_PUBLIC_ENABLE_HARDHAT: "false",
-    NEXT_PUBLIC_ENABLE_FHEVM: "false",
+    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: "false",
     NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: "false",

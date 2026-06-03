@@ -76,6 +76,20 @@ interface ContractsEnv {
   identityRegistry?: string | undefined;
 }
 
+function readDeploymentEnvValue(
+  env: Record<string, string>,
+  canonicalKey: string,
+  legacyKey: string
+): string {
+  const value = env[canonicalKey] ?? env[legacyKey];
+  if (!value) {
+    throw new Error(
+      `Missing ${canonicalKey} in contract deployment output. Run print:deployments localhost --env and verify the contracts repo output.`
+    );
+  }
+  return value;
+}
+
 function deployContracts(): ContractsEnv {
   // Contracts repo uses bun as package manager
   const deploy = spawnSync("bun", ["run", "deploy:local", "--", "--reset"], {
@@ -110,9 +124,21 @@ function deployContracts(): ContractsEnv {
   }
 
   return {
-    identityRegistry: env.IDENTITY_REGISTRY_LOCALHOST,
-    complianceRules: env.COMPLIANCE_RULES_LOCALHOST,
-    compliantErc20: env.COMPLIANT_ERC20_LOCALHOST,
+    identityRegistry: readDeploymentEnvValue(
+      env,
+      "LOCAL_IDENTITY_REGISTRY",
+      "IDENTITY_REGISTRY_LOCALHOST"
+    ),
+    complianceRules: readDeploymentEnvValue(
+      env,
+      "LOCAL_COMPLIANCE_RULES",
+      "COMPLIANCE_RULES_LOCALHOST"
+    ),
+    compliantErc20: readDeploymentEnvValue(
+      env,
+      "LOCAL_COMPLIANT_ERC20",
+      "COMPLIANT_ERC20_LOCALHOST"
+    ),
   };
 }
 

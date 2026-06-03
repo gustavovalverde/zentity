@@ -107,7 +107,7 @@ Most integrations need only proof scopes.
 | Capability | Tech | Why | Deep dive |
 | --- | --- | --- | --- |
 | ZK proving and verification | Noir + Barretenberg (bb.js + bb-worker) | Modern DSL, efficient proving, browser-capable client proofs with server verification | [ZK Architecture](docs/%28protocols%29/zk-architecture.md), [ADR ZK](docs/adr/zk/0001-client-side-zk-proving.md) |
-| Encrypted computation and payment-time compliance | TFHE-rs + fhEVM + Base mirror | Compute on encrypted attributes, support optional on-chain attestations, and expose a narrow public predicate for x402/resource-server reads | [Web3 Architecture](docs/%28architecture%29/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md), [ADR-0005](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) |
+| Encrypted computation and payment-time compliance | TFHE-rs + Zama confidential chain + Base mirror | Compute on encrypted attributes, support optional on-chain attestations, and expose a narrow public predicate for x402/resource-server reads | [Web3 Architecture](docs/%28architecture%29/web3-architecture.md), [ADR FHE](docs/adr/fhe/0001-fhevm-onchain-attestations.md), [ADR-0005](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) |
 | Auth + key custody | Passkey PRF + OPAQUE + EIP-712 Wallet | Passwordless, password-based, or Web3-native auth with user-held keys for sealing profiles and wrapping FHE keys | [ADR Privacy](docs/adr/privacy/0001-passkey-first-auth-prf-custody.md), [ADR Privacy](docs/adr/privacy/0003-passkey-sealed-profile.md), [ADR Privacy](docs/adr/privacy/0010-opaque-password-auth.md) |
 | Verifiable credentials | OIDC4VCI + OIDC4VP + SD-JWT + DCQL + JARM | Standards-based wallet interoperability with selective disclosure and encrypted responses | [SSI Architecture](docs/%28architecture%29/ssi-architecture.md), [RFC-0016](docs/rfcs/0016-oidc-vc-issuance-and-presentation.md) |
 | HAIP compliance | DPoP, PAR, wallet attestation, DCQL, JARM, x5c | High Assurance Interoperability Profile for regulated wallet integrations (eIDAS 2.0 alignment) | [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) |
@@ -130,7 +130,7 @@ Most integrations need only proof scopes.
 - [ZK Nationality Proofs](docs/%28protocols%29/zk-nationality-proofs.md) - Merkle membership proofs
 - [Web3 Architecture](docs/%28architecture%29/web3-architecture.md) - Web2-to-Web3 transition, encrypted attestations, and Base mirror flow
 - [ADR-0005: Base compliance mirror for payment-time reads](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) - rationale for the x402/Base public-read boundary
-- [Blockchain Setup](docs/internal/blockchain-setup.md) - fhEVM and Base mirror envs and deployment
+- [Blockchain Setup](docs/internal/blockchain-setup.md) - confidential chain and Base mirror envs and deployment
 - [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
 - [Password Security](docs/%28protocols%29/password-security.md) - OPAQUE password model and breach checks
 - [Deployment Verification](docs/internal/verification.md) - deployment verification
@@ -215,7 +215,7 @@ flowchart LR
   end
   OCR[OCR :5004]
   FHE[FHE :5001]
-  BC[Blockchain<br/>fhEVM]
+  BC[Blockchain<br/>Confidential]
   BM[Base Mirror<br/>isCompliant]
 
   UI -->|doc + selfie| API
@@ -276,7 +276,7 @@ The system stores a mix of auth data and cryptographic artifacts; it does **not*
 - Encrypted at rest: credential-sealed profile (full name, DOB, document number, nationality), credential-wrapped FHE key blobs
 - Non-reversible at rest: salted commitments (SHA256)
 - Proof/ciphertext at rest: ZK proofs, TFHE ciphertexts, signed claim hashes, evidence pack hashes, proof metadata (noir/bb versions + vkey hashes)
-- On-chain (optional): encrypted identity attestation via fhEVM; registrar encrypts, only user can decrypt
+- On-chain (optional): encrypted identity attestation via the Zama confidential chain; the browser encrypts, and wallet authorization controls user decryption
 - Public chain mirror: wallet address, active attestation state, and numeric compliance level on Base for `isCompliant(address,uint8)` reads
 
 **User-controlled privacy:** The credential vault derives encryption keys using

@@ -16,6 +16,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const authFile = join(import.meta.dirname, "e2e", ".auth", "user.json");
 const isOidcOnly = process.env.E2E_OIDC_ONLY === "true";
+if (process.env.E2E_RUN_WEB3 === "true") {
+  process.env.E2E_IDENTITY_SEED_VARIANT ??= "verified_with_profile";
+}
 const useExternalServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
 const useWebServer = !useExternalServer && process.env.E2E_SEPOLIA !== "true";
 const defaultBaseURL = useExternalServer

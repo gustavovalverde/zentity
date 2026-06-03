@@ -12,7 +12,7 @@ The integrity model applies to both deployment modes. What changes between them 
 | Aspect | Web2 (Off-chain) | Web3 (On-chain) |
 |--------|------------------|-----------------|
 | **Proof verification** | Backend verifies ZK proofs | Backend for ZK proofs; on-chain InputVerifier for FHE inputs |
-| **FHE inputs** | Server-derived + server-side encryption | FHEVM InputVerifier on-chain (wallet/registrar inputs) |
+| **FHE inputs** | Server-derived + server-side encryption | Zama InputVerifier on-chain (wallet-encrypted inputs) |
 | **Nonce issuance** | Server-issued nonces for ZK proofs | Same ZK challenge flow (not used for attestation/transfer) |
 | **Attestation authority** | Server database records | IdentityRegistry contract for encrypted attestations; Zentity validity pipeline for Base mirror delivery |
 | **Public compliance mirror** | Not applicable | Base `IdentityRegistryMirror` exposes only active mirrored attestation state and numeric compliance level |
@@ -29,7 +29,7 @@ Three components participate in the verification pipeline, each with a different
 - **Blockchain (integrity via consensus)**: Provides immutability, but all inputs must be independently verifiable through proofs or signatures.
 - **Base mirror (public derivative)**: Provides public payment-time reads only. It must not become an identity database or expose richer predicates without a new privacy review.
 
-The browser generates ZK proofs (private inputs remain local), encrypts data for FHEVM and TFHE, and decrypts data intended for the user. The browser must not be trusted for liveness score calculation, face match scoring, document OCR extraction, compliance decisions, or VP token authenticity. These must be verified by the backend or by on-chain cryptographic checks.
+The browser generates ZK proofs (private inputs remain local), encrypts data for the confidential chain and TFHE, and decrypts data intended for the user. The browser must not be trusted for liveness score calculation, face match scoring, document OCR extraction, compliance decisions, or VP token authenticity. These must be verified by the backend or by on-chain cryptographic checks.
 
 ## Integrity Principles
 
@@ -128,7 +128,7 @@ Every control in this section addresses the same class of attack: a hostile brow
 
 ### FHE Input Validation
 
-- Web3: rely on FHEVM input proofs and on-chain InputVerifier.
+- Web3: rely on Zama input proofs and on-chain InputVerifier.
 - Web2: FHE inputs are derived server-side from verified data; the backend does not accept client-encrypted values as truth.
 
 ### Evidence Pack

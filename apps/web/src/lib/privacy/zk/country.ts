@@ -19,8 +19,15 @@ import {
   SCHENGEN_COUNTRIES as ZKPASSPORT_SCHENGEN,
 } from "@zkpassport/utils";
 import countries from "i18n-iso-countries";
+import enLocale from "i18n-iso-countries/langs/en.json" with { type: "json" };
 
 import { ISO_3166_ALPHA3_TO_NUMERIC } from "@/lib/identity/verification/iso-3166-numeric";
+
+// i18n-iso-countries ships its browser build with no locale registered, so
+// getName/getAlpha3Code return undefined client-side (Node's entry auto-registers,
+// the bundler's does not). Register English once, before the country groups below
+// are derived at module load.
+countries.registerLocale(enLocale);
 
 type HashFn = (values: bigint[]) => Promise<bigint>;
 

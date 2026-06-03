@@ -520,10 +520,46 @@ const withLogging = trpc.middleware(
       log.info({ path, type, ...inputMeta }, "tRPC request");
     }
 
+    // Log a failed procedure with severity tiered by error code. Shared by the
+    // thrown-error path and the non-throwing `{ ok: false }` result that tRPC
+    // returns from next() — the latter was previously mislabeled as success.
+    const logProcedureFailure = (error: unknown) => {
+      if (error instanceof TRPCError) {
+        // UNAUTHORIZED is expected, log at debug
+        if (error.code === "UNAUTHORIZED") {
+          log.debug({ path, code: error.code }, "Unauthorized");
+          return;
+        }
+
+        // Client errors at warn level
+        if (
+          error.code === "BAD_REQUEST" ||
+          error.code === "FORBIDDEN" ||
+          error.code === "TOO_MANY_REQUESTS" ||
+          error.code === "PRECONDITION_FAILED" ||
+          error.code === "NOT_FOUND"
+        ) {
+          logWarn("tRPC client error", { path, code: error.code }, log);
+          return;
+        }
+      }
+
+      // Server errors (INTERNAL_SERVER_ERROR, etc.) and unexpected throws
+      const duration = Math.round(performance.now() - start);
+      logError(error, { requestId, path, duration }, log);
+    };
+
     try {
       const result = await next({
         ctx: { ...ctx, log, requestId, debug },
       });
+
+      // tRPC reports resolver/input failures as a non-throwing { ok: false }
+      // result; surface them instead of logging a false success.
+      if (!result.ok) {
+        logProcedureFailure(result.error);
+        return result;
+      }
 
       // Log completion (timing only for critical paths in debug mode)
       if (isCritical && debug) {
@@ -537,35 +573,7 @@ const withLogging = trpc.middleware(
 
       return result;
     } catch (error) {
-      // Handle TRPCError based on code
-      if (error instanceof TRPCError) {
-        // UNAUTHORIZED is expected, log at debug
-        if (error.code === "UNAUTHORIZED") {
-          log.debug({ path, code: error.code }, "Unauthorized");
-          throw error;
-        }
-
-        // Client errors at warn level
-        if (
-          error.code === "BAD_REQUEST" ||
-          error.code === "FORBIDDEN" ||
-          error.code === "TOO_MANY_REQUESTS" ||
-          error.code === "PRECONDITION_FAILED" ||
-          error.code === "NOT_FOUND"
-        ) {
-          logWarn("tRPC client error", { path, code: error.code }, log);
-          throw error;
-        }
-
-        // Server errors (INTERNAL_SERVER_ERROR, etc.) at error level
-        const duration = Math.round(performance.now() - start);
-        logError(error, { requestId, path, duration }, log);
-        throw error;
-      }
-
-      // Unexpected errors always at error level with timing
-      const duration = Math.round(performance.now() - start);
-      logError(error, { requestId, path, duration }, log);
+      logProcedureFailure(error);
       throw error;
     }
   }

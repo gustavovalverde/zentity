@@ -9,21 +9,21 @@ export const CLIENT_METRIC_DEFINITIONS = {
     unit: "By",
     attributes: ["proof_type", "flow_present"],
   },
-  "client.fhevm.encrypt.duration": {
+  "client.confidential.encrypt.duration": {
     unit: "ms",
     attributes: ["result", "flow_present"],
   },
-  "client.fhevm.encrypt.proof.bytes": {
+  "client.confidential.encrypt.proof.bytes": {
     unit: "By",
     attributes: ["flow_present"],
   },
-  "client.fhevm.decrypt.duration": {
+  "client.confidential.decrypt.duration": {
     unit: "ms",
     attributes: ["result", "flow_present"],
   },
-  "client.fhevm.init.duration": {
+  "client.confidential.init.duration": {
     unit: "ms",
-    attributes: ["result", "provider_id", "chain_type"],
+    attributes: ["result", "chain_id", "trigger"],
   },
   "client.tfhe.load.duration": {
     unit: "ms",

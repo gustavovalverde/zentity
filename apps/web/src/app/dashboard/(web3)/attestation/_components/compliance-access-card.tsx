@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
+import { getConfidentialGasOverride } from "@/lib/blockchain/confidential/gas-overrides";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
 
@@ -140,17 +141,6 @@ export function ComplianceAccessCard({
         return;
       }
 
-      // Gas overrides for networks where wagmi auto-estimation fails with FHE contracts
-      const txOverrides = (() => {
-        if (chainId === 31_337) {
-          return { gas: BigInt(500_000) }; // Hardhat
-        }
-        if (chainId === 11_155_111) {
-          return { gas: BigInt(1_000_000) }; // Sepolia (fhEVM operations need more gas)
-        }
-        return undefined;
-      })();
-
       // biome-ignore lint/suspicious/noBitwiseOperators: attribute bitmask is intentional
       const attributeMask = ATTR.COMPLIANCE | ATTR.BLACKLIST;
       await writeContractAsync({
@@ -158,7 +148,7 @@ export function ComplianceAccessCard({
         abi: identityRegistryAbi,
         functionName: "grantAttributeAccess",
         args: [complianceRules, attributeMask, selectedPurpose],
-        ...txOverrides,
+        ...getConfidentialGasOverride("grantAttributeAccess", chainId),
       });
     } finally {
       setIsSubmitting(false);

@@ -90,37 +90,37 @@ const clientNoirProofBytes = meter.createHistogram(
   }
 );
 
-const clientFhevmEncryptDuration = meter.createHistogram(
-  "zentity.client.fhevm.encrypt.duration",
+const clientConfidentialEncryptDuration = meter.createHistogram(
+  "zentity.client.confidential.encrypt.duration",
   {
-    description: "Client-side FHEVM encryption duration.",
+    description: "Client-side confidential encryption duration.",
     unit: "ms",
     advice: durationAdvice,
   }
 );
 
-const clientFhevmEncryptProofBytes = meter.createHistogram(
-  "zentity.client.fhevm.encrypt.proof.bytes",
+const clientConfidentialEncryptProofBytes = meter.createHistogram(
+  "zentity.client.confidential.encrypt.proof.bytes",
   {
-    description: "Client-side FHEVM encryption proof size.",
+    description: "Client-side confidential encryption proof size.",
     unit: "By",
     advice: sizeAdvice,
   }
 );
 
-const clientFhevmDecryptDuration = meter.createHistogram(
-  "zentity.client.fhevm.decrypt.duration",
+const clientConfidentialDecryptDuration = meter.createHistogram(
+  "zentity.client.confidential.decrypt.duration",
   {
-    description: "Client-side FHEVM decrypt duration.",
+    description: "Client-side confidential decrypt duration.",
     unit: "ms",
     advice: durationAdvice,
   }
 );
 
-const clientFhevmInitDuration = meter.createHistogram(
-  "zentity.client.fhevm.init.duration",
+const clientConfidentialInitDuration = meter.createHistogram(
+  "zentity.client.confidential.init.duration",
   {
-    description: "Client-side FHEVM SDK initialization duration.",
+    description: "Client-side confidential SDK initialization duration.",
     unit: "ms",
     advice: durationAdvice,
   }
@@ -299,32 +299,32 @@ export function recordClientNoirProofBytes(
   recordSafe(clientNoirProofBytes, bytes, attributes);
 }
 
-export function recordClientFhevmEncryptDuration(
+export function recordClientConfidentialEncryptDuration(
   durationMs: number,
   attributes?: Attributes
 ): void {
-  recordSafe(clientFhevmEncryptDuration, durationMs, attributes);
+  recordSafe(clientConfidentialEncryptDuration, durationMs, attributes);
 }
 
-export function recordClientFhevmEncryptProofBytes(
+export function recordClientConfidentialEncryptProofBytes(
   bytes: number,
   attributes?: Attributes
 ): void {
-  recordSafe(clientFhevmEncryptProofBytes, bytes, attributes);
+  recordSafe(clientConfidentialEncryptProofBytes, bytes, attributes);
 }
 
-export function recordClientFhevmDecryptDuration(
+export function recordClientConfidentialDecryptDuration(
   durationMs: number,
   attributes?: Attributes
 ): void {
-  recordSafe(clientFhevmDecryptDuration, durationMs, attributes);
+  recordSafe(clientConfidentialDecryptDuration, durationMs, attributes);
 }
 
-export function recordClientFhevmInitDuration(
+export function recordClientConfidentialInitDuration(
   durationMs: number,
   attributes?: Attributes
 ): void {
-  recordSafe(clientFhevmInitDuration, durationMs, attributes);
+  recordSafe(clientConfidentialInitDuration, durationMs, attributes);
 }
 
 export function recordClientTfheLoadDuration(

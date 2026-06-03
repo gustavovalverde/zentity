@@ -30,7 +30,7 @@
     "@wagmi/core": "^3.4.1",
     "@x402/core": "^2.10.0",
     "@x402/evm": "^2.10.0",
-    "@zentity/contracts": "^0.6.0",
+    "@zentity/contracts": "0.7.0",
     "@zentity/sdk": "workspace:*",
     "better-auth": "file:../web/vendor/better-auth-1.6.0.tgz",
     "class-variance-authority": "^0.7.1",

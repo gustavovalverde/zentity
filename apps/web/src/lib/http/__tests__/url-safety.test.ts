@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isPrivateHost, validateSafeUrl } from "@/lib/http/url-safety";
+import {
+  isPrivateHost,
+  isSafePathSegments,
+  validateSafeUrl,
+} from "@/lib/http/url-safety";
 
 describe("isPrivateHost", () => {
   it.each([
@@ -87,5 +91,34 @@ describe("validateSafeUrl", () => {
         allowLocalhostInDev: false,
       })
     ).toContain("private");
+  });
+});
+
+describe("isSafePathSegments", () => {
+  it.each([
+    [["encrypt"]],
+    [["v1", "encrypt"]],
+    [["keys", "public-key.json"]],
+    [["a", "b_c-d", "e.f.g"]],
+  ])("accepts %j", (segments) => {
+    expect(isSafePathSegments(segments)).toBe(true);
+  });
+
+  it.each([
+    [[]],
+    [[""]],
+    [["."]],
+    [[".."]],
+    [["..", "encrypt"]],
+    [[".hidden"]],
+    [["trailing."]],
+    [["a/b"]],
+    [["a\\b"]],
+    [["a b"]],
+    [["a?b"]],
+    [["%2e%2e"]],
+    [[undefined]],
+  ])("rejects %j", (segments) => {
+    expect(isSafePathSegments(segments)).toBe(false);
   });
 });

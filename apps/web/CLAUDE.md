@@ -37,7 +37,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `assurance/` | Assurance tier computation, security posture queries, OIDC claims, feature gating |
 | `auth/` | Better-auth config, session read (`session.ts`) + client cleanup (`session-cleanup.ts`), resource-auth (Bearer/DPoP), auth context events, per-method sub-dirs: `eip712/`, `opaque/`, `passkey/`, `oidc/` |
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up |
-| `blockchain/` | FHEVM provider + hooks (`fhevm/`), on-chain attestation (`attestation/`), wagmi config |
+| `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |
 | `email/` | Resend transport + domain mailers (auth, CIBA, recovery) |
 | `http/` | Rate limiting, URL safety, binary transport, API route response helpers |

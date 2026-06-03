@@ -165,14 +165,16 @@ export const env = createEnv({
       .default(300),
 
     // Blockchain (server-only secrets/overrides)
-    FHEVM_REGISTRAR_PRIVATE_KEY: z.string().optional(),
+    CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY: z.string().optional(),
+    CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY: z.string().optional(),
+    CONFIDENTIAL_CHAIN_COMPLIANCE_RULES: z.string().optional(),
+    CONFIDENTIAL_CHAIN_COMPLIANT_ERC20: z.string().optional(),
+    CONFIDENTIAL_RELAYER_URL: serviceUrl("https://relayer.testnet.zama.org/v2"),
+    CONFIDENTIAL_RELAYER_API_KEY: z.string().optional(),
     LOCAL_REGISTRAR_PRIVATE_KEY: z.string().optional(),
     LOCAL_RPC_URL: z.string().default("http://127.0.0.1:8545"),
     BASE_SEPOLIA_RPC_URL: z.string().default("https://sepolia.base.org"),
     BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY: z.string().optional(),
-    FHEVM_IDENTITY_REGISTRY: z.string().optional(),
-    FHEVM_COMPLIANCE_RULES: z.string().optional(),
-    FHEVM_COMPLIANT_ERC20: z.string().optional(),
     BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR: z.string().optional(),
     LOCAL_IDENTITY_REGISTRY: z.string().optional(),
     LOCAL_COMPLIANCE_RULES: z.string().optional(),
@@ -241,7 +243,7 @@ export const env = createEnv({
     NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY: z.string().optional(),
 
     // Feature flags
-    NEXT_PUBLIC_ENABLE_FHEVM: booleanStringWithDefault("true"),
+    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: booleanStringWithDefault("true"),
     NEXT_PUBLIC_ENABLE_HARDHAT: booleanStringWithDefault("false"),
     NEXT_PUBLIC_ENABLE_BASE_SEPOLIA: booleanStringWithDefault("false"),
     NEXT_PUBLIC_ZKPASSPORT_ENABLED: booleanStringWithDefault("false"),
@@ -255,9 +257,10 @@ export const env = createEnv({
 
     // Web3
     NEXT_PUBLIC_PROJECT_ID: z.string().optional(),
-    NEXT_PUBLIC_FHEVM_RPC_URL: z
+    NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL: z
       .string()
       .default("https://ethereum-sepolia-rpc.publicnode.com"),
+    NEXT_PUBLIC_LOCAL_RPC_URL: z.string().default("http://127.0.0.1:8545"),
     NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL: z
       .string()
       .default("https://sepolia.base.org"),
@@ -320,15 +323,21 @@ export const env = createEnv({
     WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT,
     WORLD_ID_RP_SIGNATURE_TTL_SECONDS:
       process.env.WORLD_ID_RP_SIGNATURE_TTL_SECONDS,
-    FHEVM_REGISTRAR_PRIVATE_KEY: process.env.FHEVM_REGISTRAR_PRIVATE_KEY,
+    CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY:
+      process.env.CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY,
+    CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY:
+      process.env.CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY,
+    CONFIDENTIAL_CHAIN_COMPLIANCE_RULES:
+      process.env.CONFIDENTIAL_CHAIN_COMPLIANCE_RULES,
+    CONFIDENTIAL_CHAIN_COMPLIANT_ERC20:
+      process.env.CONFIDENTIAL_CHAIN_COMPLIANT_ERC20,
+    CONFIDENTIAL_RELAYER_URL: process.env.CONFIDENTIAL_RELAYER_URL,
+    CONFIDENTIAL_RELAYER_API_KEY: process.env.CONFIDENTIAL_RELAYER_API_KEY,
     LOCAL_REGISTRAR_PRIVATE_KEY: process.env.LOCAL_REGISTRAR_PRIVATE_KEY,
     LOCAL_RPC_URL: process.env.LOCAL_RPC_URL,
     BASE_SEPOLIA_RPC_URL: process.env.BASE_SEPOLIA_RPC_URL,
     BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY:
       process.env.BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY,
-    FHEVM_IDENTITY_REGISTRY: process.env.FHEVM_IDENTITY_REGISTRY,
-    FHEVM_COMPLIANCE_RULES: process.env.FHEVM_COMPLIANCE_RULES,
-    FHEVM_COMPLIANT_ERC20: process.env.FHEVM_COMPLIANT_ERC20,
     BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR:
       process.env.BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR,
     LOCAL_IDENTITY_REGISTRY: process.env.LOCAL_IDENTITY_REGISTRY,
@@ -367,12 +376,15 @@ export const env = createEnv({
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
     NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:
       process.env.NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY,
-    NEXT_PUBLIC_ENABLE_FHEVM: process.env.NEXT_PUBLIC_ENABLE_FHEVM,
+    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN:
+      process.env.NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN,
     NEXT_PUBLIC_ENABLE_HARDHAT: process.env.NEXT_PUBLIC_ENABLE_HARDHAT,
     NEXT_PUBLIC_ENABLE_BASE_SEPOLIA:
       process.env.NEXT_PUBLIC_ENABLE_BASE_SEPOLIA,
     NEXT_PUBLIC_PROJECT_ID: process.env.NEXT_PUBLIC_PROJECT_ID,
-    NEXT_PUBLIC_FHEVM_RPC_URL: process.env.NEXT_PUBLIC_FHEVM_RPC_URL,
+    NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL:
+      process.env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL,
+    NEXT_PUBLIC_LOCAL_RPC_URL: process.env.NEXT_PUBLIC_LOCAL_RPC_URL,
     NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL:
       process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL,
     NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT:
@@ -394,4 +406,4 @@ export const env = createEnv({
 });
 
 export const isWeb3Enabled =
-  env.NEXT_PUBLIC_ENABLE_FHEVM || env.NEXT_PUBLIC_ENABLE_HARDHAT;
+  env.NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN || env.NEXT_PUBLIC_ENABLE_HARDHAT;

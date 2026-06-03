@@ -5,7 +5,7 @@ import { useAppKitAccount, useDisconnect } from "@reown/appkit/react";
  * On-Chain Attestation Component
  *
  * Allows verified users to register their identity on-chain across
- * multiple blockchain networks. Supports fhEVM (encrypted) and
+ * multiple blockchain networks. Supports confidential (encrypted) and
  * standard EVM networks.
  */
 import {
@@ -25,7 +25,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { toHex } from "viem";
 import {
   useChainId,
   useReadContract,
@@ -70,10 +69,9 @@ import {
   resolveAttestationConsentRevision,
   resolveOnChainAttestationViewState,
 } from "@/lib/blockchain/attestation/view";
-import { useFHEEncryption } from "@/lib/blockchain/fhevm/use-fhe-encryption";
-import { useFhevmSdk } from "@/lib/blockchain/fhevm/use-fhevm-sdk";
+import { useConfidentialChain } from "@/lib/blockchain/confidential/chain";
+import { getConfidentialGasOverride } from "@/lib/blockchain/confidential/gas-overrides";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
-import { useEthersSigner } from "@/lib/blockchain/wagmi";
 import { cn } from "@/lib/cn";
 import { trpcReact } from "@/lib/trpc/client";
 
@@ -97,21 +95,11 @@ interface NetworkStatus {
   id: string;
   identityRegistry?: string | null;
   name: string;
-  type: "fhevm" | "evm";
+  type: "confidential" | "evm";
 }
 
 interface OnChainAttestationProps {
   isVerified: boolean;
-}
-
-function getFheWriteOverrides(chainId: number | undefined) {
-  if (chainId === 31_337) {
-    return { gas: BigInt(500_000) };
-  }
-  if (chainId === 11_155_111) {
-    return { gas: BigInt(1_000_000) };
-  }
-  return undefined;
 }
 
 export function OnChainAttestation({
@@ -146,7 +134,7 @@ export function OnChainAttestation({
       onSuccess: () => refetchNetworks(),
     });
 
-  // Compute selected network early so FHEVM hooks get reactive values
+  // Compute selected network early so confidential-chain hooks get reactive values.
   const selectedNetworkData = useMemo(
     () => networks?.find((n) => n.id === selectedNetwork),
     [networks, selectedNetwork]
@@ -155,22 +143,7 @@ export function OnChainAttestation({
     | `0x${string}`
     | undefined;
 
-  // FHEVM SDK — initialize when connected for permit-based attestation
-
-  const ethersSigner = useEthersSigner();
-  const { instance: fhevmInstance } = useFhevmSdk({
-    provider:
-      typeof globalThis.window === "undefined"
-        ? undefined
-        : globalThis.window.ethereum,
-    chainId: selectedNetworkData?.chainId,
-    enabled: isConnected && Boolean(registryAddress),
-  });
-  const { encryptWith } = useFHEEncryption({
-    instance: fhevmInstance,
-    ethersSigner: ethersSigner ?? undefined,
-    contractAddress: registryAddress,
-  });
+  const { encryptIdentityAttributesForAttestation } = useConfidentialChain();
   const { mutateAsync: writeContractAsync } = useWriteContract();
   const { data: currentRevision } = useReadContract({
     address: registryAddress,
@@ -350,19 +323,14 @@ export function OnChainAttestation({
       const consentS = `0x${sigHex.slice(64, 128)}` as `0x${string}`;
       const consentV = Number.parseInt(sigHex.slice(128, 130), 16);
 
-      // 3. Client-side FHE encryption
-      const encrypted = await encryptWith((builder) => {
-        builder.add8(identityData.birthYearOffset);
-        builder.add16(identityData.countryCode);
-        builder.add8(identityData.complianceLevel);
-        builder.addBool(identityData.isBlacklisted);
-      });
-
-      if (!encrypted || encrypted.handles.length < 4) {
-        throw new Error(
-          "FHE encryption failed. Ensure your wallet is connected."
-        );
-      }
+      // 3. Client-side confidential encryption
+      const encryptedAttributes = await encryptIdentityAttributesForAttestation(
+        {
+          attributes: identityData,
+          registryAddress,
+          userAddress: address as `0x${string}`,
+        }
+      );
 
       // 4. Submit attestWithPermit from user's wallet
       const txHash = await writeContractAsync({
@@ -388,13 +356,12 @@ export function OnChainAttestation({
           consentS,
           attributeMask,
           BigInt(consentDeadline),
-          toHex(encrypted.handles[0] as Uint8Array),
-          toHex(encrypted.handles[1] as Uint8Array),
-          toHex(encrypted.handles[2] as Uint8Array),
-          toHex(encrypted.handles[3] as Uint8Array),
-          toHex(encrypted.inputProof),
+          encryptedAttributes,
         ],
-        ...getFheWriteOverrides(selectedNetworkData.chainId),
+        ...getConfidentialGasOverride(
+          "attestWithPermit",
+          selectedNetworkData.chainId
+        ),
       });
 
       // 5. Record tx on server
@@ -418,7 +385,7 @@ export function OnChainAttestation({
     needsReAttestation,
     createPermitMutation,
     signTypedDataAsync,
-    encryptWith,
+    encryptIdentityAttributesForAttestation,
     writeContractAsync,
     recordSubmissionMutation,
   ]);
@@ -578,7 +545,7 @@ interface ApiNetworkStatus {
   id: string;
   identityRegistry?: string | null;
   name: string;
-  type: "fhevm" | "evm";
+  type: "confidential" | "evm";
 }
 
 interface AttestationContentBodyProps {
@@ -737,7 +704,7 @@ const AttestationContentBody = memo(function AttestationContentBody({
         />
       ) : null}
 
-      {selectedNetworkData?.type === "fhevm" && (
+      {selectedNetworkData?.type === "confidential" && (
         <Alert variant="info">
           <Lock className="h-4 w-4" />
           <AlertDescription className="text-xs">
@@ -794,13 +761,13 @@ const NetworkCard = memo(function NetworkCard({
       <div
         className={cn(
           "size-2.5 shrink-0 rounded-full",
-          network.type === "fhevm" ? "bg-info" : "bg-primary"
+          network.type === "confidential" ? "bg-info" : "bg-primary"
         )}
       />
       <div className="min-w-0 flex-1">
         <p className="font-medium text-sm">{network.name}</p>
         <p className="text-muted-foreground text-xs">
-          {network.type === "fhevm" ? "Encrypted" : "Standard"}
+          {network.type === "confidential" ? "Encrypted" : "Standard"}
         </p>
       </div>
       {network.attestation && status ? (

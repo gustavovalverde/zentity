@@ -4,8 +4,8 @@ import { useAppKitAccount } from "@reown/appkit/react";
 /**
  * Transfer Form Component
  *
- * Enables FHE-encrypted token transfers between attested users.
- * Uses client-side encryption via the FHEVM SDK.
+ * Enables encrypted token transfers between attested users.
+ * Uses client-side encryption via the confidential chain SDK.
  */
 import {
   AlertTriangle,
@@ -41,7 +41,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { useFheTransfer } from "@/lib/blockchain/fhevm/use-fhe-transfer";
+import { useConfidentialTransfer } from "@/lib/blockchain/confidential/token-transfer";
 import { parseTokenAmount } from "@/lib/blockchain/token-utils";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
@@ -81,7 +81,7 @@ export function TransferForm({
   } = useDevFaucet(chainId);
 
   const { transfer, isReady, isPending, isConfirmed, txHash, error, reset } =
-    useFheTransfer({ contractAddress });
+    useConfidentialTransfer({ contractAddress });
 
   // Check if recipient is attested
   const { data: recipientStatus, refetch: checkRecipient } =

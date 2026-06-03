@@ -74,7 +74,7 @@ export default defineConfig({
               HOSTNAME: issuerUrl.hostname,
               PORT: issuerPort,
               NEXT_PUBLIC_ENABLE_HARDHAT: "false",
-              NEXT_PUBLIC_ENABLE_FHEVM: "false",
+              NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
             },
           },
         ]),

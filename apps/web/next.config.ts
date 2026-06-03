@@ -66,12 +66,11 @@ const nextConfig: NextConfig = {
 
     // ZK/FHE WASM packages (runtime loading)
     "@aztec/bb.js",
-    "@zama-fhe/relayer-sdk",
     "node-tfhe",
     "node-tkms",
 
-    // Blockchain / FHEVM (Hardhat utils, contract ABIs, viem)
-    "@fhevm/mock-utils",
+    // Blockchain / confidential contracts
+    "@zama-fhe/sdk",
     "@zentity/contracts",
     "viem",
 
@@ -125,10 +124,12 @@ const nextConfig: NextConfig = {
       "https://ethereum-sepolia-rpc.publicnode.com",
     ].join(" ");
 
-    // Web3 domains: Zama fhEVM relayer/KMS + WalletConnect / Reown AppKit + Coinbase
+    // Web3 domains. Relayer traffic is proxied through /api/confidential/relayer,
+    // so the relayer host itself does NOT need a connect-src entry. The SDK still
+    // hits cdn.zama.org (the artifact CDN) and S3 (origin behind keyurl manifests)
+    // directly from the Web Worker, plus WalletConnect / Reown / Coinbase.
     const web3Domains = [
-      "https://relayer.testnet.zama.org",
-      "https://relayer.mainnet.zama.org",
+      "https://cdn.zama.org",
       "https://*.s3.eu-west-1.amazonaws.com",
       "https://rpc.walletconnect.org",
       "https://pulse.walletconnect.org",
@@ -148,7 +149,7 @@ const nextConfig: NextConfig = {
         ? [
             "default-src 'self'",
             // 'unsafe-inline' required for Next.js hydration scripts; 'wasm-unsafe-eval' for ZK/FHE WASM
-            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+            "script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
             "font-src 'self' data: https://fonts.reown.com",
             // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
@@ -162,7 +163,7 @@ const nextConfig: NextConfig = {
             "base-uri 'none'",
           ].join("; ")
         : [
-            "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
+            "script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
             // http://127.0.0.1:8545 for local Hardhat RPC (127.0.0.1 !== localhost in CSP)
             `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
             "worker-src 'self' blob:",
@@ -247,10 +248,14 @@ const nextConfig: NextConfig = {
         source: "/dashboard/verify/:path*",
         headers: verifyIsolatedHeaders,
       },
-      // Web3 wallet pages — MUST be last so they override both catch-alls.
-      // Relaxed COOP (same-origin-allow-popups) for MetaMask popup signing.
-      // COEP: unsafe-none because these pages don't need SharedArrayBuffer
-      // and credentialless COEP can interfere with extension port messaging.
+      // Web3 wallet pages — MUST be last so they override the dashboard catch-all.
+      // The confidential SDK runs single-threaded (no SharedArrayBuffer), so these
+      // pages neither need nor benefit from cross-origin isolation. They DO need:
+      //   - same-origin-allow-popups: some wallet flows (Coinbase, WalletConnect
+      //     fallback) open a signing popup that uses window.opener to post back.
+      //   - unsafe-none COEP: the default `credentialless` strips credentials from
+      //     cross-origin requests, which can break browser-extension port messaging
+      //     that wallet extensions rely on to talk to their background script.
       ...(
         [
           "/dashboard/attestation",

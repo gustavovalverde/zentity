@@ -54,7 +54,7 @@ describe("compliantTokenRouter.isAttested", () => {
 
     await expect(
       caller.isAttested({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         address: "0x0000000000000000000000000000000000000001",
       })
     ).resolves.toEqual({
@@ -72,7 +72,7 @@ describe("compliantTokenRouter.isAttested", () => {
 
     await expect(
       caller.isAttested({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         address: "0x0000000000000000000000000000000000000001",
       })
     ).resolves.toEqual({
@@ -88,7 +88,7 @@ describe("compliantTokenRouter.isAttested", () => {
 
     await expect(
       caller.isAttested({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         address: "0x0000000000000000000000000000000000000001",
       })
     ).resolves.toEqual({
@@ -104,7 +104,7 @@ describe("compliantTokenRouter.isAttested", () => {
 
     await expect(
       caller.isAttested({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         address: "0x0000000000000000000000000000000000000001",
       })
     ).resolves.toEqual({

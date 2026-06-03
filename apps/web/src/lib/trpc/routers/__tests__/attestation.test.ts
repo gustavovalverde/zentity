@@ -250,10 +250,10 @@ describe("attestation router", () => {
         `https://sepolia.etherscan.io/tx/${txHash}`
     );
     mockGetNetworkById.mockReturnValue({
-      id: "fhevm_sepolia",
-      name: "fhEVM (Sepolia)",
+      id: "confidential_sepolia",
+      name: "Zama Confidential Sepolia",
       chainId: 11_155_111,
-      type: "fhevm",
+      type: "confidential",
       features: ["encrypted"],
       explorer: "https://sepolia.etherscan.io",
       contracts: { identityRegistry: IDENTITY_REGISTRY },
@@ -267,7 +267,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "pending",
       txHash: null,
@@ -333,10 +333,10 @@ describe("attestation router", () => {
   it("returns networks with attestation status", async () => {
     mockGetEnabledNetworks.mockReturnValue([
       {
-        id: "fhevm_sepolia",
-        name: "fhEVM (Sepolia)",
+        id: "confidential_sepolia",
+        name: "Zama Confidential Sepolia",
         chainId: 11_155_111,
-        type: "fhevm",
+        type: "confidential",
         features: ["encrypted"],
         explorer: "https://sepolia.etherscan.io",
         contracts: { identityRegistry: "0xABC" },
@@ -349,7 +349,7 @@ describe("attestation router", () => {
     const result = await caller.networks();
 
     expect(result.networks).toHaveLength(1);
-    expect(result.networks[0]?.id).toBe("fhevm_sepolia");
+    expect(result.networks[0]?.id).toBe("confidential_sepolia");
   });
 
   it("rejects submission when user lacks required tier", async () => {
@@ -358,7 +358,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.createPermit({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         walletAddress: WALLET_A,
       })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -387,14 +387,14 @@ describe("attestation router", () => {
       },
     });
     mockGetNetworkById.mockReturnValue({
-      id: "fhevm_sepolia",
+      id: "confidential_sepolia",
       enabled: false,
     });
 
     const caller = await createCaller(authedSession);
     await expect(
       caller.createPermit({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         walletAddress: WALLET_A,
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -409,7 +409,7 @@ describe("attestation router", () => {
 
     const caller = await createCaller(authedSession);
     await caller.createPermit({
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       walletAddress: WALLET_A,
     });
 
@@ -441,7 +441,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.createPermit({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         walletAddress: WALLET_A,
       })
     ).resolves.toMatchObject({
@@ -468,7 +468,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "failed",
       txHash: TX_HASH,
@@ -483,7 +483,7 @@ describe("attestation router", () => {
 
     const caller = await createCaller(authedSession);
     await caller.createPermit({
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       walletAddress: WALLET_B,
     });
 
@@ -506,7 +506,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "pending",
       txHash: null,
@@ -523,7 +523,7 @@ describe("attestation router", () => {
     await expect(
       caller.recordSubmission({
         consentReceipt: CONSENT_RECEIPT,
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         txHash: TX_HASH,
       })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -542,7 +542,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "pending",
       txHash: null,
@@ -559,7 +559,7 @@ describe("attestation router", () => {
     await expect(
       caller.recordSubmission({
         consentReceipt: CONSENT_RECEIPT,
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         txHash: TX_HASH,
       })
     ).resolves.toMatchObject({
@@ -578,7 +578,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.recordSubmission({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         txHash: TX_HASH,
       } as { networkId: string; txHash: string; consentReceipt: string })
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
@@ -600,7 +600,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "pending",
       txHash: null,
@@ -617,7 +617,7 @@ describe("attestation router", () => {
     await expect(
       caller.recordSubmission({
         consentReceipt: CONSENT_RECEIPT,
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         txHash: TX_HASH,
       })
     ).rejects.toMatchObject({
@@ -641,7 +641,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "pending",
       txHash: null,
@@ -657,7 +657,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.recordSubmission({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         txHash: TX_HASH,
         consentReceipt: CONSENT_RECEIPT,
       })
@@ -690,7 +690,7 @@ describe("attestation router", () => {
       id: "att-1",
       userId: "test-user",
       walletAddress: WALLET_A,
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       chainId: 11_155_111,
       status: "submitted",
       txHash: TX_HASH,
@@ -706,7 +706,7 @@ describe("attestation router", () => {
     const caller = await createCaller(authedSession);
     await expect(
       caller.refresh({
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
       })
     ).resolves.toMatchObject({ status: "failed" });
 

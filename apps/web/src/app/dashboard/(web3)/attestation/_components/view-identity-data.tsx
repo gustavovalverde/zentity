@@ -4,13 +4,14 @@
  * ViewIdentityData Component
  *
  * Allows users to decrypt and view their on-chain identity data.
- * Uses FHE client-side decryption with EIP-712 signature authorization.
+ * Uses the confidential chain SDK with wallet signature authorization.
  * Self-contained: fetches attestation status via tRPC to determine which
  * contract to read from.
  */
 import type { LucideIcon } from "lucide-react";
 
 import { useAppKitAccount } from "@reown/appkit/react";
+import { identityRegistryAbi } from "@zentity/contracts";
 import {
   CalendarDays,
   Eye,
@@ -22,15 +23,9 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
-
-/** Matches a valid hex string with 0x prefix */
-const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
-
-import { identityRegistryAbi } from "@zentity/contracts";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useChainId, useReadContract } from "wagmi";
 
-import { useFhevmContext } from "@/components/providers/fhevm-provider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,39 +43,22 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useFHEDecrypt } from "@/lib/blockchain/fhevm/use-fhe-decrypt";
-import { useInMemoryStorage } from "@/lib/blockchain/fhevm/use-in-memory-storage";
-import { useEthersSigner } from "@/lib/blockchain/wagmi";
+import { asyncHandler } from "@/lib/async-handler";
+import {
+  CONFIDENTIAL_SESSION_TTL_SECONDS,
+  useConfidentialChain,
+} from "@/lib/blockchain/confidential/chain";
+import {
+  type DecryptedIdentityAttributes,
+  resolveIdentityAttributeHandles,
+} from "@/lib/blockchain/confidential/identity-attributes";
 import { cn } from "@/lib/cn";
 import { getCountryName } from "@/lib/privacy/zk/country";
 import { trpcReact } from "@/lib/trpc/client";
 
-function normalizeHandle(handle: unknown): `0x${string}` | undefined {
-  if (!handle) {
-    return;
-  }
-  if (typeof handle === "string") {
-    const hex = handle.startsWith("0x") ? handle : `0x${handle}`;
-    return HEX_STRING_PATTERN.test(hex) ? (hex as `0x${string}`) : undefined;
-  }
-  if (handle instanceof Uint8Array) {
-    const hex = Array.from(handle)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
-    return `0x${hex}` as `0x${string}`;
-  }
-  return;
-}
-
-/**
- * Decrypted identity data structure
- */
-interface DecryptedIdentity {
-  birthYearOffset: number;
-  complianceLevel: number;
-  countryCode: number;
-  isBlacklisted: boolean;
-}
+const CONFIDENTIAL_SESSION_TTL_HOURS = Math.round(
+  CONFIDENTIAL_SESSION_TTL_SECONDS / 3600
+);
 
 function getBlacklistStatusLabel(
   isBlacklisted: boolean | undefined
@@ -144,25 +122,31 @@ function DecryptButtonContent({
   );
 }
 
+interface DecryptionResultState {
+  data: DecryptedIdentityAttributes | null;
+  error: string | null;
+  snapshotKey: string;
+}
+
 export function ViewIdentityData() {
   const { address: rawAddress } = useAppKitAccount();
   // Cast to wagmi-compatible type (AppKit returns string, wagmi expects `0x${string}`)
   const address = rawAddress as `0x${string}` | undefined;
   const chainId = useChainId();
   const {
-    instance,
-    isReady: fhevmReady,
-    status: fhevmStatus,
-    error: fhevmError,
-    refresh: refreshFhevm,
-  } = useFhevmContext();
-  const { storage } = useInMemoryStorage();
-  const ethersSigner = useEthersSigner();
+    decryptIdentityAttributes,
+    isReady: confidentialChainReady,
+    status: confidentialChainStatus,
+    error: confidentialChainError,
+    refresh: refreshConfidentialChain,
+  } = useConfidentialChain();
 
-  const [isVisible, setIsVisible] = useState(false);
-  const [decryptedData, setDecryptedData] = useState<DecryptedIdentity | null>(
-    null
-  );
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [visibleIdentitySnapshotKey, setVisibleIdentitySnapshotKey] = useState<
+    string | null
+  >(null);
+  const [decryptionResult, setDecryptionResult] =
+    useState<DecryptionResultState | null>(null);
 
   // Fetch attestation status to find confirmed attestation and contract address
   const { data: networksData, isLoading: networksLoading } =
@@ -278,117 +262,118 @@ export function ViewIdentityData() {
     isComplianceLoading ||
     isBlacklistLoading;
 
-  // Build decrypt requests from handles
-  const decryptRequests = useMemo(() => {
-    if (
-      !contractAddress ||
-      birthYearHandle === undefined ||
-      countryCodeHandle === undefined ||
-      complianceLevelHandle === undefined ||
-      blacklistHandle === undefined
-    ) {
-      return [];
-    }
-    const normalizedHandles = [
-      normalizeHandle(birthYearHandle),
-      normalizeHandle(countryCodeHandle),
-      normalizeHandle(complianceLevelHandle),
-      normalizeHandle(blacklistHandle),
-    ];
-    if (normalizedHandles.some((handle) => !handle || handle.length !== 66)) {
-      return [];
-    }
-    return normalizedHandles.map((handle) => ({
-      handle: handle as `0x${string}`,
+  const identityAttributeHandles = useMemo(
+    () =>
+      resolveIdentityAttributeHandles({
+        birthYearOffset: birthYearHandle,
+        countryCode: countryCodeHandle,
+        complianceLevel: complianceLevelHandle,
+        isBlacklisted: blacklistHandle,
+      }),
+    [birthYearHandle, countryCodeHandle, complianceLevelHandle, blacklistHandle]
+  );
+
+  const encryptedIdentitySnapshotKey = useMemo(
+    () =>
+      [
+        contractAddress ?? "missing-contract",
+        birthYearHandle ?? "missing-birth-year",
+        countryCodeHandle ?? "missing-country",
+        complianceLevelHandle ?? "missing-compliance",
+        blacklistHandle ?? "missing-blacklist",
+      ].join(":"),
+    [
       contractAddress,
-    }));
-  }, [
-    contractAddress,
-    birthYearHandle,
-    countryCodeHandle,
-    complianceLevelHandle,
-    blacklistHandle,
-  ]);
+      birthYearHandle,
+      countryCodeHandle,
+      complianceLevelHandle,
+      blacklistHandle,
+    ]
+  );
 
-  // Use FHE decrypt hook
-  const {
-    canDecrypt,
-    decrypt,
-    isDecrypting,
-    results: decryptResults,
-    error: decryptError,
-  } = useFHEDecrypt({
-    instance,
-    ethersSigner,
-    fhevmDecryptionSignatureStorage: storage,
-    chainId,
-    requests: decryptRequests,
-    refreshFhevmInstance: refreshFhevm,
-  });
+  const canDecrypt = Boolean(
+    confidentialChainReady &&
+      contractAddress &&
+      identityAttributeHandles &&
+      !isDecrypting
+  );
 
-  // Process decryption results when they change
-  const handleDecrypt = useCallback(() => {
-    if (!canDecrypt) {
+  const decryptedData =
+    decryptionResult?.snapshotKey === encryptedIdentitySnapshotKey
+      ? decryptionResult.data
+      : null;
+  const decryptError =
+    decryptionResult?.snapshotKey === encryptedIdentitySnapshotKey
+      ? decryptionResult.error
+      : null;
+  const isVisible =
+    visibleIdentitySnapshotKey === encryptedIdentitySnapshotKey &&
+    Boolean(decryptedData);
+
+  const handleDecrypt = useCallback(async () => {
+    if (!(canDecrypt && contractAddress && identityAttributeHandles)) {
       return;
     }
-    decrypt();
-  }, [canDecrypt, decrypt]);
 
-  // Update decrypted data when results change
-  const processedResults = useMemo(() => {
-    if (!decryptResults || Object.keys(decryptResults).length === 0) {
-      return null;
+    const snapshotKey = encryptedIdentitySnapshotKey;
+    setIsDecrypting(true);
+    setDecryptionResult({ snapshotKey, data: null, error: null });
+    try {
+      const nextDecryptedData = await decryptIdentityAttributes({
+        attributeHandles: identityAttributeHandles,
+        registryAddress: contractAddress,
+      });
+      setDecryptionResult({
+        snapshotKey,
+        data: nextDecryptedData,
+        error: null,
+      });
+      setVisibleIdentitySnapshotKey(snapshotKey);
+    } catch (error) {
+      setDecryptionResult({
+        snapshotKey,
+        data: null,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to decrypt identity data",
+      });
+      setVisibleIdentitySnapshotKey(null);
+    } finally {
+      setIsDecrypting(false);
     }
+  }, [
+    canDecrypt,
+    contractAddress,
+    identityAttributeHandles,
+    decryptIdentityAttributes,
+    encryptedIdentitySnapshotKey,
+  ]);
 
-    const handles = decryptRequests.map((r) => r.handle);
-    if (handles.length < 4) {
-      return null;
-    }
-
-    const birthYearHandle = handles[0];
-    const countryCodeHandle = handles[1];
-    const complianceLevelHandle = handles[2];
-    const blacklistHandle = handles[3];
-    if (
-      !(
-        birthYearHandle &&
-        countryCodeHandle &&
-        complianceLevelHandle &&
-        blacklistHandle
-      )
-    ) {
-      return null;
-    }
-
-    return {
-      birthYearOffset: Number(decryptResults[birthYearHandle] ?? 0),
-      countryCode: Number(decryptResults[countryCodeHandle] ?? 0),
-      complianceLevel: Number(decryptResults[complianceLevelHandle] ?? 0),
-      isBlacklisted: Boolean(decryptResults[blacklistHandle] ?? false),
-    };
-  }, [decryptResults, decryptRequests]);
-
-  // Sync processed results to state
-  useEffect(() => {
-    if (processedResults && !decryptedData) {
-      setDecryptedData(processedResults);
-      setIsVisible(true);
-    }
-  }, [processedResults, decryptedData]);
-
-  const handleToggleVisibility = useCallback(() => {
+  const handleToggleVisibility = useCallback(async () => {
     // Don't attempt decryption if wallet doesn't match attestation
     if (walletMismatch) {
       return;
     }
     if (isVisible) {
-      setIsVisible(false);
+      setVisibleIdentitySnapshotKey(null);
     } else if (decryptedData) {
-      setIsVisible(true);
+      setVisibleIdentitySnapshotKey(encryptedIdentitySnapshotKey);
     } else {
-      handleDecrypt();
+      await handleDecrypt();
     }
-  }, [isVisible, decryptedData, handleDecrypt, walletMismatch]);
+  }, [
+    isVisible,
+    decryptedData,
+    encryptedIdentitySnapshotKey,
+    handleDecrypt,
+    walletMismatch,
+  ]);
+
+  const canToggleVisibility = Boolean(
+    !(walletMismatch || isDecrypting) &&
+      (isVisible || decryptedData || canDecrypt)
+  );
 
   // Calculate birth year from offset
   const birthYear = decryptedData
@@ -438,31 +423,39 @@ export function ViewIdentityData() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* FHEVM SDK Status */}
-        {!fhevmReady && (
-          <Alert variant={fhevmStatus === "error" ? "destructive" : "warning"}>
+        {/* Confidential SDK Status */}
+        {!confidentialChainReady && (
+          <Alert
+            variant={
+              confidentialChainStatus === "error" ? "destructive" : "warning"
+            }
+          >
             <Lock className="h-4 w-4" />
             <AlertDescription>
-              {fhevmStatus === "loading" && (
+              {confidentialChainStatus === "initializing" && (
                 <span className="flex items-center gap-2">
                   <Spinner className="size-3" />
                   Initializing decryption…
                 </span>
               )}
-              {fhevmStatus === "error" && (
+              {confidentialChainStatus === "error" && (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     Decryption setup failed.{" "}
-                    {fhevmError?.message || "Please try again."}
+                    {confidentialChainError?.message || "Please try again."}
                   </span>
-                  <Button onClick={refreshFhevm} size="sm" variant="outline">
+                  <Button
+                    onClick={refreshConfidentialChain}
+                    size="sm"
+                    variant="outline"
+                  >
                     <RefreshCw className="mr-1 h-3 w-3" />
                     Retry
                   </Button>
                 </div>
               )}
-              {fhevmStatus !== "loading" &&
-                fhevmStatus !== "error" &&
+              {confidentialChainStatus !== "initializing" &&
+                confidentialChainStatus !== "error" &&
                 "Connect your wallet to enable decryption."}
             </AlertDescription>
           </Alert>
@@ -495,12 +488,12 @@ export function ViewIdentityData() {
               <span className="text-sm">{decryptError}</span>
               <Button
                 className="shrink-0"
-                onClick={refreshFhevm}
+                onClick={refreshConfidentialChain}
                 size="sm"
                 variant="outline"
               >
                 <RefreshCw className="mr-1 h-3 w-3" />
-                Refresh SDK
+                Retry
               </Button>
             </AlertDescription>
           </Alert>
@@ -546,8 +539,8 @@ export function ViewIdentityData() {
               <TooltipTrigger asChild>
                 <Button
                   className="flex-1"
-                  disabled={!canDecrypt || isDecrypting || walletMismatch}
-                  onClick={handleToggleVisibility}
+                  disabled={!canToggleVisibility}
+                  onClick={asyncHandler(handleToggleVisibility)}
                   variant={isVisible ? "outline" : "default"}
                 >
                   <DecryptButtonContent
@@ -559,7 +552,7 @@ export function ViewIdentityData() {
               <TooltipContent>
                 {getTooltipMessage({
                   walletMismatch,
-                  canDecrypt,
+                  canDecrypt: canDecrypt || Boolean(decryptedData),
                   isVisible,
                 })}
               </TooltipContent>
@@ -569,8 +562,8 @@ export function ViewIdentityData() {
 
         {/* Info */}
         <p className="text-muted-foreground text-xs">
-          Decryption requires signing an EIP-712 message to authorize access to
-          your data. This signature is valid for 7 days.
+          Decryption requires a wallet signature that authorizes access to your
+          data for {CONFIDENTIAL_SESSION_TTL_HOURS} hours.
         </p>
       </CardContent>
     </Card>

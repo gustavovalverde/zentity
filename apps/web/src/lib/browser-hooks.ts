@@ -72,18 +72,3 @@ export function useMobileDetect() {
 
   return { isMobile, isLandscape };
 }
-
-/**
- * Returns `false` during SSR and `true` after the component mounts on the
- * client. Use to guard rendering of components that depend on client-only
- * state (wallet connection, storage, etc.) without hydration mismatches.
- */
-export function useIsMounted(): boolean {
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
-  return isMounted;
-}

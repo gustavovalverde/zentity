@@ -188,6 +188,19 @@ export const secretsBlobLimiter = createRateLimiter({
 export const publicLimiter = createRateLimiter({ windowMs: MINUTE, max: 30 });
 
 /**
+ * Zama confidential relayer proxy: 30 req/min per user.
+ *
+ * Sized for a full attestation flow (one encrypt + a handful of artifact
+ * fetches) plus identity decryption (one batched decrypt) plus retries,
+ * with headroom for the defi-demo transfer path. Higher than the legacy
+ * fheLimiter because each SDK call now expands into several relayer hits.
+ */
+export const confidentialRelayerLimiter = createRateLimiter({
+  windowMs: MINUTE,
+  max: 30,
+});
+
+/**
  * Account-exists alert email: 1 per recipient per hour. Key is the SHA-256
  * hash of the email (never the plaintext). Prevents weaponizing the alert
  * channel — an attacker iterating sign-up with a victim's email can't flood

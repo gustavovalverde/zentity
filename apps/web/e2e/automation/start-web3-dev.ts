@@ -112,18 +112,56 @@ interface ContractsEnv {
   identityRegistry?: string | undefined;
 }
 
+function readDeploymentEnvValue(
+  env: Record<string, string>,
+  canonicalKey: string,
+  legacyKey: string
+): string {
+  const value = env[canonicalKey] ?? env[legacyKey];
+  if (!value) {
+    throw new Error(
+      `Missing ${canonicalKey} in contract deployment output. Run print:deployments localhost --env and verify the contracts repo output.`
+    );
+  }
+  return value;
+}
+
 function deployContracts(): ContractsEnv {
+  const hardhatEnv = {
+    ...process.env,
+    LOCAL_RPC_URL: hardhatUrl,
+    NEXT_PUBLIC_LOCAL_RPC_URL: hardhatUrl,
+  };
   const deploy = spawnSync(
-    contractsScriptRunner,
-    ["run", "deploy:local", "--", "--reset"],
+    "npx",
+    ["hardhat", "deploy", "--network", "localhost", "--reset"],
     {
       cwd: contractsPath,
       stdio: "inherit",
-      env: process.env,
+      env: hardhatEnv,
     }
   );
   if (deploy.status !== 0) {
     process.exit(deploy.status ?? 1);
+  }
+
+  const validate = spawnSync(
+    "npx",
+    [
+      "hardhat",
+      "run",
+      "scripts/validate-deployments.ts",
+      "--network",
+      "localhost",
+    ],
+    {
+      cwd: contractsPath,
+      stdio: "inherit",
+      env: { ...hardhatEnv, DEPLOYMENT_VALIDATION_WRITES: "true" },
+    }
+  );
+  if (validate.status !== 0) {
+    process.exit(validate.status ?? 1);
   }
 
   const printed = spawnSync(
@@ -132,7 +170,7 @@ function deployContracts(): ContractsEnv {
     {
       cwd: contractsPath,
       encoding: "utf8",
-      env: process.env,
+      env: hardhatEnv,
     }
   );
   if (printed.status !== 0) {
@@ -149,9 +187,21 @@ function deployContracts(): ContractsEnv {
   }
 
   return {
-    identityRegistry: env.IDENTITY_REGISTRY_LOCALHOST,
-    complianceRules: env.COMPLIANCE_RULES_LOCALHOST,
-    compliantErc20: env.COMPLIANT_ERC20_LOCALHOST,
+    identityRegistry: readDeploymentEnvValue(
+      env,
+      "LOCAL_IDENTITY_REGISTRY",
+      "IDENTITY_REGISTRY_LOCALHOST"
+    ),
+    complianceRules: readDeploymentEnvValue(
+      env,
+      "LOCAL_COMPLIANCE_RULES",
+      "COMPLIANCE_RULES_LOCALHOST"
+    ),
+    compliantErc20: readDeploymentEnvValue(
+      env,
+      "LOCAL_COMPLIANT_ERC20",
+      "COMPLIANT_ERC20_LOCALHOST"
+    ),
   };
 }
 
@@ -167,17 +217,16 @@ function startDevServer(contracts: ContractsEnv) {
     ...(dbUrl ? { TURSO_DATABASE_URL: dbUrl } : {}),
     ...(dbPath ? { E2E_DATABASE_PATH: dbPath } : {}),
     NEXT_PUBLIC_ENABLE_HARDHAT: "true",
-    NEXT_PUBLIC_ENABLE_FHEVM: "false",
-    NEXT_PUBLIC_COOP: "same-origin-allow-popups",
+    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
+    NEXT_PUBLIC_COOP: "same-origin",
     LOCAL_RPC_URL: hardhatUrl,
+    NEXT_PUBLIC_LOCAL_RPC_URL: hardhatUrl,
     LOCAL_IDENTITY_REGISTRY: contracts.identityRegistry || "",
     LOCAL_COMPLIANCE_RULES: contracts.complianceRules || "",
     LOCAL_COMPLIANT_ERC20: contracts.compliantErc20 || "",
     LOCAL_REGISTRAR_PRIVATE_KEY:
       process.env.LOCAL_REGISTRAR_PRIVATE_KEY ||
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-    FHEVM_PROVIDER_ID: "mock",
-    NEXT_PUBLIC_FHEVM_PROVIDER_ID: "mock",
   };
 
   const dbFile =

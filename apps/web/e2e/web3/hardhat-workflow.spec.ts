@@ -1,17 +1,19 @@
 /**
  * Web3 Hardhat workflow E2E test
  *
- * IMPORTANT: These tests require MetaMask and synpress which have known caching issues.
- * Skip by default in CI due to synpress cache bugs: https://github.com/Synthetixio/synpress/issues/1103
+ * Uses an injected Hardhat test wallet instead of a browser extension so the
+ * default local workflow proves deployment, AppKit/wagmi wiring, signing, and
+ * transactions without Synpress cache state.
  *
  * To run locally:
- * 1. Ensure Hardhat is running: pnpm exec tsx e2e/automation/start-web3-dev.ts
- * 2. Build synpress cache: pnpm exec synpress e2e/wallet-setup
- * 3. Run with: E2E_RUN_WEB3=true E2E_EXTERNAL_WEB_SERVER=true pnpm test:e2e --project=web3-hardhat
+ * E2E_RUN_WEB3=true pnpm test:e2e --project=web3-hardhat
  */
-import { expect, test } from "../fixtures/synpress";
-import { connectWalletIfNeeded } from "../helpers/connect-wallet";
-import { confirmSignature, confirmTransaction } from "../helpers/metamask";
+import { expect, test } from "@playwright/test";
+
+import {
+  connectHardhatWallet,
+  installHardhatWallet,
+} from "../helpers/hardhat-wallet";
 import { readTestUserId } from "../helpers/test-user";
 
 // Skip Web3 tests by default due to synpress caching bugs
@@ -22,20 +24,21 @@ const skipWeb3Tests = process.env.E2E_RUN_WEB3 !== "true";
 const WELCOME_HEADING_PATTERN = /welcome/i;
 const ATTESTATION_URL_PATTERN = /dashboard\/attestation/;
 const ON_CHAIN_ATTESTATION_HEADING = /On-Chain Attestation/i;
-const LOCAL_HARDHAT_BUTTON = /Local \(Hardhat\)/i;
+const LOCAL_HARDHAT_BUTTON = /Local \(Hardhat\) Encrypted/i;
 const REGISTER_ON_BUTTON = /Register on/i;
 const UPDATE_ATTESTATION_BUTTON = /Update Attestation/i;
 const ATTESTED_ON_TEXT = /Attested on/i;
 const TRANSACTION_PENDING_TEXT = /Transaction Pending/i;
 const CHECK_STATUS_BUTTON = /Check Status/i;
-const ATTESTED_ON_FHEVM_TEXT = /Attested on fhEVM/i;
+const ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT =
+  /Attested on Zama Confidential Sepolia/i;
 const LOCAL_HARDHAT_TEXT = /Local \\(Hardhat\\)/i;
 const DECRYPT_VIEW_BUTTON = /Decrypt & View/i;
 const COMPLIANCE_GRANTED_TEXT = /Compliance access granted/i;
 const GRANT_COMPLIANCE_BUTTON = /Grant Compliance Access/i;
 const TOKENS_MINTED_TEXT = /Tokens minted successfully/i;
-const FHE_INITIALIZING_TEXT = /Initializing FHE encryption/i;
-const RECIPIENT_NOT_ATTESTED_TEXT = /Recipient not attested/i;
+const CONFIDENTIAL_INITIALIZING_TEXT = /Initializing encryption/i;
+const RECIPIENT_NOT_ATTESTED_TEXT = /Recipient not verified on-chain/i;
 const RECIPIENT_ATTESTED_TEXT = /Recipient is attested/i;
 const TRANSFER_BUTTON_PATTERN = /^Transfer$/;
 const TRANSFER_SUCCESS_TEXT = /Transfer submitted!/i;
@@ -49,14 +52,12 @@ const senderAddress =
 const recipientAddress =
   process.env.E2E_RECIPIENT_ADDRESS ??
   "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-// Use default Account 1 name from MetaMask
-const senderAccountName =
-  process.env.E2E_ACCOUNT_NAME ??
-  process.env.SYNPRESS_ACCOUNT_NAME ??
-  "Account 1";
+const hardhatRpcUrl =
+  process.env.SYNPRESS_NETWORK_RPC_URL ??
+  `http://127.0.0.1:${process.env.E2E_HARDHAT_PORT ?? 8545}`;
 const hardhatNetwork = {
   name: process.env.SYNPRESS_NETWORK_NAME ?? "Hardhat Local",
-  rpcUrl: process.env.SYNPRESS_NETWORK_RPC_URL ?? "http://127.0.0.1:8545",
+  rpcUrl: hardhatRpcUrl,
   chainId: Number(process.env.SYNPRESS_NETWORK_CHAIN_ID ?? 31_337),
   symbol: process.env.SYNPRESS_NETWORK_SYMBOL ?? "ETH",
 };
@@ -71,37 +72,24 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     "Web3 tests skipped. Set E2E_RUN_WEB3=true to run. See file header for instructions."
   );
 
-  test("attest, grant compliance, mint, and transfer", async ({
-    page,
-    metamask,
-  }) => {
+  test("attest, grant compliance, mint, and transfer", async ({ page }) => {
     test.setTimeout(180_000);
     const userId = readTestUserId();
     if (userId) {
       process.env.E2E_USER_ID = userId;
     }
-    try {
-      await metamask.switchNetwork(hardhatNetwork.name);
-    } catch {
-      try {
-        await metamask.addNetwork(hardhatNetwork);
-      } catch {
-        // Network may already exist from a previous run.
-      }
-      await metamask.switchNetwork(hardhatNetwork.name);
-    }
+
+    await installHardhatWallet(page, {
+      chainId: hardhatNetwork.chainId,
+      rpcUrl: hardhatNetwork.rpcUrl,
+    });
 
     await page.goto("/dashboard");
     await expect(
       page.getByRole("heading", { name: WELCOME_HEADING_PATTERN })
     ).toBeVisible();
 
-    await connectWalletIfNeeded({
-      page,
-      metamask,
-      accountName: senderAccountName,
-      chainId: hardhatNetwork.chainId,
-    });
+    await connectHardhatWallet(page, hardhatNetwork.chainId);
 
     await page.goto("/dashboard/attestation");
     await expect(page).toHaveURL(ATTESTATION_URL_PATTERN);
@@ -161,9 +149,12 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
 
     await expect(attestedText).toBeVisible({ timeout: 60_000 });
 
-    const sepoliaConfirmed = page.getByText(ATTESTED_ON_FHEVM_TEXT, {
-      exact: false,
-    });
+    const sepoliaConfirmed = page.getByText(
+      ATTESTED_ON_CONFIDENTIAL_SEPOLIA_TEXT,
+      {
+        exact: false,
+      }
+    );
     if (await sepoliaConfirmed.isVisible().catch(() => false)) {
       await expect(page.getByText(LOCAL_HARDHAT_TEXT)).toBeVisible();
       await page.getByRole("button", { name: LOCAL_HARDHAT_TEXT }).click();
@@ -179,10 +170,9 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await expect(decryptButton).toBeVisible();
     await expect(decryptButton).toBeEnabled({ timeout: 60_000 });
     await decryptButton.click();
-    await confirmSignature(metamask);
 
     await expect(page.getByText("1990")).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByText("Level 3")).toBeVisible();
+    await expect(page.getByText("Level 2")).toBeVisible();
 
     const complianceGrantedText = page.getByText(COMPLIANCE_GRANTED_TEXT, {
       exact: false,
@@ -192,7 +182,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
         name: GRANT_COMPLIANCE_BUTTON,
       });
       await expect(grantButton).toBeVisible({ timeout: 30_000 });
-      await Promise.all([confirmTransaction(metamask), grantButton.click()]);
+      await grantButton.click();
     }
 
     await expect(complianceGrantedText).toBeVisible({ timeout: 60_000 });
@@ -202,10 +192,12 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       page.getByRole("heading", { name: "DeFi Compliance Demo" })
     ).toBeVisible();
 
-    await expect(page.getByText("Mint Tokens", { exact: false })).toBeVisible();
+    await expect(
+      page.getByText("Mint Tokens", { exact: true }).first()
+    ).toBeVisible();
 
     await page.locator("#mint-amount").fill("5");
-    const mintButton = page.getByRole("button", { name: "Mint" });
+    const mintButton = page.getByRole("button", { exact: true, name: "Mint" });
     await expect(mintButton).toBeEnabled({ timeout: 60_000 });
     await mintButton.click();
 
@@ -216,7 +208,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
     await expect(
       page.getByText("Transfer", { exact: true }).first()
     ).toBeVisible();
-    await expect(page.getByText(FHE_INITIALIZING_TEXT)).toBeHidden({
+    await expect(page.getByText(CONFIDENTIAL_INITIALIZING_TEXT)).toBeHidden({
       timeout: 60_000,
     });
 
@@ -248,7 +240,7 @@ test.describe("Web3 workflow (Hardhat + mock relayer)", () => {
       name: TRANSFER_BUTTON_PATTERN,
     });
     await expect(transferButton).toBeEnabled({ timeout: 60_000 });
-    await Promise.all([confirmTransaction(metamask), transferButton.click()]);
+    await transferButton.click();
 
     const transferSuccess = page.getByText(TRANSFER_SUCCESS_TEXT, {
       exact: false,

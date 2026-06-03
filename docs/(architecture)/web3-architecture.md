@@ -1,6 +1,6 @@
 ---
 title: Web3 Architecture
-description: FHEVM hooks, encryption/decryption flows, and on-chain compliance
+description: Confidential chain hooks, encryption/decryption flows, and on-chain compliance
 ---
 
 Zentity's Web3 layer keeps identity verification off-chain and uses the blockchain solely for encrypted attestation, encrypted compliance checks, and minimal public compliance mirroring. On-chain contracts never see plaintext identity data. The Base mirror stores only attested/unattested state and the current compliance level for `isCompliant(address,uint8)` reads.
@@ -9,23 +9,23 @@ The decision record for the public-read mirror is [ADR-0005: Base compliance mir
 
 ## System Context
 
-The registrar encrypts identity attributes and submits attestations to fhEVM. Users authorize decryption and access via explicit grants. The following sections move from system context through the transition flow to Web3-specific mechanics.
+The backend signs attestation permits from verified identity state. The browser encrypts identity attributes with the Zama confidential SDK and submits the attestation from the user's wallet. Users authorize decryption and access via explicit grants. The following sections move from system context through the transition flow to Web3-specific mechanics.
 
 ### Key technologies
 
 | Technology | Purpose |
 |---|---|
-| **FHEVM** | Encrypted smart contract operations |
+| **Zama confidential chain** | Encrypted smart contract operations on Ethereum Sepolia |
 | **Base Sepolia mirror** | Public, level-aware compliance reads for x402 and resource servers |
 | **Reown AppKit** | Wallet connection UX |
 | **Wagmi** | Wallet state + Ethereum hooks |
 | **tRPC** | Type-safe API between frontend and backend |
-| **ethers.js** | Transaction signing + EIP-712 support |
+| **viem** | Contract calls, transaction submission, and EIP-712 helpers |
 
 ### Key ideas
 
 - **Encrypted on-chain state**: ciphertext handles only, no plaintext in contracts.
-- **Server-side attestation**: registrar encrypts identity attributes and submits attestations.
+- **Client-side attestation encryption**: the backend signs the permit; the user's browser encrypts and submits the transaction.
 - **User-controlled access**: decryption and access are gated by user-authorized grants.
 - **FHE-based compliance**: contracts evaluate policies on encrypted data.
 - **Base mirror compliance**: contracts and resource servers can read `isCompliant(user,minLevel)` without learning underlying PII.
@@ -129,13 +129,13 @@ sequenceDiagram
 ### Encryption boundaries
 
 - **Web2**: Attributes are encrypted off-chain and stored as ciphertexts; only the user can decrypt.
-- **Web3**: Attestations are encrypted server-side and stored on-chain as ciphertext handles.
+- **Web3**: Attestations are encrypted client-side and stored on-chain as ciphertext handles.
 - **Access**: Users grant contracts explicit access via ACLs; decryption requires user authorization.
 
 ### Encryption points
 
-1. **Client-side encryption** for user-initiated encrypted transfers.
-2. **Server-side encryption** for on-chain attestations.
+1. **Client-side encryption** for on-chain attestations and user-initiated encrypted transfers.
+2. **Server-side signing** for registrar permits that authorize the attestation.
 3. **Never encrypted**: wallet addresses, transaction hashes, event metadata, and Base mirror attested/level state.
 
 ### Computation under encryption
@@ -146,7 +146,7 @@ flowchart LR
   B --> C[Encrypted result]
 ```
 
-The fhEVM never sees plaintext. Compliance checks execute directly on encrypted attributes.
+The confidential chain never sees plaintext. Compliance checks execute directly on encrypted attributes.
 
 ### Access control model
 
@@ -236,16 +236,16 @@ Public:
 graph TB
   subgraph Client["Client (Browser)"]
     UI[React UI]
-    SDK[FHEVM SDK]
+    SDK[Zama SDK]
   end
 
   subgraph Backend["Backend (Next.js)"]
     API[API Routes]
-    REG[Registrar / Relayer]
+    REG[Registrar]
     DB[(SQLite)]
   end
 
-  subgraph Chain["On-chain fhEVM"]
+  subgraph Chain["On-chain confidential contracts"]
     IR[IdentityRegistry]
     ACL[ACL]
     CR[ComplianceRules]
@@ -253,7 +253,7 @@ graph TB
   end
 
   subgraph OffChain["Off-chain FHE"]
-    GW[FHEVM Gateway]
+    GW[Zama Relayer]
     KMS[Key Management Service]
     FHE[FHE Coprocessor]
   end
@@ -277,13 +277,14 @@ graph TB
 
 ```mermaid
 flowchart TD
-  User["User Wallet + FHEVM SDK"]
+  User["User Wallet + Zama SDK"]
   Registrar["Backend Registrar"]
   AttIn["Encrypted attestation inputs"]
   EncIn["Encrypted transfer inputs"]
 
   User -- "Encrypt transfer" --> EncIn
-  Registrar -- "Encrypt attestation" --> AttIn
+  Registrar -- "Sign permit" --> User
+  User -- "Encrypt attestation" --> AttIn
 
   AttIn --> IR["IdentityRegistry"]
   EncIn --> ERC["CompliantERC20"]
@@ -299,8 +300,8 @@ flowchart TD
 
 **Key points**:
 
-- **Attestation encryption** happens server-side (registrar + relayer SDK).
-- **Wallet-initiated operations** use client-side FHEVM SDK.
+- **Attestation encryption** happens client-side after the backend signs a registrar permit.
+- **Wallet-initiated operations** use the client-side Zama SDK.
 - **Contracts operate on ciphertexts only**; no plaintext is revealed.
 - **Access is explicit**: users grant contract-level access to their ciphertexts.
 
@@ -313,9 +314,8 @@ graph TD
   A["Web3Provider"] --> B["trpcReact.Provider\n(tRPC client)"]
   B --> C["WagmiProvider\n(wallet state)"]
   C --> D["QueryClientProvider\n(React Query)"]
-  D --> E["InMemoryStorageProvider\n(signature cache)"]
-  E --> F["FhevmProvider\n(FHE SDK)"]
-  F --> G["Application Components"]
+  D --> E["ConfidentialChainProvider\n(Zama SDK)"]
+  E --> F["Application Components"]
 ```
 
 ### Provider responsibilities
@@ -326,15 +326,14 @@ graph TD
 | `trpcReact.Provider` | Type-safe API client |
 | `WagmiProvider` | Wallet connection state + hooks |
 | `QueryClientProvider` | Shared cache for tRPC + Wagmi |
-| `InMemoryStorageProvider` | Signature cache for decryption |
-| `FhevmProvider` | Manages FHEVM SDK lifecycle |
+| `ConfidentialChainProvider` | Manages Zama SDK lifecycle, encryption, decryption, and relayer access |
 
 ## SDK Lifecycle States
 
 | State | Meaning |
 |---|---|
-| `idle` | No wallet connected or SDK not initialized |
-| `loading` | WASM modules and SDK are initializing |
+| `not_connected` | No wallet connected or SDK not initialized |
+| `initializing` | SDK and relayer artifacts are initializing |
 | `ready` | SDK is usable for encryption/decryption |
 | `error` | Initialization failed |
 
@@ -345,15 +344,13 @@ sequenceDiagram
   autonumber
   actor User
   participant C as React Component
-  participant H as useFHEEncryption
-  participant SDK as FHEVM SDK (WASM)
+  participant H as useConfidentialChain
+  participant SDK as Zama SDK
   participant S as Smart Contract
 
   User->>C: Enter value
-  C->>H: encryptWith(builder)
-  H->>SDK: createEncryptedInput(contractAddress, userAddress)
-  H->>SDK: builder.addX(value)
-  H->>SDK: encrypt()
+  C->>H: encryptTokenAmount() / encryptIdentityAttributesForAttestation()
+  H->>SDK: relayer.encrypt(contractAddress, userAddress, values)
   SDK-->>H: handles + inputProof
   H-->>C: encrypted inputs
   C->>S: submit(handles, inputProof)
@@ -366,7 +363,7 @@ sequenceDiagram
   autonumber
   actor User
   participant C as UI Component
-  participant H as useFHEDecrypt
+  participant H as useConfidentialChain
   participant W as Wallet
   participant G as Gateway
   participant K as KMS
@@ -375,7 +372,7 @@ sequenceDiagram
   C->>H: decrypt()
   H->>W: Request signature (EIP-712)
   W-->>H: Signature
-  H->>G: userDecrypt(requests, signature)
+  H->>G: userDecrypt(handles, signature)
   G->>K: Verify + re-encrypt to user
   K-->>G: Re-encrypted ciphertext
   G-->>H: Encrypted response
@@ -395,13 +392,14 @@ sequenceDiagram
   participant BC as IdentityRegistry
 
   User->>UI: Request on-chain attestation
-  UI->>API: Submit attestation request
+  UI->>API: Request registrar permit
   API->>DB: Validate verified identity
-  API->>REG: Encrypt attributes
-  REG->>BC: attestIdentity(user, handles, proof)
-  BC-->>REG: txHash
-  REG-->>API: submitted
-  API-->>UI: Pending status
+  API->>REG: Sign EIP-712 permit
+  REG-->>API: permit
+  API-->>UI: permit + attributes
+  UI->>UI: Encrypt attributes with Zama SDK
+  UI->>BC: attestWithPermit(permit, encryptedAttributes)
+  BC-->>UI: txHash
 ```
 
 ### Revocation Flow
@@ -436,7 +434,7 @@ The mirror is not a second source of identity truth. It is a public delivery sur
 ## Data Privacy Model
 
 1. **Identity verification** happens off-chain (OCR, liveness, face match).
-2. **Identity attributes** are encrypted server-side by the registrar.
+2. **Identity attributes** are encrypted client-side by the user's browser for the target contract and wallet.
 3. **Ciphertext handles** are stored on-chain (no plaintext).
 4. **Compliance checks** operate on ciphertexts (no decryption in contracts).
 5. **Attestation metadata** includes proof and policy hashes for auditability.

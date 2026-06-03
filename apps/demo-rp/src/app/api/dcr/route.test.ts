@@ -24,7 +24,7 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 describe("/api/dcr POST", () => {
   beforeEach(() => {
@@ -110,5 +110,114 @@ describe("/api/dcr POST", () => {
       error:
         "Failed to persist DCR client: SQLITE_ERROR: no such table: dcr_client",
     });
+  });
+});
+
+describe("/api/dcr GET (self-heal)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dcrMocks.isRouteScenarioId.mockReturnValue(true);
+    dcrMocks.getRouteScenario.mockReturnValue({
+      dcr: {
+        clientName: "Velocity Private",
+        requestedScopes: "openid email proof:verification",
+      },
+      oauthProviderId: "zentity-bank",
+    });
+    dcrMocks.saveDcrClientId.mockResolvedValue(undefined);
+  });
+
+  function parLive() {
+    return new Response(
+      JSON.stringify({
+        request_uri: "urn:ietf:params:oauth:request_uri:probe",
+        expires_in: 60,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  function parInvalidClient() {
+    return new Response(
+      JSON.stringify({
+        error: "invalid_client",
+        error_description: "client not found",
+      }),
+      { status: 400, headers: { "content-type": "application/json" } }
+    );
+  }
+
+  it("returns registered:false when nothing is cached", async () => {
+    dcrMocks.readDcrClientId.mockResolvedValue(null);
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+
+    const response = await GET(
+      new Request("http://localhost:3102/api/dcr?scenarioId=bank")
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ registered: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the cached client when Zentity still recognizes it", async () => {
+    dcrMocks.readDcrClientId.mockResolvedValue("live-client");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(parLive());
+
+    const response = await GET(
+      new Request("http://localhost:3102/api/dcr?scenarioId=bank")
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      registered: true,
+      client_id: "live-client",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://localhost:3000/api/auth/oauth2/par"
+    );
+    expect(dcrMocks.saveDcrClientId).not.toHaveBeenCalled();
+  });
+
+  it("re-registers when Zentity has forgotten the cached client", async () => {
+    dcrMocks.readDcrClientId.mockResolvedValue("stale-client");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(parInvalidClient())
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ client_id: "fresh-client" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      );
+
+    const response = await GET(
+      new Request("http://localhost:3102/api/dcr?scenarioId=bank")
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      registered: true,
+      client_id: "fresh-client",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      "http://localhost:3000/api/auth/oauth2/register"
+    );
+    expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith(
+      "bank",
+      "fresh-client"
+    );
+  });
+
+  it("returns 400 for an invalid scenarioId", async () => {
+    dcrMocks.isRouteScenarioId.mockReturnValue(false);
+
+    const response = await GET(
+      new Request("http://localhost:3102/api/dcr?scenarioId=nope")
+    );
+
+    expect(response.status).toBe(400);
   });
 });

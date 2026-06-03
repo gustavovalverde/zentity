@@ -71,6 +71,28 @@ export function validateSafeUrl(
   return null;
 }
 
+const SAFE_PATH_SEGMENT_REGEX = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;
+
+/**
+ * Validate path segments forwarded to an upstream service.
+ *
+ * The regex requires every segment to start with an alphanumeric/underscore/dash
+ * and carry only dotted suffixes after that, which rejects empty segments,
+ * traversal (`.`, `..`), leading dots (hidden files), separators, and anything
+ * outside `[A-Za-z0-9_.-]`. Returns `true` only when every segment passes.
+ */
+export function isSafePathSegments(
+  segments: readonly (string | undefined)[]
+): boolean {
+  if (segments.length === 0) {
+    return false;
+  }
+  return segments.every(
+    (segment) =>
+      typeof segment === "string" && SAFE_PATH_SEGMENT_REGEX.test(segment)
+  );
+}
+
 const TRAILING_COLON_REGEX = /:$/;
 
 /**

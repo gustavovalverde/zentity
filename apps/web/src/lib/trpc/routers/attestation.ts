@@ -3,7 +3,7 @@
  *
  * Handles on-chain identity attestation with the EIP-712 permit model:
  * - Server signs permits (registrar authorization)
- * - Client encrypts via FHEVM SDK and submits from their own wallet
+ * - Client encrypts via the confidential chain SDK and submits from their own wallet
  * - Server records tx hashes and tracks confirmation
  */
 import "server-only";

@@ -65,7 +65,9 @@ SIGNER_ENDPOINTS=http://localhost:5101,http://localhost:5102,http://localhost:51
 INTERNAL_SERVICE_TOKEN=dev-internal-token
 
 # Blockchain delivery targets
-FHEVM_REGISTRAR_PRIVATE_KEY=...        # Ethereum Sepolia fhEVM attestation writes
+CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY=... # Zama Confidential Sepolia attestation writes
+NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
+CONFIDENTIAL_RELAYER_URL=https://relayer.testnet.zama.org/v2
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY=... # Base mirror writes
 BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR=...
@@ -221,7 +223,7 @@ src/
 | `/api/fhe/enrollment/complete` | POST | Finalize FHE enrollment |
 | `/api/fhe/enrollment/blob` | POST | Pre-auth encrypted blob upload |
 | `/api/fhe/status` | POST | Persist FHE enrollment status for current user |
-| `/api/fhe/diagnostics` | GET | FHE service diagnostics |
+| `/api/confidential/relayer/[...path]` | Various | Server-side proxy for Zama relayer requests |
 | `/api/zk/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
 | `/api/zk/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
 | `/api/zk/nationality-proof` | GET/POST | Nationality helpers |

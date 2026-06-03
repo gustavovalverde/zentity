@@ -190,7 +190,7 @@ export async function initTelemetry(): Promise<void> {
                   url.startsWith("/api/password/pwned") ||
                   url.startsWith("/api/status/metrics/client") ||
                   url.startsWith("/api/status/build-info") ||
-                  url.startsWith("/api/fhe/diagnostics") ||
+                  url.startsWith("/api/confidential/relayer") ||
                   url.startsWith("/health")
                 );
               },

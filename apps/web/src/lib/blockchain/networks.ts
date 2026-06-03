@@ -4,9 +4,9 @@
  * Defines supported blockchain networks for identity attestation.
  * Networks can be enabled/disabled via environment variables.
  *
- * To add a new fhEVM attestation network:
+ * To add a new confidential attestation network:
  * 1. Add entry to NETWORKS with unique id
- * 2. Set type to "fhevm" (encrypted)
+ * 2. Set type to "confidential" (encrypted)
  * 3. Configure contracts addresses via env vars
  * 4. Enable via NEXT_PUBLIC_ENABLE_{NETWORK}=true
  */
@@ -14,13 +14,13 @@ import "server-only";
 
 import {
   chainIdByNetwork,
-  getFhevmContractAddresses,
+  getConfidentialContractAddresses,
   getIdentityRegistryMirrorAddress,
 } from "@zentity/contracts";
 
 import { env } from "@/env";
 
-export type NetworkType = "fhevm";
+export type NetworkType = "confidential";
 
 export type NetworkFeature = "encrypted" | "basic";
 
@@ -41,7 +41,7 @@ export interface NetworkConfig {
   explorer?: string | undefined;
   /** Network capabilities */
   features: NetworkFeature[];
-  /** Unique identifier (e.g., "fhevm_sepolia", "hardhat") */
+  /** Unique identifier (e.g., "confidential_sepolia", "hardhat") */
   id: string;
   /** Display name for UI */
   name: string;
@@ -80,13 +80,13 @@ interface BaseMirrorConfig {
  * Registry of all supported networks.
  *
  * Networks are enabled via environment variables:
- * - NEXT_PUBLIC_ENABLE_FHEVM (default: true)
+ * - NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN (default: true)
  * - NEXT_PUBLIC_ENABLE_HARDHAT (development only)
  */
-const FHEVM_NETWORK_ID = "fhevm_sepolia";
-const FHEVM_CHAIN_ID = 11_155_111;
-const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
-const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
+const CONFIDENTIAL_CHAIN_NETWORK_ID = "confidential_sepolia";
+const SEPOLIA_CONFIDENTIAL_CHAIN_ID = 11_155_111;
+const CONFIDENTIAL_CHAIN_NETWORK_NAME = "Zama Confidential Sepolia";
+const CONFIDENTIAL_CHAIN_EXPLORER_URL = "https://sepolia.etherscan.io";
 const BASE_SEPOLIA_NETWORK_ID = "base_sepolia";
 const BASE_SEPOLIA_EXPLORER_URL = "https://sepolia.basescan.org";
 function toOverrides(values: Record<ContractName, string | undefined>) {
@@ -103,8 +103,8 @@ function resolveNetworkContracts(
   overrides?: Partial<Record<ContractName, string>>
 ) {
   const contracts = overrides
-    ? getFhevmContractAddresses(chainId, { prefer, overrides })
-    : getFhevmContractAddresses(chainId, { prefer });
+    ? getConfidentialContractAddresses(chainId, { prefer, overrides })
+    : getConfidentialContractAddresses(chainId, { prefer });
 
   return {
     identityRegistry: contracts.IdentityRegistry,
@@ -128,19 +128,19 @@ function resolveBaseSepoliaMirrorAddress(): string | null {
   }
 }
 
-const FHEVM_ENABLED = env.NEXT_PUBLIC_ENABLE_FHEVM;
+const CONFIDENTIAL_CHAIN_ENABLED = env.NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN;
 const HARDHAT_ENABLED =
   process.env.NODE_ENV === "development" && env.NEXT_PUBLIC_ENABLE_HARDHAT;
 const BASE_SEPOLIA_ENABLED = env.NEXT_PUBLIC_ENABLE_BASE_SEPOLIA;
 
-const FHEVM_CONTRACTS = FHEVM_ENABLED
+const CONFIDENTIAL_CHAIN_CONTRACTS = CONFIDENTIAL_CHAIN_ENABLED
   ? resolveNetworkContracts(
-      FHEVM_CHAIN_ID,
+      SEPOLIA_CONFIDENTIAL_CHAIN_ID,
       "sepolia",
       toOverrides({
-        IdentityRegistry: env.FHEVM_IDENTITY_REGISTRY,
-        ComplianceRules: env.FHEVM_COMPLIANCE_RULES,
-        CompliantERC20: env.FHEVM_COMPLIANT_ERC20,
+        IdentityRegistry: env.CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY,
+        ComplianceRules: env.CONFIDENTIAL_CHAIN_COMPLIANCE_RULES,
+        CompliantERC20: env.CONFIDENTIAL_CHAIN_COMPLIANT_ERC20,
       })
     )
   : null;
@@ -162,21 +162,21 @@ const BASE_SEPOLIA_MIRROR_ADDRESS = BASE_SEPOLIA_ENABLED
   : null;
 
 const NETWORKS: Record<string, NetworkConfig> = {
-  [FHEVM_NETWORK_ID]: {
-    id: FHEVM_NETWORK_ID,
-    name: FHEVM_NETWORK_NAME,
-    chainId: FHEVM_CHAIN_ID,
-    rpcUrl: env.NEXT_PUBLIC_FHEVM_RPC_URL,
-    registrarPrivateKey: env.FHEVM_REGISTRAR_PRIVATE_KEY || "",
-    type: "fhevm",
+  [CONFIDENTIAL_CHAIN_NETWORK_ID]: {
+    id: CONFIDENTIAL_CHAIN_NETWORK_ID,
+    name: CONFIDENTIAL_CHAIN_NETWORK_NAME,
+    chainId: SEPOLIA_CONFIDENTIAL_CHAIN_ID,
+    rpcUrl: env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL,
+    registrarPrivateKey: env.CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY || "",
+    type: "confidential",
     features: ["encrypted"],
     contracts: {
-      identityRegistry: FHEVM_CONTRACTS?.identityRegistry || "",
-      complianceRules: FHEVM_CONTRACTS?.complianceRules,
-      compliantERC20: FHEVM_CONTRACTS?.compliantERC20,
+      identityRegistry: CONFIDENTIAL_CHAIN_CONTRACTS?.identityRegistry || "",
+      complianceRules: CONFIDENTIAL_CHAIN_CONTRACTS?.complianceRules,
+      compliantERC20: CONFIDENTIAL_CHAIN_CONTRACTS?.compliantERC20,
     },
-    explorer: FHEVM_EXPLORER_URL,
-    enabled: FHEVM_ENABLED,
+    explorer: CONFIDENTIAL_CHAIN_EXPLORER_URL,
+    enabled: CONFIDENTIAL_CHAIN_ENABLED,
   },
   hardhat: {
     id: "hardhat",
@@ -184,7 +184,7 @@ const NETWORKS: Record<string, NetworkConfig> = {
     chainId: 31_337,
     rpcUrl: env.LOCAL_RPC_URL,
     registrarPrivateKey: env.LOCAL_REGISTRAR_PRIVATE_KEY || "",
-    type: "fhevm",
+    type: "confidential",
     features: ["encrypted"],
     contracts: {
       identityRegistry: LOCAL_CONTRACTS?.identityRegistry || "",
@@ -193,18 +193,6 @@ const NETWORKS: Record<string, NetworkConfig> = {
     },
     enabled: HARDHAT_ENABLED,
   },
-  // Future networks can be added here:
-  // additional_fhevm: {
-  //   id: "fhevm_custom",
-  //   name: "fhEVM Custom",
-  //   chainId: 12345,
-  //   rpcUrl: process.env.FHEVM_CUSTOM_RPC_URL || "",
-  //   type: "fhevm",
-  //   features: ["encrypted"],
-  //   contracts: { identityRegistry: process.env.FHEVM_CUSTOM_REGISTRY || "" },
-  //   explorer: "https://example.com",
-  //   enabled: process.env.NEXT_PUBLIC_ENABLE_FHEVM_CUSTOM === "true",
-  // },
 };
 
 const BASE_SEPOLIA_MIRROR: BaseMirrorConfig = {

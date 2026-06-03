@@ -27,6 +27,7 @@ const DEFAULT_APP_DB_PATH = join(currentDir, "..", ".data", "dev.db");
 const SELECT_QUERY_REGEX = /^select\s/i;
 const WHITESPACE_REGEX = /\s+/;
 const IS_OIDC_ONLY = process.env.E2E_OIDC_ONLY === "true";
+const SHOULD_PROMOTE_WEB3_AUTH = process.env.E2E_RUN_WEB3 === "true";
 type IdentitySeedVariant = "incomplete" | "verified_with_profile";
 const identitySeedVariant: IdentitySeedVariant =
   process.env.E2E_IDENTITY_SEED_VARIANT === "verified_with_profile"
@@ -261,6 +262,10 @@ function escapeSqlString(value: string): string {
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function randomBytes32Hex(): string {
+  return `0x${randomBytes(32).toString("hex")}`;
 }
 
 async function clearSeededIdentityState(dbUrl: string, userId: string) {
@@ -550,8 +555,7 @@ async function seedOpaqueSecret(
       credential_id,
       wrapped_dek,
       prf_salt,
-      kek_source,
-      base_commitment
+      kek_source
     ) VALUES (
       '${randomUUID()}',
       '${escapeSqlString(secretId)}',
@@ -559,8 +563,7 @@ async function seedOpaqueSecret(
       '${escapeSqlString(wrapper.credentialId)}',
       '${escapeSqlString(wrapper.wrappedDek)}',
       NULL,
-      '${escapeSqlString(wrapper.kekSource)}',
-      NULL
+      '${escapeSqlString(wrapper.kekSource)}'
     );`
   );
 
@@ -712,7 +715,7 @@ async function seedIncompleteVerificationState(dbUrl: string, userId: string) {
         '${verificationId}',
         'noir_ultrahonk',
         'age_verification',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         'mock-proof',
         '["${new Date().getFullYear()}","18","${randomUUID()}","1"]',
         1240,
@@ -728,7 +731,7 @@ async function seedIncompleteVerificationState(dbUrl: string, userId: string) {
         '${verificationId}',
         'noir_ultrahonk',
         'face_match',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         'mock-proof',
         '["0.95","${randomUUID()}"]',
         980,
@@ -836,6 +839,8 @@ async function seedVerifiedWithProfileState(
       dedup_key,
       name_commitment,
       nationality_commitment,
+      birth_year_offset,
+      liveness_score,
       verified_at,
       confidence_score,
       status,
@@ -851,6 +856,8 @@ async function seedVerifiedWithProfileState(
       '${dedupKey}',
       '${nameCommitment}',
       '${nationalityCommitment}',
+      90,
+      0.97,
       '${now}',
       0.99,
       'verified',
@@ -950,7 +957,7 @@ async function seedVerifiedWithProfileState(
         '${verificationId}',
         'noir_ultrahonk',
         'age_verification',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         '${proofSessionId}',
         'mock-proof',
         '["1990","18","${randomUUID()}","1"]',
@@ -967,7 +974,7 @@ async function seedVerifiedWithProfileState(
         '${verificationId}',
         'noir_ultrahonk',
         'doc_validity',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         '${proofSessionId}',
         'mock-proof',
         '["20300101","${randomUUID()}"]',
@@ -984,7 +991,7 @@ async function seedVerifiedWithProfileState(
         '${verificationId}',
         'noir_ultrahonk',
         'nationality_membership',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         '${proofSessionId}',
         'mock-proof',
         '["USA","${randomUUID()}"]',
@@ -1001,7 +1008,7 @@ async function seedVerifiedWithProfileState(
         '${verificationId}',
         'noir_ultrahonk',
         'face_match',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         '${proofSessionId}',
         'mock-proof',
         '["0.95","${randomUUID()}"]',
@@ -1018,7 +1025,7 @@ async function seedVerifiedWithProfileState(
         '${verificationId}',
         'noir_ultrahonk',
         'identity_binding',
-        'proof_${randomUUID().replaceAll("-", "")}',
+        '${randomBytes32Hex()}',
         '${proofSessionId}',
         'mock-proof',
         '["binding","${randomUUID()}"]',
@@ -1182,6 +1189,62 @@ async function resetBlockchainState(dbUrl: string) {
   await runSql(dbUrl, "DELETE FROM blockchain_attestations;");
 }
 
+async function promoteLatestSessionToPasskeyAuth(dbUrl: string, email: string) {
+  const escapedEmail = email.replaceAll("'", "''");
+  const sessionRow = await runSql(
+    dbUrl,
+    `SELECT s.id || '|' || s.userId
+     FROM session s
+     INNER JOIN "user" u ON u.id = s.userId
+     WHERE u.email = '${escapedEmail}'
+     ORDER BY s.updatedAt DESC
+     LIMIT 1;`
+  );
+  if (!sessionRow) {
+    return;
+  }
+
+  const [sessionId, userId] = sessionRow.split("|");
+  if (!(sessionId && userId)) {
+    throw new Error("E2E strong-auth promotion could not resolve session");
+  }
+
+  const authContextId = randomUUID().replaceAll("-", "");
+  const now = Date.now();
+  await runSql(
+    dbUrl,
+    `INSERT INTO authentication_context (
+      id,
+      user_id,
+      source_kind,
+      login_method,
+      amr,
+      auth_strength,
+      authenticated_at,
+      source_session_id,
+      reference_type,
+      reference_id
+    ) VALUES (
+      '${authContextId}',
+      '${escapeSqlString(userId)}',
+      'better_auth',
+      'passkey',
+      '["pop","hwk","user"]',
+      'strong',
+      ${now},
+      '${escapeSqlString(sessionId)}',
+      'session',
+      '${escapeSqlString(sessionId)}'
+    );`
+  );
+  await runSql(
+    dbUrl,
+    `UPDATE session
+     SET "authContextId" = '${authContextId}'
+     WHERE id = '${escapeSqlString(sessionId)}';`
+  );
+}
+
 interface GlobalSetupProjectConfig {
   use?: {
     baseURL?: string;
@@ -1297,6 +1360,13 @@ export default async function globalSetup(config: GlobalSetupConfig) {
       password,
       variant: identitySeedVariant,
     });
+  }
+
+  if (SHOULD_PROMOTE_WEB3_AUTH) {
+    await promoteLatestSessionToPasskeyAuth(E2E_DB_URL, email);
+    if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
+      await promoteLatestSessionToPasskeyAuth(DEFAULT_APP_DB_URL, email);
+    }
   }
 
   await api.storageState({ path: AUTH_STATE_PATH });

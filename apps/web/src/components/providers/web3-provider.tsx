@@ -6,16 +6,15 @@ import { createAppKit } from "@reown/appkit/react";
 import { cookieToInitialState, WagmiProvider } from "wagmi";
 
 import { env } from "@/env";
-import { InMemoryStorageProvider } from "@/lib/blockchain/fhevm/use-in-memory-storage";
+import { ConfidentialChainProvider } from "@/lib/blockchain/confidential/chain";
 import {
-  fhevmSepolia,
+  confidentialSepolia,
   networks,
   projectId,
   wagmiAdapter,
 } from "@/lib/blockchain/wagmi";
 
 import { Eip712Bridge } from "./eip712-bridge";
-import { FhevmProvider } from "./fhevm-provider";
 
 const metadata = {
   name: "Zentity",
@@ -27,7 +26,7 @@ const metadata = {
   icons: ["/icon.png"],
 };
 
-const defaultNetwork = networks[0] ?? fhevmSepolia;
+const defaultNetwork = networks[0] ?? confidentialSepolia;
 
 // Initialize AppKit once at module level — must use the same adapter as WagmiProvider
 if (globalThis.window !== undefined && projectId) {
@@ -66,10 +65,10 @@ export function Web3Provider({
       config={wagmiAdapter.wagmiConfig}
       initialState={initialState}
     >
-      <InMemoryStorageProvider>
+      <ConfidentialChainProvider>
         <Eip712Bridge />
-        <FhevmProvider>{children}</FhevmProvider>
-      </InMemoryStorageProvider>
+        {children}
+      </ConfidentialChainProvider>
     </WagmiProvider>
   );
 }

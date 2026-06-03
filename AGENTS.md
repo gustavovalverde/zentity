@@ -13,8 +13,8 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 
 **For Web3/blockchain integration:**
 
-- [Web3 Architecture](docs/(blockchain)/web3-architecture.md) — FHEVM hooks, encryption/decryption flows
-- [Blockchain Setup](docs/(blockchain)/blockchain-setup.md) — Network config, contract deployment
+- [Web3 Architecture](docs/(architecture)/web3-architecture.md) — Confidential chain hooks, encryption/decryption flows
+- [Blockchain Setup](docs/internal/blockchain-setup.md) — Network config, contract deployment
 
 **For detailed system design:**
 
@@ -114,10 +114,10 @@ pnpm test:e2e:ui     # Run E2E with Playwright UI
 - Set `E2E_EXTERNAL_WEB_SERVER=true` so Playwright doesn't spawn its own server.
 - Ensure `TURSO_DATABASE_URL` (or `E2E_TURSO_DATABASE_URL`) matches `E2E_DATABASE_PATH` (seeded DB) or auth/attestation steps will fail.
 
-**Sepolia (fhEVM):**
+**Sepolia (Zama Confidential):**
 
-- Start server with `NEXT_PUBLIC_ENABLE_FHEVM=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
-- Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `FHEVM_*` contract addresses + registrar key.
+- Start server with `NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN=true` and `NEXT_PUBLIC_ENABLE_HARDHAT=false`.
+- Required envs: `E2E_SEPOLIA=true`, `E2E_SEPOLIA_RPC_URL`, and `CONFIDENTIAL_CHAIN_*` contract addresses + registrar key.
 - Run: `E2E_EXTERNAL_WEB_SERVER=true E2E_SEPOLIA=true pnpm exec playwright test e2e/web3-sepolia.spec.ts`
 - Sepolia E2E **skips** if envs are missing or the MetaMask account has no SepoliaETH (grant compliance access is disabled).
 

@@ -318,7 +318,7 @@ This supports upgrades and re-verification without overwriting previous evidence
 
 ## Web3 Attestation Schema
 
-Encrypted attributes are stored on‑chain in the IdentityRegistry (fhEVM), including **birth year offset** (`birthYearOffset`, u8 0–255), **compliance level**, and optional flags.
+Encrypted attributes are stored on-chain in the IdentityRegistry on the Zama confidential chain, including **birth year offset** (`birthYearOffset`, u8 0-255), **compliance level**, and optional flags.
 Public metadata includes **proofSetHash**, **policyHash**, **issuerId**, and timestamps for auditability.
 
 The encrypted attributes allow compliance checks **under encryption**. The public metadata enables audits without revealing PII. See [Web3 Architecture](web3-architecture.md) for the implementation details.

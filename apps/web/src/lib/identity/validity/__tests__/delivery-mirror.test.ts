@@ -75,7 +75,7 @@ describe("identity validity mirror deliveries", () => {
         status: "confirmed",
         chainId: 11_155_111,
         walletAddress: "0x0000000000000000000000000000000000000003",
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
       })
       .run();
 
@@ -91,7 +91,7 @@ describe("identity validity mirror deliveries", () => {
       verificationId,
       eventKind: "verified",
       source: "chain",
-      sourceNetwork: "fhevm_sepolia",
+      sourceNetwork: "confidential_sepolia",
       sourceEventId: "0xtx:1",
     });
 

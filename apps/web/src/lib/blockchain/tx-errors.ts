@@ -94,7 +94,7 @@ export function getUserFriendlyError(error: unknown): string {
     return "Unauthorized ciphertext handle. Re-encrypt and retry.";
   }
 
-  // FHE/ACL errors (Zama fhEVM)
+  // FHE/ACL errors (Zama confidential contracts)
   if (lower.includes("sendernotallowed") || msg.includes("0x23dada53")) {
     return "ACL permission denied. The contract lacks permission to grant access. Please re-attest your identity.";
   }

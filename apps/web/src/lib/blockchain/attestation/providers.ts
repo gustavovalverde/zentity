@@ -7,7 +7,7 @@
  * - Registrar-initiated revocation
  * - Read contract state
  *
- * Client-side (not in this module): FHEVM encryption, tx submission from user wallet.
+ * Client-side (not in this module): confidential encryption, tx submission from user wallet.
  */
 import "server-only";
 
@@ -145,7 +145,7 @@ function sleep(ms: number): Promise<void> {
  *   [3] consentS (bytes32)
  *   [4] attributeMask (uint8)
  *   [5] consentDeadline (uint256)
- *   [6..] encrypted handles + inputProof
+ *   [6] encrypted attributes struct
  */
 function decodeAttestWithPermitConsent(
   args: readonly unknown[] | undefined

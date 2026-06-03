@@ -3,38 +3,43 @@
 /**
  * Wagmi configuration and client-side wallet hooks.
  *
- * - `wagmiAdapter` / `networks` / `fhevmSepolia` / `projectId`: Reown AppKit config
+ * - `wagmiAdapter` / `networks` / `confidentialSepolia` / `projectId`: Reown AppKit config
  * - `useDevFaucet`: Hardhat faucet hook for local dev
- * - `useEthersSigner`: bridges wagmi to ethers v6 JsonRpcSigner (for FHEVM EIP-712)
  *
- * Lives in `lib/blockchain/` because all three concerns are tightly coupled to
- * the wagmi adapter and targeted networks; splitting them into separate files
- * required consumers to track three import paths for one mental model.
+ * Lives in `lib/blockchain/` because the adapter, network list, and faucet are
+ * one client-side wallet boundary.
  */
 
 import type { AppKitNetwork } from "@reown/appkit/networks";
 
-import { hardhat, sepolia } from "@reown/appkit/networks";
-import { useAppKitAccount } from "@reown/appkit/react";
+import { hardhat as appKitHardhat, sepolia } from "@reown/appkit/networks";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { cookieStorage, createStorage } from "@wagmi/core";
-import { BrowserProvider, type Eip1193Provider, type Signer } from "ethers";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { usePublicClient } from "wagmi";
 
 import { env } from "@/env";
+import {
+  getConfidentialClientNetwork,
+  HARDHAT_CONFIDENTIAL_CHAIN_ID,
+  SEPOLIA_CONFIDENTIAL_CHAIN_ID,
+} from "@/lib/blockchain/confidential/client-networks";
 
 // ---------------------------------------------------------------------------
 // Wagmi configuration
 // ---------------------------------------------------------------------------
 
-const FHEVM_CHAIN_ID = 11_155_111;
-const FHEVM_NETWORK_NAME = "fhEVM (Sepolia)";
-const FHEVM_EXPLORER_URL = "https://sepolia.etherscan.io";
+const CONFIDENTIAL_CHAIN_NETWORK_NAME = "Zama Confidential Sepolia";
+const CONFIDENTIAL_CHAIN_EXPLORER_URL = "https://sepolia.etherscan.io";
+const localHardhatNetwork = getConfidentialClientNetwork(
+  HARDHAT_CONFIDENTIAL_CHAIN_ID
+);
+const localHardhatRpcUrl =
+  localHardhatNetwork?.rpcUrl ?? env.NEXT_PUBLIC_LOCAL_RPC_URL;
 
-export const fhevmSepolia = {
-  id: FHEVM_CHAIN_ID,
-  name: FHEVM_NETWORK_NAME,
+export const confidentialSepolia = {
+  id: SEPOLIA_CONFIDENTIAL_CHAIN_ID,
+  name: CONFIDENTIAL_CHAIN_NETWORK_NAME,
   nativeCurrency: {
     name: "Sepolia Ether",
     symbol: "ETH",
@@ -42,16 +47,26 @@ export const fhevmSepolia = {
   },
   rpcUrls: {
     default: {
-      http: [env.NEXT_PUBLIC_FHEVM_RPC_URL],
+      http: [env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL],
     },
   },
   blockExplorers: {
     default: {
       name: "Etherscan",
-      url: FHEVM_EXPLORER_URL,
+      url: CONFIDENTIAL_CHAIN_EXPLORER_URL,
     },
   },
   testnet: true,
+} as const satisfies AppKitNetwork;
+
+const localHardhat = {
+  ...appKitHardhat,
+  rpcUrls: {
+    ...appKitHardhat.rpcUrls,
+    default: {
+      http: [localHardhatRpcUrl],
+    },
+  },
 } as const satisfies AppKitNetwork;
 
 /**
@@ -83,11 +98,11 @@ function getEnabledNetworks(): [AppKitNetwork, ...AppKitNetwork[]] {
     process.env.NODE_ENV === "development" &&
     env.NEXT_PUBLIC_ENABLE_HARDHAT
   ) {
-    enabledNetworks.push(hardhat);
+    enabledNetworks.push(localHardhat);
   }
 
-  if (env.NEXT_PUBLIC_ENABLE_FHEVM) {
-    enabledNetworks.push(fhevmSepolia);
+  if (env.NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN) {
+    enabledNetworks.push(confidentialSepolia);
   }
 
   if (enabledNetworks.length === 0) {
@@ -119,7 +134,6 @@ export const wagmiAdapter = new WagmiAdapter({
 // Dev faucet hook (Hardhat only)
 // ---------------------------------------------------------------------------
 
-const HARDHAT_CHAIN_ID = 31_337;
 const DEV_FAUCET_WEI = "0x8AC7230489E80000"; // 10 ETH
 
 export function useDevFaucet(chainId?: number) {
@@ -127,11 +141,15 @@ export function useDevFaucet(chainId?: number) {
   const [isFauceting, setIsFauceting] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const isSupported = chainId === HARDHAT_CHAIN_ID && Boolean(publicClient);
+  const isSupported =
+    chainId === HARDHAT_CONFIDENTIAL_CHAIN_ID && Boolean(publicClient);
 
   const faucet = useCallback(
     async (address?: `0x${string}`) => {
-      if (!(address && publicClient) || chainId !== HARDHAT_CHAIN_ID) {
+      if (
+        !(address && publicClient) ||
+        chainId !== HARDHAT_CONFIDENTIAL_CHAIN_ID
+      ) {
         return false;
       }
 
@@ -166,48 +184,4 @@ export function useDevFaucet(chainId?: number) {
     error,
     isSupported,
   } as const;
-}
-
-// ---------------------------------------------------------------------------
-// Ethers signer hook (bridges wagmi → ethers v6)
-// ---------------------------------------------------------------------------
-
-/**
- * Bridges wagmi's wallet client to an ethers v6 JsonRpcSigner.
- * Needed for the FHEVM SDK which requires ethers signers for EIP-712 signatures.
- */
-export function useEthersSigner(): Signer | undefined {
-  const { address, isConnected } = useAppKitAccount();
-  const [signer, setSigner] = useState<Signer | undefined>(undefined);
-
-  useEffect(() => {
-    async function getSigner() {
-      if (!(isConnected && address) || globalThis.window === undefined) {
-        setSigner(undefined);
-        return;
-      }
-
-      const ethereum = globalThis.window.ethereum as
-        | Eip1193Provider
-        | undefined;
-      if (!ethereum) {
-        setSigner(undefined);
-        return;
-      }
-
-      try {
-        const provider = new BrowserProvider(ethereum);
-        const ethSigner = await provider.getSigner(address);
-        setSigner(ethSigner);
-      } catch {
-        setSigner(undefined);
-      }
-    }
-
-    getSigner().catch(() => {
-      // Error already caught in try-catch above
-    });
-  }, [address, isConnected]);
-
-  return signer;
 }

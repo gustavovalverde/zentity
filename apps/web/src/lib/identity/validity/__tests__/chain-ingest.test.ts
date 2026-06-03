@@ -26,12 +26,12 @@ vi.mock("viem", async () => {
 vi.mock("@/lib/blockchain/networks", () => ({
   getBaseSepoliaMirrorConfig: () => null,
   getNetworkById: () => ({
-    id: "fhevm_sepolia",
-    name: "fhEVM Sepolia",
+    id: "confidential_sepolia",
+    name: "Zama Confidential Sepolia",
     chainId: 11_155_111,
     rpcUrl: "https://sepolia.example",
     registrarPrivateKey: "0xregistrar",
-    type: "fhevm",
+    type: "confidential",
     features: ["encrypted"],
     contracts: {
       identityRegistry: "0x0000000000000000000000000000000000000001",
@@ -88,7 +88,7 @@ describe("ingestChainValidityEvents", () => {
         status: "confirmed",
         chainId: 11_155_111,
         walletAddress: WALLET_ADDRESS,
-        networkId: "fhevm_sepolia",
+        networkId: "confidential_sepolia",
         blockNumber: 9,
       })
       .run();
@@ -112,7 +112,7 @@ describe("ingestChainValidityEvents", () => {
       ]);
 
     const result = await ingestChainValidityEvents({
-      networkId: "fhevm_sepolia",
+      networkId: "confidential_sepolia",
       fromBlock: 10,
     });
 

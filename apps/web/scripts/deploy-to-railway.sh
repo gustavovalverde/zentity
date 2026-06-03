@@ -35,7 +35,7 @@ rsync -a \
   --exclude='.data' --exclude='coverage' --exclude='playwright-report' \
   --exclude='test-results' --exclude='e2e' --exclude='.claude' \
   --exclude='.cursor' --exclude='*.tsbuildinfo' --exclude='dist' \
-  --exclude='build' --exclude='public/bb' --exclude='public/fhevm' \
+  --exclude='build' --exclude='public/bb' \
   --exclude='public/tfhe' --exclude='public/tfhe_bg.wasm' \
   --exclude='public/kms_lib_bg.wasm' --exclude='public/workerHelpers.js' \
   --exclude='apps' \
