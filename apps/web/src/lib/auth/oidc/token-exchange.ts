@@ -57,6 +57,7 @@ import {
   jwks as jwksTable,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
+import { logger } from "@/lib/logging/logger";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
@@ -458,7 +459,15 @@ function createTokenExchangeHandler(): (
             ? subjectCnf.jkt
             : undefined;
       }
-    } catch {
+    } catch (cause) {
+      logger.warn(
+        {
+          subjectTokenType,
+          subjectTokenShape: subjectToken.startsWith("eyJ") ? "jwt" : "opaque",
+          cause: cause instanceof Error ? cause.message : String(cause),
+        },
+        "token-exchange: subject token rejected"
+      );
       throw new APIError("BAD_REQUEST", {
         error: "invalid_grant",
         error_description: "Subject token verification failed",
