@@ -26,6 +26,17 @@ export const env = createEnv({
       .default("http://localhost:3000")
       .transform((s) => s.replace(TRAILING_SLASHES, "")),
 
+    // Default matches the bind address shipped in zpay-runtime's
+    // Dockerfile and docker-compose. Running `docker compose up` next
+    // to `pnpm dev` is enough; production overrides this with a
+    // reachable host.
+    ZPAY_URL: z
+      .string()
+      .default("http://127.0.0.1:8080")
+      .transform((s) => s.replace(TRAILING_SLASHES, "")),
+    ZPAY_PAYEE_ID: z.string().default("aether-demo"),
+    ZPAY_DPOP_KEY_SEED: z.string().min(32).optional(),
+
     DATABASE_URL: z.string().default("file:./.data/demo-rp.db"),
     DATABASE_AUTH_TOKEN: z.string().optional(),
 
@@ -55,6 +66,9 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     ZENTITY_URL: process.env.ZENTITY_URL,
+    ZPAY_URL: process.env.ZPAY_URL,
+    ZPAY_PAYEE_ID: process.env.ZPAY_PAYEE_ID,
+    ZPAY_DPOP_KEY_SEED: process.env.ZPAY_DPOP_KEY_SEED,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
     OIDC4VCI_WALLET_CLIENT_ID: process.env.OIDC4VCI_WALLET_CLIENT_ID,

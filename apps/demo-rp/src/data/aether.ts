@@ -1,4 +1,5 @@
 import type { TrustTier } from "@/lib/agent-runtime-storage";
+import type { PaymentNetwork } from "@/lib/zpay-client";
 
 export interface Product {
   brand: string;
@@ -18,6 +19,14 @@ export interface ShoppingTask {
   results: Product[];
   scope?: string;
   trustTier: TrustTier;
+  /**
+   * When present, the agent should call the BFF prepare endpoint
+   * before triggering CIBA so the approval surface and the in-page
+   * wallet bridge agree on the prepared payment URI. The registry's
+   * `pay_to` and `amount_zat` come from zpay's PayeeRegistry, not
+   * from this scenario data.
+   */
+  zpay?: { network: PaymentNetwork };
 }
 
 export const SHOPPING_TASKS: ShoppingTask[] = [
@@ -27,6 +36,7 @@ export const SHOPPING_TASKS: ShoppingTask[] = [
     label: "Wireless headphones",
     prompt: "Find me the best wireless noise-cancelling headphones under $400",
     budget: 400,
+    zpay: { network: "testnet" },
     results: [
       {
         id: "p-1",

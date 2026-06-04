@@ -16,6 +16,10 @@ const demoRpBaseURL =
 const useExternalIssuerServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
 const useExternalDemoRpServer =
   process.env.E2E_EXTERNAL_DEMO_RP_SERVER === "true";
+const useExternalZpayServer = process.env.E2E_EXTERNAL_ZPAY_SERVER === "true";
+const zpayAppPort = process.env.ZPAY_E2E_APP_PORT ?? "18080";
+const zpayBaseURL = process.env.ZPAY_URL ?? `http://127.0.0.1:${zpayAppPort}`;
+const zpayPayeeId = process.env.ZPAY_E2E_PAYEE_ID ?? "aether-demo";
 
 process.env.PLAYWRIGHT_TEST_BASE_URL ??= issuerBaseURL;
 process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ??= demoRpBaseURL;
@@ -101,6 +105,30 @@ export default defineConfig({
                 "demo-rp-e2e-secret-at-least-32-chars",
               HOSTNAME: demoRpUrl.hostname,
               PORT: demoRpPort,
+              ZPAY_URL: zpayBaseURL,
+              ZPAY_PAYEE_ID: zpayPayeeId,
+              // Stable seed so the BFF's DPoP JKT stays constant across
+              // restarts and across the prepare/settle pair in a single
+              // E2E run.
+              ZPAY_DPOP_KEY_SEED:
+                process.env.ZPAY_DPOP_KEY_SEED ??
+                "e2e-zpay-dpop-seed-32-chars-min-x",
+            },
+          },
+        ]),
+    ...(useExternalZpayServer
+      ? []
+      : [
+          {
+            command: "pnpm exec tsx e2e/start-zpay-runtime.ts",
+            cwd: currentDir,
+            url: `${zpayBaseURL}/x402/v2/accepts?payee_id=${zpayPayeeId}`,
+            reuseExistingServer: false,
+            timeout: 300 * 1000,
+            env: {
+              ...process.env,
+              ZPAY_E2E_APP_PORT: zpayAppPort,
+              ZPAY_E2E_PAYEE_ID: zpayPayeeId,
             },
           },
         ]),

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertCircleIcon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
   Clock01Icon,
@@ -10,13 +11,19 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import type { PreparationError } from "@/app/aether/page";
+import { PaymentBridge } from "@/components/aether/payment-bridge";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { Button } from "@/components/ui/button";
 import { Redacted } from "@/components/ui/redacted";
 import type { Product, ShoppingTask } from "@/data/aether";
 import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
+import type { Preparation } from "@/lib/zpay-client";
+
+interface PreparedWithCode extends Preparation {
+  confirmation_code: string;
+}
 
 interface AgentMessage {
   content?: string | undefined;
@@ -33,6 +40,8 @@ interface AgentChatProps {
   exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   onTriggerCiba: () => void;
+  preparationError: PreparationError | null;
+  prepared: PreparedWithCode | null;
   task: ShoppingTask;
   tokens: Record<string, unknown> | null;
   userInfo: Record<string, unknown> | null;
@@ -110,6 +119,8 @@ export function AgentChat({
   error,
   onTriggerCiba,
   onReset,
+  prepared,
+  preparationError,
 }: AgentChatProps) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [typing, setTyping] = useState(true);
@@ -206,6 +217,19 @@ export function AgentChat({
 
         {typing && <TypingIndicator />}
 
+        {/* Late-arriving prepare failures must surface no matter where
+            the CIBA state machine is parked, so render unconditionally
+            when preparationError is set. A sticky banner pattern keeps
+            the block visible even when CIBA-waiting copy is below it. */}
+        {preparationError && (
+          <div className="fade-in sticky top-2 z-20 animate-in rounded-lg border-white/10 border-b bg-black/40 backdrop-blur-sm duration-300">
+            <PreparationErrorBlock
+              error={preparationError}
+              onReset={handleReset}
+            />
+          </div>
+        )}
+
         {/* CIBA states */}
         {(cibaState === "requesting" || cibaState === "polling") && (
           <CibaWaiting state={cibaState} />
@@ -213,11 +237,24 @@ export function AgentChat({
         {cibaState === "approved" && tokens && exchangedTokens && (
           <div className="fade-in max-w-[85%] animate-in rounded-xl rounded-bl-sm bg-white/10 px-4 py-3 duration-300">
             <p className="text-sm text-white/80 leading-relaxed">
-              Narrowing permissions for the merchant API...
+              {prepared
+                ? "Approved. Hand the prepared payment to your wallet to broadcast."
+                : "Narrowing permissions for the merchant API..."}
             </p>
           </div>
         )}
-        {cibaState === "approved" && tokens && (
+        {cibaState === "approved" && prepared && (
+          <div className="fade-in animate-in duration-500">
+            <PaymentBridge
+              amountZat={prepared.amount_zat}
+              confirmationCode={prepared.confirmation_code}
+              onReset={handleReset}
+              paymentId={prepared.payment_id}
+              paymentUri={prepared.payment_uri}
+            />
+          </div>
+        )}
+        {cibaState === "approved" && tokens && !prepared && (
           <CibaResult
             exchangedTokens={exchangedTokens}
             onReset={handleReset}
@@ -479,6 +516,37 @@ function extractProofClaims(
   return claims;
 }
 
+interface ApprovedPayment {
+  network?: string;
+  paymentId: string;
+  paymentUri: string;
+  scheme?: string;
+}
+
+function extractApprovedPayment(
+  authorizationDetails: unknown[] | undefined
+): ApprovedPayment | null {
+  if (!authorizationDetails || authorizationDetails.length === 0) {
+    return null;
+  }
+  const first = authorizationDetails[0];
+  if (!first || typeof first !== "object") {
+    return null;
+  }
+  const detail = first as Record<string, unknown>;
+  const paymentUri = detail.payment_uri;
+  const paymentId = detail.payment_id;
+  if (typeof paymentUri !== "string" || typeof paymentId !== "string") {
+    return null;
+  }
+  return {
+    paymentUri,
+    paymentId,
+    ...(typeof detail.scheme === "string" ? { scheme: detail.scheme } : {}),
+    ...(typeof detail.network === "string" ? { network: detail.network } : {}),
+  };
+}
+
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split(".");
@@ -526,6 +594,7 @@ function CibaResult({
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
     | undefined;
+  const approvedPayment = extractApprovedPayment(authorizationDetails);
 
   // Decode id_token for assurance claims
   const idTokenPayload =
@@ -596,6 +665,8 @@ function CibaResult({
             " The token was further narrowed via RFC 8693 Token Exchange before calling the merchant API."}
         </p>
       </div>
+
+      {approvedPayment && <ApprovedPaymentBlock payment={approvedPayment} />}
 
       <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
@@ -775,6 +846,79 @@ function CibaResult({
         variant="outline"
       >
         Try Another Task
+      </Button>
+    </div>
+  );
+}
+
+function ApprovedPaymentBlock({ payment }: { payment: ApprovedPayment }) {
+  return (
+    <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+      <p className="font-medium text-blue-300/80 text-xs uppercase tracking-wider">
+        Approved payment
+      </p>
+      <p className="mt-1.5 text-white/60 text-xs leading-relaxed">
+        The user approved a {payment.scheme ?? "payment"} request bound to this
+        URI. The payment-bridge component (pending) will hand this URI to the
+        wallet for settlement.
+      </p>
+      <div className="mt-3 space-y-2 text-xs">
+        <div>
+          <p className="text-white/40">payment_id</p>
+          <p className="break-all font-mono text-white/80">
+            {payment.paymentId}
+          </p>
+        </div>
+        <div>
+          <p className="text-white/40">payment_uri</p>
+          <p className="break-all font-mono text-white/80">
+            {payment.paymentUri}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PREPARATION_ERROR_TITLES: Record<PreparationError["kind"], string> = {
+  network_error: "Could not reach the payment service",
+  server_error: "The payment service rejected the request",
+  session_required: "Sign in to continue",
+  registry_unknown: "Merchant is not registered",
+  zpay_unavailable: "Payment service is not configured",
+  invalid_request: "Invalid request",
+};
+
+function PreparationErrorBlock({
+  error,
+  onReset,
+}: {
+  error: PreparationError;
+  onReset: () => void;
+}) {
+  const title = PREPARATION_ERROR_TITLES[error.kind];
+  return (
+    <div className="fade-in animate-in space-y-3 duration-500">
+      <div className="rounded-lg border border-red-500/30 bg-red-500/[0.08] p-4">
+        <div className="flex items-center gap-2">
+          <HugeiconsIcon
+            className="text-red-400"
+            icon={AlertCircleIcon}
+            size={20}
+          />
+          <p className="font-semibold text-red-200">{title}</p>
+        </div>
+        <p className="mt-1 text-red-100/70 text-sm">{error.description}</p>
+        <p className="mt-2 font-mono text-[10px] text-red-100/40 uppercase tracking-widest">
+          {error.kind}
+        </p>
+      </div>
+      <Button
+        className="w-full text-white/60"
+        onClick={onReset}
+        variant="outline"
+      >
+        Try again
       </Button>
     </div>
   );

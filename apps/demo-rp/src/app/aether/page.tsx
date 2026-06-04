@@ -18,9 +18,124 @@ import { SHOPPING_TASKS, type ShoppingTask } from "@/data/aether";
 import { useCibaFlow } from "@/hooks/use-ciba-flow";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import type { TrustTier } from "@/lib/agent-runtime-storage";
+import type { PaymentNetwork, Preparation } from "@/lib/zpay-client";
 import { aetherScenario } from "@/scenarios/aether";
 
 const scenario = aetherScenario;
+
+/**
+ * Discriminated error tag returned by the prepare BFF (Commit F).
+ * The chat surface maps each tag to copy without touching exception
+ * strings.
+ */
+type PreparationErrorKind =
+  | "network_error"
+  | "server_error"
+  | "session_required"
+  | "registry_unknown"
+  | "zpay_unavailable"
+  | "invalid_request";
+
+export interface PreparationError {
+  description: string;
+  kind: PreparationErrorKind;
+}
+
+interface PreparedWithCode extends Preparation {
+  confirmation_code: string;
+}
+
+type PreparationResult =
+  | { ok: true; preparation: PreparedWithCode }
+  | { ok: false; error: PreparationError };
+
+const KNOWN_ERROR_TAGS: ReadonlySet<PreparationErrorKind> = new Set([
+  "network_error",
+  "server_error",
+  "session_required",
+  "registry_unknown",
+  "zpay_unavailable",
+  "invalid_request",
+]);
+
+function decodeErrorBody(body: unknown): PreparationError {
+  if (body && typeof body === "object") {
+    const record = body as Record<string, unknown>;
+    const rawKind = typeof record.error === "string" ? record.error : "";
+    const description =
+      typeof record.error_description === "string"
+        ? record.error_description
+        : "The payment service rejected the request.";
+    if (KNOWN_ERROR_TAGS.has(rawKind as PreparationErrorKind)) {
+      return { kind: rawKind as PreparationErrorKind, description };
+    }
+  }
+  return {
+    kind: "server_error",
+    description: "The payment service rejected the request.",
+  };
+}
+
+async function preparePayment(input: {
+  item: string;
+  merchant: string;
+  network: PaymentNetwork;
+  taskId: string;
+  itemId: string;
+  amountMinorUnits: number;
+}): Promise<PreparationResult> {
+  let response: Response;
+  try {
+    response = await fetch("/api/aether/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    return {
+      ok: false,
+      error: {
+        kind: "network_error",
+        description: "Could not reach the payment service.",
+      },
+    };
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    return { ok: false, error: decodeErrorBody(payload) };
+  }
+  const data = payload as Partial<PreparedWithCode> | null;
+  if (
+    !(
+      data?.payment_uri &&
+      data.payment_id &&
+      typeof data.amount_zat === "number" &&
+      typeof data.expiry_height === "number" &&
+      typeof data.confirmation_code === "string"
+    )
+  ) {
+    return {
+      ok: false,
+      error: {
+        kind: "server_error",
+        description:
+          "The payment service returned an incomplete prepare response.",
+      },
+    };
+  }
+  return {
+    ok: true,
+    preparation: {
+      payment_uri: data.payment_uri,
+      payment_id: data.payment_id,
+      amount_zat: data.amount_zat,
+      expiry_height: data.expiry_height,
+      memo_bytes: data.memo_bytes ?? [],
+      confirmation_code: data.confirmation_code,
+    },
+  };
+}
 
 export default function AetherPage() {
   const {
@@ -34,13 +149,16 @@ export default function AetherPage() {
 
   const [task, setTask] = useState<ShoppingTask | null>(null);
   const [dcrReady, setDcrReady] = useState(false);
+  const [prepared, setPrepared] = useState<PreparedWithCode | null>(null);
+  const [preparationError, setPreparationError] =
+    useState<PreparationError | null>(null);
 
   const { state, tokens, exchangedTokens, userInfo, error, startFlow, reset } =
     useCibaFlow(scenario.id);
 
   const userEmail = (claims?.email as string) || session?.user?.email || "";
 
-  const triggerCiba = useCallback(() => {
+  const triggerCiba = useCallback(async () => {
     if (!(userEmail && task)) {
       return;
     }
@@ -52,27 +170,66 @@ export default function AetherPage() {
     const tax = pick.price * 0.0875;
     const total = pick.price + tax;
 
-    const tierPrefixes: Record<string, string> = {
-      anonymous: "Purchase request:",
-      registered: "Aether AI requests purchase:",
-      attested: "Verified Aether AI requests purchase:",
+    const merchant = "Aether AI";
+    const item = `${pick.brand} ${pick.name}`;
+
+    const baseDetail: Record<string, unknown> = {
+      type: "purchase",
+      merchant,
+      item,
+      amount: { currency: "USD", value: total.toFixed(2) },
     };
-    const prefix = tierPrefixes[task.trustTier] ?? tierPrefixes.registered;
-    const bindingMessage = `${prefix} ${pick.brand} ${pick.name}`;
+
+    let preparedPayment: PreparedWithCode | null = null;
+    if (task.zpay) {
+      const result = await preparePayment({
+        merchant,
+        item,
+        network: task.zpay.network,
+        taskId: task.id,
+        itemId: pick.id,
+        amountMinorUnits: Math.round(total * 100),
+      });
+      if (!result.ok) {
+        setPreparationError(result.error);
+        setPrepared(null);
+        return;
+      }
+      preparedPayment = result.preparation;
+      setPreparationError(null);
+      setPrepared(preparedPayment);
+      baseDetail.scheme = "zcash";
+      baseDetail.network = task.zpay.network;
+      baseDetail.amount_zat = preparedPayment.amount_zat;
+      baseDetail.payment_uri = preparedPayment.payment_uri;
+      baseDetail.payment_id = preparedPayment.payment_id;
+      baseDetail.confirmation_code = preparedPayment.confirmation_code;
+    } else {
+      setPreparationError(null);
+      setPrepared(null);
+    }
+
+    // Lead with the confirmation code on its own line so small CIBA
+    // push bubbles surface it before truncating the action sentence.
+    // The user reads this code on their phone and confirms it against
+    // the bridge UI on their laptop.
+    const tierActions: Record<string, string> = {
+      anonymous: "Purchase request",
+      registered: "Aether AI requests purchase of",
+      attested: "Verified Aether AI requests purchase of",
+    };
+    const action = tierActions[task.trustTier] ?? tierActions.registered;
+    const itemLine = `${action} ${pick.brand} ${pick.name}`;
+    const bindingMessage = preparedPayment
+      ? `Confirm code: ${preparedPayment.confirmation_code}\n${itemLine}`
+      : itemLine;
 
     startFlow({
       loginHint: userEmail,
       scope: task.scope ?? "openid",
       bindingMessage,
       trustTier: task.trustTier,
-      authorizationDetails: JSON.stringify([
-        {
-          type: "purchase",
-          merchant: "Aether AI",
-          item: `${pick.brand} ${pick.name}`,
-          amount: { currency: "USD", value: total.toFixed(2) },
-        },
-      ]),
+      authorizationDetails: JSON.stringify([baseDetail]),
       ...(scenario.acrValues === undefined
         ? {}
         : { acrValues: scenario.acrValues }),
@@ -82,6 +239,8 @@ export default function AetherPage() {
   const handleReset = useCallback(() => {
     reset();
     setTask(null);
+    setPrepared(null);
+    setPreparationError(null);
   }, [reset]);
 
   const handleDcrRegistered = useCallback(() => setDcrReady(true), []);
@@ -156,6 +315,8 @@ export default function AetherPage() {
               exchangedTokens={exchangedTokens}
               onReset={handleReset}
               onTriggerCiba={triggerCiba}
+              preparationError={preparationError}
+              prepared={prepared}
               task={task}
               tokens={tokens}
               userInfo={userInfo}

@@ -23,6 +23,7 @@
     "@hugeicons/core-free-icons": "^4.0.0",
     "@hugeicons/react": "^1.1.6",
     "@libsql/client": "^0.17.0",
+    "@noble/curves": "^1.9.7",
     "@sd-jwt/core": "^0.19.0",
     "@sd-jwt/types": "^0.19.0",
     "@t3-oss/env-nextjs": "^0.13.10",

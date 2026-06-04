@@ -89,7 +89,7 @@ services:
       - bb-crs:/var/lib/zentity/bb-crs
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   fhe-service:
     build:
@@ -112,7 +112,7 @@ services:
       - fhe-keys:/var/lib/zentity/fhe
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   ocr-service:
     build:
@@ -129,7 +129,7 @@ services:
       - OTEL_SERVICE_NAME=zentity-ocr
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   mailpit:
     image: axllent/mailpit:latest
@@ -145,7 +145,7 @@ services:
       - ./apps/web/.data/mailpit:/data
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.141.0
@@ -158,7 +158,7 @@ services:
       - ./tooling/observability/otel-collector.yaml:/etc/otel-collector.yaml:ro
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   tempo:
     image: grafana/tempo:2.9.0
@@ -171,7 +171,7 @@ services:
       - "3200:3200"
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   mimir:
     image: grafana/mimir:3.0.1
@@ -185,7 +185,7 @@ services:
       - "9009:8080"
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
   grafana:
     image: grafana/grafana:12.3.0
@@ -204,10 +204,11 @@ services:
       - mimir
     restart: unless-stopped
     networks:
-      - zentity-network
+      - zcash-x402-demo
 
 networks:
-  zentity-network:
+  zcash-x402-demo:
+    name: zcash-x402-demo
     driver: bridge
     enable_ipv6: true
 
