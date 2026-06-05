@@ -45,6 +45,25 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  // Dev-only gate per Proposal-0003 §10. The Phase 5 MVP skips CIBA
+  // authorization-details correlation, canonical-URI lookup, and
+  // payment_id ownership checks; the route signs whatever URI the
+  // caller supplies as long as they have a session. That posture is
+  // acceptable for a local demo flow and is not safe for production.
+  // The route refuses to serve when NODE_ENV is "production" so a
+  // misconfigured deploy fails closed instead of silently shipping a
+  // wallet-spend MVP.
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      {
+        error: "demo_only",
+        error_description:
+          "/api/aether/sign is gated to non-production builds until the CIBA correlation and ownership checks land (Proposal-0003 §10).",
+      },
+      { status: 503 }
+    );
+  }
+
   const parsed = requestSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
