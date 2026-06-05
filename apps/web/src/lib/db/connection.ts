@@ -25,6 +25,8 @@ import * as organizationSchema from "./schema/organization";
 import * as privacySchema from "./schema/privacy";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as recoverySchema from "./schema/recovery";
+// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
+import * as revokedTokensSchema from "./schema/revoked-tokens";
 
 const schema = {
   ...agentSchema,
@@ -36,6 +38,7 @@ const schema = {
   ...organizationSchema,
   ...privacySchema,
   ...recoverySchema,
+  ...revokedTokensSchema,
 };
 
 function isBuildTime() {

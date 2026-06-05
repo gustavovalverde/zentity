@@ -32,7 +32,9 @@
     "src/test-utils/**",
     "src/lib/turbopack-stubs/**",
     "src/**/*.d.ts",
-    "src/lib/agents/intent-hash.ts"
+    "src/lib/agents/intent-hash.ts",
+    "src/lib/agents/payment-authorization.ts",
+    "src/lib/auth/oidc/token-revocation.ts"
   ],
   "ignoreDependencies": [
     "@commitlint/cli",
