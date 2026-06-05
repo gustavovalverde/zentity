@@ -31,7 +31,8 @@
     "e2e/**",
     "src/test-utils/**",
     "src/lib/turbopack-stubs/**",
-    "src/**/*.d.ts"
+    "src/**/*.d.ts",
+    "src/lib/agents/intent-hash.ts"
   ],
   "ignoreDependencies": [
     "@commitlint/cli",
