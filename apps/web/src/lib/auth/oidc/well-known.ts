@@ -86,6 +86,22 @@ export function enrichDiscoveryMetadata(
     // MCP authorization compatibility (RFC 9728, CIMD)
     client_id_metadata_document_supported: true,
     resource_indicators_supported: true,
+    // RFC 9396 Rich Authorization Requests. Proposal-0003 D-1 adds
+    // payment_authorization; other types (openid_credential, etc.) are
+    // contributed by upstream plugin metadata and preserved via the spread.
+    authorization_details_types_supported: [
+      ...((metadata.authorization_details_types_supported as
+        | string[]
+        | undefined) ?? []),
+      "payment_authorization",
+    ],
+    // RFC 7009 Token Revocation; the wallet runtime's revocation poller
+    // (Proposal-0003 D-6) consumes the delta endpoint at /oauth2/revoked.
+    ...(issuer
+      ? {
+          revocation_endpoint: `${issuer}/oauth2/revoke`,
+        }
+      : {}),
     // Proof-of-Human (PRD-22)
     ...(issuer
       ? {

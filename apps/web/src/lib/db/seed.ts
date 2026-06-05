@@ -132,6 +132,97 @@ const CAPABILITIES = [
       },
     }),
   },
+  {
+    /**
+     * The capability that grants minting `payment_authorization` tokens.
+     *
+     * Per Proposal-0003 D-1 and D-2: every spend authorization MUST be
+     * represented as a `payment_authorization` entry inside
+     * `authorization_details`, and the issuer is the sole policy authority
+     * for that mint. The `actionParams` schema describes the bounded grant
+     * the agent can request; `agent_session_grant` constraints (max amount,
+     * recipient allowlist, daily cap) refine it per host policy.
+     */
+    name: "payment_authorization:sign",
+    description:
+      "Mint a payment_authorization RAR entry bounding a single on-chain spend (chain, recipient, amount, expiry, intent_hash)",
+    approvalStrength: "biometric",
+    inputSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        chain: {
+          type: "object",
+          properties: {
+            namespace: { type: "string", pattern: "^[-a-z0-9]{3,8}$" },
+            reference: { type: "string", pattern: "^[-a-zA-Z0-9]{1,32}$" },
+          },
+          required: ["namespace", "reference"],
+        },
+        recipient: {
+          type: "string",
+          pattern: "^[-a-z0-9]{3,8}:[-a-zA-Z0-9]{1,32}:[a-zA-Z0-9]{1,128}$",
+          description: "CAIP-10 account id",
+        },
+        amount: {
+          type: "object",
+          properties: {
+            currency: { type: "string" },
+            value: {
+              type: "string",
+              pattern: "^(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              description:
+                "Decimal-string in the unit identified by amount.unit (D-10)",
+            },
+            unit: { type: "string", enum: ["base", "display"] },
+          },
+          required: ["currency", "value", "unit"],
+        },
+        payment_id: { type: "string", minLength: 1, maxLength: 128 },
+        intent_hash: {
+          type: "string",
+          pattern: "^v1:sha256:[A-Za-z0-9_-]{43}$",
+          description: "Parsed-tuple SHA-256 binding (Proposal-0003 D-4)",
+        },
+        expires_at: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: [
+                "block_height",
+                "slot",
+                "block_number",
+                "timestamp_seconds",
+              ],
+            },
+            value: { type: "integer", minimum: 0 },
+          },
+          required: ["kind", "value"],
+        },
+      },
+      required: [
+        "chain",
+        "recipient",
+        "amount",
+        "payment_id",
+        "intent_hash",
+        "expires_at",
+      ],
+    }),
+    outputSchema: JSON.stringify({
+      type: "object",
+      properties: {
+        approved: { type: "boolean" },
+        token: {
+          type: "string",
+          description:
+            "DPoP-bound at+jwt with the payment_authorization RAR entry in authorization_details",
+        },
+        expires_at: { type: "string", format: "date-time" },
+        jti: { type: "string" },
+      },
+    }),
+  },
 ] as const;
 
 /**
