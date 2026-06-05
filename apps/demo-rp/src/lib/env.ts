@@ -37,6 +37,15 @@ export const env = createEnv({
     ZPAY_PAYEE_ID: z.string().default("aether-demo"),
     ZPAY_DPOP_KEY_SEED: z.string().min(32).optional(),
 
+    // zspend-runtime endpoint (Proposal-0003 Phase 4). Defaults to the
+    // bind address shipped by zspend-runtime's docker-compose entry; the
+    // Aether BFF orchestrator posts to /v1/payments/sign here to obtain a
+    // signed payload before forwarding to zpay /settle.
+    ZSPEND_URL: z
+      .string()
+      .default("http://127.0.0.1:8090")
+      .transform((s) => s.replace(TRAILING_SLASHES, "")),
+
     DATABASE_URL: z.string().default("file:./.data/demo-rp.db"),
     DATABASE_AUTH_TOKEN: z.string().optional(),
 
@@ -69,6 +78,7 @@ export const env = createEnv({
     ZPAY_URL: process.env.ZPAY_URL,
     ZPAY_PAYEE_ID: process.env.ZPAY_PAYEE_ID,
     ZPAY_DPOP_KEY_SEED: process.env.ZPAY_DPOP_KEY_SEED,
+    ZSPEND_URL: process.env.ZSPEND_URL,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_AUTH_TOKEN: process.env.DATABASE_AUTH_TOKEN,
     OIDC4VCI_WALLET_CLIENT_ID: process.env.OIDC4VCI_WALLET_CLIENT_ID,

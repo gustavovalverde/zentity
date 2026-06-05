@@ -30,6 +30,8 @@ const STALL_TIMEOUT_MS = 60_000;
 interface PaymentBridgeProps {
   amountZat: number;
   confirmationCode: string;
+  /** Defaults to `"testnet"`; the Aether scenario uses testnet today. */
+  network?: "mainnet" | "testnet" | "regtest";
   onReset?: () => void;
   onSettled?: (transactionId: string | null) => void;
   paymentId: string;
@@ -60,14 +62,15 @@ interface PaymentBridgeProps {
  * the BFF and bridge are running different versions of the encoder, or
  * something rewrote one of the two values in flight.
  */
-export function PaymentBridge({
-  amountZat,
-  confirmationCode,
-  onReset,
-  onSettled,
-  paymentId,
-  paymentUri,
-}: PaymentBridgeProps) {
+export function PaymentBridge(props: PaymentBridgeProps) {
+  const {
+    amountZat,
+    confirmationCode,
+    onReset,
+    onSettled,
+    paymentId,
+    paymentUri,
+  } = props;
   const state = usePaymentEvents(paymentId);
   const [copied, setCopied] = useState(false);
   const [awaitingStalled, setAwaitingStalled] = useState(false);
@@ -231,7 +234,17 @@ export function PaymentBridge({
         </div>
       )}
 
+      <AgentWalletButton
+        network={props.network ?? "testnet"}
+        onSettled={(txId) => onSettled?.(txId)}
+        paymentId={paymentId}
+        paymentUri={paymentUri}
+      />
+
       <div className="flex flex-col items-center gap-4">
+        <p className="text-center font-medium text-[10px] text-white/40 uppercase tracking-[0.3em]">
+          Or pay from your own wallet
+        </p>
         <div
           aria-label="ZIP-321 payment QR code; open with any Zcash wallet that supports ZIP-321"
           className="rounded-lg bg-white p-3"
@@ -324,6 +337,82 @@ export function PaymentBridge({
 
       <p className="text-center text-[10px] text-white/30">
         payment_id <span className="font-mono">{paymentId}</span>
+      </p>
+    </div>
+  );
+}
+
+function AgentWalletButton({
+  network,
+  onSettled,
+  paymentId,
+  paymentUri,
+}: {
+  network: "mainnet" | "testnet" | "regtest";
+  onSettled?: (transactionId: string | null) => void;
+  paymentId: string;
+  paymentUri: string;
+}) {
+  const [status, setStatus] = useState<"idle" | "signing" | "error">("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const handleClick = async () => {
+    setStatus("signing");
+    setErrorMessage(null);
+    try {
+      const response = await fetch("/api/aether/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payment_uri: paymentUri,
+          payment_id: paymentId,
+          network,
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error_description?: string;
+        } | null;
+        throw new Error(
+          body?.error_description ?? `sign failed (${response.status})`
+        );
+      }
+      const payload = (await response.json()) as {
+        transaction_id?: string | null;
+      };
+      onSettled?.(payload.transaction_id ?? null);
+      // Status flips to terminal via SSE when zpay observes the broadcast;
+      // we let the bridge effect run rather than racing it from here.
+      setStatus("idle");
+    } catch (err) {
+      setStatus("error");
+      setErrorMessage(err instanceof Error ? err.message : "sign failed");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <button
+        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-3 font-medium text-primary text-sm transition-colors hover:bg-white/90 disabled:opacity-60"
+        disabled={status === "signing"}
+        onClick={() => {
+          handleClick().catch(() => {
+            /* handleClick captures its own errors via setStatus */
+          });
+        }}
+        type="button"
+      >
+        {status === "signing"
+          ? "Signing and broadcasting..."
+          : "Pay with the demo wallet"}
+      </button>
+      {status === "error" && errorMessage && (
+        <p className="text-center text-[11px] text-red-300/80">
+          {errorMessage}
+        </p>
+      )}
+      <p className="text-center text-[10px] text-white/40">
+        Demo wallet on the {network} network.
       </p>
     </div>
   );

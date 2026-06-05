@@ -151,6 +151,59 @@ export async function preparePayment(
   return preparation;
 }
 
+export interface SettlePaymentInput {
+  /** DPoP proof minted for `POST {ZPAY_URL}/x402/v2/settle`. */
+  dpopProof: string;
+  paymentId: string;
+  /** Hex-encoded signed v5 Zcash transaction. */
+  rawTxHex: string;
+}
+
+export interface SettlementResponse {
+  broadcast_outcome: {
+    kind:
+      | "accepted"
+      | "duplicate"
+      | "invalid_encoding"
+      | "rejected"
+      | "unknown";
+    transaction_id?: string;
+    upstream_message?: string;
+  };
+  payment_id: string;
+  watch_id?: string | null;
+}
+
+/**
+ * Forwards a wallet-signed transaction to zpay's `/x402/v2/settle`. The BFF
+ * orchestrator at `/api/aether/sign` calls this after obtaining the signed
+ * bytes from `zspend-runtime`.
+ */
+export async function settlePayment(
+  input: SettlePaymentInput
+): Promise<SettlementResponse> {
+  const baseUrl = env.ZPAY_URL;
+  const response = await fetch(`${baseUrl}/x402/v2/settle`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      DPoP: input.dpopProof,
+    },
+    body: JSON.stringify({
+      payment_id: input.paymentId,
+      raw_tx_hex: input.rawTxHex,
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `zpay /x402/v2/settle returned ${response.status}: ${detail}`
+    );
+  }
+  return (await response.json()) as SettlementResponse;
+}
+
 export async function getPaymentStatus(
   paymentId: string
 ): Promise<PaymentStatusSnapshot> {
