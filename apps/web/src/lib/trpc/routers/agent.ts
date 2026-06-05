@@ -208,6 +208,57 @@ export const agentRouter = router({
         throw asTrpcError(error);
       }
     }),
+
+  /**
+   * Returns a structured, render-ready preview of a `payment_authorization`
+   * RAR entry the agent intends to mint. The dashboard and the push card
+   * service worker call this to lay out the displayed amount, recipient,
+   * and expiry on the same parsed surface the issuer verifies against,
+   * which is what makes "displayed equals signed" hold (Proposal-0003 D-7).
+   *
+   * Phase 3d MVP: returns the formatted projection without yet signing the
+   * card. The issuer-side signature lands when the push pipeline switches
+   * to signed payloads in the follow-on slice.
+   */
+  previewPaymentAuthorization: protectedProcedure
+    .input(
+      z.object({
+        authorizationDetails: z.unknown(),
+        bindingMessage: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const module = await import("@/lib/agents/payment-authorization");
+      const { parsePaymentAuthorization } = module;
+      let parsed: Awaited<ReturnType<typeof parsePaymentAuthorization>>;
+      try {
+        parsed = parsePaymentAuthorization(input.authorizationDetails);
+      } catch (error) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            error instanceof Error
+              ? error.message
+              : "authorization_details did not parse as payment_authorization",
+        });
+      }
+
+      const amountDisplay =
+        parsed.amount.unit === "base"
+          ? `${parsed.amount.value} ${parsed.amount.currency} (base unit)`
+          : `${parsed.amount.value} ${parsed.amount.currency}`;
+
+      return {
+        chain: `${parsed.chain.namespace}:${parsed.chain.reference}`,
+        recipient: parsed.recipient,
+        amountDisplay,
+        amount: parsed.amount,
+        paymentId: parsed.payment_id,
+        intentHash: parsed.intent_hash,
+        expiresAt: parsed.expires_at,
+        bindingMessage: input.bindingMessage ?? null,
+      };
+    }),
 });
 
 function serializeHosts(hosts: ManagedHostSummary[]) {
