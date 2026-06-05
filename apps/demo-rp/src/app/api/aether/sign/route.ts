@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getAuth } from "@/lib/auth";
 import { signDpopProof } from "@/lib/dpop";
 import { env } from "@/lib/env";
 import { settlePayment } from "@/lib/zpay-client";
@@ -48,6 +50,19 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "invalid_request", error_description: parsed.error.message },
       { status: 400 }
+    );
+  }
+
+  const auth = await getAuth();
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session?.user?.id) {
+    return NextResponse.json(
+      {
+        error: "session_required",
+        error_description:
+          "Sign in before signing a payment; the wallet route refuses to drive a spend without an authenticated session.",
+      },
+      { status: 401 }
     );
   }
 
