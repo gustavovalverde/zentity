@@ -18,7 +18,6 @@
  */
 
 import { createHash, hkdfSync, randomUUID } from "node:crypto";
-import { p256 } from "@noble/curves/p256";
 import {
   intentHash,
   intentHashToWireString,
@@ -26,12 +25,13 @@ import {
   PaymentAuthorizationDetailsSchema,
   paymentUriToCaip10,
 } from "@zentity/sdk/protocol";
+import { p256 } from "@noble/curves/p256";
 import {
   type CryptoKey,
-  calculateJwkThumbprint,
-  importJWK,
   type JWK,
   SignJWT,
+  calculateJwkThumbprint,
+  importJWK,
 } from "jose";
 
 const ZPAY_URL = process.env.ZPAY_URL ?? "http://127.0.0.1:8080";
@@ -135,7 +135,10 @@ async function main(): Promise<void> {
   }
 
   // 2. zspend-runtime liveness
-  const zspendReady = await probe("zspend /readyz", `${ZSPEND_URL}/readyz`);
+  const zspendReady = await probe(
+    "zspend /readyz",
+    `${ZSPEND_URL}/readyz`
+  );
   if (!zspendReady?.ok) {
     log(
       "WARN",
@@ -163,12 +166,7 @@ async function main(): Promise<void> {
     nonce,
     idempotency_key: idempotencyKey,
   };
-  const prepareProof = await signDpop(
-    "POST",
-    prepareUrl,
-    dpop.jwk,
-    dpop.privateKey
-  );
+  const prepareProof = await signDpop("POST", prepareUrl, dpop.jwk, dpop.privateKey);
   let prepared: {
     amount_zat: number;
     expiry_height: number;
@@ -187,10 +185,7 @@ async function main(): Promise<void> {
       bail("prepare failed; cannot continue without a payment_id");
     }
     prepared = JSON.parse(text);
-    log(
-      "PASS",
-      `prepare → payment_id=${prepared?.payment_id} amount_zat=${prepared?.amount_zat}`
-    );
+    log("PASS", `prepare → payment_id=${prepared?.payment_id} amount_zat=${prepared?.amount_zat}`);
     log("INFO", `prepare → payment_uri=${prepared?.payment_uri?.slice(0, 80)}`);
     log("INFO", `prepare → expiry_height=${prepared?.expiry_height}`);
   } catch (err) {
@@ -239,99 +234,35 @@ async function main(): Promise<void> {
     bail("schema mismatch — wire break between BFF and issuer");
   }
 
-  // 6. POST zspend-runtime /v1/payments/sign
-  if (!zspendReady?.ok) {
-    log("INFO", "probe complete (zspend unreachable)");
-    return;
-  }
-
-  const signUrl = `${ZSPEND_URL}/v1/payments/sign`;
-  const signBody = {
-    payment_request: { scheme: "zip321", value: prepared.payment_uri },
-    network: "testnet",
-    payment_id: prepared.payment_id,
-    target_expiry_height: prepared.expiry_height,
-  };
-  let signedBytesBase64: string | null = null;
-  try {
-    const r = await fetch(signUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(signBody),
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      log(
-        "WARN",
-        `zspend /v1/payments/sign → ${r.status} ${text.slice(0, 200)}`
-      );
-      log("INFO", "probe complete (sign step failed)");
-      return;
-    }
-    log("PASS", "zspend /v1/payments/sign → 200");
-    const body = JSON.parse(text) as {
-      signed_payload?: { bytes?: string; tx_id?: string; fee?: string };
+  // 6. POST zspend-runtime /v1/payments/sign (will likely fail; expected)
+  if (zspendReady?.ok) {
+    const signUrl = `${ZSPEND_URL}/v1/payments/sign`;
+    const signBody = {
+      payment_request: { scheme: "zip321", value: prepared.payment_uri },
+      network: "testnet",
+      payment_id: prepared.payment_id,
+      expiry_height_hint: prepared.expiry_height,
     };
-    signedBytesBase64 = body?.signed_payload?.bytes ?? null;
-    log("INFO", `signed_payload.tx_id=${body?.signed_payload?.tx_id ?? "?"}`);
-    log("INFO", `signed_payload.fee=${body?.signed_payload?.fee ?? "?"}`);
-  } catch (err) {
-    log("FAIL", `zspend exception: ${(err as Error).message}`);
-    return;
-  }
-
-  if (!signedBytesBase64) {
-    log("FAIL", "no signed_payload.bytes in zspend response");
-    return;
-  }
-
-  // 7. POST zpay /x402/v2/settle with the signed bytes
-  const rawTxHex = Buffer.from(signedBytesBase64, "base64").toString("hex");
-  const settleUrl = `${ZPAY_URL}/x402/v2/settle`;
-  const settleProof = await signDpop(
-    "POST",
-    settleUrl,
-    dpop.jwk,
-    dpop.privateKey
-  );
-  try {
-    const r = await fetch(settleUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json", DPoP: settleProof },
-      body: JSON.stringify({
-        payment_id: prepared.payment_id,
-        raw_tx_hex: rawTxHex,
-      }),
-    });
-    const text = await r.text();
-    if (!r.ok) {
-      log("FAIL", `zpay /x402/v2/settle → ${r.status} ${text.slice(0, 300)}`);
-      return;
+    try {
+      const r = await fetch(signUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(signBody),
+      });
+      const text = await r.text();
+      if (r.ok) {
+        log("PASS", `zspend /v1/payments/sign → 200`);
+        log("INFO", `signed payload preview: ${text.slice(0, 120)}`);
+      } else {
+        log(
+          "WARN",
+          `zspend /v1/payments/sign → ${r.status} ${text.slice(0, 200)}`
+        );
+        log("INFO", "expected: no funded wallet on the test seed");
+      }
+    } catch (err) {
+      log("WARN", `zspend exception: ${(err as Error).message}`);
     }
-    const settlement = JSON.parse(text) as {
-      payment_id: string;
-      broadcast_outcome?: {
-        kind?: string;
-        transaction_id?: string;
-        upstream_message?: string;
-      };
-    };
-    const outcome = settlement.broadcast_outcome;
-    log("PASS", "zpay /x402/v2/settle → 200");
-    log("INFO", `broadcast_outcome.kind=${outcome?.kind ?? "?"}`);
-    log(
-      "INFO",
-      `broadcast_outcome.transaction_id=${outcome?.transaction_id ?? "(none)"}`
-    );
-    if (outcome?.upstream_message) {
-      log(
-        "INFO",
-        `broadcast_outcome.upstream_message=${outcome.upstream_message}`
-      );
-    }
-  } catch (err) {
-    log("FAIL", `settle exception: ${(err as Error).message}`);
-    return;
   }
 
   log("INFO", "probe complete");

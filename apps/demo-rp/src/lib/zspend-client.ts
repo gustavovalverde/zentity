@@ -18,75 +18,6 @@ import { env } from "@/lib/env";
  * envelope into a hex string regardless.
  */
 
-export interface ZspendProblem {
-  detail?: string;
-  kind: string;
-  retryable?: boolean;
-  title: string;
-}
-
-/**
- * Mirrors zspend-runtime's PRC-7807 envelope (kind/title/detail/retryable).
- * Identical shape to `ZpayProblem` in `zpay-client.ts`; a future slice can
- * lift the parser into a shared `problem-json.ts` module once a third
- * remote-service client lands.
- */
-async function parseZspendProblem(
-  response: Response
-): Promise<ZspendProblem | null> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/problem+json")) {
-    return null;
-  }
-  const raw = await response.text().catch(() => "");
-  if (!raw) {
-    return null;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!(parsed && typeof parsed === "object")) {
-    return null;
-  }
-  const body = parsed as Record<string, unknown>;
-  const kind = typeof body.kind === "string" ? body.kind : "unknown";
-  const title = typeof body.title === "string" ? body.title : "zspend error";
-  const problem: ZspendProblem = { kind, title };
-  if (typeof body.detail === "string") {
-    problem.detail = body.detail;
-  }
-  if (typeof body.retryable === "boolean") {
-    problem.retryable = body.retryable;
-  }
-  return problem;
-}
-
-export class ZspendError extends Error {
-  readonly status: number;
-  readonly endpoint: string;
-  readonly problem: ZspendProblem | null;
-
-  constructor(args: {
-    endpoint: string;
-    status: number;
-    problem: ZspendProblem | null;
-    message: string;
-  }) {
-    super(args.message);
-    this.name = "ZspendError";
-    this.endpoint = args.endpoint;
-    this.status = args.status;
-    this.problem = args.problem;
-  }
-
-  get kind(): string {
-    return this.problem?.kind ?? "unknown";
-  }
-}
-
 export interface SignedPayloadEnvelope {
   bytes: string;
   expires_at:
@@ -101,15 +32,10 @@ export interface SignedPayloadEnvelope {
 }
 
 export interface SignPaymentInput {
+  expiryHeightHint?: number;
   network: "mainnet" | "testnet" | "regtest";
   paymentId: string;
   paymentRequest: { scheme: "zip321"; value: string };
-  /**
-   * Caller-supplied expiry height the wallet must commit to. Pass the value
-   * zpay returned from `/x402/v2/prepare`; the wallet rejects values at or
-   * below its observed chain tip with `target_expiry_stale` (HTTP 409).
-   */
-  targetExpiryHeight: number;
 }
 
 export interface SignPaymentResult {
@@ -127,28 +53,17 @@ export async function signPayment(
       payment_request: input.paymentRequest,
       network: input.network,
       payment_id: input.paymentId,
-      target_expiry_height: input.targetExpiryHeight,
+      ...(input.expiryHeightHint === undefined
+        ? {}
+        : { expiry_height_hint: input.expiryHeightHint }),
     }),
   });
 
   if (!response.ok) {
-    const problem = await parseZspendProblem(response);
-    if (problem) {
-      const tail = problem.detail ? `: ${problem.detail}` : "";
-      throw new ZspendError({
-        endpoint: "/v1/payments/sign",
-        status: response.status,
-        problem,
-        message: `zspend /v1/payments/sign returned ${response.status} [${problem.kind}] ${problem.title}${tail}`,
-      });
-    }
     const detail = await response.text().catch(() => "");
-    throw new ZspendError({
-      endpoint: "/v1/payments/sign",
-      status: response.status,
-      problem: null,
-      message: `zspend /v1/payments/sign returned ${response.status}: ${detail}`,
-    });
+    throw new Error(
+      `zspend /v1/payments/sign returned ${response.status}: ${detail}`
+    );
   }
 
   const body = (await response.json()) as {

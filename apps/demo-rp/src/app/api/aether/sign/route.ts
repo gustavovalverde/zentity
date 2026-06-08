@@ -11,7 +11,6 @@ import {
   type SignPaymentInput,
   signedPayloadBytesToHex,
   signPayment,
-  ZspendError,
 } from "@/lib/zspend-client";
 
 /**
@@ -34,9 +33,6 @@ import {
  * Errors discriminated by machine `error` tag:
  * - `session_required` (401) caller is not signed in
  * - `wallet_unreachable` (502) zspend-runtime did not respond
- * - `target_expiry_stale` (409) zspend rejected the caller's expiry as
- *   already past the chain tip; the caller must request a fresh
- *   /prepare and retry
  * - `settle_failed` (502) zpay /settle returned non-2xx
  * - `invalid_request` (400) zod parse failed
  */
@@ -45,12 +41,7 @@ const requestSchema = z.object({
   payment_uri: z.string().min(1),
   payment_id: z.string().min(1),
   network: z.enum(["mainnet", "testnet", "regtest"]),
-  /**
-   * The expiry height the caller committed to at /prepare time. zspend
-   * routes this into the wallet's PCZT Updater so the signed bytes carry
-   * the same value zpay will assert at /settle.
-   */
-  target_expiry_height: z.number().int().nonnegative(),
+  expiry_height_hint: z.number().int().nonnegative().optional(),
 });
 
 export async function POST(request: Request) {
@@ -98,23 +89,15 @@ export async function POST(request: Request) {
     paymentRequest: { scheme: "zip321", value: parsed.data.payment_uri },
     network: parsed.data.network,
     paymentId: parsed.data.payment_id,
-    targetExpiryHeight: parsed.data.target_expiry_height,
+    ...(parsed.data.expiry_height_hint === undefined
+      ? {}
+      : { expiryHeightHint: parsed.data.expiry_height_hint }),
   };
 
   let signedResult: Awaited<ReturnType<typeof signPayment>>;
   try {
     signedResult = await signPayment(input);
   } catch (err) {
-    if (err instanceof ZspendError && err.kind === "target_expiry_stale") {
-      return NextResponse.json(
-        {
-          error: "target_expiry_stale",
-          error_description:
-            err.problem?.detail ?? err.problem?.title ?? err.message,
-        },
-        { status: 409 }
-      );
-    }
     return NextResponse.json(
       {
         error: "wallet_unreachable",
