@@ -1,79 +1,119 @@
-# PCZT Updater mutation of `global.expiry_height` produces `SighashMismatch` at Extractor
+# PCZT Updater mutation of `global.expiry_height` invalidates dummy-action signatures
 
-**Status**: blocked on upstream PCZT pipeline investigation
+**Status**: ROOT CAUSE FOUND. Upstream patch validated end-to-end.
 **Date**: 2026-06-08
-**Affects**: `pczt` 0.7.0, `zcash_primitives` 0.28.0, `orchard` 0.14.0
+**Affects**: `pczt` 0.7.0, `zcash_client_backend` 0.23.0, `orchard` 0.14.0
 
 ## Symptom
 
-A wallet runtime that mutates `Pczt::global::expiry_height` between Constructor and Prover, then runs the standard Prover → Signer → Extractor pipeline, hits `TransactionExtractor::extract` returning `SighashMismatch`. No mutation produces a working tx.
+A wallet runtime that mutates `Pczt::common::Global::expiry_height` between
+Constructor and Prover via a postcard wire mirror, then runs the standard
+Prover → Signer → Extractor pipeline, hits `TransactionExtractor::extract`
+returning `SighashMismatch` on every call. No mutation produces a working tx.
 
-## Setup
+## Root cause
 
-- One Orchard spend, one Orchard output (no transparent inputs/outputs, no Sapling)
-- Wallet's storage built a PCZT via `zcash_client_backend::data_api::wallet::create_pczt_from_proposal`
-- A standalone wire-format Updater mutates only `Pczt::common::Global::expiry_height` (postcard layout mirror; byte-identical round-trip verified)
-- Signer and Extractor are the upstream `pczt::roles::signer::Signer` and `pczt::roles::tx_extractor::TransactionExtractor`
+`zcash_client_backend::data_api::wallet::create_pczt_from_proposal` runs three
+steps in sequence on the Builder's output:
 
-## Observed sighashes (real wallet, testnet)
+1. `Creator::build_from_parts(build_result.pczt_parts)`: copies
+   `PcztParts::expiry_height` into the PCZT's `Global::expiry_height`.
+2. `IoFinalizer::new(created).finalize_io()`:
+   - Computes the shielded sighash over the freshly-built tx_data.
+   - Calls `orchard::pczt::Bundle::finalize_io(sighash, _)` which signs every
+     dummy action with its `dummy_sk` against the just-computed sighash, then
+     **takes (consumes) `dummy_sk` from the PCZT**
+     (`io_finalizer.rs:51`: `if let Some(sk) = action.spend.dummy_sk.take()`).
+3. The wallet returns the finalized PCZT bytes to the caller.
 
-Logged via `pczt::roles::signer::Signer::new(parsed).shielded_sighash()` at each pipeline stage on the post-stage bytes:
+A later Updater that mutates `global.expiry_height` produces a PCZT whose new
+shielded sighash differs from the one IoFinalizer originally used:
 
-| Stage                         | `global.expiry_height` | Shielded sighash                                                   |
-| ----------------------------- | ---------------------- | ------------------------------------------------------------------ |
-| After `create_pczt_from_proposal` | 4053374              | `8b1ea8a3872b13646304e7eeb0b6cf2f60b765f796c6242771828b7eb76df6ef` |
-| After Updater (mutate to 4052039) | 4052039              | `2a187ee61f886330d90812188ad5f2052c87456919123e8ef96d972475bc23d5` |
-| After Prover                  | 4052039                | `2a187ee61f886330d90812188ad5f2052c87456919123e8ef96d972475bc23d5` |
-| After Signer                  | 4052039                | `2a187ee61f886330d90812188ad5f2052c87456919123e8ef96d972475bc23d5` |
+- The real spend's `spend_auth_sig` is added later by the Signer against the
+  new sighash, so its verify passes at extract time.
+- The dummy action's `spend_auth_sig` was committed by IoFinalizer against the
+  pre-Updater sighash, and `dummy_sk` is gone, so it cannot be re-signed. The
+  Extractor's per-action verify fails for the dummy with `SighashMismatch`.
 
-Re-running `Signer::new(...).shielded_sighash()` on the signed bytes returns the same `2a18...23d5`. So the Signer-side sighash is consistent end-to-end.
+The failure is per-action, not per-bundle: in two runs with different note
+selections, the verify split is consistent (real spend OK, dummy spend NOT
+OK).
 
-Postcard round-trip with `target_expiry_height == proposed_expiry_height` (semantic no-op) produces byte-identical output (`len_before == len_after`, no first byte difference). The mirror is wire-correct.
+## Trace excerpt (post-fix, verifying the explanation)
 
-Despite the consistent sighash, `TransactionExtractor::extract` returns:
+When `PcztParts::expiry_height` is set to the target value before
+`Creator::build_from_parts`, IoFinalizer signs the dummy against the SAME
+sighash the Extractor recomputes:
 
 ```text
-PCZT error: Failed to extract the final transaction: SighashMismatch.
+[PCZT SIGNER DEBUG]   cached shielded_sighash   = b8 77 13 23 2f fb ec f6 ...
+[PCZT EXTRACTOR DEBUG] extractor shielded_sighash = b8 77 13 23 2f fb ec f6 ...
+[ORCHARD APPLY BINDING SIG DEBUG] action[0] verify_ok = true
+[ORCHARD APPLY BINDING SIG DEBUG] action[1] verify_ok = true
 ```
 
-That error originates in `orchard::pczt::tx_extractor::Bundle::<Unbound>::apply_binding_signature`, when the action's `rk.verify(&sighash, action.authorization()).is_ok()` fails for at least one action.
+Without the fix (PCZT Updater mutates expiry post-IoFinalizer), one action
+verifies and the other doesn't:
 
-## What this implies
+```text
+[ORCHARD APPLY BINDING SIG DEBUG] action[0] verify_ok = true   # real spend (Signer)
+[ORCHARD APPLY BINDING SIG DEBUG] action[1] verify_ok = false  # dummy (IoFinalizer)
+```
 
-The Signer signs `spend_auth_sig` with `rsk.sign(rng, sighash_signer)`. The Extractor verifies with `rk.verify(sighash_extractor, sig)`. ZIP-244 says shielded sighash is authorization-agnostic, so `sighash_signer == sighash_extractor` should hold given identical bytes. The empirical mismatch suggests one of:
+Postcard round-trip with `target == proposed` is byte-identical, so the wire
+mirror is correct; the breakage is purely semantic.
 
-1. `Pczt::extract_tx_data::<Unbound, _>` (Extractor path) constructs a `TransactionData` whose ZIP-244 digest differs from the `Pczt::extract_tx_data::<EffectsOnly, _>` path (Signer path) on the same input PCZT bytes.
-2. A field that participates in the ZIP-244 digest is captured at Signer-construct time and re-read post-mutation at a different value in one of the two paths.
+## Proposed upstream fix
 
-In both cases, the failure is triggered by mutating `global.expiry_height` after Constructor. Without the mutation the same pipeline succeeds (the Phase 5 demo flow has produced a real testnet broadcast outcome).
-
-## Minimal reproduction shape
+Add an optional `target_expiry_height` parameter to
+`zcash_client_backend::data_api::wallet::create_pczt_from_proposal`. Apply it
+between `build_for_pczt` and `Creator::build_from_parts`:
 
 ```rust
-let proposed: Vec<u8> = create_pczt_from_proposal(/* one orchard spend, one orchard output */)?.serialize();
+let mut build_result = build_state.builder.build_for_pczt(OsRng, fee_rule)?;
 
-// Mutate only Global::expiry_height via postcard wire mirror (or any upstream-supported route).
-let mutated = updater_set_expiry_height(proposed, target_expiry)?;
+if let Some(target) = target_expiry_height {
+    build_result.pczt_parts.expiry_height = target;
+}
 
-// Standard pipeline.
-let proven = pczt::roles::prover::Prover::new(...).prove()?.serialize();
-let signed = pczt::roles::signer::Signer::new(pczt::Pczt::parse(&proven)?)
-    .sign_orchard(0, &ask)?
-    .finish()
-    .serialize();
-let _: Transaction = pczt::roles::tx_extractor::TransactionExtractor::new(
-    pczt::Pczt::parse(&signed)?
-).extract()?;  // SighashMismatch.
+let created = Creator::build_from_parts(build_result.pczt_parts)
+    .ok_or(PcztError::Build)?;
+let io_finalized = IoFinalizer::new(created).finalize_io()?;
 ```
 
-## Workaround paths
+`PcztParts::expiry_height` is already a `pub` field on the published struct,
+so the change is purely additive at the API boundary. The Creator copies the
+field into `Global::expiry_height` and IoFinalizer then computes its sighash
+from that value, so dummies are signed against the same sighash the Extractor
+will recompute later.
 
-- Have the upstream Updater expose `global.expiry_height` mutation through `pczt::roles::updater::Updater` (it is currently `pub(crate)` on `GlobalUpdater`) AND verify the post-Updater pipeline produces a valid sighash, fixing whichever path diverges.
-- Or expose a caller-supplied `expiry_height` parameter on `propose_standard_transfer_to_address` so callers don't need a post-hoc Updater.
-- Or add a `Pczt::diagnostic_shielded_sighash_with_authorization<A>()` so callers can verify which path is producing which sighash without running the full Extractor.
+Closes the consensus-relevant gap tracked at
+`zcash/librustzcash#2380` and `zcash/librustzcash#2398` from the wallet-layer
+side: the wallet picks its own expiry today; the upstream API just needs the
+caller-supplied value to land before IoFinalizer instead of after.
 
-For wallet operators today, the practical mitigation is to let the wallet derive its own expiry from the same chain source the BFF uses, with /settle accepting a range around the prepared value instead of point equality.
+The PCZT `Updater` role at the wire layer remains useful as a primitive for
+fields that do NOT participate in the shielded sighash (`coin_type`,
+`tx_modifiable`, `proprietary` entries). Mutation of `expiry_height`,
+`consensus_branch_id`, `fallback_lock_time`, or `tx_version` after IoFinalizer
+must not be attempted because each invalidates dummy `spend_auth_sig`s with
+no recovery path.
 
-## Related upstream tracking
+## End-to-end validation
 
-- `zcash/librustzcash#2380` ("Allow caller-controlled expiry on propose_standard_transfer_to_address") and the linked draft PR `#2398` cover the proposal-time approach; this finding documents that the Updater workaround does not work on the post-Constructor path either.
+Local patches confirming the fix:
+
+- `~/dev/zfnd/zcash_client_backend-debug` (registry copy with the new
+  `target_expiry_height` parameter and the `PcztParts` mutation).
+- `~/dev/zfnd/pczt-debug` and `~/dev/zfnd/orchard-debug` (registry copies
+  with `eprintln` instrumentation across `Signer::new`,
+  `TransactionExtractor::extract`, `Bundle::commitment`, and
+  `apply_binding_signature`).
+- `zally-storage` calls `create_pczt_from_proposal(..., Some(target))` and the
+  full propose → Updater (no-op) → prove → sign → extract pipeline succeeds
+  on a real testnet wallet; `/v1/payments/sign` returns 200 with valid signed
+  bytes.
+
+Reproduction layout matches the published 0.7.0 / 0.14.0 / 0.23.0 versions
+(registry sources copied verbatim with only the diagnostic + one-field
+patches applied).
