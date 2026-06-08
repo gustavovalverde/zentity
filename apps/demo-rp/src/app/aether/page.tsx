@@ -42,7 +42,10 @@ export interface PreparationError {
 }
 
 interface PreparedWithCode extends Preparation {
+  chain: { namespace: "zcash"; reference: "main" | "test" | "regtest" };
   confirmation_code: string;
+  intent_hash: string;
+  recipient: string;
 }
 
 type PreparationResult =
@@ -112,7 +115,11 @@ async function preparePayment(input: {
       data.payment_id &&
       typeof data.amount_zat === "number" &&
       typeof data.expiry_height === "number" &&
-      typeof data.confirmation_code === "string"
+      typeof data.confirmation_code === "string" &&
+      typeof data.intent_hash === "string" &&
+      typeof data.recipient === "string" &&
+      data.chain?.namespace === "zcash" &&
+      typeof data.chain.reference === "string"
     )
   ) {
     return {
@@ -133,6 +140,9 @@ async function preparePayment(input: {
       expiry_height: data.expiry_height,
       memo_bytes: data.memo_bytes ?? [],
       confirmation_code: data.confirmation_code,
+      intent_hash: data.intent_hash,
+      recipient: data.recipient,
+      chain: data.chain as PreparedWithCode["chain"],
     },
   };
 }
@@ -167,52 +177,54 @@ export default function AetherPage() {
     if (!pick) {
       return;
     }
+    if (!task.zpay) {
+      setPreparationError({
+        kind: "invalid_request",
+        description:
+          "This task is not wired to a payment network, so no payment_authorization can be issued.",
+      });
+      return;
+    }
+
     const tax = pick.price * 0.0875;
     const total = pick.price + tax;
-
     const merchant = "Aether AI";
     const item = `${pick.brand} ${pick.name}`;
 
-    const baseDetail: Record<string, unknown> = {
-      type: "purchase",
+    const result = await preparePayment({
       merchant,
       item,
-      amount: { currency: "USD", value: total.toFixed(2) },
+      network: task.zpay.network,
+      taskId: task.id,
+      itemId: pick.id,
+      amountMinorUnits: Math.round(total * 100),
+    });
+    if (!result.ok) {
+      setPreparationError(result.error);
+      setPrepared(null);
+      return;
+    }
+    const preparedPayment = result.preparation;
+    setPreparationError(null);
+    setPrepared(preparedPayment);
+
+    const paymentAuthorization = {
+      type: "payment_authorization" as const,
+      chain: preparedPayment.chain,
+      recipient: preparedPayment.recipient,
+      amount: {
+        currency: "ZEC",
+        value: String(preparedPayment.amount_zat),
+        unit: "base" as const,
+      },
+      payment_id: preparedPayment.payment_id,
+      intent_hash: preparedPayment.intent_hash,
+      expires_at: {
+        kind: "block_height" as const,
+        value: preparedPayment.expiry_height,
+      },
     };
 
-    let preparedPayment: PreparedWithCode | null = null;
-    if (task.zpay) {
-      const result = await preparePayment({
-        merchant,
-        item,
-        network: task.zpay.network,
-        taskId: task.id,
-        itemId: pick.id,
-        amountMinorUnits: Math.round(total * 100),
-      });
-      if (!result.ok) {
-        setPreparationError(result.error);
-        setPrepared(null);
-        return;
-      }
-      preparedPayment = result.preparation;
-      setPreparationError(null);
-      setPrepared(preparedPayment);
-      baseDetail.scheme = "zcash";
-      baseDetail.network = task.zpay.network;
-      baseDetail.amount_zat = preparedPayment.amount_zat;
-      baseDetail.payment_uri = preparedPayment.payment_uri;
-      baseDetail.payment_id = preparedPayment.payment_id;
-      baseDetail.confirmation_code = preparedPayment.confirmation_code;
-    } else {
-      setPreparationError(null);
-      setPrepared(null);
-    }
-
-    // Lead with the confirmation code on its own line so small CIBA
-    // push bubbles surface it before truncating the action sentence.
-    // The user reads this code on their phone and confirms it against
-    // the bridge UI on their laptop.
     const tierActions: Record<string, string> = {
       anonymous: "Purchase request",
       registered: "Aether AI requests purchase of",
@@ -220,16 +232,14 @@ export default function AetherPage() {
     };
     const action = tierActions[task.trustTier] ?? tierActions.registered;
     const itemLine = `${action} ${pick.brand} ${pick.name}`;
-    const bindingMessage = preparedPayment
-      ? `Confirm code: ${preparedPayment.confirmation_code}\n${itemLine}`
-      : itemLine;
+    const bindingMessage = `Confirm code: ${preparedPayment.confirmation_code}\n${itemLine}`;
 
     startFlow({
       loginHint: userEmail,
       scope: task.scope ?? "openid",
       bindingMessage,
       trustTier: task.trustTier,
-      authorizationDetails: JSON.stringify([baseDetail]),
+      authorizationDetails: JSON.stringify([paymentAuthorization]),
       ...(scenario.acrValues === undefined
         ? {}
         : { acrValues: scenario.acrValues }),

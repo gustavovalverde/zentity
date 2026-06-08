@@ -46,6 +46,23 @@ const BASE64URL_SLASH = /\//g;
 const BASE64URL_PAD = /=+$/;
 
 let keyMaterialPromise: Promise<DpopKeyMaterial> | null = null;
+let missingSeedWarningEmitted = false;
+
+function warnOnMissingSeedOnce(): void {
+  if (missingSeedWarningEmitted) {
+    return;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+  if (process.env.ZPAY_DPOP_KEY_SEED !== undefined) {
+    return;
+  }
+  missingSeedWarningEmitted = true;
+  process.stderr.write(
+    "ZPAY_DPOP_KEY_SEED unset; ephemeral DPoP key. /settle will fail across process restarts. Set the seed in apps/demo-rp/.env.local to match zpay docker-compose.\n"
+  );
+}
 
 function getDpopKeyMaterial(): Promise<DpopKeyMaterial> {
   if (!keyMaterialPromise) {
@@ -165,6 +182,7 @@ export interface SignedDpopProof {
 export async function signDpopProof(
   input: SignDpopProofInput
 ): Promise<SignedDpopProof> {
+  warnOnMissingSeedOnce();
   const { jkt, privateKey, publicJwk } = await getDpopKeyMaterial();
   const iat = input.iat ?? Math.floor(Date.now() / 1000);
   const proofJwt = await new SignJWT({
@@ -197,4 +215,5 @@ export async function getDpopJkt(): Promise<string> {
  */
 export function __resetDpopKeyMaterialForTests(): void {
   keyMaterialPromise = null;
+  missingSeedWarningEmitted = false;
 }

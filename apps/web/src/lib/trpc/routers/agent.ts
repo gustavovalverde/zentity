@@ -228,7 +228,7 @@ export const agentRouter = router({
       })
     )
     .query(async ({ input }) => {
-      const module = await import("@/lib/agents/payment-authorization");
+      const module = await import("@zentity/sdk/protocol");
       const { parsePaymentAuthorization } = module;
       let parsed: Awaited<ReturnType<typeof parsePaymentAuthorization>>;
       try {

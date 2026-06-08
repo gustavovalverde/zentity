@@ -40,6 +40,106 @@ import { env } from "@/lib/env";
 
 export type PaymentNetwork = "testnet" | "mainnet" | "regtest";
 
+export interface ZpayProblem {
+  detail?: string;
+  kind: string;
+  retryable?: boolean;
+  title: string;
+}
+
+/**
+ * Parses zpay's RFC 7807-shaped error envelope when the upstream response
+ * advertises `application/problem+json`. Returns null when the Content-Type
+ * is not problem+json or when the body cannot be parsed as the expected
+ * object shape; callers should fall back to raw text in that case.
+ */
+export async function parseZpayProblem(
+  response: Response
+): Promise<ZpayProblem | null> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/problem+json")) {
+    return null;
+  }
+  const raw = await response.text().catch(() => "");
+  if (!raw) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!(parsed && typeof parsed === "object")) {
+    return null;
+  }
+  const body = parsed as Record<string, unknown>;
+  const kind = typeof body.kind === "string" ? body.kind : "unknown";
+  const title = typeof body.title === "string" ? body.title : "zpay error";
+  const problem: ZpayProblem = { kind, title };
+  if (typeof body.detail === "string") {
+    problem.detail = body.detail;
+  }
+  if (typeof body.retryable === "boolean") {
+    problem.retryable = body.retryable;
+  }
+  return problem;
+}
+
+export class ZpayError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  readonly problem: ZpayProblem | null;
+
+  constructor(args: {
+    endpoint: string;
+    status: number;
+    problem: ZpayProblem | null;
+    message: string;
+  }) {
+    super(args.message);
+    this.name = "ZpayError";
+    this.endpoint = args.endpoint;
+    this.status = args.status;
+    this.problem = args.problem;
+  }
+
+  get kind(): string {
+    return this.problem?.kind ?? "unknown";
+  }
+}
+
+function formatProblemMessage(
+  endpoint: string,
+  status: number,
+  problem: ZpayProblem
+): string {
+  const tail = problem.detail ? `: ${problem.detail}` : "";
+  return `zpay ${endpoint} returned ${status} [${problem.kind}] ${problem.title}${tail}`;
+}
+
+async function buildZpayError(
+  endpoint: string,
+  response: Response
+): Promise<ZpayError> {
+  const problem = await parseZpayProblem(response);
+  if (problem) {
+    return new ZpayError({
+      endpoint,
+      status: response.status,
+      problem,
+      message: formatProblemMessage(endpoint, response.status, problem),
+    });
+  }
+  const detail = await response.text().catch(() => "");
+  return new ZpayError({
+    endpoint,
+    status: response.status,
+    problem: null,
+    message: `zpay ${endpoint} returned ${response.status}: ${detail}`,
+  });
+}
+
 export type PaymentStatus =
   | "awaiting"
   | "broadcast"
@@ -138,10 +238,7 @@ export async function preparePayment(
   });
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `zpay /x402/v2/prepare returned ${response.status}: ${detail}`
-    );
+    throw await buildZpayError("/x402/v2/prepare", response);
   }
 
   const preparation = (await response.json()) as Preparation;
@@ -196,10 +293,7 @@ export async function settlePayment(
   });
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `zpay /x402/v2/settle returned ${response.status}: ${detail}`
-    );
+    throw await buildZpayError("/x402/v2/settle", response);
   }
   return (await response.json()) as SettlementResponse;
 }

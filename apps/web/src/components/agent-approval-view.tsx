@@ -21,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
   buildIdentityPayload,
@@ -40,6 +41,7 @@ import {
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { formatAcrValue } from "@/lib/terminology";
+import { trpcReact } from "@/lib/trpc/client";
 
 type PageState =
   | "loading"
@@ -110,6 +112,128 @@ interface InteractionCopy {
   requestedProfileFields?: string[];
   successDescription?: string;
   title?: string;
+}
+
+function truncateMiddle(value: string, head = 10, tail = 6): string {
+  if (value.length <= head + tail + 1) {
+    return value;
+  }
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function truncateRecipient(caip10: string): string {
+  const parts = caip10.split(":");
+  if (parts.length < 3) {
+    return truncateMiddle(caip10);
+  }
+  const namespace = parts[0] ?? "";
+  const reference = parts[1] ?? "";
+  const address = parts.slice(2).join(":");
+  return `${namespace}:${reference}:${truncateMiddle(address)}`;
+}
+
+function formatExpiresAt(
+  expiresAt:
+    | { kind: "block_height"; value: number }
+    | { kind: "slot"; value: number }
+    | { kind: "block_number"; value: number }
+    | { kind: "timestamp_seconds"; value: number }
+): string {
+  switch (expiresAt.kind) {
+    case "block_height":
+      return `block height ${expiresAt.value.toLocaleString()}`;
+    case "slot":
+      return `slot ${expiresAt.value.toLocaleString()}`;
+    case "block_number":
+      return `block ${expiresAt.value.toLocaleString()}`;
+    case "timestamp_seconds":
+      return new Date(expiresAt.value * 1000).toISOString();
+    default: {
+      const exhaustive: never = expiresAt;
+      return JSON.stringify(exhaustive);
+    }
+  }
+}
+
+function PaymentAuthorizationCard({
+  bindingMessage,
+  detail,
+}: Readonly<{ bindingMessage: string | undefined; detail: unknown }>) {
+  const { data, error, isPending } =
+    trpcReact.agent.previewPaymentAuthorization.useQuery(
+      {
+        authorizationDetails: [detail],
+        ...(bindingMessage ? { bindingMessage } : {}),
+      },
+      { retry: false, staleTime: 60_000 }
+    );
+
+  if (isPending) {
+    return (
+      <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+        <Skeleton className="h-3 w-32" />
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-4 w-56" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="size-4" />
+        <AlertDescription>
+          Could not preview payment authorization: {error.message}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+      <p className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+        Payment authorization
+      </p>
+      <p className="font-bold text-lg">{data.amountDisplay}</p>
+      <dl className="space-y-1 text-sm">
+        <div className="flex gap-2">
+          <dt className="font-medium">Chain:</dt>
+          <dd className="text-muted-foreground">{data.chain}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="font-medium">To:</dt>
+          <dd
+            className="break-all font-mono text-muted-foreground text-xs"
+            title={data.recipient}
+          >
+            {truncateRecipient(data.recipient)}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="font-medium">Payment id:</dt>
+          <dd
+            className="break-all font-mono text-muted-foreground text-xs"
+            title={data.paymentId}
+          >
+            {truncateMiddle(data.paymentId, 8, 6)}
+          </dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="font-medium">Expires at:</dt>
+          <dd className="text-muted-foreground">
+            {formatExpiresAt(data.expiresAt)}
+          </dd>
+        </div>
+        {data.bindingMessage ? (
+          <div className="flex gap-2">
+            <dt className="font-medium">Confirm:</dt>
+            <dd className="text-muted-foreground">{data.bindingMessage}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </div>
+  );
 }
 
 function deriveInitialState(req?: CibaRequestDetails): {
@@ -663,53 +787,71 @@ export function AgentApprovalView({
             </div>
           )}
 
-          {/* Purchase details (authorization_details) */}
+          {/* Authorization details (RAR) */}
           {details?.authorization_details &&
             details.authorization_details.length > 0 && (
               <div className="space-y-2">
-                {details.authorization_details.map((detail, i) => (
-                  <div
-                    className="rounded-lg border bg-muted/50 p-4"
-                    key={`detail-${detail.type ?? i}`}
-                  >
-                    <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                      {detail.type ?? "Details"}
-                    </p>
-                    {detail.type === "purchase" ? (
-                      <div className="space-y-1">
-                        {detail.item && (
-                          <p className="font-medium">{detail.item}</p>
-                        )}
-                        {detail.amount?.value && (
-                          <p className="font-bold text-lg">
-                            ${detail.amount.value}{" "}
-                            <span className="font-normal text-muted-foreground text-sm">
-                              {detail.amount.currency ?? "USD"}
-                            </span>
-                          </p>
-                        )}
-                        {detail.merchant && (
-                          <p className="text-muted-foreground text-sm">
-                            Merchant: {detail.merchant}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <dl className="space-y-1 text-sm">
-                        {Object.entries(detail)
-                          .filter(([k]) => k !== "type")
-                          .map(([k, v]) => (
-                            <div className="flex gap-2" key={k}>
-                              <dt className="font-medium">{k}:</dt>
-                              <dd className="text-muted-foreground">
-                                {typeof v === "string" ? v : JSON.stringify(v)}
-                              </dd>
-                            </div>
-                          ))}
-                      </dl>
-                    )}
-                  </div>
-                ))}
+                {details.authorization_details.map((detail, i) => {
+                  if (detail.type === "payment_authorization") {
+                    const paymentId =
+                      typeof detail.payment_id === "string"
+                        ? detail.payment_id
+                        : `idx-${i}`;
+                    return (
+                      <PaymentAuthorizationCard
+                        bindingMessage={details.binding_message}
+                        detail={detail}
+                        key={`detail-payment-${paymentId}`}
+                      />
+                    );
+                  }
+
+                  return (
+                    <div
+                      className="rounded-lg border bg-muted/50 p-4"
+                      key={`detail-${detail.type ?? i}`}
+                    >
+                      <p className="mb-2 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                        {detail.type ?? "Details"}
+                      </p>
+                      {detail.type === "purchase" ? (
+                        <div className="space-y-1">
+                          {detail.item && (
+                            <p className="font-medium">{detail.item}</p>
+                          )}
+                          {detail.amount?.value && (
+                            <p className="font-bold text-lg">
+                              ${detail.amount.value}{" "}
+                              <span className="font-normal text-muted-foreground text-sm">
+                                {detail.amount.currency ?? "USD"}
+                              </span>
+                            </p>
+                          )}
+                          {detail.merchant && (
+                            <p className="text-muted-foreground text-sm">
+                              Merchant: {detail.merchant}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <dl className="space-y-1 text-sm">
+                          {Object.entries(detail)
+                            .filter(([k]) => k !== "type")
+                            .map(([k, v]) => (
+                              <div className="flex gap-2" key={k}>
+                                <dt className="font-medium">{k}:</dt>
+                                <dd className="text-muted-foreground">
+                                  {typeof v === "string"
+                                    ? v
+                                    : JSON.stringify(v)}
+                                </dd>
+                              </div>
+                            ))}
+                        </dl>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

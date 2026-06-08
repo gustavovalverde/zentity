@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getAuth } from "@/lib/auth";
 import { signDpopProof } from "@/lib/dpop";
 import { env } from "@/lib/env";
-import { settlePayment } from "@/lib/zpay-client";
+import { settlePayment, ZpayError } from "@/lib/zpay-client";
 import {
   type SignPaymentInput,
   signedPayloadBytesToHex,
@@ -139,12 +139,23 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
+    const description = describeSettleFailure(err);
     return NextResponse.json(
       {
         error: "settle_failed",
-        error_description: err instanceof Error ? err.message : "settle failed",
+        error_description: description,
       },
       { status: 502 }
     );
   }
+}
+
+function describeSettleFailure(err: unknown): string {
+  if (err instanceof ZpayError && err.problem) {
+    return err.problem.detail ?? err.problem.title;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return "settle failed";
 }
