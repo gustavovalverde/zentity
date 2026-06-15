@@ -13,8 +13,8 @@ const mocks = vi.hoisted(() => ({
   getMirrorAddress: vi.fn(),
   readOnChainCompliance: vi.fn(),
   getStoredDpopJkt: vi.fn(),
-  settlePayment: vi.fn(),
-  verifyPayment: vi.fn(),
+  settleViaFacilitator: vi.fn(),
+  verifyViaFacilitator: vi.fn(),
   verifyProofOfHumanToken: vi.fn(),
 }));
 
@@ -44,8 +44,8 @@ vi.mock("@/lib/env", () => ({
 }));
 
 vi.mock("@/lib/facilitator", () => ({
-  settlePayment: mocks.settlePayment,
-  verifyPayment: mocks.verifyPayment,
+  settleViaFacilitator: mocks.settleViaFacilitator,
+  verifyViaFacilitator: mocks.verifyViaFacilitator,
 }));
 
 vi.mock("@/lib/poh-client", () => ({
@@ -139,7 +139,7 @@ describe("/api/x402/access POST", () => {
     mocks.getMirrorAddress.mockReturnValue(
       "0xa90723A47A14437500645Ece6049d0128A2f256D"
     );
-    mocks.verifyPayment.mockResolvedValue({
+    mocks.verifyViaFacilitator.mockResolvedValue({
       isValid: true,
       payer: WALLET_A,
     });
@@ -162,7 +162,7 @@ describe("/api/x402/access POST", () => {
       minComplianceLevel: 3,
       network: "eip155:84532",
     });
-    mocks.settlePayment.mockResolvedValue({
+    mocks.settleViaFacilitator.mockResolvedValue({
       success: true,
       transaction: `0x${"1".repeat(64)}`,
       network: "eip155:84532",
@@ -186,7 +186,7 @@ describe("/api/x402/access POST", () => {
       error: "compliance_required",
       required: 2,
     });
-    expect(mocks.settlePayment).not.toHaveBeenCalled();
+    expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
   });
 
   it("emits an x402 v2 PAYMENT-REQUIRED header before payment", async () => {
@@ -240,7 +240,7 @@ describe("/api/x402/access POST", () => {
       payer: WALLET_A,
     });
     expect(mocks.readOnChainCompliance).not.toHaveBeenCalled();
-    expect(mocks.settlePayment).not.toHaveBeenCalled();
+    expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
   });
 
   it("checks on-chain compliance against the verified payer wallet", async () => {
@@ -257,7 +257,7 @@ describe("/api/x402/access POST", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.readOnChainCompliance).toHaveBeenCalledWith(WALLET_A, 3);
-    expect(mocks.settlePayment).toHaveBeenCalledOnce();
+    expect(mocks.settleViaFacilitator).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({
       access: "granted",
       onChain: {

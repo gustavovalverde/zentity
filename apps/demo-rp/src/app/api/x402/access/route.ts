@@ -15,7 +15,7 @@ import { z } from "zod";
 import type { X402Resource } from "@/data/x402";
 import { findResource } from "@/data/x402";
 import { env } from "@/lib/env";
-import { settlePayment, verifyPayment } from "@/lib/facilitator";
+import { settleViaFacilitator, verifyViaFacilitator } from "@/lib/facilitator";
 import {
   getMirrorAddress,
   readOnChainCompliance,
@@ -31,7 +31,7 @@ const bodySchema = z.object({
     .optional(),
 });
 
-type SettlementResult = Awaited<ReturnType<typeof settlePayment>>;
+type SettlementResult = Awaited<ReturnType<typeof settleViaFacilitator>>;
 
 let proofOfHumanTokenVerifier:
   | ReturnType<typeof createProofOfHumanTokenVerifier>
@@ -322,7 +322,7 @@ export async function POST(request: Request) {
     ? routeConfig.accepts[0]
     : routeConfig.accepts;
 
-  const verification = await verifyPayment(
+  const verification = await verifyViaFacilitator(
     paymentSignature,
     paymentRequirements
   );
@@ -338,7 +338,7 @@ export async function POST(request: Request) {
 
   // Payment-only resources: payment is sufficient
   if (resource.requiredTier === 0) {
-    const settlement = await settlePayment(
+    const settlement = await settleViaFacilitator(
       paymentSignature,
       paymentRequirements
     );
@@ -376,7 +376,10 @@ export async function POST(request: Request) {
     onChain = chain.data;
   }
 
-  const settlement = await settlePayment(paymentSignature, paymentRequirements);
+  const settlement = await settleViaFacilitator(
+    paymentSignature,
+    paymentRequirements
+  );
   if (!settlement.success) {
     return buildSettlementFailedResponse(settlement);
   }
