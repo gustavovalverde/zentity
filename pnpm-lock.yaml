@@ -740,6 +740,9 @@ importers:
 
   packages/sdk:
     dependencies:
+      '@noble/curves':
+        specifier: ^1.9.7
+        version: 1.9.7
       '@serenity-kit/opaque':
         specifier: ^1.1.0
         version: 1.1.0

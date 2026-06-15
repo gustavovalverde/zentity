@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   intentHash,
   intentHashToWireString,
@@ -10,9 +10,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuth } from "@/lib/auth";
 import { computeUriConfirmationCode } from "@/lib/confirmation-code";
-import { signDpopProof } from "@/lib/dpop";
 import { env } from "@/lib/env";
 import { preparePayment, ZpayError } from "@/lib/zpay-client";
+import { getZpayDpopClient } from "@/lib/zpay-dpop";
 
 /**
  * POST /api/aether/prepare
@@ -112,11 +112,8 @@ export async function POST(request: Request) {
   });
 
   const prepareUrl = `${env.ZPAY_URL}/x402/v2/prepare`;
-  const { proofJwt } = await signDpopProof({
-    method: "POST",
-    url: prepareUrl,
-    jti: randomUUID(),
-  });
+  const dpop = await getZpayDpopClient();
+  const proofJwt = await dpop.proofFor("POST", prepareUrl);
 
   try {
     const prepared = await preparePayment({

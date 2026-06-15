@@ -146,7 +146,12 @@ const CAPABILITIES = [
     name: "payment_authorization:sign",
     description:
       "Mint a payment_authorization RAR entry bounding a single on-chain spend (chain, recipient, amount, expiry, intent_hash)",
-    approvalStrength: "biometric",
+    // "none" lets grant evaluation reach the boundary + ledger check, so a
+    // spend within a pre-authorized agent_session_grant auto-approves
+    // (autonomous within boundaries); over-limit / unlisted-recipient spends
+    // fall through to manual CIBA approval. "biometric" would dead-end
+    // evaluation before any boundary check, making the capability unreachable.
+    approvalStrength: "none",
     inputSchema: JSON.stringify({
       type: "object",
       properties: {
@@ -160,7 +165,7 @@ const CAPABILITIES = [
         },
         recipient: {
           type: "string",
-          pattern: "^[-a-z0-9]{3,8}:[-a-zA-Z0-9]{1,32}:[a-zA-Z0-9]{1,128}$",
+          pattern: "^[-a-z0-9]{3,8}:[-a-zA-Z0-9]{1,32}:[a-zA-Z0-9]{1,512}$",
           description: "CAIP-10 account id",
         },
         amount: {

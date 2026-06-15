@@ -54,30 +54,50 @@ const JWT_PREFIX = "eyJ";
 export async function revokeToken(
   input: RevokeTokenInput
 ): Promise<RevokeTokenOutput> {
-  const jti = await resolveJti(input.token);
-  if (!jti) {
+  const meta = await resolveTokenMeta(input.token);
+  if (!meta.jti) {
     return { revoked: false, unknown: true };
   }
 
   await db
     .insert(revokedTokens)
     .values({
-      jti,
+      jti: meta.jti,
       reason: input.reason ?? input.tokenTypeHint ?? null,
+      // Recorded so a revocation can be grouped by acting agent (`act.sub`)
+      // and by destination wallet (`aud`). Populated only for at+jwt; opaque
+      // tokens carry no claims to read.
+      actorSub: meta.actorSub ?? null,
+      audience: meta.audience ?? null,
     })
     .onConflictDoNothing({ target: revokedTokens.jti });
 
-  return { revoked: true, jti, unknown: false };
+  return { revoked: true, jti: meta.jti, unknown: false };
 }
 
-async function resolveJti(token: string): Promise<string | undefined> {
+interface TokenMeta {
+  actorSub?: string;
+  audience?: string;
+  jti?: string;
+}
+
+async function resolveTokenMeta(token: string): Promise<TokenMeta> {
   if (token.startsWith(JWT_PREFIX)) {
     try {
       const claims = decodeJwt(token);
-      const jti = claims.jti;
-      return typeof jti === "string" ? jti : undefined;
+      const jti = typeof claims.jti === "string" ? claims.jti : undefined;
+      const act = claims.act as { sub?: unknown } | undefined;
+      const actorSub = typeof act?.sub === "string" ? act.sub : undefined;
+      const aud = claims.aud;
+      const audience =
+        typeof aud === "string"
+          ? aud
+          : Array.isArray(aud) && typeof aud[0] === "string"
+            ? aud[0]
+            : undefined;
+      return { actorSub, audience, jti };
     } catch {
-      return undefined;
+      return {};
     }
   }
 
@@ -88,7 +108,9 @@ async function resolveJti(token: string): Promise<string | undefined> {
     .limit(1);
 
   const jti = row?.referenceId;
-  return typeof jti === "string" && jti.length > 0 ? jti : undefined;
+  return {
+    jti: typeof jti === "string" && jti.length > 0 ? jti : undefined,
+  };
 }
 
 /**

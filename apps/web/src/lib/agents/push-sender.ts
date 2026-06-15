@@ -80,6 +80,13 @@ function findPaymentAuthorization(
   try {
     return parsePaymentAuthorization(authorizationDetails);
   } catch (error) {
+    // The RAR is validated and canonicalized at bc-authorize (canonicalizePaymentRar
+    // throws invalid_request there), so a parse failure here means corruption.
+    // Log it but return null rather than throwing: this runs inside the
+    // fire-and-forget notification path, where a throw would silently abort BOTH
+    // the push and the email (the CIBA plugin swallows the rejection). Falling
+    // back to a non-payment card keeps the user notified; the loud failure
+    // belongs at bc-authorize, which already rejects a malformed RAR.
     logWarn("payment_authorization push projection skipped", {
       reason: error instanceof Error ? error.message : "unknown",
     });

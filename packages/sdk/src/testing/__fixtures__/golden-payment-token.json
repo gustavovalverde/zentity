@@ -1,0 +1,19 @@
+{
+	"token": "eyJhbGciOiJFZERTQSIsImtpZCI6InplbnRpdHktcGF5bWVudC1pc3N1ZXIiLCJ0eXAiOiJhdCtqd3QifQ.eyJhdXRob3JpemF0aW9uX2RldGFpbHMiOlt7InR5cGUiOiJwYXltZW50X2F1dGhvcml6YXRpb24iLCJjaGFpbiI6eyJuYW1lc3BhY2UiOiJ6Y2FzaCIsInJlZmVyZW5jZSI6InRlc3QifSwicmVjaXBpZW50IjoiemNhc2g6dGVzdDp1dGVzdDFxcSIsImFtb3VudCI6eyJjdXJyZW5jeSI6IlpFQyIsInZhbHVlIjoiNTAwMDAwMDAiLCJ1bml0IjoiYmFzZSJ9LCJwYXltZW50X2lkIjoiMDFLVDlBMFY0MzFWR0Q1WUg3UjdHNjM1SEMiLCJpbnRlbnRfaGFzaCI6InYxOnNoYTI1NjptaFh1eHlEZjM1VFlFMEFPLUF4akh2WUltWmNSX1pGcnFXWjVGR2xhUzFNIiwiZXhwaXJlc19hdCI6eyJraW5kIjoiYmxvY2tfaGVpZ2h0IiwidmFsdWUiOjQwNDcxMDB9fV0sImNuZiI6eyJqa3QiOiJkcG9wLWtleS10aHVtYnByaW50In0sImlzcyI6Imh0dHBzOi8vaXNzdWVyLnplbnRpdHkudGVzdCIsInN1YiI6InRlc3QtdXNlciIsImF1ZCI6IndhbGxldC1qa3QtdGh1bWJwcmludCIsImlhdCI6NDEwMjQ0NDY4MCwiZXhwIjo0MTAyNDQ0ODAwLCJqdGkiOiIwMUdPTERFTkFDQ0VTU1RPS0VOSlRJMDAwMDAifQ.0WJCKtUNBEycpx5xJmtD1TeQDVtsPpI17T0bg15TtjJ-Wny_b2yDsIcHAN7HMSOFqx7tO9TuiUCDQ4-UGnhnCA",
+	"jwks": {
+		"keys": [
+			{
+				"crv": "Ed25519",
+				"kty": "OKP",
+				"x": "gR8gOqTVf-4JBY4LZ3edHIjUvxpCiE1CRPDPRVx0cyQ",
+				"alg": "EdDSA",
+				"kid": "zentity-payment-issuer",
+				"use": "sig"
+			}
+		]
+	},
+	"audience": "wallet-jkt-thumbprint",
+	"expectedRecipient": "zcash:test:utest1qq",
+	"expectedIntentHash": "v1:sha256:mhXuxyDf35TYE0AO-AxjHvYImZcR_ZFrqWZ5FGlaS1M",
+	"cnfJkt": "dpop-key-thumbprint"
+}

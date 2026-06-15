@@ -1,6 +1,7 @@
 import "server-only";
 
 import { env } from "@/lib/env";
+import { parseProblem, type ServiceProblem } from "@/lib/problem-json";
 
 /**
  * Server-side wrapper for zpay's HTTP surface.
@@ -40,61 +41,15 @@ import { env } from "@/lib/env";
 
 export type PaymentNetwork = "testnet" | "mainnet" | "regtest";
 
-export interface ZpayProblem {
-  detail?: string;
-  kind: string;
-  retryable?: boolean;
-  title: string;
-}
-
-/**
- * Parses zpay's RFC 7807-shaped error envelope when the upstream response
- * advertises `application/problem+json`. Returns null when the Content-Type
- * is not problem+json or when the body cannot be parsed as the expected
- * object shape; callers should fall back to raw text in that case.
- */
-export async function parseZpayProblem(
-  response: Response
-): Promise<ZpayProblem | null> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.includes("application/problem+json")) {
-    return null;
-  }
-  const raw = await response.text().catch(() => "");
-  if (!raw) {
-    return null;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (!(parsed && typeof parsed === "object")) {
-    return null;
-  }
-  const body = parsed as Record<string, unknown>;
-  const kind = typeof body.kind === "string" ? body.kind : "unknown";
-  const title = typeof body.title === "string" ? body.title : "zpay error";
-  const problem: ZpayProblem = { kind, title };
-  if (typeof body.detail === "string") {
-    problem.detail = body.detail;
-  }
-  if (typeof body.retryable === "boolean") {
-    problem.retryable = body.retryable;
-  }
-  return problem;
-}
-
 export class ZpayError extends Error {
   readonly status: number;
   readonly endpoint: string;
-  readonly problem: ZpayProblem | null;
+  readonly problem: ServiceProblem | null;
 
   constructor(args: {
     endpoint: string;
     status: number;
-    problem: ZpayProblem | null;
+    problem: ServiceProblem | null;
     message: string;
   }) {
     super(args.message);
@@ -112,7 +67,7 @@ export class ZpayError extends Error {
 function formatProblemMessage(
   endpoint: string,
   status: number,
-  problem: ZpayProblem
+  problem: ServiceProblem
 ): string {
   const tail = problem.detail ? `: ${problem.detail}` : "";
   return `zpay ${endpoint} returned ${status} [${problem.kind}] ${problem.title}${tail}`;
@@ -122,7 +77,7 @@ async function buildZpayError(
   endpoint: string,
   response: Response
 ): Promise<ZpayError> {
-  const problem = await parseZpayProblem(response);
+  const problem = await parseProblem(response, "zpay error");
   if (problem) {
     return new ZpayError({
       endpoint,

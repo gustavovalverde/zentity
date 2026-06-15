@@ -15,7 +15,7 @@ interface SettleResult {
   transaction?: string;
 }
 
-export async function verifyPayment(
+export async function verifyViaFacilitator(
   paymentSignature: string,
   paymentRequirements: unknown
 ): Promise<VerifyResult> {
@@ -50,7 +50,7 @@ export async function verifyPayment(
   }
 }
 
-export async function settlePayment(
+export async function settleViaFacilitator(
   paymentSignature: string,
   paymentRequirements: unknown
 ): Promise<SettleResult> {

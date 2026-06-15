@@ -9,6 +9,10 @@
  * agents/session.ts (which needs deriveCapabilityName / resolveCapabilityApprovalStrength).
  */
 
+import {
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+  PAYMENT_AUTHORIZATION_TYPE,
+} from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 
 import {
@@ -46,8 +50,13 @@ export function deriveCapabilityName(
   scope: string
 ): string | null {
   // Precedence is strict so a mixed request produces one deterministic
-  // capability: purchase details outrank identity scopes, which outrank proof
-  // scopes, which outrank openid-only requests.
+  // capability: a payment_authorization spend outranks purchase details, which
+  // outrank identity scopes, which outrank proof scopes, which outrank
+  // openid-only requests.
+  if (details.some((detail) => detail.type === PAYMENT_AUTHORIZATION_TYPE)) {
+    return PAYMENT_AUTHORIZATION_CAPABILITY;
+  }
+
   if (details.some((detail) => detail.type === "purchase")) {
     return "purchase";
   }

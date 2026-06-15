@@ -18,6 +18,13 @@ interface ProtectedResourceConfig {
   mcpPublicUrl: string;
   oidc4vciCredentialAudience: string;
   rpApiAudience: string;
+  /**
+   * The agent wallet's audience value (its JWK thumbprint). Included so a
+   * payment_authorization token request can pin `aud` to the wallet key via
+   * the resource indicator (PRD-43 D-5). A bare thumbprint, not a URL, so it
+   * is not normalized.
+   */
+  walletAudience?: string | undefined;
 }
 
 export function getProtectedResourceAudiences(
@@ -30,7 +37,11 @@ export function getProtectedResourceAudiences(
     config.oidc4vciCredentialAudience,
     config.rpApiAudience,
   ];
-  return [...new Set(raw.filter(Boolean).map(normalizeResource))];
+  const audiences = new Set(raw.filter(Boolean).map(normalizeResource));
+  if (config.walletAudience) {
+    audiences.add(config.walletAudience);
+  }
+  return [...audiences];
 }
 
 export function getProtectedResourceMetadataUrl(): string {

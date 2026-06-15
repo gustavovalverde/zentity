@@ -29,12 +29,12 @@
 
 import { z } from "zod";
 
+import { INTENT_HASH_WIRE_PREFIX } from "./intent-hash";
+
 export const PAYMENT_AUTHORIZATION_TYPE = "payment_authorization" as const;
 
 export const PAYMENT_AUTHORIZATION_CAPABILITY =
 	"payment_authorization:sign" as const;
-
-export const SIGNED_PAYLOAD_FORMAT_PCZT_V1 = "pczt-v1" as const;
 
 const caip2NamespaceRegex = /^[-a-z0-9]{3,8}$/;
 const caip2ReferenceRegex = /^[-a-zA-Z0-9]{1,32}$/;
@@ -42,8 +42,6 @@ const caip10AccountRegex =
 	/^[-a-z0-9]{3,8}:[-a-zA-Z0-9]{1,32}:[a-zA-Z0-9]{1,512}$/;
 const decimalStringRegex = /^(0|[1-9][0-9]*)(\.[0-9]+)?$/;
 const intentHashPayloadRegex = /^[A-Za-z0-9_-]{43}$/;
-
-const INTENT_HASH_WIRE_PREFIX = "v1:sha256:" as const;
 
 export const ChainIdSchema = z.object({
 	namespace: z
@@ -56,7 +54,6 @@ export const ChainIdSchema = z.object({
 export type ChainId = z.infer<typeof ChainIdSchema>;
 
 export const AmountUnitSchema = z.enum(["base", "display"]);
-export type AmountUnit = z.infer<typeof AmountUnitSchema>;
 
 export const AmountSchema = z.object({
 	currency: z.string().min(1).max(16),

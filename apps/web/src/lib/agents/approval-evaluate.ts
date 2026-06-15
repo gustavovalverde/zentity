@@ -1,3 +1,7 @@
+import {
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+  PAYMENT_AUTHORIZATION_TYPE,
+} from "@zentity/sdk/protocol";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { computeSessionState } from "@/lib/agents/session";
@@ -45,6 +49,29 @@ interface GrantEvalResult {
 function extractActionParams(
   details: AuthorizationDetail[]
 ): Record<string, unknown> {
+  const payment = details.find(
+    (detail) => detail.type === PAYMENT_AUTHORIZATION_TYPE
+  );
+  if (payment) {
+    const chain = payment.chain as
+      | { namespace?: string; reference?: string }
+      | undefined;
+    return {
+      "amount.value": payment.amount?.value
+        ? Number.parseFloat(payment.amount.value)
+        : undefined,
+      "amount.currency": payment.amount?.currency,
+      // Surface the unit so a boundary can pin it (e.g. {field:"amount.unit",
+      // op:"eq", value:"base"}). amount.value caps are in whatever unit the
+      // spend declares, so a unit eq constraint prevents a base-vs-display cap
+      // mismatch.
+      "amount.unit": (payment.amount as { unit?: string } | undefined)?.unit,
+      recipient: payment.recipient as string | undefined,
+      "chain.namespace": chain?.namespace,
+      "chain.reference": chain?.reference,
+    };
+  }
+
   const purchase = details.find((detail) => detail.type === "purchase");
   if (!purchase) {
     return {};
@@ -70,6 +97,25 @@ function parseConstraints(raw: string | null): Constraint[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Whether a payment grant is bounded enough to auto-approve without a human.
+ * On-chain spend requires an explicit amount ceiling: a per-spend `max` on
+ * `amount.value`, or a daily amount limit. That is the floor that closes the
+ * unbounded-spend hole; a recipient allowlist (`in`/`eq` on recipient) is an
+ * optional tightening still enforced by the normal constraint check, but it is
+ * not required because a shopping agent legitimately pays many merchants. An
+ * amount-unbounded payment grant must fall through to manual CIBA.
+ */
+function isBoundedPaymentGrant(grant: NormalizedGrant): boolean {
+  return (
+    grant.dailyLimitAmount !== undefined ||
+    grant.constraints.some(
+      (constraint) =>
+        constraint.field === "amount.value" && constraint.op === "max"
+    )
+  );
 }
 
 function evaluateConstraint(
@@ -340,14 +386,29 @@ export async function evaluateSessionGrants(
   }
 
   const actionParams = extractActionParams(authorizationDetails);
-  const purchase = authorizationDetails.find(
-    (detail) => detail.type === "purchase"
+  // The spend whose amount the daily-amount ledger limit tracks: a
+  // payment_authorization grant or a legacy purchase, whichever is present.
+  const spend = authorizationDetails.find(
+    (detail) =>
+      detail.type === PAYMENT_AUTHORIZATION_TYPE || detail.type === "purchase"
   );
-  const purchaseAmount = purchase?.amount?.value
-    ? Number.parseFloat(purchase.amount.value)
+  const spendAmount = spend?.amount?.value
+    ? Number.parseFloat(spend.amount.value)
     : undefined;
 
   for (const grant of activeGrants) {
+    // A payment_authorization:sign grant authorizes on-chain spend. Never
+    // auto-approve one that is not explicitly bounded: an empty-constraint /
+    // no-limit grant would auto-approve any amount to any recipient. Require a
+    // recipient allowlist AND an amount ceiling; otherwise fall through to
+    // manual CIBA approval.
+    if (
+      capabilityName === PAYMENT_AUTHORIZATION_CAPABILITY &&
+      !isBoundedPaymentGrant(grant)
+    ) {
+      continue;
+    }
+
     const constraintsPass =
       grant.constraints.length === 0 ||
       grant.constraints.every((constraint) =>
@@ -363,8 +424,8 @@ export async function evaluateSessionGrants(
         hostPolicyId: grant.hostPolicyId,
         grantId: grant.id,
         sessionId,
-        amount: purchaseAmount,
-        currency: purchase?.amount?.currency,
+        amount: spendAmount,
+        currency: spend?.amount?.currency,
       },
       {
         cooldownSec: grant.cooldownSec,

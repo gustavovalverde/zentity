@@ -18,10 +18,7 @@ export {
 	AGENT_DID_METHODS_SUPPORTED,
 } from "./claims";
 export * from "./did-key";
-export type {
-	AmountUnit as IntentAmountUnit,
-	IntentInput,
-} from "./intent-hash";
+export type { AmountUnit, IntentInput } from "./intent-hash";
 export {
 	INTENT_HASH_DOMAIN_SEPARATOR,
 	INTENT_HASH_WIRE_PREFIX,
@@ -40,7 +37,6 @@ export {
 } from "./json-strict";
 export type {
 	Amount,
-	AmountUnit,
 	ChainId,
 	ChainReference,
 	ExpiresAt,
@@ -48,6 +44,13 @@ export type {
 	PaymentAuthorization,
 	PaymentAuthorizationDetails,
 } from "./payment-authorization";
+export {
+	SIGNED_PAYLOAD_FORMAT_PCZT_V1,
+	SIGNED_PAYLOAD_FORMAT_RAW_V5,
+	SignedPayloadFormatSchema,
+	SignedPayloadSchema,
+} from "./signed-payload";
+export type { SignedPayload, SignedPayloadFormat } from "./signed-payload";
 export {
 	AmountSchema,
 	AmountUnitSchema,
@@ -61,5 +64,4 @@ export {
 	PaymentAuthorizationSchema,
 	parsePaymentAuthorization,
 	paymentUriToCaip10,
-	SIGNED_PAYLOAD_FORMAT_PCZT_V1,
 } from "./payment-authorization";

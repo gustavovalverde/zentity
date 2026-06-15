@@ -60,7 +60,7 @@ describe("@zentity/sdk/testing", () => {
 
 	it("createMockIssuer serves discovery and JWKS for OpenID verification", async () => {
 		const issuer = createMockIssuer();
-		const token = await issuer.issueToken({ scope: "openid" });
+		const token = await issuer.issueGenericToken({ scope: "openid" });
 		const verifier = createOpenIdTokenVerifier({
 			issuerUrl: issuer.issuerUrl,
 		});

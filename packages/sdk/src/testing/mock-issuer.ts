@@ -22,7 +22,12 @@ export interface CreateMockIssuerOptions {
 
 export interface MockIssuer {
 	fetch(input: Request | URL | string, init?: RequestInit): Promise<Response>;
-	issueToken(
+	/**
+	 * Mints a generic EdDSA JWT (`typ: "JWT"`, URL `aud`, arbitrary claims) for
+	 * OAuth/OIDC token-verifier tests. NOT a conformant payment token — use
+	 * {@link mintPaymentAuthorizationToken} for the zpay spend grant.
+	 */
+	issueGenericToken(
 		claims?: Record<string, unknown>,
 		options?: {
 			audience?: string | string[];
@@ -113,7 +118,7 @@ export function createMockIssuer(
 		});
 	}
 
-	async function issueToken(
+	async function issueGenericToken(
 		claims: Record<string, unknown> = {},
 		optionsOverride: {
 			audience?: string | string[];
@@ -137,7 +142,7 @@ export function createMockIssuer(
 
 	return {
 		fetch,
-		issueToken,
+		issueGenericToken,
 		issuerUrl,
 		jwksUrl,
 		openIdConfigurationUrl,

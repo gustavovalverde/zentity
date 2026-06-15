@@ -1,78 +1,76 @@
-import { randomUUID } from "node:crypto";
+import { requestCibaApproval } from "@zentity/sdk";
+import {
+  intentHash,
+  intentHashToWireString,
+  networkToChainReference,
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+  type PaymentAuthorization,
+  paymentUriToCaip10,
+  SignedPayloadSchema,
+} from "@zentity/sdk/protocol";
+import { createWalletSpendRequest } from "@zentity/sdk/rp";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { prepareAgentAssertionForScenario } from "@/lib/agent-runtime";
 import { getAuth } from "@/lib/auth";
-import { signDpopProof } from "@/lib/dpop";
+import { readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { parseProblemFromBody, type ServiceProblem } from "@/lib/problem-json";
 import { settlePayment, ZpayError } from "@/lib/zpay-client";
-import {
-  type SignPaymentInput,
-  signedPayloadBytesToHex,
-  signPayment,
-  ZspendError,
-} from "@/lib/zspend-client";
+import { getZpayDpopClient } from "@/lib/zpay-dpop";
 
 /**
- * POST /api/aether/sign
+ * POST /api/aether/sign — the BFF orchestrator for an agent-initiated spend
+ * (PRD-43 Phase 3).
  *
- * Phase 5 BFF orchestrator (Proposal-0003 §8 Phase 5). The Aether agent
- * calls this after CIBA approval to drive the wallet runtime
- * (zspend-runtime) and forward the signed transaction to zpay's
- * `/x402/v2/settle`.
+ * Drives the full trust boundary: rebuild the canonical payment_authorization
+ * RAR from the prepared payment, obtain a DPoP-bound `at+jwt` carrying it via
+ * CIBA (zentity mints the RAR, pins `aud` to the wallet, caps the lifetime at
+ * 120s), present it to the wallet `/v1/payments/sign`, and forward the signed
+ * bytes to zpay `/settle`.
  *
- * Wire shape on this route is small and demo-shaped: callers post
- * `{ payment_uri, payment_id, network }` and receive back
- * `{ payment_id, transaction_id }`. The full
- * `payment_authorization` RAR flow (Phase 3) lands as a follow-on slice;
- * for the Phase 5 MVP the orchestrator skips the access-token presentation
- * to the wallet (zspend-runtime's Phase 4 MVP likewise skips token
- * verification) and trusts the demo-rp session for the bounded spend
- * intent.
+ * One seed-derived DPoP key binds the chain: it signs the CIBA token request
+ * (so the issuer pins the token's `cnf.jkt` to it), the wallet call, and
+ * `/settle`. The RAR is rebuilt server-side from the prepared tuple, never
+ * trusted from the client; the wallet re-checks the intent hash regardless.
  *
- * Errors discriminated by machine `error` tag:
- * - `session_required` (401) caller is not signed in
- * - `wallet_unreachable` (502) zspend-runtime did not respond
- * - `target_expiry_stale` (409) zspend rejected the caller's expiry as
- *   already past the chain tip; the caller must request a fresh
- *   /prepare and retry
- * - `settle_failed` (502) zpay /settle returned non-2xx
- * - `invalid_request` (400) zod parse failed
+ * Errors: the wallet's and facilitator's RFC-7807 `kind`/`remediation`/
+ * `Retry-After` pass through verbatim (D-H). BFF-only failures use BFF tags
+ * (`session_required`, `invalid_request`, `approval_failed`).
  */
 
 const requestSchema = z.object({
   payment_uri: z.string().min(1),
   payment_id: z.string().min(1),
   network: z.enum(["mainnet", "testnet", "regtest"]),
-  /**
-   * The expiry height the caller committed to at /prepare time. zspend
-   * routes this into the wallet's PCZT Updater so the signed bytes carry
-   * the same value zpay will assert at /settle.
-   */
   target_expiry_height: z.number().int().nonnegative(),
+  amount_zat: z.number().int().nonnegative(),
+  merchant: z.string().min(1).optional(),
 });
 
-export async function POST(request: Request) {
-  // Dev-only gate per Proposal-0003 §10. The Phase 5 MVP skips CIBA
-  // authorization-details correlation, canonical-URI lookup, and
-  // payment_id ownership checks; the route signs whatever URI the
-  // caller supplies as long as they have a session. That posture is
-  // acceptable for a local demo flow and is not safe for production.
-  // The route refuses to serve when NODE_ENV is "production" so a
-  // misconfigured deploy fails closed instead of silently shipping a
-  // wallet-spend MVP.
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      {
-        error: "demo_only",
-        error_description:
-          "/api/aether/sign is gated to non-production builds until the CIBA correlation and ownership checks land (Proposal-0003 §10).",
-      },
-      { status: 503 }
-    );
-  }
+const AETHER_SCENARIO = "aether" as const;
 
+function problemResponse(
+  problem: ServiceProblem,
+  status: number
+): NextResponse {
+  const body: Record<string, unknown> = {
+    error: problem.kind,
+    error_description: problem.detail ?? problem.title,
+  };
+  if (problem.remediation) {
+    body.remediation = problem.remediation;
+  }
+  const init: ResponseInit = { status };
+  if (problem.retryAfterSeconds !== undefined) {
+    init.headers = { "Retry-After": String(problem.retryAfterSeconds) };
+  }
+  return NextResponse.json(body, init);
+}
+
+export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json());
   if (!parsed.success) {
     return NextResponse.json(
@@ -80,99 +78,177 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  const input = parsed.data;
 
   const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
-  if (!session?.user?.id) {
+  const email = session?.user?.email;
+  if (!(session?.user?.id && email)) {
     return NextResponse.json(
       {
         error: "session_required",
         error_description:
-          "Sign in before signing a payment; the wallet route refuses to drive a spend without an authenticated session.",
+          "Sign in before signing a payment; the agent grant is bound to your identity.",
       },
       { status: 401 }
     );
   }
 
-  const input: SignPaymentInput = {
-    paymentRequest: { scheme: "zip321", value: parsed.data.payment_uri },
-    network: parsed.data.network,
-    paymentId: parsed.data.payment_id,
-    targetExpiryHeight: parsed.data.target_expiry_height,
+  // Rebuild the canonical RAR from the prepared tuple (server-trusted).
+  const reference = networkToChainReference(input.network);
+  const recipient = paymentUriToCaip10(input.payment_uri, reference);
+  const intentWire = intentHashToWireString(
+    intentHash({
+      chainNamespace: "zcash",
+      chainReference: reference,
+      recipientCaip10: recipient,
+      amountValue: BigInt(input.amount_zat),
+      amountUnit: "base",
+      paymentId: input.payment_id,
+      expiryHeight: BigInt(input.target_expiry_height),
+    })
+  );
+  const rar: PaymentAuthorization = {
+    type: "payment_authorization",
+    chain: { namespace: "zcash", reference },
+    recipient,
+    amount: { currency: "ZEC", value: String(input.amount_zat), unit: "base" },
+    payment_id: input.payment_id,
+    intent_hash: intentWire,
+    expires_at: { kind: "block_height", value: input.target_expiry_height },
   };
 
-  let signedResult: Awaited<ReturnType<typeof signPayment>>;
+  const bindingMessage = `Authorize payment of ${input.amount_zat} zatoshi${
+    input.merchant ? ` to ${input.merchant}` : ""
+  }`;
+
+  // Obtain the RAR-bearing token via CIBA. The seed DPoP key authenticates the
+  // token request, so the issuer pins cnf.jkt to it (and to the wallet call).
+  let accessToken: string;
   try {
-    signedResult = await signPayment(input);
-  } catch (err) {
-    if (err instanceof ZspendError && err.kind === "target_expiry_stale") {
-      return NextResponse.json(
-        {
-          error: "target_expiry_stale",
-          error_description:
-            err.problem?.detail ?? err.problem?.title ?? err.message,
-        },
-        { status: 409 }
-      );
+    const [client, agentAssertion, dpopClient] = await Promise.all([
+      readDcrClient(AETHER_SCENARIO),
+      prepareAgentAssertionForScenario({
+        bindingMessage,
+        scenarioId: AETHER_SCENARIO,
+        userId: session.user.id,
+      }),
+      getZpayDpopClient(),
+    ]);
+    if (!client) {
+      throw new Error("Aether OAuth client is not registered");
     }
+    const tokenSet = await requestCibaApproval({
+      bindingMessage,
+      cibaEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`,
+      tokenEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/token`,
+      clientId: client.clientId,
+      dpopSigner: dpopClient,
+      loginHint: email,
+      scope: `openid ${PAYMENT_AUTHORIZATION_CAPABILITY}`,
+      authorizationDetails: [rar],
+      // No `resource`: the issuer authoritatively pins aud=wallet thumbprint
+      // for the payment grant regardless of what the client requests (D-5).
+      ...(agentAssertion ? { agentAssertion } : {}),
+    });
+    accessToken = tokenSet.accessToken;
+  } catch (err) {
     return NextResponse.json(
       {
-        error: "wallet_unreachable",
+        error: "approval_failed",
         error_description:
-          err instanceof Error ? err.message : "zspend sign failed",
+          err instanceof Error ? err.message : "CIBA approval failed",
       },
       { status: 502 }
     );
   }
 
-  const rawTxHex = signedPayloadBytesToHex(signedResult.signedPayload);
+  return presentToWalletAndSettle(accessToken, input);
+}
 
-  // Mint a DPoP proof for the zpay /settle call. The proof matches the
-  // jkt used by /api/aether/prepare so the (jkt, idempotency_key)
-  // composite zpay enforces resolves to this BFF process.
-  const settleUrl = `${env.ZPAY_URL}/x402/v2/settle`;
-  const { proofJwt } = await signDpopProof({
-    method: "POST",
-    url: settleUrl,
-    jti: randomUUID(),
+/**
+ * Present the token to the wallet `/sign`, then settle the signed bytes on
+ * zpay. The wallet's and facilitator's RFC-7807 problems pass through verbatim
+ * (D-H); BFF-only failures use BFF tags.
+ */
+async function presentToWalletAndSettle(
+  accessToken: string,
+  input: z.infer<typeof requestSchema>
+): Promise<NextResponse> {
+  const dpopClient = await getZpayDpopClient();
+  const walletEndpoint = `${env.ZSPEND_URL}/v1/payments/sign`;
+  const spend = await createWalletSpendRequest({
+    accessToken,
+    dpopClient,
+    walletEndpoint,
+    paymentRequest: { scheme: "zip321", value: input.payment_uri },
+    paymentId: input.payment_id,
+    targetExpiryHeight: input.target_expiry_height,
+    network: input.network,
   });
+  const signRes = await fetch(walletEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...spend.headers },
+    body: JSON.stringify(spend.body),
+  }).catch(() => null);
+  if (!signRes) {
+    return NextResponse.json(
+      {
+        error: "wallet_unreachable",
+        error_description: "wallet did not respond",
+      },
+      { status: 502 }
+    );
+  }
+  if (!signRes.ok) {
+    // Read the body once: parseProblemFromBody handles the problem+json case and
+    // the same string is the fallback detail when it is not problem+json.
+    const raw = await signRes.text().catch(() => "");
+    const problem = parseProblemFromBody(
+      signRes.headers,
+      raw,
+      "wallet sign failed"
+    );
+    return problem
+      ? problemResponse(problem, signRes.status)
+      : NextResponse.json(
+          { error: "wallet_sign_failed", error_description: raw.slice(0, 300) },
+          { status: signRes.status }
+        );
+  }
+
+  const body = (await signRes.json()) as { signed_payload?: unknown };
+  const signedPayload = SignedPayloadSchema.parse(body.signed_payload);
+  const rawTxHex = Buffer.from(signedPayload.bytes, "base64").toString("hex");
 
   try {
+    const settleUrl = `${env.ZPAY_URL}/x402/v2/settle`;
     const settlement = await settlePayment({
-      dpopProof: proofJwt,
-      paymentId: parsed.data.payment_id,
+      dpopProof: await dpopClient.proofFor("POST", settleUrl),
+      paymentId: input.payment_id,
       rawTxHex,
     });
-
     return NextResponse.json({
       payment_id: settlement.payment_id,
       transaction_id: settlement.broadcast_outcome.transaction_id ?? null,
       broadcast_kind: settlement.broadcast_outcome.kind,
       signed_payload: {
-        format: signedResult.signedPayload.format,
-        tx_id: signedResult.signedPayload.tx_id,
-        fee: signedResult.signedPayload.fee,
-        expires_at: signedResult.signedPayload.expires_at,
+        format: signedPayload.format,
+        tx_id: signedPayload.tx_id,
+        fee: signedPayload.fee,
+        expires_at: signedPayload.expires_at,
       },
     });
   } catch (err) {
-    const description = describeSettleFailure(err);
+    if (err instanceof ZpayError && err.problem) {
+      return problemResponse(err.problem, err.status || 502);
+    }
     return NextResponse.json(
       {
         error: "settle_failed",
-        error_description: description,
+        error_description: err instanceof Error ? err.message : "settle failed",
       },
       { status: 502 }
     );
   }
-}
-
-function describeSettleFailure(err: unknown): string {
-  if (err instanceof ZpayError && err.problem) {
-    return err.problem.detail ?? err.problem.title;
-  }
-  if (err instanceof Error) {
-    return err.message;
-  }
-  return "settle failed";
 }
