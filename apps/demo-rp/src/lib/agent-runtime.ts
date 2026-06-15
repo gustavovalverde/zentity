@@ -2,7 +2,10 @@ import "server-only";
 
 import crypto, { randomUUID } from "node:crypto";
 
-import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
+import {
+  encodeEd25519DidKeyFromJwk,
+  PAYMENT_AUTHORIZATION_CAPABILITY,
+} from "@zentity/sdk/protocol";
 import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
@@ -33,7 +36,7 @@ const DISPLAY = {
   runtime: "demo-rp",
   version: "1.0",
 } as const;
-const REQUESTED_CAPABILITIES = ["purchase", "request_approval"] as const;
+const REQUESTED_CAPABILITIES = [PAYMENT_AUTHORIZATION_CAPABILITY] as const;
 
 type AgentRuntimeRow = typeof agentRuntime.$inferSelect;
 type HostAttestationTier = "attested" | "self-declared" | "unverified";

@@ -1,5 +1,9 @@
 import "server-only";
 
+import {
+  type PaymentAuthorization,
+  parsePaymentAuthorization,
+} from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import webpush from "web-push";
 
@@ -38,15 +42,90 @@ interface CibaNotificationData {
   scope: string;
 }
 
+interface PaymentAuthorizationProjection {
+  amountDisplay: string;
+  chain: string;
+  paymentId: string;
+  recipient: string;
+}
+
+type CibaPushData = {
+  approvalUrl: string;
+  authReqId: string;
+  kind?: "payment_authorization";
+  payment?: PaymentAuthorizationProjection;
+  requiresBiometric: boolean;
+  requiresVaultUnlock: boolean;
+} & Record<string, unknown>;
+
 interface CibaPushPayload {
   body: string;
-  data: {
-    approvalUrl: string;
-    authReqId: string;
-    requiresBiometric: boolean;
-    requiresVaultUnlock: boolean;
-  };
+  data: CibaPushData;
   title: string;
+}
+
+function findPaymentAuthorization(
+  authorizationDetails: unknown
+): PaymentAuthorization | null {
+  if (!Array.isArray(authorizationDetails)) {
+    return null;
+  }
+  const hasPaymentEntry = authorizationDetails.some(
+    (entry: { type?: unknown } | null | undefined) =>
+      entry?.type === "payment_authorization"
+  );
+  if (!hasPaymentEntry) {
+    return null;
+  }
+  try {
+    return parsePaymentAuthorization(authorizationDetails);
+  } catch (error) {
+    // The RAR is validated and canonicalized at bc-authorize (canonicalizePaymentRar
+    // throws invalid_request there), so a parse failure here means corruption.
+    // Log it but return null rather than throwing: this runs inside the
+    // fire-and-forget notification path, where a throw would silently abort BOTH
+    // the push and the email (the CIBA plugin swallows the rejection). Falling
+    // back to a non-payment card keeps the user notified; the loud failure
+    // belongs at bc-authorize, which already rejects a malformed RAR.
+    logWarn("payment_authorization push projection skipped", {
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+    return null;
+  }
+}
+
+function projectPaymentAuthorization(
+  entry: PaymentAuthorization
+): PaymentAuthorizationProjection {
+  const amountDisplay =
+    entry.amount.unit === "base"
+      ? `${entry.amount.value} ${entry.amount.currency} (base unit)`
+      : `${entry.amount.value} ${entry.amount.currency}`;
+  return {
+    amountDisplay,
+    chain: `${entry.chain.namespace}:${entry.chain.reference}`,
+    paymentId: entry.payment_id,
+    recipient: entry.recipient,
+  };
+}
+
+function truncateMiddle(value: string, head = 8, tail = 6): string {
+  if (value.length <= head + tail + 1) {
+    return value;
+  }
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function buildPaymentNotificationBody(
+  clientLabel: string,
+  projection: PaymentAuthorizationProjection
+): string {
+  // Compact line shape: "{client}: {amount} on {chain} to {addr…}".
+  // We pre-truncate the recipient so the whole line stays under
+  // MAX_BINDING_MESSAGE_LENGTH on every push transport.
+  const short = truncateMiddle(projection.recipient);
+  const candidate = `${clientLabel}: ${projection.amountDisplay} on ${projection.chain} to ${short}`;
+  return sanitizeBindingMessage(candidate) ?? candidate;
 }
 
 function buildNotificationBody(
@@ -80,20 +159,29 @@ export function buildCibaPushPayload(
   const approvalUrl = `${origin}/approve/${encodeURIComponent(data.authReqId)}`;
   const clientLabel = data.clientName ?? "An application";
   const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
+
+  const paymentEntry = findPaymentAuthorization(data.authorizationDetails);
+  const paymentProjection = paymentEntry
+    ? projectPaymentAuthorization(paymentEntry)
+    : null;
+
   const safeBindingMessage = requiresVaultUnlock
     ? undefined
     : sanitizeBindingMessage(data.bindingMessage);
-  const body = buildNotificationBody(
-    clientLabel,
-    safeBindingMessage,
-    data.authorizationDetails
-  );
+
+  const body = paymentProjection
+    ? buildPaymentNotificationBody(clientLabel, paymentProjection)
+    : buildNotificationBody(
+        clientLabel,
+        safeBindingMessage,
+        data.authorizationDetails
+      );
 
   const title = data.agentName
     ? `${data.agentName} requests approval`
     : `${clientLabel} is requesting access`;
 
-  return {
+  const payload: CibaPushPayload = {
     title,
     body,
     data: {
@@ -103,6 +191,13 @@ export function buildCibaPushPayload(
       requiresVaultUnlock,
     },
   };
+
+  if (paymentProjection) {
+    payload.data.kind = "payment_authorization";
+    payload.data.payment = paymentProjection;
+  }
+
+  return payload;
 }
 
 // ---------------------------------------------------------------------------

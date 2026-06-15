@@ -248,6 +248,8 @@ export function AgentChat({
             <PaymentBridge
               amountZat={prepared.amount_zat}
               confirmationCode={prepared.confirmation_code}
+              expiryHeight={prepared.expiry_height}
+              network={task.zpay?.network ?? "testnet"}
               onReset={handleReset}
               paymentId={prepared.payment_id}
               paymentUri={prepared.payment_uri}

@@ -119,6 +119,13 @@ import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
+  buildPaymentAuthorizationClaims,
+  canonicalizePaymentRar,
+  PAYMENT_AUTHORIZATION_SCOPE,
+  PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
+  pinPaymentTokenAudience,
+} from "@/lib/auth/oidc/payment-mint";
+import {
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
   enforceStepUp,
@@ -327,6 +334,7 @@ const allowedClientScopes = [
   "poh",
   "offline_access",
   ...AGENT_BOOTSTRAP_SCOPES,
+  PAYMENT_AUTHORIZATION_SCOPE,
 ];
 const oidcStandardClaims = [
   "sub",
@@ -1556,8 +1564,22 @@ export const auth = betterAuth({
       if (ctx.path === "/oidc4vp/response") {
         return beforeVpResponse(ctx);
       }
+      if (ctx.path === "/oauth2/bc-authorize") {
+        const canonical = canonicalizePaymentRar(
+          ctx.body?.authorization_details
+        );
+        if (canonical && ctx.body) {
+          ctx.body.authorization_details = canonical;
+        }
+        return;
+      }
       if (ctx.path === "/oauth2/token") {
         await beforeTokenPairwiseGuard(ctx);
+        // Pin aud=wallet thumbprint for a payment grant AFTER the pairwise
+        // guard, which would otherwise strip the resource for pairwise agents.
+        if (ctx.body) {
+          await pinPaymentTokenAudience(ctx.body);
+        }
         if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
           await enforceCibaTokenAcr(ctx, db);
         }
@@ -1730,13 +1752,16 @@ export const auth = betterAuth({
     oauthProvider({
       silenceWarnings: { oauthAuthServerConfig: true },
       accessTokenExpiresIn: 3600,
+      // Payment tokens live 120s (D-6); every other scope keeps the 3600s
+      // default. createUserTokens takes the minimum across the granted scopes.
+      scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
       tokenBinding: dpopTokenBinding,
       requestUriResolver: createParResolver(),
       clientAuthStrategies: {
         [WALLET_ATTESTATION_TYPE]: walletAttestationStrategy as never,
       },
       pairwiseSecret: env.PAIRWISE_SECRET,
-      scopes: [...OAUTH_SCOPES],
+      scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
       grantTypes: [
         "authorization_code",
         "client_credentials",
@@ -1752,6 +1777,7 @@ export const auth = betterAuth({
         mcpPublicUrl: env.MCP_PUBLIC_URL,
         oidc4vciCredentialAudience,
         rpApiAudience,
+        walletAudience: env.WALLET_AUDIENCE,
       }),
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
@@ -2074,6 +2100,14 @@ export const auth = betterAuth({
           jti: cibaRequest.authReqId,
         };
 
+        // Re-mint the RAR server-side from the persisted (canonical) form and
+        // emit it as authorization_details (D-1). A corrupt stored RAR throws,
+        // failing the mint loudly rather than minting a token without it.
+        const paymentClaims = buildPaymentAuthorizationClaims(
+          (cibaRequest as { authorizationDetails?: string | null })
+            .authorizationDetails
+        );
+
         if (releaseContext) {
           await touchReleaseContext(
             cibaRequest.authReqId,
@@ -2082,12 +2116,14 @@ export const auth = betterAuth({
         }
 
         if (!accessTokenClaims) {
-          return claims;
+          return { ...claims, ...(paymentClaims ?? {}) };
         }
 
         return {
           ...claims,
           ...(accessTokenClaims as unknown as Record<string, unknown>),
+          // Keep the canonical RAR last so AAP claims can't clobber it.
+          ...(paymentClaims ?? {}),
         };
       },
       sendNotification: async (data, request) => {

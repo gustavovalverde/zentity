@@ -89,6 +89,12 @@ export const env = createEnv({
         (s) => process.env.NODE_ENV !== "production" || (s && s.length >= 32),
         "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production"
       ),
+    // The agent wallet's audience value (its JWK thumbprint, printed by
+    // `zspend-runtime init`). When set, payment_authorization tokens are
+    // minted with this as `aud`, binding the token to that specific wallet
+    // key (anti-redirection, PRD-43 D-5). Absent → the mint fails closed for
+    // payment grants rather than minting an unbound spend token.
+    WALLET_AUDIENCE: z.string().min(1).optional(),
     CRON_SECRET: z
       .string()
       .optional()
@@ -295,6 +301,7 @@ export const env = createEnv({
     SIGNER_COORDINATOR_URL: process.env.SIGNER_COORDINATOR_URL,
     SIGNER_ENDPOINTS: process.env.SIGNER_ENDPOINTS,
     INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
+    WALLET_AUDIENCE: process.env.WALLET_AUDIENCE,
     CRON_SECRET: process.env.CRON_SECRET,
     CLAIM_SIGNING_SECRET: process.env.CLAIM_SIGNING_SECRET,
     CIPHERTEXT_HMAC_SECRET: process.env.CIPHERTEXT_HMAC_SECRET,

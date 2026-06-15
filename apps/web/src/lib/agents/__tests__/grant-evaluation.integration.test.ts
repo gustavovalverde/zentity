@@ -169,6 +169,119 @@ describe("evaluateSessionGrants", () => {
     );
   });
 
+  const PAYMENT_RECIPIENT = "zcash:test:utest1qqallowedrecipient0000";
+  const paymentRar = (overrides?: {
+    recipient?: string;
+    value?: string;
+  }) => ({
+    type: "payment_authorization" as const,
+    chain: { namespace: "zcash", reference: "test" },
+    recipient: overrides?.recipient ?? PAYMENT_RECIPIENT,
+    amount: {
+      currency: "ZEC",
+      value: overrides?.value ?? "100000",
+      unit: "base",
+    },
+    payment_id: "pay_1",
+    intent_hash: `v1:sha256:${"A".repeat(43)}`,
+    expires_at: { kind: "block_height", value: 4_056_276 },
+  });
+  const boundedConstraints = JSON.stringify([
+    { field: "recipient", op: "in", values: [PAYMENT_RECIPIENT] },
+    { field: "amount.value", op: "max", value: 200_000 },
+  ]);
+
+  it("auto-approves a payment within a bounded grant (recipient allowlist + amount ceiling)", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "payment_authorization:sign",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        constraints: boundedConstraints,
+        dailyLimitAmount: 1_000_000,
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const result = await evaluateSessionGrants(
+      sessionId,
+      "openid payment_authorization:sign",
+      [paymentRar()]
+    );
+
+    expect(result.approved).toBe(true);
+    expect(result.capabilityName).toBe("payment_authorization:sign");
+  });
+
+  it("refuses to auto-approve an UNBOUNDED payment grant (empty constraints, no limit)", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "payment_authorization:sign",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const result = await evaluateSessionGrants(
+      sessionId,
+      "openid payment_authorization:sign",
+      [paymentRar()]
+    );
+
+    expect(result.approved).toBe(false);
+  });
+
+  it("falls through to manual when a payment exceeds the amount ceiling", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "payment_authorization:sign",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        constraints: boundedConstraints,
+        dailyLimitAmount: 1_000_000,
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const result = await evaluateSessionGrants(
+      sessionId,
+      "openid payment_authorization:sign",
+      [paymentRar({ value: "300000" })]
+    );
+
+    expect(result.approved).toBe(false);
+  });
+
+  it("falls through to manual when a payment recipient is not allowlisted", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "payment_authorization:sign",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        constraints: boundedConstraints,
+        dailyLimitAmount: 1_000_000,
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const result = await evaluateSessionGrants(
+      sessionId,
+      "openid payment_authorization:sign",
+      [paymentRar({ recipient: "zcash:test:utest1qqattackeraddr9999" })]
+    );
+
+    expect(result.approved).toBe(false);
+  });
+
   it("approves proof-only requests when they map to an active my_proofs grant", async () => {
     await db
       .insert(agentSessionGrants)

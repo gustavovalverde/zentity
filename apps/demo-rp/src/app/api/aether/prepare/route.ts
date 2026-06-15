@@ -1,13 +1,18 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import {
+  intentHash,
+  intentHashToWireString,
+  networkToChainReference,
+  paymentUriToCaip10,
+} from "@zentity/sdk/protocol";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-
 import { getAuth } from "@/lib/auth";
 import { computeUriConfirmationCode } from "@/lib/confirmation-code";
-import { signDpopProof } from "@/lib/dpop";
 import { env } from "@/lib/env";
-import { preparePayment } from "@/lib/zpay-client";
+import { preparePayment, ZpayError } from "@/lib/zpay-client";
+import { getZpayDpopClient } from "@/lib/zpay-dpop";
 
 /**
  * POST /api/aether/prepare
@@ -46,7 +51,7 @@ import { preparePayment } from "@/lib/zpay-client";
 const requestSchema = z.object({
   merchant: z.string().min(1),
   item: z.string().min(1),
-  network: z.enum(["testnet", "mainnet"]).default("testnet"),
+  network: z.enum(["testnet", "mainnet", "regtest"]).default("testnet"),
   taskId: z.string().min(1),
   itemId: z.string().min(1),
   amountMinorUnits: z.number().int().nonnegative(),
@@ -107,11 +112,8 @@ export async function POST(request: Request) {
   });
 
   const prepareUrl = `${env.ZPAY_URL}/x402/v2/prepare`;
-  const { proofJwt } = await signDpopProof({
-    method: "POST",
-    url: prepareUrl,
-    jti: randomUUID(),
-  });
+  const dpop = await getZpayDpopClient();
+  const proofJwt = await dpop.proofFor("POST", prepareUrl);
 
   try {
     const prepared = await preparePayment({
@@ -123,16 +125,38 @@ export async function POST(request: Request) {
       idempotencyKey,
     });
 
+    const chainReference = networkToChainReference(input.network);
+    const recipient = paymentUriToCaip10(prepared.payment_uri, chainReference);
+    const intentHashWire = intentHashToWireString(
+      intentHash({
+        chainNamespace: "zcash",
+        chainReference,
+        recipientCaip10: recipient,
+        amountValue: BigInt(prepared.amount_zat),
+        amountUnit: "base",
+        paymentId: prepared.payment_id,
+        expiryHeight: BigInt(prepared.expiry_height),
+      })
+    );
+
     return NextResponse.json({
       payment_id: prepared.payment_id,
       payment_uri: prepared.payment_uri,
       expiry_height: prepared.expiry_height,
       amount_zat: prepared.amount_zat,
       confirmation_code: await computeUriConfirmationCode(prepared.payment_uri),
+      recipient,
+      chain: { namespace: "zcash" as const, reference: chainReference },
+      intent_hash: intentHashWire,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "prepare failed";
-    if (REGISTRY_UNKNOWN_RE.test(message)) {
+    const problemKind =
+      error instanceof ZpayError && error.problem ? error.kind : null;
+    const isRegistryUnknown = problemKind
+      ? problemKind === "registry_unknown"
+      : REGISTRY_UNKNOWN_RE.test(message);
+    if (isRegistryUnknown) {
       return NextResponse.json(
         {
           error: "registry_unknown",

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { env } from "@/lib/env";
+import { parseProblem, type ServiceProblem } from "@/lib/problem-json";
 
 /**
  * Server-side wrapper for zpay's HTTP surface.
@@ -39,6 +40,60 @@ import { env } from "@/lib/env";
  */
 
 export type PaymentNetwork = "testnet" | "mainnet" | "regtest";
+
+export class ZpayError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  readonly problem: ServiceProblem | null;
+
+  constructor(args: {
+    endpoint: string;
+    status: number;
+    problem: ServiceProblem | null;
+    message: string;
+  }) {
+    super(args.message);
+    this.name = "ZpayError";
+    this.endpoint = args.endpoint;
+    this.status = args.status;
+    this.problem = args.problem;
+  }
+
+  get kind(): string {
+    return this.problem?.kind ?? "unknown";
+  }
+}
+
+function formatProblemMessage(
+  endpoint: string,
+  status: number,
+  problem: ServiceProblem
+): string {
+  const tail = problem.detail ? `: ${problem.detail}` : "";
+  return `zpay ${endpoint} returned ${status} [${problem.kind}] ${problem.title}${tail}`;
+}
+
+async function buildZpayError(
+  endpoint: string,
+  response: Response
+): Promise<ZpayError> {
+  const problem = await parseProblem(response, "zpay error");
+  if (problem) {
+    return new ZpayError({
+      endpoint,
+      status: response.status,
+      problem,
+      message: formatProblemMessage(endpoint, response.status, problem),
+    });
+  }
+  const detail = await response.text().catch(() => "");
+  return new ZpayError({
+    endpoint,
+    status: response.status,
+    problem: null,
+    message: `zpay ${endpoint} returned ${response.status}: ${detail}`,
+  });
+}
 
 export type PaymentStatus =
   | "awaiting"
@@ -138,10 +193,7 @@ export async function preparePayment(
   });
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `zpay /x402/v2/prepare returned ${response.status}: ${detail}`
-    );
+    throw await buildZpayError("/x402/v2/prepare", response);
   }
 
   const preparation = (await response.json()) as Preparation;
@@ -196,10 +248,7 @@ export async function settlePayment(
   });
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw new Error(
-      `zpay /x402/v2/settle returned ${response.status}: ${detail}`
-    );
+    throw await buildZpayError("/x402/v2/settle", response);
   }
   return (await response.json()) as SettlementResponse;
 }

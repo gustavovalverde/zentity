@@ -30,8 +30,9 @@ const STALL_TIMEOUT_MS = 60_000;
 interface PaymentBridgeProps {
   amountZat: number;
   confirmationCode: string;
-  /** Defaults to `"testnet"`; the Aether scenario uses testnet today. */
-  network?: "mainnet" | "testnet" | "regtest";
+  /** The expiry height committed at /prepare; the orchestrator pins it into the RAR. */
+  expiryHeight: number;
+  network: "mainnet" | "testnet" | "regtest";
   onReset?: () => void;
   onSettled?: (transactionId: string | null) => void;
   paymentId: string;
@@ -235,7 +236,9 @@ export function PaymentBridge(props: PaymentBridgeProps) {
       )}
 
       <AgentWalletButton
-        network={props.network ?? "testnet"}
+        amountZat={amountZat}
+        expiryHeight={props.expiryHeight}
+        network={props.network}
         onSettled={(txId) => onSettled?.(txId)}
         paymentId={paymentId}
         paymentUri={paymentUri}
@@ -343,11 +346,15 @@ export function PaymentBridge(props: PaymentBridgeProps) {
 }
 
 function AgentWalletButton({
+  amountZat,
+  expiryHeight,
   network,
   onSettled,
   paymentId,
   paymentUri,
 }: {
+  amountZat: number;
+  expiryHeight: number;
   network: "mainnet" | "testnet" | "regtest";
   onSettled?: (transactionId: string | null) => void;
   paymentId: string;
@@ -367,6 +374,8 @@ function AgentWalletButton({
           payment_uri: paymentUri,
           payment_id: paymentId,
           network,
+          amount_zat: amountZat,
+          target_expiry_height: expiryHeight,
         }),
       });
       if (!response.ok) {

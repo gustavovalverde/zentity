@@ -68,13 +68,27 @@ self.addEventListener("push", (event) => {
   const authReqId = data?.authReqId;
   const approvalUrl = data?.approvalUrl ?? "/dashboard/agents";
   const requiresVaultUnlock = data?.requiresVaultUnlock === true;
+  const kind = data?.kind;
+  const payment = data?.payment;
 
-  const actions = requiresVaultUnlock
-    ? [{ action: "deny", title: "Deny" }]
-    : [
-        { action: "approve", title: "Approve" },
-        { action: "deny", title: "Deny" },
-      ];
+  // payment_authorization: never inline-approve. The user must see the
+  // full card on the approval page (D-7 displayed equals signed). We show
+  // the approve action so the click handler can route to the confirmation
+  // prompt instead of POSTing approve directly.
+  let actions;
+  if (requiresVaultUnlock) {
+    actions = [{ action: "deny", title: "Deny" }];
+  } else if (kind === "payment_authorization") {
+    actions = [
+      { action: "review", title: "Review" },
+      { action: "deny", title: "Deny" },
+    ];
+  } else {
+    actions = [
+      { action: "approve", title: "Approve" },
+      { action: "deny", title: "Deny" },
+    ];
+  }
 
   const options = {
     body,
@@ -83,7 +97,13 @@ self.addEventListener("push", (event) => {
     tag: authReqId ? `ciba-${authReqId}` : "ciba",
     requireInteraction: true,
     vibrate: [100, 50, 100],
-    data: { authReqId, approvalUrl, requiresVaultUnlock },
+    data: {
+      authReqId,
+      approvalUrl,
+      requiresVaultUnlock,
+      kind,
+      payment,
+    },
     actions,
   };
 
@@ -94,15 +114,87 @@ self.addEventListener("push", (event) => {
   );
 });
 
+function showPaymentConfirmation(authReqId, approvalUrl, payment) {
+  const summary = payment
+    ? `${payment.amountDisplay} on ${payment.chain}`
+    : "this payment";
+  return self.registration.showNotification("Confirm payment", {
+    body: `Approve ${summary}? Open the approval page to review the full card before signing.`,
+    icon: "/images/logo/icon-192.png",
+    tag: `ciba-${authReqId}`,
+    requireInteraction: true,
+    data: {
+      authReqId,
+      approvalUrl,
+      requiresVaultUnlock: false,
+      kind: "payment_authorization_confirm",
+      payment,
+    },
+    actions: [
+      { action: "open", title: "Review and sign" },
+      { action: "deny", title: "Deny" },
+    ],
+  });
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const { authReqId, approvalUrl, requiresVaultUnlock } =
+  const { authReqId, approvalUrl, requiresVaultUnlock, kind, payment } =
     event.notification.data ?? {};
   const action = event.action;
 
-  // Identity-scoped requests always route to the approval page
+  // Identity-scoped requests always route to the approval page.
   if (requiresVaultUnlock) {
+    event.waitUntil(
+      self.clients.openWindow(approvalUrl ?? "/dashboard/agents")
+    );
+    return;
+  }
+
+  // payment_authorization: the first notification has a "review" action.
+  // Tapping it shows a confirmation notification instead of POSTing
+  // approve. The user must open the approval page to actually sign.
+  if (kind === "payment_authorization" && authReqId) {
+    if (action === "deny") {
+      event.waitUntil(
+        fetch("/api/auth/ciba/reject", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auth_req_id: authReqId }),
+        })
+          .then(() =>
+            notifyCibaClients("ciba:status-changed", authReqId, { action })
+          )
+          .catch(() => self.clients.openWindow(approvalUrl))
+      );
+      return;
+    }
+    event.waitUntil(
+      showPaymentConfirmation(authReqId, approvalUrl, payment)
+    );
+    return;
+  }
+
+  // payment_authorization_confirm: second-step prompt. Only "open" routes
+  // to the approval page; everything else is a no-op or a deny.
+  if (kind === "payment_authorization_confirm" && authReqId) {
+    if (action === "deny") {
+      event.waitUntil(
+        fetch("/api/auth/ciba/reject", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auth_req_id: authReqId }),
+        })
+          .then(() =>
+            notifyCibaClients("ciba:status-changed", authReqId, { action })
+          )
+          .catch(() => self.clients.openWindow(approvalUrl))
+      );
+      return;
+    }
     event.waitUntil(
       self.clients.openWindow(approvalUrl ?? "/dashboard/agents")
     );
