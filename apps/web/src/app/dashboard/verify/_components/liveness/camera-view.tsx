@@ -13,7 +13,7 @@ import { AudioToggle } from "./audio-toggle";
 import { ChallengeBanner, CountdownOverlay } from "./challenge-banner";
 import { DirectionalNudge } from "./directional-nudge";
 import { OvalFrame, type OvalFrameStatus } from "./oval-frame";
-import { useLiveness } from "./provider";
+import { useLivenessFlow } from "./provider";
 import { deriveQualityIssue, QualityAlert } from "./quality-alert";
 
 interface CameraViewProps {
@@ -55,7 +55,7 @@ export function CameraView({
     audioEnabled,
     toggleAudio,
     initAudio,
-  } = useLiveness();
+  } = useLivenessFlow();
 
   const { isMobile } = useMobileDetect();
 

@@ -149,10 +149,8 @@ COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/drizzle.con
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/public ./public
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/.next ./.next
 
-# Copy custom server for Socket.io support
-COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/server.mjs ./server.mjs
-
-# Copy source files needed by custom server (tsx handles TypeScript at runtime)
+# Copy source so optional db:push-on-start (drizzle reads ./src/lib/db/schema)
+# works; the Next runtime itself serves from .next, not src.
 COPY --link --from=builder --chown=${APP_UID}:${APP_GID} ${APP_HOME}/src ./src
 
 # Copy scripts

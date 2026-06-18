@@ -2,12 +2,13 @@
  * Liveness Provider
  *
  * Server-authoritative context provider that exposes liveness state to children.
- * Uses use-liveness.ts hook directly - NO parallel client state machine.
+ * Uses the capture hook directly - NO parallel client state machine.
  *
  * Architecture:
- * - Server (socket handler) is the single source of truth
- * - Client displays server state and sends signals
- * - Feedback (audio, speech, haptics) triggered on phase transitions
+ * - The server engine is the single source of truth; each frame POST returns the
+ *   next state, and the client renders it.
+ * - The client owns capture, the local 3-2-1 countdown, and feedback only.
+ * - Feedback (audio, speech, haptics) is triggered on phase transitions.
  */
 "use client";
 
@@ -26,12 +27,12 @@ import {
 } from "react";
 
 import { reportRejection } from "@/lib/async-handler";
+import { useCamera } from "@/lib/identity/liveness/camera";
 import {
-  type LivenessPhase,
+  type LivenessUiPhase,
   useLiveness,
-  useLivenessCamera,
-  useLivenessFeedback,
-} from "@/lib/identity/liveness/use-liveness";
+} from "@/lib/identity/liveness/capture";
+import { useFeedback } from "@/lib/identity/liveness/feedback";
 
 // ============================================================================
 // Types
@@ -66,7 +67,7 @@ interface LivenessStateContextValue {
   hint: string;
   isCompleted: boolean;
   isFailed: boolean;
-  phase: LivenessPhase;
+  phase: LivenessUiPhase;
   selfieImage: string | null;
   speechEnabled: boolean;
 }
@@ -177,8 +178,6 @@ interface LivenessProviderProps {
   onVerified?:
     | ((result: { selfieImage: string; bestSelfieFrame: string }) => void)
     | undefined;
-  /** User ID for dashboard flow - required if draftId is provided */
-  userId?: string | undefined;
 }
 
 // ============================================================================
@@ -190,7 +189,6 @@ export function LivenessProvider({
   numChallenges = 2,
   debug = process.env.NODE_ENV === "development",
   draftId,
-  userId,
   onVerified,
   onReset,
   onSessionError,
@@ -204,7 +202,7 @@ export function LivenessProvider({
   // ============================================================================
   // Camera (with security features: virtual camera blocking, frame rate validation)
   // ============================================================================
-  const camera = useLivenessCamera({
+  const camera = useCamera({
     facingMode: "user",
     blockVirtualCameras: true,
     validateFrameRateOption: true,
@@ -232,7 +230,7 @@ export function LivenessProvider({
     setAudioEnabled,
     setSpeechEnabled,
     initAudio,
-  } = useLivenessFeedback();
+  } = useFeedback();
 
   // ============================================================================
   // Local countdown state (client-side 3-2-1 display)
@@ -250,7 +248,6 @@ export function LivenessProvider({
     numChallenges,
     debugEnabled: debug,
     draftId,
-    userId,
     onVerified: (result) => {
       onVerifiedRef.current?.(result);
     },
@@ -262,18 +259,12 @@ export function LivenessProvider({
 
   // Destructure stable callbacks to avoid depending on the full liveness object
   // (which changes identity on every render due to face detection state)
-  const {
-    signalChallengeReady,
-    signalCountdownDone,
-    beginCamera,
-    cancelSession,
-    retryChallenge,
-  } = liveness;
+  const { beginCamera, cancelSession, retryChallenge } = liveness;
 
   // ============================================================================
   // Feedback effects - trigger on phase transitions
   // ============================================================================
-  const prevPhaseRef = useRef<LivenessPhase>(liveness.phase);
+  const prevPhaseRef = useRef<LivenessUiPhase>(liveness.phase);
   const prevFaceDetectedRef = useRef(false);
   const prevChallengeIndexRef = useRef<number | null>(null);
 
@@ -343,10 +334,6 @@ export function LivenessProvider({
         );
       }
 
-      // Signal to server FIRST so evaluation starts immediately
-      // Speech plays in parallel - no need to wait for it
-      signalChallengeReady();
-
       const speechKey = {
         smile: "smile",
         turn_left: "turnLeft",
@@ -355,17 +342,14 @@ export function LivenessProvider({
 
       speak(speechKey).catch(reportRejection);
     }
-  }, [liveness.challenge, speak, signalChallengeReady, debug]);
+  }, [liveness.challenge, speak, debug]);
 
-  // Local countdown timer - runs when server enters "countdown" phase
-  // Side effects (signalCountdownDone, feedback) are kept outside the state
-  // updater to avoid double-firing in React StrictMode.
-  const countdownDoneRef = useRef(false);
-
+  // Local 3-2-1 countdown display while the server is in "countdown" phase. The
+  // server advances on its own timer (countdownDurationMs matches this 3s), so
+  // the client only renders and plays earcons; it sends no "done" signal.
   useEffect(() => {
     if (liveness.phase !== "countdown") {
       setLocalCountdown(null);
-      countdownDoneRef.current = false;
       return;
     }
 
@@ -386,7 +370,7 @@ export function LivenessProvider({
     return () => clearInterval(interval);
   }, [liveness.phase, cancelSpeech, feedback]);
 
-  // Separate effect for countdown side effects (earcons + done signal)
+  // Countdown earcons as the local counter ticks down.
   useEffect(() => {
     if (localCountdown === 2) {
       feedback("countdown2");
@@ -394,11 +378,7 @@ export function LivenessProvider({
     if (localCountdown === 1) {
       feedback("countdown1");
     }
-    if (localCountdown === 0 && !countdownDoneRef.current) {
-      countdownDoneRef.current = true;
-      signalCountdownDone();
-    }
-  }, [localCountdown, feedback, signalCountdownDone]);
+  }, [localCountdown, feedback]);
 
   // ============================================================================
   // Actions
@@ -515,5 +495,4 @@ export function LivenessProvider({
   );
 }
 
-// Export both names for flexibility
-export { useLivenessContext as useLiveness };
+export { useLivenessContext as useLivenessFlow };

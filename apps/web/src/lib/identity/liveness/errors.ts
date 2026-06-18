@@ -4,10 +4,6 @@
  */
 
 export const LivenessErrorState = {
-  // Connection errors
-  CONNECTION_TIMEOUT: "connection_timeout",
-  WEBSOCKET_ERROR: "websocket_error",
-
   // Camera errors
   CAMERA_ACCESS_ERROR: "camera_access_error",
   CAMERA_FRAMERATE_ERROR: "camera_framerate_error",
@@ -67,18 +63,6 @@ export interface LivenessError {
 type ErrorConfigEntry = Omit<LivenessError, "state" | "details">;
 
 const ERROR_CONFIG: Record<LivenessErrorState, ErrorConfigEntry> = {
-  // Connection errors
-  [LivenessErrorState.CONNECTION_TIMEOUT]: {
-    message: "Connection timed out. Check your network.",
-    recovery: { type: "retry", autoRetryCount: 2, message: "Trying again..." },
-    canRetry: true,
-  },
-  [LivenessErrorState.WEBSOCKET_ERROR]: {
-    message: "Connection error occurred.",
-    recovery: { type: "retry", autoRetryCount: 1, message: "Reconnecting..." },
-    canRetry: true,
-  },
-
   // Camera errors
   [LivenessErrorState.CAMERA_ACCESS_ERROR]: {
     message: "Camera access denied.",
@@ -208,25 +192,6 @@ export function createLivenessError(
 ): LivenessError {
   const config = ERROR_CONFIG[state];
   return { state, ...config, details };
-}
-
-/**
- * Map legacy string error codes to typed error states.
- * Provides backwards compatibility with existing error handling.
- */
-export function mapLegacyErrorCode(code: string): LivenessErrorState {
-  const mapping: Record<string, LivenessErrorState> = {
-    timeout: LivenessErrorState.SESSION_TIMEOUT,
-    challenge_timeout: LivenessErrorState.CHALLENGE_TIMEOUT,
-    no_session: LivenessErrorState.SESSION_EXPIRED,
-    session_expired: LivenessErrorState.SESSION_EXPIRED,
-    detection_degraded: LivenessErrorState.DETECTION_DEGRADED,
-    antispoof_failed: LivenessErrorState.ANTISPOOF_FAILED,
-    liveness_failed: LivenessErrorState.LIVENESS_FAILED,
-    max_retries: LivenessErrorState.MAX_RETRIES_EXCEEDED,
-  };
-
-  return mapping[code] ?? LivenessErrorState.RUNTIME_ERROR;
 }
 
 /**

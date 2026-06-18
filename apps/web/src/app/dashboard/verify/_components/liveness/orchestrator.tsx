@@ -49,23 +49,6 @@ const getStoreState = () => useVerificationStore.getState();
 
 type FaceMatchStatus = "idle" | "matching" | "matched" | "no_match" | "error";
 
-/**
- * Wait for liveness results to be written to the draft with retry logic.
- */
-async function waitForLivenessWrite(
-  draftId: string,
-  maxAttempts = 5
-): Promise<{ success: boolean; issues: string[] }> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const status = await trpc.identity.livenessStatus.mutate({ draftId });
-    if (status.success) {
-      return status;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200 * (i + 1)));
-  }
-  return trpc.identity.livenessStatus.mutate({ draftId });
-}
-
 function getLivenessIssueMessage(issue: string): string {
   const issueMessages: Record<string, string> = {
     draft_not_found:
@@ -109,15 +92,15 @@ function getFinalizeFailureMessage(jobStatus: {
   return null;
 }
 
-interface LivenessVerifyClientProps {
+interface LivenessOrchestratorProps {
   onComplete?: () => void;
   wallet: { address: string; chainId: number } | null;
 }
 
-export function LivenessVerifyClient({
+export function LivenessOrchestrator({
   onComplete,
   wallet,
-}: Readonly<LivenessVerifyClientProps>) {
+}: Readonly<LivenessOrchestratorProps>) {
   const router = useRouter();
   const store = useVerificationStore();
   const { data: session } = useSession();
@@ -325,7 +308,7 @@ export function LivenessVerifyClient({
 
       setFaceMatchStatus("matching");
       try {
-        const result = await trpc.liveness.faceMatch.mutate({
+        const result = await trpc.liveness.matchFace.mutate({
           idImage: storeState.idDocumentBase64,
           selfieImage: bestSelfieFrame || selfieImage,
           draftId: draftId ?? undefined,
@@ -399,8 +382,10 @@ export function LivenessVerifyClient({
 
     setIsSubmitting(true);
     try {
-      // Step 1: Verify liveness results persisted
-      const status = await waitForLivenessWrite(draftId);
+      // Step 1: re-validate the server-written results. The frame and faceMatch
+      // responses already confirmed the writes synchronously; this is the
+      // server-side gate before finalizing.
+      const status = await trpc.identity.livenessStatus.mutate({ draftId });
       if (!status.success) {
         const message =
           status.issues.map(getLivenessIssueMessage).join(", ") ||
@@ -475,7 +460,6 @@ export function LivenessVerifyClient({
         onReset={handleReset}
         onSessionError={handleSessionError}
         onVerified={asyncHandler(handleVerified)}
-        userId={userId}
       >
         <LivenessFlow />
       </LivenessProvider>

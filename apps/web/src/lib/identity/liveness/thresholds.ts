@@ -3,7 +3,7 @@
  *
  * Keep these constants in sync across:
  * - Client liveness UX (StepSelfie)
- * - Server liveness verification (tRPC `liveness.verify`)
+ * - Server-side gesture liveness scoring
  */
 
 // Thresholds raised because tfjs-node detects ~70-80% "happy" on neutral faces
@@ -11,7 +11,6 @@ export const SMILE_SCORE_THRESHOLD = 0.8; // Require 80%+ happy score
 export const SMILE_DELTA_THRESHOLD = 0.25; // Require 25% increase from baseline
 export const SMILE_HIGH_THRESHOLD = 0.95; // Auto-pass at 95%+ (definitive smile)
 
-export const BASELINE_CENTERED_THRESHOLD_DEG = 10;
 // Head turn is intentionally kept modest for UX; many cameras + face models
 // under-estimate yaw degrees in real-world lighting.
 export const TURN_YAW_ABSOLUTE_THRESHOLD_DEG = 12;

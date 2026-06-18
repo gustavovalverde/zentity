@@ -1,5 +1,15 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // The in-process liveness session store and the validity scheduler assume a
+    // single replica (railway.toml numReplicas=1). Fail loudly if an operator
+    // scales out without first moving that state to a shared store.
+    const replicaCount = Number(process.env.WEB_REPLICA_COUNT ?? "1");
+    if (Number.isFinite(replicaCount) && replicaCount > 1) {
+      throw new Error(
+        `WEB_REPLICA_COUNT=${process.env.WEB_REPLICA_COUNT}: the liveness session store and validity scheduler require a single replica. Move them to a shared store before scaling out.`
+      );
+    }
+
     const { initTelemetry } = await import("@/lib/observability/telemetry");
     await initTelemetry();
 

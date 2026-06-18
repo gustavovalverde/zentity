@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Liveness non-visual feedback: haptics, earcon audio, and TTS speech.
  *
@@ -8,13 +10,15 @@
  * data leaves the device.
  */
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { reportRejection } from "@/lib/async-handler";
 
 // ===========================================================================
 // Haptics (Vibration API)
 // ===========================================================================
 
-export type HapticType =
+type HapticType =
   | "faceDetected"
   | "faceLost"
   | "challengeProgress"
@@ -35,7 +39,7 @@ export type HapticType =
  * - Ascending patterns = success
  * - Long pulses = important events
  */
-export const HAPTIC_PATTERNS: Record<HapticType, number | number[]> = {
+const HAPTIC_PATTERNS: Record<HapticType, number | number[]> = {
   /**
    * Face detected - single short pulse
    * Subtle confirmation that face entered frame
@@ -98,7 +102,7 @@ export const HAPTIC_PATTERNS: Record<HapticType, number | number[]> = {
  * Trigger haptic feedback with the specified pattern.
  * @returns true if vibration was triggered, false if not supported
  */
-export function vibrate(pattern: number | number[]): boolean {
+function vibrate(pattern: number | number[]): boolean {
   if (!isHapticsSupported()) {
     return false;
   }
@@ -114,7 +118,7 @@ export function vibrate(pattern: number | number[]): boolean {
 /**
  * Check if haptic feedback is supported on this device.
  */
-export function isHapticsSupported(): boolean {
+function isHapticsSupported(): boolean {
   return typeof navigator !== "undefined" && "vibrate" in navigator;
 }
 
@@ -141,7 +145,7 @@ interface EarconConfig {
   volume?: number; // Optional volume multiplier (0-1), defaults to 0.7
 }
 
-export type EarconType =
+type EarconType =
   | "faceDetected"
   | "faceLost"
   | "challengeProgress"
@@ -163,7 +167,7 @@ export type EarconType =
  * - Minor intervals = warning/error
  * - Short duration = non-intrusive
  */
-export const EARCONS: Record<EarconType, EarconConfig> = {
+const EARCONS: Record<EarconType, EarconConfig> = {
   /**
    * Face detected - ascending perfect fifth (A4 → E5)
    * Pleasant, confirming sound when face enters frame
@@ -470,7 +474,7 @@ class LivenessAudioEngine {
 }
 
 /** Singleton instance for the liveness audio engine. */
-export const audioEngine = new LivenessAudioEngine();
+const audioEngine = new LivenessAudioEngine();
 
 // ===========================================================================
 // Speech synthesis (Web Speech API)
@@ -480,7 +484,7 @@ export const audioEngine = new LivenessAudioEngine();
 // Speech texts (EN/ES/PT)
 // ---------------------------------------------------------------------------
 
-export type SpeechKey =
+type SpeechKey =
   | "positionFace"
   | "holdStill"
   | "smile"
@@ -496,7 +500,7 @@ export type SpeechKey =
   | "countdown2"
   | "countdown1";
 
-export type SupportedLanguage = "en" | "es" | "pt";
+type SupportedLanguage = "en" | "es" | "pt";
 
 const SPEECH_TEXTS: Record<SupportedLanguage, Record<SpeechKey, string>> = {
   en: {
@@ -774,4 +778,271 @@ class LivenessSpeechEngine {
 }
 
 /** Singleton instance for the liveness speech engine. */
-export const speechEngine = new LivenessSpeechEngine();
+const speechEngine = new LivenessSpeechEngine();
+
+// ===========================================================================
+// Feedback hook
+// ===========================================================================
+
+type FeedbackType = EarconType;
+
+interface FeedbackOptions {
+  /** Enable/disable earcon audio. Default: true */
+  audioEnabled?: boolean;
+  /** Enable/disable haptic vibration. Default: true */
+  hapticEnabled?: boolean;
+  /** Language for TTS. Default: auto-detected */
+  language?: SupportedLanguage;
+  /** Enable/disable TTS speech. Default: true */
+  speechEnabled?: boolean;
+}
+
+interface FeedbackController {
+  // State getters
+  audioEnabled: boolean;
+
+  // Support checks
+  audioSupported: boolean;
+  cancelSpeech: () => void;
+  // Unified feedback trigger with optional stereo pan (-1 = left, 0 = center, 1 = right)
+  feedback: (type: FeedbackType, pan?: number) => void;
+  hapticEnabled: boolean;
+  hapticSupported: boolean;
+
+  // Initialize audio/speech (must be called from user interaction)
+  initAudio: () => void;
+  initSpeech: () => void;
+  isSpeaking: boolean;
+
+  // Individual feedback methods
+  playEarcon: (type: EarconType, pan?: number) => void;
+
+  // State controls
+  setAudioEnabled: (enabled: boolean) => void;
+  setHapticEnabled: (enabled: boolean) => void;
+  setSpeechEnabled: (enabled: boolean) => void;
+  speak: (key: SpeechKey, priority?: "low" | "high") => Promise<void>;
+  speakText: (text: string, priority?: "low" | "high") => Promise<void>;
+  speechEnabled: boolean;
+  speechSupported: boolean;
+  triggerHaptic: (type: HapticType) => void;
+}
+
+const FEEDBACK_STORAGE_KEY = "zentity-liveness-feedback-prefs";
+
+interface StoredFeedbackPrefs {
+  audioEnabled: boolean;
+  hapticEnabled: boolean;
+  speechEnabled: boolean;
+}
+
+function loadFeedbackPrefs(): StoredFeedbackPrefs | null {
+  if (globalThis.window === undefined) {
+    return null;
+  }
+  try {
+    const stored = localStorage.getItem(FEEDBACK_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored) as StoredFeedbackPrefs;
+    }
+  } catch {
+    // Ignore localStorage errors
+  }
+  return null;
+}
+
+function saveFeedbackPrefs(prefs: StoredFeedbackPrefs): void {
+  if (globalThis.window === undefined) {
+    return;
+  }
+  try {
+    localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+/**
+ * Hook for managing liveness detection feedback.
+ *
+ * Privacy: all feedback is generated locally in the browser.
+ * - Audio: Web Audio API (programmatic synthesis)
+ * - Speech: Web Speech API (device's built-in TTS)
+ * - Haptics: Vibration API
+ */
+export function useFeedback(options: FeedbackOptions = {}): FeedbackController {
+  // Load persisted preferences or use defaults (all enabled)
+  const storedPrefs = useRef(loadFeedbackPrefs());
+
+  const [audioEnabled, setAudioEnabledState] = useState(
+    options.audioEnabled ?? storedPrefs.current?.audioEnabled ?? true
+  );
+  const [speechEnabled, setSpeechEnabledState] = useState(
+    options.speechEnabled ?? storedPrefs.current?.speechEnabled ?? true
+  );
+  const [hapticEnabled, setHapticEnabledState] = useState(
+    options.hapticEnabled ?? storedPrefs.current?.hapticEnabled ?? true
+  );
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Support checks
+  const audioSupported = audioEngine.isSupported();
+  const speechSupported = speechEngine.isSupported();
+  const hapticSupported = isHapticsSupported();
+
+  // Set language if provided
+  useEffect(() => {
+    if (options.language) {
+      speechEngine.setLanguage(options.language);
+    }
+  }, [options.language]);
+
+  // Wire speech engine reference to audio engine for coordination
+  useEffect(() => {
+    audioEngine.setSpeechEngineRef(speechEngine);
+    return () => {
+      audioEngine.setSpeechEngineRef(null);
+      audioEngine.resetDebounce();
+    };
+  }, []);
+
+  // Sync engine states with hook state (only when changed)
+  useEffect(() => {
+    audioEngine.setEnabled(audioEnabled);
+  }, [audioEnabled]);
+
+  useEffect(() => {
+    speechEngine.setEnabled(speechEnabled);
+  }, [speechEnabled]);
+
+  // Persist preferences
+  useEffect(() => {
+    saveFeedbackPrefs({ audioEnabled, speechEnabled, hapticEnabled });
+  }, [audioEnabled, speechEnabled, hapticEnabled]);
+
+  // Initialize audio context (must be from user interaction)
+  const initAudio = useCallback(() => {
+    audioEngine.init();
+  }, []);
+
+  // Initialize speech synthesis (must be from user interaction)
+  const initSpeech = useCallback(() => {
+    speechEngine.init();
+  }, []);
+
+  // Play earcon with optional stereo panning
+  const playEarcon = useCallback(
+    (type: EarconType, pan = 0) => {
+      if (audioEnabled && audioSupported) {
+        const config = EARCONS[type];
+        audioEngine.playEarcon(config, type, pan);
+      }
+    },
+    [audioEnabled, audioSupported]
+  );
+
+  // Speak by key (fire-and-forget: errors are caught internally)
+  const speak = useCallback(
+    async (key: SpeechKey, priority: "low" | "high" = "low") => {
+      if (!(speechEnabled && speechSupported)) {
+        return;
+      }
+
+      setIsSpeaking(true);
+      try {
+        await speechEngine.speakKey(key, { priority });
+      } catch {
+        // Speech synthesis failed (audio-busy, not-allowed, etc.)
+        // This is non-critical - visual cues remain available
+      } finally {
+        setIsSpeaking(false);
+      }
+    },
+    [speechEnabled, speechSupported]
+  );
+
+  // Speak custom text (fire-and-forget: errors are caught internally)
+  const speakText = useCallback(
+    async (text: string, priority: "low" | "high" = "low") => {
+      if (!(speechEnabled && speechSupported)) {
+        return;
+      }
+
+      setIsSpeaking(true);
+      try {
+        await speechEngine.speak(text, { priority });
+      } catch {
+        // Speech synthesis failed (audio-busy, not-allowed, etc.)
+        // This is non-critical - visual cues remain available
+      } finally {
+        setIsSpeaking(false);
+      }
+    },
+    [speechEnabled, speechSupported]
+  );
+
+  // Trigger haptic
+  const triggerHaptic = useCallback(
+    (type: HapticType) => {
+      if (hapticEnabled && hapticSupported) {
+        const pattern = HAPTIC_PATTERNS[type];
+        if (pattern) {
+          vibrate(pattern);
+        }
+      }
+    },
+    [hapticEnabled, hapticSupported]
+  );
+
+  // Cancel speech
+  const cancelSpeech = useCallback(() => {
+    speechEngine.cancel();
+    setIsSpeaking(false);
+  }, []);
+
+  // Unified feedback trigger (earcon + haptic) with optional stereo pan
+  const feedback = useCallback(
+    (type: FeedbackType, pan = 0) => {
+      playEarcon(type, pan);
+      triggerHaptic(type as HapticType);
+    },
+    [playEarcon, triggerHaptic]
+  );
+
+  // State setters with persistence
+  const setAudioEnabled = useCallback((enabled: boolean) => {
+    setAudioEnabledState(enabled);
+  }, []);
+
+  const setSpeechEnabled = useCallback((enabled: boolean) => {
+    setSpeechEnabledState(enabled);
+    if (!enabled) {
+      speechEngine.cancel();
+    }
+  }, []);
+
+  const setHapticEnabled = useCallback((enabled: boolean) => {
+    setHapticEnabledState(enabled);
+  }, []);
+
+  return {
+    feedback,
+    playEarcon,
+    speak,
+    speakText,
+    triggerHaptic,
+    cancelSpeech,
+    setAudioEnabled,
+    setSpeechEnabled,
+    setHapticEnabled,
+    audioEnabled,
+    speechEnabled,
+    hapticEnabled,
+    isSpeaking,
+    audioSupported,
+    speechSupported,
+    hapticSupported,
+    initAudio,
+    initSpeech,
+  };
+}

@@ -14,7 +14,7 @@ import { useVerificationStepper } from "@/lib/identity/verification/state";
 
 import { DocumentUploadClient } from "./document-upload-client";
 import { FheEnrollmentDialog } from "./fhe-enrollment-dialog";
-import { LivenessVerifyClient } from "./liveness/verify-client";
+import { LivenessOrchestrator } from "./liveness/orchestrator";
 import { ZkPassportFlow } from "./passport-chip/zkpassport-flow";
 import { VerificationMethodCards } from "./verification-method-cards";
 
@@ -110,7 +110,7 @@ export function VerificationFlow({
 
     case "liveness":
       return (
-        <LivenessVerifyClient
+        <LivenessOrchestrator
           onComplete={navigateToDashboard}
           wallet={wallet}
         />

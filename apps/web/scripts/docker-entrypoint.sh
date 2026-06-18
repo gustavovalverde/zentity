@@ -53,12 +53,11 @@ else
   echo "[entrypoint] Schema push disabled; expecting database schema to exist."
 fi
 
-echo "[entrypoint] Starting Next.js server with Socket.io..."
+echo "[entrypoint] Starting Next.js server..."
 
-# Drop to nextjs user if running as root
-# Use tsx directly for full TypeScript support (handles path aliases via tsconfig.json)
+# Drop to nextjs user if running as root.
 if [ "$(id -u)" = "0" ]; then
-  exec gosu nextjs ./node_modules/.bin/tsx server.mjs
+  exec gosu nextjs ./node_modules/.bin/next start
 else
-  exec ./node_modules/.bin/tsx server.mjs
+  exec ./node_modules/.bin/next start
 fi

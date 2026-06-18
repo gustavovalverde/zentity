@@ -61,7 +61,7 @@ describe("faceMatch selfie hash binding", () => {
     });
 
     const caller = createCaller(authedSession);
-    const result = await caller.faceMatch({
+    const result = await caller.matchFace({
       idImage: "data:image/jpeg;base64,id-image",
       selfieImage: SELFIE,
       draftId: "draft-1",
@@ -79,7 +79,7 @@ describe("faceMatch selfie hash binding", () => {
     });
 
     const caller = createCaller(authedSession);
-    const result = await caller.faceMatch({
+    const result = await caller.matchFace({
       idImage: "data:image/jpeg;base64,id-image",
       selfieImage: SELFIE,
       draftId: "draft-1",
@@ -99,7 +99,7 @@ describe("faceMatch selfie hash binding", () => {
     mockDetectFromBase64.mockResolvedValue({ face: [] });
 
     const caller = createCaller(authedSession);
-    const result = await caller.faceMatch({
+    const result = await caller.matchFace({
       idImage: "data:image/jpeg;base64,id-image",
       selfieImage: SELFIE,
       draftId: "draft-1",

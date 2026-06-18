@@ -1,11 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "entry": [
-    "server.mjs",
-    "src/lib/identity/liveness/socket.ts",
-    "vitest.global-setup.ts",
-    "vitest.setup.mts"
-  ],
+  "entry": ["vitest.global-setup.ts", "vitest.setup.mts"],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
     "src/components/vault-unlock.tsx": ["exports", "types"],
@@ -45,7 +40,6 @@
     "buffer",
     "node-tfhe",
     "pino-pretty",
-    "socket.io",
     "tailwindcss",
     "tfhe",
     "tw-animate-css"

@@ -484,7 +484,6 @@ const CRITICAL_PATHS = new Set([
   "crypto.verifyProof",
   "compliantToken.mint",
   "account.deleteAccount",
-  "liveness.verify",
 ]);
 
 /**

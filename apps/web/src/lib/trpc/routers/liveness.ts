@@ -1,16 +1,17 @@
 /**
  * Liveness Router
  *
- * Liveness verification for authenticated users (post-sign-up).
+ * Face match for authenticated users (post-sign-up dashboard verification).
  *
- * Security: Face match results are written directly to the identity draft
- * by the server - never accepted from client-provided "pre-validated" results.
+ * Security: face match results are written directly to the identity draft by
+ * the server, never accepted from client-provided "pre-validated" results, and
+ * only after the submitted selfie hashes to the draft's verifiedSelfieHash.
+ *
+ * The gesture liveness flow (frame streaming + scoring) is server-authoritative
+ * and lives outside this router; it writes antispoofScore/liveScore/
+ * verifiedSelfieHash to the draft, which faceMatch then binds against.
  */
 import "server-only";
-
-import type { ChallengeType } from "@/lib/identity/liveness/challenges";
-
-import { createHash } from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
 import z from "zod";
@@ -23,55 +24,16 @@ import { createRateLimiter } from "@/lib/http/rate-limit";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
   getEmbeddingVector,
-  getFacingDirection,
-  getHappyScore,
   getLargestFace,
-  getLiveScore,
-  getPrimaryFace,
-  getRealScore,
-  getYawDegrees,
 } from "@/lib/identity/liveness/human/metrics";
 import {
   detectFromBase64,
   getHumanServer,
 } from "@/lib/identity/liveness/human/server";
-import {
-  createLivenessSession,
-  getChallengeInfo,
-  getLivenessSession,
-} from "@/lib/identity/liveness/session-store";
-import {
-  ANTISPOOF_LIVE_THRESHOLD,
-  ANTISPOOF_REAL_THRESHOLD,
-  BASELINE_CENTERED_THRESHOLD_DEG,
-  FACE_MATCH_MIN_CONFIDENCE,
-  SMILE_DELTA_THRESHOLD,
-  SMILE_HIGH_THRESHOLD,
-  SMILE_SCORE_THRESHOLD,
-  TURN_YAW_ABSOLUTE_THRESHOLD_DEG,
-  TURN_YAW_SIGNIFICANT_DELTA_DEG,
-} from "@/lib/identity/liveness/thresholds";
+import { hashSelfie } from "@/lib/identity/liveness/session";
+import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 
 import { protectedProcedure, router } from "../server";
-
-const challengeTypeSchema = z.enum(["smile", "turn_left", "turn_right"]);
-
-const createSessionSchema = z.object({
-  numChallenges: z.number().int().min(1).max(4).optional(),
-  requireHeadTurn: z.boolean().optional(),
-});
-
-const verifySchema = z.object({
-  sessionId: z.string().min(1),
-  baselineImage: z.string().min(1),
-  challenges: z.array(
-    z.object({
-      challengeType: challengeTypeSchema,
-      image: z.string().min(1),
-      turnStartYaw: z.number().optional(),
-    })
-  ),
-});
 
 const faceMatchSchema = z.object({
   idImage: z.string().min(1),
@@ -93,243 +55,11 @@ const rateLimitedProcedure = protectedProcedure.use(({ ctx, next }) => {
 
 export const livenessRouter = router({
   /**
-   * Creates a new liveness session for dashboard verification.
-   * Requires authenticated user.
-   */
-  createSession: protectedProcedure
-    .input(createSessionSchema.optional())
-    .mutation(({ input }) => {
-      const session = createLivenessSession(
-        input?.numChallenges ?? 2,
-        input?.requireHeadTurn ?? false
-      );
-
-      const currentChallenge = getChallengeInfo(session);
-
-      return {
-        sessionId: session.sessionId,
-        challenges: session.challenges,
-        attestationChallenge: session.attestationChallenge,
-        currentIndex: session.currentIndex,
-        isComplete: false,
-        isPassed: null,
-        currentChallenge,
-      };
-    }),
-
-  /**
-   * Verifies liveness challenges for dashboard users.
-   * Requires authenticated user.
-   */
-  verify: rateLimitedProcedure
-    .input(verifySchema)
-    .mutation(async ({ ctx, input }) => {
-      const start = Date.now();
-
-      const livenessSession = getLivenessSession(input.sessionId);
-      if (!livenessSession) {
-        return {
-          verified: false,
-          error: "Invalid or expired liveness session",
-          processingTimeMs: Date.now() - start,
-        };
-      }
-
-      const expected = livenessSession.challenges;
-      const received = input.challenges.map(
-        (c) => c.challengeType as ChallengeType
-      );
-      const matches =
-        expected.length === received.length &&
-        expected.every((c, i) => c === received[i]);
-      if (!matches) {
-        return {
-          verified: false,
-          error: "Challenge sequence mismatch",
-          processingTimeMs: Date.now() - start,
-        };
-      }
-
-      const baselineResult = await detectFromBase64(input.baselineImage);
-      const baselineFace = getPrimaryFace(baselineResult);
-      if (!baselineFace) {
-        return {
-          verified: false,
-          error: "No face detected in baseline",
-          processingTimeMs: Date.now() - start,
-        };
-      }
-
-      const baselineHappy = getHappyScore(baselineFace);
-      const baselineReal = getRealScore(baselineFace);
-      const baselineLive = getLiveScore(baselineFace);
-      const baselineYaw = getYawDegrees(baselineFace);
-
-      if (ctx.debug) {
-        ctx.log.debug(
-          {
-            stage: "baseline",
-            faceDetected: true,
-            challengeCount: input.challenges.length,
-          },
-          "Dashboard liveness baseline processed"
-        );
-      }
-
-      const detectionResults = await Promise.all(
-        input.challenges.map((challenge) => detectFromBase64(challenge.image))
-      );
-
-      const results: Array<{
-        challengeType: ChallengeType;
-        passed: boolean;
-        score?: number;
-        direction?: string;
-        yaw?: number;
-        error?: string;
-      }> = [];
-
-      let allPassed = true;
-      const failureReasons: string[] = [];
-
-      for (const [index, challenge] of input.challenges.entries()) {
-        const res = detectionResults[index];
-        const face = getPrimaryFace(res);
-        if (!face) {
-          results.push({
-            challengeType: challenge.challengeType as ChallengeType,
-            passed: false,
-            error: "No face detected",
-          });
-          allPassed = false;
-          failureReasons.push(`${challenge.challengeType}: no face detected`);
-          continue;
-        }
-
-        if (ctx.debug) {
-          ctx.log.debug(
-            {
-              stage: "challenge",
-              challengeType: challenge.challengeType,
-              index,
-              faceDetected: true,
-            },
-            "Dashboard liveness challenge processed"
-          );
-        }
-
-        if (challenge.challengeType === "smile") {
-          const happy = getHappyScore(face);
-          const delta = happy - baselineHappy;
-          const passed =
-            (happy >= SMILE_SCORE_THRESHOLD &&
-              delta >= SMILE_DELTA_THRESHOLD) ||
-            happy >= SMILE_HIGH_THRESHOLD;
-
-          results.push({
-            challengeType: "smile",
-            passed,
-            score: happy,
-          });
-
-          if (!passed) {
-            allPassed = false;
-            failureReasons.push(
-              `smile: happy ${(happy * 100).toFixed(0)}% Δ${(delta * 100).toFixed(0)}%`
-            );
-          }
-        } else if (
-          challenge.challengeType === "turn_left" ||
-          challenge.challengeType === "turn_right"
-        ) {
-          const yaw = getYawDegrees(face);
-          const dir = getFacingDirection(res, face);
-
-          const referenceYaw = challenge.turnStartYaw ?? baselineYaw;
-          const yawDelta = Math.abs(yaw - referenceYaw);
-
-          const baselineWasCentered =
-            challenge.turnStartYaw !== undefined ||
-            Math.abs(baselineYaw) <= BASELINE_CENTERED_THRESHOLD_DEG;
-          const yawThreshold = TURN_YAW_ABSOLUTE_THRESHOLD_DEG;
-          const significantMovement = TURN_YAW_SIGNIFICANT_DELTA_DEG;
-
-          const yawPassesAbsolute =
-            challenge.challengeType === "turn_left"
-              ? yaw < -yawThreshold
-              : yaw > yawThreshold;
-          const yawPassesDelta = yawDelta >= significantMovement;
-          const turnedCorrectDirection =
-            challenge.challengeType === "turn_left"
-              ? yaw < referenceYaw
-              : yaw > referenceYaw;
-
-          const passed =
-            baselineWasCentered &&
-            turnedCorrectDirection &&
-            (yawPassesAbsolute || yawPassesDelta);
-
-          results.push({
-            challengeType: challenge.challengeType as ChallengeType,
-            passed,
-            direction: dir,
-            yaw,
-          });
-
-          if (!passed) {
-            allPassed = false;
-            failureReasons.push(
-              `${challenge.challengeType}: yaw ${yaw.toFixed(1)}° ref ${referenceYaw.toFixed(1)}°`
-            );
-          }
-        }
-      }
-
-      const livenessPassed =
-        baselineReal >= ANTISPOOF_REAL_THRESHOLD &&
-        baselineLive >= ANTISPOOF_LIVE_THRESHOLD;
-      if (!livenessPassed) {
-        allPassed = false;
-        failureReasons.push(
-          `anti-spoof: real ${(baselineReal * 100).toFixed(0)}% live ${(baselineLive * 100).toFixed(0)}%`
-        );
-      }
-
-      const error = allPassed
-        ? undefined
-        : failureReasons[0] || "Verification failed";
-
-      const response: Record<string, unknown> = {
-        verified: allPassed,
-        livenessPassed,
-        error,
-        processingTimeMs: Date.now() - start,
-      };
-
-      if (ctx.debug) {
-        response.debug = {
-          baseline: {
-            realScore: baselineReal,
-            liveScore: baselineLive,
-            happyScore: baselineHappy,
-            yawDeg: baselineYaw,
-          },
-          results,
-          failureReasons,
-          embedding: getEmbeddingVector(baselineFace),
-          totalTimeMs: Date.now() - start,
-        };
-      }
-
-      return response;
-    }),
-
-  /**
    * Face matching for dashboard verification.
    * When draftId is provided, results are written directly to the database.
    * This is the secure path - server validates and writes, not client.
    */
-  faceMatch: rateLimitedProcedure
+  matchFace: rateLimitedProcedure
     .input(faceMatchSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -372,9 +102,7 @@ export const livenessRouter = router({
             error: "Liveness not completed for this draft",
           };
         }
-        const selfieHash = createHash("sha256")
-          .update(input.selfieImage)
-          .digest("hex");
+        const selfieHash = hashSelfie(input.selfieImage);
         if (selfieHash !== draft.verifiedSelfieHash) {
           return {
             matched: false,

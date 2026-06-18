@@ -152,8 +152,9 @@ const nextConfig: NextConfig = {
             "script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'",
             "style-src 'self' 'unsafe-inline'",
             "font-src 'self' data: https://fonts.reown.com",
-            // ws:/wss: for Socket.io liveness; data: for inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
-            `connect-src 'self' ws: wss: data: ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
+            // wss: for the WalletConnect/Reown relay (cross-origin WebSocket); data: for
+            // inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
+            `connect-src 'self' wss: data: ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
             // data:/blob: for document scans and selfie processing; react-circle-flags CDN for country flags
             "img-src 'self' data: blob: https://react-circle-flags.pages.dev",
             // blob: for WASM thread workers
