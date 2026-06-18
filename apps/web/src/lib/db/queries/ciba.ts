@@ -34,6 +34,23 @@ function fetchCibaRequest(
     .get();
 }
 
+/**
+ * Resolves a request's stored authReqId hash from its primary id. A first-party
+ * approval UI references a request it owns by id (it never holds the raw token,
+ * since only the hash is stored), then keys all CIBA-scoped lookups on the hash
+ * the same way the raw-token path does. Returns undefined when no row matches.
+ */
+export async function fetchCibaAuthReqIdHashById(
+  id: string
+): Promise<string | undefined> {
+  const row = await db
+    .select({ authReqId: cibaRequests.authReqId })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.id, id))
+    .get();
+  return row?.authReqId;
+}
+
 function validateOwnership(
   row: CibaRequestRow | undefined,
   userId: string

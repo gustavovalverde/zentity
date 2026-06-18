@@ -7,7 +7,6 @@ import { passkeyClient } from "@better-auth/passkey/client";
 import { InferAuth } from "better-auth/client";
 import {
   anonymousClient,
-  genericOAuthClient,
   magicLinkClient,
   organizationClient,
   twoFactorClient,
@@ -40,7 +39,6 @@ export const authClient = createAuthClient({
     opaqueClient(),
     anonymousClient(),
     eip712AuthClient(),
-    genericOAuthClient(),
     oauthProviderClient(),
     organizationClient(),
     twoFactorClient({

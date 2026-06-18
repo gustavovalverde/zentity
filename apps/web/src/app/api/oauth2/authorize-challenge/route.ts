@@ -177,9 +177,9 @@ async function issueEip712Challenge(
     id: randomBytes(16).toString("hex"),
     identifier: nid,
     value: nonce,
-    expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS).toISOString(),
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS),
+    createdAt: new Date(),
+    updatedAt: new Date(),
   });
 
   await db
@@ -958,9 +958,9 @@ async function issueAuthorizationCode(
       token: sessionToken,
       userId,
       authContextId,
-      expiresAt: new Date(now.getTime() + SESSION_LIFETIME_MS).toISOString(),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + SESSION_LIFETIME_MS),
+      createdAt: now,
+      updatedAt: now,
     });
   }
 
@@ -986,9 +986,9 @@ async function issueAuthorizationCode(
       authTime: authTimeMs,
       authSession,
     }),
-    expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000).toISOString(),
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
+    expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000),
+    createdAt: now,
+    updatedAt: now,
   });
 
   await db

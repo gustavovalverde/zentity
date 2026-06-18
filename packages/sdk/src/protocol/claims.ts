@@ -58,9 +58,22 @@ export interface AccessTokenDelegationClaim {
 	parent_jti: string | null;
 }
 
+export interface ConfirmationClaim {
+	/** RFC 7638 SHA-256 JWK thumbprint of the bound DPoP key. */
+	jkt: string;
+}
+
 export interface StandardAccessTokenClaims {
 	aud: string | string[];
 	client_id: string;
+	/**
+	 * RFC 7800 / RFC 9449 §6 confirmation. Present on DPoP-bound tokens (the
+	 * payment_authorization spend token among them): `cnf.jkt` is the thumbprint
+	 * of the presenter's DPoP key, which the wallet matches against the live
+	 * proof on every spend. Orthogonal to `aud`: `aud` names which wallet the
+	 * token is for; `cnf` proves who may present it.
+	 */
+	cnf?: ConfirmationClaim;
 	exp: number;
 	iat: number;
 	iss: string;

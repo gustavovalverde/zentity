@@ -42,6 +42,7 @@ export const account = sqliteTable("account", {
   accessTokenExpiresAt: text("accessTokenExpiresAt"),
   refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
   scope: text("scope"),
+  grantedScopes: text("grantedScopes", { mode: "json" }).$type<string[]>(),
   password: text("password"),
   createdAt: text("createdAt").notNull().default("datetime('now')"),
   updatedAt: text("updatedAt").notNull().default("datetime('now')"),

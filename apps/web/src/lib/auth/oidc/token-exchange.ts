@@ -1,10 +1,13 @@
 import "server-only";
 
+import type { AuthContext } from "@better-auth/core";
+
 import crypto from "node:crypto";
 
 import {
-  basicToClientCredentials,
-  validateClientCredentials,
+  extendOAuthProvider,
+  type OAuthExtensionGrantHandler,
+  type OAuthExtensionGrantHandlerInput,
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth";
 import { eq } from "drizzle-orm";
@@ -352,13 +355,8 @@ function getRequestingClientMetadata(clientId: string) {
  * subject token's scope. ID token subjects carry no scopes, so only
  * "openid" is allowed unless no scope is requested (defaults to "openid").
  */
-function createTokenExchangeHandler(): (
-  // biome-ignore lint/suspicious/noExplicitAny: oauth-provider dispatch signature is untyped
-  ctx: any,
-  // biome-ignore lint/suspicious/noExplicitAny: oauth-provider dispatch signature is untyped
-  opts: any
-) => Promise<Response> {
-  return async (ctx, opts) => {
+function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
+  return (async ({ ctx, provider }: OAuthExtensionGrantHandlerInput) => {
     const {
       subject_token: subjectToken,
       subject_token_type: subjectTokenType,
@@ -366,7 +364,14 @@ function createTokenExchangeHandler(): (
       scope: requestedScope,
       resource,
       audience: audienceParam,
-    } = ctx.body;
+    } = ctx.body as Record<string, unknown> & {
+      subject_token?: string;
+      subject_token_type?: string;
+      requested_token_type?: string;
+      scope?: string;
+      resource?: unknown;
+      audience?: unknown;
+    };
 
     if (!(subjectToken && subjectTokenType)) {
       throw new APIError("BAD_REQUEST", {
@@ -390,28 +395,12 @@ function createTokenExchangeHandler(): (
       });
     }
 
-    // Authenticate the requesting client (Basic auth or body params)
-    const authorization = ctx.request?.headers?.get("authorization") ?? null;
-    const basicCreds = authorization
-      ? basicToClientCredentials(authorization)
-      : undefined;
-    const clientId =
-      (ctx.body.client_id as string | undefined) ?? basicCreds?.client_id;
-    if (!clientId) {
-      throw new APIError("BAD_REQUEST", {
-        error: "invalid_client",
-        error_description: "client_id is required",
-      });
-    }
-    const clientSecret =
-      (ctx.body.client_secret as string | undefined) ??
-      basicCreds?.client_secret;
-    const client = await validateClientCredentials(
-      ctx,
-      opts,
-      clientId,
-      clientSecret
-    );
+    // Authenticate the requesting client. Token-exchange clients may be public
+    // (installed agents bootstrapping), so credentials are not required.
+    const authenticated = await provider.authenticateClient({
+      requireCredentials: false,
+    });
+    const client = authenticated.client;
     const requestDpopJkt = await resolveRequestDpopJkt(ctx.request);
 
     // Verify the subject token JWT (must be issued by this AS)
@@ -856,23 +845,24 @@ function createTokenExchangeHandler(): (
         },
       }
     );
-  };
+    // The token endpoint returns the handler result directly, so a self-signed
+    // grant returns the framework `Response` just like the built-in grants do.
+  }) as unknown as OAuthExtensionGrantHandler;
 }
 
 /**
- * Better-auth plugin that registers the token exchange grant handler.
+ * Better-auth plugin that registers the RFC 8693 token-exchange grant through
+ * `extendOAuthProvider`. The handler self-signs its tokens, so it does not call
+ * `provider.issueTokens`; it only uses `provider.authenticateClient`.
  */
 export function tokenExchangePlugin() {
   const handler = createTokenExchangeHandler();
   return {
     id: "token-exchange" as const,
-    extensions: {
-      "oauth-provider": {
-        grantTypes: {
-          [TOKEN_EXCHANGE_GRANT_TYPE]: handler,
-        },
-        grantTypeURIs: [TOKEN_EXCHANGE_GRANT_TYPE],
-      },
+    init(ctx: AuthContext) {
+      extendOAuthProvider(ctx, {
+        grants: { [TOKEN_EXCHANGE_GRANT_TYPE]: handler },
+      });
     },
   };
 }

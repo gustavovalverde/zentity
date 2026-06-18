@@ -170,10 +170,7 @@ describe("evaluateSessionGrants", () => {
   });
 
   const PAYMENT_RECIPIENT = "zcash:test:utest1qqallowedrecipient0000";
-  const paymentRar = (overrides?: {
-    recipient?: string;
-    value?: string;
-  }) => ({
+  const paymentRar = (overrides?: { recipient?: string; value?: string }) => ({
     type: "payment_authorization" as const,
     chain: { namespace: "zcash", reference: "test" },
     recipient: overrides?.recipient ?? PAYMENT_RECIPIENT,

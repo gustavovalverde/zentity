@@ -61,9 +61,9 @@ export async function createFheEnrollmentContext(params: {
     id: crypto.randomUUID(),
     identifier: contextIdentifier(contextToken),
     value: JSON.stringify(contextValue),
-    expiresAt: toIso(expiresAt),
-    createdAt: toIso(now),
-    updatedAt: toIso(now),
+    expiresAt,
+    createdAt: now,
+    updatedAt: now,
   });
 
   return {

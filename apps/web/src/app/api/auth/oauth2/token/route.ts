@@ -6,6 +6,7 @@ import {
   unwrapBetterAuthEnvelope,
 } from "@/lib/auth/oidc/haip/oauth-response";
 import { persistOpaqueAccessTokenDpopBinding } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
@@ -27,14 +28,17 @@ async function extractAccessToken(response: Response): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  const requestContext = resolveRequestContext(request.headers);
+  const canonicalRequest = canonicalizeRequestOrigin(request);
+  const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
 
-  const response = await unwrapBetterAuthEnvelope(await authPOST(request));
+  const response = await unwrapBetterAuthEnvelope(
+    await authPOST(canonicalRequest)
+  );
 
   const accessToken = await extractAccessToken(response);
   if (accessToken) {
-    await persistOpaqueAccessTokenDpopBinding(accessToken, request);
+    await persistOpaqueAccessTokenDpopBinding(accessToken, canonicalRequest);
   }
 
   return addWwwAuthenticate(response);

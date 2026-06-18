@@ -209,15 +209,18 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
             }
             userId = generatedId;
             const now = new Date();
-            await ctx.context.internalAdapter.createUser({
-              id: userId,
-              email: walletEmail,
-              emailVerified: false,
-              isAnonymous: true,
-              name: "",
-              createdAt: now,
-              updatedAt: now,
-            });
+            await ctx.context.internalAdapter.createUser(
+              {
+                id: userId,
+                email: walletEmail,
+                emailVerified: false,
+                isAnonymous: true,
+                name: "",
+                createdAt: now,
+                updatedAt: now,
+              },
+              { method: "siwe" }
+            );
           }
 
           // Create account

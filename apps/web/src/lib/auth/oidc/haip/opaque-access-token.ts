@@ -47,6 +47,18 @@ export async function extractDpopThumbprint(
   return undefined;
 }
 
+function jktFromConfirmation(confirmation: string | null): string | null {
+  if (!confirmation) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(confirmation) as { jkt?: unknown };
+    return typeof parsed.jkt === "string" ? parsed.jkt : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadOpaqueAccessToken(
   token: string
 ): Promise<OpaqueAccessTokenRecord | null> {
@@ -54,7 +66,7 @@ export async function loadOpaqueAccessToken(
     .select({
       authContextId: oauthAccessTokens.authContextId,
       clientId: oauthAccessTokens.clientId,
-      dpopJkt: oauthAccessTokens.dpopJkt,
+      confirmation: oauthAccessTokens.confirmation,
       expiresAt: oauthAccessTokens.expiresAt,
       referenceId: oauthAccessTokens.referenceId,
       sessionId: oauthAccessTokens.sessionId,
@@ -71,8 +83,14 @@ export async function loadOpaqueAccessToken(
   }
 
   return {
-    ...row,
+    authContextId: row.authContextId,
+    clientId: row.clientId,
+    dpopJkt: jktFromConfirmation(row.confirmation),
+    expiresAt: row.expiresAt,
+    referenceId: row.referenceId,
+    sessionId: row.sessionId,
     scopes: parseStoredStringArray(row.scopes),
+    userId: row.userId,
   };
 }
 
@@ -91,7 +109,7 @@ export async function persistOpaqueAccessTokenDpopBinding(
 
   await db
     .update(oauthAccessTokens)
-    .set({ dpopJkt })
+    .set({ confirmation: JSON.stringify({ jkt: dpopJkt }) })
     .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
     .run();
 }

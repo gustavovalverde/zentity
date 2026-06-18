@@ -116,9 +116,9 @@ async function createSessionWithAuthContext(
       userId,
       token,
       authContextId: auth.id,
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000),
+      createdAt: now,
+      updatedAt: now,
     })
     .run();
 
@@ -232,9 +232,9 @@ describe("assurance data layer", () => {
         userId,
         token,
         authContextId: null,
-        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdAt: now,
+        updatedAt: now,
       })
       .run();
 

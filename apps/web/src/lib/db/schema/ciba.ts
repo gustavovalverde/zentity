@@ -56,7 +56,7 @@ export const cibaRequests = sqliteTable(
       () => authenticationContexts.id,
       { onDelete: "set null" }
     ),
-    lastPolledAt: integer("last_polled_at"),
+    lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()

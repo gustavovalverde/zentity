@@ -1,22 +1,25 @@
+import type { AuthContext } from "@better-auth/core";
 import type { LoginMethod } from "@/lib/assurance/types";
 import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
 import { createHash } from "node:crypto";
 
 import { ciba, deliverPing } from "@better-auth/ciba";
+import { cimd } from "@better-auth/cimd";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
-  createDpopTokenBinding,
   createJarmHandler,
   createKeyAttestationValidator,
   createParResolver,
-  createWalletAttestationStrategy,
   createX5cHeaders,
   haip,
-  WALLET_ATTESTATION_TYPE,
 } from "@better-auth/haip";
-import { oauthProvider } from "@better-auth/oauth-provider";
+import {
+  extendOAuthProvider,
+  type OAuthClaimExtensionInput,
+  oauthProvider,
+} from "@better-auth/oauth-provider";
 import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
@@ -28,7 +31,6 @@ import { nextCookies } from "better-auth/next-js";
 import {
   admin,
   anonymous,
-  genericOAuth,
   jwt,
   magicLink,
   twoFactor,
@@ -67,9 +69,9 @@ import {
   sendBackchannelLogout,
 } from "@/lib/auth/oidc/backchannel-logout";
 import {
-  isUrlClientId,
-  resolveCimdClient,
-} from "@/lib/auth/oidc/client-id-metadata";
+  hashCibaAuthReqId,
+  rawAuthReqIdFromApprovalUrl,
+} from "@/lib/auth/oidc/ciba-auth-req";
 import {
   persistDcrClientExtensions,
   readDcrClientExtensions,
@@ -131,13 +133,10 @@ import {
   enforceStepUp,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
-import {
-  TOKEN_EXCHANGE_GRANT_TYPE,
-  tokenExchangePlugin,
-} from "@/lib/auth/oidc/token-exchange";
+import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
-import { getAppOrigin, getTrustedOrigins } from "@/lib/auth/origin";
+import { getTrustedOrigins } from "@/lib/auth/origin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
@@ -162,9 +161,11 @@ import {
   haipVpSessions,
   jwks,
   oauthAccessTokens,
+  oauthClientResources,
   oauthClients,
   oauthConsents,
   oauthRefreshTokens,
+  oauthResources,
 } from "@/lib/db/schema/oauth-provider";
 import {
   oidc4idaVerifiedClaims,
@@ -195,6 +196,8 @@ const betterAuthSchema = {
   oauthRefreshToken: oauthRefreshTokens,
   oauthAccessToken: oauthAccessTokens,
   oauthConsent: oauthConsents,
+  oauthResource: oauthResources,
+  oauthClientResource: oauthClientResources,
   organization: organizations,
   member: members,
   invitation: invitations,
@@ -230,19 +233,6 @@ function toDisclosureApiError(error: DisclosureBindingError): APIError {
     ? invalidGrantDisclosureError(error.reason)
     : invalidTokenDisclosureError(error.reason);
 }
-
-const parseGenericOAuthConfig = () => {
-  const raw = env.GENERIC_OAUTH_PROVIDERS;
-  if (!raw) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
 
 const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
   const path = ctx.path ?? "";
@@ -311,9 +301,10 @@ const identityReleaseLog = rootLogger.child({
   component: "identity-release",
 });
 
+const cimdLog = rootLogger.child({ component: "cimd" });
+
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
-const isProduction = env.NODE_ENV === "production";
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const identityClaimKeys = Array.from(
@@ -401,6 +392,8 @@ const oidc4vciDeferredIssuance = isOidcE2e
   : undefined;
 
 const DCR_CLIENT_NAME_MAX = 100;
+// Best-effort ping retries when auto-approving a registered agent's CIBA request.
+const CIBA_PING_MAX_RETRIES = 3;
 const HTML_TAG_RE = /<[^>]+>/;
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev = process.env.NODE_ENV !== "production";
@@ -421,29 +414,9 @@ function extractDpopNonce(proofJwt: string): string | undefined {
   return typeof nonce === "string" ? nonce : undefined;
 }
 
-// Wrap DPoP token binding with server-managed nonce validation
-const baseDpopBinding = createDpopTokenBinding({ requireDpop: true });
-const dpopTokenBinding: typeof baseDpopBinding = async (input) => {
-  const result = await baseDpopBinding(input);
-  if (!result) {
-    return null;
-  }
-
-  const proof = input.headers.get("DPoP");
-  if (proof) {
-    const nonce = extractDpopNonce(proof);
-    if (nonce && !nonceStore.validate(nonce)) {
-      throw new APIError("BAD_REQUEST", {
-        message: "use_dpop_nonce: Invalid or expired DPoP nonce",
-      });
-    }
-  }
-
-  result.responseHeaders["DPoP-Nonce"] = nonceStore.issue();
-  return result;
-};
-
-// Wrap DPoP access token validator with nonce enforcement
+// Native DPoP (oauth-provider 1.7) owns the token endpoint's sender-constraint
+// binding. The credential endpoint (oidc4vci) still validates DPoP through this
+// HAIP validator, wrapped here to enforce server-managed nonces (RFC 9449 §8).
 const baseDpopValidator = createDpopAccessTokenValidator({ requireDpop: true });
 const dpopAccessTokenValidator: typeof baseDpopValidator = async (input) => {
   await baseDpopValidator(input);
@@ -459,26 +432,13 @@ const dpopAccessTokenValidator: typeof baseDpopValidator = async (input) => {
   }
 };
 
-// Wallet attestation with trusted issuers enforcement (HAIP §4.4.1.6)
-const baseWalletStrategy = createWalletAttestationStrategy();
+// HAIP wallet attestation trust anchors (HAIP §4.4.1.6). Passed to the haip
+// plugin, which now owns the wallet-attestation client-authentication strategy.
 const trustedWalletIssuers = env.TRUSTED_WALLET_ISSUERS
   ? env.TRUSTED_WALLET_ISSUERS.split(",")
       .map((s) => s.trim())
       .filter(Boolean)
   : null;
-const walletAttestationStrategy = trustedWalletIssuers
-  ? async (...args: Parameters<typeof baseWalletStrategy>) => {
-      const result = await baseWalletStrategy(...args);
-      const issuer = (result as { metadata?: { attestation_issuer?: string } })
-        .metadata?.attestation_issuer;
-      if (issuer && !trustedWalletIssuers.includes(issuer)) {
-        throw new APIError("FORBIDDEN", {
-          error_description: "Untrusted wallet attestation issuer",
-        });
-      }
-      return result;
-    }
-  : baseWalletStrategy;
 
 function isValidHttpsUrl(value: string): boolean {
   try {
@@ -871,19 +831,6 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   }
 }
 
-function refreshStaleCimdMetadata(ctx: HookCtx) {
-  const clientId =
-    typeof ctx.body?.client_id === "string" ? ctx.body.client_id : undefined;
-  if (!(clientId && isUrlClientId(clientId, isProduction))) {
-    return;
-  }
-
-  // Fire-and-forget: refresh CIMD metadata if stale
-  resolveCimdClient(clientId).catch(() => {
-    // CIMD refresh failure is non-fatal — cached metadata is retained
-  });
-}
-
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
   referenceId?: string;
@@ -969,34 +916,121 @@ async function buildIdTokenDisclosureClaims(input: {
   };
 }
 
+async function buildAccessTokenDisclosureClaims(
+  info: OAuthClaimExtensionInput
+): Promise<Record<string, unknown>> {
+  const userId = info.user?.id;
+  if (!userId) {
+    return {};
+  }
+  const clientId = info.client?.clientId;
+  const referenceId = info.referenceId;
+  const sessionId = info.sessionId;
+  const scopeList = toScopeList(info.scopes);
+  const claims: Record<string, unknown> = {};
+  const cibaAuth = referenceId
+    ? await db
+        .select({ authContextId: cibaRequests.authContextId })
+        .from(cibaRequests)
+        .where(eq(cibaRequests.authReqId, referenceId))
+        .limit(1)
+        .get()
+    : null;
+
+  // Per-RP sybil nullifier
+  if (scopeList.includes("proof:sybil") && clientId) {
+    const nullifier = await resolveSybilNullifier(userId, clientId);
+    if (nullifier) {
+      claims.sybil_nullifier = nullifier;
+    }
+  }
+
+  if (scopeList.includes("proof:humanity:rp_unique") && clientId) {
+    const credentials = await getActiveHumanityCredentials(userId);
+    const humanity = resolveRpUniqueHumanityClaim({
+      clientId,
+      providerSubjectHashes: credentials.map(
+        (credential) => credential.providerSubjectHash
+      ),
+    });
+    if (humanity) {
+      claims.rp_unique_humanity_id = humanity.rp_unique_humanity_id;
+    }
+  }
+
+  if (referenceId && clientId) {
+    const tokenSnapshot = await resolveTokenSnapshotForCibaRequest(
+      referenceId,
+      clientId
+    );
+    if (cibaAuth) {
+      claims.jti = referenceId;
+    }
+    if (tokenSnapshot) {
+      Object.assign(claims, tokenSnapshot.claims);
+    }
+  }
+
+  if (cibaAuth?.authContextId) {
+    claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
+  }
+
+  const releaseContext = referenceId
+    ? await loadReleaseContext(referenceId)
+    : null;
+  if (releaseContext) {
+    await touchReleaseContext(
+      releaseContext.releaseId,
+      Date.now() + 3600 * 1000
+    );
+    claims.jti ??= releaseContext.releaseId;
+  }
+
+  // sessionId-bound authentication context is only added when there is no
+  // session (CIBA / opaque introspection); the session-bound path derives it
+  // from the session directly.
+  if (!(sessionId || claims[AUTHENTICATION_CONTEXT_CLAIM]) && referenceId) {
+    const refreshRow = await db
+      .select({ authContextId: oauthRefreshTokens.authContextId })
+      .from(oauthRefreshTokens)
+      .where(eq(oauthRefreshTokens.referenceId, referenceId))
+      .limit(1)
+      .get();
+    if (refreshRow?.authContextId) {
+      claims[AUTHENTICATION_CONTEXT_CLAIM] = refreshRow.authContextId;
+    }
+  }
+
+  return claims;
+}
+
 function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
   return {
     id: "exact-disclosure-claims",
-    extensions: {
-      "oauth-provider": {
-        tokenClaims: {
-          id: (rawInfo: unknown) => {
-            const info = rawInfo as {
-              authContextId?: string | null;
-              referenceId?: string;
-              scopes: string[];
-              sessionId?: string | null;
-              user: { id: string };
-            };
+    init(ctx: AuthContext) {
+      extendOAuthProvider(ctx, {
+        claims: {
+          idToken: (info: OAuthClaimExtensionInput) => {
+            if (!info.user?.id) {
+              return {};
+            }
+            // sessionId is present on the plain authorization_code path; it is
+            // undefined for client_credentials / opaque introspection, where
+            // the authentication context falls back to referenceId/userId.
             return buildIdTokenDisclosureClaims({
-              ...(info.authContextId === undefined
-                ? {}
-                : { authContextId: info.authContextId }),
+              authContextId: null,
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
               ...(info.sessionId === undefined
                 ? {}
                 : { sessionId: info.sessionId }),
-              user: info.user,
+              user: { id: info.user.id },
             });
           },
+          accessToken: (info: OAuthClaimExtensionInput) =>
+            buildAccessTokenDisclosureClaims(info),
         },
-      },
+      });
     },
   } as BetterAuthPlugin;
 }
@@ -1018,22 +1052,6 @@ function beforeValidateResourceUri(ctx: HookCtx) {
       error: "invalid_request",
       error_description: result.error,
     });
-  }
-}
-
-async function beforeResolveCimd(ctx: HookCtx) {
-  const clientId =
-    ctx.path === "/oauth2/par"
-      ? (ctx.body?.client_id as string | undefined)
-      : (ctx.query?.client_id as string | undefined);
-  if (clientId && isUrlClientId(clientId, isProduction)) {
-    const cimd = await resolveCimdClient(clientId);
-    if (!cimd.resolved) {
-      throw new APIError("BAD_REQUEST", {
-        error: "invalid_client",
-        error_description: cimd.error,
-      });
-    }
   }
 }
 
@@ -1085,11 +1103,42 @@ async function beforeAuthorizeVerifyConsentHmac(ctx: HookCtx) {
     scopes
   );
 
-  if (consent.scopeHmac !== expected) {
+  if (consent.scopeHmac === expected) {
+    return;
+  }
+
+  // The oauth-provider consent endpoint creates the consent row with no
+  // `scope_hmac` (better-auth does not know the column), then re-invokes
+  // `/oauth2/authorize` inside the same `/oauth2/consent` request, which runs
+  // this hook. A null HMAC seen on that internal re-invoke is the trusted,
+  // just-created row, so stamp it: better-auth strips unknown fields from its
+  // own writes, so the integrity stamp has to be written here, via Drizzle.
+  // Any other mismatch is a tampered row reached on a genuine authorize, so
+  // delete it. The path combination (authorize hook running for a `/oauth2/
+  // consent` request) only occurs on that internal re-invoke.
+  const isConsentReinvoke =
+    consent.scopeHmac == null && isConsentSubmitRequest(ctx);
+  if (isConsentReinvoke) {
     await db
-      .delete(oauthConsents)
+      .update(oauthConsents)
+      .set({ scopeHmac: expected })
       .where(eq(oauthConsents.id, consent.id))
       .run();
+    return;
+  }
+
+  await db.delete(oauthConsents).where(eq(oauthConsents.id, consent.id)).run();
+}
+
+function isConsentSubmitRequest(ctx: HookCtx): boolean {
+  const url = ctx.request?.url;
+  if (!url) {
+    return false;
+  }
+  try {
+    return new URL(url).pathname.endsWith("/oauth2/consent");
+  } catch {
+    return false;
   }
 }
 
@@ -1132,61 +1181,6 @@ async function afterConsentPairwiseCleanup(ctx: HookCtx) {
         .run();
     }
   }
-}
-
-async function afterConsentStoreHmac(ctx: HookCtx) {
-  const sessionCtx = ctx.context as {
-    session?: { user?: { id?: string } };
-  };
-  const userId = sessionCtx.session?.user?.id;
-  const oauthQuery =
-    typeof ctx.body?.oauth_query === "string"
-      ? ctx.body.oauth_query
-      : undefined;
-  if (!(userId && oauthQuery)) {
-    return;
-  }
-  const params = new URLSearchParams(oauthQuery);
-  const clientId = params.get("client_id");
-  if (!clientId) {
-    return;
-  }
-
-  const consent = await db
-    .select({
-      id: oauthConsents.id,
-      scopes: oauthConsents.scopes,
-      referenceId: oauthConsents.referenceId,
-    })
-    .from(oauthConsents)
-    .where(
-      and(
-        eq(oauthConsents.clientId, clientId),
-        eq(oauthConsents.userId, userId)
-      )
-    )
-    .limit(1)
-    .get();
-
-  if (!consent) {
-    return;
-  }
-
-  const scopes = parseStoredStringArray(consent.scopes);
-
-  const hmac = computeConsentHmac(
-    getConsentHmacKey(),
-    userId,
-    clientId,
-    consent.referenceId,
-    scopes
-  );
-
-  await db
-    .update(oauthConsents)
-    .set({ scopeHmac: hmac })
-    .where(eq(oauthConsents.id, consent.id))
-    .run();
 }
 
 async function afterParPersistResource(ctx: HookCtx) {
@@ -1575,7 +1569,7 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/token") {
         await beforeTokenPairwiseGuard(ctx);
-        // Pin aud=wallet thumbprint for a payment grant AFTER the pairwise
+        // Pin aud=wallet identity URI for a payment grant AFTER the pairwise
         // guard, which would otherwise strip the resource for pairwise agents.
         if (ctx.body) {
           await pinPaymentTokenAudience(ctx.body);
@@ -1585,7 +1579,6 @@ export const auth = betterAuth({
         }
         beforeTokenValidateResource(ctx);
         await beforeTokenFinalizeDisclosureBindings(ctx);
-        refreshStaleCimdMetadata(ctx);
         return;
       }
       if (ctx.path === "/oauth2/consent") {
@@ -1600,14 +1593,12 @@ export const auth = betterAuth({
           });
         }
         beforeValidateResourceUri(ctx);
-        await beforeResolveCimd(ctx);
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
         if (!ctx.query?.resource) {
           ctx.query = { ...ctx.query, resource: appUrl };
         }
-        await beforeResolveCimd(ctx);
         await enforceStepUp(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         return;
@@ -1635,7 +1626,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
-        await afterConsentStoreHmac(ctx);
         return;
       }
       if (ctx.path === "/oauth2/par") {
@@ -1644,23 +1634,26 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/token") {
         // For CIBA tokens, persist authContextId on access + refresh token
-        // records. The upstream createUserTokens stores only standard fields;
-        // authContextId is a Zentity extension column.
-        const authReqId = ctx.body?.auth_req_id as string | undefined;
-        if (authReqId) {
-          const authCtxId = pendingCibaAuthContext.get(authReqId);
-          pendingCibaAuthContext.delete(authReqId);
+        // records. The upstream token issuance stores only standard fields;
+        // authContextId is a Zentity extension column. The request carries the
+        // raw auth_req_id; the plugin stores (and references) its hash, so key
+        // both the pending map and the token referenceId on the hash.
+        const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
+        if (rawAuthReqId) {
+          const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
+          const authCtxId = pendingCibaAuthContext.get(authReqIdHash);
+          pendingCibaAuthContext.delete(authReqIdHash);
           if (authCtxId) {
             await Promise.all([
               db
                 .update(oauthAccessTokens)
                 .set({ authContextId: authCtxId })
-                .where(eq(oauthAccessTokens.referenceId, authReqId))
+                .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
                 .run(),
               db
                 .update(oauthRefreshTokens)
                 .set({ authContextId: authCtxId })
-                .where(eq(oauthRefreshTokens.referenceId, authReqId))
+                .where(eq(oauthRefreshTokens.referenceId, authReqIdHash))
                 .run(),
             ]);
           }
@@ -1690,7 +1683,6 @@ export const auth = betterAuth({
     }),
   },
   plugins: [
-    nextCookies(),
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],
@@ -1727,9 +1719,6 @@ export const auth = betterAuth({
       appName: "Zentity",
       emailDomainName: "wallet.zentity.app",
     }),
-    genericOAuth({
-      config: parseGenericOAuthConfig(),
-    }),
     jwt({
       jwks: {
         // Keep framework defaults aligned with OIDC's RS256 id_token default.
@@ -1753,13 +1742,12 @@ export const auth = betterAuth({
       silenceWarnings: { oauthAuthServerConfig: true },
       accessTokenExpiresIn: 3600,
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
-      // default. createUserTokens takes the minimum across the granted scopes.
+      // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-      tokenBinding: dpopTokenBinding,
+      // Native DPoP (RFC 9449) owns the token endpoint in 1.7. ES256 is the only
+      // proof algorithm Zentity wallets present.
+      dpop: { signingAlgorithms: ["ES256"] },
       requestUriResolver: createParResolver(),
-      clientAuthStrategies: {
-        [WALLET_ATTESTATION_TYPE]: walletAttestationStrategy as never,
-      },
       pairwiseSecret: env.PAIRWISE_SECRET,
       scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],
       grantTypes: [
@@ -1768,10 +1756,11 @@ export const auth = betterAuth({
         "refresh_token",
         "urn:ietf:params:oauth:grant-type:pre-authorized_code",
         "urn:openid:params:grant-type:ciba",
-        TOKEN_EXCHANGE_GRANT_TYPE as typeof TOKEN_EXCHANGE_GRANT_TYPE &
-          "authorization_code",
       ],
-      validAudiences: getProtectedResourceAudiences({
+      // Protected resources the AS issues tokens for (RFC 8707). Per-client
+      // resource linkage is disabled: Zentity has dynamic DCR/wallet clients
+      // that implicitly may target any enabled resource.
+      resources: getProtectedResourceAudiences({
         appUrl,
         authIssuer,
         mcpPublicUrl: env.MCP_PUBLIC_URL,
@@ -1779,6 +1768,19 @@ export const auth = betterAuth({
         rpApiAudience,
         walletAudience: env.WALLET_AUDIENCE,
       }),
+      enforcePerClientResources: false,
+      // First-party-app step-up: when the authorization code was issued from a
+      // DPoP-bound auth_session (authorize-challenge route), echo it back so the
+      // FPA client can re-authenticate on a later acr step-up failure.
+      customTokenResponseFields: ({ grantType, verificationValue }) => {
+        const authSession = (
+          verificationValue as Record<string, unknown> | undefined
+        )?.authSession;
+        return grantType === "authorization_code" &&
+          typeof authSession === "string"
+          ? { auth_session: authSession }
+          : {};
+      },
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,
@@ -1808,82 +1810,10 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      customAccessTokenClaims: async (info) => {
-        const { user, scopes } = info;
-        const authContextId = (info as { authContextId?: string })
-          .authContextId;
-        const clientId = (info as { clientId?: string }).clientId;
-        const referenceId = (info as { referenceId?: string }).referenceId;
-        const sessionId = (info as { sessionId?: string }).sessionId;
-        if (!user?.id) {
-          return {};
-        }
-        const scopeList = toScopeList(scopes);
-        const claims: Record<string, unknown> = {};
-        const cibaAuth = referenceId
-          ? await db
-              .select({ authContextId: cibaRequests.authContextId })
-              .from(cibaRequests)
-              .where(eq(cibaRequests.authReqId, referenceId))
-              .limit(1)
-              .get()
-          : null;
-
-        // Per-RP sybil nullifier
-        if (scopeList.includes("proof:sybil") && clientId) {
-          const nullifier = await resolveSybilNullifier(user.id, clientId);
-          if (nullifier) {
-            claims.sybil_nullifier = nullifier;
-          }
-        }
-
-        if (scopeList.includes("proof:humanity:rp_unique") && clientId) {
-          const credentials = await getActiveHumanityCredentials(user.id);
-          const humanity = resolveRpUniqueHumanityClaim({
-            clientId,
-            providerSubjectHashes: credentials.map(
-              (credential) => credential.providerSubjectHash
-            ),
-          });
-          if (humanity) {
-            claims.rp_unique_humanity_id = humanity.rp_unique_humanity_id;
-          }
-        }
-
-        if (referenceId && clientId) {
-          const tokenSnapshot = await resolveTokenSnapshotForCibaRequest(
-            referenceId,
-            clientId
-          );
-          if (cibaAuth) {
-            claims.jti = referenceId;
-          }
-          if (tokenSnapshot) {
-            Object.assign(claims, tokenSnapshot.claims);
-          }
-        }
-
-        if (cibaAuth?.authContextId) {
-          claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
-        }
-
-        if (!sessionId && authContextId) {
-          claims[AUTHENTICATION_CONTEXT_CLAIM] = authContextId;
-        }
-
-        const releaseContext = referenceId
-          ? await loadReleaseContext(referenceId)
-          : null;
-        if (releaseContext) {
-          await touchReleaseContext(
-            releaseContext.releaseId,
-            Date.now() + 3600 * 1000
-          );
-          claims.jti ??= releaseContext.releaseId;
-        }
-
-        return claims;
-      },
+      // Access-token disclosure claims (sybil/humanity/CIBA snapshot/auth
+      // context) moved to the exact-disclosure-claims extension's
+      // `claims.accessToken` contributor, which receives the resolved `client`
+      // and is re-derived at opaque-token introspection.
       customUserInfoClaims: async (info) => {
         const { user, scopes } = info;
         const jwt = (
@@ -1985,6 +1915,31 @@ export const auth = betterAuth({
         return filterClaimsByRequest(allClaims, userinfoFilter);
       },
     }),
+    // Client ID Metadata Documents (MCP CIMD). The native plugin owns the
+    // fetch/validate/cache/persist path through clientDiscovery; SSRF defenses
+    // are a superset of the previous hand-rolled validator. CIMD clients are
+    // restricted to authorization_code + refresh_token by the plugin.
+    cimd({
+      onClientCreated: ({ client }) => {
+        cimdLog.info(
+          { clientId: client.clientId },
+          "CIMD client registered from metadata document"
+        );
+      },
+      onClientRefreshed: ({ client }) => {
+        // Security-relevant client metadata can change between refreshes; record
+        // each refresh for audit. The plugin re-validates the document first.
+        cimdLog.info(
+          {
+            clientId: client.clientId,
+            redirectUris: client.redirectUris,
+            grantTypes: client.grantTypes,
+            tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
+          },
+          "CIMD client metadata refreshed"
+        );
+      },
+    }),
     exactDisclosureClaimsPlugin(),
     oidc4ida({
       getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
@@ -2046,14 +2001,22 @@ export const auth = betterAuth({
     haip({
       requirePar: true,
       requireDpop: true,
-      dpopSigningAlgValues: ["ES256"],
       parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,
+      ...(trustedWalletIssuers
+        ? { walletAttestation: { trustedIssuers: trustedWalletIssuers } }
+        : {}),
     }),
     ciba({
+      approvalPage: "/approve",
       deliveryModes: ["poll", "ping"],
-      requestLifetime: 300,
+      requestExpiry: 300,
       pollingInterval: 5,
+      // Agents register via DCR as public clients (token_endpoint_auth_method:
+      // "none"); backchannel trust comes from user approval and the signed
+      // Agent-Assertion, not a client secret. The plugin defaults to
+      // confidential-only, which would reject every agent at bc-authorize.
+      requireConfidentialClient: false,
       async resolveUser(loginHint, ctx) {
         const byId = await ctx.context.internalAdapter.findUserById(loginHint);
         if (byId) {
@@ -2127,6 +2090,15 @@ export const auth = betterAuth({
         };
       },
       sendNotification: async (data, request) => {
+        // The 1.7 plugin no longer hands the raw auth_req_id directly; it lives
+        // in the approvalUrl it built. The raw value is what the approval page
+        // and ping delivery consume; its hash keys the persisted ciba_request.
+        const rawAuthReqId = rawAuthReqIdFromApprovalUrl(data.approvalUrl);
+        if (!rawAuthReqId) {
+          throw new Error("CIBA approvalUrl is missing auth_req_id");
+        }
+        const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
+
         let agentName: string | undefined;
         let registeredAgent:
           | {
@@ -2146,7 +2118,7 @@ export const auth = betterAuth({
         if (assertionHeader) {
           const boundAssertion = await bindAgentAssertionToCibaRequest({
             assertionJwt: assertionHeader,
-            authReqId: data.authReqId,
+            authReqId: authReqIdHash,
             authorizationDetails: authDetails,
             scope: data.scope,
           });
@@ -2163,7 +2135,7 @@ export const auth = betterAuth({
           await db
             .update(cibaRequests)
             .set({ agentClaims: null })
-            .where(eq(cibaRequests.authReqId, data.authReqId))
+            .where(eq(cibaRequests.authReqId, authReqIdHash))
             .run();
         }
 
@@ -2198,7 +2170,7 @@ export const auth = betterAuth({
               })
               .where(
                 and(
-                  eq(cibaRequests.authReqId, data.authReqId),
+                  eq(cibaRequests.authReqId, authReqIdHash),
                   eq(cibaRequests.status, "pending")
                 )
               )
@@ -2213,7 +2185,7 @@ export const auth = betterAuth({
                   clientNotificationToken: cibaRequests.clientNotificationToken,
                 })
                 .from(cibaRequests)
-                .where(eq(cibaRequests.authReqId, data.authReqId))
+                .where(eq(cibaRequests.authReqId, authReqIdHash))
                 .limit(1)
                 .get();
 
@@ -2225,7 +2197,8 @@ export const auth = betterAuth({
                 deliverPing(
                   cibaRow.clientNotificationEndpoint,
                   cibaRow.clientNotificationToken,
-                  data.authReqId
+                  rawAuthReqId,
+                  CIBA_PING_MAX_RETRIES
                 ).catch(() => undefined);
               }
               return;
@@ -2233,27 +2206,30 @@ export const auth = betterAuth({
           }
         }
 
-        const origin = getAppOrigin();
-        const pushPayload = buildCibaPushPayload(
-          { ...data, agentName, requiresBiometric },
-          origin
-        );
+        const pushPayload = buildCibaPushPayload({
+          ...data,
+          authReqId: rawAuthReqId,
+          agentName,
+          requiresBiometric,
+        });
         await Promise.allSettled([
           sendWebPush(data.userId, pushPayload),
           sendCibaNotification({
             userId: data.userId,
-            authReqId: data.authReqId,
+            authReqId: rawAuthReqId,
             clientName: data.clientName,
             scope: data.scope,
             bindingMessage: data.bindingMessage,
             authorizationDetails: data.authorizationDetails,
             registeredAgent,
-            approvalUrl: pushPayload.data.approvalUrl,
+            approvalUrl: data.approvalUrl,
           }),
         ]);
       },
     }),
     tokenExchangePlugin(),
+    // Must stay last: forwards Set-Cookie from every prior plugin's after-hook.
+    nextCookies(),
   ],
 });
 

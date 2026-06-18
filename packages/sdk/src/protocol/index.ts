@@ -7,6 +7,7 @@ export type {
 	AccessTokenOversightClaim,
 	AccessTokenTaskClaim,
 	CapabilityClaim,
+	ConfirmationClaim,
 	HostAttestationTier,
 	OversightMethod,
 	SdkErrorCode,
@@ -45,13 +46,6 @@ export type {
 	PaymentAuthorizationDetails,
 } from "./payment-authorization";
 export {
-	SIGNED_PAYLOAD_FORMAT_PCZT_V1,
-	SIGNED_PAYLOAD_FORMAT_RAW_V5,
-	SignedPayloadFormatSchema,
-	SignedPayloadSchema,
-} from "./signed-payload";
-export type { SignedPayload, SignedPayloadFormat } from "./signed-payload";
-export {
 	AmountSchema,
 	AmountUnitSchema,
 	ChainIdSchema,
@@ -65,3 +59,10 @@ export {
 	parsePaymentAuthorization,
 	paymentUriToCaip10,
 } from "./payment-authorization";
+export type { SignedPayload, SignedPayloadFormat } from "./signed-payload";
+export {
+	SIGNED_PAYLOAD_FORMAT_PCZT_V1,
+	SIGNED_PAYLOAD_FORMAT_RAW_V5,
+	SignedPayloadFormatSchema,
+	SignedPayloadSchema,
+} from "./signed-payload";

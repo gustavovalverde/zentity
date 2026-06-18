@@ -13,9 +13,10 @@ import { fixtureKeys, getFixtureEd25519PrivateKey } from "./fixture-keys";
  * exact shape the zpay wallet's `zspend_core::verify_access_token` accepts
  * (PRD-43 D-C), so both repos test against one minter instead of a fixture
  * inlined in a probe. Unlike {@link createMockIssuer}'s `issueGenericToken`,
- * this sets `typ: "at+jwt"`, a wallet-thumbprint `aud`, a `cnf.jkt` binding,
- * exactly one `payment_authorization` entry in `authorization_details`, and a
- * lifetime capped at 120 s.
+ * this sets `typ: "at+jwt"`, a wallet-identity `aud` (an absolute URI such as
+ * `urn:zentity:wallet:<jkt>`), a `cnf.jkt` binding, exactly one
+ * `payment_authorization` entry in `authorization_details`, and a lifetime
+ * capped at 120 s.
  */
 
 type IssuerKey = Awaited<ReturnType<typeof getFixtureEd25519PrivateKey>>;
@@ -27,7 +28,7 @@ const MAX_TTL_SECONDS = 120;
 export interface MintPaymentAuthorizationTokenInput {
 	/** The validated single RAR; the minter wraps it as `[authorization]`. */
 	authorization: PaymentAuthorization;
-	/** `aud`: the wallet's JWK thumbprint (D-5). */
+	/** `aud`: the wallet's absolute-URI identity, e.g. `urn:zentity:wallet:<jkt>` (D-5). */
 	audience: string;
 	/** `cnf.jkt`: the DPoP key that authenticated the token request. */
 	dpopJkt: string;
@@ -55,7 +56,10 @@ export async function mintPaymentAuthorizationToken(
 	]);
 	const key = input.issuerKey ?? (await getFixtureEd25519PrivateKey());
 	const now = input.now ?? Math.floor(Date.now() / 1000);
-	const ttl = Math.min(input.expiresInSeconds ?? MAX_TTL_SECONDS, MAX_TTL_SECONDS);
+	const ttl = Math.min(
+		input.expiresInSeconds ?? MAX_TTL_SECONDS,
+		MAX_TTL_SECONDS,
+	);
 	const claims: Record<string, unknown> = {
 		authorization_details: [authorization],
 		cnf: { jkt: input.dpopJkt },

@@ -81,6 +81,16 @@ interface TokenMeta {
   jti?: string;
 }
 
+function resolveAudience(aud: unknown): string | undefined {
+  if (typeof aud === "string") {
+    return aud;
+  }
+  if (Array.isArray(aud) && typeof aud[0] === "string") {
+    return aud[0];
+  }
+  return undefined;
+}
+
 async function resolveTokenMeta(token: string): Promise<TokenMeta> {
   if (token.startsWith(JWT_PREFIX)) {
     try {
@@ -88,13 +98,7 @@ async function resolveTokenMeta(token: string): Promise<TokenMeta> {
       const jti = typeof claims.jti === "string" ? claims.jti : undefined;
       const act = claims.act as { sub?: unknown } | undefined;
       const actorSub = typeof act?.sub === "string" ? act.sub : undefined;
-      const aud = claims.aud;
-      const audience =
-        typeof aud === "string"
-          ? aud
-          : Array.isArray(aud) && typeof aud[0] === "string"
-            ? aud[0]
-            : undefined;
+      const audience = resolveAudience(claims.aud);
       return { actorSub, audience, jti };
     } catch {
       return {};

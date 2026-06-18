@@ -59,8 +59,8 @@ export function useOAuthFlow(scenario: RouteScenario) {
   const runOAuthFlow = useCallback(
     async (scopes?: string[]) => {
       setOauthError(null);
-      await authClient.signIn.oauth2({
-        providerId: scenario.oauthProviderId,
+      await authClient.signIn.social({
+        provider: scenario.oauthProviderId,
         callbackURL: resolveCallbackUrl(`/${scenario.id}`),
         ...(scopes?.length ? { scopes } : {}),
       });

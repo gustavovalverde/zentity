@@ -41,7 +41,8 @@ describe("POST /api/auth/oauth2/register", () => {
     );
     const payload = (await response.json()) as { client_id?: string };
 
-    expect(response.status).toBe(200);
+    // RFC 7591 §3.2.1: successful DCR returns 201 Created (oauth-provider 1.7).
+    expect(response.status).toBe(201);
     expect(payload.client_id).toEqual(expect.any(String));
 
     const client = await db.query.oauthClients.findFirst({

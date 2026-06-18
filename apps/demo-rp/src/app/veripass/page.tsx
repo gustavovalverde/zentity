@@ -469,17 +469,18 @@ function EmptyWallet({ onImport }: { onImport: (offerUri: string) => void }) {
         <div className="space-y-2">
           <h2 className="font-bold text-2xl">Your Wallet is Empty</h2>
           <p className="mx-auto max-w-md text-muted-foreground">
-            To receive a verifiable credential, go to your{" "}
+            To receive a verifiable credential, open your{" "}
             <a
               className="text-primary underline underline-offset-2 hover:text-primary/80"
-              href={`${env.NEXT_PUBLIC_ZENTITY_URL}/dashboard/credentials`}
+              href={`${env.NEXT_PUBLIC_ZENTITY_URL}/dashboard`}
               rel="noopener noreferrer"
               target="_blank"
             >
-              Zentity Dashboard &rarr; Credentials
-            </a>{" "}
-            and click <strong>Get Credential</strong>. Then paste the credential
-            offer URI below.
+              Zentity Dashboard
+            </a>
+            , click <strong>Get Digital ID</strong>, then{" "}
+            <strong>Get Credential</strong>. Copy the offer link and paste it
+            below.
           </p>
         </div>
       </div>

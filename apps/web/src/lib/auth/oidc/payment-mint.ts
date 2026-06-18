@@ -1,9 +1,9 @@
 import "server-only";
 
 import {
-  type PaymentAuthorization,
   PAYMENT_AUTHORIZATION_CAPABILITY,
   PAYMENT_AUTHORIZATION_TYPE,
+  type PaymentAuthorization,
   PaymentAuthorizationDetailsSchema,
 } from "@zentity/sdk/protocol";
 import { APIError } from "better-auth/api";
@@ -18,12 +18,12 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
  *
  * A payment token differs from every other token zentity mints in three ways
  * the wallet checks: it carries exactly one canonical `payment_authorization`
- * RAR, its `aud` is the wallet's key thumbprint, and it lives 120 seconds. The
- * vendored oauth-provider hard-sets `aud` and `exp` AFTER our claims hook runs,
- * so those two are pinned through native OAuth seams (a resource indicator and
- * a per-scope lifetime) while the RAR is minted in the claims hook. This module
- * owns all three so the wiring reads as one decision instead of three scattered
- * edits.
+ * RAR, its `aud` is the wallet's absolute-URI identity (e.g.
+ * `urn:zentity:wallet:<jkt>`), and it lives 120 seconds. The oauth-provider
+ * hard-sets `aud` and `exp` AFTER our claims hook runs, so those two are pinned
+ * through native OAuth seams (a resource indicator and a per-scope lifetime)
+ * while the RAR is minted in the claims hook. This module owns all three so the
+ * wiring reads as one decision instead of three scattered edits.
  *
  * Trust note: the bc-authorize before-hook (canonicalizePaymentRar) overwrites
  * ctx.body.authorization_details with the canonical string BEFORE the CIBA
@@ -129,13 +129,13 @@ export function buildPaymentAuthorizationClaims(
 }
 
 /**
- * Pin `aud` to the wallet thumbprint for a CIBA payment-token request (D-5).
- * Mutates `body.resource` so `checkResource` returns the wallet audience as
- * `aud`. Must run AFTER `beforeTokenPairwiseGuard` (agent clients default to
- * pairwise, and that guard strips the resource). The issuer pins the resource
- * itself rather than trusting the client, so the audience is authoritative.
- * Fails closed when `WALLET_AUDIENCE` is unset rather than minting an unbound
- * spend token.
+ * Pin `aud` to the wallet's absolute-URI identity for a CIBA payment-token
+ * request (D-5). Mutates `body.resource` so the resource indicator resolves to
+ * the wallet audience as `aud`. Must run AFTER `beforeTokenPairwiseGuard`
+ * (agent clients default to pairwise, and that guard strips the resource). The
+ * issuer pins the resource itself rather than trusting the client, so the
+ * audience is authoritative. Fails closed when `WALLET_AUDIENCE` is unset
+ * rather than minting an unbound spend token.
  */
 export async function pinPaymentTokenAudience(
   body: Record<string, unknown>

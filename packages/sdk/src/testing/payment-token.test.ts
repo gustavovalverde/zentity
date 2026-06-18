@@ -21,11 +21,13 @@ const RAR: PaymentAuthorization = {
 	expires_at: { kind: "block_height", value: 4_056_276 },
 };
 
+const WALLET_AUD = "urn:zentity:wallet:test";
+
 describe("mintPaymentAuthorizationToken", () => {
 	it("mints a conformant at+jwt the wallet verifier expects", async () => {
 		const token = await mintPaymentAuthorizationToken({
 			authorization: RAR,
-			audience: "wallet-jkt-thumbprint",
+			audience: WALLET_AUD,
 			dpopJkt: "bff-dpop-jkt",
 		});
 		const header = decodeProtectedHeader(token);
@@ -34,7 +36,7 @@ describe("mintPaymentAuthorizationToken", () => {
 		expect(header.kid).toBe(PAYMENT_TOKEN_ISSUER_KID);
 
 		const claims = decodeJwt(token);
-		expect(claims.aud).toBe("wallet-jkt-thumbprint");
+		expect(claims.aud).toBe(WALLET_AUD);
 		expect((claims.cnf as { jkt: string }).jkt).toBe("bff-dpop-jkt");
 		expect(claims.jti).toBeTruthy();
 		expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBeLessThanOrEqual(120);
@@ -48,7 +50,7 @@ describe("mintPaymentAuthorizationToken", () => {
 	it("caps the lifetime at 120 seconds", async () => {
 		const token = await mintPaymentAuthorizationToken({
 			authorization: RAR,
-			audience: "aud",
+			audience: WALLET_AUD,
 			dpopJkt: "jkt",
 			expiresInSeconds: 3600,
 		});
@@ -59,7 +61,7 @@ describe("mintPaymentAuthorizationToken", () => {
 	it("embeds act.sub when an actor is given", async () => {
 		const token = await mintPaymentAuthorizationToken({
 			authorization: RAR,
-			audience: "aud",
+			audience: WALLET_AUD,
 			dpopJkt: "jkt",
 			actorSub: "agent-pairwise-sub",
 		});
@@ -71,7 +73,7 @@ describe("mintPaymentAuthorizationToken", () => {
 		await expect(
 			mintPaymentAuthorizationToken({
 				authorization: { ...RAR, intent_hash: "not-a-valid-hash" },
-				audience: "aud",
+				audience: WALLET_AUD,
 				dpopJkt: "jkt",
 			}),
 		).rejects.toThrow();

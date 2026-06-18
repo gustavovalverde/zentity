@@ -93,9 +93,9 @@ describe("authorization_code id_token claims filtering", () => {
         token: "session-token-id-token-filter",
         userId,
         authContextId: authContext.id,
-        createdAt: new Date(now - 60_000).toISOString(),
-        updatedAt: new Date(now - 60_000).toISOString(),
-        expiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(now - 60_000),
+        updatedAt: new Date(now - 60_000),
+        expiresAt: new Date(now + 60 * 60 * 1000),
       })
       .run();
 
@@ -125,9 +125,9 @@ describe("authorization_code id_token claims filtering", () => {
           authContextId: authContext.id,
           authTime: authContext.authenticatedAt * 1000,
         }),
-        createdAt: new Date(now).toISOString(),
-        updatedAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+        expiresAt: new Date(now + 5 * 60 * 1000),
       })
       .run();
 

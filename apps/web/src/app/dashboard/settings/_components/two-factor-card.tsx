@@ -125,7 +125,7 @@ function TwoFactorDialog({
         onOpenChange(false);
         setPassword("");
 
-        if (response.totpURI) {
+        if ("totpURI" in response && response.totpURI) {
           globalThis.window.location.assign(
             `/two-factor/verify?totpURI=${encodeURIComponent(response.totpURI)}`
           );

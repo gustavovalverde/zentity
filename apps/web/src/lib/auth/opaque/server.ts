@@ -581,7 +581,7 @@ export const opaque = (options: OpaquePluginOptions) => {
           }
 
           if (options.revokeSessionsOnPasswordReset) {
-            await ctx.context.internalAdapter.deleteSessions(
+            await ctx.context.internalAdapter.deleteUserSessions(
               verification.value
             );
           }
@@ -646,15 +646,18 @@ export const opaque = (options: OpaquePluginOptions) => {
             });
           }
           const now = new Date();
-          await ctx.context.internalAdapter.createUser({
-            id: userId,
-            email,
-            emailVerified: false,
-            isAnonymous: true,
-            name: "",
-            createdAt: now,
-            updatedAt: now,
-          });
+          await ctx.context.internalAdapter.createUser(
+            {
+              id: userId,
+              email,
+              emailVerified: false,
+              isAnonymous: true,
+              name: "",
+              createdAt: now,
+              updatedAt: now,
+            },
+            { method: "email-password" }
+          );
 
           // Generate OPAQUE registration response
           const { registrationResponse } = server.createRegistrationResponse({

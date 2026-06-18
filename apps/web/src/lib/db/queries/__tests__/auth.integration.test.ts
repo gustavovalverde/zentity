@@ -9,9 +9,11 @@ describe("auth queries", () => {
   });
 
   it("returns createdAt for an existing user", async () => {
-    const createdAt = new Date("2025-01-01T00:00:00Z").toISOString();
+    const createdAt = new Date("2025-01-01T00:00:00Z");
     const userId = await createTestUser({ createdAt, updatedAt: createdAt });
 
-    await expect(getUserCreatedAt(userId)).resolves.toBe(createdAt);
+    await expect(getUserCreatedAt(userId)).resolves.toBe(
+      createdAt.toISOString()
+    );
   });
 });

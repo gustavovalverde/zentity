@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { stageFinalCibaDisclosure } from "@/lib/auth/oidc/disclosure/context";
 import { IdentityFieldsSchema } from "@/lib/auth/oidc/disclosure/delivery";
 import { handleIdentityStage } from "@/lib/auth/oidc/disclosure/route-handlers";
-import { validatePendingCibaRequest } from "@/lib/db/queries/ciba";
+import {
+  fetchCibaAuthReqIdHashById,
+  validatePendingCibaRequest,
+} from "@/lib/db/queries/ciba";
 
-const StageSchema = z.object({
-  auth_req_id: z.string().min(1),
-  scopes: z.array(z.string()).min(1),
-  identity: IdentityFieldsSchema.optional(),
-  intent_token: z.string().min(1),
-});
+const StageSchema = z
+  .object({
+    auth_req_id: z.string().min(1).optional(),
+    request_id: z.string().min(1).optional(),
+    scopes: z.array(z.string()).min(1),
+    identity: IdentityFieldsSchema.optional(),
+    intent_token: z.string().min(1),
+  })
+  .refine((b) => Boolean(b.auth_req_id) !== Boolean(b.request_id), {
+    message: "Provide exactly one of auth_req_id or request_id",
+  });
 
 /**
  * POST /api/ciba/identity/stage — Bind a CIBA release context and stage PII.
@@ -33,9 +42,18 @@ export function POST(request: Request): Promise<Response> {
         );
       }
 
-      const { auth_req_id, scopes, identity, intent_token } = parsed.data;
+      const { auth_req_id, request_id, scopes, identity, intent_token } =
+        parsed.data;
+      // A dashboard listing owns the request by id but never holds the raw
+      // token; both paths resolve to the stored hash that keys CIBA lookups.
+      const authReqIdHash = request_id
+        ? await fetchCibaAuthReqIdHashById(request_id)
+        : hashCibaAuthReqId(auth_req_id as string);
+      if (!authReqIdHash) {
+        return NextResponse.json({ error: "Unknown request" }, { status: 404 });
+      }
 
-      const result = await validatePendingCibaRequest(auth_req_id, userId);
+      const result = await validatePendingCibaRequest(authReqIdHash, userId);
       if (result instanceof Response) {
         return result;
       }
@@ -46,7 +64,7 @@ export function POST(request: Request): Promise<Response> {
         scopes,
         identity,
         intentToken: intent_token,
-        authReqId: auth_req_id,
+        authReqId: authReqIdHash,
       };
     },
     async ({

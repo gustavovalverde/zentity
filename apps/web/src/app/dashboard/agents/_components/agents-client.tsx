@@ -42,6 +42,7 @@ interface CibaRequestRow {
   displayName: string | null;
   expiresAt: Date;
   hostName: string | null;
+  id: string;
   model: string | null;
   runtime: string | null;
   scope: string;
@@ -188,6 +189,7 @@ export function AgentsClient({
                 initialRequest={deriveRequestDetails(selectedRequest)}
                 onClose={handleSheetClose}
                 registeredAgent={deriveRegisteredAgent(selectedRequest)}
+                requestId={selectedRequest.id}
                 userTier={userTier}
                 wallet={wallet}
               />

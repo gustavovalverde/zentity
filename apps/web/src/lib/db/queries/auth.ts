@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lt, ne, or } from "drizzle-orm";
 import { cache } from "react";
 import { getAddress } from "viem";
 
@@ -33,7 +33,7 @@ export async function updateUserEmail(
       email,
       name,
       isAnonymous: false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     })
     .where(eq(users.id, userId))
     .run();
@@ -58,7 +58,7 @@ export async function updateUserWalletIdentity(
       email: walletEmail,
       name: abbrev,
       isAnonymous: false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     })
     .where(eq(users.id, userId))
     .run();
@@ -74,7 +74,7 @@ export async function clearAnonymousFlag(userId: string): Promise<void> {
     .update(users)
     .set({
       isAnonymous: false,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     })
     .where(eq(users.id, userId))
     .run();
@@ -89,7 +89,7 @@ export const getUserCreatedAt = cache(async function getUserCreatedAt(
     .where(eq(users.id, userId))
     .get();
 
-  return row?.createdAt ?? null;
+  return row?.createdAt ? row.createdAt.toISOString() : null;
 });
 
 /**
@@ -142,22 +142,14 @@ export const userHasPassword = cache(async function userHasPassword(
  * Reaps anonymous users older than `maxAgeMs`. Cascades sessions, accounts,
  * passkeys, wallet addresses, etc. via FK `ON DELETE CASCADE`. Used by the
  * scheduled cleanup cron to keep orphaned sign-up state bounded.
- *
- * `createdAt` is stored as text holding epoch-ms numerals; cast to INTEGER
- * for numeric comparison.
  */
 export async function deleteExpiredAnonymousUsers(
   maxAgeMs: number
 ): Promise<number> {
-  const cutoff = Date.now() - maxAgeMs;
+  const cutoff = new Date(Date.now() - maxAgeMs);
   const result = await db
     .delete(users)
-    .where(
-      and(
-        eq(users.isAnonymous, true),
-        sql`CAST(${users.createdAt} AS INTEGER) < ${cutoff}`
-      )
-    )
+    .where(and(eq(users.isAnonymous, true), lt(users.createdAt, cutoff)))
     .run();
   return result.rowsAffected ?? 0;
 }

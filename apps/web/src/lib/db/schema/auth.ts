@@ -28,18 +28,18 @@ export const users = sqliteTable("user", {
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("banReason"),
   banExpires: integer("banExpires", { mode: "timestamp_ms" }),
-  createdAt: text("createdAt").notNull(),
-  updatedAt: text("updatedAt").notNull(),
+  createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
 });
 
 export const sessions = sqliteTable(
   "session",
   {
     id: text("id").primaryKey(),
-    expiresAt: text("expiresAt").notNull(),
+    expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
     token: text("token").notNull().unique(),
-    createdAt: text("createdAt").notNull(),
-    updatedAt: text("updatedAt").notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
     ipAddress: text("ipAddress"),
     userAgent: text("userAgent"),
     activeOrganizationId: text("activeOrganizationId"),
@@ -67,13 +67,17 @@ export const accounts = sqliteTable(
     accessToken: text("accessToken"),
     refreshToken: text("refreshToken"),
     idToken: text("idToken"),
-    accessTokenExpiresAt: text("accessTokenExpiresAt"),
-    refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
-    scope: text("scope"),
+    accessTokenExpiresAt: integer("accessTokenExpiresAt", {
+      mode: "timestamp_ms",
+    }),
+    refreshTokenExpiresAt: integer("refreshTokenExpiresAt", {
+      mode: "timestamp_ms",
+    }),
+    grantedScopes: text("grantedScopes", { mode: "json" }).$type<string[]>(),
     password: text("password"),
     registrationRecord: text("registrationRecord"),
-    createdAt: text("createdAt").notNull(),
-    updatedAt: text("updatedAt").notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [
     index("account_userId_idx").on(table.userId),
@@ -89,9 +93,9 @@ export const verifications = sqliteTable(
     id: text("id").primaryKey(),
     identifier: text("identifier").notNull(),
     value: text("value").notNull(),
-    expiresAt: text("expiresAt").notNull(),
-    createdAt: text("createdAt").notNull(),
-    updatedAt: text("updatedAt").notNull(),
+    expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updatedAt", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [index("verification_identifier_idx").on(table.identifier)]
 );

@@ -264,6 +264,7 @@ export function AgentApprovalView({
   interactionCopy,
   onClose,
   registeredAgent,
+  requestId,
   userTier = 0,
   wallet,
 }: Readonly<{
@@ -274,6 +275,7 @@ export function AgentApprovalView({
   interactionCopy?: InteractionCopy | null;
   onClose?: () => void;
   registeredAgent?: RegisteredAgentInfo | null;
+  requestId?: string | null;
   userTier?: 0 | 1 | 2 | 3;
   wallet: { address: string; chainId: number } | null;
 }>) {
@@ -309,7 +311,7 @@ export function AgentApprovalView({
       return;
     }
 
-    fetch(`/api/auth/ciba/verify?auth_req_id=${encodeURIComponent(authReqId)}`)
+    fetch(`/api/auth/ciba/request?auth_req_id=${encodeURIComponent(authReqId)}`)
       .then(async (res) => {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as {
@@ -361,7 +363,7 @@ export function AgentApprovalView({
         event.data?.type === "ciba:status-changed" &&
         event.data?.authReqId === reqId
       ) {
-        fetch(`/api/auth/ciba/verify?auth_req_id=${encodeURIComponent(reqId)}`)
+        fetch(`/api/auth/ciba/request?auth_req_id=${encodeURIComponent(reqId)}`)
           .then(async (res) => {
             if (!res.ok) {
               return;
@@ -419,17 +421,30 @@ export function AgentApprovalView({
 
   const scopeKey = useMemo(() => buildScopeKey(scopes), [scopes]);
 
+  // A dashboard listing references the request by id and never holds the raw
+  // token; the standalone approval link carries the raw auth_req_id. Every
+  // CIBA-scoped call (intent, stage, approve, reject, unstage) uses this.
+  const cibaRef = useMemo(() => {
+    const ref: Record<string, string> = {};
+    if (requestId) {
+      ref.request_id = requestId;
+    } else if (authReqId) {
+      ref.auth_req_id = authReqId;
+    }
+    return ref;
+  }, [requestId, authReqId]);
+
   const vaultActive = hasIdentityScopes && state === "ready";
 
   const fetchIntentToken = useCallback(() => {
-    if (!authReqId) {
-      throw new Error("Missing auth request ID.");
+    if (!(authReqId || requestId)) {
+      throw new Error("Missing auth request reference.");
     }
     return fetchIntentFromEndpoint("/api/ciba/identity/intent", {
-      auth_req_id: authReqId,
+      ...cibaRef,
       scopes,
     });
-  }, [authReqId, scopes]);
+  }, [authReqId, requestId, cibaRef, scopes]);
 
   const hasProofScopes = useMemo(() => scopes.some(isProofScope), [scopes]);
 
@@ -521,7 +536,7 @@ export function AgentApprovalView({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: profileRef is a stable React ref — .current is intentionally read without dependency tracking
   const stageIdentityAndApprove = useCallback(async (): Promise<void> => {
-    if (!authReqId) {
+    if (!(authReqId || requestId)) {
       return;
     }
 
@@ -542,7 +557,7 @@ export function AgentApprovalView({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        auth_req_id: authReqId,
+        ...cibaRef,
         scopes,
         identity: identityPayload,
         intent_token: identityIntent.token,
@@ -566,11 +581,19 @@ export function AgentApprovalView({
     }
 
     clearIntent();
-  }, [authReqId, identityIntent, hasValidIdentityIntent, scopes, clearIntent]);
+  }, [
+    authReqId,
+    requestId,
+    cibaRef,
+    identityIntent,
+    hasValidIdentityIntent,
+    scopes,
+    clearIntent,
+  ]);
 
   const handleAction = useCallback(
     async (action: "authorize" | "reject") => {
-      if (!authReqId) {
+      if (!(authReqId || requestId)) {
         return;
       }
 
@@ -595,7 +618,7 @@ export function AgentApprovalView({
         const res = await fetch(`/api/auth/ciba/${action}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ auth_req_id: authReqId }),
+          body: JSON.stringify(cibaRef),
         });
 
         if (!res.ok) {
@@ -614,7 +637,7 @@ export function AgentApprovalView({
           fetch("/api/ciba/identity/unstage", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ auth_req_id: authReqId }),
+            body: JSON.stringify(cibaRef),
           }).catch(() => undefined);
         }
 
@@ -630,6 +653,8 @@ export function AgentApprovalView({
     },
     [
       authReqId,
+      requestId,
+      cibaRef,
       hasIdentityScopes,
       vault.vaultState.status,
       hasValidIdentityIntent,

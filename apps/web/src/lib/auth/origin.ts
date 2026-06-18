@@ -10,6 +10,27 @@ export function getAppOrigin(): string {
   }
 }
 
+/**
+ * Pin a request's origin to the canonical app origin before better-auth reads
+ * `request.url`. A custom Next server reconstructs `request.url` from its bind
+ * hostname (`0.0.0.0`, `[::]`) and a TLS-terminating proxy hides the public
+ * scheme, so the URL the server sees never matches the origin clients derive
+ * from discovery. DPoP binding (RFC 9449) compares the proof `htu` against that
+ * URL at the token and introspection endpoints, so a non-canonical origin
+ * rejects every otherwise-valid proof. Only the origin is rewritten; path,
+ * query, method, headers, and body are preserved.
+ */
+export function canonicalizeRequestOrigin(request: Request): Request {
+  const appOrigin = new URL(getAppOrigin());
+  const url = new URL(request.url);
+  if (url.protocol === appOrigin.protocol && url.host === appOrigin.host) {
+    return request;
+  }
+  url.protocol = appOrigin.protocol;
+  url.host = appOrigin.host;
+  return new Request(url, request);
+}
+
 function getDevPort(): string {
   // PORT (Next.js standard) wins over NEXT_PUBLIC_APP_URL so `PORT=3006 pnpm dev`
   // works without editing .env. Production never reaches this branch.

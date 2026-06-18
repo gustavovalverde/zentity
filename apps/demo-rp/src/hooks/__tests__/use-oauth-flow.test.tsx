@@ -12,7 +12,7 @@ const sessionMock = vi.hoisted(() => ({
 const signInMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/auth-client", () => ({
-  authClient: { signIn: { oauth2: signInMock } },
+  authClient: { signIn: { social: signInMock } },
   useSession: () => sessionMock,
   signOut: vi.fn(),
 }));
@@ -38,7 +38,7 @@ function makeScenario(overrides: Partial<RouteScenario> = {}): RouteScenario {
 }
 
 describe("useOAuthFlow", () => {
-  it("handleSignIn calls signIn.oauth2 with providerId and no scopes", async () => {
+  it("handleSignIn calls signIn.social with provider and no scopes", async () => {
     sessionMock.data = null;
     const scenario = makeScenario();
     const { result } = renderHook(() => useOAuthFlow(scenario));
@@ -46,12 +46,12 @@ describe("useOAuthFlow", () => {
     await result.current.handleSignIn();
 
     expect(signInMock).toHaveBeenCalledWith({
-      providerId: "zentity-bank",
+      provider: "zentity-bank",
       callbackURL: "/bank",
     });
   });
 
-  it("handleStepUp calls signIn.oauth2 with merged signIn + stepUp scopes", async () => {
+  it("handleStepUp calls signIn.social with merged signIn + stepUp scopes", async () => {
     sessionMock.data = {
       user: {
         claims: { "zentity-bank": { email: "a@b.com" } },
@@ -63,7 +63,7 @@ describe("useOAuthFlow", () => {
     await result.current.handleStepUp();
 
     expect(signInMock).toHaveBeenCalledWith({
-      providerId: "zentity-bank",
+      provider: "zentity-bank",
       callbackURL: "/bank",
       scopes: ["openid", "email", "proof:verification", "identity.name"],
     });

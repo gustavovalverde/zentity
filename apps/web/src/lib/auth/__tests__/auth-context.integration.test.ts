@@ -20,9 +20,9 @@ async function insertSession(userId: string, createdAt: string) {
       id: sessionId,
       userId,
       token: crypto.randomBytes(32).toString("hex"),
-      createdAt,
-      updatedAt: createdAt,
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      createdAt: new Date(Number(createdAt)),
+      updatedAt: new Date(Number(createdAt)),
+      expiresAt: new Date(Date.now() + 86_400_000),
     })
     .run();
 

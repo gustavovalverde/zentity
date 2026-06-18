@@ -177,11 +177,27 @@ export default function AetherPage() {
     if (!pick) {
       return;
     }
+    const tierActions: Record<string, string> = {
+      anonymous: "Purchase request",
+      registered: "Aether AI requests purchase of",
+      attested: "Verified Aether AI requests purchase of",
+    };
+    const action = tierActions[task.trustTier] ?? tierActions.registered;
+    const itemLine = `${action} ${pick.brand} ${pick.name}`;
+    const acr =
+      scenario.acrValues === undefined ? {} : { acrValues: scenario.acrValues };
+
+    // Tasks without a payment network (identity-disclosure or basic approvals)
+    // trigger CIBA on scopes alone, with no payment_authorization.
     if (!task.zpay) {
-      setPreparationError({
-        kind: "invalid_request",
-        description:
-          "This task is not wired to a payment network, so no payment_authorization can be issued.",
+      setPreparationError(null);
+      setPrepared(null);
+      startFlow({
+        loginHint: userEmail,
+        scope: task.scope ?? "openid",
+        bindingMessage: itemLine,
+        trustTier: task.trustTier,
+        ...acr,
       });
       return;
     }
@@ -225,14 +241,9 @@ export default function AetherPage() {
       },
     };
 
-    const tierActions: Record<string, string> = {
-      anonymous: "Purchase request",
-      registered: "Aether AI requests purchase of",
-      attested: "Verified Aether AI requests purchase of",
-    };
-    const action = tierActions[task.trustTier] ?? tierActions.registered;
-    const itemLine = `${action} ${pick.brand} ${pick.name}`;
-    const bindingMessage = `Confirm code: ${preparedPayment.confirmation_code}\n${itemLine}`;
+    // Single line, no control characters: the CIBA backchannel rejects
+    // newlines and other control chars in binding_message.
+    const bindingMessage = `Confirm code: ${preparedPayment.confirmation_code} · ${itemLine}`;
 
     startFlow({
       loginHint: userEmail,
@@ -240,9 +251,7 @@ export default function AetherPage() {
       bindingMessage,
       trustTier: task.trustTier,
       authorizationDetails: JSON.stringify([paymentAuthorization]),
-      ...(scenario.acrValues === undefined
-        ? {}
-        : { acrValues: scenario.acrValues }),
+      ...acr,
     });
   }, [userEmail, task, startFlow]);
 

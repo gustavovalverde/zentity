@@ -235,9 +235,9 @@ describe("userinfo disclosure binding", () => {
         token: "session-token-userinfo-disclosure",
         userId,
         authContextId,
-        createdAt: new Date(now - 60_000).toISOString(),
-        updatedAt: new Date(now - 60_000).toISOString(),
-        expiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(now - 60_000),
+        updatedAt: new Date(now - 60_000),
+        expiresAt: new Date(now + 60 * 60 * 1000),
       })
       .run();
 
@@ -255,9 +255,9 @@ describe("userinfo disclosure binding", () => {
           authContextId,
           authTime: now,
         }),
-        createdAt: new Date(now).toISOString(),
-        updatedAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+        expiresAt: new Date(now + 5 * 60 * 1000),
       })
       .run();
 

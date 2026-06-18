@@ -68,9 +68,9 @@ function createTestSession(userId: string) {
       id: crypto.randomUUID(),
       token,
       userId,
-      expiresAt: new Date(Date.now() + 600_000).toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 600_000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
       ipAddress: "127.0.0.1",
       userAgent: "test",
     })

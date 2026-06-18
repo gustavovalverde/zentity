@@ -28,7 +28,9 @@ describe("canonicalizePaymentRar (bc-authorize, D-14)", () => {
   });
 
   it("leaves a non-payment authorization_details untouched (null)", () => {
-    expect(canonicalizePaymentRar(JSON.stringify([{ type: "openid_x" }]))).toBeNull();
+    expect(
+      canonicalizePaymentRar(JSON.stringify([{ type: "openid_x" }]))
+    ).toBeNull();
   });
 
   it("returns null for absent/empty authorization_details", () => {
@@ -71,9 +73,9 @@ describe("buildPaymentAuthorizationClaims (mint, D-1)", () => {
 
 describe("capability + scope wiring", () => {
   it("derives payment_authorization:sign from a payment RAR", () => {
-    expect(deriveCapabilityName([RAR], "openid payment_authorization:sign")).toBe(
-      "payment_authorization:sign"
-    );
+    expect(
+      deriveCapabilityName([RAR], "openid payment_authorization:sign")
+    ).toBe("payment_authorization:sign");
   });
 
   it("uses a duration string (not a number) for the 120s lifetime", () => {

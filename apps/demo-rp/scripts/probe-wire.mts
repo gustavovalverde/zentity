@@ -16,13 +16,13 @@
  * Sequence (run twice, restarting the wallet between, since it loads the JWKS
  * at boot):
  *   1. pnpm --filter @zentity/demo-rp exec tsx scripts/probe-wire.mts   # writes JWKS
- *   2. restart zspend with ZSPEND_JWKS_FILE + ZSPEND_AUDIENCE_THUMBPRINT set
+ *   2. restart zspend with ZSPEND_JWKS_FILE + ZSPEND_AUDIENCE set
  *   3. pnpm --filter @zentity/demo-rp exec tsx scripts/probe-wire.mts   # asserts
  *
  * Env:
  *   ZPAY_URL, ZSPEND_URL, ZPAY_PAYEE_ID, ZPAY_DPOP_KEY_SEED
  *   ZSPEND_JWKS_FILE           default /tmp/zspend-local/issuer-jwks.json
- *   ZSPEND_AUDIENCE_THUMBPRINT default "zspend-demo-audience"
+ *   ZSPEND_AUDIENCE            default "urn:zentity:wallet:zspend-demo"
  */
 
 import { createHash } from "node:crypto";
@@ -55,7 +55,7 @@ const ZPAY_DPOP_KEY_SEED =
 const JWKS_FILE =
   process.env.ZSPEND_JWKS_FILE ?? "/tmp/zspend-local/issuer-jwks.json";
 const AUDIENCE =
-  process.env.ZSPEND_AUDIENCE_THUMBPRINT ?? "zspend-demo-audience";
+  process.env.ZSPEND_AUDIENCE ?? "urn:zentity:wallet:zspend-demo";
 
 const AUTH_REJECTION_KINDS = new Set([
   "access_token_invalid",

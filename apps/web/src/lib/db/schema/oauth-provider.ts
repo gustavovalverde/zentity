@@ -46,7 +46,16 @@ export const oauthClients = sqliteTable(
     subjectType: text("subject_type"),
     referenceId: text("reference_id"),
     metadata: text("metadata"),
-    resource: text("resource"),
+    backchannelLogoutUri: text("backchannel_logout_uri"),
+    backchannelLogoutSessionRequired: integer(
+      "backchannel_logout_session_required",
+      { mode: "boolean" }
+    ),
+    dpopBoundAccessTokens: integer("dpop_bound_access_tokens", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
     metadataUrl: text("metadata_url"),
     metadataFetchedAt: integer("metadata_fetched_at", { mode: "timestamp_ms" }),
     rpValidityNoticeUri: text("rp_validity_notice_uri"),
@@ -83,7 +92,8 @@ export const oauthRefreshTokens = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
-    resource: text("resource"),
+    resources: text("resources"),
+    confirmation: text("confirmation"),
     authTime: integer("auth_time", { mode: "timestamp_ms" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
@@ -116,6 +126,7 @@ export const oauthAccessTokens = sqliteTable(
       onDelete: "set null",
     }),
     referenceId: text("reference_id"),
+    resources: text("resources"),
     refreshId: text("refresh_id").references(() => oauthRefreshTokens.id, {
       onDelete: "set null",
     }),
@@ -123,7 +134,8 @@ export const oauthAccessTokens = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
     ),
-    dpopJkt: text("dpop_jkt"),
+    revoked: integer("revoked", { mode: "timestamp_ms" }),
+    confirmation: text("confirmation"),
     scopes: text("scopes").notNull(),
   },
   (table) => [
@@ -142,6 +154,7 @@ export const oauthConsents = sqliteTable(
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
+    resources: text("resources"),
     scopes: text("scopes").notNull(),
     scopeHmac: text("scope_hmac"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
@@ -154,6 +167,71 @@ export const oauthConsents = sqliteTable(
     index("oauth_consent_user_id_idx").on(table.userId),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// Protected resources (RFC 8707) — first-class persisted resource policy
+// ---------------------------------------------------------------------------
+
+export const oauthResources = sqliteTable(
+  "oauth_resource",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    identifier: text("identifier").notNull(),
+    name: text("name").notNull(),
+    accessTokenTtl: integer("access_token_ttl"),
+    refreshTokenTtl: integer("refresh_token_ttl"),
+    signingAlgorithm: text("signing_algorithm"),
+    signingKeyId: text("signing_key_id"),
+    allowedScopes: text("allowed_scopes"),
+    customClaims: text("custom_claims"),
+    dpopBoundAccessTokensRequired: integer(
+      "dpop_bound_access_tokens_required",
+      {
+        mode: "boolean",
+      }
+    )
+      .notNull()
+      .default(false),
+    disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
+    policyVersion: integer("policy_version").notNull().default(1),
+    metadata: text("metadata"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("oauth_resource_identifier_unique").on(table.identifier),
+  ]
+);
+
+export const oauthClientResources = sqliteTable(
+  "oauth_client_resource",
+  {
+    // Deterministic `${clientId}::${resourceId}` id enforces composite
+    // uniqueness via the primary key (see plugin docs).
+    id: text("id").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
+    resourceId: text("resource_id")
+      .notNull()
+      .references(() => oauthResources.id, { onDelete: "cascade" }),
+    metadata: text("metadata"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("oauth_client_resource_client_id_idx").on(table.clientId),
+    index("oauth_client_resource_resource_id_idx").on(table.resourceId),
+  ]
+);
+
+export type OauthResource = typeof oauthResources.$inferSelect;
+export type NewOauthResource = typeof oauthResources.$inferInsert;
+export type OauthClientResource = typeof oauthClientResources.$inferSelect;
+export type NewOauthClientResource = typeof oauthClientResources.$inferInsert;
 
 export const oidcReleaseContexts = sqliteTable(
   "oidc_release_context",

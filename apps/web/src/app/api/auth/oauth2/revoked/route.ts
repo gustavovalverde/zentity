@@ -19,8 +19,8 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { listRevocationsSince } from "@/lib/auth/oidc/token-revocation";
 import { env } from "@/env";
+import { listRevocationsSince } from "@/lib/auth/oidc/token-revocation";
 
 const QuerySchema = z.object({
   since: z.coerce.number().int().nonnegative().default(0),

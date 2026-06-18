@@ -47,7 +47,7 @@ describe("dpop jkt chain (seed -> cnf.jkt -> proof jwk)", () => {
 
 		const token = await mintPaymentAuthorizationToken({
 			authorization: RAR,
-			audience: "wallet-jkt-thumbprint",
+			audience: "urn:zentity:wallet:test",
 			dpopJkt: jkt,
 		});
 

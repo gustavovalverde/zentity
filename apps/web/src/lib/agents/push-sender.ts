@@ -34,7 +34,10 @@ function sanitizeBindingMessage(
 
 interface CibaNotificationData {
   agentName?: string | undefined;
+  /** Approval-page URL the CIBA plugin built, with `auth_req_id` attached. */
+  approvalUrl: string;
   authorizationDetails?: unknown;
+  /** Raw `auth_req_id` bearer credential (the value the approval page consumes). */
   authReqId: string;
   bindingMessage?: string | undefined;
   clientName?: string | undefined;
@@ -153,10 +156,9 @@ function buildNotificationBody(
 }
 
 export function buildCibaPushPayload(
-  data: CibaNotificationData,
-  origin: string
+  data: CibaNotificationData
 ): CibaPushPayload {
-  const approvalUrl = `${origin}/approve/${encodeURIComponent(data.authReqId)}`;
+  const approvalUrl = data.approvalUrl;
   const clientLabel = data.clientName ?? "An application";
   const requiresVaultUnlock = data.scope.split(" ").some(isIdentityScope);
 

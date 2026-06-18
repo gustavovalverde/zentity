@@ -7,6 +7,7 @@ import {
   unwrapBetterAuthEnvelope,
 } from "@/lib/auth/oidc/haip/oauth-response";
 import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-dcr";
+import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import {
   attachRequestContextToSpan,
   resolveRequestContext,
@@ -35,12 +36,13 @@ function unwrapIfNeeded(request: Request, response: Response) {
 }
 
 export async function GET(request: Request) {
-  const requestContext = resolveRequestContext(request.headers);
+  const canonicalRequest = canonicalizeRequestOrigin(request);
+  const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
-  await ensureOidc4vciWalletClientIfNeeded(request);
+  await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
 
-  let effectiveRequest = request;
-  const url = new URL(request.url);
+  let effectiveRequest = canonicalRequest;
+  const url = new URL(canonicalRequest.url);
   if (url.pathname.endsWith("/oauth2/userinfo")) {
     try {
       effectiveRequest = await rewriteDpopForUserinfo(request);
@@ -61,9 +63,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const requestContext = resolveRequestContext(request.headers);
+  const canonicalRequest = canonicalizeRequestOrigin(request);
+  const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
-  await ensureOidc4vciWalletClientIfNeeded(request);
-  const response = await authPOST(request);
-  return addWwwAuthenticate(await unwrapIfNeeded(request, response));
+  await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
+  const response = await authPOST(canonicalRequest);
+  return addWwwAuthenticate(await unwrapIfNeeded(canonicalRequest, response));
 }

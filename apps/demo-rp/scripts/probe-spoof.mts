@@ -41,7 +41,8 @@ const ZPAY_DPOP_KEY_SEED =
   process.env.ZPAY_DPOP_KEY_SEED ??
   "dev-only-aether-bff-dpop-seed-do-not-use-in-prod-stable-48chars";
 const AUDIENCE =
-  process.env.ZSPEND_AUDIENCE_THUMBPRINT ?? "zspend-demo-audience";
+  process.env.ZSPEND_AUDIENCE ?? "urn:zentity:wallet:zspend-demo";
+const SPOOF_AMOUNT_RE = /amount=[0-9.]+/;
 
 let failures = 0;
 function log(kind: "PASS" | "FAIL" | "INFO", line: string): void {
@@ -202,7 +203,7 @@ async function main(): Promise<void> {
 
   // 4. Mutated payment amount → recomputed intent diverges → intent_mismatch.
   const spoofUri = prepared.payment_uri.includes("amount=")
-    ? prepared.payment_uri.replace(/amount=[0-9.]+/, "amount=0.00001")
+    ? prepared.payment_uri.replace(SPOOF_AMOUNT_RE, "amount=0.00001")
     : `${prepared.payment_uri}${prepared.payment_uri.includes("?") ? "&" : "?"}amount=0.00001`;
   const spend = await createWalletSpendRequest({
     accessToken: goodToken,

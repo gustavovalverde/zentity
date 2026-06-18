@@ -75,6 +75,7 @@ export default async function AgentsPage({
         displayName: cibaRequests.displayName,
         expiresAt: cibaRequests.expiresAt,
         hostName: agentHosts.name,
+        id: cibaRequests.id,
         model: cibaRequests.model,
         runtime: cibaRequests.runtime,
         scope: cibaRequests.scope,

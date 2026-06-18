@@ -15,9 +15,19 @@ const dbMocks = vi.hoisted(() => {
     limit: vi.fn(() => builder),
     where: vi.fn(() => builder),
   };
+  // A fire-and-forget better-auth adapter write (module-load warmup) reaches the
+  // mocked connection; give insert a benign resolving chain so it does not
+  // surface as an unhandled rejection. The register path itself never inserts.
+  const insertBuilder = {
+    values: vi.fn(() => insertBuilder),
+    returning: vi.fn(async () => []),
+    onConflictDoNothing: vi.fn(() => insertBuilder),
+    onConflictDoUpdate: vi.fn(() => insertBuilder),
+  };
   return {
     builder,
     get,
+    insert: vi.fn(() => insertBuilder),
     select: vi.fn(() => builder),
   };
 });
@@ -38,6 +48,7 @@ vi.mock("@/lib/auth/auth-context", async (importOriginal) => {
 
 vi.mock("@/lib/db/connection", () => ({
   db: {
+    insert: dbMocks.insert,
     select: dbMocks.select,
   },
 }));

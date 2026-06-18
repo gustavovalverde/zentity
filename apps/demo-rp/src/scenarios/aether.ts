@@ -34,7 +34,13 @@ export const aetherScenario: RouteScenario = {
   ],
   dcr: {
     clientName: "Aether AI",
-    requestedScopes: buildRequestedScopes(signInScopes, stepUpScopes),
+    // payment_authorization:sign is registered (so the client may request it) but
+    // kept out of signInScopes/stepUpScopes: it is requested only at the explicit
+    // agent-wallet spend step, and every grant still requires CIBA user approval.
+    requestedScopes: buildRequestedScopes(signInScopes, [
+      ...stepUpScopes,
+      "payment_authorization:sign",
+    ]),
     grantTypes: [
       "authorization_code",
       "urn:openid:params:grant-type:ciba",

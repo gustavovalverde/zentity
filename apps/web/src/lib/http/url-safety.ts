@@ -21,7 +21,7 @@ const PRIVATE_RANGES = [
   /^\[?fd/i, // IPv6 ULA
 ];
 
-export function isPrivateHost(hostname: string): boolean {
+function isPrivateHost(hostname: string): boolean {
   return PRIVATE_RANGES.some((re) => re.test(hostname));
 }
 

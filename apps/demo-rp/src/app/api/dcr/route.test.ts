@@ -61,8 +61,7 @@ describe("/api/dcr POST", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       client_id: "client-123",
-      redirect_uri:
-        "http://localhost:3102/api/auth/oauth2/callback/zentity-bank",
+      redirect_uri: "http://localhost:3102/api/auth/callback/zentity-bank",
     });
     expect(dcrMocks.saveDcrClientId).toHaveBeenCalledWith("bank", "client-123");
     expect(fetchMock).toHaveBeenCalledWith(

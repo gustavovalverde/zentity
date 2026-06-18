@@ -620,9 +620,9 @@ describe("Token Exchange (RFC 8693)", () => {
           userId,
           token: crypto.randomUUID(),
           authContextId: authContext.id,
-          expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 3_600_000),
+          createdAt: new Date(),
+          updatedAt: new Date(),
         })
         .run();
 

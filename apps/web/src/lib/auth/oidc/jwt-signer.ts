@@ -457,14 +457,23 @@ const STANDARD_JWT_SIGNING_ALGS = new Set(["RS256", "ES256", "EdDSA"] as const);
 
 type StandardJwtSigningAlg = "RS256" | "ES256" | "EdDSA";
 
+// Curve names the JWT plugin's `Jwk` adapter type accepts (better-auth 1.7).
+type JwkCurve = "Ed25519" | "P-256" | "P-521";
+
 interface JwtSigningKey {
   alg?: StandardJwtSigningAlg;
   createdAt: Date;
-  crv?: string;
+  crv?: JwkCurve;
   expiresAt?: Date;
   id: string;
   privateKey: string;
   publicKey: string;
+}
+
+function asJwkCurve(crv: string | null | undefined): JwkCurve | undefined {
+  return crv === "Ed25519" || crv === "P-256" || crv === "P-521"
+    ? crv
+    : undefined;
 }
 
 function isStandardJwtSigningAlg(
@@ -493,13 +502,16 @@ export async function getJwtSigningKeys(): Promise<JwtSigningKey[]> {
     } => isStandardJwtSigningAlg(row.alg)
   );
 
-  return signingRows.map((row) => ({
-    id: row.id,
-    publicKey: row.publicKey,
-    privateKey: row.privateKey,
-    createdAt: row.createdAt,
-    alg: row.alg,
-    ...(row.crv ? { crv: row.crv } : {}),
-    ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-  }));
+  return signingRows.map((row) => {
+    const crv = asJwkCurve(row.crv);
+    return {
+      id: row.id,
+      publicKey: row.publicKey,
+      privateKey: row.privateKey,
+      createdAt: row.createdAt,
+      alg: row.alg,
+      ...(crv ? { crv } : {}),
+      ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+    };
+  });
 }

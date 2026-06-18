@@ -1,40 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isPrivateHost,
-  isSafePathSegments,
-  validateSafeUrl,
-} from "@/lib/http/url-safety";
+import { isSafePathSegments, validateSafeUrl } from "@/lib/http/url-safety";
 
-describe("isPrivateHost", () => {
+describe("validateSafeUrl private-host detection", () => {
   it.each([
-    "127.0.0.1",
-    "127.0.0.2",
-    "10.0.0.1",
-    "10.255.255.255",
-    "172.16.0.1",
-    "172.31.255.255",
-    "192.168.1.1",
-    "0.0.0.0",
-    "169.254.1.1",
-    "169.254.169.254", // AWS metadata endpoint
-    "::1",
-    "[::1]",
-    "fe80::1",
-    "fc00::1",
-    "fd12::1",
-  ])("detects %s as private", (host) => {
-    expect(isPrivateHost(host)).toBe(true);
+    "https://127.0.0.1/p",
+    "https://127.0.0.2/p",
+    "https://10.0.0.1/p",
+    "https://10.255.255.255/p",
+    "https://172.16.0.1/p",
+    "https://172.31.255.255/p",
+    "https://192.168.1.1/p",
+    "https://0.0.0.0/p",
+    "https://169.254.1.1/p",
+    "https://169.254.169.254/p", // AWS metadata endpoint
+    "https://[::1]/p",
+    "https://[fe80::1]/p",
+    "https://[fc00::1]/p",
+    "https://[fd12::1]/p",
+  ])("rejects %s as private", (url) => {
+    expect(validateSafeUrl(url, false)).toContain("private");
   });
 
   it.each([
-    "8.8.8.8",
-    "1.1.1.1",
-    "203.0.113.1",
-    "example.com",
-    "2001:db8::1",
-  ])("detects %s as public", (host) => {
-    expect(isPrivateHost(host)).toBe(false);
+    "https://8.8.8.8/p",
+    "https://1.1.1.1/p",
+    "https://203.0.113.1/p",
+    "https://example.com/p",
+    "https://[2001:db8::1]/p",
+  ])("accepts %s as public", (url) => {
+    expect(validateSafeUrl(url, false)).toBeNull();
   });
 });
 

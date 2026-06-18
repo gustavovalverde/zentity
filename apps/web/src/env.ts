@@ -89,12 +89,24 @@ export const env = createEnv({
         (s) => process.env.NODE_ENV !== "production" || (s && s.length >= 32),
         "INTERNAL_SERVICE_TOKEN must be at least 32 characters in production"
       ),
-    // The agent wallet's audience value (its JWK thumbprint, printed by
-    // `zspend-runtime init`). When set, payment_authorization tokens are
-    // minted with this as `aud`, binding the token to that specific wallet
-    // key (anti-redirection, PRD-43 D-5). Absent → the mint fails closed for
-    // payment grants rather than minting an unbound spend token.
-    WALLET_AUDIENCE: z.string().min(1).optional(),
+    // The agent wallet's audience: an absolute-URI identity for the wallet
+    // instance, e.g. `urn:zentity:wallet:<jkt>`. When set,
+    // payment_authorization tokens are minted with this as `aud` via an RFC
+    // 8707 resource indicator, binding the token to that one wallet instance
+    // (anti-redirection, PRD-43 D-5). A URN keeps the wallet key (not a network
+    // host) as the identity, so DNS or BFF compromise cannot re-target the
+    // token. It MUST be an absolute URI: the authorization server reaches `aud`
+    // only through the resource-indicator seam, which rejects a bare thumbprint
+    // (RFC 8707 §2). Absent → the mint fails closed for payment grants rather
+    // than minting an unbound spend token.
+    WALLET_AUDIENCE: z
+      .string()
+      .min(1)
+      .refine(
+        (value) => URL.canParse(value) && !value.includes("#"),
+        "WALLET_AUDIENCE must be an absolute URI without a fragment (RFC 8707 §2); a bare thumbprint is rejected by the authorization server at mint"
+      )
+      .optional(),
     CRON_SECRET: z
       .string()
       .optional()
@@ -121,7 +133,6 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     GITHUB_CLIENT_ID: z.string().optional(),
     GITHUB_CLIENT_SECRET: z.string().optional(),
-    GENERIC_OAUTH_PROVIDERS: z.string().optional(),
 
     // Identity & auth
     DEDUP_HMAC_SECRET: z.string().min(32),
@@ -312,7 +323,6 @@ export const env = createEnv({
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
     GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
-    GENERIC_OAUTH_PROVIDERS: process.env.GENERIC_OAUTH_PROVIDERS,
     DEDUP_HMAC_SECRET: process.env.DEDUP_HMAC_SECRET,
     HUMANITY_HMAC_SECRET: process.env.HUMANITY_HMAC_SECRET,
     PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,

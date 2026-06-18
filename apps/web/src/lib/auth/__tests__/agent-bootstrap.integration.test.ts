@@ -126,7 +126,7 @@ describe("agent bootstrap token exchange", () => {
       .values({
         authContextId,
         clientId: CLIENT_ID,
-        dpopJkt,
+        confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),
         scopes: JSON.stringify(["openid"]),
         token: hashOpaqueAccessToken(loginToken),
@@ -242,7 +242,7 @@ describe("agent bootstrap token exchange", () => {
       .values({
         authContextId,
         clientId: WEB_CLIENT_ID,
-        dpopJkt,
+        confirmation: JSON.stringify({ jkt: dpopJkt }),
         expiresAt: new Date(Date.now() + 3_600_000),
         scopes: JSON.stringify(["openid"]),
         token: hashOpaqueAccessToken(loginToken),

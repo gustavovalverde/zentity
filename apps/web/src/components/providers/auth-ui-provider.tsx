@@ -1,7 +1,7 @@
 "use client";
 
 import type { BetterFetchOption } from "better-auth/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { AuthUIProvider } from "@daveyplate/better-auth-ui";
 import Link from "next/link";
@@ -43,7 +43,6 @@ export function BetterAuthUIProvider({
     if (!signIn.__zentityWrapped) {
       const email = signIn.email;
       const magicLink = signIn.magicLink;
-      const oauth2 = signIn.oauth2;
       const social = signIn.social;
 
       signIn.email = ((...args: Parameters<typeof email>) => {
@@ -55,11 +54,6 @@ export function BetterAuthUIProvider({
         prepareForNewSession();
         return magicLink(...args);
       }) as typeof magicLink;
-
-      signIn.oauth2 = ((...args: Parameters<typeof oauth2>) => {
-        prepareForNewSession();
-        return oauth2(...args);
-      }) as typeof oauth2;
 
       signIn.social = ((...args: Parameters<typeof social>) => {
         prepareForNewSession();
@@ -199,9 +193,16 @@ export function BetterAuthUIProvider({
       ? env.NEXT_PUBLIC_APP_URL
       : globalThis.window.location.origin;
 
+  // Zentity's session carries plugin-augmented fields (isAnonymous,
+  // twoFactorEnabled) the UI lib's base AnyAuthClient doesn't model; the extra
+  // fields make the client structurally incompatible without a cast.
+  const uiAuthClient = authUiClient as unknown as ComponentProps<
+    typeof AuthUIProvider
+  >["authClient"];
+
   return (
     <AuthUIProvider
-      authClient={authUiClient}
+      authClient={uiAuthClient}
       basePath=""
       baseURL={baseURL}
       credentials={false}

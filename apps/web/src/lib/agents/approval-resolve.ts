@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -52,11 +53,14 @@ export async function resolveCibaApprovalData(
   authReqId: string,
   userId: string
 ): Promise<CibaApprovalData | null> {
+  // `authReqId` is the raw bearer credential from the approval URL; the plugin
+  // persists only its hash, so look the request up by the hash but return the
+  // raw value so the page can drive the plugin's authorize/reject endpoints.
+  const authReqIdHash = hashCibaAuthReqId(authReqId);
   const row = await db
     .select({
       acrValues: cibaRequests.acrValues,
       agentSessionId: cibaRequests.agentSessionId,
-      authReqId: cibaRequests.authReqId,
       authorizationDetails: cibaRequests.authorizationDetails,
       bindingMessage: cibaRequests.bindingMessage,
       clientId: cibaRequests.clientId,
@@ -72,7 +76,7 @@ export async function resolveCibaApprovalData(
     .leftJoin(oauthClients, eq(cibaRequests.clientId, oauthClients.clientId))
     .where(
       and(
-        eq(cibaRequests.authReqId, authReqId),
+        eq(cibaRequests.authReqId, authReqIdHash),
         eq(cibaRequests.userId, userId)
       )
     )
@@ -130,7 +134,7 @@ export async function resolveCibaApprovalData(
   }
 
   const request: CibaRequestDetails = {
-    auth_req_id: row.authReqId,
+    auth_req_id: authReqId,
     expires_at: row.expiresAt.toISOString(),
     scope: row.scope,
     status: row.status,

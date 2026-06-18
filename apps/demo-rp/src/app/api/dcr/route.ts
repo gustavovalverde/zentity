@@ -17,7 +17,7 @@ const PROBE_CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
 function scenarioRedirectUri(scenarioId: RouteScenarioId): string {
   const scenario = getRouteScenario(scenarioId);
-  return `${env.NEXT_PUBLIC_APP_URL}/api/auth/oauth2/callback/${scenario.oauthProviderId}`;
+  return `${env.NEXT_PUBLIC_APP_URL}/api/auth/callback/${scenario.oauthProviderId}`;
 }
 
 /**
@@ -60,10 +60,13 @@ async function isClientLiveAtZentity(
   }
 }
 
+const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+
 async function registerScenarioClient(
   scenarioId: RouteScenarioId
 ): Promise<string> {
   const scenario = getRouteScenario(scenarioId);
+  const grantTypes = scenario.dcr.grantTypes ?? ["authorization_code"];
   const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -72,11 +75,16 @@ async function registerScenarioClient(
       redirect_uris: [scenarioRedirectUri(scenarioId)],
       scope: scenario.dcr.requestedScopes,
       token_endpoint_auth_method: "none",
-      grant_types: scenario.dcr.grantTypes ?? ["authorization_code"],
+      grant_types: grantTypes,
       response_types: ["code"],
       backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
       rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
       rp_validity_notice_enabled: true,
+      // CIBA clients must advertise a token delivery mode; the provider rejects
+      // bc-authorize otherwise. The demo agent polls the token endpoint.
+      ...(grantTypes.includes(CIBA_GRANT_TYPE)
+        ? { backchannel_token_delivery_mode: "poll" }
+        : {}),
     }),
   });
 

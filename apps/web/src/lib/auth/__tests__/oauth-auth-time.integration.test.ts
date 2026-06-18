@@ -52,7 +52,7 @@ describe("oauth token auth_time normalization", () => {
     const sessionId = "session-auth-time";
     const authorizationCode = "auth-code-auth-time";
     const now = Date.now();
-    const createdAtMillisText = `${now - 60_000}.0`;
+    const createdAt = new Date(now - 60_000);
     const codeVerifier = "pkce-verifier-auth-time";
     const { challenge } = await createPkceChallenge(codeVerifier);
     const authContextId = await createTestAuthContext(userId);
@@ -80,9 +80,9 @@ describe("oauth token auth_time normalization", () => {
         token: "session-token-auth-time",
         userId,
         authContextId,
-        createdAt: createdAtMillisText,
-        updatedAt: createdAtMillisText,
-        expiresAt: `${now + 60 * 60 * 1000}.0`,
+        createdAt,
+        updatedAt: createdAt,
+        expiresAt: new Date(now + 60 * 60 * 1000),
       })
       .run();
 
@@ -106,9 +106,9 @@ describe("oauth token auth_time normalization", () => {
           sessionId,
           authTime: null,
         }),
-        createdAt: new Date(now).toISOString(),
-        updatedAt: new Date(now).toISOString(),
-        expiresAt: new Date(now + 5 * 60 * 1000).toISOString(),
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+        expiresAt: new Date(now + 5 * 60 * 1000),
       })
       .run();
 

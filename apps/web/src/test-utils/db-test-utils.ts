@@ -65,12 +65,12 @@ import {
 } from "@/lib/db/schema/recovery";
 
 interface CreateUserInput {
-  createdAt?: string;
+  createdAt?: Date;
   email?: string;
   emailVerified?: boolean;
   id?: string;
   image?: string | null;
-  updatedAt?: string;
+  updatedAt?: Date;
 }
 
 export async function resetDatabase(): Promise<void> {
@@ -138,7 +138,7 @@ export async function createTestUser(
   input: CreateUserInput = {}
 ): Promise<string> {
   const id = input.id ?? crypto.randomUUID();
-  const createdAt = input.createdAt ?? new Date().toISOString();
+  const createdAt = input.createdAt ?? new Date();
   const updatedAt = input.updatedAt ?? createdAt;
   const email = input.email ?? `user-${id}@example.com`;
 
@@ -190,7 +190,7 @@ export async function createTestSession(
     authContextId ?? (await createTestAuthContext(userId));
   const sessionId = crypto.randomUUID();
   const token = crypto.randomUUID();
-  const now = new Date().toISOString();
+  const now = new Date();
 
   await db
     .insert(sessions)
@@ -199,7 +199,7 @@ export async function createTestSession(
       token,
       userId,
       authContextId: resolvedAuthContextId,
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000),
       createdAt: now,
       updatedAt: now,
     })

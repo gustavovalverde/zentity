@@ -8,12 +8,14 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 interface DcrClientExtensions {
   backchannelLogoutSessionRequired?: boolean;
   backchannelLogoutUri?: string;
+  backchannelTokenDeliveryMode?: string;
   protectedResource?: string;
   rpValidityNoticeEnabled?: boolean;
   rpValidityNoticeUri?: string;
 }
 
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
+const VALID_BACKCHANNEL_DELIVERY_MODES = new Set(["poll", "ping", "push"]);
 
 function parseClientMetadataRecord(
   metadata: string | null
@@ -50,12 +52,23 @@ export function readDcrClientExtensions(
   const protectedResource = readTrimmedString(
     body[PROTECTED_RESOURCE_METADATA_FIELD]
   );
+  const backchannelTokenDeliveryModeRaw = readTrimmedString(
+    body.backchannel_token_delivery_mode
+  );
+  const backchannelTokenDeliveryMode =
+    backchannelTokenDeliveryModeRaw &&
+    VALID_BACKCHANNEL_DELIVERY_MODES.has(backchannelTokenDeliveryModeRaw)
+      ? backchannelTokenDeliveryModeRaw
+      : undefined;
 
   const extensions: DcrClientExtensions = {};
   if (backchannelLogoutUri) {
     extensions.backchannelLogoutUri = backchannelLogoutUri;
     extensions.backchannelLogoutSessionRequired =
       backchannelLogoutSessionRequired;
+  }
+  if (backchannelTokenDeliveryMode) {
+    extensions.backchannelTokenDeliveryMode = backchannelTokenDeliveryMode;
   }
   if (rpValidityNoticeUri) {
     extensions.rpValidityNoticeUri = rpValidityNoticeUri;
@@ -101,6 +114,10 @@ export async function persistDcrClientExtensions(
   }
   if (extensions.protectedResource) {
     metadata[PROTECTED_RESOURCE_METADATA_FIELD] = extensions.protectedResource;
+  }
+  if (extensions.backchannelTokenDeliveryMode) {
+    metadata.backchannel_token_delivery_mode =
+      extensions.backchannelTokenDeliveryMode;
   }
 
   await db

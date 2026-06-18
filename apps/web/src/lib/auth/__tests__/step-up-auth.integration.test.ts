@@ -36,10 +36,10 @@ async function createTestClient() {
 
 async function insertSession(
   userId: string,
-  opts: { token?: string; createdAt?: string } = {}
+  opts: { token?: string; createdAt?: Date } = {}
 ) {
   const token = opts.token ?? crypto.randomUUID();
-  const createdAt = opts.createdAt ?? new Date().toISOString();
+  const createdAt = opts.createdAt ?? new Date();
   const authContext = await createAuthenticationContext({
     userId,
     loginMethod: "passkey",
@@ -55,7 +55,7 @@ async function insertSession(
       userId,
       token,
       authContextId: authContext.id,
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      expiresAt: new Date(Date.now() + 3_600_000),
       createdAt,
       updatedAt: createdAt,
     })
@@ -391,7 +391,7 @@ describe("step-up authentication: max_age", () => {
 
   it("stale session (old createdAt) triggers max_age redirect", async () => {
     // Session created 10 minutes ago
-    const staleCreatedAt = new Date(Date.now() - 600_000).toISOString();
+    const staleCreatedAt = new Date(Date.now() - 600_000);
     const sessionToken = await insertSession(userId, {
       createdAt: staleCreatedAt,
     });
@@ -488,7 +488,7 @@ describe("step-up authentication: combined max_age + acr_values", () => {
 
   it("stale session is checked before acr_values", async () => {
     await seedTier1User(userId);
-    const staleCreatedAt = new Date(Date.now() - 600_000).toISOString();
+    const staleCreatedAt = new Date(Date.now() - 600_000);
     const sessionToken = await insertSession(userId, {
       createdAt: staleCreatedAt,
     });
@@ -565,9 +565,9 @@ describe("step-up authentication: session resolution edge cases", () => {
         userId,
         token,
         authContextId: authContext.id,
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
       })
       .run();
 
