@@ -1,4 +1,5 @@
 import type { AuthContext } from "@better-auth/core";
+import type { AapAccessTokenClaims } from "@zentity/sdk/protocol";
 import type { LoginMethod } from "@/lib/assurance/types";
 import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
@@ -37,7 +38,7 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
@@ -51,10 +52,14 @@ import {
   bindAgentAssertionToCibaRequest,
 } from "@/lib/agents/session";
 import {
-  persistCibaTokenSnapshot,
-  resolveTokenSnapshotForCibaRequest,
+  buildCibaAgentContribution,
+  persistTokenSnapshot,
+  type StoredTokenSnapshot,
 } from "@/lib/agents/token-snapshot";
-import { buildOidcAssuranceClaims } from "@/lib/assurance/oidc-claims";
+import {
+  buildOidcAssuranceClaims,
+  computeAcr,
+} from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { reportRejection } from "@/lib/async-handler";
 import {
@@ -302,6 +307,56 @@ const identityReleaseLog = rootLogger.child({
 });
 
 const cimdLog = rootLogger.child({ component: "cimd" });
+
+// The CIMD plugin persists only the standard OAuth client fields. CIMD clients
+// are dynamic and untrusted, so stamp Zentity's posture columns: a pairwise
+// subject (per-RP privacy), the discovery trust tier, and the metadata
+// source/timestamp for audit and staleness.
+async function applyCimdClientPosture(clientId: string) {
+  await db
+    .update(oauthClients)
+    .set({
+      metadataUrl: clientId,
+      metadataFetchedAt: new Date(),
+      trustLevel: 1,
+      subjectType: "pairwise",
+    })
+    .where(eq(oauthClients.clientId, clientId))
+    .run();
+}
+
+const cimdOptions = {
+  onClientCreated: async ({ client }: { client: { clientId: string } }) => {
+    await applyCimdClientPosture(client.clientId);
+    cimdLog.info(
+      { clientId: client.clientId },
+      "CIMD client registered from metadata document"
+    );
+  },
+  onClientRefreshed: async ({
+    client,
+  }: {
+    client: {
+      clientId: string;
+      redirectUris?: unknown;
+      grantTypes?: unknown;
+      tokenEndpointAuthMethod?: unknown;
+    };
+  }) => {
+    await applyCimdClientPosture(client.clientId);
+    // Security-relevant client metadata can change between refreshes; record each
+    // refresh for audit. The plugin re-validates the document first.
+    cimdLog.info(
+      {
+        clientId: client.clientId,
+        redirectUris: client.redirectUris,
+        grantTypes: client.grantTypes,
+        tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
+      },
+      "CIMD client metadata refreshed"
+    );
+  },
+};
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
@@ -677,6 +732,108 @@ async function readReturnedResponseBody(
   return returned as Record<string, unknown>;
 }
 
+function accessTokenJti(token: string): string | undefined {
+  if (token.split(".").length !== 3) {
+    return undefined;
+  }
+  try {
+    const jti = decodeJwt(token).jti;
+    return typeof jti === "string" ? jti : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Pre-loads the agent context for a CIBA poll/token request before the plugin
+ * consumes (deletes) the ciba_request row. The better-auth adapter returns only
+ * the plugin's declared columns to the grant handler, and the row is gone by the
+ * time the claim contributors run, so the agent columns (session, attestation,
+ * approved capability) and approval-time auth context are read here via Drizzle
+ * while the row still exists, then stashed for the claim hook and after-hook.
+ */
+async function beforeCibaTokenLoadAgent(ctx: HookCtx) {
+  const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
+  if (!rawAuthReqId) {
+    return;
+  }
+  const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
+  const row = await db
+    .select()
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, authReqIdHash))
+    .limit(1)
+    .get();
+  if (!row) {
+    return;
+  }
+  const audienceClientId =
+    (ctx.body?.client_id as string | undefined) ?? row.clientId;
+  const contribution = await buildCibaAgentContribution(
+    row as unknown as Record<string, unknown>,
+    audienceClientId
+  );
+  pendingCibaToken.set(authReqIdHash, {
+    authContextId: row.authContextId ?? "",
+    snapshot: contribution?.snapshot ?? null,
+    claims: contribution?.claims ?? null,
+  });
+}
+
+/**
+ * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
+ * authentication context onto the issued access/refresh records (Zentity
+ * extension columns the upstream issuance does not set) and persists the agent
+ * snapshot keyed by the minted token's identity. The request carries the raw
+ * auth_req_id; the plugin stores its hash, so the token records and stash are
+ * keyed on the hash. The snapshot is keyed by the JWT's jti (the AS owns it) or,
+ * for opaque tokens, by the referenceId (the same hash) introspection looks up.
+ */
+async function afterCibaTokenPersist(ctx: HookCtx) {
+  const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
+  if (!rawAuthReqId) {
+    return;
+  }
+  const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
+  const pending = pendingCibaToken.get(authReqIdHash);
+  pendingCibaToken.delete(authReqIdHash);
+  if (!pending) {
+    return;
+  }
+
+  if (pending.authContextId) {
+    await Promise.all([
+      db
+        .update(oauthAccessTokens)
+        .set({ authContextId: pending.authContextId })
+        .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
+        .run(),
+      db
+        .update(oauthRefreshTokens)
+        .set({ authContextId: pending.authContextId })
+        .where(eq(oauthRefreshTokens.referenceId, authReqIdHash))
+        .run(),
+    ]);
+  }
+
+  const audienceClientId = ctx.body?.client_id as string | undefined;
+  if (pending.snapshot && audienceClientId) {
+    const responseBody = await readReturnedResponseBody(
+      (ctx.context as { returned?: unknown }).returned
+    );
+    const accessToken = responseBody?.access_token;
+    const tokenJti =
+      typeof accessToken === "string"
+        ? (accessTokenJti(accessToken) ?? authReqIdHash)
+        : authReqIdHash;
+    await persistTokenSnapshot({
+      tokenJti,
+      audienceClientId,
+      snapshot: pending.snapshot,
+    });
+  }
+}
+
 async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
   const extensions = readDcrClientExtensions(
     ctx.body as Record<string, unknown> | undefined
@@ -831,6 +988,27 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   }
 }
 
+// The CIBA request row is consumed (deleted) before the token claims run, so
+// buildAccessTokenClaims stashes its approval-time authentication context and
+// agent snapshot here (keyed by the hashed auth_req_id) while the row still
+// exists. The claim contributors read the auth context within the same issuance;
+// the /oauth2/token after-hook then drains it onto the persisted token records
+// and writes the agent snapshot keyed by the minted token's jti. CIBA is
+// decoupled, so the id_token must reflect the captured approval-time context,
+// not the user's latest one.
+interface PendingCibaToken {
+  authContextId: string; // "" when the approved request carried no auth context
+  claims: AapAccessTokenClaims | null; // embedded agent AAP claims, if any
+  snapshot: StoredTokenSnapshot | null; // set only for verified agent sessions
+}
+const pendingCibaToken = new Map<string, PendingCibaToken>();
+
+// Off-wire binding from an opaque access token's introspection re-derive to its
+// release context. The AS-owned jti no longer equals the release id, so userinfo
+// resolves the staged identity payload through this claim (opaque tokens only;
+// it never appears on a minted JWT).
+const RELEASE_BINDING_CLAIM = "zentity_release_binding";
+
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
   referenceId?: string;
@@ -839,16 +1017,11 @@ async function buildIdTokenDisclosureClaims(input: {
   user: { id: string };
 }): Promise<Record<string, unknown>> {
   const scopeList = toScopeList(input.scopes);
-  const cibaAuth = input.referenceId
-    ? await db
-        .select({ authContextId: cibaRequests.authContextId })
-        .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, input.referenceId))
-        .limit(1)
-        .get()
-    : null;
+  const cibaAuthContextId = input.referenceId
+    ? pendingCibaToken.get(input.referenceId)?.authContextId
+    : undefined;
   const auth = await resolveAuthenticationContext({
-    authContextId: input.authContextId ?? cibaAuth?.authContextId ?? null,
+    authContextId: input.authContextId ?? (cibaAuthContextId || null),
     sessionId: input.sessionId ?? null,
     userId: input.user.id,
   });
@@ -928,14 +1101,14 @@ async function buildAccessTokenDisclosureClaims(
   const sessionId = info.sessionId;
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
-  const cibaAuth = referenceId
-    ? await db
-        .select({ authContextId: cibaRequests.authContextId })
-        .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, referenceId))
-        .limit(1)
-        .get()
-    : null;
+  // Non-empty when this is a CIBA-issued token whose approval captured an
+  // authentication context. Agent AAP claims are not added here: the AS strips
+  // reserved claims and re-derives this contributor on opaque introspection, so
+  // the embedded agent claims come from the grant handler's per-issuance claims
+  // (JWT) and the durable snapshot keyed by the token jti (opaque introspection).
+  const cibaAuthContextId = referenceId
+    ? pendingCibaToken.get(referenceId)?.authContextId
+    : undefined;
 
   // Per-RP sybil nullifier
   if (scopeList.includes("proof:sybil") && clientId) {
@@ -958,32 +1131,27 @@ async function buildAccessTokenDisclosureClaims(
     }
   }
 
-  if (referenceId && clientId) {
-    const tokenSnapshot = await resolveTokenSnapshotForCibaRequest(
-      referenceId,
-      clientId
-    );
-    if (cibaAuth) {
-      claims.jti = referenceId;
-    }
-    if (tokenSnapshot) {
-      Object.assign(claims, tokenSnapshot.claims);
-    }
+  if (cibaAuthContextId) {
+    claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuthContextId;
   }
 
-  if (cibaAuth?.authContextId) {
-    claims[AUTHENTICATION_CONTEXT_CLAIM] = cibaAuth.authContextId;
-  }
-
-  const releaseContext = referenceId
-    ? await loadReleaseContext(referenceId)
-    : null;
-  if (releaseContext) {
-    await touchReleaseContext(
-      releaseContext.releaseId,
-      Date.now() + 3600 * 1000
-    );
-    claims.jti ??= releaseContext.releaseId;
+  // Extend the identity-payload TTL whenever a token is minted for a
+  // release-bound request so the payload survives until userinfo consumes it.
+  if (referenceId) {
+    const releaseContext = await loadReleaseContext(referenceId);
+    if (releaseContext) {
+      await touchReleaseContext(
+        releaseContext.releaseId,
+        Date.now() + 3600 * 1000
+      );
+      // On the opaque-token introspection re-derive (grantType is absent here
+      // but set at JWT mint), surface the release binding so userinfo can locate
+      // the staged identity payload. It never reaches the wire: opaque tokens
+      // carry no claims, and the JWT mint path skips this branch.
+      if (info.grantType === undefined) {
+        claims[RELEASE_BINDING_CLAIM] = referenceId;
+      }
+    }
   }
 
   // sessionId-bound authentication context is only added when there is no
@@ -1282,10 +1450,6 @@ async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
   }
 }
 
-// Stashed by CIBA buildAccessTokenClaims (while request still exists)
-// for the after-hook to persist onto the opaque token record.
-const pendingCibaAuthContext = new Map<string, string>();
-
 function expireSessionDataCookie(ctx: HookCtx) {
   const authCookies = (
     ctx.context as {
@@ -1364,7 +1528,7 @@ async function afterCibaAuthorizePersistAuthContext(ctx: HookCtx) {
   await db
     .update(cibaRequests)
     .set({ authContextId: auth.id })
-    .where(eq(cibaRequests.authReqId, authReqId))
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
     .run();
 }
 
@@ -1576,6 +1740,7 @@ export const auth = betterAuth({
         }
         if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
           await enforceCibaTokenAcr(ctx, db);
+          await beforeCibaTokenLoadAgent(ctx);
         }
         beforeTokenValidateResource(ctx);
         await beforeTokenFinalizeDisclosureBindings(ctx);
@@ -1633,31 +1798,7 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        // For CIBA tokens, persist authContextId on access + refresh token
-        // records. The upstream token issuance stores only standard fields;
-        // authContextId is a Zentity extension column. The request carries the
-        // raw auth_req_id; the plugin stores (and references) its hash, so key
-        // both the pending map and the token referenceId on the hash.
-        const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
-        if (rawAuthReqId) {
-          const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
-          const authCtxId = pendingCibaAuthContext.get(authReqIdHash);
-          pendingCibaAuthContext.delete(authReqIdHash);
-          if (authCtxId) {
-            await Promise.all([
-              db
-                .update(oauthAccessTokens)
-                .set({ authContextId: authCtxId })
-                .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
-                .run(),
-              db
-                .update(oauthRefreshTokens)
-                .set({ authContextId: authCtxId })
-                .where(eq(oauthRefreshTokens.referenceId, authReqIdHash))
-                .run(),
-            ]);
-          }
-        }
+        await afterCibaTokenPersist(ctx);
         return;
       }
       if (ctx.path === "/ciba/authorize") {
@@ -1810,6 +1951,21 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
+      // The provider hardcodes id_token `acr` to iap:bronze and drops any
+      // extension claim that collides with a base claim, so the assurance-tier
+      // acr must override here, the only path spread ahead of that drop. `acr` is
+      // a standard always-present claim; acr_eidas/amr/auth_time remain on the
+      // extension/AS path, where claim-request filtering still applies to them.
+      customIdTokenClaims: async (info) => {
+        const userId = info.user?.id;
+        if (!userId) {
+          return {};
+        }
+        const assurance = await getAccountAssurance(userId, {
+          isAuthenticated: true,
+        });
+        return { acr: computeAcr(assurance.tier) };
+      },
       // Access-token disclosure claims (sybil/humanity/CIBA snapshot/auth
       // context) moved to the exact-disclosure-claims extension's
       // `claims.accessToken` contributor, which receives the resolved `client`
@@ -1822,13 +1978,21 @@ export const auth = betterAuth({
               azp?: string;
               client_id?: string;
               jti?: string;
+              [RELEASE_BINDING_CLAIM]?: string;
             };
           }
         ).jwt;
         const clientId = jwt?.azp ?? jwt?.client_id;
+        // Opaque tokens surface the release binding (their re-derive injects it);
+        // JWT access tokens, when release-bound, carry the binding as their jti.
+        const releaseCandidate =
+          (typeof jwt?.[RELEASE_BINDING_CLAIM] === "string"
+            ? jwt[RELEASE_BINDING_CLAIM]
+            : undefined) ??
+          (typeof jwt?.jti === "string" ? jwt.jti : undefined);
         const releaseId =
-          typeof jwt?.jti === "string" && (await hasReleaseContext(jwt.jti))
-            ? jwt.jti
+          releaseCandidate && (await hasReleaseContext(releaseCandidate))
+            ? releaseCandidate
             : undefined;
         const scopeList = toScopeList(scopes);
         const hasIdentityScopes = extractIdentityScopes(scopeList).length > 0;
@@ -1919,27 +2083,7 @@ export const auth = betterAuth({
     // fetch/validate/cache/persist path through clientDiscovery; SSRF defenses
     // are a superset of the previous hand-rolled validator. CIMD clients are
     // restricted to authorization_code + refresh_token by the plugin.
-    cimd({
-      onClientCreated: ({ client }) => {
-        cimdLog.info(
-          { clientId: client.clientId },
-          "CIMD client registered from metadata document"
-        );
-      },
-      onClientRefreshed: ({ client }) => {
-        // Security-relevant client metadata can change between refreshes; record
-        // each refresh for audit. The plugin re-validates the document first.
-        cimdLog.info(
-          {
-            clientId: client.clientId,
-            redirectUris: client.redirectUris,
-            grantTypes: client.grantTypes,
-            tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
-          },
-          "CIMD client metadata refreshed"
-        );
-      },
-    }),
+    cimd(cimdOptions),
     exactDisclosureClaimsPlugin(),
     oidc4ida({
       getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
@@ -2041,17 +2185,12 @@ export const auth = betterAuth({
         );
       },
       buildAccessTokenClaims: async (cibaRequest) => {
-        // Stash authContextId while the CIBA request still exists —
-        // the after-hook needs it to persist on the opaque token record.
-        const authCtxId = (cibaRequest as { authContextId?: string })
-          .authContextId;
-        if (authCtxId) {
-          pendingCibaAuthContext.set(cibaRequest.authReqId, authCtxId);
-        }
-        const accessTokenClaims = await persistCibaTokenSnapshot(
-          cibaRequest.authReqId,
-          cibaRequest.clientId
-        );
+        // The consumed row the plugin passes here carries only the plugin's
+        // declared columns, so the agent AAP claims were resolved in the
+        // /oauth2/token before-hook (while the full row still existed) and
+        // stashed; embed them here. The after-hook drains the rest of the stash.
+        const pending = pendingCibaToken.get(cibaRequest.authReqId);
+
         const releaseContext = await loadReleaseContext(cibaRequest.authReqId);
         if (
           releaseContext?.expectsIdentityPayload &&
@@ -2059,18 +2198,6 @@ export const auth = betterAuth({
         ) {
           throw invalidGrantDisclosureError("identity_payload_missing");
         }
-        const claims: Record<string, unknown> = {
-          jti: cibaRequest.authReqId,
-        };
-
-        // Re-mint the RAR server-side from the persisted (canonical) form and
-        // emit it as authorization_details (D-1). A corrupt stored RAR throws,
-        // failing the mint loudly rather than minting a token without it.
-        const paymentClaims = buildPaymentAuthorizationClaims(
-          (cibaRequest as { authorizationDetails?: string | null })
-            .authorizationDetails
-        );
-
         if (releaseContext) {
           await touchReleaseContext(
             cibaRequest.authReqId,
@@ -2078,14 +2205,17 @@ export const auth = betterAuth({
           );
         }
 
-        if (!accessTokenClaims) {
-          return { ...claims, ...(paymentClaims ?? {}) };
-        }
+        // Re-mint the RAR server-side from the persisted (canonical) form and
+        // emit it as authorization_details (D-1). A corrupt stored RAR throws,
+        // failing the mint loudly rather than minting a token without it. Keep it
+        // last so AAP claims can't clobber it.
+        const paymentClaims = buildPaymentAuthorizationClaims(
+          (cibaRequest as { authorizationDetails?: string | null })
+            .authorizationDetails
+        );
 
         return {
-          ...claims,
-          ...(accessTokenClaims as unknown as Record<string, unknown>),
-          // Keep the canonical RAR last so AAP claims can't clobber it.
+          ...(pending?.claims ?? {}),
           ...(paymentClaims ?? {}),
         };
       },

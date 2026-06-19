@@ -5,6 +5,7 @@ import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -320,11 +321,14 @@ describe("Agent Introspection", () => {
       approved_at: expect.any(Number),
       method: "session",
     });
+    // auth_req_id is hashed at rest; the audit correlation claim carries the
+    // hash, never the raw bearer value.
+    const authReqIdHash = hashCibaAuthReqId(authReqId);
     expect(result.body.audit).toEqual({
-      ciba_request_id: authReqId,
+      ciba_request_id: authReqIdHash,
       context_id: authContextId,
       release_id: "dev",
-      request_id: authReqId,
+      request_id: authReqIdHash,
     });
     expect(result.body.delegation).toEqual({
       depth: 0,

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -55,7 +56,6 @@ async function insertCibaRequest(
   await db
     .insert(cibaRequests)
     .values({
-      authReqId,
       clientId: TEST_CLIENT_ID,
       userId: overrides.userId ?? "test-user",
       scope: "openid",
@@ -65,6 +65,8 @@ async function insertCibaRequest(
         (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
       ...overrides,
+      // Plugin stores the hash at rest; callers send the raw value.
+      authReqId: hashCibaAuthReqId(authReqId),
     })
     .run();
   return authReqId;

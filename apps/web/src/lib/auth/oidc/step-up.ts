@@ -20,6 +20,7 @@ import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
@@ -408,7 +409,7 @@ export async function enforceCibaApprovalAcr(
   const record = await db
     .select({ acrValues: cibaRequests.acrValues, userId: cibaRequests.userId })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqId))
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
     .limit(1)
     .get();
 
@@ -458,7 +459,7 @@ export async function enforceCibaTokenAcr(
       resource: cibaRequests.resource,
     })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqId))
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
     .limit(1)
     .get();
 

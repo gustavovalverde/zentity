@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { attachHumanityCredential } from "@/lib/db/queries/humanity";
 import {
@@ -251,7 +252,8 @@ describe("identity revocation cascade", () => {
       expect.arrayContaining([
         expect.objectContaining({
           target: "ciba_request_cancellation",
-          targetKey: authReqId,
+          // The cancellation keys on the stored (hashed) auth_req_id.
+          targetKey: hashCibaAuthReqId(authReqId),
           status: "pending",
         }),
         expect.objectContaining({
@@ -269,7 +271,7 @@ describe("identity revocation cascade", () => {
     const cibaRow = await db
       .select({ status: cibaRequests.status })
       .from(cibaRequests)
-      .where(eq(cibaRequests.authReqId, authReqId))
+      .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
       .get();
     expect(cibaRow?.status).toBe("rejected");
     expect(fetchSpy).toHaveBeenCalledWith(

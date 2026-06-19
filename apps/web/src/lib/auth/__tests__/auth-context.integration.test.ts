@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -13,18 +13,18 @@ import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 async function insertSession(userId: string, createdAt: string) {
   const sessionId = crypto.randomUUID();
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = Date.now() + 86_400_000;
+  // Bind createdAt/updatedAt raw: a finite numeric string lands as an integer,
+  // anything else (e.g. "not-a-timestamp") lands as text in the integer column,
+  // reproducing a corrupt row so the finite-timestamp guard can be exercised.
+  const numeric = Number(createdAt);
+  const rawCreatedAt = Number.isFinite(numeric) ? numeric : createdAt;
 
-  await db
-    .insert(sessions)
-    .values({
-      id: sessionId,
-      userId,
-      token: crypto.randomBytes(32).toString("hex"),
-      createdAt: new Date(Number(createdAt)),
-      updatedAt: new Date(Number(createdAt)),
-      expiresAt: new Date(Date.now() + 86_400_000),
-    })
-    .run();
+  await db.run(
+    sql`INSERT INTO session (id, "userId", token, "createdAt", "updatedAt", "expiresAt")
+        VALUES (${sessionId}, ${userId}, ${token}, ${rawCreatedAt}, ${rawCreatedAt}, ${expiresAt})`
+  );
 
   return sessionId;
 }

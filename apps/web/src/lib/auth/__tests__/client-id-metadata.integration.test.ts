@@ -236,6 +236,9 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         trustLevel: 1,
         metadataUrl: CIMD_CLIENT_ID,
         metadataFetchedAt: pastTtl,
+        // CIMD staleness is measured from updatedAt (refreshRate default 60m).
+        createdAt: pastTtl,
+        updatedAt: pastTtl,
       });
 
       mockFetchMetadata(validMetadata({ client_name: "Updated Name" }));

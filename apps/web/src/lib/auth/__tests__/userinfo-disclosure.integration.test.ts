@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import {
   stageFinalCibaDisclosure,
   stagePendingOauthDisclosure,
@@ -16,7 +17,11 @@ import { sessions, verifications } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
-import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+import {
+  buildDpopProof,
+  type DpopKeyPair,
+  postTokenWithDpop,
+} from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const REDIRECT_URI = "http://127.0.0.1/callback";
@@ -73,7 +78,8 @@ async function insertApprovedCibaRequest(
   await db
     .insert(cibaRequests)
     .values({
-      authReqId,
+      // Plugin stores the hash at rest; callers send the raw value.
+      authReqId: hashCibaAuthReqId(authReqId),
       clientId: TEST_CLIENT_ID,
       userId,
       scope,
@@ -122,11 +128,18 @@ async function parseHandlerJson(
     : parsed;
 }
 
-function makeUserInfoRequest(accessToken: string): Request {
+async function makeUserInfoRequest(
+  accessToken: string,
+  keyPair: DpopKeyPair
+): Promise<Request> {
+  // The access token is DPoP-bound, so userinfo requires the DPoP scheme plus a
+  // fresh proof for this URL (HAIP requireDpop).
+  const proof = await buildDpopProof(keyPair, "GET", USERINFO_URL, accessToken);
   return new Request(USERINFO_URL, {
     method: "GET",
     headers: {
-      authorization: `Bearer ${accessToken}`,
+      authorization: `DPoP ${accessToken}`,
+      DPoP: proof,
     },
   });
 }
@@ -163,7 +176,8 @@ describe("userinfo disclosure binding", () => {
           given_name: "Ada",
           family_name: "Lovelace",
         },
-        releaseId: authReqId,
+        // Release context keys on the stored hash, matching the token endpoint.
+        releaseId: hashCibaAuthReqId(authReqId),
         scopes: identityScopes,
         scopeHash: createScopeHash(identityScopes),
         intentJti: crypto.randomUUID(),
@@ -182,7 +196,9 @@ describe("userinfo disclosure binding", () => {
     const accessToken = tokenResponse.json.access_token as string;
     expect(accessToken.split(".").length).not.toBe(3);
 
-    const firstUserInfo = await auth.handler(makeUserInfoRequest(accessToken));
+    const firstUserInfo = await auth.handler(
+      await makeUserInfoRequest(accessToken, tokenResponse.dpopKeyPair)
+    );
     expect(firstUserInfo.status).toBe(200);
     await expect(parseHandlerJson(firstUserInfo)).resolves.toMatchObject({
       sub: userId,
@@ -190,7 +206,9 @@ describe("userinfo disclosure binding", () => {
       family_name: "Lovelace",
     });
 
-    const secondUserInfo = await auth.handler(makeUserInfoRequest(accessToken));
+    const secondUserInfo = await auth.handler(
+      await makeUserInfoRequest(accessToken, tokenResponse.dpopKeyPair)
+    );
     const secondBody = await parseHandlerJson(secondUserInfo);
     expect(secondUserInfo.status).toBe(401);
     expect(secondBody.error).toBe("invalid_token");
@@ -279,7 +297,9 @@ describe("userinfo disclosure binding", () => {
       expect(payload).not.toHaveProperty("zentity_context_id");
     }
 
-    const userInfo = await auth.handler(makeUserInfoRequest(accessToken));
+    const userInfo = await auth.handler(
+      await makeUserInfoRequest(accessToken, tokenResponse.dpopKeyPair)
+    );
     expect(userInfo.status).toBe(200);
     await expect(parseHandlerJson(userInfo)).resolves.toMatchObject({
       sub: userId,

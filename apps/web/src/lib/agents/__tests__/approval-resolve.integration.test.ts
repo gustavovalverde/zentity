@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -85,7 +86,8 @@ async function insertCibaRequest(
   await db
     .insert(cibaRequests)
     .values({
-      authReqId,
+      // Plugin stores the hash at rest; callers send the raw value.
+      authReqId: hashCibaAuthReqId(authReqId),
       clientId: TEST_CLIENT_ID,
       userId,
       scope: overrides.scope ?? "openid",

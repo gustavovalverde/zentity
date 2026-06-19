@@ -8,6 +8,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -40,7 +41,6 @@ async function insertCibaRequest(
   await db
     .insert(cibaRequests)
     .values({
-      authReqId,
       clientId: TEST_CLIENT_ID,
       userId: overrides.userId ?? "test-user",
       scope: "openid",
@@ -48,6 +48,8 @@ async function insertCibaRequest(
       expiresAt: new Date(Date.now() + 300_000),
       resource: TEST_RESOURCE,
       ...overrides,
+      // Plugin stores the hash at rest; callers send the raw value.
+      authReqId: hashCibaAuthReqId(authReqId),
     })
     .run();
   return authReqId;

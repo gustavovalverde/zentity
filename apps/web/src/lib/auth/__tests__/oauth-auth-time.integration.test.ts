@@ -104,7 +104,9 @@ describe("oauth token auth_time normalization", () => {
           },
           userId,
           sessionId,
-          authTime: null,
+          // authTime is omitted (not null): the code carries no auth_time, so the
+          // grant derives it from the session's createdAt. The 1.7 stored-code
+          // schema is authTime: z.number().optional(), which rejects null.
         }),
         createdAt: new Date(now),
         updatedAt: new Date(now),

@@ -21,13 +21,20 @@ export async function createTestDpopKeyPair(): Promise<DpopKeyPair> {
 export function buildDpopProof(
   keyPair: DpopKeyPair,
   method: string,
-  url: string
+  url: string,
+  accessToken?: string
 ): Promise<string> {
+  // Resource requests bind the proof to the presented access token via `ath`
+  // (RFC 9449 §4.2); token-endpoint proofs omit it (no token yet).
+  const ath = accessToken
+    ? crypto.createHash("sha256").update(accessToken).digest("base64url")
+    : undefined;
   return new SignJWT({
     htm: method,
     htu: url,
     jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
+    ...(ath ? { ath } : {}),
   })
     .setProtectedHeader({
       alg: "ES256",

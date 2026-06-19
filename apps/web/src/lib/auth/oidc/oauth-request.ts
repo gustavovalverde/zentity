@@ -234,15 +234,18 @@ export async function validateOAuthAccessToken(
       return { valid: false, error: "Invalid access token" };
     }
 
-    if (payload.sub) {
-      return { valid: false, error: "Not a client credentials token" };
-    }
-
     const clientId =
       (payload.client_id as string | undefined) ??
       (payload.azp as string | undefined);
     if (!clientId) {
       return { valid: false, error: "Missing client_id" };
+    }
+
+    // A client_credentials token's subject is the client itself (oauth-provider
+    // 1.7 sets sub = client_id when there is no user). A token whose subject is a
+    // distinct user is a user token, not client credentials.
+    if (payload.sub && payload.sub !== clientId) {
+      return { valid: false, error: "Not a client credentials token" };
     }
 
     const scopes =

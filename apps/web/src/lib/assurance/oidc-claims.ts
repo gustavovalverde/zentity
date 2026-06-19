@@ -26,7 +26,7 @@ const ACR_URIS = {
 
 export const ACR_VALUES_SUPPORTED = Object.values(ACR_URIS);
 
-function computeAcr(tier: AccountTier): string {
+export function computeAcr(tier: AccountTier): string {
   return ACR_URIS[tier];
 }
 

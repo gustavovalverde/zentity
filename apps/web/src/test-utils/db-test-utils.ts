@@ -3,6 +3,7 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 import crypto from "node:crypto";
 
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -245,7 +246,9 @@ export async function createTestCibaRequest(
       scope: "openid",
       expiresAt: new Date(Date.now() + 300_000),
       ...input,
-      authReqId,
+      // The 1.7 CIBA plugin stores the hash of auth_req_id at rest and the token
+      // endpoint hashes the raw value for lookup; callers receive the raw value.
+      authReqId: hashCibaAuthReqId(authReqId),
       status,
       authContextId,
     })

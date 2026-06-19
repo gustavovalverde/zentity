@@ -973,6 +973,8 @@ async function issueAuthorizationCode(
       query: {
         client_id: session.clientId,
         scope: session.scope,
+        // Headless first-party codes carry no redirect_uri; the patched
+        // oauth-provider exchanges them without one (RFC 6749 §4.1.3).
         ...(session.claims && { claims: session.claims }),
         ...(session.codeChallenge && {
           code_challenge: session.codeChallenge,

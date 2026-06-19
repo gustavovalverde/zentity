@@ -10,6 +10,7 @@ import { APIError } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
@@ -151,7 +152,7 @@ export async function pinPaymentTokenAudience(
   const row = await db
     .select({ authorizationDetails: cibaRequests.authorizationDetails })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqId))
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
     .limit(1)
     .get();
   if (!hasPaymentEntry(parseAuthorizationDetails(row?.authorizationDetails))) {

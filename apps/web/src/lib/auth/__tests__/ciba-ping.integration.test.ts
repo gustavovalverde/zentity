@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -82,6 +83,7 @@ describe("CIBA ping mode", () => {
         .update(oauthClients)
         .set({
           metadata: JSON.stringify({
+            backchannel_token_delivery_mode: "ping",
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
           }),
@@ -103,7 +105,12 @@ describe("CIBA ping mode", () => {
       const request = await db
         .select()
         .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
+        .where(
+          eq(
+            cibaRequests.authReqId,
+            hashCibaAuthReqId(json.auth_req_id as string)
+          )
+        )
         .get();
       expect(request?.deliveryMode).toBe("ping");
       expect(request?.clientNotificationEndpoint).toBe(
@@ -112,8 +119,17 @@ describe("CIBA ping mode", () => {
       expect(request?.clientNotificationToken).toBe(TEST_NOTIFICATION_TOKEN);
     });
 
-    it("falls back to poll when no notification endpoint is resolvable", async () => {
-      // Client has no metadata with notification endpoint
+    it("issues poll delivery for a poll-registered client", async () => {
+      // Delivery mode is a registered client property; a poll client needs no
+      // notification endpoint and a stray notification token is ignored.
+      await db
+        .update(oauthClients)
+        .set({
+          metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
+        })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
+
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
@@ -126,7 +142,12 @@ describe("CIBA ping mode", () => {
       const request = await db
         .select()
         .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
+        .where(
+          eq(
+            cibaRequests.authReqId,
+            hashCibaAuthReqId(json.auth_req_id as string)
+          )
+        )
         .get();
       expect(request?.deliveryMode).toBe("poll");
     });
@@ -137,6 +158,7 @@ describe("CIBA ping mode", () => {
         .update(oauthClients)
         .set({
           metadata: JSON.stringify({
+            backchannel_token_delivery_mode: "ping",
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
           }),
@@ -157,7 +179,12 @@ describe("CIBA ping mode", () => {
       const request = await db
         .select()
         .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
+        .where(
+          eq(
+            cibaRequests.authReqId,
+            hashCibaAuthReqId(json.auth_req_id as string)
+          )
+        )
         .get();
       expect(request?.deliveryMode).toBe("ping");
       expect(request?.clientNotificationEndpoint).toBe(bodyEndpoint);
@@ -209,6 +236,14 @@ describe("CIBA ping mode", () => {
 
   describe("bc-authorize ping-mode request creation", () => {
     it("stores notification token and endpoint for ping-mode requests", async () => {
+      await db
+        .update(oauthClients)
+        .set({
+          metadata: JSON.stringify({ backchannel_token_delivery_mode: "ping" }),
+        })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
+
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
@@ -223,7 +258,12 @@ describe("CIBA ping mode", () => {
       const request = await db
         .select()
         .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
+        .where(
+          eq(
+            cibaRequests.authReqId,
+            hashCibaAuthReqId(json.auth_req_id as string)
+          )
+        )
         .get();
 
       expect(request?.deliveryMode).toBe("ping");
@@ -257,11 +297,12 @@ describe("CIBA ping mode", () => {
   });
 
   describe("missing client_notification_token", () => {
-    it("falls back to poll when notification token is absent", async () => {
+    it("rejects a ping request that omits the notification token", async () => {
       await db
         .update(oauthClients)
         .set({
           metadata: JSON.stringify({
+            backchannel_token_delivery_mode: "ping",
             backchannel_client_notification_endpoint:
               TEST_NOTIFICATION_ENDPOINT,
           }),
@@ -269,21 +310,16 @@ describe("CIBA ping mode", () => {
         .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
         .run();
 
-      // No client_notification_token → should stay in poll mode
+      // A ping-registered client must supply client_notification_token; there is
+      // no per-request fallback to poll once a delivery mode is registered.
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
         login_hint: `user-${userId}@example.com`,
       });
 
-      expect(status).toBe(200);
-
-      const request = await db
-        .select()
-        .from(cibaRequests)
-        .where(eq(cibaRequests.authReqId, json.auth_req_id as string))
-        .get();
-      expect(request?.deliveryMode).toBe("poll");
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
     });
   });
 
@@ -347,6 +383,14 @@ describe("CIBA ping mode", () => {
       const { port, waitForCallback } = await startMockServer();
       const notificationEndpoint = `http://localhost:${port}/ciba/callback`;
       const notificationToken = "test-ping-bearer-token";
+
+      await db
+        .update(oauthClients)
+        .set({
+          metadata: JSON.stringify({ backchannel_token_delivery_mode: "ping" }),
+        })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
 
       // Create a bc-authorize request with ping mode
       const { json: bcJson } = await postBcAuthorize({

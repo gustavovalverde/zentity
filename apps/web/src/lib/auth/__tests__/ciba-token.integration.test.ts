@@ -9,6 +9,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -94,7 +95,6 @@ async function insertCibaRequest(
   await db
     .insert(cibaRequests)
     .values({
-      authReqId,
       clientId: TEST_CLIENT_ID,
       userId: overrides.userId ?? "test-user",
       scope: "openid",
@@ -104,6 +104,9 @@ async function insertCibaRequest(
         (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
       ...overrides,
+      // The 1.7 CIBA plugin stores the hash of auth_req_id at rest; callers get
+      // the raw value to send to the token endpoint, which hashes for lookup.
+      authReqId: hashCibaAuthReqId(authReqId),
     })
     .run();
   return authReqId;
@@ -115,12 +118,13 @@ async function inspectCibaAccessToken(
   userId: string,
   authContextId?: string
 ) {
+  const expectedReference = hashCibaAuthReqId(authReqId);
   if (accessToken.split(".").length === 3) {
     const payload = decodeJwt(accessToken);
-    if (payload.jti !== authReqId) {
-      throw new Error(
-        `Expected JWT jti ${authReqId}, got ${String(payload.jti)}`
-      );
+    // The AS owns the JWT jti (RFC 9068, unique-random); it is not bound to the
+    // auth_req_id. CIBA correlation lives in audit.ciba_request_id (the hash).
+    if (typeof payload.jti !== "string" || payload.jti.length === 0) {
+      throw new Error("Expected JWT access token to carry a jti");
     }
     if (
       authContextId &&
@@ -137,9 +141,9 @@ async function inspectCibaAccessToken(
   if (!record) {
     throw new Error("Expected opaque access token record to exist");
   }
-  if (record.referenceId !== authReqId) {
+  if (record.referenceId !== expectedReference) {
     throw new Error(
-      `Expected opaque token referenceId ${authReqId}, got ${String(record.referenceId)}`
+      `Expected opaque token referenceId ${expectedReference}, got ${String(record.referenceId)}`
     );
   }
   if (record.userId !== userId) {
@@ -255,11 +259,16 @@ describe("CIBA token endpoint", () => {
     expect(initial.status).toBe(200);
     expect(typeof initial.json.refresh_token).toBe("string");
 
-    const refreshed = await postTokenWithDpop({
-      grant_type: "refresh_token",
-      refresh_token: initial.json.refresh_token as string,
-      client_id: TEST_CLIENT_ID,
-    });
+    // The refresh grant must present the same DPoP key the access token is bound
+    // to; reuse the keypair the initial issuance generated.
+    const refreshed = await postTokenWithDpop(
+      {
+        grant_type: "refresh_token",
+        refresh_token: initial.json.refresh_token as string,
+        client_id: TEST_CLIENT_ID,
+      },
+      initial.dpopKeyPair
+    );
 
     expect(refreshed.status).toBe(200);
 
@@ -384,11 +393,14 @@ describe("CIBA token endpoint", () => {
         approved_at: expect.any(Number),
         method: "session",
       });
+      // auth_req_id is hashed at rest (it is a bearer credential); the audit
+      // correlation claim carries the hash, never the raw value.
+      const authReqIdHash = hashCibaAuthReqId(authReqId);
       expect(tokenShape.payload.audit).toEqual({
-        ciba_request_id: authReqId,
+        ciba_request_id: authReqIdHash,
         context_id: defaultAuthContextId,
         release_id: "dev",
-        request_id: authReqId,
+        request_id: authReqIdHash,
       });
       expect(tokenShape.payload.delegation).toEqual({
         depth: 0,

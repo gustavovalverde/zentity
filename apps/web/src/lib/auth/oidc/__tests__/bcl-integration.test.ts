@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
@@ -223,7 +224,7 @@ describe("back-channel logout", () => {
     const row = await db
       .select({ status: cibaRequests.status })
       .from(cibaRequests)
-      .where(eq(cibaRequests.authReqId, approvedId))
+      .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(approvedId)))
       .get();
     expect(row?.status).toBe("approved");
   });

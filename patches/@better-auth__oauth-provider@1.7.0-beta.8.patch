@@ -1,0 +1,24 @@
+diff --git a/dist/introspect-BXNvkz8S.mjs b/dist/introspect-BXNvkz8S.mjs
+index b3d485698e35d041daa1d8acede9d71ecdd3b91c..a3a43970cdf649c13394cb379cd6203b12a476c8 100644
+--- a/dist/introspect-BXNvkz8S.mjs
++++ b/dist/introspect-BXNvkz8S.mjs
+@@ -869,7 +869,7 @@ const authorizationQuerySchema = z.object({
+ 	dpop_jkt: dpopJktSchema.optional(),
+ 	resource: z.union([ResourceUriSchema, z.array(ResourceUriSchema).min(1)]).optional()
+ }).passthrough();
+-const storedAuthorizationQuerySchema = authorizationQuerySchema.extend({ redirect_uri: SafeUrlSchema });
++const storedAuthorizationQuerySchema = authorizationQuerySchema.extend({ redirect_uri: SafeUrlSchema.optional() });
+ /**
+ * Runtime schema for the authorization code verification value.
+ * Validates structure on deserialization from the JSON blob stored in the DB.
+@@ -1583,10 +1583,6 @@ async function handleAuthorizationCodeGrant(ctx, opts) {
+ 		error_description: "code is required",
+ 		error: "invalid_request"
+ 	});
+-	if (!redirect_uri) throw new APIError("BAD_REQUEST", {
+-		error_description: "redirect_uri is required",
+-		error: "invalid_request"
+-	});
+ 	const isAuthCodeWithSecret = client_id && client_secret;
+ 	const isAuthCodeWithPkce = client_id && code && code_verifier;
+ 	if (!isAuthCodeWithSecret && !isAuthCodeWithPkce && !preVerified) throw new APIError("BAD_REQUEST", {

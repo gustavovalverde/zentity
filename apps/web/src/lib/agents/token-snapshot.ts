@@ -13,7 +13,6 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentTokenSnapshots } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 
 import { resolveAgentSubForClient } from "./actor-subject";
 import { buildAapClaims, resolveOversightMethod } from "./claims";
@@ -37,7 +36,7 @@ interface LoadedTokenSnapshot {
   sessionId: string;
 }
 
-interface StoredTokenSnapshot {
+export interface StoredTokenSnapshot {
   agentSessionId: string | null;
   approvalMethod: string | null;
   approvalStrength: string | null;
@@ -272,56 +271,66 @@ async function upsertTokenSnapshot(
     });
 }
 
-function findCibaRequestSnapshot(authReqId: string) {
-  return db
-    .select({
-      agentSessionId: cibaRequests.agentSessionId,
-      approvalMethod: cibaRequests.approvalMethod,
-      approvalStrength: cibaRequests.approvalStrength,
-      assertionVerified: cibaRequests.assertionVerified,
-      approvedCapabilityName: cibaRequests.approvedCapabilityName,
-      approvedConstraints: cibaRequests.approvedConstraints,
-      approvedGrantId: cibaRequests.approvedGrantId,
-      approvedHostPolicyId: cibaRequests.approvedHostPolicyId,
-      attestationProvider: cibaRequests.attestationProvider,
-      attestationTier: cibaRequests.attestationTier,
-      authContextId: cibaRequests.authContextId,
-      authReqId: cibaRequests.authReqId,
-      bindingMessage: cibaRequests.bindingMessage,
-      createdAt: cibaRequests.createdAt,
-      expiresAt: cibaRequests.expiresAt,
-      hostId: cibaRequests.hostId,
-      model: cibaRequests.model,
-      runtime: cibaRequests.runtime,
-      taskHash: cibaRequests.taskHash,
-      taskId: cibaRequests.taskId,
-      version: cibaRequests.version,
-    })
-    .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, authReqId))
-    .limit(1)
-    .get();
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
-export async function persistCibaTokenSnapshot(
-  authReqId: string,
+/**
+ * Maps the in-memory CIBA request the poll grant hands to `buildAccessTokenClaims`
+ * onto the snapshot shape. The plugin consumes (deletes) the request before the
+ * claim contributors run, so the snapshot is built from this object, never
+ * re-read from `ciba_request`.
+ */
+function toStoredSnapshot(row: Record<string, unknown>): StoredTokenSnapshot {
+  return {
+    agentSessionId: readString(row.agentSessionId),
+    approvalMethod: readString(row.approvalMethod),
+    approvalStrength: readString(row.approvalStrength),
+    approvedCapabilityName: readString(row.approvedCapabilityName),
+    approvedConstraints: readString(row.approvedConstraints),
+    approvedGrantId: readString(row.approvedGrantId),
+    approvedHostPolicyId: readString(row.approvedHostPolicyId),
+    assertionVerified:
+      typeof row.assertionVerified === "boolean" ? row.assertionVerified : null,
+    attestationProvider: readString(row.attestationProvider),
+    attestationTier: readString(row.attestationTier),
+    authContextId: readString(row.authContextId),
+    authReqId: readString(row.authReqId),
+    bindingMessage: readString(row.bindingMessage),
+    createdAt: row.createdAt instanceof Date ? row.createdAt : null,
+    expiresAt: row.expiresAt instanceof Date ? row.expiresAt : null,
+    hostId: readString(row.hostId),
+    model: readString(row.model),
+    runtime: readString(row.runtime),
+    taskHash: readString(row.taskHash),
+    taskId: readString(row.taskId),
+    version: readString(row.version),
+  };
+}
+
+interface CibaAgentContribution {
+  claims: AapAccessTokenClaims;
+  snapshot: StoredTokenSnapshot;
+}
+
+/**
+ * Builds the agent AAP claims embedded in a CIBA-issued access token from the
+ * consumed request the grant handler holds. Returns `null` for plain (non-agent)
+ * requests, where the token keeps the provider's `act: { sub: client_id }`. The
+ * caller stashes the returned `snapshot` so the `/oauth2/token` after-hook can
+ * persist it keyed by the minted token's real jti (the AS owns jti; we cannot
+ * know it at claim-build time).
+ */
+export async function buildCibaAgentContribution(
+  cibaRequest: Record<string, unknown>,
   audienceClientId: string
-): Promise<(AapAccessTokenClaims & { jti: string }) | null> {
-  const storedSnapshot = await findCibaRequestSnapshot(authReqId);
-  const tokenSnapshot = await resolveTokenSnapshot(
-    storedSnapshot,
-    audienceClientId
-  );
-  if (!(storedSnapshot && tokenSnapshot)) {
+): Promise<CibaAgentContribution | null> {
+  const snapshot = toStoredSnapshot(cibaRequest);
+  const resolved = await resolveTokenSnapshot(snapshot, audienceClientId);
+  if (!resolved) {
     return null;
   }
-
-  await upsertTokenSnapshot(authReqId, audienceClientId, storedSnapshot);
-
-  return {
-    jti: authReqId,
-    ...tokenSnapshot.claims,
-  };
+  return { claims: resolved.claims, snapshot };
 }
 
 export async function persistTokenSnapshot(input: {
@@ -374,12 +383,4 @@ export async function resolveTokenSnapshotForTokenJti(
 ): Promise<LoadedTokenSnapshot | null> {
   const storedSnapshot = await findStoredTokenSnapshotByJti(tokenJti);
   return resolveTokenSnapshot(storedSnapshot ?? undefined, audienceClientId);
-}
-
-export async function resolveTokenSnapshotForCibaRequest(
-  authReqId: string,
-  audienceClientId: string
-): Promise<LoadedTokenSnapshot | null> {
-  const storedSnapshot = await findCibaRequestSnapshot(authReqId);
-  return resolveTokenSnapshot(storedSnapshot, audienceClientId);
 }
