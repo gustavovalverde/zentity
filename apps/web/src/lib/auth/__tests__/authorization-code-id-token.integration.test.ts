@@ -159,7 +159,10 @@ describe("authorization_code id_token claims filtering", () => {
     expect(idTokenClaims.acr).toBe("0");
     expect(idTokenClaims.amr).toBeUndefined();
     expect(idTokenClaims.acr_eidas).toBeUndefined();
-    const assurance = idTokenClaims.zentity_assurance as Record<string, unknown>;
+    const assurance = idTokenClaims.zentity_assurance as Record<
+      string,
+      unknown
+    >;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
     expect(idTokenClaims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
   });
