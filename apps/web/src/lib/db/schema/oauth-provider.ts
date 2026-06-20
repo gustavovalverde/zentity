@@ -93,6 +93,8 @@ export const oauthRefreshTokens = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     resources: text("resources"),
+    authorizationCodeId: text("authorization_code_id"),
+    requestedUserInfoClaims: text("requested_user_info_claims"),
     confirmation: text("confirmation"),
     authTime: integer("auth_time", { mode: "timestamp_ms" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
@@ -106,6 +108,9 @@ export const oauthRefreshTokens = sqliteTable(
     index("oauth_refresh_token_token_idx").on(table.token),
     index("oauth_refresh_token_client_id_idx").on(table.clientId),
     index("oauth_refresh_token_user_id_idx").on(table.userId),
+    index("oauth_refresh_token_authorization_code_id_idx").on(
+      table.authorizationCodeId
+    ),
   ]
 );
 
@@ -127,6 +132,8 @@ export const oauthAccessTokens = sqliteTable(
     }),
     referenceId: text("reference_id"),
     resources: text("resources"),
+    authorizationCodeId: text("authorization_code_id"),
+    requestedUserInfoClaims: text("requested_user_info_claims"),
     refreshId: text("refresh_id").references(() => oauthRefreshTokens.id, {
       onDelete: "set null",
     }),
@@ -142,6 +149,9 @@ export const oauthAccessTokens = sqliteTable(
     uniqueIndex("oauth_access_token_token_unique").on(table.token),
     index("oauth_access_token_client_id_idx").on(table.clientId),
     index("oauth_access_token_user_id_idx").on(table.userId),
+    index("oauth_access_token_authorization_code_id_idx").on(
+      table.authorizationCodeId
+    ),
   ]
 );
 
@@ -155,6 +165,7 @@ export const oauthConsents = sqliteTable(
     userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     referenceId: text("reference_id"),
     resources: text("resources"),
+    requestedUserInfoClaims: text("requested_user_info_claims"),
     scopes: text("scopes").notNull(),
     scopeHmac: text("scope_hmac"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(

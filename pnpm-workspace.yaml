@@ -20,7 +20,6 @@ allowBuilds:
   utf-8-validate: false
 
 patchedDependencies:
-  '@better-auth/oauth-provider@1.7.0-beta.8': patches/@better-auth__oauth-provider@1.7.0-beta.8.patch
   '@daveyplate/better-auth-ui': apps/web/vendor/@daveyplate__better-auth-ui.patch
 
 overrides:

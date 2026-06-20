@@ -222,6 +222,19 @@ async function enforceFromPar(
     return;
   }
 
+  // zentity owns acr_values step-up semantics. The provider supports only
+  // acr "0", so strip the requested tier from the stored PAR after reading it;
+  // the request then validates, and the user's actual tier is conveyed through
+  // the namespaced zentity_assurance id-token claim.
+  if (params.acr_values) {
+    const { acr_values: _stripped, ...rest } = params;
+    await db
+      .update(haipPushedRequests)
+      .set({ requestParams: JSON.stringify(rest) })
+      .where(eq(haipPushedRequests.id, record.id))
+      .run();
+  }
+
   const resolved = await getSessionFromCtx(ctx);
   if (!resolved) {
     return;
@@ -292,6 +305,13 @@ async function enforceFromQuery(ctx: any) {
   const params = extractQueryParams(ctx.query);
   if (!params.acr_values && params.max_age === undefined) {
     return;
+  }
+
+  // Strip the requested tier from the live query after reading it: the provider
+  // supports only acr "0", and the user's actual tier is conveyed through the
+  // namespaced zentity_assurance id-token claim.
+  if (params.acr_values) {
+    ctx.query.acr_values = undefined;
   }
 
   const resolved = await getSessionFromCtx(ctx);

@@ -361,9 +361,12 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.id_token).toEqual(expect.any(String));
 
       const claims = decodeJwt(json.id_token as string);
-      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      // acr is AS-owned ("0"); the tier rides in the namespaced claim.
+      expect(claims.acr).toBe("0");
       expect(claims.amr).toBeUndefined();
       expect(claims.acr_eidas).toBeUndefined();
+      const assurance = claims.zentity_assurance as Record<string, unknown>;
+      expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
     });
 
     it("rejects token exchange without code_verifier (PKCE required)", async () => {
@@ -893,10 +896,11 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.access_token).toBeTypeOf("string");
       expect(json.auth_session).toBe(stepUpAuthSession);
 
-      // Verify the id_token contains the upgraded acr claim (tier-1)
+      // Verify the id_token reflects the upgraded tier (in the namespaced claim)
       if (json.id_token) {
         const claims = decodeJwt(json.id_token as string);
-        expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+        const assurance = claims.zentity_assurance as Record<string, unknown>;
+        expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
       }
     });
 

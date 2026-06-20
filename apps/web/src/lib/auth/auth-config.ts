@@ -56,10 +56,7 @@ import {
   persistTokenSnapshot,
   type StoredTokenSnapshot,
 } from "@/lib/agents/token-snapshot";
-import {
-  buildOidcAssuranceClaims,
-  computeAcr,
-} from "@/lib/assurance/oidc-claims";
+import { buildNamespacedAssuranceClaim } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { reportRejection } from "@/lib/async-handler";
 import {
@@ -1062,7 +1059,7 @@ async function buildIdTokenDisclosureClaims(input: {
       isAuthenticated: true,
     });
     assuranceClaims = {
-      ...buildOidcAssuranceClaims(assurance, resolvedAuth),
+      ...buildNamespacedAssuranceClaim(assurance, resolvedAuth),
     };
   }
 
@@ -1077,14 +1074,12 @@ async function buildIdTokenDisclosureClaims(input: {
     "id_token"
   );
 
+  // The claims-request parameter filters the standard/proof claims it can name.
+  // The namespaced zentity_assurance and auth-context claims are always included
+  // when they apply, like any zentity-owned claim a client cannot opt out of.
   return {
-    ...filterClaimsByRequest(
-      {
-        ...proofClaims,
-        ...assuranceClaims,
-      },
-      idTokenFilter
-    ),
+    ...filterClaimsByRequest(proofClaims, idTokenFilter),
+    ...assuranceClaims,
     ...authContextClaims,
   };
 }
@@ -1951,21 +1946,10 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      // The provider hardcodes id_token `acr` to iap:bronze and drops any
-      // extension claim that collides with a base claim, so the assurance-tier
-      // acr must override here, the only path spread ahead of that drop. `acr` is
-      // a standard always-present claim; acr_eidas/amr/auth_time remain on the
-      // extension/AS path, where claim-request filtering still applies to them.
-      customIdTokenClaims: async (info) => {
-        const userId = info.user?.id;
-        if (!userId) {
-          return {};
-        }
-        const assurance = await getAccountAssurance(userId, {
-          isAuthenticated: true,
-        });
-        return { acr: computeAcr(assurance.tier) };
-      },
+      // id_token `acr`/`amr`/`auth_time` are AS-owned in 1.7 (the provider
+      // reports acr: "0" until it supports requestable ACR classes). The
+      // assurance tier rides in the namespaced zentity_assurance claim instead,
+      // emitted by the exact-disclosure-claims id-token contributor.
       // Access-token disclosure claims (sybil/humanity/CIBA snapshot/auth
       // context) moved to the exact-disclosure-claims extension's
       // `claims.accessToken` contributor, which receives the resolved `client`
