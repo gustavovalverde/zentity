@@ -598,13 +598,18 @@ function CibaResult({
     | undefined;
   const approvedPayment = extractApprovedPayment(authorizationDetails);
 
-  // Decode id_token for assurance claims
+  // Decode id_token for assurance claims. The OAuth provider owns standard
+  // `acr` (reports "0"); Zentity's tier/methods ride in the namespaced
+  // zentity_assurance claim, with a top-level fallback.
   const idTokenPayload =
     typeof tokens.id_token === "string"
       ? decodeJwtPayload(tokens.id_token)
       : null;
-  const acr = idTokenPayload?.acr as string | undefined;
-  const amr = idTokenPayload?.amr as string[] | undefined;
+  const assurance = idTokenPayload?.zentity_assurance as
+    | { acr?: string; amr?: string[] }
+    | undefined;
+  const acr = assurance?.acr ?? (idTokenPayload?.acr as string | undefined);
+  const amr = assurance?.amr ?? (idTokenPayload?.amr as string[] | undefined);
 
   const exchangedPayload =
     exchangedTokens && typeof exchangedTokens.access_token === "string"
