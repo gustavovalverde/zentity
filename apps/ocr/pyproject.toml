@@ -25,7 +25,7 @@ dependencies = [
     "pydantic==2.12.5",
     "python-stdnum==2.2",
     "rapidocr==3.7.0",
-    "uvicorn==0.42.0",
+    "uvicorn==0.44.0",
 ]
 
 [tool.setuptools]
