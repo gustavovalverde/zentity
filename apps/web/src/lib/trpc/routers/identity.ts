@@ -16,7 +16,6 @@ import "server-only";
 
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 
 import { env } from "@/env";
@@ -346,7 +345,7 @@ const finalizeProcedure = protectedProcedure
       return { jobId: existingJob.id, status: existingJob.status };
     }
 
-    const jobId = uuidv4();
+    const jobId = crypto.randomUUID();
     await createIdentityVerificationJob({
       id: jobId,
       draftId: input.draftId,

@@ -226,10 +226,6 @@ interface FheBatchEncryptResponse {
   livenessScoreCiphertext?: Uint8Array | null;
 }
 
-interface FheVerifyAgeResult {
-  resultCiphertext: Uint8Array;
-}
-
 interface FheRegisterKeyResult {
   keyId: string;
 }
@@ -311,48 +307,6 @@ export function registerFheKey(args: {
       },
       () =>
         fetchMsgpack<FheRegisterKeyResult>(url, encoded, {
-          method: "POST",
-          headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId, args.flowId)
-          ),
-        })
-    )
-  );
-}
-
-/**
- * Verify age using DOB days format.
- */
-export function verifyAgeFromDobFhe(args: {
-  ciphertext: Uint8Array;
-  currentDays: number;
-  minAge: number;
-  keyId: string;
-  requestId?: string | undefined;
-  flowId?: string | undefined;
-}): Promise<FheVerifyAgeResult> {
-  const url = `${env.FHE_SERVICE_URL}/verify-age-from-dob`;
-  const payload = {
-    ciphertext: args.ciphertext,
-    currentDays: args.currentDays,
-    minAge: args.minAge,
-    keyId: args.keyId,
-  };
-  const encoded = encode(payload);
-  const payloadBytes = encoded.byteLength;
-  const ciphertextBytes = args.ciphertext.byteLength;
-  recordFhePayloadBytes(payloadBytes, { operation: "verify_age_from_dob" });
-  return withFheError("verify_age_from_dob", () =>
-    withSpan(
-      "fhe.verify_age_from_dob",
-      {
-        "fhe.operation": "verify_age_from_dob",
-        "fhe.request_bytes": payloadBytes,
-        "fhe.ciphertext_bytes": ciphertextBytes,
-        "fhe.key_id_hash": hashIdentifier(args.keyId),
-      },
-      () =>
-        fetchMsgpack<FheVerifyAgeResult>(url, encoded, {
           method: "POST",
           headers: buildMsgpackHeaders(
             getInternalServiceAuthHeaders(args.requestId, args.flowId)

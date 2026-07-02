@@ -5,7 +5,6 @@ import type { FheStatus } from "@/lib/db/schema/identity";
 import { and, eq, sql } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
-import { v4 as uuidv4 } from "uuid";
 
 import {
   computeClaimHash,
@@ -241,7 +240,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
 
             const ocrSignature = await signAttestationClaim(ocrClaimPayload);
             await insertSignedClaim({
-              id: uuidv4(),
+              id: crypto.randomUUID(),
               userId: job.userId,
               verificationId,
               claimType: ocrClaimPayload.type,
@@ -290,7 +289,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
             const livenessSignature =
               await signAttestationClaim(livenessClaimPayload);
             await insertSignedClaim({
-              id: uuidv4(),
+              id: crypto.randomUUID(),
               userId: job.userId,
               verificationId,
               claimType: livenessClaimPayload.type,
@@ -346,7 +345,7 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
               faceMatchClaimPayload
             );
             await insertSignedClaim({
-              id: uuidv4(),
+              id: crypto.randomUUID(),
               userId: job.userId,
               verificationId,
               claimType: faceMatchClaimPayload.type,

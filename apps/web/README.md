@@ -226,8 +226,6 @@ src/
 | `/api/confidential/relayer/[...path]` | Various | Server-side proxy for Zama relayer requests |
 | `/api/zk/circuits` | GET | Circuit manifest (IDs, vkey hashes) |
 | `/api/zk/circuits/[circuitType]/vkey` | GET | Circuit vkey + hash |
-| `/api/zk/nationality-proof` | GET/POST | Nationality helpers |
-| `/api/zk/nationality-proof/verify` | POST | Verify nationality ZK proof |
 | `/api/password/pwned` | POST | Password breach pre-check |
 
 ## Recovery Routes

@@ -126,13 +126,17 @@ export async function hashToFieldHexFromString(
 /**
  * Normalize a field hex value to canonical 32-byte form.
  *
- * Legacy compatibility: if a value is above the modulus, we still reduce
- * modulo BN254 to avoid rejecting older payloads.
+ * Values must already be canonical field elements; a value at or above the
+ * BN254 scalar field modulus is rejected rather than silently reduced, since
+ * silent reduction on this security boundary would mask caller bugs.
  */
 export function normalizeFieldHex(value: string): string {
   const parsed = BigInt(value);
   if (parsed < BigInt(0)) {
     throw new Error("Field values must be non-negative");
+  }
+  if (parsed >= BN254_FR_MODULUS) {
+    throw new Error("Field value exceeds the BN254 scalar field modulus");
   }
   return bigintToFieldHex(parsed);
 }

@@ -466,7 +466,6 @@ const DEBUG_ONLY_PATHS = new Set([
   "zk.challengeStatus",
   "attestation.networks",
   "attestation.status",
-  "signUp.getSession",
   "compliantToken.networks",
 ]);
 
@@ -480,8 +479,8 @@ const CRITICAL_PATHS = new Set([
   "identity.finalize",
   "identity.finalizeStatus",
   "attestation.createPermit",
-  "crypto.storeProof",
-  "crypto.verifyProof",
+  "zk.storeProof",
+  "zk.verifyProof",
   "compliantToken.mint",
   "account.deleteAccount",
 ]);
