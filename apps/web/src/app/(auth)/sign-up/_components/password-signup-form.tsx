@@ -3,6 +3,7 @@
 import { useForm } from "@tanstack/react-form";
 import { useId, useState } from "react";
 
+import { PasswordRequirements } from "@/components/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,8 +22,6 @@ import {
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password";
 import { ensureAuthSession } from "@/lib/auth/session-cleanup";
-
-import { PasswordRequirements } from "../../_components/password-requirements";
 
 interface PasswordSignUpFormProps {
   disabled?: boolean;

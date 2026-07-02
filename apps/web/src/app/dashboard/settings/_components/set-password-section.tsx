@@ -5,7 +5,7 @@ import { KeyRound } from "lucide-react";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
-import { PasswordRequirements } from "@/app/(auth)/_components/password-requirements";
+import { PasswordRequirements } from "@/components/password-requirements";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
