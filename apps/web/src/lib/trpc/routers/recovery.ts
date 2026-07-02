@@ -62,7 +62,10 @@ import {
   createFheEnrollmentContext,
   getFheEnrollmentContext,
 } from "@/lib/privacy/fhe/enrollment-tokens";
-import { wrappedDekSchema } from "@/lib/privacy/secrets/catalog";
+import {
+  kekSourceSchema,
+  wrappedDekSchema,
+} from "@/lib/privacy/secrets/catalog";
 import {
   createRecoveryKeySet,
   executeSigningRounds,
@@ -1020,7 +1023,7 @@ const finalizeProcedure = publicProcedure
           credentialId: z.string().min(1),
           wrappedDek: wrappedDekSchema,
           prfSalt: z.string().optional(),
-          kekSource: z.enum(["prf", "opaque", "wallet"]),
+          kekSource: kekSourceSchema.exclude(["recovery"]),
         })
       ),
     })

@@ -42,6 +42,15 @@ export const secretTypeSchema = z.enum([
  */
 export type SecretType = z.infer<typeof secretTypeSchema>;
 
+/**
+ * Credential source that derived the KEK wrapping a secret. `recovery`
+ * applies only to guardian-recovery wrappers; endpoints that never mint
+ * those use `kekSourceSchema.exclude(["recovery"])`.
+ */
+export const kekSourceSchema = z.enum(["prf", "opaque", "wallet", "recovery"]);
+
+export type KekSource = z.infer<typeof kekSourceSchema>;
+
 const wrappedDekJsonSchema = z.object({
   alg: z.string().min(1),
   iv: z.string().min(1),

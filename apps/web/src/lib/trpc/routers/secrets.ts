@@ -19,6 +19,7 @@ import {
 } from "@/lib/db/queries/privacy";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
+  kekSourceSchema,
   prfSaltSchema,
   secretTypeSchema,
   wrappedDekSchema,
@@ -68,7 +69,7 @@ export const secretsRouter = router({
         prfSalt: prfSaltSchema.optional(),
         credentialId: z.string().min(1),
         metadata: metadataSchema,
-        kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
+        kekSource: kekSourceSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -211,7 +212,7 @@ export const secretsRouter = router({
         credentialId: z.string().min(1),
         wrappedDek: wrappedDekSchema,
         prfSalt: prfSaltSchema.optional(),
-        kekSource: z.enum(["prf", "opaque", "wallet", "recovery"]).optional(),
+        kekSource: kekSourceSchema.optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

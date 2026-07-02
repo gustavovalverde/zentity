@@ -12,6 +12,7 @@
 import type {
   EnrollmentCredential,
   EnvelopeFormat,
+  KekSource,
   SecretType,
 } from "./catalog";
 
@@ -218,7 +219,7 @@ export async function storeSecretWithCredential(params: {
   let wrappedDek: string;
   let credentialId: string;
   let prfSalt: string | undefined;
-  let kekSource: "prf" | "opaque" | "wallet" | "recovery";
+  let kekSource: KekSource;
 
   if (params.credential.type === "passkey") {
     const ctx = params.credential.context;
