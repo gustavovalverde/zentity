@@ -11,11 +11,11 @@ import type {
   BbsProof,
   DisclosureRequest,
   WalletCredentialClaimKey,
-} from "./types";
+} from "./wire";
 
 import { bbs } from "./curve";
 import { subjectToMessages } from "./signer";
-import { getClaimOrder } from "./types";
+import { WALLET_CREDENTIAL_CLAIM_ORDER } from "./wire";
 
 /**
  * Create disclosure requests from a list of claims to reveal.
@@ -26,7 +26,7 @@ import { getClaimOrder } from "./types";
 function createDisclosureRequest(
   revealClaims: WalletCredentialClaimKey[]
 ): DisclosureRequest[] {
-  const claimOrder = getClaimOrder();
+  const claimOrder = WALLET_CREDENTIAL_CLAIM_ORDER;
   return claimOrder.map((key, index) => ({
     index,
     reveal: (revealClaims as string[]).includes(key),

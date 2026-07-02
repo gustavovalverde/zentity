@@ -5,7 +5,7 @@
  * Uses @mattrglobal/pairing-crypto WASM implementation.
  */
 
-import type { BbsKeyPair } from "./types";
+import type { BbsKeyPair } from "./wire";
 
 import { bbs } from "./curve";
 

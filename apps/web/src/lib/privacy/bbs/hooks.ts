@@ -6,7 +6,7 @@
  * Hooks for managing BBS+ credentials in React components.
  */
 
-import type { BbsCredential } from "./types";
+import type { BbsCredential } from "./wire";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 

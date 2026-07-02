@@ -14,12 +14,9 @@ import "client-only";
  * - Index: userId (for listing all user credentials)
  */
 
-import type { BbsCredential } from "./types";
+import type { BbsCredential } from "./wire";
 
-import {
-  deserializeCredential,
-  type SerializedBbsCredential,
-} from "./serialization";
+import { deserializeCredential, type SerializedBbsCredential } from "./wire";
 
 const DB_NAME = "zentity-bbs";
 const DB_VERSION = 1;

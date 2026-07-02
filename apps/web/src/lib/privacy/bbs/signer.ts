@@ -12,10 +12,10 @@ import type {
   BbsMessage,
   BbsSignature,
   WalletIdentitySubject,
-} from "./types";
+} from "./wire";
 
 import { bbs } from "./curve";
-import { getClaimOrder } from "./types";
+import { WALLET_CREDENTIAL_CLAIM_ORDER } from "./wire";
 
 /**
  * Encode a claim value to bytes for BBS+ signing.
@@ -37,7 +37,7 @@ function encodeClaimValue(
 export function subjectToMessages(
   subject: WalletIdentitySubject
 ): BbsMessage[] {
-  const claimOrder = getClaimOrder();
+  const claimOrder = WALLET_CREDENTIAL_CLAIM_ORDER;
   const subjectRecord = subject as unknown as Record<
     string,
     string | number | boolean | undefined

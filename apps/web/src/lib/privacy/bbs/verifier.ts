@@ -5,10 +5,10 @@
  * Confirms hidden messages exist without seeing them.
  */
 
-import type { BbsPresentation, BbsProof, BbsVerifyResult } from "./types";
+import type { BbsPresentation, BbsProof, BbsVerifyResult } from "./wire";
 
 import { bbs } from "./curve";
-import { getClaimOrder } from "./types";
+import { WALLET_CREDENTIAL_CLAIM_ORDER } from "./wire";
 
 /**
  * Verify a BBS+ derived proof.
@@ -23,7 +23,7 @@ async function verifyProof(
   publicKey: Uint8Array,
   header?: Uint8Array
 ): Promise<BbsVerifyResult> {
-  const totalMessages = getClaimOrder().length;
+  const totalMessages = WALLET_CREDENTIAL_CLAIM_ORDER.length;
 
   try {
     // Build messages map with only revealed messages at their indices
