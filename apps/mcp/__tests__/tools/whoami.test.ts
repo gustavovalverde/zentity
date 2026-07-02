@@ -12,7 +12,7 @@ vi.mock("../../src/services/account-summary.js", () => ({
   fetchAccountSummary: () => mockSummary(),
 }));
 
-import { createServer } from "../../src/server/index.js";
+import { createServer } from "../../src/server.js";
 
 describe("whoami", () => {
   beforeEach(() => {

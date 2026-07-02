@@ -1,6 +1,6 @@
+import type { DpopKeyPair } from "@zentity/sdk/rp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OAuthSessionContext } from "../../src/runtime/auth-context.js";
-import type { DpopKeyPair } from "../../src/runtime/dpop-proof.js";
 
 const mockBeginCibaApproval = vi.fn();
 const mockLogPendingApprovalHandoff = vi.fn();
@@ -14,7 +14,7 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/services/ciba.js", () => ({
+vi.mock("@zentity/sdk", () => ({
   beginCibaApproval: (...args: unknown[]) => mockBeginCibaApproval(...args),
   createPendingApproval: (
     _params: { resource?: string | undefined },
@@ -41,10 +41,17 @@ const mockDpopKey: DpopKeyPair = {
   publicJwk: { kty: "EC", crv: "P-256" },
 };
 
+const mockDpopClient = {
+  keyPair: mockDpopKey,
+  proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
+  withNonceRetry: vi.fn(),
+};
+
 const oauth: OAuthSessionContext = {
   accessToken: "access-token",
   accountSub: "user-123",
   clientId: "client-123",
+  dpopClient: mockDpopClient,
   dpopKey: mockDpopKey,
   loginHint: "user@example.com",
   scopes: ["openid"],
@@ -77,7 +84,7 @@ function createParams(input: {
       cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
       tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
       clientId: oauth.clientId,
-      dpopKey: oauth.dpopKey,
+      dpopSigner: oauth.dpopClient,
       loginHint: oauth.loginHint,
       scope: "openid identity.name",
       bindingMessage: "Claude Code: Share my name",

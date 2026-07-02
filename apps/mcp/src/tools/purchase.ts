@@ -5,7 +5,6 @@ import {
   type X402PaymentContext,
 } from "@zentity/sdk";
 import {
-  createDpopClientFromKeyPair,
   identityStrengthTier,
   PAYMENT_RESPONSE_HEADER,
   type ProofOfHumanClaims,
@@ -283,13 +282,12 @@ function assertX402Bounds(params: PurchaseParams, context: X402PaymentContext) {
 
 async function requestProofOfHumanForPurchase(input: {
   accessToken: string;
-  dpopKey: ReturnType<typeof getOAuthContext>["dpopKey"];
+  dpopClient: ReturnType<typeof getOAuthContext>["dpopClient"];
   minComplianceLevel: number;
 }): Promise<{ claims: ProofOfHumanClaims; token: string }> {
-  const dpopClient = await createDpopClientFromKeyPair(input.dpopKey);
   const proofOfHuman = await requestProofOfHumanToken({
     accessToken: input.accessToken,
-    dpopClient,
+    dpopClient: input.dpopClient,
     proofOfHumanUrl: `${config.zentityUrl}/api/auth/oauth2/proof-of-human`,
   });
 
@@ -343,7 +341,7 @@ async function fetchX402Purchase(input: {
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
           tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
           clientId: input.oauth.clientId,
-          dpopKey: input.oauth.dpopKey,
+          dpopSigner: input.oauth.dpopClient,
           loginHint: input.oauth.loginHint || input.oauth.accountSub,
           scope: buildX402PurchaseScope(),
           bindingMessage: input.bindingMessage,
@@ -366,7 +364,7 @@ async function fetchX402Purchase(input: {
         onApproved: async (tokenSet) => {
           const proofOfHuman = await requestProofOfHumanForPurchase({
             accessToken: tokenSet.accessToken,
-            dpopKey: input.oauth.dpopKey,
+            dpopClient: input.oauth.dpopClient,
             minComplianceLevel,
           });
           proofOfHumanClaims = proofOfHuman.claims;
@@ -497,7 +495,7 @@ async function runDirectPurchaseTool(input: {
       cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: input.oauth.clientId,
-      dpopKey: input.oauth.dpopKey,
+      dpopSigner: input.oauth.dpopClient,
       loginHint: input.oauth.loginHint || input.oauth.accountSub,
       scope: buildPurchaseScope(
         Boolean(input.params.requires_age_verification)
@@ -520,7 +518,7 @@ async function runDirectPurchaseTool(input: {
     onApproved: async (tokenSet) => {
       const pii = await redeemRelease(
         tokenSet.accessToken,
-        input.oauth.dpopKey
+        input.oauth.dpopClient
       );
       return {
         status: "complete" as const,

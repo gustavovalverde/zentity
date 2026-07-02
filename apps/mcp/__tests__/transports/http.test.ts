@@ -92,7 +92,7 @@ vi.mock("../../src/oauth-client.js", () => ({
   }),
 }));
 
-vi.mock("../../src/server/index.js", () => ({
+vi.mock("../../src/server.js", () => ({
   createServer: vi.fn(() => ({
     server: { connect: vi.fn() },
     cleanup: vi.fn(),

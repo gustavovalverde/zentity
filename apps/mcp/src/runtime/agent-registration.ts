@@ -5,7 +5,6 @@ import {
   signAgentAssertion as signSdkAgentAssertion,
 } from "@zentity/sdk";
 import { exchangeToken } from "@zentity/sdk/fpa";
-import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
 import { discoverMcpOAuth } from "../oauth-client.js";
@@ -40,7 +39,7 @@ export async function prepareBootstrapRegistrationAuth(
     subjectToken: auth.accessToken,
     audience: agentConfiguration.bootstrap_token_exchange.audience,
     clientId: auth.clientId,
-    dpopClient: await createDpopClientFromKeyPair(auth.dpopKey),
+    dpopClient: auth.dpopClient,
     scope:
       agentConfiguration.bootstrap_token_exchange.scopes_supported.join(" ") ||
       RUNTIME_BOOTSTRAP_SCOPE_STRING,
@@ -72,7 +71,7 @@ export async function ensureHostRegistered(
 
   const registeredHost = await registerHost({
     accessToken: auth.accessToken,
-    dpopClient: await createDpopClientFromKeyPair(auth.dpopKey),
+    dpopClient: auth.dpopClient,
     endpoint: agentConfiguration.host_registration_endpoint,
     hostKey,
     hostName,
@@ -113,7 +112,7 @@ export async function registerAgentSession(
   const registeredSession = await registerSdkAgentSession({
     accessToken: auth.accessToken,
     display,
-    dpopClient: await createDpopClientFromKeyPair(auth.dpopKey),
+    dpopClient: auth.dpopClient,
     endpoint: agentConfiguration.registration_endpoint,
     hostId,
     hostKey,

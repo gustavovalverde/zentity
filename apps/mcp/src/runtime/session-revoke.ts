@@ -1,7 +1,6 @@
 import { config } from "../config.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
 import type { OAuthSessionContext } from "./auth-context.js";
-import { createDpopProof, extractDpopNonce } from "./dpop-proof.js";
 
 export async function revokeAgentSession(
   auth: OAuthSessionContext,
@@ -13,32 +12,14 @@ export async function revokeAgentSession(
   const revokeUrl = agentConfiguration.revocation_endpoint;
   const body = JSON.stringify({ sessionId });
 
-  let proof = await createDpopProof(
-    auth.dpopKey,
-    "POST",
-    revokeUrl,
-    auth.accessToken
-  );
-  let response = await fetch(revokeUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `DPoP ${auth.accessToken}`,
-      DPoP: proof,
-    },
-    body,
-  });
-
-  const nonce = extractDpopNonce(response);
-  if (nonce && (response.status === 400 || response.status === 401)) {
-    proof = await createDpopProof(
-      auth.dpopKey,
+  const { response } = await auth.dpopClient.withNonceRetry(async (nonce) => {
+    const proof = await auth.dpopClient.proofFor(
       "POST",
       revokeUrl,
       auth.accessToken,
       nonce
     );
-    response = await fetch(revokeUrl, {
+    const attemptResponse = await fetch(revokeUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -47,7 +28,8 @@ export async function revokeAgentSession(
       },
       body,
     });
-  }
+    return { response: attemptResponse, result: null };
+  });
 
   if (!response.ok) {
     const text = await response.text();

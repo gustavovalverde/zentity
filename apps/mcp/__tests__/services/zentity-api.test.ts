@@ -3,6 +3,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mockOAuthContext = {
   accessToken: "test-access-token",
   clientId: "test-client",
+  dpopClient: {
+    proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
+    withNonceRetry: async (
+      attempt: (nonce?: string) => Promise<{ response: Response }>
+    ) => {
+      const initial = await attempt();
+      if (initial.response.status !== 400 && initial.response.status !== 401) {
+        return initial;
+      }
+      const nonce = initial.response.headers.get("DPoP-Nonce");
+      return nonce ? attempt(nonce) : initial;
+    },
+  },
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
@@ -14,17 +27,11 @@ const mockAuthContext = {
   oauth: mockOAuthContext,
 };
 
-vi.mock("../../src/runtime/dpop-proof.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
-}));
-
 vi.mock("../../src/runtime/auth-context.js", () => ({
   getAuthContext: () => mockAuthContext,
   getOAuthContext: () => mockOAuthContext,
 }));
 
-import { extractDpopNonce } from "../../src/runtime/dpop-proof.js";
 import { zentityFetch } from "../../src/services/zentity-api.js";
 
 describe("zentityFetch", () => {
@@ -53,12 +60,13 @@ describe("zentityFetch", () => {
   });
 
   it("retries with new DPoP nonce on 401", async () => {
-    (extractDpopNonce as ReturnType<typeof vi.fn>)
-      .mockReturnValueOnce("new-nonce")
-      .mockReturnValueOnce("new-nonce");
-
     vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response("", { status: 401 }))
+      .mockResolvedValueOnce(
+        new Response("", {
+          status: 401,
+          headers: { "DPoP-Nonce": "new-nonce" },
+        })
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ ok: true }), { status: 200 })
       );

@@ -1,5 +1,4 @@
 import { getAuthContext, getOAuthContext } from "../runtime/auth-context.js";
-import { createDpopProof, extractDpopNonce } from "../runtime/dpop-proof.js";
 
 const dpopNonces = new Map<string, string>();
 
@@ -7,59 +6,35 @@ export async function zentityFetch(
   url: string,
   options?: { method?: string; body?: string }
 ): Promise<Response> {
-  const method = options?.method ?? "GET";
-  const auth = getAuthContext();
-  const oauth = getOAuthContext(auth);
-
+  const method = (options?.method ?? "GET").toUpperCase();
+  const oauth = getOAuthContext(getAuthContext());
   const nonceKey = oauth.accountSub || oauth.clientId;
-  const dpopNonce = dpopNonces.get(nonceKey);
+  const cachedNonce = dpopNonces.get(nonceKey);
+  const body = options?.body;
 
-  let proof = await createDpopProof(
-    oauth.dpopKey,
-    method,
-    url,
-    oauth.accessToken,
-    dpopNonce
-  );
-
-  const headers: Record<string, string> = {
-    Authorization: `DPoP ${oauth.accessToken}`,
-    DPoP: proof,
-  };
-  if (options?.body) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const fetchBody = options?.body;
-  let response = await fetch(url, {
-    method,
-    headers,
-    ...(fetchBody ? { body: fetchBody } : {}),
-  });
-
-  // DPoP nonce retry
-  const newNonce = extractDpopNonce(response);
-  if (
-    newNonce &&
-    dpopNonce !== newNonce &&
-    (response.status === 400 || response.status === 401)
-  ) {
-    dpopNonces.set(nonceKey, newNonce);
-    proof = await createDpopProof(
-      oauth.dpopKey,
+  const { response } = await oauth.dpopClient.withNonceRetry(async (nonce) => {
+    const proof = await oauth.dpopClient.proofFor(
       method,
       url,
       oauth.accessToken,
-      newNonce
+      nonce ?? cachedNonce
     );
-    headers.DPoP = proof;
-    response = await fetch(url, {
+    const headers: Record<string, string> = {
+      Authorization: `DPoP ${oauth.accessToken}`,
+      DPoP: proof,
+    };
+    if (body) {
+      headers["Content-Type"] = "application/json";
+    }
+    const attemptResponse = await fetch(url, {
       method,
       headers,
-      ...(fetchBody ? { body: fetchBody } : {}),
+      ...(body ? { body } : {}),
     });
-  }
-  const finalNonce = extractDpopNonce(response);
+    return { response: attemptResponse, result: null };
+  });
+
+  const finalNonce = response.headers.get("DPoP-Nonce");
   if (finalNonce) {
     dpopNonces.set(nonceKey, finalNonce);
   }

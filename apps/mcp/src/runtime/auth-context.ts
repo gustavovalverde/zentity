@@ -1,11 +1,23 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { InstalledOAuthSession } from "@zentity/sdk/node";
+import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
 import {
   type AgentRuntimeState,
   agentRuntimeStateStore,
 } from "./agent-session-state.js";
 
-export type OAuthSessionContext = InstalledOAuthSession;
+export type OAuthSessionContext = InstalledOAuthSession & {
+  dpopClient: DpopClient;
+};
+
+export async function withDpopClient(
+  session: InstalledOAuthSession
+): Promise<OAuthSessionContext> {
+  return {
+    ...session,
+    dpopClient: await createDpopClientFromKeyPair(session.dpopKey),
+  };
+}
 
 export interface AuthContext {
   oauth: OAuthSessionContext;
