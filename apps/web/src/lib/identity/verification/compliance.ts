@@ -18,7 +18,7 @@
  * does NOT contribute to the on-chain numeric tier — it is its own surface.
  */
 
-import { ISO_3166_ALPHA3_TO_NUMERIC } from "./iso-3166-numeric";
+import countries from "i18n-iso-countries";
 
 // ─── Orthogonal axes ────────────────────────────────────────────────
 
@@ -259,9 +259,9 @@ function validateBirthYearOffset(value: number | null): number | null {
 }
 
 /**
- * Map ISO 3166-1 alpha-3 country code to numeric code.
- * Uses the complete ISO 3166-1 standard (249 entries).
+ * Map ISO 3166-1 alpha-3 country code to its numeric code, or 0 when unknown.
  */
 export function countryCodeToNumeric(alphaCode: string): number {
-  return ISO_3166_ALPHA3_TO_NUMERIC[alphaCode.toUpperCase()] ?? 0;
+  const numeric = countries.alpha3ToNumeric(alphaCode.toUpperCase());
+  return numeric ? Number(numeric) : 0;
 }

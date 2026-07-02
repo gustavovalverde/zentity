@@ -27,6 +27,10 @@ const joseMocks = vi.hoisted(() => {
   }
 
   return {
+    base64url: {
+      encode: (input: Uint8Array | string) =>
+        Buffer.from(input as Uint8Array).toString("base64url"),
+    },
     exportJWK: vi.fn(async (key: unknown) =>
       key === "private-key"
         ? { crv: "P-256", d: "private", kty: "EC", x: "pub-x", y: "pub-y" }

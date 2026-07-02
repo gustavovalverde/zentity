@@ -1,9 +1,12 @@
 import { p256 } from "@noble/curves/p256";
-import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
-
-const BASE64URL_PLUS_RE = /\+/g;
-const BASE64URL_SLASH_RE = /\//g;
-const BASE64URL_PADDING_RE = /=+$/;
+import {
+  base64url,
+  exportJWK,
+  generateKeyPair,
+  importJWK,
+  type JWK,
+  SignJWT,
+} from "jose";
 
 const P256_SCALAR_BYTES = 32;
 // HKDF parameters for the zpay payment-channel DPoP key. They are wire
@@ -35,36 +38,12 @@ function toUrlString(url: string | URL): string {
   return url instanceof URL ? url.toString() : url;
 }
 
-export function encodeBase64Url(bytes: Uint8Array): string {
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(bytes).toString("base64url");
-  }
-
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-
-  if (typeof btoa !== "function") {
-    throw new Error("Base64url encoding is unavailable in this runtime");
-  }
-
-  return btoa(binary)
-    .replace(BASE64URL_PLUS_RE, "-")
-    .replace(BASE64URL_SLASH_RE, "_")
-    .replace(BASE64URL_PADDING_RE, "");
-}
-
-export function encodeStringBase64Url(value: string): string {
-  return encodeBase64Url(new TextEncoder().encode(value));
-}
-
 async function hashAccessToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(token)
   );
-  return encodeBase64Url(new Uint8Array(digest));
+  return base64url.encode(new Uint8Array(digest));
 }
 
 async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
@@ -197,12 +176,12 @@ export async function deriveDpopKeyPairFromSeed(
   const scalar = reduced === 0n ? 1n : reduced;
   const privateScalar = bigIntToBytes(scalar, P256_SCALAR_BYTES);
   const { x, y } = p256.Point.fromPrivateKey(privateScalar).toAffine();
-  const xB64 = encodeBase64Url(bigIntToBytes(x, P256_SCALAR_BYTES));
-  const yB64 = encodeBase64Url(bigIntToBytes(y, P256_SCALAR_BYTES));
+  const xB64 = base64url.encode(bigIntToBytes(x, P256_SCALAR_BYTES));
+  const yB64 = base64url.encode(bigIntToBytes(y, P256_SCALAR_BYTES));
   return {
     privateJwk: {
       crv: "P-256",
-      d: encodeBase64Url(privateScalar),
+      d: base64url.encode(privateScalar),
       kty: "EC",
       x: xB64,
       y: yB64,

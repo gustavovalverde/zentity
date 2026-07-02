@@ -1,4 +1,4 @@
-import { encodeBase64Url } from "../rp/dpop-client";
+import { base64url } from "jose";
 
 export interface PkceChallenge {
   codeChallenge: string;
@@ -9,7 +9,7 @@ export interface PkceChallenge {
 export function generateCodeVerifier(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
-  return encodeBase64Url(bytes);
+  return base64url.encode(bytes);
 }
 
 export async function computeCodeChallenge(verifier: string): Promise<string> {
@@ -17,7 +17,7 @@ export async function computeCodeChallenge(verifier: string): Promise<string> {
     "SHA-256",
     new TextEncoder().encode(verifier)
   );
-  return encodeBase64Url(new Uint8Array(hash));
+  return base64url.encode(new Uint8Array(hash));
 }
 
 export async function generatePkceChallenge(): Promise<PkceChallenge> {

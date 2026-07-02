@@ -20,8 +20,6 @@ import {
 import countries from "i18n-iso-countries";
 import enLocale from "i18n-iso-countries/langs/en.json" with { type: "json" };
 
-import { ISO_3166_ALPHA3_TO_NUMERIC } from "@/lib/identity/verification/iso-3166-numeric";
-
 // i18n-iso-countries ships its browser build with no locale registered, so
 // getName/getAlpha3Code return undefined client-side (Node's entry auto-registers,
 // the bundler's does not). Register English once, before the country groups below
@@ -136,14 +134,6 @@ const PASSPORT_CODE_TO_ALPHA3: Record<string, string> = {
 
 const ALL_COUNTRIES_SET = new Set(ALL_COUNTRIES);
 
-/** Reverse map: ISO 3166-1 numeric → alpha-3 (built from the existing forward map) */
-const ISO_3166_NUMERIC_TO_ALPHA3 = new Map<number, string>(
-  Object.entries(ISO_3166_ALPHA3_TO_NUMERIC).map(([alpha3, num]) => [
-    num,
-    alpha3,
-  ])
-);
-
 function isValidAlpha3(code: string): boolean {
   return ALL_COUNTRIES_SET.has(code);
 }
@@ -151,7 +141,7 @@ function isValidAlpha3(code: string): boolean {
 function toAlpha3(code: string | number): string | undefined {
   if (typeof code === "number") {
     // Try ISO 3166-1 numeric first (used by on-chain attestation)
-    const fromIso = ISO_3166_NUMERIC_TO_ALPHA3.get(code);
+    const fromIso = countries.numericToAlpha3(code);
     if (fromIso) {
       return fromIso;
     }

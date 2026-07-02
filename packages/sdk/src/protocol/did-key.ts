@@ -1,3 +1,5 @@
+import { base64url } from "jose";
+
 const BASE58_ALPHABET =
 	"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58_INDEX = new Map(
@@ -87,29 +89,6 @@ function decodeBase58btc(value: string): Uint8Array {
 	]);
 }
 
-function encodeBase64Url(bytes: Uint8Array): string {
-	let binary = "";
-	for (const byte of bytes) {
-		binary += String.fromCharCode(byte);
-	}
-
-	return btoa(binary)
-		.replace(/\+/g, "-")
-		.replace(/\//g, "_")
-		.replace(/=+$/u, "");
-}
-
-function decodeBase64Url(value: string): Uint8Array {
-	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-	const padded = normalized.padEnd(
-		normalized.length + ((4 - (normalized.length % 4)) % 4),
-		"=",
-	);
-
-	const binary = atob(padded);
-	return Uint8Array.from(binary, (character) => character.charCodeAt(0));
-}
-
 function parseEd25519PublicJwk(
 	value: Ed25519PublicJwk | Ed25519PublicJwkInput | string,
 ): Ed25519PublicJwk {
@@ -132,7 +111,7 @@ function parseEd25519PublicJwk(
 function readEd25519PublicKeyBytes(
 	value: Ed25519PublicJwk | Ed25519PublicJwkInput | string,
 ): Uint8Array {
-	const bytes = decodeBase64Url(parseEd25519PublicJwk(value).x);
+	const bytes = base64url.decode(parseEd25519PublicJwk(value).x);
 	if (bytes.length !== ED25519_PUBLIC_KEY_LENGTH) {
 		throw new InvalidDidKeyFormatError(
 			"Ed25519 public keys must be 32 bytes long",
@@ -216,6 +195,6 @@ export function decodeEd25519DidKeyToJwk(didKey: string): Ed25519PublicJwk {
 	return {
 		crv: "Ed25519",
 		kty: "OKP",
-		x: encodeBase64Url(decodeEd25519DidKey(didKey)),
+		x: base64url.encode(decodeEd25519DidKey(didKey)),
 	};
 }
