@@ -15,7 +15,11 @@ import {
   capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
 
-import { type AuthorizationDetail, deriveCapabilityName } from "./capability";
+import {
+  type AuthorizationDetail,
+  deriveCapabilityName,
+  resolveCapabilityApprovalStrength,
+} from "./capability";
 
 interface Constraint {
   field: string;
@@ -315,14 +319,8 @@ export async function evaluateSessionGrants(
     return { approved: false, reason: "no matching capability for request" };
   }
 
-  const capability = await db
-    .select({ approvalStrength: agentCapabilities.approvalStrength })
-    .from(agentCapabilities)
-    .where(eq(agentCapabilities.name, capabilityName))
-    .limit(1)
-    .get();
-
-  const approvalStrength = capability?.approvalStrength ?? "session";
+  const approvalStrength =
+    (await resolveCapabilityApprovalStrength(capabilityName)) ?? "session";
   const scopes = scope.split(" ").filter((item) => item !== "openid");
   const containsIdentityScope = scopes.some(isIdentityScope);
 
