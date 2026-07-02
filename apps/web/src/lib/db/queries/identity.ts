@@ -976,13 +976,9 @@ export async function reconcileIdentityBundle(
     nextEffectiveVerificationId,
   });
   const nextLastVerifiedAt = effectiveVerification?.verifiedAt ?? null;
-  const nextVerificationExpiresAt =
-    effectiveVerification?.verifiedAt && effectiveVerification?.method
-      ? computeFreshnessDeadline({
-          method: effectiveVerification.method,
-          verifiedAt: effectiveVerification.verifiedAt,
-        })
-      : null;
+  const nextVerificationExpiresAt = effectiveVerification?.verifiedAt
+    ? computeFreshnessDeadline(effectiveVerification.verifiedAt)
+    : null;
   const shouldRefreshFreshnessCheck =
     (bundle?.effectiveVerificationId ?? null) !== nextEffectiveVerificationId ||
     (bundle?.lastVerifiedAt ?? null) !== nextLastVerifiedAt ||

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireAdminApiKey } from "@/lib/http/admin-auth";
-import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness-worker";
+import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness";
 
 export async function POST(request: Request): Promise<Response> {
   const unauthorized = requireAdminApiKey(request);
