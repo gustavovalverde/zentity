@@ -67,8 +67,8 @@ import {
   createRecoveryKeySet,
   executeSigningRounds,
   initSigningSession,
+  signGuardianAssertionJwt,
 } from "@/lib/recovery/frost-service";
-import { signGuardianAssertionJwt } from "@/lib/recovery/guardian-jwt";
 import {
   decryptRecoveryWrappedDek,
   deriveFrostUnwrapKey,
