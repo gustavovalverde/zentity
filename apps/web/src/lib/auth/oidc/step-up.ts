@@ -11,7 +11,7 @@
  * Authorization Challenge Endpoint instead of requiring a browser redirect.
  */
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import type { AccountTier } from "@/lib/assurance/types";
+import type { AccountTier } from "@/lib/assurance/tier";
 
 import { randomBytes } from "node:crypto";
 

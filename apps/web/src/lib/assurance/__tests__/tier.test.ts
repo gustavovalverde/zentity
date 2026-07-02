@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeAccountAssurance, deriveAuthStrength } from "../compute";
+import { computeAccountAssurance, deriveAuthStrength } from "../tier";
 
 describe("computeAccountAssurance", () => {
   it("returns tier 0 for unauthenticated users", () => {

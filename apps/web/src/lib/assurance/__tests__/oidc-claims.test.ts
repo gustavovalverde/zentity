@@ -1,4 +1,4 @@
-import type { AccountTier } from "../types";
+import type { AccountTier } from "../tier";
 
 import crypto from "node:crypto";
 

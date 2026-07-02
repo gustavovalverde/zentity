@@ -6,14 +6,14 @@
  */
 import "server-only";
 
-import type { FeatureName } from "@/lib/assurance/types";
+import type { FeatureName } from "@/lib/assurance/tier";
 
-import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import {
   getSecurityPosture,
   getSecurityPostureForSession,
   getUnauthenticatedSecurityPosture,
 } from "@/lib/assurance/posture";
+import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 
 import { protectedProcedure, publicProcedure, router } from "../server";
 

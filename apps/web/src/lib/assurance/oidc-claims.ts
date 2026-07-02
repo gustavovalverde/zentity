@@ -11,7 +11,7 @@ import type {
   AccountTier,
   AuthenticationState,
   LoginMethod,
-} from "./types";
+} from "./tier";
 
 import crypto from "node:crypto";
 

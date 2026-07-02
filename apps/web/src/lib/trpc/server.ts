@@ -7,7 +7,7 @@
  */
 import "server-only";
 
-import type { AuthenticationState, FeatureName } from "@/lib/assurance/types";
+import type { AuthenticationState, FeatureName } from "@/lib/assurance/tier";
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
@@ -16,8 +16,8 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { canAccessFeature, getBlockedReason } from "@/lib/assurance/features";
 import { getSecurityPosture } from "@/lib/assurance/posture";
+import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,

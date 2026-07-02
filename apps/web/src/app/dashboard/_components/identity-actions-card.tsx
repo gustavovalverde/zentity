@@ -1,6 +1,6 @@
 "use client";
 
-import type { SecurityPosture } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/tier";
 
 import { ArrowRight, FileCheck2, Lock, Stamp, Zap } from "lucide-react";
 import Link from "next/link";
@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { canAccessFeature } from "@/lib/assurance/features";
+import { canAccessFeature } from "@/lib/assurance/tier";
 import { cn } from "@/lib/cn";
 
 import { CredentialsSection } from "./credentials-section";

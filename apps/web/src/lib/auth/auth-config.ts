@@ -1,6 +1,6 @@
 import type { AuthContext } from "@better-auth/core";
 import type { AapAccessTokenClaims } from "@zentity/sdk/protocol";
-import type { LoginMethod } from "@/lib/assurance/types";
+import type { LoginMethod } from "@/lib/assurance/tier";
 import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
 import { createHash } from "node:crypto";

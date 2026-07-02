@@ -12,7 +12,7 @@ import type {
   AccountAssurance,
   AccountCapabilities,
   SecurityPosture,
-} from "./types";
+} from "./tier";
 
 import { and, eq } from "drizzle-orm";
 import { cache } from "react";
@@ -23,7 +23,7 @@ import { accounts, passkeys } from "@/lib/db/schema/auth";
 import { hasRequiredOcrProofTypes } from "@/lib/identity/verification/ocr-completeness";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
-import { computeAccountAssurance } from "./compute";
+import { computeAccountAssurance } from "./tier";
 
 function toAccountAssuranceInput(
   model: VerificationReadModel,

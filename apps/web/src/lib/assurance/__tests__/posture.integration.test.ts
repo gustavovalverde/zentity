@@ -1,4 +1,4 @@
-import type { LoginMethod } from "@/lib/assurance/types";
+import type { LoginMethod } from "@/lib/assurance/tier";
 import type { Session } from "@/lib/auth/auth-config";
 
 import crypto from "node:crypto";
