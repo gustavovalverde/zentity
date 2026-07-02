@@ -9,7 +9,6 @@
     "src/lib/auth/oidc/step-up.ts": ["exports"],
     "src/lib/blockchain/attestation/providers.ts": ["exports", "types"],
     "src/lib/blockchain/confidential/client-networks.ts": ["exports"],
-    "src/lib/terminology.ts": ["exports"],
     "src/lib/db/queries/attestation.ts": ["exports"],
     "src/lib/identity/human-signal.ts": ["exports"],
     "src/lib/identity/liveness/human/server.ts": ["exports"],

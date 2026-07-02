@@ -30,6 +30,7 @@ import {
   useVaultUnlock,
   VaultUnlockPanel,
 } from "@/components/vault-unlock";
+import { formatAcrValue } from "@/lib/agents/labels";
 import { asyncHandler } from "@/lib/async-handler";
 import {
   findMissingIdentityFields,
@@ -40,7 +41,6 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
-import { formatAcrValue } from "@/lib/terminology";
 import { trpcReact } from "@/lib/trpc/client";
 
 type PageState =

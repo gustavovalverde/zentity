@@ -23,8 +23,24 @@ const HOST_TIER_LABELS: Record<string, string> = {
   unverified: "Unverified",
 };
 
+const ACR_PREFIX = "urn:zentity:assurance:";
+
+const ACR_LABELS: Record<string, string> = {
+  "tier-0": "Account created",
+  "tier-1": "Requires basic verification",
+  "tier-2": "Requires verified identity",
+  "tier-3": "Requires chip-verified identity",
+};
+
 export function formatCapabilityName(name: string): string {
   return CAPABILITY_LABELS[name] ?? name;
+}
+
+export function formatAcrValue(acr: string): string {
+  const fragment = acr.startsWith(ACR_PREFIX)
+    ? acr.slice(ACR_PREFIX.length)
+    : acr;
+  return ACR_LABELS[fragment] ?? `Assurance: ${fragment}`;
 }
 
 export function formatGrantSource(source: string): string {
