@@ -32,7 +32,7 @@ export type VerificationMethod = "ocr" | "nfc_chip" | null;
  *   - `documentary_full`   — OCR + liveness + face-match + ZK proofs
  *   - `cryptographic_chip` — NFC chip read with strong cryptographic binding
  */
-export type IdentityEvidenceStrength =
+type IdentityEvidenceStrength =
   | "none"
   | "documentary"
   | "documentary_full"
@@ -138,7 +138,7 @@ export const COMPLIANCE_ONCHAIN_TIERS = {
   cryptographic_chip: 3,
 } as const;
 
-export const DEFAULT_POLICY_VERSION = "v1.0";
+const DEFAULT_POLICY_VERSION = "v1.0";
 
 // ─── Derivation engine ─────────────────────────────────────────────
 
@@ -169,6 +169,61 @@ export function deriveComplianceStatus(
 
 export function complianceOnchainTier(compliance: ComplianceResult): number {
   return COMPLIANCE_ONCHAIN_TIERS[compliance.identity.strength];
+}
+
+/**
+ * Project a compliance result from the materialized verification_checks rows.
+ * Complements deriveComplianceStatus (which derives from raw evidence) for the
+ * read path that reads already-persisted checks.
+ */
+export function deriveComplianceFromChecks(
+  rows: ReadonlyArray<{ checkType: string; passed: boolean }>,
+  method: "ocr" | "nfc_chip",
+  birthYearOffset: number | null,
+  hasHumanityCredential: boolean
+): ComplianceResult {
+  const checks: ComplianceChecks = {
+    ...EMPTY_CHECKS,
+    sybilResistant: hasHumanityCredential,
+  };
+  for (const row of rows) {
+    const key =
+      CHECK_TYPE_TO_COMPLIANCE_KEY[row.checkType as VerificationCheckType];
+    if (key) {
+      checks[key] = row.passed;
+    }
+  }
+  checks.sybilResistant = checks.sybilResistant || hasHumanityCredential;
+
+  const verified = Object.values(checks).every(Boolean);
+
+  return {
+    identity: {
+      verified,
+      method,
+      strength: deriveIdentityStrength(checks, method),
+    },
+    humanity: {
+      proven: hasHumanityCredential,
+    },
+    policy: {
+      version: DEFAULT_POLICY_VERSION,
+      checks,
+      birthYearOffset: validateBirthYearOffset(birthYearOffset),
+    },
+  };
+}
+
+/**
+ * FHE encryption is complete once a date-of-birth attribute and the liveness
+ * score have both been encrypted.
+ */
+export function isFheComplete(attributeTypes: string[]): boolean {
+  const hasDob =
+    attributeTypes.includes("birth_year_offset") ||
+    attributeTypes.includes("dob_days");
+  const hasLiveness = attributeTypes.includes("liveness_score");
+  return hasDob && hasLiveness;
 }
 
 // ─── Method-specific check derivation ──────────────────────────────

@@ -110,11 +110,3 @@ export function computeAccountAssurance(
     details,
   };
 }
-
-export function isFheComplete(attributeTypes: string[]): boolean {
-  const hasDob =
-    attributeTypes.includes("birth_year_offset") ||
-    attributeTypes.includes("dob_days");
-  const hasLiveness = attributeTypes.includes("liveness_score");
-  return hasDob && hasLiveness;
-}
