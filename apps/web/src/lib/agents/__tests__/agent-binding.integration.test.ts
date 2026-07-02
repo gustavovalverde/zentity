@@ -4,12 +4,12 @@ import { eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { ensureCapabilitiesSeeded } from "@/lib/agents/capability";
 import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { ensureCapabilitiesSeeded } from "@/lib/db/seed";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "ciba-agent-binding-client";
