@@ -420,38 +420,19 @@ export function ZkPassportFlow({
 
       setUrl(request.url);
 
-      const requestUrl = new URL(request.url);
-      // TEMP diagnostic: confirms what the mobile app receives.
-      console.log("[zkpassport-debug] request", {
-        devFlag: requestUrl.searchParams.get("dev"),
-        sdkVersion: requestUrl.searchParams.get("v"),
-        domain: requestUrl.searchParams.get("d"),
-        appEnv: env.NEXT_PUBLIC_APP_ENV,
-        isDevMode,
-        query: request.query,
-      });
-
       timeoutRef.current = setTimeout(() => {
         setStage("timeout");
       }, TIMEOUT_MS);
 
       request.onRequestReceived(() => {
-        console.log("[zkpassport-bridge] onRequestReceived");
         setStage("scanning");
       });
 
       request.onGeneratingProof(() => {
-        console.log("[zkpassport-bridge] onGeneratingProof");
         setStage("generating");
       });
 
       request.onProofGenerated((proof: ProofResult) => {
-        console.log("[zkpassport-bridge] onProofGenerated", {
-          name: proof.name,
-          version: proof.version,
-          total: proof.total,
-          vkeyHash: proof.vkeyHash,
-        });
         proofsRef.current.push(proof);
         setProofsGenerated((prev) => prev + 1);
         if (proof.total) {
@@ -467,16 +448,6 @@ export function ZkPassportFlow({
           uniqueIdentifier?: string;
           uniqueIdentifierType?: number;
         }) => {
-          console.log("[zkpassport-bridge] onResult", {
-            verified: response.verified,
-            proofCount: proofsRef.current.length,
-            collectedErrors: errorsRef.current,
-            queryResultErrors: response.queryResultErrors,
-            result: response.result,
-            uniqueIdentifier: response.uniqueIdentifier,
-            uniqueIdentifierType: response.uniqueIdentifierType,
-          });
-
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
           }
@@ -503,7 +474,6 @@ export function ZkPassportFlow({
       );
 
       request.onReject(() => {
-        console.log("[zkpassport-bridge] onReject");
         if (timeoutRef.current) {
           clearTimeout(timeoutRef.current);
         }
