@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { toDataURL } from "qrcode";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,17 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { reportRejection } from "@/lib/async-handler";
-
-const MOBILE_UA_PATTERN = /iPhone|iPad|iPod|Android/i;
-
-function useIsMobile() {
-  return useMemo(() => {
-    if (typeof navigator === "undefined") {
-      return false;
-    }
-    return MOBILE_UA_PATTERN.test(navigator.userAgent);
-  }, []);
-}
+import { useIsMobileDevice } from "@/lib/browser-hooks";
 
 interface QrDisplayProps {
   url: string;
@@ -31,7 +21,7 @@ interface QrDisplayProps {
 
 export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobileDevice();
 
   useEffect(() => {
     if (isMobile) {
