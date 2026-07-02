@@ -8,6 +8,7 @@
  */
 import { CheckCircle, Coins, ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { parseUnits } from "viem";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
-import { parseTokenAmount } from "@/lib/blockchain/token-utils";
 import { trpcReact } from "@/lib/trpc/client";
+
+const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
+const TOKEN_DECIMALS = 18;
 
 interface MintFormProps {
   explorerUrl: string | null;
@@ -74,8 +77,10 @@ export function MintForm({
     if (!trimmed) {
       return "Amount is required";
     }
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isNaN(parsed) || parsed <= 0) {
+    if (
+      !DECIMAL_AMOUNT_PATTERN.test(trimmed) ||
+      Number.parseFloat(trimmed) <= 0
+    ) {
       return "Amount must be greater than 0";
     }
     return null;
@@ -92,7 +97,7 @@ export function MintForm({
     await mintMutation.mutateAsync({
       networkId,
       walletAddress,
-      amount: parseTokenAmount(trimmed).toString(),
+      amount: parseUnits(trimmed, TOKEN_DECIMALS).toString(),
     });
 
     setAmount("");
