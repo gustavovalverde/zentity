@@ -34,10 +34,7 @@ import { fetchMsgpack } from "@/lib/http/binary-transport";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
-import {
-  buildKekSignatureTypedData,
-  signatureToBytes,
-} from "@/lib/privacy/credentials/wallet";
+import { buildKekSignatureTypedData } from "@/lib/privacy/credentials/wallet";
 import {
   getPreGeneratedKeys,
   startBackgroundKeygen,
@@ -51,6 +48,7 @@ import {
   generateFheKeyMaterialForStorage,
   prewarmTfheWorker,
 } from "@/lib/privacy/fhe/keygen-client";
+import { hexToBytes } from "@/lib/privacy/primitives/symmetric";
 import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import {
   deriveBindingSecret,
@@ -668,7 +666,7 @@ export function FheEnrollmentDialog({
         );
       }
 
-      const signatureBytes = signatureToBytes(signature1);
+      const signatureBytes = hexToBytes(signature1);
 
       setCachedBindingMaterial({ mode: "wallet", signatureBytes });
 

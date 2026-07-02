@@ -22,6 +22,7 @@ import {
   encodeAad,
   encryptAesGcm,
   SECRET_AAD_CONTEXT,
+  toArrayBuffer,
 } from "@/lib/privacy/primitives/symmetric";
 
 const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
@@ -55,10 +56,6 @@ interface SecretEnvelope {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer;
-}
 
 function toJsonPayload(
   payload: EncryptedSecretPayload

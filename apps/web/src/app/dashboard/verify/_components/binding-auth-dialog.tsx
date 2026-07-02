@@ -20,10 +20,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
-import {
-  buildKekSignatureTypedData,
-  signatureToBytes,
-} from "@/lib/privacy/credentials/wallet";
+import { buildKekSignatureTypedData } from "@/lib/privacy/credentials/wallet";
+import { hexToBytes } from "@/lib/privacy/primitives/symmetric";
 
 type Stage = "idle" | "verifying" | "done";
 
@@ -105,7 +103,7 @@ function WalletSignButton({
         );
       }
 
-      const signatureBytes = signatureToBytes(signature1);
+      const signatureBytes = hexToBytes(signature1);
       setCachedBindingMaterial({ mode: "wallet", signatureBytes });
 
       onStageChange("done");

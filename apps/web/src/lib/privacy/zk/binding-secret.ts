@@ -16,6 +16,12 @@ import "client-only";
  * - Wallet:  Lower privacy (signature publicly verifiable, linkable by address)
  */
 
+import {
+  bytesToHex,
+  hexToBytes,
+  sha256Bytes,
+} from "@/lib/privacy/primitives/symmetric";
+
 import { AuthMode } from "./proof-types";
 
 /**
@@ -125,27 +131,6 @@ async function deriveHkdf(
 }
 
 /**
- * Hash a string to 32 bytes using SHA-256.
- */
-async function sha256Hash(input: string): Promise<Uint8Array> {
-  const encoded = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
-  return new Uint8Array(hashBuffer);
-}
-
-/**
- * Convert a hex string to Uint8Array.
- */
-function hexToBytes(hex: string): Uint8Array {
-  const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(cleanHex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-/**
  * Derive binding secret from passkey PRF output.
  *
  * The PRF output is already high-entropy (32 bytes from the authenticator).
@@ -157,7 +142,7 @@ async function deriveFromPasskey(
   documentHash: string
 ): Promise<BindingSecretResult> {
   const bindingSecret = await deriveHkdf(prfOutput, BINDING_HKDF_INFO.PASSKEY);
-  const userIdHash = await sha256Hash(userId);
+  const userIdHash = await sha256Bytes(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
   return { bindingSecret, userIdHash, documentHashBytes };
@@ -175,7 +160,7 @@ async function deriveFromOpaque(
   documentHash: string
 ): Promise<BindingSecretResult> {
   const bindingSecret = await deriveHkdf(exportKey, BINDING_HKDF_INFO.OPAQUE);
-  const userIdHash = await sha256Hash(userId);
+  const userIdHash = await sha256Bytes(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
   return { bindingSecret, userIdHash, documentHashBytes };
@@ -199,7 +184,7 @@ async function deriveFromWallet(
     BINDING_HKDF_INFO.WALLET,
     userId
   );
-  const userIdHash = await sha256Hash(userId);
+  const userIdHash = await sha256Bytes(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
   return { bindingSecret, userIdHash, documentHashBytes };
@@ -226,7 +211,7 @@ async function deriveFromWalletBbs(
     BINDING_HKDF_INFO.WALLET_BBS,
     userId
   );
-  const userIdHash = await sha256Hash(userId);
+  const userIdHash = await sha256Bytes(userId);
   const documentHashBytes = hexToBytes(documentHash);
 
   return { bindingSecret, userIdHash, documentHashBytes };
@@ -312,11 +297,7 @@ export async function deriveBindingSecret(
  * Noir expects Field values as 0x-prefixed hex strings.
  */
 function bytesToFieldHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (const byte of bytes) {
-    hex += byte.toString(16).padStart(2, "0");
-  }
-  return `0x${hex}`;
+  return `0x${bytesToHex(bytes)}`;
 }
 
 /**

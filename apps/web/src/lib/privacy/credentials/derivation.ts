@@ -6,6 +6,8 @@
  * uses domain-separated HKDF info strings to prevent cross-protocol attacks.
  */
 
+import { toArrayBuffer } from "@/lib/privacy/primitives/symmetric";
+
 const HKDF_INFO = {
   PASSKEY_KEK: "zentity:kek:passkey",
   OPAQUE_KEK: "zentity:kek:opaque",
@@ -18,10 +20,6 @@ export const KEK_SOURCE = {
   WALLET: "wallet",
   RECOVERY: "recovery",
 } as const;
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer;
-}
 
 /**
  * Generate a random PRF salt (32 bytes).

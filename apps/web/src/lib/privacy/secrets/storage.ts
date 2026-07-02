@@ -8,19 +8,9 @@
  */
 
 import { fetchBinary } from "@/lib/http/binary-transport";
+import { sha256Hex } from "@/lib/privacy/primitives/symmetric";
 
 const textEncoder = new TextEncoder();
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return bytesToHex(new Uint8Array(digest));
-}
 
 /**
  * Upload an encrypted secret blob.
