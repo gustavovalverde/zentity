@@ -10,25 +10,7 @@ import {
   CLIENT_METRIC_DEFINITIONS,
   type ClientMetricName,
 } from "@/lib/observability/client-metrics";
-import {
-  recordClientConfidentialDecryptDuration,
-  recordClientConfidentialEncryptDuration,
-  recordClientConfidentialEncryptProofBytes,
-  recordClientConfidentialInitDuration,
-  recordClientFheEnrollmentStageDuration,
-  recordClientFheEnrollmentTotalDuration,
-  recordClientNoirProofBytes,
-  recordClientNoirProofDuration,
-  recordClientOpaqueDuration,
-  recordClientPasskeyDuration,
-  recordClientTfheBgKeygenDuration,
-  recordClientTfheInitDuration,
-  recordClientTfheKeygenDuration,
-  recordClientTfheKeygenWorkerDuration,
-  recordClientTfheLoadDuration,
-  recordClientTfheLoadRetry,
-  recordClientWalletSignDuration,
-} from "@/lib/observability/metrics";
+import { recordClientMetricServer } from "@/lib/observability/metrics";
 
 export const runtime = "nodejs";
 
@@ -50,140 +32,6 @@ const eventSchema = z.object({
 const payloadSchema = z.object({
   events: z.array(eventSchema).max(MAX_EVENTS),
 });
-
-const handlers: Record<
-  ClientMetricName,
-  {
-    unit: "ms" | "By";
-    record: (value: number, attributes?: MetricAttributes) => void;
-    attributes: Set<string>;
-  }
-> = {
-  "client.noir.proof.duration": {
-    unit: "ms",
-    record: recordClientNoirProofDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.noir.proof.duration"].attributes
-    ),
-  },
-  "client.noir.proof.bytes": {
-    unit: "By",
-    record: recordClientNoirProofBytes,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.noir.proof.bytes"].attributes
-    ),
-  },
-  "client.confidential.encrypt.duration": {
-    unit: "ms",
-    record: recordClientConfidentialEncryptDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.confidential.encrypt.duration"]
-        .attributes
-    ),
-  },
-  "client.confidential.encrypt.proof.bytes": {
-    unit: "By",
-    record: recordClientConfidentialEncryptProofBytes,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.confidential.encrypt.proof.bytes"]
-        .attributes
-    ),
-  },
-  "client.confidential.decrypt.duration": {
-    unit: "ms",
-    record: recordClientConfidentialDecryptDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.confidential.decrypt.duration"]
-        .attributes
-    ),
-  },
-  "client.confidential.init.duration": {
-    unit: "ms",
-    record: recordClientConfidentialInitDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.confidential.init.duration"].attributes
-    ),
-  },
-  "client.tfhe.load.duration": {
-    unit: "ms",
-    record: recordClientTfheLoadDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.load.duration"].attributes
-    ),
-  },
-  "client.tfhe.load.retry": {
-    unit: "ms",
-    record: recordClientTfheLoadRetry,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.load.retry"].attributes
-    ),
-  },
-  "client.tfhe.keygen.duration": {
-    unit: "ms",
-    record: recordClientTfheKeygenDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.keygen.duration"].attributes
-    ),
-  },
-  "client.passkey.duration": {
-    unit: "ms",
-    record: recordClientPasskeyDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.passkey.duration"].attributes
-    ),
-  },
-  "client.opaque.duration": {
-    unit: "ms",
-    record: recordClientOpaqueDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.opaque.duration"].attributes
-    ),
-  },
-  "client.wallet.sign.duration": {
-    unit: "ms",
-    record: recordClientWalletSignDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.wallet.sign.duration"].attributes
-    ),
-  },
-  "client.fhe.enrollment.stage.duration": {
-    unit: "ms",
-    record: recordClientFheEnrollmentStageDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhe.enrollment.stage.duration"]
-        .attributes
-    ),
-  },
-  "client.fhe.enrollment.total.duration": {
-    unit: "ms",
-    record: recordClientFheEnrollmentTotalDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.fhe.enrollment.total.duration"]
-        .attributes
-    ),
-  },
-  "client.tfhe.keygen.worker.duration": {
-    unit: "ms",
-    record: recordClientTfheKeygenWorkerDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.keygen.worker.duration"].attributes
-    ),
-  },
-  "client.tfhe.init": {
-    unit: "ms",
-    record: recordClientTfheInitDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.init"].attributes
-    ),
-  },
-  "client.tfhe.bg_keygen.duration": {
-    unit: "ms",
-    record: recordClientTfheBgKeygenDuration,
-    attributes: new Set(
-      CLIENT_METRIC_DEFINITIONS["client.tfhe.bg_keygen.duration"].attributes
-    ),
-  },
-};
 
 function sanitizeAttributes(
   attributes: Record<string, unknown> | undefined,
@@ -236,16 +84,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   for (const event of parsed.data.events) {
-    const handler = handlers[event.name as ClientMetricName];
-    if (handler?.unit !== event.unit) {
+    if (!Object.hasOwn(CLIENT_METRIC_DEFINITIONS, event.name)) {
       continue;
     }
-    if (!isValueWithinLimits(handler.unit, event.value)) {
+    const definition =
+      CLIENT_METRIC_DEFINITIONS[event.name as ClientMetricName];
+    if (definition.unit !== event.unit) {
+      continue;
+    }
+    if (!isValueWithinLimits(event.unit, event.value)) {
       continue;
     }
 
-    const attrs = sanitizeAttributes(event.attributes, handler.attributes);
-    handler.record(event.value, attrs);
+    const attrs = sanitizeAttributes(
+      event.attributes,
+      new Set(definition.attributes)
+    );
+    recordClientMetricServer(event.name, event.unit, event.value, attrs);
   }
 
   return NextResponse.json({ ok: true }, { status: 202 });
