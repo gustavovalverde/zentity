@@ -58,13 +58,13 @@ import {
   getVerificationReadModel,
 } from "@/lib/identity/verification/read-model";
 import { withSpan } from "@/lib/observability/telemetry";
-import { createPresentation } from "@/lib/privacy/bbs/holder";
-import { deriveBbsKeyPair } from "@/lib/privacy/bbs/keygen";
 import {
+  createPresentation,
   createWalletCredential,
+  deriveBbsKeyPair,
+  verifyPresentation as verifyBbsPresentation,
   verifyCredential,
-} from "@/lib/privacy/bbs/signer";
-import { verifyPresentation as verifyBbsPresentation } from "@/lib/privacy/bbs/verifier";
+} from "@/lib/privacy/bbs/credential";
 import {
   deserializeCredential,
   deserializePresentation,
