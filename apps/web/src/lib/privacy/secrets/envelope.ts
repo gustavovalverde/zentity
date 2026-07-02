@@ -11,7 +11,7 @@ import "client-only";
  * handled by the credentials module.
  */
 
-import type { EnvelopeFormat, SecretType } from "./types";
+import type { EnvelopeFormat, SecretType } from "./catalog";
 
 import { decode, encode } from "@msgpack/msgpack";
 

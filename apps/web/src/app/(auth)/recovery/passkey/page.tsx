@@ -30,7 +30,7 @@ import { registerPasskeyWithPrf } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { redirectTo } from "@/lib/auth/redirect";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import { addWrapperForSecretType } from "@/lib/privacy/secrets/vault";
 
 type RecoveryPhase = "email" | "sending" | "sent" | "registering" | "complete";

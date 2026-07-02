@@ -1,12 +1,12 @@
 "use client";
 
-import type { EnvelopeFormat } from "@/lib/privacy/secrets/types";
+import type { EnvelopeFormat } from "@/lib/privacy/secrets/catalog";
 
 import { decode, encode } from "@msgpack/msgpack";
 
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
 import { getWalletCredentialId } from "@/lib/privacy/credentials/wallet";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import {
   type EnrollmentCredential,
   loadSecret,

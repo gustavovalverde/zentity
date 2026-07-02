@@ -1,6 +1,6 @@
 "use client";
 
-import type { EnrollmentCredential } from "../secrets/types";
+import type { EnrollmentCredential } from "../secrets/catalog";
 import type { CachedBindingMaterial } from "./cache";
 
 /**

@@ -18,7 +18,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
 import { useSession } from "@/lib/auth/auth-client";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import { addRecoveryWrapperForSecretType } from "@/lib/privacy/secrets/vault";
 import { trpc, trpcReact } from "@/lib/trpc/client";
 

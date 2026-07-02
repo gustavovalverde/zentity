@@ -1,7 +1,7 @@
 import type {
   EnvelopeFormat,
   SecretType,
-} from "../src/lib/privacy/secrets/types";
+} from "../src/lib/privacy/secrets/catalog";
 
 import { encode } from "@msgpack/msgpack";
 

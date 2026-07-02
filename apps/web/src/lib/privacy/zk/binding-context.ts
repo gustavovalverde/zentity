@@ -23,7 +23,7 @@ import {
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
 import { WALLET_CREDENTIAL_PREFIX } from "@/lib/privacy/credentials/wallet";
 import { base64ToBytes } from "@/lib/privacy/primitives/symmetric";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import { trpc } from "@/lib/trpc/client";
 
 import { deriveBindingSecret } from "./binding-secret";

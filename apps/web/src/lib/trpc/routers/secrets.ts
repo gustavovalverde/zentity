@@ -19,15 +19,15 @@ import {
 } from "@/lib/db/queries/privacy";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
+  prfSaltSchema,
+  secretTypeSchema,
+  wrappedDekSchema,
+} from "@/lib/privacy/secrets/catalog";
+import {
   computeSecretBlobRef,
   getSecretBlobMaxBytes,
   isValidSecretBlobRef,
 } from "@/lib/privacy/secrets/storage.server";
-import {
-  prfSaltSchema,
-  secretTypeSchema,
-  wrappedDekSchema,
-} from "@/lib/privacy/secrets/types";
 
 import { protectedProcedure, router } from "../server";
 

@@ -51,7 +51,7 @@ import {
   generateFheKeyMaterialForStorage,
   prewarmTfheWorker,
 } from "@/lib/privacy/fhe/keygen-client";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import {
   deriveBindingSecret,
   prepareBindingProofInputs,

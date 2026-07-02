@@ -6,7 +6,7 @@
  * enable compile-time type checking.
  *
  * @example
- * import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+ * import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
  * const bundle = await trpc.secrets.getSecretBundle.query({
  *   secretType: SECRET_TYPES.FHE_KEYS,
  * });

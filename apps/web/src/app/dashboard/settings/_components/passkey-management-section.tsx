@@ -63,7 +63,7 @@ import {
 } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import { addWrapperForSecretType } from "@/lib/privacy/secrets/vault";
 
 interface PasskeyCredential {

@@ -62,7 +62,7 @@ import {
   createFheEnrollmentContext,
   getFheEnrollmentContext,
 } from "@/lib/privacy/fhe/enrollment-tokens";
-import { wrappedDekSchema } from "@/lib/privacy/secrets/types";
+import { wrappedDekSchema } from "@/lib/privacy/secrets/catalog";
 import {
   createRecoveryKeySet,
   executeSigningRounds,
