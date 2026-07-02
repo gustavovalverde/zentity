@@ -46,7 +46,7 @@ export function parseProblemFromBody(
   fallbackTitle: string
 ): ServiceProblem | null {
   const contentType = headers.get("content-type") ?? "";
-  if (!contentType.includes("application/problem+json") || !raw) {
+  if (!(contentType.includes("application/problem+json") && raw)) {
     return null;
   }
   let parsed: unknown;

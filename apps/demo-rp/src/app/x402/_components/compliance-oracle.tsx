@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { SolidityPanel } from "@/components/x402/solidity-panel";
 import {
   type AccessOutcome,
   formatPohIdentityStrength,
@@ -7,6 +6,7 @@ import {
   type PohClaims,
   type X402Resource,
 } from "@/data/x402";
+import { SolidityPanel } from "./solidity-panel";
 
 function TierIndicator({ tier }: { tier: number }) {
   return (

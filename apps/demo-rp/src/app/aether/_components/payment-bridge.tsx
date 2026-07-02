@@ -10,20 +10,19 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useState } from "react";
-
-import { IntentPostureBadge } from "@/components/aether/intent-posture-badge";
-import {
-  describeState,
-  describeStatus,
-  toneClasses,
-} from "@/components/aether/payment-status-copy";
-import { PaymentSuccess } from "@/components/aether/payment-success";
 import {
   type PaymentEventsState,
   usePaymentEvents,
 } from "@/hooks/use-payment-events";
 import { computeUriConfirmationCode } from "@/lib/confirmation-code";
 import type { PaymentStatusSnapshot } from "@/lib/zpay-client";
+import { IntentPostureBadge } from "./intent-posture-badge";
+import {
+  describeState,
+  describeStatus,
+  toneClasses,
+} from "./payment-status-copy";
+import { PaymentSuccess } from "./payment-success";
 
 const STALL_TIMEOUT_MS = 60_000;
 

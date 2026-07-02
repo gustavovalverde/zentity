@@ -10,8 +10,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { BankDashboard } from "@/components/bank/bank-dashboard";
-import { BankProspect } from "@/components/bank/bank-prospect";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
@@ -19,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Redacted } from "@/components/ui/redacted";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { bankScenario } from "@/scenarios/bank";
+import { BankDashboard } from "./_components/bank-dashboard";
+import { BankProspect } from "./_components/bank-prospect";
 
 const scenario = bankScenario;
 

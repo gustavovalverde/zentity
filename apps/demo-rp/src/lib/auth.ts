@@ -7,6 +7,7 @@ import {
   createOpenIdTokenVerifier,
   type DpopClient,
   fetchUserInfo,
+  requestTokenEndpoint,
 } from "@zentity/sdk/rp";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
@@ -24,10 +25,7 @@ import {
 } from "@/lib/db/schema";
 import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
-import {
-  describeOAuthErrorResponse,
-  parseOAuthJsonResponse,
-} from "@/lib/oauth-response";
+import { describeOAuthErrorResponse } from "@/lib/oauth-response";
 import type { RouteScenario } from "@/scenarios/route-scenario";
 import {
   ROUTE_SCENARIO_IDS,
@@ -237,35 +235,21 @@ function makeProviderConfig(
     }) {
       const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
       const dpop = await createDpopClient();
-      const { response, result } = await dpop.withNonceRetry(async (nonce) => {
-        const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
-        const params: Record<string, string> = {
-          grant_type: "authorization_code",
-          code: data.code,
-          redirect_uri: data.redirectURI,
-          client_id: clientId,
-        };
-        if (data.codeVerifier) {
-          params.code_verifier = data.codeVerifier;
-        }
-        const response = await fetch(tokenUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            DPoP: proof,
-          },
-          body: new URLSearchParams(params),
-        });
-        const needsNonceRetry =
-          (response.status === 400 || response.status === 401) &&
-          Boolean(response.headers.get("DPoP-Nonce"));
-        return {
-          response,
-          result: needsNonceRetry
-            ? {}
-            : await parseOAuthJsonResponse(response, "OAuth token exchange"),
-        };
+      const params = new URLSearchParams({
+        grant_type: "authorization_code",
+        code: data.code,
+        redirect_uri: data.redirectURI,
+        client_id: clientId,
       });
+      if (data.codeVerifier) {
+        params.set("code_verifier", data.codeVerifier);
+      }
+      const { body, response } = await requestTokenEndpoint(
+        dpop,
+        tokenUrl,
+        params
+      );
+      const result = (body ?? {}) as Record<string, unknown>;
       if (!response.ok) {
         throw new Error(
           describeOAuthErrorResponse(response, result, "OAuth token exchange")

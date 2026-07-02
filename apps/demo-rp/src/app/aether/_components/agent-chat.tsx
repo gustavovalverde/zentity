@@ -12,7 +12,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PreparationError } from "@/app/aether/page";
-import { PaymentBridge } from "@/components/aether/payment-bridge";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { Button } from "@/components/ui/button";
 import { Redacted } from "@/components/ui/redacted";
@@ -20,6 +19,7 @@ import type { Product, ShoppingTask } from "@/data/aether";
 import type { CibaState } from "@/hooks/use-ciba-flow";
 import { env } from "@/lib/env";
 import type { Preparation } from "@/lib/zpay-client";
+import { PaymentBridge } from "./payment-bridge";
 
 interface PreparedWithCode extends Preparation {
   confirmation_code: string;

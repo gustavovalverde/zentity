@@ -57,8 +57,8 @@
     },
     {
       "includes": [
-        "src/components/exchange/**/*.tsx",
-        "src/components/wine/**/*.tsx"
+        "src/app/exchange/_components/**/*.tsx",
+        "src/app/wine/_components/**/*.tsx"
       ],
       "linter": {
         "rules": {

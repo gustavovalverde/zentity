@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-vi.mock("jose", () => {
+vi.mock("jose", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("jose")>();
+
   class MockSignJWT {
     private readonly claims: Record<string, unknown>;
 
@@ -43,6 +45,7 @@ vi.mock("jose", () => {
   }
 
   return {
+    ...actual,
     exportJWK: vi.fn(async () => ({
       crv: "Ed25519",
       kty: "OKP",
@@ -110,7 +113,8 @@ vi.mock("@/lib/dcr", () => ({
     testState.readDcrClient(...args),
 }));
 
-vi.mock("@zentity/sdk/rp", () => ({
+vi.mock("@zentity/sdk/rp", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@zentity/sdk/rp")>()),
   createDpopClientFromKeyPair: async () => testState.dpopClient,
 }));
 
@@ -267,6 +271,7 @@ describe("prepareAgentAssertionForScenario", () => {
         new Response(
           JSON.stringify({
             attestation_tier: "unverified",
+            created: true,
             did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
             hostId: "host-1",
           }),
@@ -370,6 +375,7 @@ describe("prepareAgentAssertionForScenario", () => {
         new Response(
           JSON.stringify({
             attestation_tier: "attested",
+            created: true,
             did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
             hostId: "host-1",
           }),
@@ -384,6 +390,7 @@ describe("prepareAgentAssertionForScenario", () => {
           JSON.stringify({
             did: "did:key:z6Mkg3ShJxrz8J4kizVwR6cJQ2s9wZ5x1hQxQds2z7Q9b3Zs",
             sessionId: "session-new",
+            status: "active",
           }),
           {
             headers: { "Content-Type": "application/json" },

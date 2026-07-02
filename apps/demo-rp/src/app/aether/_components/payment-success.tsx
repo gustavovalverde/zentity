@@ -1,8 +1,7 @@
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-
-import { shortTx } from "@/components/aether/payment-status-copy";
 import { Button } from "@/components/ui/button";
+import { shortTx } from "./payment-status-copy";
 
 interface PaymentSuccessProps {
   amountZat: number;

@@ -11,14 +11,14 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
-import { AidDashboard } from "@/components/aid/aid-dashboard";
-import { AidHeader } from "@/components/aid/aid-header";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { aidScenario } from "@/scenarios/aid";
+import { AidDashboard } from "./_components/aid-dashboard";
+import { AidHeader } from "./_components/aid-header";
 
 const scenario = aidScenario;
 

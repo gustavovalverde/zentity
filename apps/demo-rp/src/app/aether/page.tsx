@@ -10,8 +10,6 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { useCallback, useState } from "react";
-
-import { AgentChat } from "@/components/aether/agent-chat";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
 import { SHOPPING_TASKS, type ShoppingTask } from "@/data/aether";
@@ -20,6 +18,7 @@ import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import type { TrustTier } from "@/lib/agent-runtime-storage";
 import type { PaymentNetwork, Preparation } from "@/lib/zpay-client";
 import { aetherScenario } from "@/scenarios/aether";
+import { AgentChat } from "./_components/agent-chat";
 
 const scenario = aetherScenario;
 

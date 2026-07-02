@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
-
-import { JsonBlock } from "@/components/x402/json-block";
 import type { TraceEntry } from "@/data/x402";
+import { JsonBlock } from "./json-block";
 
 function statusColor(status: number): string {
   if (status >= 200 && status < 300) {

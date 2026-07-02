@@ -4,10 +4,6 @@ import { ArrowLeft01Icon, FlashIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ExchangeHeader } from "@/components/exchange/exchange-header";
-import { ExchangeMarkets } from "@/components/exchange/exchange-markets";
-import { ExchangePortfolio } from "@/components/exchange/exchange-portfolio";
-import { ExchangeTrade } from "@/components/exchange/exchange-trade";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { ScenarioValidityCard } from "@/components/shared/scenario-validity-card";
@@ -15,6 +11,10 @@ import { Redacted } from "@/components/ui/redacted";
 import { MARKET_DATA } from "@/data/exchange";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { exchangeScenario } from "@/scenarios/exchange";
+import { ExchangeHeader } from "./_components/exchange-header";
+import { ExchangeMarkets } from "./_components/exchange-markets";
+import { ExchangePortfolio } from "./_components/exchange-portfolio";
+import { ExchangeTrade } from "./_components/exchange-trade";
 
 const scenario = exchangeScenario;
 
