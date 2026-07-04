@@ -5,7 +5,12 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { decode, encode } from "@msgpack/msgpack";
 
 import { env } from "@/env";
-import { HttpError } from "@/lib/http/fetch";
+import {
+  fetchWithTimeout,
+  HttpError,
+  safeReadBodyText,
+  TimeoutError,
+} from "@/lib/http/fetch";
 import {
   recordFheDuration,
   recordFhePayloadBytes,
@@ -63,26 +68,6 @@ export class FheServiceError extends Error {
   }
 }
 
-async function safeReadBodyText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
-}
-
-class TimeoutError extends Error {
-  readonly url: string;
-  readonly timeoutMs: number;
-
-  constructor(url: string, timeoutMs: number) {
-    super(`Request timed out after ${timeoutMs}ms`);
-    this.name = "TimeoutError";
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-  }
-}
-
 interface FetchMsgpackOptions extends RequestInit {
   timeoutMs?: number;
 }
@@ -97,24 +82,11 @@ async function fetchMsgpack<T>(
   const encoded = payload instanceof Uint8Array ? payload : encode(payload);
   const compressed = gzipSync(encoded);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...fetchInit,
-      signal: controller.signal,
-      body: compressed,
-    });
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new TimeoutError(url, timeoutMs);
-    }
-    throw error;
-  }
-  clearTimeout(timeoutId);
+  const response = await fetchWithTimeout(
+    url,
+    { ...fetchInit, body: compressed },
+    timeoutMs
+  );
 
   if (!response.ok) {
     const bodyText = await safeReadBodyText(response);
@@ -182,7 +154,7 @@ async function withFheError<T>(
         bodyText: error.bodyText,
       });
     }
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (error instanceof TimeoutError) {
       recordFheDuration(durationMs, {
         operation,
         result: "error",
