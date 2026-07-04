@@ -1,14 +1,16 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { getQueryKey } from "@trpc/react-query";
 import { AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { reportRejection } from "@/lib/async-handler";
 import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
-import { trpc } from "@/lib/trpc/client";
+import { type RouterOutputs, trpcReact } from "@/lib/trpc/client";
 
 // Mounts a side effect that kicks off FHE key generation in the background
 // on dashboard load when the user has not yet enrolled. Renders nothing.
@@ -26,88 +28,81 @@ export function FheBackgroundKeygen({
 
 const MAX_POLL_ATTEMPTS = 60;
 
+function hasTerminalAssurance(status: RouterOutputs["assurance"]["profile"]) {
+  return status.assurance.details.fheComplete || status.assurance.tier >= 2;
+}
+
 // Polls assurance.profile until FHE attributes are encrypted, then navigates
 // back to the dashboard. Used on verify landing after proofs are stored.
 export function FheStatusPoller() {
   const router = useRouter();
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attemptRef = useRef(0);
-  const [error, setError] = useState<"timeout" | "network" | null>(null);
+  const utils = trpcReact.useUtils();
+  const queryClient = useQueryClient();
+  const handledTerminalRef = useRef(false);
+  const profileQuery = trpcReact.assurance.profile.useQuery(undefined, {
+    refetchInterval: (query) => {
+      if (query.state.status === "error") {
+        return false;
+      }
+      const status = query.state.data;
+      if (status && hasTerminalAssurance(status)) {
+        return false;
+      }
+      if (query.state.dataUpdateCount >= MAX_POLL_ATTEMPTS) {
+        return false;
+      }
+      return Math.min(2000 * 1.5 ** query.state.dataUpdateCount, 8000);
+    },
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
 
   useEffect(() => {
-    const baseInterval = 2000;
-    const maxInterval = 8000;
-    const backoffFactor = 1.5;
-    let disposed = false;
+    utils.assurance.profile.reset().catch(reportRejection);
+  }, [utils]);
 
-    const clearPendingPoll = () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-    };
+  useEffect(() => {
+    const status = profileQuery.data;
+    if (
+      !status ||
+      handledTerminalRef.current ||
+      !hasTerminalAssurance(status)
+    ) {
+      return;
+    }
 
-    const scheduleNextPoll = () => {
-      if (disposed) {
+    handledTerminalRef.current = true;
+    startTransition(() => {
+      if (status.assurance.details.missingProfileSecret) {
+        router.refresh();
         return;
       }
-      const interval = Math.min(
-        baseInterval * backoffFactor ** attemptRef.current,
-        maxInterval
-      );
-      timeoutRef.current = setTimeout(() => {
-        poll().catch(reportRejection);
-      }, interval);
-    };
+      router.replace("/dashboard");
+    });
+  }, [profileQuery.data, router]);
 
-    const poll = async () => {
-      if (attemptRef.current >= MAX_POLL_ATTEMPTS) {
-        setError("timeout");
-        return;
-      }
-
-      try {
-        const status = await trpc.assurance.profile.query();
-        if (disposed) {
-          return;
-        }
-        if (
-          status.assurance.details.fheComplete ||
-          status.assurance.tier >= 2
-        ) {
-          clearPendingPoll();
-          startTransition(() => {
-            if (status.assurance.details.missingProfileSecret) {
-              router.refresh();
-              return;
-            }
-            router.replace("/dashboard");
-          });
-          return;
-        }
-      } catch {
-        if (!disposed) {
-          setError("network");
-          return;
-        }
-      }
-
-      attemptRef.current++;
-      scheduleNextPoll();
-    };
-
-    attemptRef.current = 0;
-    poll().catch(() => undefined);
-
-    return () => {
-      disposed = true;
-      clearPendingPoll();
-    };
-  }, [router]);
+  const profileQueryState = queryClient.getQueryState(
+    getQueryKey(trpcReact.assurance.profile, undefined, "query")
+  );
+  const profileDataUpdateCount = profileQueryState?.dataUpdateCount ?? 0;
+  const isTerminal = Boolean(
+    profileQuery.data && hasTerminalAssurance(profileQuery.data)
+  );
+  const hasTimedOut = Boolean(
+    profileQuery.data &&
+      !isTerminal &&
+      profileDataUpdateCount >= MAX_POLL_ATTEMPTS
+  );
+  let error: "network" | "timeout" | null = null;
+  if (profileQuery.status === "error") {
+    error = "network";
+  } else if (hasTimedOut) {
+    error = "timeout";
+  }
 
   const handleRetry = () => {
-    attemptRef.current = 0;
-    setError(null);
+    handledTerminalRef.current = false;
+    utils.assurance.profile.reset().catch(reportRejection);
     router.refresh();
   };
 

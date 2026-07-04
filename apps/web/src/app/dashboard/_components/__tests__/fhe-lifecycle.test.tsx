@@ -1,15 +1,56 @@
 // @vitest-environment jsdom
 
-import { act, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+interface AssuranceProfile {
+  assurance: {
+    details: {
+      fheComplete: boolean;
+      missingProfileSecret: boolean;
+    };
+    tier: number;
+  };
+}
+
+interface QueryResult {
+  data: AssuranceProfile | undefined;
+  dataUpdatedAt: number;
+  status: "error" | "success";
+}
+
+interface RefetchIntervalQuery {
+  state: {
+    data?: AssuranceProfile;
+    dataUpdateCount: number;
+    status: "error" | "success";
+  };
+}
+
+interface CapturedQueryOptions {
+  refetchInterval?: (query: RefetchIntervalQuery) => false | number | undefined;
+}
+
+const NETWORK_ERROR_TEXT = /Network error/i;
+const TIMEOUT_TEXT = /taking longer than expected/i;
 
 const navigationMocks = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   refreshMock: vi.fn(),
 }));
 
-const trpcMocks = vi.hoisted(() => ({
-  profileQueryMock: vi.fn(),
+const queryMocks = vi.hoisted(() => ({
+  dataUpdateCount: 0,
+  getQueryKeyMock: vi.fn(() => ["assurance", "profile"]),
+  getQueryStateMock: vi.fn(),
+  queryOptions: undefined as CapturedQueryOptions | undefined,
+  queryResult: {
+    data: undefined,
+    dataUpdatedAt: 0,
+    status: "success",
+  } as QueryResult,
+  resetMock: vi.fn(),
+  useQueryMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -19,139 +60,197 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({
+    getQueryState: queryMocks.getQueryStateMock,
+  }),
+}));
+
+vi.mock("@trpc/react-query", () => ({
+  getQueryKey: queryMocks.getQueryKeyMock,
+}));
+
 vi.mock("@/lib/trpc/client", () => ({
-  trpc: {
+  trpcReact: {
     assurance: {
       profile: {
-        query: trpcMocks.profileQueryMock,
+        useQuery: queryMocks.useQueryMock,
       },
     },
+    useUtils: () => ({
+      assurance: {
+        profile: {
+          reset: queryMocks.resetMock,
+        },
+      },
+    }),
   },
 }));
 
 import { FheStatusPoller } from "../fhe-lifecycle";
 
-async function flushAsyncWork() {
-  await Promise.resolve();
-  await Promise.resolve();
+function makeProfile({
+  fheComplete = false,
+  missingProfileSecret = false,
+  tier = 1,
+}: Partial<AssuranceProfile["assurance"]["details"]> & {
+  tier?: number;
+} = {}): AssuranceProfile {
+  return {
+    assurance: {
+      details: {
+        fheComplete,
+        missingProfileSecret,
+      },
+      tier,
+    },
+  };
+}
+
+function getRefetchInterval() {
+  const refetchInterval = queryMocks.queryOptions?.refetchInterval;
+  if (!refetchInterval) {
+    throw new Error("refetchInterval was not captured");
+  }
+  return refetchInterval;
 }
 
 describe("FheStatusPoller", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     navigationMocks.replaceMock.mockReset();
     navigationMocks.refreshMock.mockReset();
-    trpcMocks.profileQueryMock.mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
+    queryMocks.dataUpdateCount = 0;
+    queryMocks.getQueryKeyMock.mockClear();
+    queryMocks.getQueryStateMock.mockReset();
+    queryMocks.getQueryStateMock.mockImplementation(() => ({
+      dataUpdateCount: queryMocks.dataUpdateCount,
+    }));
+    queryMocks.queryOptions = undefined;
+    queryMocks.queryResult = {
+      data: undefined,
+      dataUpdatedAt: 0,
+      status: "success",
+    };
+    queryMocks.resetMock.mockReset();
+    queryMocks.resetMock.mockResolvedValue(undefined);
+    queryMocks.useQueryMock.mockReset();
+    queryMocks.useQueryMock.mockImplementation((_input, options) => {
+      queryMocks.queryOptions = options;
+      return queryMocks.queryResult;
+    });
   });
 
   it("navigates to the dashboard when verification completes", async () => {
-    trpcMocks.profileQueryMock
-      .mockResolvedValueOnce({
-        assurance: {
-          tier: 1,
-          details: { fheComplete: false, missingProfileSecret: false },
-        },
-      })
-      .mockResolvedValueOnce({
-        assurance: {
-          tier: 2,
-          details: { fheComplete: true, missingProfileSecret: false },
-        },
-      });
+    queryMocks.queryResult = {
+      data: makeProfile({ fheComplete: true, tier: 2 }),
+      dataUpdatedAt: Date.now(),
+      status: "success",
+    };
 
     render(<FheStatusPoller />);
 
-    await act(async () => {
-      await flushAsyncWork();
+    await waitFor(() => {
+      expect(navigationMocks.replaceMock).toHaveBeenCalledWith("/dashboard");
     });
-    expect(trpcMocks.profileQueryMock).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(3000);
-      await flushAsyncWork();
-    });
-    await act(async () => {
-      await flushAsyncWork();
-    });
-
-    expect(navigationMocks.replaceMock).toHaveBeenCalledWith("/dashboard");
     expect(navigationMocks.refreshMock).not.toHaveBeenCalled();
   });
 
   it("refreshes in place when verification completes but profile secret is missing", async () => {
-    trpcMocks.profileQueryMock.mockResolvedValueOnce({
-      assurance: {
+    queryMocks.queryResult = {
+      data: makeProfile({
+        fheComplete: true,
+        missingProfileSecret: true,
         tier: 2,
-        details: { fheComplete: true, missingProfileSecret: true },
-      },
-    });
+      }),
+      dataUpdatedAt: Date.now(),
+      status: "success",
+    };
 
     render(<FheStatusPoller />);
 
-    await act(async () => {
-      await flushAsyncWork();
+    await waitFor(() => {
+      expect(navigationMocks.refreshMock).toHaveBeenCalledTimes(1);
     });
-    expect(navigationMocks.refreshMock).toHaveBeenCalledTimes(1);
     expect(navigationMocks.replaceMock).not.toHaveBeenCalled();
   });
 
-  it("stops polling when max attempts reached", async () => {
-    let callCount = 0;
-    trpcMocks.profileQueryMock.mockImplementation(() => {
-      callCount++;
-      return Promise.resolve({
-        assurance: {
-          tier: 1,
-          details: { fheComplete: false, missingProfileSecret: false },
-        },
-      });
-    });
+  it("stops polling when max attempts are reached", () => {
+    const profile = makeProfile();
+    queryMocks.dataUpdateCount = 60;
+    queryMocks.queryResult = {
+      data: profile,
+      dataUpdatedAt: Date.now(),
+      status: "success",
+    };
 
-    const { container } = render(<FheStatusPoller />);
+    render(<FheStatusPoller />);
 
-    // Run polls one at a time until the mock stops being called
-    for (let i = 0; i < 70; i++) {
-      const prevCount = callCount;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(8100);
-      });
-      await act(async () => {
-        await flushAsyncWork();
-      });
-      if (callCount === prevCount && callCount > 0) {
-        break;
-      }
-    }
+    expect(screen.getByText(TIMEOUT_TEXT)).toBeTruthy();
+    expect(
+      getRefetchInterval()({
+        state: { data: profile, dataUpdateCount: 60, status: "success" },
+      })
+    ).toBe(false);
+  });
 
-    // Should have polled at least 60 times before stopping
-    expect(callCount).toBeGreaterThanOrEqual(60);
-    expect(navigationMocks.replaceMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain("taking longer than expected");
-  }, 30_000);
+  it("shows error and stops on network failure", () => {
+    queryMocks.queryResult = {
+      data: undefined,
+      dataUpdatedAt: 0,
+      status: "error",
+    };
 
-  it("shows error and stops on network failure", async () => {
-    trpcMocks.profileQueryMock.mockRejectedValue(new Error("fetch failed"));
+    render(<FheStatusPoller />);
 
-    const { container } = render(<FheStatusPoller />);
+    expect(screen.getByText(NETWORK_ERROR_TEXT)).toBeTruthy();
+    expect(
+      getRefetchInterval()({
+        state: { dataUpdateCount: 0, status: "error" },
+      })
+    ).toBe(false);
+  });
 
-    // Initial poll fires from useEffect, flush the rejection
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(100);
-    });
-    await act(async () => {
-      await flushAsyncWork();
-    });
+  it("uses the expected backoff policy", () => {
+    const profile = makeProfile();
+    queryMocks.queryResult = {
+      data: profile,
+      dataUpdatedAt: Date.now(),
+      status: "success",
+    };
 
-    expect(container.textContent).toContain("Network error");
-    // Should not schedule more polls after error
-    const callsBefore = trpcMocks.profileQueryMock.mock.calls.length;
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(trpcMocks.profileQueryMock.mock.calls.length).toBe(callsBefore);
+    render(<FheStatusPoller />);
+
+    const refetchInterval = getRefetchInterval();
+    expect(
+      refetchInterval({
+        state: { data: profile, dataUpdateCount: 0, status: "success" },
+      })
+    ).toBe(2000);
+    expect(
+      refetchInterval({
+        state: { data: profile, dataUpdateCount: 2, status: "success" },
+      })
+    ).toBe(4500);
+    expect(
+      refetchInterval({
+        state: { data: profile, dataUpdateCount: 10, status: "success" },
+      })
+    ).toBe(8000);
+  });
+
+  it("resets the query and refreshes on retry", () => {
+    queryMocks.queryResult = {
+      data: undefined,
+      dataUpdatedAt: 0,
+      status: "error",
+    };
+
+    render(<FheStatusPoller />);
+    queryMocks.resetMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(queryMocks.resetMock).toHaveBeenCalledTimes(1);
+    expect(navigationMocks.refreshMock).toHaveBeenCalledTimes(1);
   });
 });

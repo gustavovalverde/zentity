@@ -3,6 +3,8 @@
 import type { ProofResult, QueryResult } from "@zkpassport/sdk";
 import type { FlowStage } from "./status-display";
 
+import { useQueryClient } from "@tanstack/react-query";
+import { getQueryKey } from "@trpc/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -33,6 +35,11 @@ const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const FHE_POLL_INITIAL_MS = 2000;
 const FHE_POLL_MAX_MS = 8000;
 const FHE_POLL_MAX_ATTEMPTS = 20;
+const statusQueryKey = getQueryKey(
+  trpcReact.passportChip.status,
+  undefined,
+  "query"
+);
 
 interface DisclosedData {
   dateOfBirth: string | null;
@@ -72,6 +79,7 @@ export function ZkPassportFlow({
   wallet,
 }: Readonly<ZkPassportFlowProps>) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: session } = useSession();
   const [stage, setStage] = useState<FlowStage>("connecting");
   const [url, setUrl] = useState<string | null>(null);
@@ -81,7 +89,6 @@ export function ZkPassportFlow({
   const proofsRef = useRef<ProofResult[]>([]);
   const errorsRef = useRef<string[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
-  const fhePollRef = useRef<ReturnType<typeof setTimeout>>(null);
   const startedRef = useRef(false);
   const vaultSkippedRef = useRef(false);
 
@@ -93,6 +100,13 @@ export function ZkPassportFlow({
     requestBindingAuth,
     setBindingAuthOpen,
   } = useVerificationBindingAuth();
+
+  const enterFinalizing = useCallback(() => {
+    queryClient
+      .resetQueries({ queryKey: statusQueryKey })
+      .catch(reportRejection);
+    setStage("finalizing");
+  }, [queryClient]);
 
   const requestVaultRetry = useCallback(
     (disclosed: DisclosedData, message: string) => {
@@ -222,7 +236,7 @@ export function ZkPassportFlow({
           await persistProfileSecret(disclosed, cached);
           disclosedRef.current = null;
           vaultSkippedRef.current = false;
-          setStage("finalizing");
+          enterFinalizing();
           return;
         } catch (error) {
           console.error(
@@ -240,7 +254,13 @@ export function ZkPassportFlow({
     }
 
     setStage("vault_pending");
-  }, [persistProfileSecret, requestVaultRetry, session, setBindingAuthOpen]);
+  }, [
+    enterFinalizing,
+    persistProfileSecret,
+    requestVaultRetry,
+    session,
+    setBindingAuthOpen,
+  ]);
 
   /**
    * If user closes the dialog without authenticating, show vault_pending
@@ -264,19 +284,19 @@ export function ZkPassportFlow({
       storeVault(disclosed)
         .then((stored) => {
           if (stored === "stored") {
-            setStage("finalizing");
+            enterFinalizing();
           }
         })
         .catch(reportRejection);
     }
-  }, [storeVault]);
+  }, [enterFinalizing, storeVault]);
 
   const handleSkipVault = useCallback(() => {
     vaultSkippedRef.current = true;
     setBindingAuthOpen(false);
     disclosedRef.current = null;
-    setStage("finalizing");
-  }, [setBindingAuthOpen]);
+    enterFinalizing();
+  }, [enterFinalizing, setBindingAuthOpen]);
 
   const submitResult = trpcReact.passportChip.submitResult.useMutation({
     onSuccess: (data) => {
@@ -285,7 +305,7 @@ export function ZkPassportFlow({
           // A successful vault write can move straight into finalizing.
           // Pending states keep the user in the vault flow until they retry or skip.
           if (stored === "stored") {
-            setStage("finalizing");
+            enterFinalizing();
           }
         })
         .catch(reportRejection);
@@ -296,76 +316,59 @@ export function ZkPassportFlow({
     },
   });
 
-  // Poll FHE status during "finalizing" stage
+  const fheStatusQuery = trpcReact.passportChip.status.useQuery(undefined, {
+    enabled: stage === "finalizing",
+    refetchInterval: (query) => {
+      const attempts =
+        query.state.dataUpdateCount + query.state.errorUpdateCount;
+      if (attempts >= FHE_POLL_MAX_ATTEMPTS) {
+        return false;
+      }
+      return Math.min(FHE_POLL_INITIAL_MS * 1.5 ** attempts, FHE_POLL_MAX_MS);
+    },
+    refetchIntervalInBackground: true,
+  });
+  const fheStatusQueryState = queryClient.getQueryState(statusQueryKey);
+  const fhePollAttempts =
+    (fheStatusQueryState?.dataUpdateCount ?? 0) +
+    (fheStatusQueryState?.errorUpdateCount ?? 0);
+
   useEffect(() => {
+    const status = fheStatusQuery.data;
     if (stage !== "finalizing") {
       return;
     }
 
-    let attempt = 0;
-    let delay = FHE_POLL_INITIAL_MS;
-    let cancelled = false;
-
-    async function poll() {
-      if (cancelled) {
-        return;
-      }
-      attempt++;
-
-      try {
-        const status = await trpc.passportChip.status.query();
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!(status.profileSecretStored || vaultSkippedRef.current)) {
-          setStage("vault_pending");
-          return;
-        }
-
-        if (status.fheComplete) {
-          setStage("success");
-          return;
-        }
-
-        if (status.fheError) {
-          setErrorMessage(
-            `Encryption failed: ${status.fheError}. Please try again.`
-          );
-          setStage("error");
-          return;
-        }
-      } catch {
-        // Network errors are non-fatal, keep polling
-      }
-
-      if (attempt >= FHE_POLL_MAX_ATTEMPTS) {
-        if (vaultSkippedRef.current) {
-          setStage("success");
-        } else {
-          setStage("vault_pending");
-        }
+    if (status) {
+      if (!(status.profileSecretStored || vaultSkippedRef.current)) {
+        setStage("vault_pending");
         return;
       }
 
-      delay = Math.min(delay * 1.5, FHE_POLL_MAX_MS);
-      fhePollRef.current = setTimeout(() => {
-        poll().catch(reportRejection);
-      }, delay);
+      if (status.fheComplete) {
+        setStage("success");
+        return;
+      }
+
+      if (status.fheError) {
+        setErrorMessage(
+          `Encryption failed: ${status.fheError}. Please try again.`
+        );
+        setStage("error");
+        return;
+      }
     }
 
-    fhePollRef.current = setTimeout(() => {
-      poll().catch(reportRejection);
-    }, delay);
+    if (fhePollAttempts < FHE_POLL_MAX_ATTEMPTS) {
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-      if (fhePollRef.current) {
-        clearTimeout(fhePollRef.current);
-      }
-    };
-  }, [stage]);
+    if (vaultSkippedRef.current) {
+      setStage("success");
+    } else {
+      setStage("vault_pending");
+    }
+  }, [fheStatusQuery.data, fhePollAttempts, stage]);
 
   const startFlow = useCallback(async () => {
     setStage("connecting");
@@ -494,7 +497,7 @@ export function ZkPassportFlow({
       );
       setStage("error");
     }
-  }, [submitResult, setBindingAuthOpen]);
+  }, [setBindingAuthOpen, submitResult]);
 
   // Auto-start on mount — prerequisites are shown on the verify page
   useEffect(() => {
@@ -509,9 +512,6 @@ export function ZkPassportFlow({
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
-      }
-      if (fhePollRef.current) {
-        clearTimeout(fhePollRef.current);
       }
     };
   }, []);
