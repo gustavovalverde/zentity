@@ -1,11 +1,12 @@
-import type { APIRequestContext } from "@playwright/test";
-
-import crypto from "node:crypto";
-
 import { expect, test } from "@playwright/test";
 import { decodeJwt } from "jose";
 
-import { createDpopProof, createIssuerSession } from "./oidc-helpers";
+import {
+  createDpopBinding,
+  createDpopProof,
+  createIssuerSession,
+  registerCibaClient,
+} from "./oidc-helpers";
 
 const RAW_BASE_URL =
   process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3000";
@@ -34,21 +35,6 @@ const PII_FIELDS = [
   "nationalities",
 ] as const;
 
-async function registerCibaClient(request: APIRequestContext) {
-  const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
-    data: {
-      client_name: `pii-e2e-${crypto.randomUUID().slice(0, 8)}`,
-      redirect_uris: ["http://localhost/cb"],
-      grant_types: [CIBA_GRANT_TYPE],
-      token_endpoint_auth_method: "none",
-    },
-    headers: ORIGIN_HEADERS,
-  });
-  expect(res.ok()).toBeTruthy();
-  const body = (await res.json()) as { client_id: string };
-  return body.client_id;
-}
-
 test.describe("PII delivery via userinfo (CIBA flow)", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -59,7 +45,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     const session = await createIssuerSession(request);
 
     // 2. DCR-register a CIBA client
-    const clientId = await registerCibaClient(request);
+    const clientId = await registerCibaClient(request, "pii-e2e");
 
     // 3. Initiate CIBA backchannel auth with identity scopes
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
@@ -119,9 +105,11 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     expect(approveRes.ok()).toBeTruthy();
 
     // 7. Poll for tokens (with DPoP)
+    const dpopBinding = await createDpopBinding();
     const dpop = await createDpopProof({
       method: "POST",
       url: TOKEN_URL,
+      binding: dpopBinding,
     });
 
     const tokenRes = await request.post(TOKEN_URL, {
@@ -167,9 +155,19 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     const atPayload = decodeJwt(tokenBody.access_token);
     expect(atPayload.release_handle).toBeUndefined();
 
-    // 10. Call userinfo → assert identity PII is returned
+    // 10. Call userinfo → assert identity PII is returned. The access token is
+    // DPoP-bound, so userinfo requires DPoP presentation with an ath proof.
+    const userinfoDpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      binding: dpopBinding,
+      accessToken: tokenBody.access_token,
+    });
     const userinfoRes = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfoDpop.proof,
+      },
     });
     expect(userinfoRes.ok()).toBeTruthy();
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;
@@ -183,8 +181,17 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     // 11. Second userinfo call returns 401 invalid_token — single-use binding
     // (exact disclosure enforcement: once PII has been delivered, the
     // release context is consumed and the token is no longer usable)
+    const userinfo2Dpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      binding: dpopBinding,
+      accessToken: tokenBody.access_token,
+    });
     const userinfo2Res = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfo2Dpop.proof,
+      },
     });
     expect(userinfo2Res.status()).toBe(401);
     const userinfo2 = (await userinfo2Res.json()) as Record<string, unknown>;
@@ -195,7 +202,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request);
+    const clientId = await registerCibaClient(request, "pii-e2e");
 
     // CIBA with openid-only scope (no identity scopes)
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
@@ -219,9 +226,11 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     expect(approveRes.ok()).toBeTruthy();
 
     // Poll for tokens
+    const dpopBinding = await createDpopBinding();
     const dpop = await createDpopProof({
       method: "POST",
       url: TOKEN_URL,
+      binding: dpopBinding,
     });
     const tokenRes = await request.post(TOKEN_URL, {
       form: {
@@ -250,9 +259,19 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
       }
     }
 
-    // Userinfo has no PII
+    // Userinfo has no PII. The access token is DPoP-bound, so userinfo requires
+    // DPoP presentation with an ath proof.
+    const userinfoDpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      binding: dpopBinding,
+      accessToken: tokenBody.access_token,
+    });
     const userinfoRes = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfoDpop.proof,
+      },
     });
     expect(userinfoRes.ok()).toBeTruthy();
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;

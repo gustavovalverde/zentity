@@ -11,6 +11,7 @@ const PASSWORD_LABEL_PATTERN = /^Password$/i;
 const CONFIRM_PASSWORD_PATTERN = /Confirm Password/i;
 const SIGN_IN_BUTTON_PATTERN = /^sign in$/i;
 const PASSWORD_OPTION_PATTERN = /Password Use a secure password/i;
+const PASSKEY_SUPPORT_PATTERN = /Checking passkey support/i;
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -20,16 +21,17 @@ async function openInlinePasswordSignUp(page: Page) {
   });
   const passwordInput = page.getByLabel(PASSWORD_LABEL_PATTERN);
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await passwordOption.click();
-    const visible = await passwordInput.isVisible().catch(() => false);
-    if (visible) {
-      break;
-    }
-    await page.waitForTimeout(250);
-  }
+  await expect(passwordOption).toBeVisible();
 
-  await expect(passwordInput).toBeVisible({ timeout: 15_000 });
+  // The button toggles the inline form, so click only while it is closed and
+  // retry to absorb a click that lands before the handler is wired.
+  await expect(async () => {
+    if (!(await passwordInput.isVisible().catch(() => false))) {
+      await passwordOption.click();
+    }
+    await expect(passwordInput).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+
   await expect(page.getByLabel(CONFIRM_PASSWORD_PATTERN)).toBeVisible({
     timeout: 15_000,
   });
@@ -100,10 +102,19 @@ test.describe("Authentication Flow", () => {
       timeout: 60_000,
     });
 
+    // The passkey-support probe renders "Checking passkey support…" until its
+    // client effect runs; waiting for it to clear confirms the form hydrated,
+    // so the fill below is not reverted when React takes over the controlled
+    // email input.
+    await expect(page.getByText(PASSKEY_SUPPORT_PATTERN)).toHaveCount(0, {
+      timeout: 15_000,
+    });
+
     const emailInput = page.getByRole("textbox", {
       name: EMAIL_ADDRESS_PATTERN,
     });
     await emailInput.fill(testEmail);
+    await expect(emailInput).toHaveValue(testEmail);
     await emailInput.blur();
 
     await expect(

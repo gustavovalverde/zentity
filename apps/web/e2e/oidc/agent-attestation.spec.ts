@@ -1,9 +1,11 @@
-import crypto from "node:crypto";
-
 import { expect, test } from "@playwright/test";
 import { decodeJwt } from "jose";
 
-import { createDpopProof, createIssuerSession } from "./oidc-helpers";
+import {
+  createDpopProof,
+  createIssuerSession,
+  registerCibaClient,
+} from "./oidc-helpers";
 
 const RAW_BASE_URL =
   process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3000";
@@ -16,23 +18,6 @@ const ORIGIN_HEADERS = {
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TOKEN_URL = `${AUTH_BASE_URL}/oauth2/token`;
 
-async function registerCibaClient(
-  request: import("@playwright/test").APIRequestContext
-) {
-  const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
-    data: {
-      client_name: `attest-e2e-${crypto.randomUUID().slice(0, 8)}`,
-      redirect_uris: ["http://localhost/cb"],
-      grant_types: [CIBA_GRANT_TYPE],
-      token_endpoint_auth_method: "none",
-    },
-    headers: ORIGIN_HEADERS,
-  });
-  expect(res.ok()).toBeTruthy();
-  const body = (await res.json()) as { client_id: string };
-  return body.client_id;
-}
-
 test.describe("Registered agent assertion in CIBA flow", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -40,7 +25,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request);
+    const clientId = await registerCibaClient(request, "attest-e2e");
 
     const agentClaims = JSON.stringify({
       agent: {
@@ -102,7 +87,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     request,
   }) => {
     const session = await createIssuerSession(request);
-    const clientId = await registerCibaClient(request);
+    const clientId = await registerCibaClient(request, "attest-e2e");
 
     // CIBA without agent claims
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
