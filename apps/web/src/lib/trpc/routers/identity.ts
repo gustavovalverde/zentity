@@ -31,9 +31,11 @@ import {
   getLatestIdentityVerificationJobForDraft,
   getLatestVerification,
   revokeIdentity,
+  upsertIdentityBundle,
   upsertIdentityDraft,
 } from "@/lib/db/queries/identity";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
+import { fheLimiter } from "@/lib/http/rate-limit";
 import { processDocumentWithOcr } from "@/lib/identity/document/process";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
@@ -280,6 +282,14 @@ const livenessStatusProcedure = protectedProcedure
     };
   });
 
+const fheStatusProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const { limited } = fheLimiter.check(ctx.userId);
+  if (limited) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
+  }
+  return next({ ctx });
+});
+
 /**
  * Dashboard identity finalization procedure.
  *
@@ -357,6 +367,24 @@ const finalizeProcedure = protectedProcedure
     scheduleIdentityJob(jobId);
 
     return { jobId, status: "queued" };
+  });
+
+const setFheStatusProcedure = fheStatusProcedure
+  .input(
+    z.object({
+      fheKeyId: z.string().min(1),
+      fheStatus: z.enum(["pending", "complete", "error"]),
+      fheError: z.string().nullable().optional(),
+    })
+  )
+  .mutation(async ({ ctx, input }) => {
+    await upsertIdentityBundle({
+      userId: ctx.userId,
+      fheKeyId: input.fheKeyId,
+      fheStatus: input.fheStatus,
+      fheError: input.fheError ?? null,
+    });
+    return { success: true };
   });
 
 /**
@@ -546,6 +574,7 @@ const getOverviewProcedure = adminProcedure
 export const identityRouter = router({
   prepareDocument: prepareDocumentProcedure,
   livenessStatus: livenessStatusProcedure,
+  setFheStatus: setFheStatusProcedure,
   finalize: finalizeProcedure,
   finalizeStatus: finalizeStatusProcedure,
   getOverview: getOverviewProcedure,
