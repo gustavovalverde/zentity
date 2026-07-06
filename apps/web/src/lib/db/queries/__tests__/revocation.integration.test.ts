@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import { attachHumanityCredential } from "@/lib/db/queries/humanity";
 import {
@@ -204,7 +205,10 @@ describe("identity revocation cascade", () => {
       "fraud",
       "admin"
     );
-    expect(result.scheduledDeliveries).toBe(1);
+    // A configured Base Sepolia mirror schedules a mirror_revocation_write
+    // alongside the primary blockchain_attestation_revocation.
+    const mirrorEnabled = Boolean(getBaseSepoliaMirrorConfig());
+    expect(result.scheduledDeliveries).toBe(mirrorEnabled ? 2 : 1);
 
     await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
