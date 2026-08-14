@@ -48,6 +48,11 @@ apps/ocr
 apps/fhe
 apps/signer
 
+# The demo image also builds from the repository root because it consumes the
+# workspace SDK and the web app's vendored Better Auth packages.
+!apps/demo-rp
+!apps/demo-rp/**
+
 # Web app non-build content
 apps/web/e2e
 apps/web/coverage
