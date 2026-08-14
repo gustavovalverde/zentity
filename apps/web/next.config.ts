@@ -7,6 +7,12 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  // The OAuth E2E harness intentionally serves the issuer on a loopback IP
+  // while redirecting back to a localhost RP. Allow both spellings so Next's
+  // development HMR client can hydrate consent pages reached through either
+  // registered loopback origin.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
+
   // Turbopack configuration for Buffer polyfill
   // ISSUE: Next.js ships buffer@5.6.0 at "next/dist/compiled/buffer" which LACKS BigInt methods
   // The free variable `Buffer` maps to "node:buffer" which aliases to the compiled buffer

@@ -27,6 +27,7 @@ export function buildLoopbackClientRegistration(
   options: BuildLoopbackClientRegistrationOptions
 ): Record<string, unknown> {
   return {
+    application_type: "native",
     client_name: options.clientName,
     grant_types: [...options.grantTypes],
     redirect_uris: [options.redirectUri ?? DEFAULT_LOOPBACK_REDIRECT_URI],

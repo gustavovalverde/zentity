@@ -401,7 +401,17 @@ describe("remote MCP HTTP auth integration", () => {
     expect(typeof accessToken).toBe("string");
 
     mcpProcess = startMcpSubprocess(authHarness.baseUrl);
-    await waitForHealth(MCP_PUBLIC_URL);
+    const mcpOutput: Buffer[] = [];
+    mcpProcess.stdout?.on("data", (chunk: Buffer) => mcpOutput.push(chunk));
+    mcpProcess.stderr?.on("data", (chunk: Buffer) => mcpOutput.push(chunk));
+    try {
+      await waitForHealth(MCP_PUBLIC_URL);
+    } catch (error) {
+      const output = Buffer.concat(mcpOutput).toString("utf8").trim();
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}${output ? `\n${output}` : ""}`
+      );
+    }
 
     const mcpUrl = `${MCP_PUBLIC_URL}/mcp`;
 

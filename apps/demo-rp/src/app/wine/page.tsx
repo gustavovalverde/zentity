@@ -165,6 +165,18 @@ function WinePageContent() {
     return <WineAgeGate onVerify={handleSignIn} scenario={scenario} />;
   }
 
+  const isAgeVerified = claims?.age_verification === true;
+  if (!isAgeVerified) {
+    return (
+      <WineAgeGate
+        ageProofMissing
+        onSignOut={handleSignOut}
+        onVerify={handleSignIn}
+        scenario={scenario}
+      />
+    );
+  }
+
   if (orderPlaced) {
     return (
       <div
@@ -175,7 +187,7 @@ function WinePageContent() {
           activeTab="cart"
           cartCount={0}
           isSignedIn={isAuthenticated}
-          isVerified={isAuthenticated}
+          isVerified={isAgeVerified}
           onSignOut={handleSignOut}
           onTabChange={setActiveTab}
         />
@@ -200,7 +212,7 @@ function WinePageContent() {
         activeTab={activeTab}
         cartCount={cartCount}
         isSignedIn={isAuthenticated}
-        isVerified={isAuthenticated}
+        isVerified={isAgeVerified}
         onSignOut={handleSignOut}
         onTabChange={setActiveTab}
       />

@@ -78,10 +78,10 @@ describe("back-channel logout", () => {
       backchannel_logout_uri: BCL_URI,
     });
 
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId);
+    await sendBackchannelLogoutToClient({ clientId: BCL_CLIENT_ID, userId });
 
     expect(fetchSpy).toHaveBeenCalledWith(
       BCL_URI,
@@ -94,10 +94,10 @@ describe("back-channel logout", () => {
       backchannel_logout_uri: BCL_URI,
     });
 
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId);
+    await sendBackchannelLogoutToClient({ clientId: BCL_CLIENT_ID, userId });
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -122,10 +122,14 @@ describe("back-channel logout", () => {
     });
 
     const sessionId = crypto.randomUUID();
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId, sessionId);
+    await sendBackchannelLogoutToClient({
+      clientId: BCL_CLIENT_ID,
+      sessionId,
+      userId,
+    });
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -138,10 +142,14 @@ describe("back-channel logout", () => {
       backchannel_logout_uri: BCL_URI,
     });
 
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId, "session-123");
+    await sendBackchannelLogoutToClient({
+      clientId: BCL_CLIENT_ID,
+      sessionId: "session-123",
+      userId,
+    });
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -152,10 +160,13 @@ describe("back-channel logout", () => {
   it("skips clients without backchannel_logout_uri", async () => {
     await createBclClient("no-bcl-client", {});
 
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId);
+    await sendBackchannelLogoutToClient({
+      clientId: "no-bcl-client",
+      userId,
+    });
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -165,11 +176,11 @@ describe("back-channel logout", () => {
       backchannel_logout_uri: BCL_URI,
     });
 
-    const { sendBackchannelLogout } = await import(
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    await sendBackchannelLogout(userId);
-    await sendBackchannelLogout(userId);
+    await sendBackchannelLogoutToClient({ clientId: BCL_CLIENT_ID, userId });
+    await sendBackchannelLogoutToClient({ clientId: BCL_CLIENT_ID, userId });
 
     const getJti = (callIndex: number) => {
       const body = fetchSpy.mock.calls[callIndex]?.[1]?.body as string;

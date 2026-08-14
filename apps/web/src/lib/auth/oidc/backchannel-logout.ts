@@ -8,7 +8,7 @@ import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { logError, logWarn } from "@/lib/logging/error-logger";
+import { logError } from "@/lib/logging/error-logger";
 
 import { signJwt } from "./jwt-signer";
 import { resolveSubForClient } from "./pairwise";
@@ -162,45 +162,6 @@ export async function sendBackchannelLogoutToClient(args: {
   );
 
   await postLogoutToken(client.backchannelLogoutUri, token, client.clientId);
-}
-
-/**
- * Send backchannel logout tokens to all registered RPs for a user.
- * Fire-and-forget — errors are logged but never thrown.
- */
-export async function sendBackchannelLogout(
-  userId: string,
-  sessionId?: string
-): Promise<void> {
-  try {
-    const clients = await listBackchannelLogoutClients();
-    if (clients.length === 0) {
-      return;
-    }
-
-    const deliveries = clients.map(async (client) => {
-      try {
-        const delivery = {
-          clientId: client.clientId,
-          userId,
-          ...(sessionId ? { sessionId } : {}),
-        };
-        await sendBackchannelLogoutToClient(delivery);
-      } catch (err) {
-        logWarn(`BCL delivery to ${client.clientId} failed`, {
-          clientId: client.clientId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    });
-
-    await Promise.allSettled(deliveries);
-  } catch (err) {
-    logError(err instanceof Error ? err : new Error(String(err)), {
-      userId,
-      operation: "bcl-notification",
-    });
-  }
 }
 
 /**

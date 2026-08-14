@@ -29,23 +29,33 @@ export const session = sqliteTable("session", {
     .references(() => user.id),
 });
 
-export const account = sqliteTable("account", {
-  id: text("id").primaryKey(),
-  accountId: text("accountId").notNull(),
-  providerId: text("providerId").notNull(),
-  userId: text("userId")
-    .notNull()
-    .references(() => user.id),
-  accessToken: text("accessToken"),
-  refreshToken: text("refreshToken"),
-  idToken: text("idToken"),
-  accessTokenExpiresAt: text("accessTokenExpiresAt"),
-  refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
-  scope: text("scope"),
-  password: text("password"),
-  createdAt: text("createdAt").notNull().default("datetime('now')"),
-  updatedAt: text("updatedAt").notNull().default("datetime('now')"),
-});
+export const account = sqliteTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    issuer: text("issuer").notNull(),
+    accountId: text("accountId").notNull(),
+    providerId: text("providerId").notNull(),
+    userId: text("userId")
+      .notNull()
+      .references(() => user.id),
+    accessToken: text("accessToken"),
+    refreshToken: text("refreshToken"),
+    idToken: text("idToken"),
+    accessTokenExpiresAt: text("accessTokenExpiresAt"),
+    refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: text("createdAt").notNull().default("datetime('now')"),
+    updatedAt: text("updatedAt").notNull().default("datetime('now')"),
+  },
+  (table) => [
+    uniqueIndex("account_issuer_accountId_unique").on(
+      table.issuer,
+      table.accountId
+    ),
+  ]
+);
 
 export const verification = sqliteTable("verification", {
   id: text("id").primaryKey(),

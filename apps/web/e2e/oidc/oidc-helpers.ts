@@ -289,6 +289,8 @@ export async function createWalletClient(
 ) {
   const res = await request.post(`${AUTH_BASE_URL}/oauth2/create-client`, {
     data: {
+      application_type: "native",
+      grant_types: ["urn:ietf:params:oauth:grant-type:pre-authorized_code"],
       redirect_uris: ["https://wallet.example/cb"],
       token_endpoint_auth_method: "none",
       skip_consent: true,
@@ -607,7 +609,7 @@ export async function createDpopProof(input: {
     .setIssuedAt();
 
   const proof = await builder.sign(binding.dpopKey.privateKey);
-  return { proof, ...binding };
+  return { ...binding, proof };
 }
 
 /**

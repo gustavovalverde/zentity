@@ -1,5 +1,6 @@
 import type { Eip712AuthOptions, Eip712TypedData } from "./types";
 
+import { createLocalAccountIssuer } from "@better-auth/core/db";
 import { APIError, type BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
 import { setSessionCookie } from "better-auth/cookies";
@@ -224,18 +225,10 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           }
 
           // Create account
-          const generatedAccountId = ctx.context.generateId({
-            model: "account",
-          });
-          if (!generatedAccountId) {
-            throw new APIError("INTERNAL_SERVER_ERROR", {
-              message: "Failed to generate account ID",
-            });
-          }
-          const accountId = generatedAccountId;
           await ctx.context.internalAdapter.createAccount({
-            accountId,
+            accountId: `${address.toLowerCase()}:${chainId}`,
             providerId: "eip712",
+            issuer: createLocalAccountIssuer("eip712"),
             userId,
             createdAt: new Date(),
             updatedAt: new Date(),

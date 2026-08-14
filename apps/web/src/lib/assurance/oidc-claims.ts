@@ -55,27 +55,6 @@ export function buildOidcAssuranceClaims(
   };
 }
 
-/**
- * Namespaced id-token assurance claim. The OAuth provider owns the standard
- * `acr`/`amr`/`auth_time` id-token claims and reports `acr: "0"` until it
- * supports requestable ACR classes, so the assurance tier and its
- * authentication methods ride here instead. `auth_time` stays AS-owned.
- */
-const ASSURANCE_CLAIM = "zentity_assurance";
-
-export function buildNamespacedAssuranceClaim(
-  assurance: Pick<AccountAssurance, "tier">,
-  auth: Pick<AuthenticationState, "amr">
-) {
-  return {
-    [ASSURANCE_CLAIM]: {
-      acr: computeAcr(assurance.tier),
-      acr_eidas: computeAcrEidas(assurance.tier),
-      ...(auth.amr.length > 0 ? { amr: auth.amr } : {}),
-    },
-  };
-}
-
 // --- AMR (Authentication Methods References, RFC 8176) ---
 
 const AMR_MAP: Record<LoginMethod | "none", string[]> = {

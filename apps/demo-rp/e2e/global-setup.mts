@@ -9,6 +9,9 @@ const currentDir =
 const webRoot = join(currentDir, "..", "..", "web");
 
 export default function globalSetup() {
+  // The demo workflows require the complete seeded identity. Do not inherit
+  // the issuer-only shortcut from a preceding web OIDC test invocation.
+  process.env.E2E_OIDC_ONLY = "false";
   process.env.E2E_IDENTITY_SEED_VARIANT ??= "verified_with_profile";
 
   const result = spawnSync("pnpm", ["exec", "tsx", "e2e/run-global-setup.ts"], {

@@ -20,6 +20,25 @@ function scenarioRedirectUri(scenarioId: RouteScenarioId): string {
   return `${env.NEXT_PUBLIC_APP_URL}/api/auth/callback/${scenario.oauthProviderId}`;
 }
 
+function clientRegistrationEnvironment() {
+  const appUrl = new URL(env.NEXT_PUBLIC_APP_URL);
+  const isPublicHttpsOrigin =
+    appUrl.protocol === "https:" &&
+    appUrl.hostname !== "localhost" &&
+    appUrl.hostname !== "127.0.0.1" &&
+    appUrl.hostname !== "::1";
+  return {
+    applicationType: isPublicHttpsOrigin ? "web" : "native",
+    callbackMetadata: isPublicHttpsOrigin
+      ? {
+          backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+          rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
+          rp_validity_notice_enabled: true,
+        }
+      : {},
+  } as const;
+}
+
 /**
  * Confirm a cached client_id is still registered at Zentity.
  *
@@ -67,19 +86,20 @@ async function registerScenarioClient(
 ): Promise<string> {
   const scenario = getRouteScenario(scenarioId);
   const grantTypes = scenario.dcr.grantTypes ?? ["authorization_code"];
+  const registrationEnvironment = clientRegistrationEnvironment();
   const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_name: scenario.dcr.clientName,
+      application_type: registrationEnvironment.applicationType,
       redirect_uris: [scenarioRedirectUri(scenarioId)],
+      post_logout_redirect_uris: [`${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`],
       scope: scenario.dcr.requestedScopes,
       token_endpoint_auth_method: "none",
       grant_types: grantTypes,
       response_types: ["code"],
-      backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
-      rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
-      rp_validity_notice_enabled: true,
+      ...registrationEnvironment.callbackMetadata,
       // CIBA clients must advertise a token delivery mode; the provider rejects
       // bc-authorize otherwise. The demo agent polls the token endpoint.
       ...(grantTypes.includes(CIBA_GRANT_TYPE)

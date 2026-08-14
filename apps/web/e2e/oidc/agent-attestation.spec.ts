@@ -23,12 +23,18 @@ async function registerCibaClient(
     data: {
       client_name: `attest-e2e-${crypto.randomUUID().slice(0, 8)}`,
       redirect_uris: ["http://localhost/cb"],
+      application_type: "native",
+      backchannel_token_delivery_mode: "poll",
       grant_types: [CIBA_GRANT_TYPE],
       token_endpoint_auth_method: "none",
     },
     headers: ORIGIN_HEADERS,
   });
-  expect(res.ok()).toBeTruthy();
+  if (!res.ok()) {
+    throw new Error(
+      `CIBA client registration failed (${res.status()} ${res.statusText()}): ${await res.text()}`
+    );
+  }
   const body = (await res.json()) as { client_id: string };
   return body.client_id;
 }
@@ -65,7 +71,11 @@ test.describe("Registered agent assertion in CIBA flow", () => {
       },
       headers: ORIGIN_HEADERS,
     });
-    expect(bcRes.ok()).toBeTruthy();
+    if (!bcRes.ok()) {
+      throw new Error(
+        `CIBA request failed (${bcRes.status()} ${bcRes.statusText()}): ${await bcRes.text()}`
+      );
+    }
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
     expect(auth_req_id).toBeTruthy();
 
@@ -115,7 +125,11 @@ test.describe("Registered agent assertion in CIBA flow", () => {
       },
       headers: ORIGIN_HEADERS,
     });
-    expect(bcRes.ok()).toBeTruthy();
+    if (!bcRes.ok()) {
+      throw new Error(
+        `CIBA request failed (${bcRes.status()} ${bcRes.statusText()}): ${await bcRes.text()}`
+      );
+    }
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
 
     await request.post(`${AUTH_BASE_URL}/ciba/authorize`, {

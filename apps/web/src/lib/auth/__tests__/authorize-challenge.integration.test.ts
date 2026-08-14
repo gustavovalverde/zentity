@@ -2,6 +2,7 @@ import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 
 import crypto from "node:crypto";
 
+import { createLocalAccountIssuer } from "@better-auth/core/db";
 import { client, ready, server } from "@serenity-kit/opaque";
 import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
@@ -81,6 +82,7 @@ async function createUserWithWallet(
       id: crypto.randomUUID(),
       accountId: userId,
       providerId: "eip712",
+      issuer: createLocalAccountIssuer("eip712"),
       userId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -129,6 +131,7 @@ async function createUserWithOpaque(
       id: crypto.randomUUID(),
       accountId: userId,
       providerId: "opaque",
+      issuer: createLocalAccountIssuer("opaque"),
       userId,
       registrationRecord,
       createdAt: new Date(),
@@ -305,6 +308,22 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(400);
       expect(json.error).toBe("invalid_client");
     });
+
+    it("rejects claims without the openid scope", async () => {
+      const { status, json } = await callChallenge({
+        claims: JSON.stringify({ userinfo: { email: null } }),
+        client_id: TEST_CLIENT_ID,
+        identifier: TEST_EMAIL,
+        response_type: "code",
+        scope: "profile",
+      });
+
+      expect(status).toBe(400);
+      expect(json).toEqual({
+        error: "invalid_request",
+        error_description: "claims parameter requires openid scope",
+      });
+    });
   });
 
   describe("Full 3-round OPAQUE flow", () => {
@@ -361,12 +380,10 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.id_token).toEqual(expect.any(String));
 
       const claims = decodeJwt(json.id_token as string);
-      // acr is AS-owned ("0"); the tier rides in the namespaced claim.
-      expect(claims.acr).toBe("0");
-      expect(claims.amr).toBeUndefined();
-      expect(claims.acr_eidas).toBeUndefined();
-      const assurance = claims.zentity_assurance as Record<string, unknown>;
-      expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.amr).toEqual(["pwd"]);
+      expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+      expect(claims.zentity_assurance).toBeUndefined();
     });
 
     it("rejects token exchange without code_verifier (PKCE required)", async () => {
@@ -896,11 +913,10 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.access_token).toBeTypeOf("string");
       expect(json.auth_session).toBe(stepUpAuthSession);
 
-      // Verify the id_token reflects the upgraded tier (in the namespaced claim)
+      // Verify the provider-owned authentication context reflects the upgrade.
       if (json.id_token) {
         const claims = decodeJwt(json.id_token as string);
-        const assurance = claims.zentity_assurance as Record<string, unknown>;
-        expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
+        expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
       }
     });
 

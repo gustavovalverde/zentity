@@ -6,15 +6,19 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { resetDatabase } from "@/test-utils/db-test-utils";
 
 const PAR_URL = "http://localhost:3000/api/auth/oauth2/par";
-const CIMD_CLIENT_ID = "https://mcp-client.test/oauth";
+const CIMD_CLIENT_ID_BASE = "https://mcp-client.test/oauth";
 const REDIRECT_URI = "https://mcp-client.test/callback";
+let cimdClientId = CIMD_CLIENT_ID_BASE;
+let testClientSequence = 0;
 
 function validMetadata(overrides?: Record<string, unknown>) {
   return {
-    client_id: CIMD_CLIENT_ID,
+    client_id: cimdClientId,
     client_name: "MCP Test Client",
     redirect_uris: [REDIRECT_URI],
     grant_types: ["authorization_code"],
+    response_types: ["code"],
+    application_type: "native",
     token_endpoint_auth_method: "none",
     ...overrides,
   };
@@ -28,7 +32,7 @@ function mockFetchMetadata(
   vi.spyOn(globalThis, "fetch").mockImplementation(
     (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
-      if (url === CIMD_CLIENT_ID) {
+      if (url === cimdClientId) {
         if (metadata === null) {
           return Promise.reject(new Error("network error"));
         }
@@ -48,8 +52,8 @@ async function postPar(body: Record<string, string>) {
   const response = await auth.handler(
     new Request(PAR_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
     })
   );
   const text = await response.text();
@@ -64,6 +68,8 @@ async function postPar(body: Record<string, string>) {
 
 describe("CIMD: Client ID Metadata Document Resolution", () => {
   beforeEach(async () => {
+    testClientSequence += 1;
+    cimdClientId = `${CIMD_CLIENT_ID_BASE}/${testClientSequence}`;
     await resetDatabase();
   });
 
@@ -76,7 +82,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       mockFetchMetadata(validMetadata());
 
       const { status } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -85,20 +91,20 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
         code_challenge_method: "S256",
       });
 
-      // PAR succeeds (client was resolved from metadata)
-      expect(status).toBeLessThan(400);
+      expect(status).toBe(201);
 
       // Verify synthetic client was created in DB
       const client = await db.query.oauthClients.findFirst({
-        where: (t, { eq }) => eq(t.clientId, CIMD_CLIENT_ID),
+        where: (t, { eq }) => eq(t.clientId, cimdClientId),
       });
       expect(client).toBeDefined();
       expect(client?.name).toBe("MCP Test Client");
-      expect(client?.metadataUrl).toBe(CIMD_CLIENT_ID);
+      expect(client?.metadataUrl).toBe(cimdClientId);
       expect(client?.metadataFetchedAt).toBeDefined();
       expect(client?.trustLevel).toBe(1);
       expect(client?.subjectType).toBe("pairwise");
-      expect(client?.public).toBe(true);
+      expect(client?.clientDiscoveryId).toBe("cimd");
+      expect(client?.applicationType).toBe("native");
     });
 
     it("rejects metadata with mismatched client_id", async () => {
@@ -107,7 +113,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       );
 
       const { status, json } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -123,7 +129,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       mockFetchMetadata(validMetadata({ redirect_uris: undefined }));
 
       const { status, json } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -134,11 +140,16 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       expect(json.error).toBe("invalid_client");
     });
 
-    it("rejects metadata with disallowed grant_types", async () => {
-      mockFetchMetadata(validMetadata({ grant_types: ["client_credentials"] }));
+    it("rejects PAR when the discovered client lacks authorization_code", async () => {
+      mockFetchMetadata(
+        validMetadata({
+          grant_types: ["client_credentials"],
+          response_types: undefined,
+        })
+      );
 
       const { status, json } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -146,15 +157,15 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       });
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_client");
-      expect(json.error_description).toContain("grant_types");
+      expect(json.error).toBe("unauthorized_client");
+      expect(json.error_description).toContain("authorization_code");
     });
 
     it("rejects when metadata fetch fails", async () => {
       mockFetchMetadata(null); // network error
 
       const { status, json } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -181,62 +192,40 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
   });
 
   describe("cache behavior", () => {
-    it("uses cached client within TTL (no re-fetch)", async () => {
-      // Pre-insert cached client
-      await db.insert(oauthClients).values({
-        clientId: CIMD_CLIENT_ID,
-        name: "Cached MCP Client",
-        redirectUris: JSON.stringify([REDIRECT_URI]),
-        grantTypes: JSON.stringify(["authorization_code"]),
-        tokenEndpointAuthMethod: "none",
-        public: true,
-        subjectType: "pairwise",
-        trustLevel: 1,
-        metadataUrl: CIMD_CLIENT_ID,
-        metadataFetchedAt: new Date(), // fresh
-      });
-
-      // No fetch mock — should not need to fetch
-      const fetchSpy = vi.spyOn(globalThis, "fetch");
-      const realFetch = globalThis.fetch.bind(globalThis);
-      fetchSpy.mockImplementation(
-        (input: string | URL | Request, init?: RequestInit) => {
-          const url = typeof input === "string" ? input : input.toString();
-          if (url === CIMD_CLIENT_ID) {
-            throw new Error("should not fetch — client is cached");
-          }
-          return realFetch(input, init);
-        }
-      );
-
-      const { status } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+    it("reuses validated metadata from the in-memory cache", async () => {
+      mockFetchMetadata(validMetadata());
+      const request = {
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
         resource: "http://localhost:3000",
         code_challenge: "test-challenge",
         code_challenge_method: "S256",
-      });
+      };
 
-      expect(status).toBeLessThan(400);
+      expect((await postPar(request)).status).toBe(201);
+      expect((await postPar(request)).status).toBe(201);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it("re-fetches metadata after TTL expires", async () => {
-      // Insert client with expired TTL
+    it("re-fetches a discovery-owned client after an in-memory cache restart", async () => {
+      // A persisted discovery-owned row has no validated response cache after a
+      // process restart, so CIMD must re-fetch and revalidate its document.
       const pastTtl = new Date(Date.now() - 25 * 60 * 60 * 1000);
       await db.insert(oauthClients).values({
-        clientId: CIMD_CLIENT_ID,
+        clientId: cimdClientId,
         name: "Old Name",
         redirectUris: JSON.stringify([REDIRECT_URI]),
         grantTypes: JSON.stringify(["authorization_code"]),
+        responseTypes: JSON.stringify(["code"]),
         tokenEndpointAuthMethod: "none",
-        public: true,
+        applicationType: "native",
+        clientDiscoveryId: "cimd",
         subjectType: "pairwise",
         trustLevel: 1,
-        metadataUrl: CIMD_CLIENT_ID,
+        metadataUrl: cimdClientId,
         metadataFetchedAt: pastTtl,
-        // CIMD staleness is measured from updatedAt (refreshRate default 60m).
         createdAt: pastTtl,
         updatedAt: pastTtl,
       });
@@ -244,7 +233,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       mockFetchMetadata(validMetadata({ client_name: "Updated Name" }));
 
       const { status } = await postPar({
-        client_id: CIMD_CLIENT_ID,
+        client_id: cimdClientId,
         response_type: "code",
         redirect_uri: REDIRECT_URI,
         scope: "openid",
@@ -257,7 +246,7 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
 
       // Verify client was updated
       const client = await db.query.oauthClients.findFirst({
-        where: (t, { eq }) => eq(t.clientId, CIMD_CLIENT_ID),
+        where: (t, { eq }) => eq(t.clientId, cimdClientId),
       });
       expect(client?.name).toBe("Updated Name");
     });

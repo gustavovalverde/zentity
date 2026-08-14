@@ -37,6 +37,16 @@ export async function ensureWalletClientExists(): Promise<string> {
     .get();
 
   if (existing) {
+    await db
+      .update(oauthClients)
+      .set({
+        applicationType: "native",
+        clientCredentialsScopes: JSON.stringify([]),
+        public: true,
+        tokenEndpointAuthMethod: "none",
+      })
+      .where(eq(oauthClients.id, existing.id))
+      .run();
     return DEFAULT_WALLET_CLIENT_ID;
   }
 
@@ -45,7 +55,10 @@ export async function ensureWalletClientExists(): Promise<string> {
     .values({
       clientId: DEFAULT_WALLET_CLIENT_ID,
       name: "Zentity Wallet",
-      public: true, // No client_secret required
+      applicationType: "native",
+      clientCredentialsScopes: JSON.stringify([]),
+      public: true,
+      tokenEndpointAuthMethod: "none",
       disabled: false,
       skipConsent: true, // Wallet flow doesn't need consent page
       scopes: JSON.stringify(WALLET_CLIENT_SCOPES),

@@ -26,13 +26,13 @@ describe("POST /api/auth/oauth2/register", () => {
         body: JSON.stringify({
           backchannel_logout_session_required: true,
           backchannel_logout_uri:
-            "http://localhost:3102/api/auth/backchannel-logout",
+            "https://demo-rp.example/api/auth/backchannel-logout",
           client_name: "Demo RP",
           grant_types: ["authorization_code", "refresh_token"],
-          redirect_uris: ["http://127.0.0.1/callback"],
+          redirect_uris: ["https://demo-rp.example/callback"],
           response_types: ["code"],
           rp_validity_notice_enabled: true,
-          rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+          rp_validity_notice_uri: "https://demo-rp.example/api/auth/validity",
           scope: "openid email offline_access",
           token_endpoint_auth_method: "none",
           zentity_protected_resource: "http://localhost:3300",
@@ -53,15 +53,15 @@ describe("POST /api/auth/oauth2/register", () => {
       clientId: payload.client_id,
       enableEndSession: true,
       rpValidityNoticeEnabled: true,
-      rpValidityNoticeUri: "http://localhost:3102/api/auth/validity",
+      rpValidityNoticeUri: "https://demo-rp.example/api/auth/validity",
     });
     expect(client?.metadata).toEqual(expect.any(String));
     expect(JSON.parse(client?.metadata ?? "{}")).toMatchObject({
       backchannel_logout_session_required: true,
       backchannel_logout_uri:
-        "http://localhost:3102/api/auth/backchannel-logout",
+        "https://demo-rp.example/api/auth/backchannel-logout",
       rp_validity_notice_enabled: true,
-      rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+      rp_validity_notice_uri: "https://demo-rp.example/api/auth/validity",
       zentity_protected_resource: "http://localhost:3300",
     });
 
@@ -69,14 +69,14 @@ describe("POST /api/auth/oauth2/register", () => {
       expect.objectContaining({
         backchannelLogoutSessionRequired: true,
         backchannelLogoutUri:
-          "http://localhost:3102/api/auth/backchannel-logout",
+          "https://demo-rp.example/api/auth/backchannel-logout",
         clientId: payload.client_id,
       }),
     ]);
     await expect(listRpValidityNoticeClients()).resolves.toEqual([
       expect.objectContaining({
         clientId: payload.client_id,
-        rpValidityNoticeUri: "http://localhost:3102/api/auth/validity",
+        rpValidityNoticeUri: "https://demo-rp.example/api/auth/validity",
       }),
     ]);
   });

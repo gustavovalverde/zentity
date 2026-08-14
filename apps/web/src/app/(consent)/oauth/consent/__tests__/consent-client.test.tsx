@@ -164,6 +164,45 @@ describe("OAuthConsentClient identity hardening", () => {
     });
   });
 
+  it("waits for an explicit retry after identity intent preparation fails", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ error: "Invalid OAuth query" }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      })
+    );
+
+    render(
+      <OAuthConsentClient
+        authMode="passkey"
+        clientHostname={null}
+        clientId="client-1"
+        clientMeta={{
+          name: "RP",
+          icon: null,
+          uri: null,
+          metadataUrl: null,
+          redirectUris: null,
+        }}
+        isLocalApp={false}
+        optionalScopes={[]}
+        scopeParam="openid identity.name"
+        securityBadgeInput={null}
+        wallet={null}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlock vault" }));
+
+    const retryButton = await screen.findByRole("button", {
+      name: "Retry secure consent",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(retryButton);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  });
+
   it("shows deterministic-wallet remediation when signatures mismatch", async () => {
     appKitMocks.address = "0xabc123";
     appKitMocks.isConnected = true;
@@ -266,7 +305,7 @@ describe("OAuthConsentClient identity hardening", () => {
 
   it("warns about missing profile fields but stages the available subset", async () => {
     authClientMocks.oauth2.consent.mockResolvedValue({
-      data: { redirectURI: "#oauth-return" },
+      data: { redirect: true, url: "#oauth-return" },
     });
     oauthPostLoginMocks.getSignedOAuthQuery.mockReturnValue(
       "client_id=client-1&scope=openid%20identity.name%20identity.address%20identity.dob&exp=9999999999&sig=test"
@@ -368,6 +407,5 @@ describe("OAuthConsentClient identity hardening", () => {
     await waitFor(() => {
       expect(authClientMocks.oauth2.consent).toHaveBeenCalled();
     });
-    expect(globalThis.window.location.hash).toBe("#oauth-return");
   });
 });

@@ -51,6 +51,7 @@ const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const EIP712_NONCE_TTL_MS = 15 * 60 * 1000;
 const EIP712_APP_NAME = "Zentity";
 const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
+const SCOPE_SEPARATOR_RE = /\s+/;
 
 // ── Rate limiter (sliding window per IP) ────────────────
 
@@ -268,6 +269,17 @@ async function handleInitialRequest(
     return errorJson(400, "invalid_request", parsed.error.issues[0]?.message);
   }
   const params = parsed.data;
+
+  if (
+    params.claims &&
+    !params.scope.split(SCOPE_SEPARATOR_RE).some((scope) => scope === "openid")
+  ) {
+    return errorJson(
+      400,
+      "invalid_request",
+      "claims parameter requires openid scope"
+    );
+  }
 
   // Validate client
   const client = await db
