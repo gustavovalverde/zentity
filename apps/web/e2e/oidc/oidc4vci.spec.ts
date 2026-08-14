@@ -69,7 +69,11 @@ test.describe("OIDC4VCI issuer", () => {
       clientId,
       dpopBinding,
     });
-    expect(tokenRes.status()).toBe(200);
+    if (tokenRes.status() !== 200) {
+      throw new Error(
+        `Pre-authorized code exchange failed (${tokenRes.status()} ${tokenRes.statusText()}): ${await tokenRes.text()}`
+      );
+    }
     const tokens = (await tokenRes.json()) as {
       access_token: string;
       c_nonce: string;

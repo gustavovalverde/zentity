@@ -11,7 +11,7 @@ import {
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { genericOAuth } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
 
 import { getDb } from "@/lib/db/connection";
@@ -38,6 +38,7 @@ import {
 // Store DPoP clients by access token so getUserInfo can reuse the same
 // keypair that getToken bound the token to (cnf.jkt).
 const dpopClients = new Map<string, DpopClient>();
+const zentityAccountIssuer = `${env.ZENTITY_URL}/api/auth`;
 
 const STRIP_FIELDS = new Set([
   "is_anonymous",
@@ -157,7 +158,10 @@ async function findUserIdByAccountId(
 ): Promise<string | null> {
   try {
     const row = await getDb().query.account.findFirst({
-      where: eq(account.accountId, accountId),
+      where: and(
+        eq(account.issuer, zentityAccountIssuer),
+        eq(account.accountId, accountId)
+      ),
       columns: { userId: true },
     });
     return row?.userId ?? null;
@@ -218,14 +222,17 @@ async function syncClaimsToDb(
 
 function makeProviderConfig(
   oauthProviderId: string,
+  scenarioId: RouteScenarioId,
   clientId: string,
   scopes: string[],
   authorizationUrlParams?: Record<string, string>
 ) {
   return {
     providerId: oauthProviderId,
+    accountIssuer: zentityAccountIssuer,
     discoveryUrl: `${env.ZENTITY_URL}/.well-known/openid-configuration`,
     clientId,
+    postLogoutRedirectURI: `${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`,
     scopes,
     pkce: true,
     overrideUserInfo: true,
@@ -406,6 +413,7 @@ function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
           return [
             makeProviderConfig(
               scenario.oauthProviderId,
+              scenario.id,
               clientId,
               scenario.signInScopes,
               buildAuthorizationUrlParams(scenario)

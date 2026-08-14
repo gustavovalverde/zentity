@@ -6,6 +6,7 @@ import type {
 
 import { randomBytes } from "node:crypto";
 
+import { createLocalAccountIssuer } from "@better-auth/core/db";
 import { ready, server } from "@serenity-kit/opaque";
 import { APIError, type BetterAuthPlugin } from "better-auth";
 import {
@@ -53,8 +54,6 @@ const defaultResolveUserByIdentifier: ResolveUserByIdentifier = (
 async function upsertOpaqueAccount(params: {
   // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types are too strict
   internalAdapter: any;
-  // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types are too strict
-  generateId: any;
   userId: string;
   registrationRecord: string;
 }) {
@@ -65,13 +64,10 @@ async function upsertOpaqueAccount(params: {
   const now = new Date();
 
   if (!existing) {
-    const accountId = params.generateId({ model: "account" });
-    if (!accountId) {
-      throw new Error("Failed to generate account ID");
-    }
     await params.internalAdapter.createAccount({
-      accountId,
+      accountId: params.userId,
       providerId: "opaque",
+      issuer: createLocalAccountIssuer("opaque"),
       userId: params.userId,
       registrationRecord: params.registrationRecord,
       createdAt: now,
@@ -279,7 +275,6 @@ export const opaque = (options: OpaquePluginOptions) => {
 
           await upsertOpaqueAccount({
             internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
             userId,
             registrationRecord: ctx.body.registrationRecord,
           });
@@ -562,7 +557,6 @@ export const opaque = (options: OpaquePluginOptions) => {
 
           await upsertOpaqueAccount({
             internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
             userId: verification.value,
             registrationRecord: ctx.body.registrationRecord,
           });
@@ -717,7 +711,6 @@ export const opaque = (options: OpaquePluginOptions) => {
           // Store OPAQUE registration record
           await upsertOpaqueAccount({
             internalAdapter: ctx.context.internalAdapter,
-            generateId: ctx.context.generateId,
             userId,
             registrationRecord: ctx.body.registrationRecord,
           });

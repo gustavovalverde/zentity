@@ -160,7 +160,9 @@ describe("step-up authentication: acr_values", () => {
     expect(location).not.toBeNull();
     expect(location?.origin).toBe(new URL(REDIRECT_URI).origin);
     expect(location?.searchParams.get("error")).toBe("interaction_required");
-    expect(location?.searchParams.get("error_description")).toContain("tier-1");
+    expect(location?.searchParams.get("error_description")).toBe(
+      "requested acr_values not satisfied"
+    );
     expect(location?.searchParams.get("state")).toBe("test-state");
   });
 
@@ -178,7 +180,9 @@ describe("step-up authentication: acr_values", () => {
     expect(response.status).toBe(302);
     const location = getRedirectLocation(response);
     expect(location?.searchParams.get("error")).toBe("interaction_required");
-    expect(location?.searchParams.get("error_description")).toContain("tier-0");
+    expect(location?.searchParams.get("error_description")).toBe(
+      "requested acr_values not satisfied"
+    );
   });
 
   it("tier-1 user passes when acr_values=tier-1", async () => {
@@ -268,7 +272,7 @@ describe("step-up authentication: acr_values", () => {
     }
   });
 
-  it("error_description includes current tier and requested acr_values", async () => {
+  it("uses the provider-owned generic ACR error description", async () => {
     await seedTier1User(userId);
     const requestId = crypto.randomUUID();
     await insertParRequest(
@@ -283,8 +287,7 @@ describe("step-up authentication: acr_values", () => {
     const location = getRedirectLocation(response);
     expect(location).not.toBeNull();
     const desc = location?.searchParams.get("error_description") ?? "";
-    expect(desc).toContain("tier-1");
-    expect(desc).toContain("urn:zentity:assurance:tier-2");
+    expect(desc).toBe("requested acr_values not satisfied");
   });
 
   it("PAR record consumed on acr_values rejection", async () => {
@@ -329,7 +332,11 @@ describe("step-up authentication: max_age", () => {
     const location = getRedirectLocation(response);
     expect(location).not.toBeNull();
     expect(location?.pathname).toBe("/sign-in");
-    expect(location?.searchParams.get("callbackURL")).toContain("request_uri=");
+    expect(location?.searchParams.get("request_uri")).toBeNull();
+    expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
+    expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
+    expect(location?.searchParams.get("max_age")).toBe("0");
+    expect(location?.searchParams.get("sig")).toBeTruthy();
   });
 
   it("max_age=99999 with fresh session does not trigger step-up re-auth", async () => {
@@ -352,23 +359,23 @@ describe("step-up authentication: max_age", () => {
     }
   });
 
-  it("PAR record preserved on max_age redirect for re-entry", async () => {
+  it("consumes PAR after signing resolved max_age re-entry parameters", async () => {
     const sessionToken = await insertSession(userId);
     const requestId = crypto.randomUUID();
     await insertParRequest(requestId, baseParParams({ max_age: "0" }));
 
     await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
 
-    // PAR record should still exist (not consumed)
+    // The one-time PAR URI is consumed; re-entry uses signed resolved params.
     const record = await db
       .select()
       .from(haipPushedRequests)
       .where(eq(haipPushedRequests.requestId, requestId))
       .get();
-    expect(record).toBeDefined();
+    expect(record).toBeUndefined();
   });
 
-  it("PAR TTL extended on max_age redirect", async () => {
+  it("does not retain the consumed PAR row on max_age redirect", async () => {
     const sessionToken = await insertSession(userId);
     const requestId = crypto.randomUUID();
     // Create with short TTL
@@ -379,14 +386,11 @@ describe("step-up authentication: max_age", () => {
     await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
 
     const record = await db
-      .select({ expiresAt: haipPushedRequests.expiresAt })
+      .select({ id: haipPushedRequests.id })
       .from(haipPushedRequests)
       .where(eq(haipPushedRequests.requestId, requestId))
       .get();
-
-    // TTL should be extended to ~5 minutes from now
-    const fiveMinFromNow = Date.now() + 290_000;
-    expect(record?.expiresAt.getTime()).toBeGreaterThan(fiveMinFromNow);
+    expect(record).toBeUndefined();
   });
 
   it("stale session (old createdAt) triggers max_age redirect", async () => {

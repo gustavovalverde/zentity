@@ -21,6 +21,7 @@ import {
 type MaybePromise<T> = Promise<T> | T;
 
 const PROACTIVE_REFRESH_MS = 60_000;
+const SCOPE_SEPARATOR_RE = /\s+/;
 
 export interface StoredFirstPartyAuthState {
   accessToken?: string;
@@ -581,6 +582,15 @@ export function createFirstPartyAuth(
   async function authorize(
     authorizeOptions: AuthorizeOptions
   ): Promise<AuthorizationCodeResult> {
+    if (
+      authorizeOptions.claims &&
+      !authorizeOptions.scope
+        .split(SCOPE_SEPARATOR_RE)
+        .some((scope) => scope === "openid")
+    ) {
+      throw new TypeError("claims requires scope to include openid");
+    }
+
     const document = await discovery.read();
     const endpoint = requireChallengeEndpoint(document);
     const dpopClient = await getOrCreateDpopClient();

@@ -10,6 +10,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   isPasskeyAlreadyRegistered,
   registerPasskeyWithPrf,
@@ -90,8 +91,10 @@ export function SignUpForm() {
 
     // The tRPC mutation updated user data (email, name, isAnonymous) in the DB
     // via Drizzle, bypassing better-auth's session cookie cache. Clear the stale
-    // session_data cookie so the dashboard reads fresh data from the database.
+    // session_data cookie and make Better Auth replace its HTTP-only cache with
+    // the updated database record before the user can leave this page.
     invalidateSessionDataCache();
+    await authClient.getSession({ query: { disableCookieCache: true } });
 
     return { email: resolvedEmail || null };
   };

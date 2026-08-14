@@ -39,12 +39,18 @@ async function registerCibaClient(request: APIRequestContext) {
     data: {
       client_name: `pii-e2e-${crypto.randomUUID().slice(0, 8)}`,
       redirect_uris: ["http://localhost/cb"],
+      application_type: "native",
+      backchannel_token_delivery_mode: "poll",
       grant_types: [CIBA_GRANT_TYPE],
       token_endpoint_auth_method: "none",
     },
     headers: ORIGIN_HEADERS,
   });
-  expect(res.ok()).toBeTruthy();
+  if (!res.ok()) {
+    throw new Error(
+      `CIBA client registration failed (${res.status()} ${res.statusText()}): ${await res.text()}`
+    );
+  }
   const body = (await res.json()) as { client_id: string };
   return body.client_id;
 }
@@ -72,7 +78,11 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
       },
       headers: ORIGIN_HEADERS,
     });
-    expect(bcRes.ok()).toBeTruthy();
+    if (!bcRes.ok()) {
+      throw new Error(
+        `CIBA request failed (${bcRes.status()} ${bcRes.statusText()}): ${await bcRes.text()}`
+      );
+    }
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
     expect(auth_req_id).toBeTruthy();
 
@@ -168,10 +178,23 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     expect(atPayload.release_handle).toBeUndefined();
 
     // 10. Call userinfo → assert identity PII is returned
-    const userinfoRes = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+    const userinfoDpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      accessToken: tokenBody.access_token,
+      binding: dpop,
     });
-    expect(userinfoRes.ok()).toBeTruthy();
+    const userinfoRes = await request.get(USERINFO_URL, {
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfoDpop.proof,
+      },
+    });
+    if (!userinfoRes.ok()) {
+      throw new Error(
+        `userinfo failed (${userinfoRes.status()} ${userinfoRes.statusText()}): ${await userinfoRes.text()}`
+      );
+    }
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;
 
     expect(userinfo.given_name).toBe("Ada");
@@ -183,8 +206,17 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     // 11. Second userinfo call returns 401 invalid_token — single-use binding
     // (exact disclosure enforcement: once PII has been delivered, the
     // release context is consumed and the token is no longer usable)
+    const userinfo2Dpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      accessToken: tokenBody.access_token,
+      binding: dpop,
+    });
     const userinfo2Res = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfo2Dpop.proof,
+      },
     });
     expect(userinfo2Res.status()).toBe(401);
     const userinfo2 = (await userinfo2Res.json()) as Record<string, unknown>;
@@ -208,7 +240,11 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
       },
       headers: ORIGIN_HEADERS,
     });
-    expect(bcRes.ok()).toBeTruthy();
+    if (!bcRes.ok()) {
+      throw new Error(
+        `CIBA request failed (${bcRes.status()} ${bcRes.statusText()}): ${await bcRes.text()}`
+      );
+    }
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
 
     // Approve without staging PII
@@ -251,10 +287,23 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     }
 
     // Userinfo has no PII
-    const userinfoRes = await request.get(USERINFO_URL, {
-      headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+    const userinfoDpop = await createDpopProof({
+      method: "GET",
+      url: USERINFO_URL,
+      accessToken: tokenBody.access_token,
+      binding: dpop,
     });
-    expect(userinfoRes.ok()).toBeTruthy();
+    const userinfoRes = await request.get(USERINFO_URL, {
+      headers: {
+        Authorization: `DPoP ${tokenBody.access_token}`,
+        DPoP: userinfoDpop.proof,
+      },
+    });
+    if (!userinfoRes.ok()) {
+      throw new Error(
+        `userinfo failed (${userinfoRes.status()} ${userinfoRes.statusText()}): ${await userinfoRes.text()}`
+      );
+    }
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;
 
     for (const field of PII_FIELDS) {

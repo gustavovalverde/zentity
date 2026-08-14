@@ -598,9 +598,8 @@ function CibaResult({
     | undefined;
   const approvedPayment = extractApprovedPayment(authorizationDetails);
 
-  // Decode id_token for assurance claims. The OAuth provider owns standard
-  // `acr` (reports "0"); Zentity's tier/methods ride in the namespaced
-  // zentity_assurance claim, with a top-level fallback.
+  // Decode the provider-owned OIDC authentication context. Keep the old
+  // namespaced claim as a fallback for tokens issued before the 1.7 migration.
   const idTokenPayload =
     typeof tokens.id_token === "string"
       ? decodeJwtPayload(tokens.id_token)
@@ -608,8 +607,8 @@ function CibaResult({
   const assurance = idTokenPayload?.zentity_assurance as
     | { acr?: string; amr?: string[] }
     | undefined;
-  const acr = assurance?.acr ?? (idTokenPayload?.acr as string | undefined);
-  const amr = assurance?.amr ?? (idTokenPayload?.amr as string[] | undefined);
+  const acr = (idTokenPayload?.acr as string | undefined) ?? assurance?.acr;
+  const amr = (idTokenPayload?.amr as string[] | undefined) ?? assurance?.amr;
 
   const exchangedPayload =
     exchangedTokens && typeof exchangedTokens.access_token === "string"

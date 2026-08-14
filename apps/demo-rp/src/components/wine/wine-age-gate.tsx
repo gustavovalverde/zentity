@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import type { RouteScenario } from "@/scenarios/route-scenario";
 
 interface WineAgeGateProps {
+  ageProofMissing?: boolean;
+  onSignOut?: () => void;
   onVerify: () => void;
   scenario: RouteScenario;
 }
@@ -32,7 +34,12 @@ function WineIcon({ className }: { className?: string }) {
   );
 }
 
-export function WineAgeGate({ onVerify, scenario }: WineAgeGateProps) {
+export function WineAgeGate({
+  ageProofMissing = false,
+  onVerify,
+  onSignOut,
+  scenario,
+}: WineAgeGateProps) {
   const [dcrReady, setDcrReady] = useState(false);
   const handleDcrRegistered = useCallback(() => setDcrReady(true), []);
 
@@ -87,19 +94,38 @@ export function WineAgeGate({ onVerify, scenario }: WineAgeGateProps) {
           </div>
 
           <div className="space-y-4 pt-2">
-            <DcrRegistration
-              onRegistered={handleDcrRegistered}
-              scenario={scenario}
-            />
+            {ageProofMissing ? (
+              <div
+                className="border border-destructive/30 bg-destructive/5 p-4 font-sans text-foreground text-sm leading-relaxed"
+                role="alert"
+              >
+                Your Zentity account does not have an age-verification proof
+                yet. Complete identity verification in Zentity, then try again.
+              </div>
+            ) : (
+              <DcrRegistration
+                onRegistered={handleDcrRegistered}
+                scenario={scenario}
+              />
+            )}
             <Button
               className="h-14 w-full gap-3 rounded-none bg-primary font-medium text-lg text-primary-foreground uppercase tracking-widest transition-all hover:bg-primary/90 disabled:opacity-40"
-              disabled={!dcrReady}
+              disabled={ageProofMissing || !dcrReady}
               onClick={onVerify}
               size="lg"
             >
               <HugeiconsIcon icon={ShieldKeyIcon} size={20} />
               Verify Age Anonymously
             </Button>
+            {ageProofMissing && onSignOut ? (
+              <Button
+                className="w-full rounded-none"
+                onClick={onSignOut}
+                variant="outline"
+              >
+                Sign Out
+              </Button>
+            ) : null}
             <div className="mx-auto max-w-xs space-y-2 pt-2">
               <p className="font-sans text-muted-foreground text-xs leading-relaxed">
                 This site receives only a yes/no age proof. No name, email, or

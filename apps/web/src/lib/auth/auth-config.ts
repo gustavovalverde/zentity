@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 
 import { ciba, deliverPing } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
@@ -56,9 +57,11 @@ import {
   persistTokenSnapshot,
   type StoredTokenSnapshot,
 } from "@/lib/agents/token-snapshot";
-import { buildNamespacedAssuranceClaim } from "@/lib/assurance/oidc-claims";
+import {
+  ACR_VALUES_SUPPORTED,
+  buildOidcAssuranceClaims,
+} from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { reportRejection } from "@/lib/async-handler";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
@@ -66,10 +69,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import {
-  revokePendingCibaOnLogout,
-  sendBackchannelLogout,
-} from "@/lib/auth/oidc/backchannel-logout";
+import { revokePendingCibaOnLogout } from "@/lib/auth/oidc/backchannel-logout";
 import {
   hashCibaAuthReqId,
   rawAuthReqIdFromApprovalUrl,
@@ -130,9 +130,9 @@ import {
   pinPaymentTokenAudience,
 } from "@/lib/auth/oidc/payment-mint";
 import {
+  authenticationContextSatisfies,
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
-  enforceStepUp,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
@@ -163,6 +163,7 @@ import {
   haipVpSessions,
   jwks,
   oauthAccessTokens,
+  oauthClientAssertions,
   oauthClientResources,
   oauthClients,
   oauthConsents,
@@ -195,6 +196,7 @@ const betterAuthSchema = {
   passkey: passkeys,
   walletAddress: walletAddresses,
   oauthClient: oauthClients,
+  oauthClientAssertion: oauthClientAssertions,
   oauthRefreshToken: oauthRefreshTokens,
   oauthAccessToken: oauthAccessTokens,
   oauthConsent: oauthConsents,
@@ -304,6 +306,14 @@ const identityReleaseLog = rootLogger.child({
 });
 
 const cimdLog = rootLogger.child({ component: "cimd" });
+const testCimdMetadataFetch: typeof fetchClientMetadataResource = (
+  input,
+  init
+) => globalThis.fetch(input, init);
+const cimdMetadataFetch =
+  process.env.NODE_ENV === "test"
+    ? testCimdMetadataFetch
+    : fetchClientMetadataResource;
 
 // The CIMD plugin persists only the standard OAuth client fields. CIMD clients
 // are dynamic and untrusted, so stamp Zentity's posture columns: a pairwise
@@ -323,6 +333,8 @@ async function applyCimdClientPosture(clientId: string) {
 }
 
 const cimdOptions = {
+  fetchClientMetadataResource: cimdMetadataFetch,
+  metadataProfile: "mcp-2026-07-28" as const,
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
     await applyCimdClientPosture(client.clientId);
     cimdLog.info(
@@ -1000,26 +1012,67 @@ interface PendingCibaToken {
 }
 const pendingCibaToken = new Map<string, PendingCibaToken>();
 
-// Off-wire binding from an opaque access token's introspection re-derive to its
-// release context. The AS-owned jti no longer equals the release id, so userinfo
-// resolves the staged identity payload through this claim (opaque tokens only;
-// it never appears on a minted JWT).
+// Private binding from an access token to its release context. The AS-owned jti
+// no longer equals the release id, so userinfo resolves staged identity through
+// this claim. CIBA adds it at JWT mint; opaque introspection re-derives it from
+// the token row's referenceId.
 const RELEASE_BINDING_CLAIM = "zentity_release_binding";
 
+async function resolveZentityAuthenticationContext(input: {
+  referenceId?: string;
+  sessionId?: string | null;
+  userId: string;
+}) {
+  const cibaAuthContextId = input.referenceId
+    ? pendingCibaToken.get(input.referenceId)?.authContextId
+    : undefined;
+  let auth = await resolveAuthenticationContext({
+    authContextId: cibaAuthContextId || null,
+    sessionId: input.sessionId ?? null,
+    userId: input.userId,
+  });
+
+  // A refresh grant no longer has the original CIBA request, so recover the
+  // immutable authentication-context reference stored with the refresh token.
+  if (!auth && input.referenceId) {
+    const refreshRow = await db
+      .select({ authContextId: oauthRefreshTokens.authContextId })
+      .from(oauthRefreshTokens)
+      .where(eq(oauthRefreshTokens.referenceId, input.referenceId))
+      .limit(1)
+      .get();
+    if (refreshRow?.authContextId) {
+      auth = await resolveAuthenticationContext({
+        authContextId: refreshRow.authContextId,
+        sessionId: null,
+      });
+    }
+  }
+
+  if (!auth) {
+    throw invalidGrantDisclosureError(
+      "Authentication context required for ID token issuance"
+    );
+  }
+  const assurance = await getAccountAssurance(input.userId, {
+    isAuthenticated: true,
+  });
+  return {
+    ...buildOidcAssuranceClaims(assurance, auth),
+    authContextId: auth.id,
+  };
+}
+
 async function buildIdTokenDisclosureClaims(input: {
-  authContextId?: string | null;
   referenceId?: string;
   scopes: unknown;
   sessionId?: string | null;
   user: { id: string };
 }): Promise<Record<string, unknown>> {
   const scopeList = toScopeList(input.scopes);
-  const cibaAuthContextId = input.referenceId
-    ? pendingCibaToken.get(input.referenceId)?.authContextId
-    : undefined;
-  const auth = await resolveAuthenticationContext({
-    authContextId: input.authContextId ?? (cibaAuthContextId || null),
-    sessionId: input.sessionId ?? null,
+  const authenticationContext = await resolveZentityAuthenticationContext({
+    ...(input.referenceId ? { referenceId: input.referenceId } : {}),
+    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     userId: input.user.id,
   });
 
@@ -1031,41 +1084,12 @@ async function buildIdTokenDisclosureClaims(input: {
       )
     : {};
 
-  let assuranceClaims: Record<string, unknown> = {};
-  if (scopeList.includes("openid")) {
-    // For refresh-token grants the original CIBA request may have been
-    // deleted. Fall back to the refresh token's stored authContextId.
-    let resolvedAuth = auth;
-    if (!resolvedAuth && input.referenceId) {
-      const refreshRow = await db
-        .select({ authContextId: oauthRefreshTokens.authContextId })
-        .from(oauthRefreshTokens)
-        .where(eq(oauthRefreshTokens.referenceId, input.referenceId))
-        .limit(1)
-        .get();
-      if (refreshRow?.authContextId) {
-        resolvedAuth = await resolveAuthenticationContext({
-          authContextId: refreshRow.authContextId,
-          sessionId: null,
-        });
-      }
-    }
-    if (!resolvedAuth) {
-      throw invalidGrantDisclosureError(
-        "Authentication context required for ID token issuance"
-      );
-    }
-    const assurance = await getAccountAssurance(input.user.id, {
-      isAuthenticated: true,
-    });
-    assuranceClaims = {
-      ...buildNamespacedAssuranceClaim(assurance, resolvedAuth),
-    };
-  }
-
-  const authContextClaims = auth
-    ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
+  const assuranceClaims = scopeList.includes("openid")
+    ? { acr_eidas: authenticationContext.acr_eidas }
     : {};
+  const authContextClaims = {
+    [AUTHENTICATION_CONTEXT_CLAIM]: authenticationContext.authContextId,
+  };
   const releaseContext = input.referenceId
     ? await loadReleaseContext(input.referenceId)
     : null;
@@ -1074,9 +1098,8 @@ async function buildIdTokenDisclosureClaims(input: {
     "id_token"
   );
 
-  // The claims-request parameter filters the standard/proof claims it can name.
-  // The namespaced zentity_assurance and auth-context claims are always included
-  // when they apply, like any zentity-owned claim a client cannot opt out of.
+  // The claims-request parameter filters the proof claims it can name. The
+  // eIDAS mapping and immutable auth-context reference are issuer-owned claims.
   return {
     ...filterClaimsByRequest(proofClaims, idTokenFilter),
     ...assuranceClaims,
@@ -1139,10 +1162,10 @@ async function buildAccessTokenDisclosureClaims(
         releaseContext.releaseId,
         Date.now() + 3600 * 1000
       );
-      // On the opaque-token introspection re-derive (grantType is absent here
-      // but set at JWT mint), surface the release binding so userinfo can locate
-      // the staged identity payload. It never reaches the wire: opaque tokens
-      // carry no claims, and the JWT mint path skips this branch.
+      // On opaque-token introspection (grantType is absent), surface the release
+      // binding so userinfo can locate the staged identity payload. Opaque
+      // tokens carry no claims on the wire; CIBA JWTs add the same private claim
+      // through buildAccessTokenClaims below.
       if (info.grantType === undefined) {
         claims[RELEASE_BINDING_CLAIM] = referenceId;
       }
@@ -1181,7 +1204,6 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
             // undefined for client_credentials / opaque introspection, where
             // the authentication context falls back to referenceId/userId.
             return buildIdTokenDisclosureClaims({
-              authContextId: null,
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
               ...(info.sessionId === undefined
@@ -1544,7 +1566,7 @@ export const auth = betterAuth({
     ] as unknown as boolean,
   },
   rateLimit:
-    isOidcE2e || process.env.NODE_ENV === "test"
+    isPlaywrightE2e || process.env.NODE_ENV === "test"
       ? { enabled: false }
       : {
           enabled: true,
@@ -1663,6 +1685,11 @@ export const auth = betterAuth({
           data: { ...session, ipAddress: null, userAgent: null },
         }),
       },
+      delete: {
+        after: async (session) => {
+          await revokePendingCibaOnLogout(session.userId);
+        },
+      },
     },
   },
   socialProviders: {
@@ -1759,23 +1786,11 @@ export const auth = betterAuth({
         if (!ctx.query?.resource) {
           ctx.query = { ...ctx.query, resource: appUrl };
         }
-        await enforceStepUp(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         return;
       }
       if (ctx.path === "/ciba/authorize") {
         return enforceCibaApprovalAcr(ctx, db);
-      }
-      if (ctx.path === "/sign-out") {
-        // Capture session before sign-out deletes it — needed for BCL
-        const session = await getSessionFromCtx(ctx);
-        if (session?.user?.id) {
-          (ctx.context as Record<string, unknown>).__bclUserId =
-            session.user.id;
-          (ctx.context as Record<string, unknown>).__bclSessionId =
-            session.session.id;
-        }
-        return;
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
@@ -1802,19 +1817,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/two-factor/disable") {
         await afterTwoFactorDisableGuardianCleanup(ctx);
-      }
-      if (ctx.path === "/sign-out") {
-        const userId = (ctx.context as Record<string, unknown>).__bclUserId;
-        const sessionId = (ctx.context as Record<string, unknown>)
-          .__bclSessionId;
-        if (typeof userId === "string") {
-          // Fire-and-forget — don't block the logout response
-          sendBackchannelLogout(
-            userId,
-            typeof sessionId === "string" ? sessionId : undefined
-          ).catch(reportRejection);
-          revokePendingCibaOnLogout(userId).catch(reportRejection);
-        }
       }
     }),
   },
@@ -1875,8 +1877,23 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
-      silenceWarnings: { oauthAuthServerConfig: true },
       accessTokenExpiresIn: 3600,
+      authenticationContext: {
+        acrValuesSupported: [...ACR_VALUES_SUPPORTED],
+        resolve: async ({ referenceId, sessionId, user }) => {
+          const context = await resolveZentityAuthenticationContext({
+            ...(referenceId ? { referenceId } : {}),
+            ...(sessionId ? { sessionId } : {}),
+            userId: user.id,
+          });
+          return {
+            acr: context.acr,
+            ...(context.amr ? { amr: context.amr } : {}),
+          };
+        },
+        satisfies: ({ acr, requestedAcrValues }) =>
+          authenticationContextSatisfies(acr, requestedAcrValues),
+      },
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
@@ -1946,10 +1963,9 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      // id_token `acr`/`amr`/`auth_time` are AS-owned in 1.7 (the provider
-      // reports acr: "0" until it supports requestable ACR classes). The
-      // assurance tier rides in the namespaced zentity_assurance claim instead,
-      // emitted by the exact-disclosure-claims id-token contributor.
+      // id_token `acr`/`amr`/`auth_time` are provider-owned. Zentity resolves
+      // them through authenticationContext above; only the non-standard eIDAS
+      // mapping remains an additive custom ID-token claim.
       // Access-token disclosure claims (sybil/humanity/CIBA snapshot/auth
       // context) moved to the exact-disclosure-claims extension's
       // `claims.accessToken` contributor, which receives the resolved `client`
@@ -2065,8 +2081,8 @@ export const auth = betterAuth({
     }),
     // Client ID Metadata Documents (MCP CIMD). The native plugin owns the
     // fetch/validate/cache/persist path through clientDiscovery; SSRF defenses
-    // are a superset of the previous hand-rolled validator. CIMD clients are
-    // restricted to authorization_code + refresh_token by the plugin.
+    // are a superset of the previous hand-rolled validator. The OAuth Provider
+    // enforces each discovered client's registered grants at its endpoints.
     cimd(cimdOptions),
     exactDisclosureClaimsPlugin(),
     oidc4ida({
@@ -2200,6 +2216,9 @@ export const auth = betterAuth({
 
         return {
           ...(pending?.claims ?? {}),
+          ...(releaseContext
+            ? { [RELEASE_BINDING_CLAIM]: cibaRequest.authReqId }
+            : {}),
           ...(paymentClaims ?? {}),
         };
       },

@@ -9,6 +9,7 @@ interface DcrClientExtensions {
   backchannelLogoutSessionRequired?: boolean;
   backchannelLogoutUri?: string;
   backchannelTokenDeliveryMode?: string;
+  enableEndSession?: boolean;
   protectedResource?: string;
   rpValidityNoticeEnabled?: boolean;
   rpValidityNoticeUri?: string;
@@ -52,6 +53,11 @@ export function readDcrClientExtensions(
   const protectedResource = readTrimmedString(
     body[PROTECTED_RESOURCE_METADATA_FIELD]
   );
+  const enableEndSession =
+    Array.isArray(body.post_logout_redirect_uris) &&
+    body.post_logout_redirect_uris.some(
+      (uri) => typeof uri === "string" && uri.length > 0
+    );
   const backchannelTokenDeliveryModeRaw = readTrimmedString(
     body.backchannel_token_delivery_mode
   );
@@ -62,6 +68,9 @@ export function readDcrClientExtensions(
       : undefined;
 
   const extensions: DcrClientExtensions = {};
+  if (enableEndSession) {
+    extensions.enableEndSession = true;
+  }
   if (backchannelLogoutUri) {
     extensions.backchannelLogoutUri = backchannelLogoutUri;
     extensions.backchannelLogoutSessionRequired =
@@ -123,7 +132,10 @@ export async function persistDcrClientExtensions(
   await db
     .update(oauthClients)
     .set({
-      enableEndSession: extensions.backchannelLogoutUri ? true : undefined,
+      enableEndSession:
+        extensions.enableEndSession || extensions.backchannelLogoutUri
+          ? true
+          : undefined,
       metadata:
         Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
       rpValidityNoticeEnabled:

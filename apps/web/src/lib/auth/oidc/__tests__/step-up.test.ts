@@ -3,9 +3,8 @@ import type { AccountTier } from "@/lib/assurance/types";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildOAuthErrorUrl,
+  authenticationContextSatisfies,
   findSatisfiedAcr,
-  isMaxAgeExceeded,
 } from "@/lib/auth/oidc/step-up";
 
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
@@ -98,52 +97,26 @@ describe("findSatisfiedAcr", () => {
   });
 });
 
-describe("isMaxAgeExceeded", () => {
-  it("returns true when session is older than max_age", () => {
-    const tenMinutesAgo = new Date(Date.now() - 600_000).toISOString();
-    expect(isMaxAgeExceeded(tenMinutesAgo, 300)).toBe(true);
+describe("authenticationContextSatisfies", () => {
+  it("accepts exact and stronger Zentity tiers", () => {
+    expect(
+      authenticationContextSatisfies("urn:zentity:assurance:tier-3", [
+        "urn:zentity:assurance:tier-2",
+      ])
+    ).toBe(true);
+    expect(
+      authenticationContextSatisfies("urn:zentity:assurance:tier-2", [
+        "urn:zentity:assurance:tier-2",
+      ])
+    ).toBe(true);
   });
 
-  it("returns false when session is within max_age", () => {
-    const now = new Date().toISOString();
-    expect(isMaxAgeExceeded(now, 300)).toBe(false);
-  });
-
-  it("max_age=0 always returns true (force re-auth)", () => {
-    const now = new Date().toISOString();
-    expect(isMaxAgeExceeded(now, 0)).toBe(true);
-  });
-
-  it("accepts Date objects", () => {
-    const tenMinutesAgo = new Date(Date.now() - 600_000);
-    expect(isMaxAgeExceeded(tenMinutesAgo, 300)).toBe(true);
-  });
-});
-
-describe("buildOAuthErrorUrl", () => {
-  it("builds redirect URL with error params", () => {
-    const url = buildOAuthErrorUrl(
-      "http://localhost/callback",
-      "state-123",
-      "interaction_required",
-      "Tier mismatch"
-    );
-    const parsed = new URL(url);
-    expect(parsed.origin).toBe("http://localhost");
-    expect(parsed.pathname).toBe("/callback");
-    expect(parsed.searchParams.get("error")).toBe("interaction_required");
-    expect(parsed.searchParams.get("error_description")).toBe("Tier mismatch");
-    expect(parsed.searchParams.get("state")).toBe("state-123");
-  });
-
-  it("omits state when undefined", () => {
-    const url = buildOAuthErrorUrl(
-      "http://localhost/callback",
-      undefined,
-      "login_required",
-      "Session too old"
-    );
-    const parsed = new URL(url);
-    expect(parsed.searchParams.has("state")).toBe(false);
+  it("rejects weaker and foreign authentication contexts", () => {
+    expect(
+      authenticationContextSatisfies("urn:zentity:assurance:tier-1", [
+        "urn:zentity:assurance:tier-2",
+      ])
+    ).toBe(false);
+    expect(authenticationContextSatisfies("urn:example:loa:2", [])).toBe(false);
   });
 });

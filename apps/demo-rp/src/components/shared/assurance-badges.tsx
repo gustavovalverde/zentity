@@ -28,14 +28,13 @@ export function AssuranceBadges({
     return null;
   }
 
-  // Zentity reports the assurance tier in a namespaced claim: the OAuth provider
-  // owns standard `acr` (it reports "0") and the tier/methods ride here. Fall
-  // back to top-level acr/amr for any token that still carries them.
+  // Prefer the provider-owned OIDC authentication context. The namespaced
+  // shape remains a fallback for tokens issued before the 1.7 migration.
   const assurance = claims.zentity_assurance as
     | { acr?: string; amr?: string[] }
     | undefined;
-  const acr = assurance?.acr ?? (claims.acr as string | undefined);
-  const amr = assurance?.amr ?? (claims.amr as string[] | undefined);
+  const acr = (claims.acr as string | undefined) ?? assurance?.acr;
+  const amr = (claims.amr as string[] | undefined) ?? assurance?.amr;
   const emailVerified =
     typeof claims.email_verified === "boolean"
       ? claims.email_verified

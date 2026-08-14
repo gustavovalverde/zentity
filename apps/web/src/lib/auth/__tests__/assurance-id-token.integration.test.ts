@@ -107,13 +107,10 @@ describe("assurance claims in ID tokens", () => {
     expect(idToken).toBeDefined();
 
     const claims = decodeJwt(idToken);
-    // acr/amr are AS-owned (1.7 reports acr "0"); the assurance tier rides in the
-    // namespaced zentity_assurance claim.
-    expect(claims.acr).toBe("0");
-    const assurance = claims.zentity_assurance as Record<string, unknown>;
-    expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
-    expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
-    expect(assurance.amr).toEqual(["pop", "hwk", "user"]);
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+    expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+    expect(claims.amr).toEqual(["pop", "hwk", "user"]);
+    expect(claims.zentity_assurance).toBeUndefined();
     expect(claims[AUTHENTICATION_CONTEXT_CLAIM]).toBe(authContext.id);
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
@@ -136,10 +133,9 @@ describe("assurance claims in ID tokens", () => {
     });
 
     const claims = decodeJwt(json.id_token as string);
-    expect(claims.acr).toBe("0");
-    const assurance = claims.zentity_assurance as Record<string, unknown>;
-    expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
-    expect(assurance.amr).toEqual(["pwd"]);
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+    expect(claims.amr).toEqual(["pwd"]);
+    expect(claims.zentity_assurance).toBeUndefined();
   });
 
   it("tier-0 user (no FHE keys) gets acr tier-0", async () => {
@@ -158,11 +154,9 @@ describe("assurance claims in ID tokens", () => {
     });
 
     const claims = decodeJwt(json.id_token as string);
-    // Without secured keys, tier remains 0; acr is AS-owned ("0").
-    expect(claims.acr).toBe("0");
-    const assurance = claims.zentity_assurance as Record<string, unknown>;
-    expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
-    expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+    expect(claims.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
+    expect(claims.zentity_assurance).toBeUndefined();
     expect(claims.auth_time).toBeDefined();
     expect(typeof claims.auth_time).toBe("number");
     const now = Math.floor(Date.now() / 1000);

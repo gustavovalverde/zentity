@@ -39,7 +39,6 @@ COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --link apps/web/package.json ./apps/web/package.json
 COPY --link apps/web/.npmrc ./apps/web/.npmrc
 COPY --link apps/web/vendor ./apps/web/vendor
-COPY --link apps/web/patches ./apps/web/patches
 COPY --link packages/sdk/package.json ./packages/sdk/package.json
 
 # Install dependencies with BuildKit cache mount for pnpm

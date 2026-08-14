@@ -8,13 +8,13 @@ vi.mock("drizzle-orm", async (importOriginal) => importOriginal());
  * BCL logout token structure validation.
  *
  * The buildLogoutToken function is internal (not exported), but we can
- * verify the spec compliance via the sendBackchannelLogout function's
+ * verify the spec compliance via the targeted delivery function's
  * behavior. These tests validate the module's public contract.
  */
 describe("backchannel-logout module", () => {
-  it("module exports sendBackchannelLogout", async () => {
+  it("module exports sendBackchannelLogoutToClient", async () => {
     const mod = await import("@/lib/auth/oidc/backchannel-logout");
-    expect(typeof mod.sendBackchannelLogout).toBe("function");
+    expect(typeof mod.sendBackchannelLogoutToClient).toBe("function");
   });
 
   it("module exports revokePendingCibaOnLogout", async () => {
@@ -22,13 +22,15 @@ describe("backchannel-logout module", () => {
     expect(typeof mod.revokePendingCibaOnLogout).toBe("function");
   });
 
-  it("sendBackchannelLogout handles no BCL clients gracefully", async () => {
-    const { sendBackchannelLogout } = await import(
+  it("targeted delivery handles an unknown BCL client gracefully", async () => {
+    const { sendBackchannelLogoutToClient } = await import(
       "@/lib/auth/oidc/backchannel-logout"
     );
-    // Should not throw even when no clients are registered
     await expect(
-      sendBackchannelLogout("nonexistent-user")
+      sendBackchannelLogoutToClient({
+        clientId: "nonexistent-client",
+        userId: "nonexistent-user",
+      })
     ).resolves.not.toThrow();
   });
 

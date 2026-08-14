@@ -62,6 +62,9 @@ async function createOAuthClient(
         options?.redirectUris ?? ["http://localhost/callback"]
       ),
       grantTypes: JSON.stringify(grantTypes),
+      clientCredentialsScopes: grantTypes.includes("client_credentials")
+        ? JSON.stringify(scopes)
+        : null,
       tokenEndpointAuthMethod: options?.tokenEndpointAuthMethod ?? "none",
       public: options?.public ?? true,
       subjectType: options?.subjectType,
@@ -192,7 +195,7 @@ async function issueIntrospectorToken() {
   });
   if (status !== 200) {
     throw new Error(
-      `Expected introspector token issuance to succeed, got ${status}`
+      `Expected introspector token issuance to succeed, got ${status}: ${JSON.stringify(json)}`
     );
   }
   return { keyPair: dpopKeyPair, token: json.access_token as string };

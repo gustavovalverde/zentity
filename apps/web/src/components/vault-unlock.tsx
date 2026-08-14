@@ -591,7 +591,7 @@ export function useVaultUnlock({
     if (!active || vaultState.status !== "loaded") {
       return;
     }
-    if (hasValidIdentityIntent || intentLoading) {
+    if (hasValidIdentityIntent || intentLoading || intentError) {
       return;
     }
     fetchIdentityIntent().catch(() => undefined);
@@ -600,6 +600,7 @@ export function useVaultUnlock({
     vaultState.status,
     hasValidIdentityIntent,
     intentLoading,
+    intentError,
     fetchIdentityIntent,
   ]);
 

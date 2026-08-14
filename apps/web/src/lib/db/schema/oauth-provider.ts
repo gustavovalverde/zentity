@@ -16,10 +16,12 @@ export const oauthClients = sqliteTable(
     id: text("id").primaryKey().default(defaultId),
     clientId: text("client_id").notNull(),
     clientSecret: text("client_secret"),
+    clientDiscoveryId: text("client_discovery_id"),
     disabled: integer("disabled", { mode: "boolean" }).notNull().default(false),
     skipConsent: integer("skip_consent", { mode: "boolean" }),
     enableEndSession: integer("enable_end_session", { mode: "boolean" }),
     scopes: text("scopes"),
+    clientCredentialsScopes: text("client_credentials_scopes"),
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -39,8 +41,12 @@ export const oauthClients = sqliteTable(
     redirectUris: text("redirect_uris").notNull(),
     postLogoutRedirectUris: text("post_logout_redirect_uris"),
     tokenEndpointAuthMethod: text("token_endpoint_auth_method"),
+    applicationType: text("application_type"),
+    jwks: text("jwks"),
+    jwksUri: text("jwks_uri"),
     grantTypes: text("grant_types"),
     responseTypes: text("response_types"),
+    requirePKCE: integer("require_pkce", { mode: "boolean" }),
     public: integer("public", { mode: "boolean" }),
     type: text("type"),
     subjectType: text("subject_type"),
@@ -102,10 +108,15 @@ export const oauthRefreshTokens = sqliteTable(
       sql`(unixepoch() * 1000)`
     ),
     revoked: integer("revoked", { mode: "timestamp_ms" }),
+    rotatedAt: integer("rotated_at", { mode: "timestamp_ms" }),
+    rotationReplayResponse: text("rotation_replay_response"),
+    rotationReplayExpiresAt: integer("rotation_replay_expires_at", {
+      mode: "timestamp_ms",
+    }),
     scopes: text("scopes").notNull(),
   },
   (table) => [
-    index("oauth_refresh_token_token_idx").on(table.token),
+    uniqueIndex("oauth_refresh_token_token_unique").on(table.token),
     index("oauth_refresh_token_client_id_idx").on(table.clientId),
     index("oauth_refresh_token_user_id_idx").on(table.userId),
     index("oauth_refresh_token_authorization_code_id_idx").on(
@@ -219,23 +230,36 @@ export const oauthResources = sqliteTable(
 export const oauthClientResources = sqliteTable(
   "oauth_client_resource",
   {
-    // Deterministic `${clientId}::${resourceId}` id enforces composite
-    // uniqueness via the primary key (see plugin docs).
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(defaultId),
     clientId: text("client_id")
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     resourceId: text("resource_id")
       .notNull()
-      .references(() => oauthResources.id, { onDelete: "cascade" }),
+      .references(() => oauthResources.identifier, { onDelete: "cascade" }),
     metadata: text("metadata"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
+    uniqueIndex("oauth_client_resource_client_id_resource_id_unique").on(
+      table.clientId,
+      table.resourceId
+    ),
     index("oauth_client_resource_client_id_idx").on(table.clientId),
     index("oauth_client_resource_resource_id_idx").on(table.resourceId),
+  ]
+);
+
+export const oauthClientAssertions = sqliteTable(
+  "oauth_client_assertion",
+  {
+    id: text("id").primaryKey(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("oauth_client_assertion_expires_at_idx").on(table.expiresAt),
   ]
 );
 

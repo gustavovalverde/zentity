@@ -48,6 +48,7 @@ describe("useOAuthFlow", () => {
     expect(signInMock).toHaveBeenCalledWith({
       provider: "zentity-bank",
       callbackURL: "/bank",
+      errorCallbackURL: "/bank",
     });
   });
 
@@ -65,6 +66,7 @@ describe("useOAuthFlow", () => {
     expect(signInMock).toHaveBeenCalledWith({
       provider: "zentity-bank",
       callbackURL: "/bank",
+      errorCallbackURL: "/bank",
       scopes: ["openid", "email", "proof:verification", "identity.name"],
     });
   });

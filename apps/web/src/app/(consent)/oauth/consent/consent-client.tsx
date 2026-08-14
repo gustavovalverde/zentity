@@ -321,16 +321,18 @@ export function OAuthConsentClient({
         );
       }
 
-      const { redirectURI, url } = response.data as {
+      const { redirect, redirectURI, url } = response.data as {
+        redirect?: boolean;
         redirectURI?: string;
         url?: string;
       };
       const redirectUrl = (redirectURI ?? url)?.trim();
-      if (!redirectUrl) {
+      if (!(redirect && redirectUrl)) {
         throw new Error("Missing redirect URL from consent response.");
       }
-
-      globalThis.window.location.assign(redirectUrl);
+      // Better Auth's client follows { redirect: true, url } automatically.
+      // Starting a second navigation here races the one-time OAuth callback
+      // state and can turn a successful consent into state_mismatch.
     } catch (err) {
       // If staging succeeded but consent failed, clear the stale ephemeral
       // entry so the user can retry without hitting "concurrent_stage".
