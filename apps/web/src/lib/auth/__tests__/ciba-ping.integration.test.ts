@@ -151,6 +151,27 @@ describe("CIBA ping mode", () => {
       expect(request?.deliveryMode).toBe("poll");
     });
 
+    it("does not crash bc-authorize when client metadata is malformed JSON", async () => {
+      await db
+        .update(oauthClients)
+        .set({ metadata: "{not valid json" })
+        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .run();
+
+      const { status, json } = await postBcAuthorize({
+        client_id: TEST_CLIENT_ID,
+        scope: "openid",
+        login_hint: `user-${userId}@example.com`,
+        client_notification_token: TEST_NOTIFICATION_TOKEN,
+        client_notification_uri: TEST_NOTIFICATION_ENDPOINT,
+      });
+
+      // Malformed stored metadata must fail as a normal client error, never
+      // an unhandled exception surfacing as a 500.
+      expect(status).toBeLessThan(500);
+      expect(json.error).toBeDefined();
+    });
+
     it("prefers client_notification_uri from request body over metadata", async () => {
       const bodyEndpoint = "http://localhost:8888/ciba/callback";
       await db

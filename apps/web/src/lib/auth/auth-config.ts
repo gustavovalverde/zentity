@@ -2179,7 +2179,12 @@ export const auth = betterAuth({
         if (!client?.metadata) {
           return undefined;
         }
-        const meta = JSON.parse(client.metadata) as Record<string, unknown>;
+        let meta: Record<string, unknown>;
+        try {
+          meta = JSON.parse(client.metadata) as Record<string, unknown>;
+        } catch {
+          return undefined;
+        }
         return (
           (meta.backchannel_client_notification_endpoint as string) ?? undefined
         );

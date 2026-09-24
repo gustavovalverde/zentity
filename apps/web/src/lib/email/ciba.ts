@@ -20,6 +20,33 @@ function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+function escapeHtml(value: unknown): string {
+  return String(value).replace(
+    /[&<>"']/g,
+    (char) => HTML_ESCAPES[char] ?? char
+  );
+}
+
+function escapeHtmlHref(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return escapeHtml(url);
+    }
+  } catch {
+    // fall through to the safe fallback below
+  }
+  return "#";
+}
+
 function formatAuthorizationDetailsText(
   details: AuthorizationDetail[]
 ): string {
@@ -41,18 +68,18 @@ function formatAuthorizationDetailsHtml(
     .map((d) => {
       if (d.type === "purchase") {
         const amount = d.amount?.value
-          ? `$${d.amount.value} ${d.amount.currency ?? "USD"}`
+          ? `$${escapeHtml(d.amount.value)} ${escapeHtml(d.amount.currency ?? "USD")}`
           : "";
         return `<div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:12px 0;">
-<p style="margin:0 0 4px;font-weight:600;text-transform:capitalize;">${d.type}</p>
-${d.item ? `<p style="margin:0 0 4px;">${d.item}</p>` : ""}
+<p style="margin:0 0 4px;font-weight:600;text-transform:capitalize;">${escapeHtml(d.type)}</p>
+${d.item ? `<p style="margin:0 0 4px;">${escapeHtml(d.item)}</p>` : ""}
 ${amount ? `<p style="margin:0 0 4px;font-size:18px;font-weight:700;">${amount}</p>` : ""}
-${d.merchant ? `<p style="margin:0;color:#6b7280;font-size:13px;">Merchant: ${d.merchant}</p>` : ""}
+${d.merchant ? `<p style="margin:0;color:#6b7280;font-size:13px;">Merchant: ${escapeHtml(d.merchant)}</p>` : ""}
 </div>`;
       }
       return `<div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:12px 0;">
-<p style="margin:0;font-weight:600;">${d.type ?? "Details"}</p>
-<pre style="margin:4px 0 0;font-size:12px;white-space:pre-wrap;">${JSON.stringify(d, null, 2)}</pre>
+<p style="margin:0;font-weight:600;">${escapeHtml(d.type ?? "Details")}</p>
+<pre style="margin:4px 0 0;font-size:12px;white-space:pre-wrap;">${escapeHtml(JSON.stringify(d, null, 2))}</pre>
 </div>`;
     })
     .join("");
@@ -86,19 +113,19 @@ function formatAgentText(agent: AgentIdentity): string {
 }
 
 function formatAgentHtml(agent: AgentIdentity): string {
-  const fields = [`<strong>${agent.name}</strong>`];
+  const fields = [`<strong>${escapeHtml(agent.name)}</strong>`];
   if (agent.model) {
-    fields.push(`Model: ${agent.model}`);
+    fields.push(`Model: ${escapeHtml(agent.model)}`);
   }
   if (agent.runtime) {
-    fields.push(`Runtime: ${agent.runtime}`);
+    fields.push(`Runtime: ${escapeHtml(agent.runtime)}`);
   }
   if (agent.version) {
-    fields.push(`v${agent.version}`);
+    fields.push(`v${escapeHtml(agent.version)}`);
   }
   const trustLabel =
     agent.attestationTier === "attested"
-      ? `Attested${agent.attestationProvider ? ` by ${agent.attestationProvider}` : ""}`
+      ? `Attested${agent.attestationProvider ? ` by ${escapeHtml(agent.attestationProvider)}` : ""}`
       : "Registered runtime";
   return `<div style="background:#eff6ff;border:1px solid #bfdbfe;padding:12px 16px;border-radius:8px;margin:12px 0;">
 <p style="margin:0 0 4px;font-weight:600;">${fields.join(" &middot; ")}</p>
@@ -162,7 +189,7 @@ export async function sendCibaNotification(params: {
 
   const agentHtml = agent ? formatAgentHtml(agent) : "";
   const bindingHtml = params.bindingMessage
-    ? `<p style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:16px 0;font-style:italic;">"${params.bindingMessage}"</p>`
+    ? `<p style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:16px 0;font-style:italic;">"${escapeHtml(params.bindingMessage)}"</p>`
     : "";
   const detailsHtml =
     parsedDetails.length > 0
@@ -170,14 +197,14 @@ export async function sendCibaNotification(params: {
       : "";
 
   const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
-<h2 style="margin-bottom:4px;">${clientLabel}</h2>
+<h2 style="margin-bottom:4px;">${escapeHtml(clientLabel)}</h2>
 <p style="color:#6b7280;margin-top:0;">is requesting access to your account</p>
 ${agentHtml}
-<p><strong>Scopes:</strong> ${scopeList}</p>
+<p><strong>Scopes:</strong> ${escapeHtml(scopeList)}</p>
 ${bindingHtml}
 ${detailsHtml}
 <p style="margin:24px 0;">
-<a href="${params.approvalUrl}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Review Request</a>
+<a href="${escapeHtmlHref(params.approvalUrl)}" style="display:inline-block;background:#18181b;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:500;">Review Request</a>
 </p>
 <p style="color:#9ca3af;font-size:13px;">If you did not expect this request, you can safely ignore it.</p>
 </div>`;
