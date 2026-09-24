@@ -6,7 +6,6 @@ import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
 
 const ML_KEM_PUBLIC_KEY_BYTES = 1184;
 export const ML_KEM_SECRET_KEY_BYTES = 2400;
-const ML_KEM_CIPHERTEXT_BYTES = 1088;
 
 export function mlKemKeygen(seed?: Uint8Array): {
   publicKey: Uint8Array;
@@ -39,23 +38,6 @@ export function mlKemEncapsulate(publicKey: Uint8Array): {
     );
   }
   return ml_kem768.encapsulate(publicKey);
-}
-
-export function mlKemDecapsulate(
-  cipherText: Uint8Array,
-  secretKey: Uint8Array
-): Uint8Array {
-  if (cipherText.length !== ML_KEM_CIPHERTEXT_BYTES) {
-    throw new Error(
-      `ML-KEM-768 ciphertext must be ${ML_KEM_CIPHERTEXT_BYTES} bytes, got ${cipherText.length}`
-    );
-  }
-  if (secretKey.length !== ML_KEM_SECRET_KEY_BYTES) {
-    throw new Error(
-      `ML-KEM-768 secret key must be ${ML_KEM_SECRET_KEY_BYTES} bytes, got ${secretKey.length}`
-    );
-  }
-  return ml_kem768.decapsulate(cipherText, secretKey);
 }
 
 export function isValidMlKemPublicKey(base64: string): boolean {

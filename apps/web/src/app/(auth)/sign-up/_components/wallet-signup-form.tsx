@@ -129,8 +129,7 @@ export function WalletSignUpForm({
         <AlertTitle>Set up a backup after wallet sign-up</AlertTitle>
         <AlertDescription>
           Wallet signatures can change across wallet apps or firmware updates.
-          Add a backup passkey or guardian recovery right after account
-          creation.
+          Add a backup passkey right after account creation.
         </AlertDescription>
       </Alert>
 

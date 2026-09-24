@@ -39,13 +39,13 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up |
 | `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |
-| `email/` | Resend transport + domain mailers (auth, CIBA, recovery) |
+| `email/` | Resend transport + domain mailers (auth, CIBA) |
 | `http/` | Rate limiting, URL safety, binary transport, API route response helpers |
 | `identity/` | Verification flows: `document/` (OCR), `liveness/` (multi-gesture), `verification/` (orchestration) |
 | `logging/` | Pino logger, error logger, redaction |
 | `observability/` | Metrics, telemetry, request context, warmup |
 | `privacy/` | `zk/` (Noir + UltraHonk), `fhe/` (TFHE keys), `secrets/` (encrypted blobs + vault), `credentials/` (passkey/OPAQUE/wallet wrapping), `primitives/` (crypto base), `bbs/` (BBS+ signatures) |
-| `recovery/` | FROST threshold recovery, guardian JWT |
+| `recovery/` | Recovery ML-KEM key for secret recovery wrappers |
 | `trpc/` | Server/client setup + `routers/` (one file per domain: `identity.ts`, `zk.ts`, `agent.ts`, etc.) |
 
 ### `src/components/`

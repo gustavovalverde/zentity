@@ -215,7 +215,7 @@ export function SignUpForm() {
       if (submitted) {
         setSubmittedEmail(submitted);
       } else {
-        finalizeSignUp("/dashboard/settings?tab=recovery&walletRisk=1");
+        finalizeSignUp("/dashboard/settings?walletRisk=1");
       }
     } catch (err) {
       setError(

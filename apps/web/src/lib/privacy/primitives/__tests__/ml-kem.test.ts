@@ -1,9 +1,9 @@
+import { ml_kem768 } from "@noble/post-quantum/ml-kem.js";
 import { describe, expect, it } from "vitest";
 
 import {
   isValidMlKemPublicKey,
   ML_KEM_SECRET_KEY_BYTES,
-  mlKemDecapsulate,
   mlKemEncapsulate,
   mlKemGetPublicKey,
   mlKemKeygen,
@@ -40,12 +40,12 @@ describe("ml-kem-768", () => {
     });
   });
 
-  describe("encapsulate / decapsulate", () => {
+  describe("encapsulate", () => {
     it("round-trips: both sides derive same 32-byte shared secret", () => {
       const { publicKey, secretKey } = mlKemKeygen();
       const { cipherText, sharedSecret: senderSecret } =
         mlKemEncapsulate(publicKey);
-      const receiverSecret = mlKemDecapsulate(cipherText, secretKey);
+      const receiverSecret = ml_kem768.decapsulate(cipherText, secretKey);
 
       expect(senderSecret).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);
       expect(receiverSecret).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);
@@ -69,48 +69,6 @@ describe("ml-kem-768", () => {
     });
   });
 
-  describe("security", () => {
-    it("wrong secret key → different shared secret (implicit reject)", () => {
-      const alice = mlKemKeygen();
-      const eve = mlKemKeygen();
-
-      const { cipherText, sharedSecret: aliceSecret } = mlKemEncapsulate(
-        alice.publicKey
-      );
-
-      // ML-KEM implicit reject: wrong key returns pseudorandom, no throw
-      const eveSecret = mlKemDecapsulate(cipherText, eve.secretKey);
-
-      expect(eveSecret).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);
-      expect(eveSecret).not.toEqual(aliceSecret);
-    });
-
-    it("bit-flipped ciphertext → implicit reject (different shared secret, no throw)", () => {
-      const { publicKey, secretKey } = mlKemKeygen();
-      const { cipherText, sharedSecret } = mlKemEncapsulate(publicKey);
-
-      const tampered = new Uint8Array(cipherText);
-      const tamperedByte0 = tampered[0];
-      if (tamperedByte0 !== undefined) {
-        // biome-ignore lint/suspicious/noBitwiseOperators: intentional tampering for KEM implicit reject test
-        tampered[0] = tamperedByte0 ^ 0xff;
-      }
-
-      const result = mlKemDecapsulate(tampered, secretKey);
-      expect(result).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);
-      expect(result).not.toEqual(sharedSecret);
-    });
-
-    it("zero-filled ciphertext → implicit reject (no throw)", () => {
-      const { secretKey } = mlKemKeygen();
-      const zeroCt = new Uint8Array(ML_KEM_CIPHERTEXT_BYTES);
-
-      // ML-KEM MUST NOT throw on valid-length but garbage ciphertext
-      const result = mlKemDecapsulate(zeroCt, secretKey);
-      expect(result).toHaveLength(ML_KEM_SHARED_SECRET_BYTES);
-    });
-  });
-
   describe("input validation", () => {
     it("rejects undersized public key in encapsulate", () => {
       expect(() => mlKemEncapsulate(new Uint8Array(32))).toThrow(
@@ -121,20 +79,6 @@ describe("ml-kem-768", () => {
     it("rejects oversized public key in encapsulate", () => {
       expect(() => mlKemEncapsulate(new Uint8Array(2000))).toThrow(
         `must be ${ML_KEM_PUBLIC_KEY_BYTES} bytes`
-      );
-    });
-
-    it("rejects undersized ciphertext in decapsulate", () => {
-      const { secretKey } = mlKemKeygen();
-      expect(() => mlKemDecapsulate(new Uint8Array(100), secretKey)).toThrow(
-        `must be ${ML_KEM_CIPHERTEXT_BYTES} bytes`
-      );
-    });
-
-    it("rejects undersized secret key in decapsulate", () => {
-      const cipherText = new Uint8Array(ML_KEM_CIPHERTEXT_BYTES);
-      expect(() => mlKemDecapsulate(cipherText, new Uint8Array(32))).toThrow(
-        `must be ${ML_KEM_SECRET_KEY_BYTES} bytes`
       );
     });
   });

@@ -82,7 +82,7 @@ describe("recovery key authentication integration", () => {
     });
   });
 
-  describe("crypto-gated DEK release", () => {
+  describe("recovery wrapper storage", () => {
     it("recovery wrapper stored in DB includes keyId for pin verification", async () => {
       const userId = await createTestUser();
       const secretId = randomUUID();

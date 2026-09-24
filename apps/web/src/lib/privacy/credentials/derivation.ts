@@ -18,7 +18,6 @@ export const KEK_SOURCE = {
   PRF: "prf",
   OPAQUE: "opaque",
   WALLET: "wallet",
-  RECOVERY: "recovery",
 } as const;
 
 /**

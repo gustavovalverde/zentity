@@ -69,19 +69,6 @@ export const env = createEnv({
     // Internal services
     FHE_SERVICE_URL: serviceUrl("http://localhost:5001"),
     OCR_SERVICE_URL: serviceUrl("http://localhost:5004"),
-    SIGNER_COORDINATOR_URL: serviceUrl("http://localhost:5002"),
-    SIGNER_ENDPOINTS: z
-      .string()
-      .default(
-        "http://localhost:5101,http://localhost:5102,http://localhost:5103"
-      )
-      .transform((s) =>
-        s
-          .split(",")
-          .map((e) => e.trim())
-          .filter(Boolean)
-          .map((e) => e.replace(TRAILING_SLASHES, ""))
-      ),
     INTERNAL_SERVICE_TOKEN: z
       .string()
       .optional()
@@ -197,10 +184,6 @@ export const env = createEnv({
     LOCAL_COMPLIANCE_RULES: z.string().optional(),
     LOCAL_COMPLIANT_ERC20: z.string().optional(),
 
-    // Custodial FROST Recovery (optional)
-    CUSTODIAL_SIGNER_URL: z.string().optional(),
-    CUSTODIAL_SIGNER_ID: z.string().optional(),
-
     // Web Push (VAPID)
     VAPID_PUBLIC_KEY: z
       .string()
@@ -309,8 +292,6 @@ export const env = createEnv({
     DRIZZLE_LOG: process.env.DRIZZLE_LOG,
     FHE_SERVICE_URL: process.env.FHE_SERVICE_URL,
     OCR_SERVICE_URL: process.env.OCR_SERVICE_URL,
-    SIGNER_COORDINATOR_URL: process.env.SIGNER_COORDINATOR_URL,
-    SIGNER_ENDPOINTS: process.env.SIGNER_ENDPOINTS,
     INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
     WALLET_AUDIENCE: process.env.WALLET_AUDIENCE,
     CRON_SECRET: process.env.CRON_SECRET,
@@ -360,8 +341,6 @@ export const env = createEnv({
     LOCAL_IDENTITY_REGISTRY: process.env.LOCAL_IDENTITY_REGISTRY,
     LOCAL_COMPLIANCE_RULES: process.env.LOCAL_COMPLIANCE_RULES,
     LOCAL_COMPLIANT_ERC20: process.env.LOCAL_COMPLIANT_ERC20,
-    CUSTODIAL_SIGNER_URL: process.env.CUSTODIAL_SIGNER_URL,
-    CUSTODIAL_SIGNER_ID: process.env.CUSTODIAL_SIGNER_ID,
     VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,

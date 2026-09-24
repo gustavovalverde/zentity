@@ -16,7 +16,7 @@
  * - identity: Identity verification (document OCR, proofs, revocation)
  * - liveness: Multi-gesture liveness detection sessions
  * - passportChip: ZKPassport NFC chip verification
- * - recovery: FROST guardian-based key recovery
+ * - recovery: Recovery public key and recovery wrappers for stored secrets
  * - secrets: Passkey-wrapped secret storage
  * - signUp: Account creation wizard state management
  * - zk: ZK proof verification, storage, BBS+ credentials, challenge management

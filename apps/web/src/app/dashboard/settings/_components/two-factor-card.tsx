@@ -45,8 +45,7 @@ export function TwoFactorCard({ hasPassword = false }: TwoFactorCardProps) {
         <CardHeader>
           <CardTitle>Two-factor authentication</CardTitle>
           <CardDescription>
-            Add an authenticator app for extra security when signing in. Once
-            enabled, you can also use it as a recovery guardian.
+            Add an authenticator app for extra security when signing in.
           </CardDescription>
           <CardAction>
             <Button

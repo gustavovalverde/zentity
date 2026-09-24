@@ -16,10 +16,6 @@ This is the main web application for Zentity, providing:
 - **Dashboard** — View verification status and privacy proofs
 - **Partner integrations** — OAuth provider flow for third-party verification
   checks
-- **Social recovery** — Guardian approvals (email, twoFactor, custodialEmail) and
-  Recovery ID-based recovery initiation. Custodial email guardians (max 1 per
-  user, cannot be sole guardian) use a Zentity-operated signer for zero-friction
-  recovery setup.
 
 ## Technology Stack
 
@@ -60,8 +56,6 @@ NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY=your-opaque-server-public-key
 # Service URLs (defaults for local development)
 FHE_SERVICE_URL=http://localhost:5001
 OCR_SERVICE_URL=http://localhost:5004
-SIGNER_COORDINATOR_URL=http://localhost:5002
-SIGNER_ENDPOINTS=http://localhost:5101,http://localhost:5102,http://localhost:5103
 INTERNAL_SERVICE_TOKEN=dev-internal-token
 
 # Blockchain delivery targets
@@ -78,10 +72,6 @@ RECOVERY_ML_KEM_SECRET_KEY=...          # production (base64 of 2400 bytes)
 RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
 RECOVERY_KEY_ID=v1
 
-# Custodial recovery guardian (optional)
-CUSTODIAL_SIGNER_URL=http://localhost:5101  # custodial guardian
-CUSTODIAL_SIGNER_ID=signer-custodial       # custodial signer ID
-
 # Email delivery
 RESEND_API_KEY=...                      # production
 MAIL_FROM_EMAIL=no-reply@zentity.local
@@ -93,8 +83,7 @@ MAILPIT_SEND_API_PASSWORD=
 ```
 
 Mail delivery uses Resend in production when `RESEND_API_KEY` is set. In local
-development, Mailpit captures recovery emails (or the UI shows manual approval
-links if email is not configured).
+development, Mailpit captures outgoing email.
 
 ### Development
 
@@ -142,14 +131,6 @@ NODE_OPTIONS=--inspect=0.0.0.0 pnpm run dev
 ```
 
 ## Testing
-
-### E2E: Social Recovery
-
-Run the social recovery flow (no Synpress required):
-
-```bash
-pnpm run test:e2e -- e2e/recovery/social-recovery.spec.ts
-```
 
 ### E2E (Playwright + Synpress + MetaMask)
 
@@ -232,8 +213,8 @@ src/
 
 | Route | Purpose |
 | --- | --- |
-| `/recovery/guardian` | Start guardian recovery with email or Recovery ID |
-| `/recovery/guardian/approve` | Guardian approval link handler |
+| `/recovery/passkey` | Register a new passkey after magic-link sign-in |
+| `/recovery/password` | Request a password reset link |
 | `/verify-2fa` | Two-factor verification UI |
 
 ## ZK Proof Development

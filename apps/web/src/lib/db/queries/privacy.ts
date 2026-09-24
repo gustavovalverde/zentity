@@ -408,20 +408,6 @@ export async function getLatestEncryptedAttributeByUserAndType(
   };
 }
 
-export async function listEncryptedSecretsByUserId(
-  userId: string
-): Promise<EncryptedSecret[]> {
-  const rows = await db
-    .select()
-    .from(encryptedSecrets)
-    .where(eq(encryptedSecrets.userId, userId))
-    .all();
-  return rows.map((row) => ({
-    ...row,
-    metadata: parseSecretMetadata(row.metadata),
-  }));
-}
-
 export async function getSignedClaimTypesByUserAndVerification(
   userId: string,
   verificationId: string

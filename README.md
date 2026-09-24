@@ -230,7 +230,6 @@ flowchart LR
 - Passkey-first auth with OPAQUE password and wallet (EIP-712) alternatives
 - Credential-sealed profile secret for user-controlled PII (client decrypt only)
 - Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
-- Social recovery with guardian approvals (email + authenticator), backed by FROST signer services
 - OAuth 2.1 provider flow (authorize, consent, token exchange)
 - HAIP compliance: DPoP with server-managed nonce store, PAR (required), wallet attestation, pairwise subject identifiers
 - OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)

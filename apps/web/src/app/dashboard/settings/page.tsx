@@ -1,11 +1,5 @@
 import { eq } from "drizzle-orm";
-import {
-  KeyRound,
-  LifeBuoy,
-  Settings,
-  TriangleAlert,
-  User,
-} from "lucide-react";
+import { KeyRound, Settings, TriangleAlert, User } from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -22,7 +16,6 @@ import { DeleteAccountSection } from "./_components/delete-account-section";
 import { EmailSection } from "./_components/email-section";
 import { OpaqueChangePasswordSection } from "./_components/opaque-change-password-section";
 import { PasskeyManagementSection } from "./_components/passkey-management-section";
-import { RecoverySetupSection } from "./_components/recovery-setup-section";
 import {
   ConnectedAccountsCard,
   SessionsCard,
@@ -32,10 +25,10 @@ import { TwoFactorCard } from "./_components/two-factor-card";
 import { UserDataSection } from "./_components/user-data-section";
 import { WalletBindingSection } from "./_components/wallet-binding-section";
 
-type SettingsTab = "security" | "recovery" | "profile" | "account";
+type SettingsTab = "security" | "profile" | "account";
 
 function parseDefaultTab(tab?: string): SettingsTab {
-  if (tab === "recovery" || tab === "profile" || tab === "account") {
+  if (tab === "profile" || tab === "account") {
     return tab;
   }
   return "security";
@@ -79,7 +72,7 @@ export default async function SettingsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        description="Manage your account settings, security, and recovery options"
+        description="Manage your account settings and security"
         title="Settings"
       />
 
@@ -89,20 +82,16 @@ export default async function SettingsPage({
           <AlertTitle>Wallet access can be fragile</AlertTitle>
           <AlertDescription>
             Wallet signatures may change across firmware or wallet app changes.
-            Add a backup passkey or enable guardian recovery now.
+            Add a backup passkey now.
           </AlertDescription>
         </Alert>
       )}
 
       <Tabs className="w-full" defaultValue={defaultTab}>
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger className="gap-1.5" value="security">
             <KeyRound className="h-4 w-4" />
             <span className="hidden sm:inline">Security</span>
-          </TabsTrigger>
-          <TabsTrigger className="gap-1.5" value="recovery">
-            <LifeBuoy className="h-4 w-4" />
-            <span className="hidden sm:inline">Recovery</span>
           </TabsTrigger>
           <TabsTrigger className="gap-1.5" value="profile">
             <User className="h-4 w-4" />
@@ -128,15 +117,6 @@ export default async function SettingsPage({
             <SetPasswordSection />
           )}
           <WalletBindingSection />
-        </TabsContent>
-
-        {/* RECOVERY TAB - Backup access options */}
-        <TabsContent className="mt-6 space-y-6" value="recovery">
-          <SectionHeader
-            description="Set up backup options in case you lose access to your account"
-            title="Account Recovery"
-          />
-          <RecoverySetupSection />
         </TabsContent>
 
         {/* PROFILE TAB - Your verified information */}
