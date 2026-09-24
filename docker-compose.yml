@@ -16,8 +16,6 @@ services:
         - NEXT_PUBLIC_NOIR_DEBUG=${NEXT_PUBLIC_NOIR_DEBUG:-true}
         - NEXT_PUBLIC_WORLD_ID_ENABLED=${NEXT_PUBLIC_WORLD_ID_ENABLED:-false}
         - NEXT_PUBLIC_WORLD_ID_APP_ID=${NEXT_PUBLIC_WORLD_ID_APP_ID:-}
-        # Build-time secret for Next.js static generation (not in final image due to multi-stage build)
-        - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-local-docker-build-secret-change-in-production}
     ports:
       - "3000:3000"
     environment:

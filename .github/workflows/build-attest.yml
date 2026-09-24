@@ -91,8 +91,6 @@ jobs:
       service_name: demo-rp
       context_path: .
       dockerfile_path: apps/demo-rp/Dockerfile
-    secrets:
-      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
       contents: read
       packages: write
@@ -139,8 +137,6 @@ jobs:
       service_name: web
       context_path: .
       dockerfile_path: apps/web/Dockerfile
-    secrets:
-      BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
     permissions:
       contents: read # Required to checkout code
       packages: write # Required to push to GHCR

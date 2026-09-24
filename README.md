@@ -162,24 +162,15 @@ docker compose up --build
 <details>
 <summary>Building individual services with Docker</summary>
 
-The web service requires a secret for building (BuildKit secret mount):
+No image needs secrets at build time. The web service reads `BETTER_AUTH_SECRET`
+and its other secrets from the container environment at runtime, and builds from
+the repository root because it depends on workspace packages:
 
 ```bash
-# Generate a secret file (one-time setup)
-openssl rand -base64 32 > ~/.zentity-auth-secret
-
-# Build web service
-docker build \
-  --secret id=better_auth_secret,src=$HOME/.zentity-auth-secret \
-  -t zentity-web apps/web
-
-# FHE and OCR services don't require secrets
+docker build -f apps/web/Dockerfile -t zentity-web .
 docker build -t zentity-fhe apps/fhe
 docker build -t zentity-ocr apps/ocr
 ```
-
-**Why?** Secrets are never baked into image layers. The build fails without the
-secret to prevent running with insecure defaults.
 
 </details>
 
