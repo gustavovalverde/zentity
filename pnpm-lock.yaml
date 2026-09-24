@@ -10,7 +10,7 @@ overrides:
   axios@<1.16.1: 1.16.1
   qs@<6.15.2: 6.15.2
   ws@<8.20.1: 8.20.1
-  hono@<4.12.18: 4.12.18
+  hono@<4.13.9: 4.13.9
   '@hono/node-server@<2.0.2': 2.0.2
   undici@<7.24.0: 7.24.0
   fast-xml-parser@<5.8.0: 5.8.0
@@ -294,7 +294,7 @@ importers:
     dependencies:
       '@hono/node-server':
         specifier: ^2.0.2
-        version: 2.0.2(hono@4.12.18)
+        version: 2.0.2(hono@4.13.9)
       '@modelcontextprotocol/sdk':
         specifier: ^1.27.1
         version: 1.29.0(zod@4.3.6)
@@ -302,8 +302,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       hono:
-        specifier: ^4.12.18
-        version: 4.12.18
+        specifier: ^4.13.9
+        version: 4.13.9
       jose:
         specifier: ^6.2.1
         version: 6.2.1
@@ -2231,7 +2231,7 @@ packages:
     resolution: {integrity: sha512-tXlTi1h/4V7sDe7i97IVP+9re9ZU7wXZZggnR5ucCRclf1+AX6YhGStrR5w8bLj+3Mlyl0pKfBh9gqTqqnGKfQ==}
     engines: {node: '>=20'}
     peerDependencies:
-      hono: 4.12.18
+      hono: 4.13.9
 
   '@hookform/resolvers@5.2.2':
     resolution: {integrity: sha512-A/IxlMLShx3KjV/HeTcTfaMxdwy690+L/ZADoeaTltLx+CVuzkeVIPuybK3jrRfw7YZnmdKsVVHAlEPIAEUNlA==}
@@ -8932,8 +8932,8 @@ packages:
   hoist-non-react-statics@3.3.2:
     resolution: {integrity: sha512-/gGivxi8JPKWNm/W0jSmzcMPpfpPLc3dY/6GxhX2hQ9iGj3aDfklV4ET7NjKpSinLpJ5vafa9iiGIEZg10SfBw==}
 
-  hono@4.12.18:
-    resolution: {integrity: sha512-RWzP96k/yv0PQfyXnWjs6zot20TqfpfsNXhOnev8d1InAxubW93L11/oNUc3tQqn2G0bSdAOBpX+2uDFHV7kdQ==}
+  hono@4.13.9:
+    resolution: {integrity: sha512-7dMkQmZoC4E6F7AtaQSPhlWAdnBti+j7rreMZl8QB4jFiEhP9TWbGWUMi8WYzBCgmgulxuvLQupKqo+Co6Omyg==}
     engines: {node: '>=16.9.0'}
 
   html-encoding-sniffer@6.0.0:
@@ -14293,9 +14293,9 @@ snapshots:
 
   '@hexagon/base64@1.1.28': {}
 
-  '@hono/node-server@2.0.2(hono@4.12.18)':
+  '@hono/node-server@2.0.2(hono@4.13.9)':
     dependencies:
-      hono: 4.12.18
+      hono: 4.13.9
 
   '@hookform/resolvers@5.2.2(react-hook-form@7.75.0(react@19.2.4))':
     dependencies:
@@ -14946,7 +14946,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)':
     dependencies:
-      '@hono/node-server': 2.0.2(hono@4.12.18)
+      '@hono/node-server': 2.0.2(hono@4.13.9)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -14956,7 +14956,7 @@ snapshots:
       eventsource-parser: 3.0.8
       express: 5.2.1
       express-rate-limit: 8.2.2(express@5.2.1)
-      hono: 4.12.18
+      hono: 4.13.9
       jose: 6.2.1
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -14968,7 +14968,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.29.0(zod@4.3.6)':
     dependencies:
-      '@hono/node-server': 2.0.2(hono@4.12.18)
+      '@hono/node-server': 2.0.2(hono@4.13.9)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -14978,7 +14978,7 @@ snapshots:
       eventsource-parser: 3.0.8
       express: 5.2.1
       express-rate-limit: 8.2.2(express@5.2.1)
-      hono: 4.12.18
+      hono: 4.13.9
       jose: 6.2.1
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -23023,7 +23023,7 @@ snapshots:
     dependencies:
       react-is: 16.13.1
 
-  hono@4.12.18: {}
+  hono@4.13.9: {}
 
   html-encoding-sniffer@6.0.0(@noble/hashes@2.2.0):
     dependencies:
@@ -25169,7 +25169,7 @@ snapshots:
   porto@0.2.37(@tanstack/react-query@5.100.10(react@19.2.4))(@types/react@19.2.14)(@wagmi/core@3.4.12(@tanstack/query-core@5.100.10)(@types/react@19.2.14)(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6)))(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))(wagmi@3.6.15):
     dependencies:
       '@wagmi/core': 3.4.12(@tanstack/query-core@5.100.10)(@types/react@19.2.14)(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))
-      hono: 4.12.18
+      hono: 4.13.9
       idb-keyval: 6.2.2
       mipd: 0.0.7(typescript@5.9.3)
       ox: 0.9.17(typescript@5.9.3)(zod@4.3.6)
@@ -25190,7 +25190,7 @@ snapshots:
   porto@0.2.37(@tanstack/react-query@5.90.21(react@19.2.4))(@types/react@19.2.14)(@wagmi/core@3.4.5(@tanstack/query-core@5.100.10)(@types/react@19.2.14)(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6)))(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))(wagmi@3.5.0):
     dependencies:
       '@wagmi/core': 3.4.5(@tanstack/query-core@5.100.10)(@types/react@19.2.14)(immer@9.0.21)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.4))(viem@2.48.4(typescript@5.9.3)(zod@4.3.6))
-      hono: 4.12.18
+      hono: 4.13.9
       idb-keyval: 6.2.2
       mipd: 0.0.7(typescript@5.9.3)
       ox: 0.9.17(typescript@5.9.3)(zod@4.3.6)
