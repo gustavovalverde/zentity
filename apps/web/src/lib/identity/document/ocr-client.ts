@@ -67,7 +67,7 @@ function assertOcrImagePayloadSize(image: string): void {
 }
 
 async function withOcrMetrics<T>(args: {
-  operation: "process_document" | "ocr_document" | "health";
+  operation: "process_document";
   payloadBytes?: number;
   imageBytes?: number;
   run: () => Promise<T>;
@@ -137,70 +137,4 @@ export function processDocumentOcr(args: {
           }),
       })
   );
-}
-
-export function ocrDocumentOcr(args: {
-  image: string;
-  requestId?: string | undefined;
-  flowId?: string | undefined;
-}): Promise<unknown> {
-  try {
-    assertOcrImagePayloadSize(args.image);
-  } catch (err) {
-    return Promise.reject(err);
-  }
-  const url = `${env.OCR_SERVICE_URL}/ocr`;
-  const payload = JSON.stringify({ image: args.image });
-  const payloadBytes = Buffer.byteLength(payload);
-  const imageBytes = Buffer.byteLength(args.image);
-  return withSpan(
-    "ocr.ocr_document",
-    {
-      "ocr.operation": "ocr_document",
-      "ocr.request_bytes": payloadBytes,
-      "ocr.image_bytes": imageBytes,
-    },
-    () =>
-      withOcrMetrics({
-        operation: "ocr_document",
-        payloadBytes,
-        imageBytes,
-        run: () =>
-          fetchJson<unknown>(url, {
-            method: "POST",
-            headers: injectTraceHeaders({
-              "Content-Type": "application/json",
-              ...getInternalServiceAuthHeaders(args.requestId, args.flowId),
-            }),
-            body: payload,
-            timeoutMs: OCR_TIMEOUT_MS,
-          }),
-      })
-  );
-}
-
-export function getOcrHealth(args?: {
-  requestId?: string;
-  flowId?: string;
-  trace?: boolean;
-}): Promise<unknown> {
-  const url = `${env.OCR_SERVICE_URL}/health`;
-  const run = () =>
-    fetchJson<unknown>(url, {
-      headers: injectTraceHeaders({
-        "X-Zentity-Healthcheck": "true",
-        ...getInternalServiceAuthHeaders(args?.requestId, args?.flowId),
-      }),
-    });
-  const runWithMetrics = () =>
-    withOcrMetrics({
-      operation: "health",
-      run,
-    });
-
-  if (args?.trace === false) {
-    return runWithMetrics();
-  }
-
-  return withSpan("ocr.health", { "ocr.operation": "health" }, runWithMetrics);
 }
