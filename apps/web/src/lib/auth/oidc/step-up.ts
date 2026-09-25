@@ -20,6 +20,7 @@ import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
   authChallengeSessions,
@@ -109,10 +110,42 @@ async function findAcrRejection(
   return `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${acrValues}`;
 }
 
-function rejectAcr(params: AcrRequest, description: string): never {
-  if (!params.redirect_uri) {
+async function isRegisteredRedirectUri(
+  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
+  db: LibSQLDatabase<any>,
+  clientId: string,
+  redirectUri: string
+): Promise<boolean> {
+  const client = await db
+    .select({ redirectUris: oauthClients.redirectUris })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+  return parseStoredStringArray(client?.redirectUris).includes(redirectUri);
+}
+
+/**
+ * Returns the tier rejection to the client. The hook runs before the provider
+ * validates the request, so the error is redirected only to a redirect_uri the
+ * client registered (RFC 6749 §4.1.2.1).
+ */
+async function rejectAcr(
+  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
+  db: LibSQLDatabase<any>,
+  clientId: string,
+  params: AcrRequest,
+  description: string
+): Promise<never> {
+  if (
+    !(
+      params.redirect_uri &&
+      (await isRegisteredRedirectUri(db, clientId, params.redirect_uri))
+    )
+  ) {
     throw new APIError("BAD_REQUEST", {
-      message: "interaction_required: no redirect_uri to return error",
+      error: "invalid_request",
+      error_description: "redirect_uri is missing or not registered",
     });
   }
   throwRedirect(
@@ -173,12 +206,18 @@ async function enforceFromPar(
     .delete(haipPushedRequests)
     .where(eq(haipPushedRequests.id, record.id))
     .run();
-  rejectAcr(params, rejection);
+  await rejectAcr(db, clientId, params, rejection);
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
-async function enforceFromQuery(ctx: any) {
+async function enforceFromQuery(
+  // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
+  ctx: any,
+  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
+  db: LibSQLDatabase<any>
+) {
   const query = ctx.query ?? {};
+  const clientId =
+    typeof query.client_id === "string" ? query.client_id : undefined;
   const params: AcrRequest = {
     acr_values:
       typeof query.acr_values === "string" ? query.acr_values : undefined,
@@ -186,7 +225,7 @@ async function enforceFromQuery(ctx: any) {
       typeof query.redirect_uri === "string" ? query.redirect_uri : undefined,
     state: typeof query.state === "string" ? query.state : undefined,
   };
-  if (!params.acr_values) {
+  if (!(params.acr_values && clientId)) {
     return;
   }
 
@@ -197,7 +236,7 @@ async function enforceFromQuery(ctx: any) {
 
   const rejection = await findAcrRejection(params.acr_values, session.user.id);
   if (rejection) {
-    rejectAcr(params, rejection);
+    await rejectAcr(db, clientId, params, rejection);
   }
 }
 
@@ -216,7 +255,7 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
   if (requestUri?.startsWith(PAR_URI_PREFIX)) {
     await enforceFromPar(ctx, db, requestUri);
   } else {
-    await enforceFromQuery(ctx);
+    await enforceFromQuery(ctx, db);
   }
 }
 

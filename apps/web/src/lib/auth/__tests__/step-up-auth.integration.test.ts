@@ -313,6 +313,53 @@ describe("step-up authentication: acr_values", () => {
   });
 });
 
+describe("step-up authentication: direct authorize requests", () => {
+  let sessionToken: string;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    const userId = await createTestUser();
+    await createTestClient();
+    sessionToken = await insertSession(userId);
+  });
+
+  function buildDirectAuthorizeRequest(redirectUri: string) {
+    const params = new URLSearchParams(
+      baseParParams({
+        acr_values: "urn:zentity:assurance:tier-2",
+        redirect_uri: redirectUri,
+      })
+    );
+    return new Request(`${AUTHORIZE_URL}?${params}`, {
+      method: "GET",
+      headers: { cookie: `better-auth.session_token=${sessionToken}` },
+      redirect: "manual",
+    });
+  }
+
+  it("returns the tier rejection to a registered redirect_uri", async () => {
+    const response = await auth.handler(
+      buildDirectAuthorizeRequest(REDIRECT_URI)
+    );
+
+    expect(response.status).toBe(302);
+    const location = getRedirectLocation(response);
+    expect(location?.origin).toBe(new URL(REDIRECT_URI).origin);
+    expect(location?.searchParams.get("error")).toBe("interaction_required");
+  });
+
+  it("never redirects the tier rejection to an unregistered redirect_uri", async () => {
+    const response = await auth.handler(
+      buildDirectAuthorizeRequest("https://attacker.example/callback")
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("location")).toBeNull();
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toBe("invalid_request");
+  });
+});
+
 describe("step-up authentication: max_age", () => {
   let userId: string;
 
