@@ -257,7 +257,6 @@ describe("OAuthConsentClient identity hardening", () => {
         optionalScopes={[]}
         scopeParam="openid"
         securityBadgeInput={{
-          encryptionLevel: "standard",
           isPairwise: true,
           requiresDpop: true,
         }}
@@ -271,7 +270,7 @@ describe("OAuthConsentClient identity hardening", () => {
         "Local app — authorization code delivered to a local application"
       )
     ).toBeTruthy();
-    expect(screen.getByText("Encrypted")).toBeTruthy();
+    expect(screen.getByText("Unlinkable ID")).toBeTruthy();
   });
 
   it("uses a progressive form submit for non-identity consent", () => {

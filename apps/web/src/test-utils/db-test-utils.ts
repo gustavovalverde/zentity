@@ -38,7 +38,6 @@ import {
   oauthConsents,
   oauthRefreshTokens,
   pairwiseSubjects,
-  rpEncryptionKeys,
 } from "@/lib/db/schema/oauth-provider";
 import {
   oidc4idaVerifiedClaims,
@@ -95,8 +94,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(cibaRequests).run();
     await tx.delete(haipPushedRequests).run();
     await tx.delete(haipVpSessions).run();
-    // OAuth/compliance tables (delete children before parents)
-    await tx.delete(rpEncryptionKeys).run();
+    // OAuth tables (delete children before parents)
     await tx.delete(agentTokenSnapshots).run();
     await tx.delete(pairwiseSubjects).run();
     await tx.delete(oauthAccessTokens).run();

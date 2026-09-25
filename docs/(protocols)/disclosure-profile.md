@@ -90,8 +90,7 @@ These control resource access with no claim payload.
 | `agent:session.register` | Register an agent session |
 | `agent:session.revoke` | Revoke an agent session |
 | `agent:introspect` | Introspect agent state |
-| `compliance:key:read` | Read FHE compliance key |
-| `compliance:key:write` | Manage FHE compliance key |
+| `compliance:key:read` | Read attestation and compliance status |
 | `identity_verification` | OID4VCI credential issuance |
 
 ## Delivery rules

@@ -429,49 +429,6 @@ export type HaipVpSession = typeof haipVpSessions.$inferSelect;
 export type NewHaipVpSession = typeof haipVpSessions.$inferInsert;
 
 // ---------------------------------------------------------------------------
-// RP compliance encryption keys (ML-KEM-768)
-// ---------------------------------------------------------------------------
-
-export const rpEncryptionKeys = sqliteTable(
-  "rp_encryption_key",
-  {
-    id: text("id").primaryKey().default(defaultId),
-    clientId: text("client_id")
-      .notNull()
-      .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-    publicKey: text("public_key").notNull(),
-    keyAlgorithm: text("key_algorithm", {
-      enum: ["ml-kem-768"],
-    })
-      .notNull()
-      .default("ml-kem-768"),
-    keyFingerprint: text("key_fingerprint").notNull(),
-    intendedUse: text("intended_use")
-      .notNull()
-      .default("compliance_encryption"),
-    status: text("status", {
-      enum: ["active", "rotated", "revoked"],
-    })
-      .notNull()
-      .default("active"),
-    previousKeyId: text("previous_key_id"),
-    rotatedAt: text("rotated_at"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-  },
-  (table) => [
-    index("idx_rp_encryption_keys_client").on(table.clientId),
-    uniqueIndex("rp_encryption_key_client_active_unique")
-      .on(table.clientId)
-      .where(sql`status = 'active'`),
-    index("idx_rp_encryption_keys_status").on(table.status),
-  ]
-);
-
-export type RpEncryptionKey = typeof rpEncryptionKeys.$inferSelect;
-export type NewRpEncryptionKey = typeof rpEncryptionKeys.$inferInsert;
-
-// ---------------------------------------------------------------------------
 // First-party app auth challenge sessions (OPAQUE / EIP-712)
 // ---------------------------------------------------------------------------
 

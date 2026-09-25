@@ -27,7 +27,6 @@ export function GET() {
       "proof:identity",
       ...PROOF_SCOPES,
       "compliance:key:read",
-      "compliance:key:write",
       ...IDENTITY_SCOPES,
       "identity_verification",
       "poh",

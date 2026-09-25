@@ -422,8 +422,7 @@ Vault-gated PII, delivered exclusively via the userinfo endpoint with exact disc
 
 | Scope | Purpose |
 | --- | --- |
-| `compliance:key:read` | Read RP FHE encryption keys |
-| `compliance:key:write` | Register/rotate RP encryption keys |
+| `compliance:key:read` | Read attestation and compliance status |
 | `identity_verification` | Pre-authorization for credential issuance (OIDC4VCI) |
 | `agent:host.register` | Register an agent host |
 | `agent:session.register` | Register an agent session |

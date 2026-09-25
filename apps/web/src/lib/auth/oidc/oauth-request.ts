@@ -285,14 +285,6 @@ export async function validateOAuthAccessToken(
   }
 }
 
-export async function computeKeyFingerprint(
-  publicKeyBase64: string
-): Promise<string> {
-  const keyBytes = Buffer.from(publicKeyBase64, "base64");
-  const hashBuffer = await crypto.subtle.digest("SHA-256", keyBytes);
-  return Buffer.from(hashBuffer).toString("hex");
-}
-
 export function computeJwkThumbprint(rawJwk: string): Promise<string> {
   const jwk = JSON.parse(rawJwk) as Record<string, unknown>;
   return calculateJwkThumbprint(jwk);

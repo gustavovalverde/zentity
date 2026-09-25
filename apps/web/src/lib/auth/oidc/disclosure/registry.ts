@@ -312,16 +312,7 @@ const OPERATIONAL_ENTRIES = [
     delivery: [],
     vaultRequired: false,
     exactBindingRequired: false,
-    description: "Read compliance encryption key",
-  },
-  {
-    scope: "compliance:key:write",
-    family: "operational",
-    claims: [],
-    delivery: [],
-    vaultRequired: false,
-    exactBindingRequired: false,
-    description: "Manage compliance encryption key",
+    description: "Read attestation and compliance status",
   },
   {
     scope: "identity_verification",
@@ -383,7 +374,6 @@ export const HIDDEN_SCOPES = new Set([
   "agent:session.revoke",
   "agent:introspect",
   "compliance:key:read",
-  "compliance:key:write",
   "identity_verification",
   "poh",
 ]);

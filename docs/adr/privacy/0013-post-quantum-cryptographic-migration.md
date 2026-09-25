@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "deprecated"
 date: "2026-09-25"
 category: "technical"
 domains: [privacy, security]
@@ -79,3 +79,4 @@ ML-KEM's most important security property for Zentity: decapsulating with the wr
 * 2026-02-24: Recovery key wrapping and RP compliance encryption move to ML-KEM-768; SD-JWT VC issuer signing moves to ML-DSA-65.
 * 2026-09-25: Issuer signing returns to the JWT plugin's RS256 and EdDSA keys, and ID tokens are always RS256, because the Better Auth 1.7 OAuth provider computes `at_hash` for its RS256 key. ML-KEM-768 decisions are unchanged.
 * 2026-09-25: Recovery key wrapping is dropped. The server holds no ML-KEM recovery key and stores no recovery-wrapped data keys.
+* 2026-09-25: RP compliance encryption keys are removed. Nothing encrypted to them, so no surface uses ML-KEM-768 and this decision is deprecated.
