@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 
 import { ciba, deliverPing } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
@@ -323,6 +324,8 @@ async function applyCimdClientPosture(clientId: string) {
 }
 
 const cimdOptions = {
+  fetchClientMetadataResource,
+  metadataProfile: "mcp-2026-07-28" as const,
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
     await applyCimdClientPosture(client.clientId);
     cimdLog.info(
@@ -1874,7 +1877,6 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
-      silenceWarnings: { oauthAuthServerConfig: true },
       accessTokenExpiresIn: 3600,
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
@@ -2062,10 +2064,9 @@ export const auth = betterAuth({
         return filterClaimsByRequest(allClaims, userinfoFilter);
       },
     }),
-    // Client ID Metadata Documents (MCP CIMD). The native plugin owns the
-    // fetch/validate/cache/persist path through clientDiscovery; SSRF defenses
-    // are a superset of the previous hand-rolled validator. CIMD clients are
-    // restricted to authorization_code + refresh_token by the plugin.
+    // Client ID Metadata Documents (MCP CIMD). The plugin owns fetching,
+    // validation, caching, and persistence through clientDiscovery; the
+    // provider enforces each discovered client's registered grants.
     cimd(cimdOptions),
     exactDisclosureClaimsPlugin(),
     oidc4ida({
