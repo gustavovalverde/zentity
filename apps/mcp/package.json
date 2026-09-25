@@ -23,7 +23,7 @@
     "test:e2e": "pnpm run build:sdk && bun run scripts/e2e-smoke.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.2",
+    "@hono/node-server": "^2.0.10",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@zentity/sdk": "workspace:*",
     "hono": "^4.13.9",
