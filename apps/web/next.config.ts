@@ -7,6 +7,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig: NextConfig = {
+  agentRules: false,
   // Turbopack configuration for Buffer polyfill
   // ISSUE: Next.js ships buffer@5.6.0 at "next/dist/compiled/buffer" which LACKS BigInt methods
   // The free variable `Buffer` maps to "node:buffer" which aliases to the compiled buffer
