@@ -55,7 +55,6 @@ jobs:
               - 'apps/ocr/**'
             rust:
               - 'apps/fhe/**'
-              - 'apps/signer/**'
             sdk:
               - 'packages/sdk/**'
               - 'package.json'
@@ -89,7 +88,7 @@ jobs:
             pre-commit-hygiene-${{ runner.os }}-
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         env:
-          SKIP: no-commit-to-branch,biome-check-web,tsc-check-web,knip-check-web,oxlint-type-aware-web,circuits-check-web,next-build-web,biome-check-landing,tsc-check-landing,vitest-unit-web,vitest-integration-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,cargo-fmt-signer,cargo-clippy-signer,commitlint,lockfile-sync-web,lockfile-sync-demo-rp,lockfile-sync-landing,lockfile-sync-mcp,lockfile-sync-fhe,lockfile-sync-signer,mcp-test
+          SKIP: no-commit-to-branch,biome-check-web,tsc-check-web,knip-check-web,oxlint-type-aware-web,circuits-check-web,next-build-web,biome-check-landing,tsc-check-landing,vitest-unit-web,vitest-integration-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,commitlint,lockfile-sync-web,lockfile-sync-demo-rp,lockfile-sync-landing,lockfile-sync-mcp,lockfile-sync-fhe,mcp-test
 
   # ============================================
   # Commit & PR Quality
@@ -236,7 +235,7 @@ jobs:
         continue-on-error: true
 
   # ============================================
-  # Rust (apps/fhe + apps/signer)
+  # Rust (apps/fhe)
   # ============================================
   rust-lint:
     name: Rust (fmt + clippy)
@@ -253,8 +252,6 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --manifest-path apps/fhe/Cargo.toml -- --check
       - run: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
-      - run: cargo fmt --manifest-path apps/signer/Cargo.toml -- --check
-      - run: cargo clippy --manifest-path apps/signer/Cargo.toml -- -D warnings
 
   rust-security:
     name: Rust (Security Audit)
@@ -276,9 +273,6 @@ jobs:
         run: cargo install cargo-audit --locked
       - name: Run cargo-audit (FHE service)
         run: cargo audit --file apps/fhe/Cargo.lock
-        continue-on-error: true
-      - name: Run cargo-audit (Signer service)
-        run: cargo audit --file apps/signer/Cargo.lock
         continue-on-error: true
 
   # ============================================

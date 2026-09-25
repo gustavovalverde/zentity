@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2024-12-29 |
-| **Updated** | 2026-01-10 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -95,11 +95,6 @@ export const env = createEnv({
     // ========== SERVICE URLS ==========
     FHE_SERVICE_URL: z.string().url().default("http://localhost:5001"),
     OCR_SERVICE_URL: z.string().url().default("http://localhost:5004"),
-    SIGNER_COORDINATOR_URL: z.string().url().optional(),
-    SIGNER_ENDPOINTS: z
-      .string()
-      .transform((s) => s.split(",").map((url) => url.trim()))
-      .optional(),
 
     // ========== INTERNAL AUTH ==========
     INTERNAL_SERVICE_TOKEN: z.string().optional(),
@@ -236,21 +231,18 @@ function detectEnvironment(): Environment {
   return "local";
 }
 
-const SERVICE_URLS: Record<Environment, { fhe: string; ocr: string; signer?: string }> = {
+const SERVICE_URLS: Record<Environment, { fhe: string; ocr: string }> = {
   local: {
     fhe: "http://localhost:5001",
     ocr: "http://localhost:5004",
-    signer: "http://localhost:5002",
   },
   docker: {
     fhe: "http://fhe:5001",
     ocr: "http://ocr:5004",
-    signer: "http://coordinator:5002",
   },
   railway: {
     fhe: "http://fhe.railway.internal:5001",
     ocr: "http://ocr.railway.internal:5004",
-    signer: "http://signer.railway.internal:5002",
   },
 };
 
@@ -261,7 +253,6 @@ export function getServiceUrls() {
   return {
     fhe: env.FHE_SERVICE_URL ?? defaults.fhe,
     ocr: env.OCR_SERVICE_URL ?? defaults.ocr,
-    signer: env.SIGNER_COORDINATOR_URL ?? defaults.signer,
   };
 }
 ```

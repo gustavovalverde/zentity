@@ -287,8 +287,6 @@ Details: [System Architecture](docs/%28concepts%29/architecture.md) |
 | Web Frontend | Next.js 16, React 19, Noir.js, bb.js, Human.js | 3000 |
 | FHE Service | Rust, Axum, TFHE-rs | 5001 |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
-| Signer Coordinator | Rust (Actix), FROST coordinator | 5002 |
-| Signer Services | Rust (Actix), FROST signers | 5101+ |
 | MCP Server | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 ## License

@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2026-01-24 |
-| **Updated** | 2026-01-24 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 | **Related** | [RFC-0001](0001-passkey-wrapped-fhe-keys.md), [RFC-0014](0014-frost-social-recovery.md), [RFC-0020](0020-privacy-preserving-wallet-binding.md) |
 
@@ -730,7 +730,7 @@ Single credential proving eligibility for multiple programs (e.g., food + medica
 
 ### Medium-Term: Threshold Issuance
 
-FROST-based multi-party credential issuance (no single issuer can forge). Leverages existing FROST infrastructure from RFC-0014.
+FROST-based multi-party credential issuance (no single issuer can forge).
 
 ### Long-Term: Recursive Proof Aggregation
 

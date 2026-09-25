@@ -21,7 +21,6 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 - [Architecture](docs/(concepts)/architecture.md) — Components, data flow, storage model
 - [Agent Architecture](docs/(architecture)/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
 - [ZK Architecture](docs/(protocols)/zk-architecture.md) — Noir circuits and proving
-- [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
 ## Architecture
 
@@ -32,7 +31,6 @@ Monorepo with services communicating via REST APIs:
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
-| FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
 | MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 Additional apps (not core services):
@@ -155,19 +153,6 @@ pytest tests/test_x.py    # Run single test file
 ruff check src            # Lint (if dev deps installed)
 ruff format src           # Format
 ```
-
-### FROST Signer Service (apps/signer)
-
-FROST threshold signature service for guardian-based key recovery. Consists of a coordinator and multiple signer instances.
-
-```bash
-cargo build --release              # Build
-cargo run --bin coordinator        # Run coordinator (port 5002)
-cargo run --bin signer             # Run signer instance (port 5101+)
-cargo test                         # Run tests
-```
-
-See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
 
 ### MCP Server (apps/mcp)
 

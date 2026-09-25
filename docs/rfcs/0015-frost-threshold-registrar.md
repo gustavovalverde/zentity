@@ -2,14 +2,16 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | Withdrawn |
 | **Created** | 2025-01-06 |
-| **Updated** | 2026-01-10 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
 Decentralize the attestation signing authority by replacing the single registrar private key with a FROST threshold signing scheme. Instead of one server holding the registrar key, a threshold (t-of-n) of distributed signers must collaborate to authorize on-chain attestations. This eliminates single points of compromise and enables multi-party governance of the attestation process.
+
+Zentity does not implement this RFC. Each network's `IdentityRegistry` is controlled by a single registrar key, and the repository has no FROST signer service.
 
 ## Problem Statement
 

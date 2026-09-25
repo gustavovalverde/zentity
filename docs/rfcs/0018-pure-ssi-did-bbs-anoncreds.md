@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Proposed |
 | **Created** | 2026-01-14 |
-| **Updated** | 2026-01-14 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -20,7 +20,6 @@ Zentity already implements the core SSI principles:
 - **Selective disclosure** via SD-JWT disclosure keys
 - **Portable presentations** via OIDC4VP
 - **Anti-correlation** via pairwise subject identifiers (`sub` per RP)
-- **Threshold recovery** via FROST guardians
 
 The system is fully functional for SSI use cases. The features in this RFC extend interoperability with DID-native ecosystems and provide advanced privacy features.
 
