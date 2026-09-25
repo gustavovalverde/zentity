@@ -34,8 +34,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `POST /api/auth/oauth2/token` | OAuth 2.1 | Token exchange (all grant types) |
 | `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
 | `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
-| `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
-| `GET /api/auth/jwks` | (custom) | Post-quantum signing keys (ML-DSA-65) |
+| `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519) |
 
 ### User data
 
@@ -662,7 +661,7 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "require_pushed_authorization_requests": true,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
   "dpop_signing_alg_values_supported": ["ES256"],
-  "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
+  "id_token_signing_alg_values_supported": ["RS256"],
   "subject_types_supported": ["public", "pairwise"],
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
   "backchannel_token_delivery_modes_supported": ["poll", "ping"],
@@ -722,13 +721,13 @@ The server never stores plaintext PII. The user's profile secret (encrypted with
 
 Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session ends.
 
-**RP registration:** Include `backchannel_logout_uri` in DCR client metadata. The URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
+**RP registration:** Include `backchannel_logout_uri` in the DCR request. The provider validates it and stores it on the client record; the URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
 
-**`sid` claim:** Injected into id_tokens only for clients with a registered `backchannel_logout_uri`. This allows the RP to correlate the logout token with a specific session.
+**`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris`). This allows the RP to correlate the logout token with a specific session.
 
 **Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
 
-**Retry behavior:** 10-second timeout per RP. On 5xx responses, retries at 1s then 3s (exponential backoff). The user's sign-out completes regardless of delivery success.
+**Delivery:** The OAuth provider sends logout tokens to registered RPs itself whenever a session ends (sign-out or session deletion). The user's sign-out completes regardless of delivery success.
 
 **CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
 

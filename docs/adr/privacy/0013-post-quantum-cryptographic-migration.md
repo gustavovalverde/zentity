@@ -1,11 +1,11 @@
 ---
 status: "accepted"
-date: "2026-02-24"
+date: "2026-09-25"
 category: "technical"
 domains: [privacy, security]
 ---
 
-# Post-quantum cryptographic migration (ML-KEM-768, ML-DSA-65)
+# Post-quantum cryptographic migration (ML-KEM-768)
 
 ## Context and Problem Statement
 
@@ -21,13 +21,13 @@ Zentity's cryptographic stack relied on elliptic-curve primitives vulnerable to 
 
 ## Decision Outcome
 
-Replace all quantum-vulnerable primitives with NIST post-quantum standards. No hybrid mode, no migration code, no feature flags.
+Replace the quantum-vulnerable encryption primitives with ML-KEM-768. No hybrid mode, no migration code, no feature flags. Issuer signing stays on the JWT plugin's standard keys.
 
 | Surface | Before | After |
 |---------|--------|-------|
 | Recovery key wrapping | RSA-OAEP-2048 (PKE) | ML-KEM-768 (KEM + AES-256-GCM) |
 | RP compliance encryption | X25519 ECDH + AES-256-GCM | ML-KEM-768 + AES-256-GCM |
-| SD-JWT VC issuer signing | Ed25519/EdDSA via `jose` | ML-DSA-65 via custom signer |
+| Issuer signing (ID tokens, access tokens, SD-JWT VCs) | RS256 and EdDSA via the JWT plugin | Unchanged |
 
 ### Why ML-KEM-768 over X25519
 
@@ -35,9 +35,9 @@ ML-KEM-768 provides NIST Category 3 quantum security (~AES-192 equivalent) while
 
 The original plan (RFC-0025 section 9.4) proposed a phased approach: X25519 now, hybrid X25519+ML-KEM by 2028, then X25519 deprecation. Since the library was already available and we have no users requiring backward compatibility, we skipped directly to ML-KEM-768 only. This eliminates hybrid complexity (dual encapsulation, HKDF over two shared secrets, two key types per RP) and the eventual migration cost.
 
-### Why ML-DSA-65 over Ed25519
+### Why issuer signing stays on RS256 and EdDSA
 
-Ed25519 signatures are 64 bytes with 32-byte keys — compact, fast, and well-supported by `jose` and WebCrypto. However, `jose` doesn't support ML-DSA, and Ed25519 is broken by Shor's algorithm. ML-DSA-65 (FIPS 204) provides post-quantum signature security at the cost of larger artifacts: 3309-byte signatures and 1952-byte public keys. Since Zentity's issuer signatures are verified server-side (RPs verify VCs via Zentity's JWKS endpoint, not locally), the size increase has minimal impact on the verification flow.
+"Harvest now, decrypt later" does not apply to signatures: forging one needs a quantum computer at the time of forgery, so the signing keys can move to a post-quantum algorithm later without exposing anything signed today. The OAuth provider signs every ID token with the JWT plugin's RS256 key, because it computes `at_hash` for that key, and relying parties verify Zentity's tokens with JOSE libraries that rarely support ML-DSA.
 
 ### KEM vs PKE / DH — pattern change
 
@@ -60,19 +60,23 @@ ML-KEM's most important security property for Zentity: decapsulating with the wr
 
 * Recovery wrappers and compliance documents are quantum-resistant from day one
 * No migration debt — single algorithm path means simpler code and fewer edge cases
-* `jose` library bypassed for signing — custom JWT construction in `ml-dsa-signer.ts`
-* Larger key/signature sizes: ML-KEM public keys are 1184 bytes (vs 32 for X25519), ML-DSA signatures are 3309 bytes (vs 64 for Ed25519)
-* RFC-0021 (Zcash credential format) needs redesign — ML-DSA-65 signatures no longer fit in the 512-byte ZIP 302 memo field
+* Larger ML-KEM key sizes: public keys are 1184 bytes (vs 32 for X25519)
+* Issuer signatures remain quantum-vulnerable; moving them requires ML-DSA support in the OAuth provider and in relying parties' JOSE libraries
 
 ## Alternatives Considered
 
 * **Keep X25519/Ed25519 (status quo)**: No HNDL protection. Unacceptable for 5-year retention.
 * **Hybrid X25519 + ML-KEM-768**: Dual encapsulation provides classical + quantum security. More complex (two key types, HKDF over concatenated secrets, migration path for existing data). Justified when you have users on the old scheme — we don't.
-* **ML-KEM-1024 / ML-DSA-87 (higher security levels)**: NIST Category 5. Larger keys and ciphertexts for marginal security gain. Category 3 is the consensus recommendation for most applications.
+* **ML-KEM-1024 (higher security level)**: NIST Category 5. Larger keys and ciphertexts for marginal security gain. Category 3 is the consensus recommendation for most applications.
+* **ML-DSA-65 for issuer signing**: Post-quantum signatures at the cost of 3309-byte signatures and 1952-byte public keys. The OAuth provider cannot issue ID tokens with it (`at_hash` is computed for the JWT plugin's RS256 key), and few relying-party JOSE libraries verify it.
 * **SPHINCS+ for signing**: Hash-based, extremely conservative security assumptions. Signatures are 7-49 KB depending on parameter set — impractical for JWTs.
 
 ## More Information
 
-* Library: [`@noble/post-quantum`](https://github.com/nicecoder/noble-post-quantum) — `ml-kem.js` and `ml-dsa.js`
+* Library: [`@noble/post-quantum`](https://github.com/nicecoder/noble-post-quantum) — `ml-kem.js`
 * NIST FIPS 203 (ML-KEM): <https://csrc.nist.gov/pubs/fips/203/final>
-* NIST FIPS 204 (ML-DSA): <https://csrc.nist.gov/pubs/fips/204/final>
+
+## Revision history
+
+* 2026-02-24: Recovery key wrapping and RP compliance encryption move to ML-KEM-768; SD-JWT VC issuer signing moves to ML-DSA-65.
+* 2026-09-25: Issuer signing returns to the JWT plugin's RS256 and EdDSA keys, and ID tokens are always RS256, because the Better Auth 1.7 OAuth provider computes `at_hash` for its RS256 key. ML-KEM-768 decisions are unchanged.
