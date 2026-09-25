@@ -38,7 +38,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
@@ -707,6 +707,55 @@ async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
+  }
+}
+
+// Magic-link verification deletes every account row of a user whose email is
+// unverified. For OPAQUE and wallet users that row is the only credential.
+const EMAIL_PROOF_PROTECTED_PROVIDERS = ["opaque", "eip712"];
+
+async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
+  const token =
+    typeof ctx.query?.token === "string" ? ctx.query.token : undefined;
+  if (!token) {
+    return;
+  }
+
+  const verification = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, token))
+    .limit(1)
+    .get();
+  if (!verification) {
+    return;
+  }
+
+  let email: unknown;
+  try {
+    email = (JSON.parse(verification.value) as { email?: unknown }).email;
+  } catch {
+    return;
+  }
+  if (typeof email !== "string") {
+    return;
+  }
+
+  const protectedAccount = await db
+    .select({ id: accounts.id })
+    .from(users)
+    .innerJoin(accounts, eq(accounts.userId, users.id))
+    .where(
+      and(
+        eq(users.email, email.toLowerCase()),
+        eq(users.emailVerified, false),
+        inArray(accounts.providerId, EMAIL_PROOF_PROTECTED_PROVIDERS)
+      )
+    )
+    .limit(1)
+    .get();
+  if (protectedAccount) {
+    throw ctx.redirect(`${appUrl}/sign-in?error=email_unverified`);
   }
 }
 
@@ -1641,7 +1690,7 @@ export const auth = betterAuth({
     },
     changeEmail: {
       enabled: true,
-      updateEmailWithoutVerification: true,
+      updateEmailWithoutVerification: false,
       sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
         const { sendChangeEmailConfirmation } = await import(
           "@/lib/email/auth"
@@ -1717,6 +1766,9 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
+      }
+      if (ctx.path === "/magic-link/verify") {
+        return beforeMagicLinkProtectCredentials(ctx);
       }
       if (ctx.path === "/oidc4vp/response") {
         return beforeVpResponse(ctx);
