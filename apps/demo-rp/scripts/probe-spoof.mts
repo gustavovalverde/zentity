@@ -96,7 +96,7 @@ async function main(): Promise<void> {
   const idem = createHash("sha256")
     .update(`probe-spoof:${Date.now()}`)
     .digest("base64url");
-  const prepareUrl = `${ZPAY_URL}/x402/v2/prepare`;
+  const prepareUrl = `${ZPAY_URL}/zpay/v1/prepare`;
   const prepRes = await fetch(prepareUrl, {
     method: "POST",
     headers: {

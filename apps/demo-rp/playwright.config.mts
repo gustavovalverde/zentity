@@ -122,7 +122,7 @@ export default defineConfig({
           {
             command: "pnpm exec tsx e2e/start-zpay-runtime.ts",
             cwd: currentDir,
-            url: `${zpayBaseURL}/x402/v2/accepts?payee_id=${zpayPayeeId}`,
+            url: `${zpayBaseURL}/zpay/v1/accepts?payee_id=${zpayPayeeId}`,
             reuseExistingServer: false,
             timeout: 300 * 1000,
             env: {

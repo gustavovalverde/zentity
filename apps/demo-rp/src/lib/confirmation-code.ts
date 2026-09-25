@@ -2,7 +2,7 @@
  * Client-safe derivation of the 6-character payment confirmation code.
  *
  * The BFF runs this against the canonical `payment_uri` returned by
- * zpay's `/x402/v2/prepare`, ships the resulting code in the CIBA push
+ * zpay's `/zpay/v1/prepare`, ships the resulting code in the CIBA push
  * binding, and the in-page bridge re-runs the same derivation on mount.
  * Two independent computations of the same code defeat URI-swap
  * phishing: the bridge refuses to render its own code if the BFF

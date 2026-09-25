@@ -115,7 +115,7 @@ async function main(): Promise<void> {
   const idem = base64url(
     createHash("sha256").update(`probe-wire:${Date.now()}`).digest()
   );
-  const prepareUrl = `${ZPAY_URL}/x402/v2/prepare`;
+  const prepareUrl = `${ZPAY_URL}/zpay/v1/prepare`;
   const prepRes = await fetch(prepareUrl, {
     method: "POST",
     headers: {
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
   );
 
   // Forward to zpay /settle to broadcast on testnet.
-  const settleUrl = `${ZPAY_URL}/x402/v2/settle`;
+  const settleUrl = `${ZPAY_URL}/zpay/v1/settle`;
   const settleRes = await fetch(settleUrl, {
     method: "POST",
     headers: {

@@ -222,9 +222,7 @@ async function presentToWalletAndSettle(
   const rawTxHex = Buffer.from(signedPayload.bytes, "base64").toString("hex");
 
   try {
-    const settleUrl = `${env.ZPAY_URL}/x402/v2/settle`;
     const settlement = await settlePayment({
-      dpopProof: await dpopClient.proofFor("POST", settleUrl),
       paymentId: input.payment_id,
       rawTxHex,
     });

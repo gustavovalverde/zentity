@@ -1,7 +1,7 @@
 /**
  * `signed_payload` envelope: the chain-neutral artifact the wallet returns
  * from `POST /v1/payments/sign` and the facilitator consumes at
- * `POST /x402/v2/settle`.
+ * `POST /zpay/v1/settle`.
  *
  * TypeScript mirror of `zally_core::SignedPayload`. Per zpay Proposal-0003 D-3
  * the canonical `format` is `pczt-v1` (an extractor-ready PCZT). The runtime

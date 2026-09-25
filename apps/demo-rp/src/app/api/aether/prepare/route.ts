@@ -12,12 +12,11 @@ import { getAuth } from "@/lib/auth";
 import { computeUriConfirmationCode } from "@/lib/confirmation-code";
 import { env } from "@/lib/env";
 import { preparePayment, ZpayError } from "@/lib/zpay-client";
-import { getZpayDpopClient } from "@/lib/zpay-dpop";
 
 /**
  * POST /api/aether/prepare
  *
- * Server-side proxy that calls zpay `/x402/v2/prepare` BEFORE the
+ * Server-side proxy that calls zpay `/zpay/v1/prepare` BEFORE the
  * Aether agent triggers CIBA. The resulting `payment_uri` +
  * `payment_id` are merged into the CIBA `authorization_details` so
  * the user's phone sees the same prepared URI that the in-page
@@ -39,10 +38,9 @@ import { getZpayDpopClient } from "@/lib/zpay-dpop";
  *   registered with the deployment.
  * - `invalid_request` (400) when the body fails Zod validation.
  *
- * After Commit E zpay requires a DPoP proof on every `/prepare`
- * call; the proof's JWK thumbprint binds the prepared row to this
- * BFF process for the `(jkt, idempotency_key)` idempotency composite.
- * The BFF derives a deterministic idempotency key from
+ * zpay requires a DPoP proof on every `/prepare` call; the proof's
+ * JWK thumbprint binds the prepared row to this BFF process for the
+ * `(jkt, idempotency_key)` idempotency composite. The BFF derives a deterministic idempotency key from
  * `(user_email, task_id, item_id, amount_minor_units)` so honest
  * retries from the same user on the same task collapse onto one
  * prepared row.
@@ -100,13 +98,8 @@ export async function POST(request: Request) {
     amountMinorUnits: input.amountMinorUnits,
   });
 
-  const prepareUrl = `${env.ZPAY_URL}/x402/v2/prepare`;
-  const dpop = await getZpayDpopClient();
-  const proofJwt = await dpop.proofFor("POST", prepareUrl);
-
   try {
     const prepared = await preparePayment({
-      dpopProof: proofJwt,
       payeeId: env.ZPAY_PAYEE_ID,
       network: input.network,
       resourceUri: `aether/items/${input.item}`,
