@@ -190,7 +190,7 @@ describe("assurance claims in ID tokens", () => {
 
     const claims = decodeJwt(idToken);
     // Default signing alg is RS256 (no client metadata override)
-    const expected = computeAtHash(accessToken, "RS256");
+    const expected = computeAtHash(accessToken);
     expect(claims.at_hash).toBe(expected);
   });
 

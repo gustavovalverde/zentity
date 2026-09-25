@@ -776,7 +776,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           ? {}
           : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
         ...(subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
-          ? { at_hash: computeAtHash(subjectToken, "RS256") }
+          ? { at_hash: computeAtHash(subjectToken) }
           : {}),
       };
 

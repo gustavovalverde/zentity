@@ -585,7 +585,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload[AUTHENTICATION_CONTEXT_CLAIM]).toBe(defaultAuthContextId);
 
       // at_hash binds the id_token to the subject access token (OIDC Core §3.3.2.11)
-      const expectedAtHash = computeAtHash(subjectToken, "RS256");
+      const expectedAtHash = computeAtHash(subjectToken);
       expect(payload.at_hash).toBe(expectedAtHash);
     });
 
