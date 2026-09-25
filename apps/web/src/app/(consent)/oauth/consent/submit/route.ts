@@ -22,7 +22,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   const oauthQuery = readConsentFormField(formData, "oauth_query");
 
   const authRequest = new Request(
-    new URL("/api/auth/oauth2/consent", request.url),
+    new URL("/api/auth/oauth2/consent", getAppOrigin()),
     {
       method: "POST",
       headers: buildConsentAuthProxyHeaders(request),
