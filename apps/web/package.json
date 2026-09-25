@@ -155,7 +155,7 @@
     "@commitlint/config-conventional": "^20.5.0",
     "@next/bundle-analyzer": "16.3.6",
     "@playwright/test": "1.58.2",
-    "@simplewebauthn/server": "13.3.0",
+    "@simplewebauthn/server": "13.3.2",
     "@synthetixio/synpress": "4.1.2",
     "@synthetixio/synpress-cache": "0.0.14",
     "@tailwindcss/postcss": "4.2.1",
