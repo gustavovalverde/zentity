@@ -43,9 +43,6 @@ export const joinAuthIssuerPath = (issuer: string, path: string): string => {
   ).toString();
 };
 
-/** Algorithms advertised in id_token_signing_alg_values_supported. */
-const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
-
 /**
  * Enrich raw discovery metadata with signing algorithms and HAIP fields.
  * Used by both openid-configuration and oauth-authorization-server route handlers.
@@ -57,7 +54,6 @@ export function enrichDiscoveryMetadata(
   return {
     ...metadata,
     subject_types_supported: ["public", "pairwise"],
-    id_token_signing_alg_values_supported: [...ID_TOKEN_SIGNING_ALGS],
     // Zentity-specific endpoint metadata not covered by plugin extensions
     ...(issuer
       ? {

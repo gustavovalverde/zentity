@@ -1,6 +1,6 @@
 "use client";
 
-import type { SecurityBadgeInput } from "./_components/security-badges";
+import type { SecurityBadgeInput } from "./_components/client-security-badges";
 
 import { AlertTriangle, ExternalLink } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";

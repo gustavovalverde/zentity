@@ -329,7 +329,7 @@ The `ath` claim is only included when presenting the access token at a resource 
 | Token | Format | Signing |
 | --- | --- | --- |
 | Access token | Opaque (random string) | n/a |
-| ID token | JWT | RS256 (default), ES256, EdDSA, or ML-DSA-65 per client preference |
+| ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
 Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
@@ -338,12 +338,11 @@ Access tokens are opaque by design; they prevent `sub` leakage for pairwise clie
 
 | Algorithm | Usage | Notes |
 | --- | --- | --- |
-| RS256 | ID tokens (default) | OIDC Discovery 1.0 mandates RS256 support |
+| RS256 | ID tokens | OIDC Discovery 1.0 mandates RS256 support |
 | ES256 | DPoP proofs | Client-side only |
 | EdDSA | Access token JWTs (internal) | Compact 64-byte signatures |
-| ML-DSA-65 | ID tokens (opt-in) | Post-quantum, requires compatible JWT library |
 
-Clients opt into non-default signing algorithms via `id_token_signed_response_alg` in DCR metadata. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
+ID tokens are always RS256: the OAuth provider computes `at_hash` for its configured algorithm, so `id_token_signed_response_alg` is not honored. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
 
 ### Client registration
 
@@ -359,7 +358,7 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
+Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The JSON payload is parsed with duplicate-key rejection before the issuer is read. The signature is not verified (no trusted SSA issuers configured), but strict structural validation prevents garbage data or parser-ambiguous issuer metadata from being accepted.
 

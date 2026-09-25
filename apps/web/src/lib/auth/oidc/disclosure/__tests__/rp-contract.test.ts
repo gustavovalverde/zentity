@@ -16,9 +16,6 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { PROOF_DISCLOSURE_KEYS } from "../claims";
-
-const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
-
 import {
   extractProofScopes,
   filterProofClaimsByScopes,
@@ -541,13 +538,6 @@ describe("RP contract — id_token signing", () => {
 });
 
 describe("RP contract — discovery metadata shape", () => {
-  it("advertised algorithms include RS256 (OIDC mandatory) plus Zentity extras", () => {
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("RS256");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("ES256");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("EdDSA");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("ML-DSA-65");
-  });
-
   it("OIDC Client Registration default alg (RS256) matches Zentity's id_token default", async () => {
     const token = await signJwt({
       aud: "unregistered-client",

@@ -1,7 +1,7 @@
 import type {
   EncryptionLevel,
   SecurityBadgeInput,
-} from "./_components/security-badges";
+} from "./_components/client-security-badges";
 
 import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
@@ -80,16 +80,12 @@ export default async function OAuthConsentPage({
       isLocalApp = areAllRedirectUrisLocal(redirectUris);
     }
 
-    let signingAlg = "RS256";
     let requiresDpop = false;
 
     if (row?.metadata) {
       const meta = JSON.parse(row.metadata) as Record<string, unknown> | null;
       if (Array.isArray(meta?.optionalScopes)) {
         optionalScopes = meta.optionalScopes as string[];
-      }
-      if (typeof meta?.id_token_signed_response_alg === "string") {
-        signingAlg = meta.id_token_signed_response_alg;
       }
       if (meta?.dpop_bound_access_tokens === true) {
         requiresDpop = true;
@@ -119,7 +115,6 @@ export default async function OAuthConsentPage({
     }
 
     securityBadgeInput = {
-      signingAlg,
       isPairwise,
       requiresDpop,
       encryptionLevel,

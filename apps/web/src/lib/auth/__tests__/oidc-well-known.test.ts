@@ -13,8 +13,6 @@ import {
   unwrapMetadata,
 } from "@/lib/auth/oidc/well-known";
 
-const ID_TOKEN_SIGNING_ALGS = ["RS256", "ES256", "EdDSA", "ML-DSA-65"] as const;
-
 function parseOpenIdConfig(metadata: unknown) {
   if (metadata instanceof Response) {
     return metadata.json() as Promise<Record<string, unknown>>;
@@ -72,14 +70,7 @@ describe("oidc discovery — signing algorithm advertisement", () => {
     expect(response.status).toBe(200);
   });
 
-  it("RS256 is first in the supported algorithms list", () => {
-    expect(ID_TOKEN_SIGNING_ALGS[0]).toBe("RS256");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("ES256");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("EdDSA");
-    expect(ID_TOKEN_SIGNING_ALGS).toContain("ML-DSA-65");
-  });
-
-  it("route handler enrichment matches expected algorithm set", async () => {
+  it("advertises only the ID token algorithm the provider signs with", async () => {
     const metadata = unwrapMetadata(
       await callAuthApi(auth.api, "getOpenIdConfig")
     );
@@ -89,9 +80,7 @@ describe("oidc discovery — signing algorithm advertisement", () => {
       resolved as Record<string, unknown>
     );
 
-    expect(enriched.id_token_signing_alg_values_supported).toEqual([
-      ...ID_TOKEN_SIGNING_ALGS,
-    ]);
+    expect(enriched.id_token_signing_alg_values_supported).toEqual(["RS256"]);
   });
 });
 

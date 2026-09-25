@@ -127,38 +127,8 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       expect(payload.iss).toBe("https://zentity.test");
     });
 
-    it("signs with EdDSA when client opts in", async () => {
-      const testClientId = `eddsa-optin-${crypto.randomUUID()}`;
-      await db
-        .insert(oauthClients)
-        .values({
-          clientId: testClientId,
-          redirectUris: '["http://localhost/callback"]',
-          metadata: '{"id_token_signed_response_alg":"EdDSA"}',
-        })
-        .run();
-
-      try {
-        const token = await signJwt({
-          aud: testClientId,
-          sub: "user-1",
-        });
-
-        const header = JSON.parse(
-          Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
-        );
-        expect(header.alg).toBe("EdDSA");
-        expect(header.kid).toBe(edDsaKid);
-      } finally {
-        await db
-          .delete(oauthClients)
-          .where(eq(oauthClients.clientId, testClientId))
-          .run();
-      }
-    });
-
-    it("signs with ML-DSA-65 when client opts in", async () => {
-      const testClientId = `ml-dsa-test-${crypto.randomUUID()}`;
+    it("signs RS256 even when the client requests another id_token alg", async () => {
+      const testClientId = `alg-pref-${crypto.randomUUID()}`;
       await db
         .insert(oauthClients)
         .values({
@@ -177,78 +147,8 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         const header = JSON.parse(
           Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
         );
-        expect(header.alg).toBe("ML-DSA-65");
-      } finally {
-        await db
-          .delete(oauthClients)
-          .where(eq(oauthClients.clientId, testClientId))
-          .run();
-      }
-    });
-  });
-
-  describe("resolveClientId extraction", () => {
-    it("extracts from string aud", async () => {
-      const token = await signJwt({
-        aud: "client-from-aud",
-        sub: "user-1",
-      });
-
-      expect(token.split(".")).toHaveLength(3);
-    });
-
-    it("extracts from array aud", async () => {
-      const token = await signJwt({
-        aud: ["client-array-0", "client-array-1"],
-        sub: "user-1",
-      });
-
-      expect(token.split(".")).toHaveLength(3);
-    });
-
-    it("falls back to azp", async () => {
-      const token = await signJwt({
-        azp: "client-from-azp",
-        sub: "user-1",
-      });
-
-      expect(token.split(".")).toHaveLength(3);
-    });
-
-    it("defaults to RS256 when no clientId is resolvable", async () => {
-      const token = await signJwt({
-        sub: "user-1",
-      });
-
-      const header = JSON.parse(
-        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
-      );
-      expect(header.alg).toBe("RS256");
-    });
-  });
-
-  describe("client preference cache", () => {
-    it("uses cached alg on second call", async () => {
-      const testClientId = `cache-test-${crypto.randomUUID()}`;
-      await db
-        .insert(oauthClients)
-        .values({
-          clientId: testClientId,
-          redirectUris: '["http://localhost/callback"]',
-          metadata: '{"id_token_signed_response_alg":"EdDSA"}',
-        })
-        .run();
-
-      try {
-        // First call populates cache
-        await signJwt({ aud: testClientId, sub: "user-1" });
-        // Second call hits cache
-        const token = await signJwt({ aud: testClientId, sub: "user-2" });
-
-        const header = JSON.parse(
-          Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
-        );
-        expect(header.alg).toBe("EdDSA");
+        expect(header.alg).toBe("RS256");
+        expect(header.kid).toBe(rsaKid);
       } finally {
         await db
           .delete(oauthClients)

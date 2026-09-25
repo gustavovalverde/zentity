@@ -260,7 +260,6 @@ describe("OAuthConsentClient identity hardening", () => {
           encryptionLevel: "standard",
           isPairwise: true,
           requiresDpop: true,
-          signingAlg: "EdDSA",
         }}
         wallet={null}
       />
