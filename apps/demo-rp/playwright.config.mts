@@ -10,7 +10,7 @@ const currentDir =
 const webRoot = join(currentDir, "..", "web");
 const authStatePath = join(webRoot, "e2e", ".auth", "user.json");
 const issuerBaseURL =
-  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://127.0.0.1:3100";
+  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3100";
 const demoRpBaseURL =
   process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ?? "http://localhost:3102";
 const useExternalIssuerServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
