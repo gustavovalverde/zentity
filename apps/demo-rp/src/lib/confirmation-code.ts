@@ -8,10 +8,9 @@
  * phishing: the bridge refuses to render its own code if the BFF
  * supplied a different one.
  *
- * The module is intentionally NOT marked `server-only`. The Web Crypto
- * `SubtleCrypto.digest` API is available in modern browsers, Node 20+,
- * and edge runtimes, so the same source runs everywhere. A `node:crypto`
- * fallback covers older Node hosts that do not expose `globalThis.crypto.subtle`.
+ * The module is intentionally NOT marked `server-only`: it uses only the Web
+ * Crypto `SubtleCrypto.digest` API, so the same source runs in browsers,
+ * Node, and edge runtimes.
  */
 
 /**
@@ -51,20 +50,12 @@ function encodeBase32Prefix(digest: Uint8Array): string {
 }
 
 async function digestSha256(bytes: Uint8Array): Promise<Uint8Array> {
-  const subtle = globalThis.crypto?.subtle;
-  if (subtle) {
-    // Copy into a fresh ArrayBuffer so we satisfy `BufferSource` without
-    // dragging the source array's `ArrayBufferLike` (which may be a
-    // SharedArrayBuffer) into the call site.
-    const copy = new ArrayBuffer(bytes.byteLength);
-    new Uint8Array(copy).set(bytes);
-    const buffer = await subtle.digest("SHA-256", copy);
-    return new Uint8Array(buffer);
-  }
-  // Older Node hosts that do not expose Web Crypto. The dynamic import
-  // keeps `node:crypto` out of browser bundles entirely.
-  const { createHash } = await import("node:crypto");
-  return new Uint8Array(createHash("sha256").update(bytes).digest());
+  // Copy into a fresh ArrayBuffer so we satisfy `BufferSource` without
+  // dragging the source array's `ArrayBufferLike` (which may be a
+  // SharedArrayBuffer) into the call site.
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", copy));
 }
 
 /**
