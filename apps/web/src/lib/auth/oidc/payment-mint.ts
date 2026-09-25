@@ -7,12 +7,8 @@ import {
   PaymentAuthorizationDetailsSchema,
 } from "@zentity/sdk/protocol";
 import { APIError } from "better-auth/api";
-import { eq } from "drizzle-orm";
 
 import { env } from "@/env";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
-import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 
 /**
  * One home for the `payment_authorization` token contract (PRD-43 Phase 1).
@@ -26,11 +22,11 @@ import { cibaRequests } from "@/lib/db/schema/ciba";
  * while the RAR is minted in the claims hook. This module owns all three so the
  * wiring reads as one decision instead of three scattered edits.
  *
- * Trust note: the bc-authorize before-hook (canonicalizePaymentRar) overwrites
- * ctx.body.authorization_details with the canonical string BEFORE the CIBA
- * plugin persists it, so both the JWT claims copy (re-emitted here) and the
- * token response-body copy derive from the canonical RAR, not a client echo.
- * The wallet enforces the RAR from the signed JWT regardless.
+ * Trust note: the bc-authorize before-hook (pinPaymentRequest) overwrites
+ * ctx.body.authorization_details and ctx.body.resource BEFORE the CIBA plugin
+ * persists them, so the JWT claims copy (re-emitted here), the token
+ * response-body copy, and `aud` all derive from issuer-set values, not a client
+ * echo. The wallet enforces the RAR from the signed JWT regardless.
  */
 
 /**
@@ -50,8 +46,6 @@ export const PAYMENT_AUTHORIZATION_SCOPE = PAYMENT_AUTHORIZATION_CAPABILITY;
 export const PAYMENT_TOKEN_SCOPE_EXPIRATIONS: Record<string, string> = {
   [PAYMENT_AUTHORIZATION_SCOPE]: "120s",
 };
-
-const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 
 function parseAuthorizationDetails(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) {
@@ -79,17 +73,21 @@ function hasPaymentEntry(details: unknown[] | null): boolean {
 }
 
 /**
- * Validate + canonicalize a payment RAR at bc-authorize (D-14). Returns the
- * canonical JSON string to persist when the request is a payment grant, `null`
- * when it carries no payment entry (leave other RAR types untouched), and
- * throws `invalid_request` when a payment RAR is malformed or not exactly one
- * entry. Persisting the canonical form (not the raw client string) is what lets
- * "displayed equals signed" hold for the push card and the mint.
+ * Prepare a backchannel payment request at bc-authorize, before the CIBA plugin
+ * persists it. A request without a payment entry is left untouched.
+ *
+ * - D-14: the RAR is validated and replaced with its canonical JSON, so "displayed
+ *   equals signed" holds for the push card and the mint. A malformed RAR, or one
+ *   with more than one entry, is rejected with `invalid_request`.
+ * - D-5: the resource is replaced with `WALLET_AUDIENCE`. The plugin issues the
+ *   token for the stored resource, so the issuer, not the client, sets `aud`.
+ *   The request fails closed when `WALLET_AUDIENCE` is unset rather than minting
+ *   an unbound spend token.
  */
-export function canonicalizePaymentRar(raw: unknown): string | null {
-  const details = parseAuthorizationDetails(raw);
+export function pinPaymentRequest(body: Record<string, unknown>): void {
+  const details = parseAuthorizationDetails(body.authorization_details);
   if (!hasPaymentEntry(details)) {
-    return null;
+    return;
   }
   const result = PaymentAuthorizationDetailsSchema.safeParse(details);
   if (!result.success) {
@@ -100,7 +98,16 @@ export function canonicalizePaymentRar(raw: unknown): string | null {
         "authorization_details is not a valid payment_authorization request",
     });
   }
-  return JSON.stringify(result.data);
+  const walletAudience = env.WALLET_AUDIENCE;
+  if (!walletAudience) {
+    throw new APIError("INTERNAL_SERVER_ERROR", {
+      error: "server_error",
+      error_description:
+        "WALLET_AUDIENCE is not configured; refusing to authorize a payment without a wallet audience",
+    });
+  }
+  body.authorization_details = JSON.stringify(result.data);
+  body.resource = walletAudience;
 }
 
 /**
@@ -127,44 +134,4 @@ export function buildPaymentAuthorizationClaims(
     });
   }
   return { authorization_details: result.data };
-}
-
-/**
- * Pin `aud` to the wallet's absolute-URI identity for a CIBA payment-token
- * request (D-5). Mutates `body.resource` so the resource indicator resolves to
- * the wallet audience as `aud`. Must run AFTER `beforeTokenPairwiseGuard`
- * (agent clients default to pairwise, and that guard strips the resource). The
- * issuer pins the resource itself rather than trusting the client, so the
- * audience is authoritative. Fails closed when `WALLET_AUDIENCE` is unset
- * rather than minting an unbound spend token.
- */
-export async function pinPaymentTokenAudience(
-  body: Record<string, unknown>
-): Promise<void> {
-  if (body.grant_type !== CIBA_GRANT_TYPE) {
-    return;
-  }
-  const authReqId =
-    typeof body.auth_req_id === "string" ? body.auth_req_id : null;
-  if (!authReqId) {
-    return;
-  }
-  const row = await db
-    .select({ authorizationDetails: cibaRequests.authorizationDetails })
-    .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
-    .limit(1)
-    .get();
-  if (!hasPaymentEntry(parseAuthorizationDetails(row?.authorizationDetails))) {
-    return;
-  }
-  const walletAudience = env.WALLET_AUDIENCE;
-  if (!walletAudience) {
-    throw new APIError("INTERNAL_SERVER_ERROR", {
-      error: "server_error",
-      error_description:
-        "WALLET_AUDIENCE is not configured; refusing to mint a payment_authorization token without a wallet audience",
-    });
-  }
-  body.resource = walletAudience;
 }

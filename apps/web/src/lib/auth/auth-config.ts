@@ -122,10 +122,9 @@ import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
   buildPaymentAuthorizationClaims,
-  canonicalizePaymentRar,
   PAYMENT_AUTHORIZATION_SCOPE,
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-  pinPaymentTokenAudience,
+  pinPaymentRequest,
 } from "@/lib/auth/oidc/payment-mint";
 import {
   enforceAuthorizeAcr,
@@ -1772,21 +1771,13 @@ export const auth = betterAuth({
         return beforeVpResponse(ctx);
       }
       if (ctx.path === "/oauth2/bc-authorize") {
-        const canonical = canonicalizePaymentRar(
-          ctx.body?.authorization_details
-        );
-        if (canonical && ctx.body) {
-          ctx.body.authorization_details = canonical;
+        if (ctx.body) {
+          pinPaymentRequest(ctx.body);
         }
         return;
       }
       if (ctx.path === "/oauth2/token") {
         await beforeTokenPairwiseGuard(ctx);
-        // Pin aud=wallet identity URI for a payment grant AFTER the pairwise
-        // guard, which would otherwise strip the resource for pairwise agents.
-        if (ctx.body) {
-          await pinPaymentTokenAudience(ctx.body);
-        }
         if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
           await enforceCibaTokenAcr(ctx, db);
           await beforeCibaTokenLoadAgent(ctx);
