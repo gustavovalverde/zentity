@@ -62,12 +62,18 @@ export interface FheKeygenResult extends RawKeygenResult {
   publicKeyFingerprint: string;
 }
 
+const FHE_KEYGEN_TIMEOUT_MS = 120_000;
+
 let workerInstance: Worker | null = null;
 let nextId = 1;
 let initSent = false;
 const pending = new Map<
   number,
-  { resolve: (value: RawKeygenResult) => void; reject: (error: Error) => void }
+  {
+    reject: (error: Error) => void;
+    resolve: (value: RawKeygenResult) => void;
+    timeoutId: ReturnType<typeof setTimeout>;
+  }
 >();
 
 function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
@@ -103,6 +109,7 @@ function getWorker(): Worker {
         return;
       }
       pending.delete(message.id);
+      clearTimeout(handlers.timeoutId);
       if (message.type === "error") {
         handlers.reject(new Error(message.message));
         return;
@@ -124,22 +131,45 @@ function getWorker(): Worker {
           ? event.message
           : "FHE worker failed unexpectedly"
       );
-      for (const entry of pending.values()) {
-        entry.reject(error);
-      }
-      pending.clear();
+      resetWorker(error);
     };
   }
   return workerInstance;
+}
+
+function resetWorker(error: Error): void {
+  workerInstance?.terminate();
+  workerInstance = null;
+  initSent = false;
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timeoutId);
+    entry.reject(error);
+  }
+  pending.clear();
 }
 
 export async function generateFheKeyMaterialInWorker(): Promise<FheKeygenResult> {
   const worker = getWorker();
   const id = nextId++;
   const payload: WorkerRequest = { id, type: "generate_key_material" };
+  const startedAt = performance.now();
 
   const raw = await new Promise<RawKeygenResult>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    const timeoutId = setTimeout(() => {
+      if (!pending.has(id)) {
+        return;
+      }
+      const error = new Error(
+        `FHE key generation timed out after ${FHE_KEYGEN_TIMEOUT_MS}ms.`
+      );
+      recordClientMetric({
+        name: "client.tfhe.keygen.worker.duration",
+        value: performance.now() - startedAt,
+        attributes: { result: "timeout" },
+      });
+      resetWorker(error);
+    }, FHE_KEYGEN_TIMEOUT_MS);
+    pending.set(id, { resolve, reject, timeoutId });
     worker.postMessage(payload);
   });
 
