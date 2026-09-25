@@ -2132,6 +2132,8 @@ export const auth = betterAuth({
           : [];
       },
       verifyStatusList: true,
+      // The status list token is minted after the verifier snapshots the clock.
+      clockSkewSeconds: 30,
       requiredClaimKeys: ["verification_level", "verified"],
     }),
     // Two-factor authentication (TOTP) as optional backup for password users
