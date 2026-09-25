@@ -201,6 +201,12 @@ describe("getAuth provider userinfo", () => {
     expect(authMocks.verifyToken).toHaveBeenCalledWith("id-token");
   });
 
+  it("returns to the scenario after provider logout", async () => {
+    const provider = (await loadProviderConfig()) as Record<string, unknown>;
+
+    expect(provider.postLogoutRedirectURI).toBe("http://localhost:3102/x402");
+  });
+
   it("rebuilds provider configuration from the latest DCR client id", async () => {
     authMocks.readDcrClientId
       .mockResolvedValueOnce("client-before")

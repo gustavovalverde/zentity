@@ -236,7 +236,7 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 Step-up follows the disclosure profile's interaction rules:
 
 1. Sign-in uses **standard + proof scopes** — consent only, no vault unlock
-2. Step-up calls `signIn.oauth2()` with `identity.*` scopes — triggers vault unlock + exact binding on Zentity's consent page
+2. Step-up calls `signIn.social()` with `identity.*` scopes — triggers vault unlock + exact binding on Zentity's consent page
 3. Zentity stages the PII ephemerally (5-minute TTL, single-consume) and delivers it through the userinfo-backed disclosure path
 4. `overrideUserInfo: true` ensures the updated claims overwrite the user record
 5. Phase detection checks if `stepUpClaimKeys` are present in `session.user.claims`
