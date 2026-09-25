@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Logo } from "@/components/chrome/logo";
 import { ModeToggle } from "@/components/chrome/mode-toggle";
-import { QueryProvider } from "@/components/providers/query-provider";
+import { TrpcProvider } from "@/components/providers/trpc-provider";
 
 interface StandaloneLayoutProps {
   children: React.ReactNode;
@@ -25,7 +25,7 @@ export function StandaloneLayout({
         className="flex flex-1 items-center justify-center px-4 py-12"
         id="main-content"
       >
-        <QueryProvider>{children}</QueryProvider>
+        <TrpcProvider>{children}</TrpcProvider>
       </main>
     </div>
   );
