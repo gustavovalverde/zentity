@@ -4,7 +4,6 @@ These routes extend the better-auth `[...all]` catch-all handler with explicit, 
 
 Current routes:
 
-- `end-session/` — OIDC back-channel logout (`end_session_endpoint`), terminates the user's session with `id_token_hint` validation.
 - `jwks/` — JWKS endpoint exposed under the auth issuer.
 - `par/` — Pushed Authorization Requests endpoint (PAR, HAIP-required).
 - `proof-of-human/` — liveness assertion proving the authorization request is human-initiated.

@@ -8,7 +8,7 @@ import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { logError, logWarn } from "@/lib/logging/error-logger";
+import { logError } from "@/lib/logging/error-logger";
 
 import { signJwt } from "./jwt-signer";
 import { resolveSubForClient } from "./pairwise";
@@ -29,37 +29,35 @@ export async function listBackchannelLogoutClients(): Promise<BclClient[]> {
   const clients = await db
     .select({
       clientId: oauthClients.clientId,
-      metadata: oauthClients.metadata,
+      backchannelLogoutUri: oauthClients.backchannelLogoutUri,
+      backchannelLogoutSessionRequired:
+        oauthClients.backchannelLogoutSessionRequired,
       redirectUris: oauthClients.redirectUris,
       subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
-    .where(isNotNull(oauthClients.metadata))
+    .where(
+      and(
+        isNotNull(oauthClients.backchannelLogoutUri),
+        eq(oauthClients.disabled, false)
+      )
+    )
     .all();
 
-  const result: BclClient[] = [];
-  for (const c of clients) {
-    if (!c.metadata) {
-      continue;
-    }
-    try {
-      const meta = JSON.parse(c.metadata) as Record<string, unknown>;
-      const uri = meta.backchannel_logout_uri;
-      if (typeof uri === "string" && uri.length > 0) {
-        result.push({
-          clientId: c.clientId,
-          backchannelLogoutUri: uri,
-          backchannelLogoutSessionRequired:
-            meta.backchannel_logout_session_required === true,
-          redirectUris: parseStoredStringArray(c.redirectUris),
-          subjectType: c.subjectType,
-        });
-      }
-    } catch {
-      // Ignore invalid metadata JSON
-    }
-  }
-  return result;
+  return clients.flatMap((client) =>
+    client.backchannelLogoutUri
+      ? [
+          {
+            clientId: client.clientId,
+            backchannelLogoutUri: client.backchannelLogoutUri,
+            backchannelLogoutSessionRequired:
+              client.backchannelLogoutSessionRequired === true,
+            redirectUris: parseStoredStringArray(client.redirectUris),
+            subjectType: client.subjectType,
+          },
+        ]
+      : []
+  );
 }
 
 /**
@@ -162,45 +160,6 @@ export async function sendBackchannelLogoutToClient(args: {
   );
 
   await postLogoutToken(client.backchannelLogoutUri, token, client.clientId);
-}
-
-/**
- * Send backchannel logout tokens to all registered RPs for a user.
- * Fire-and-forget — errors are logged but never thrown.
- */
-export async function sendBackchannelLogout(
-  userId: string,
-  sessionId?: string
-): Promise<void> {
-  try {
-    const clients = await listBackchannelLogoutClients();
-    if (clients.length === 0) {
-      return;
-    }
-
-    const deliveries = clients.map(async (client) => {
-      try {
-        const delivery = {
-          clientId: client.clientId,
-          userId,
-          ...(sessionId ? { sessionId } : {}),
-        };
-        await sendBackchannelLogoutToClient(delivery);
-      } catch (err) {
-        logWarn(`BCL delivery to ${client.clientId} failed`, {
-          clientId: client.clientId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    });
-
-    await Promise.allSettled(deliveries);
-  } catch (err) {
-    logError(err instanceof Error ? err : new Error(String(err)), {
-      userId,
-      operation: "bcl-notification",
-    });
-  }
 }
 
 /**

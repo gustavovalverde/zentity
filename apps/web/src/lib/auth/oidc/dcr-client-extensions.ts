@@ -6,9 +6,8 @@ import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 interface DcrClientExtensions {
-  backchannelLogoutSessionRequired?: boolean;
-  backchannelLogoutUri?: string;
   backchannelTokenDeliveryMode?: string;
+  enableEndSession?: boolean;
   protectedResource?: string;
   rpValidityNoticeEnabled?: boolean;
   rpValidityNoticeUri?: string;
@@ -44,9 +43,9 @@ export function readDcrClientExtensions(
     return null;
   }
 
-  const backchannelLogoutUri = readTrimmedString(body.backchannel_logout_uri);
-  const backchannelLogoutSessionRequired =
-    body.backchannel_logout_session_required === true;
+  const enableEndSession =
+    Array.isArray(body.post_logout_redirect_uris) &&
+    body.post_logout_redirect_uris.length > 0;
   const rpValidityNoticeUri = readTrimmedString(body.rp_validity_notice_uri);
   const rpValidityNoticeEnabled = body.rp_validity_notice_enabled === true;
   const protectedResource = readTrimmedString(
@@ -62,10 +61,8 @@ export function readDcrClientExtensions(
       : undefined;
 
   const extensions: DcrClientExtensions = {};
-  if (backchannelLogoutUri) {
-    extensions.backchannelLogoutUri = backchannelLogoutUri;
-    extensions.backchannelLogoutSessionRequired =
-      backchannelLogoutSessionRequired;
+  if (enableEndSession) {
+    extensions.enableEndSession = true;
   }
   if (backchannelTokenDeliveryMode) {
     extensions.backchannelTokenDeliveryMode = backchannelTokenDeliveryMode;
@@ -98,14 +95,6 @@ export async function persistDcrClientExtensions(
   }
 
   const metadata = parseClientMetadataRecord(existingClient.metadata);
-  if (extensions.backchannelLogoutUri) {
-    metadata.backchannel_logout_uri = extensions.backchannelLogoutUri;
-    if (extensions.backchannelLogoutSessionRequired) {
-      metadata.backchannel_logout_session_required = true;
-    } else {
-      metadata.backchannel_logout_session_required = undefined;
-    }
-  }
   if (extensions.rpValidityNoticeUri) {
     metadata.rp_validity_notice_uri = extensions.rpValidityNoticeUri;
   }
@@ -123,7 +112,7 @@ export async function persistDcrClientExtensions(
   await db
     .update(oauthClients)
     .set({
-      enableEndSession: extensions.backchannelLogoutUri ? true : undefined,
+      enableEndSession: extensions.enableEndSession,
       metadata:
         Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null,
       rpValidityNoticeEnabled:

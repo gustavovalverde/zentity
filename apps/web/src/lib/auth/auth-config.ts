@@ -59,7 +59,6 @@ import {
 } from "@/lib/agents/token-snapshot";
 import { buildNamespacedAssuranceClaim } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { reportRejection } from "@/lib/async-handler";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
@@ -67,10 +66,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import {
-  revokePendingCibaOnLogout,
-  sendBackchannelLogout,
-} from "@/lib/auth/oidc/backchannel-logout";
+import { revokePendingCibaOnLogout } from "@/lib/auth/oidc/backchannel-logout";
 import {
   hashCibaAuthReqId,
   rawAuthReqIdFromApprovalUrl,
@@ -590,17 +586,6 @@ async function validateDcrRegistration(
         });
       }
     }
-  }
-
-  // OIDC BCL: validate backchannel_logout_uri if present
-  const bclUri =
-    typeof body.backchannel_logout_uri === "string"
-      ? body.backchannel_logout_uri.trim()
-      : undefined;
-  if (bclUri && !isDev && !isValidHttpsUrl(bclUri)) {
-    throw new APIError("BAD_REQUEST", {
-      error_description: "backchannel_logout_uri must be an HTTPS URL",
-    });
   }
 
   let rpValidityNoticeUri: string | undefined;
@@ -1716,6 +1701,11 @@ export const auth = betterAuth({
           data: { ...session, ipAddress: null, userAgent: null },
         }),
       },
+      delete: {
+        after: async (session) => {
+          await revokePendingCibaOnLogout(session.userId);
+        },
+      },
     },
   },
   socialProviders: {
@@ -1819,17 +1809,6 @@ export const auth = betterAuth({
       if (ctx.path === "/ciba/authorize") {
         return enforceCibaApprovalAcr(ctx, db);
       }
-      if (ctx.path === "/sign-out") {
-        // Capture session before sign-out deletes it — needed for BCL
-        const session = await getSessionFromCtx(ctx);
-        if (session?.user?.id) {
-          (ctx.context as Record<string, unknown>).__bclUserId =
-            session.user.id;
-          (ctx.context as Record<string, unknown>).__bclSessionId =
-            session.session.id;
-        }
-        return;
-      }
     }),
     after: createAuthMiddleware(async (ctx) => {
       await afterPersistAuthenticationContext(ctx);
@@ -1855,19 +1834,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/two-factor/disable") {
         await afterTwoFactorDisableGuardianCleanup(ctx);
-      }
-      if (ctx.path === "/sign-out") {
-        const userId = (ctx.context as Record<string, unknown>).__bclUserId;
-        const sessionId = (ctx.context as Record<string, unknown>)
-          .__bclSessionId;
-        if (typeof userId === "string") {
-          // Fire-and-forget — don't block the logout response
-          sendBackchannelLogout(
-            userId,
-            typeof sessionId === "string" ? sessionId : undefined
-          ).catch(reportRejection);
-          revokePendingCibaOnLogout(userId).catch(reportRejection);
-        }
       }
     }),
   },
