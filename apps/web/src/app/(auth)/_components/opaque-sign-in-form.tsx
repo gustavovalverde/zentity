@@ -81,7 +81,7 @@ export function OpaqueSignInForm({
 
   const validateIdentifier = (value: string) => {
     if (!value.trim()) {
-      return "Email or recovery ID is required";
+      return "Email is required";
     }
     return;
   };
@@ -117,9 +117,7 @@ export function OpaqueSignInForm({
               : undefined;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={identifierId}>
-                  Email or Recovery ID
-                </FieldLabel>
+                <FieldLabel htmlFor={identifierId}>Email</FieldLabel>
                 <Input
                   aria-invalid={isInvalid}
                   autoCapitalize="none"

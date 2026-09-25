@@ -52,31 +52,6 @@ export function clearPendingUnlock(
   }
 }
 
-// --- Recovery Key Cache (raw ML-KEM public key bytes) ---
-
-let cachedRecoveryPublicKey: {
-  keyId: string;
-  publicKey: Uint8Array;
-} | null = null;
-
-export function getCachedRecoveryPublicKey(): {
-  keyId: string;
-  publicKey: Uint8Array;
-} | null {
-  return cachedRecoveryPublicKey;
-}
-
-export function setCachedRecoveryPublicKey(params: {
-  keyId: string;
-  publicKey: Uint8Array;
-}): void {
-  cachedRecoveryPublicKey = params;
-}
-
-function clearCachedRecoveryPublicKey(): void {
-  cachedRecoveryPublicKey = null;
-}
-
 // --- Binding Material Cache ---
 // Holds raw credential material from FHE enrollment for identity binding proof.
 // Cleared after proof generation; TTL is a safety net only.
@@ -178,6 +153,5 @@ export function clearCachedBindingMaterial(): void {
 export function clearAllCredentialCaches(): void {
   pendingUnlock = null;
   pendingUnlockKey = null;
-  clearCachedRecoveryPublicKey();
   clearCachedBindingMaterial();
 }

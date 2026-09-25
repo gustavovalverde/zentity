@@ -32,7 +32,6 @@ services:
       - CIPHERTEXT_HMAC_SECRET=${CIPHERTEXT_HMAC_SECRET:-local-docker-ciphertext-hmac-secret-32-chars}
       - KEY_ENCRYPTION_KEY=${KEY_ENCRYPTION_KEY:-local-docker-key-encryption-secret-32-chars}
       - BBS_ISSUER_SECRET=${BBS_ISSUER_SECRET:-local-docker-bbs-issuer-secret-32-chars}
-      - RECOVERY_ML_KEM_SECRET_KEY=${RECOVERY_ML_KEM_SECRET_KEY:-}
       - DEDUP_HMAC_SECRET=${DEDUP_HMAC_SECRET:-local-docker-dedup-hmac-secret-32-chars}
       - HUMANITY_HMAC_SECRET=${HUMANITY_HMAC_SECRET:-local-docker-humanity-hmac-secret-32-chars-min}
       - PAIRWISE_SECRET=${PAIRWISE_SECRET:-local-docker-pairwise-secret-32-chars}

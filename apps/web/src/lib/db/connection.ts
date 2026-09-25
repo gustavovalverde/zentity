@@ -24,8 +24,6 @@ import * as organizationSchema from "./schema/organization";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as privacySchema from "./schema/privacy";
 // biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
-import * as recoverySchema from "./schema/recovery";
-// biome-ignore lint/performance/noNamespaceImport: Drizzle ORM requires namespace imports for schema spreading
 import * as revokedTokensSchema from "./schema/revoked-tokens";
 
 const schema = {
@@ -37,7 +35,6 @@ const schema = {
   ...oidcCredentialsSchema,
   ...organizationSchema,
   ...privacySchema,
-  ...recoverySchema,
   ...revokedTokensSchema,
 };
 

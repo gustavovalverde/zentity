@@ -55,15 +55,6 @@ import {
   verificationChecks,
   zkChallenges,
 } from "@/lib/db/schema/privacy";
-import {
-  recoveryChallenges,
-  recoveryConfigs,
-  recoveryGuardianApprovals,
-  recoveryGuardians,
-  recoveryIdentifiers,
-  recoveryKeyPins,
-  recoverySecretWrappers,
-} from "@/lib/db/schema/recovery";
 
 interface CreateUserInput {
   createdAt?: Date;
@@ -102,14 +93,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(pushSubscriptions).run();
     await tx.delete(authChallengeSessions).run();
     await tx.delete(cibaRequests).run();
-    // Recovery tables (delete children before parents)
-    await tx.delete(recoveryGuardianApprovals).run();
-    await tx.delete(recoverySecretWrappers).run();
-    await tx.delete(recoveryKeyPins).run();
-    await tx.delete(recoveryGuardians).run();
-    await tx.delete(recoveryChallenges).run();
-    await tx.delete(recoveryIdentifiers).run();
-    await tx.delete(recoveryConfigs).run();
     await tx.delete(haipPushedRequests).run();
     await tx.delete(haipVpSessions).run();
     // OAuth/compliance tables (delete children before parents)

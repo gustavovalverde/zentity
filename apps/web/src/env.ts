@@ -113,7 +113,6 @@ export const env = createEnv({
         "KEY_ENCRYPTION_KEY must be at least 32 characters in production"
       ),
     BBS_ISSUER_SECRET: z.string().optional(),
-    RECOVERY_ML_KEM_SECRET_KEY: z.string().optional(),
 
     // Social login
     GOOGLE_CLIENT_ID: z.string().optional(),
@@ -299,7 +298,6 @@ export const env = createEnv({
     CIPHERTEXT_HMAC_SECRET: process.env.CIPHERTEXT_HMAC_SECRET,
     KEY_ENCRYPTION_KEY: process.env.KEY_ENCRYPTION_KEY,
     BBS_ISSUER_SECRET: process.env.BBS_ISSUER_SECRET,
-    RECOVERY_ML_KEM_SECRET_KEY: process.env.RECOVERY_ML_KEM_SECRET_KEY,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,

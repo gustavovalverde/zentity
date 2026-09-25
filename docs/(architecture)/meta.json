@@ -3,7 +3,6 @@
 	"pages": [
 		"attestation-privacy-architecture",
 		"tamper-model",
-		"recovery-trust-model",
 		"ssi-architecture",
 		"agent-architecture",
 		"web3-architecture"

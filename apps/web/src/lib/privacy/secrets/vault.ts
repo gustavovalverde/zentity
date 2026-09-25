@@ -20,9 +20,7 @@ import { authClient } from "@/lib/auth/auth-client";
 import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import {
   clearPendingUnlock,
-  getCachedRecoveryPublicKey,
   getPendingUnlock,
-  setCachedRecoveryPublicKey,
   setPendingUnlock,
 } from "@/lib/privacy/credentials/cache";
 import {
@@ -41,12 +39,9 @@ import {
   WALLET_CREDENTIAL_PREFIX,
   wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials/wallet";
-import { mlKemEncapsulate } from "@/lib/privacy/primitives/post-quantum";
 import {
   base64ToBytes,
   bytesToBase64,
-  encodeAad,
-  RECOVERY_AAD_CONTEXT,
 } from "@/lib/privacy/primitives/symmetric";
 import { trpc } from "@/lib/trpc/client";
 
@@ -134,65 +129,6 @@ function mergeSecretMetadata(params: {
     ...params.metadata,
     [ENVELOPE_FORMAT_METADATA_KEY]: params.envelopeFormat,
   };
-}
-
-async function getRecoveryPublicKeyBytes(): Promise<{
-  keyId: string;
-  publicKey: Uint8Array;
-}> {
-  const cached = getCachedRecoveryPublicKey();
-  if (cached) {
-    return cached;
-  }
-
-  const { keyId, publicKey: publicKeyBase64 } =
-    await trpc.recovery.publicKey.query();
-  const publicKey = base64ToBytes(publicKeyBase64);
-
-  setCachedRecoveryPublicKey({ keyId, publicKey });
-  return { keyId, publicKey };
-}
-
-async function encryptDekForRecovery(params: {
-  dek: Uint8Array;
-  secretId: string;
-  userId: string;
-}): Promise<{
-  wrappedDek: string;
-  keyId: string;
-}> {
-  const { keyId, publicKey } = await getRecoveryPublicKeyBytes();
-
-  const { cipherText, sharedSecret } = mlKemEncapsulate(publicKey);
-
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    Uint8Array.from(sharedSecret).buffer,
-    "AES-GCM",
-    false,
-    ["encrypt"]
-  );
-
-  const aad = encodeAad([RECOVERY_AAD_CONTEXT, params.secretId, params.userId]);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv,
-      additionalData: Uint8Array.from(aad).buffer,
-    },
-    aesKey,
-    Uint8Array.from(params.dek).buffer
-  );
-
-  const envelope = {
-    alg: "ML-KEM-768",
-    kemCipherText: bytesToBase64(cipherText),
-    iv: bytesToBase64(iv),
-    ciphertext: bytesToBase64(new Uint8Array(encrypted)),
-  };
-
-  return { wrappedDek: JSON.stringify(envelope), keyId };
 }
 
 /**
@@ -284,21 +220,6 @@ export async function storeSecretWithCredential(params: {
       metadata: params.metadata,
     }),
   });
-
-  try {
-    const recovery = await encryptDekForRecovery({
-      dek,
-      secretId,
-      userId: params.credential.context.userId,
-    });
-    await trpc.recovery.storeSecretWrapper.mutate({
-      secretId,
-      wrappedDek: recovery.wrappedDek,
-      keyId: recovery.keyId,
-    });
-  } catch {
-    // Recovery wrappers are optional until recovery is enabled.
-  }
 
   return { secretId, envelopeFormat: params.envelopeFormat };
 }

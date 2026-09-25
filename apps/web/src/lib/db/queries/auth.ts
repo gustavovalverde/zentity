@@ -222,7 +222,6 @@ export async function deleteIncompleteSignup(userId: string): Promise<void> {
   //    - proofArtifacts, encryptedAttributes, signedClaims, encryptedSecrets, secretWrappers (crypto)
   //    - identityBundles, identityVerifications, identityVerificationJobs (identity)
   //    - attestationEvidence, attestationState (attestation)
-  //    - recoveryConfigs, recoveryRequests, guardianRelationships, pendingGuardianInvites (recovery)
   await deletePairwiseSubjectsForUser(userId);
   await db.delete(users).where(eq(users.id, userId)).run();
 }

@@ -2,27 +2,21 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Partially Implemented |
+| **Status** | Withdrawn |
 | **Created** | 2025-01-06 |
-| **Updated** | 2026-01-10 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
 
 Enable account recovery via guardian threshold signatures using FROST (Flexible Round-Optimized Schnorr Threshold signatures). When a user loses their passkey, a threshold of trusted guardians (t-of-n) can collectively authorize recovery without any single guardian or the server being able to unilaterally access the user's encrypted secrets.
 
-**Current implementation:**
-
-- Guardian types implemented: **email** + **authenticator (TOTP/backup codes)**.
-- Recovery can be initiated with **email or Recovery ID**.
-- Email delivery uses **Resend in production** and **Mailpit locally**; otherwise manual approval links are shown.
-- Recovery configs store both **group verifying key** and **public key package** for signer operations.
-- Wallet and on-chain guardians remain future work.
+Zentity does not implement this RFC. Account recovery re-registers a credential through a magic link or password reset and never recovers sealed secrets on the server's behalf.
 
 This RFC supports a **four-tier guardian model**:
 
-- **Tier 1 (Email)**: Approval link (implemented)
-- **Tier 1.5 (Device)**: TOTP/backup codes via Better Auth 2FA (implemented)
+- **Tier 1 (Email)**: Approval link
+- **Tier 1.5 (Device)**: TOTP/backup codes via Better Auth 2FA
 - **Tier 2 (Wallet)**: SIWE (Sign-In with Ethereum) - future
 - **Tier 3 (On-chain)**: GuardianRegistry contract - future
 

@@ -38,7 +38,7 @@ export default defineConfig({
     ],
 
     // `forks` = fresh Node process per file. With 115 files + heavy ESM graph
-    // (better-auth, drizzle, noble/post-quantum, noir-js), `vmThreads` accumulates
+    // (better-auth, drizzle, noir-js), `vmThreads` accumulates
     // module caches across VM contexts in a single worker until the heap dies
     // silently mid-run. Process-per-file releases memory unconditionally.
     //

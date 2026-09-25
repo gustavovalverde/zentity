@@ -14,7 +14,6 @@ Zentity's cryptographic stack relied on elliptic-curve primitives vulnerable to 
 ## Priorities & Constraints
 
 * Compliance documents under RFC-0025 have 5-year retention — ciphertext must remain secure through at least 2031
-* Recovery wrappers persist indefinitely — the longest-lived ciphertext in the system
 * Hard cutover with no backward compatibility is acceptable
 * `@noble/post-quantum` (v0.5.4) was already installed and audited by the noble-cryptography project
 * NIST finalized FIPS 203 (ML-KEM) and FIPS 204 (ML-DSA) in August 2024
@@ -25,7 +24,6 @@ Replace the quantum-vulnerable encryption primitives with ML-KEM-768. No hybrid 
 
 | Surface | Before | After |
 |---------|--------|-------|
-| Recovery key wrapping | RSA-OAEP-2048 (PKE) | ML-KEM-768 (KEM + AES-256-GCM) |
 | RP compliance encryption | X25519 ECDH + AES-256-GCM | ML-KEM-768 + AES-256-GCM |
 | Issuer signing (ID tokens, access tokens, SD-JWT VCs) | RS256 and EdDSA via the JWT plugin | Unchanged |
 
@@ -50,7 +48,7 @@ To:
 
 * **ML-KEM**: `encapsulate(publicKey) → {cipherText, sharedSecret}` then `AES-GCM(sharedSecret, plaintext)`
 
-The receiver calls `decapsulate(cipherText, secretKey) → sharedSecret` and decrypts with AES-GCM. Both recovery and compliance surfaces use `{alg, kemCipherText, iv, ciphertext}` JSON envelopes. Compliance bundles additionally carry `{clientId, userId}` and bind them via AES-GCM AAD to prevent cross-RP/cross-user ciphertext substitution.
+The receiver calls `decapsulate(cipherText, secretKey) → sharedSecret` and decrypts with AES-GCM. Compliance bundles use `{alg, kemCipherText, iv, ciphertext}` JSON envelopes, carry `{clientId, userId}`, and bind them via AES-GCM AAD to prevent cross-RP/cross-user ciphertext substitution.
 
 ### ML-KEM implicit reject
 
@@ -58,7 +56,7 @@ ML-KEM's most important security property for Zentity: decapsulating with the wr
 
 ### Expected Consequences
 
-* Recovery wrappers and compliance documents are quantum-resistant from day one
+* Compliance documents are quantum-resistant from day one
 * No migration debt — single algorithm path means simpler code and fewer edge cases
 * Larger ML-KEM key sizes: public keys are 1184 bytes (vs 32 for X25519)
 * Issuer signatures remain quantum-vulnerable; moving them requires ML-DSA support in the OAuth provider and in relying parties' JOSE libraries
@@ -80,3 +78,4 @@ ML-KEM's most important security property for Zentity: decapsulating with the wr
 
 * 2026-02-24: Recovery key wrapping and RP compliance encryption move to ML-KEM-768; SD-JWT VC issuer signing moves to ML-DSA-65.
 * 2026-09-25: Issuer signing returns to the JWT plugin's RS256 and EdDSA keys, and ID tokens are always RS256, because the Better Auth 1.7 OAuth provider computes `at_hash` for its RS256 key. ML-KEM-768 decisions are unchanged.
+* 2026-09-25: Recovery key wrapping is dropped. The server holds no ML-KEM recovery key and stores no recovery-wrapped data keys.

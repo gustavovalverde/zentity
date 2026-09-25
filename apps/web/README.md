@@ -67,11 +67,6 @@ BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY=... # Base mirror writes
 BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR=...
 NEXT_PUBLIC_ENABLE_BASE_SEPOLIA=true
 
-# Recovery keys (server-side, ML-KEM-768)
-RECOVERY_ML_KEM_SECRET_KEY=...          # production (base64 of 2400 bytes)
-RECOVERY_ML_KEM_KEY_PATH=.data/recovery-key.bin
-RECOVERY_KEY_ID=v1
-
 # Email delivery
 RESEND_API_KEY=...                      # production
 MAIL_FROM_EMAIL=no-reply@zentity.local
