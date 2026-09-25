@@ -84,10 +84,10 @@ export function POST(request: Request): Promise<Response> {
       }
 
       const stored = await stageFinalCibaDisclosure({
+        authReqId,
         userId,
         clientId,
         claims: filteredIdentity,
-        releaseId: authReqId,
         scopes: identityScopes,
         scopeHash,
         intentJti,

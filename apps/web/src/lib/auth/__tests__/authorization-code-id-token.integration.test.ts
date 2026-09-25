@@ -10,6 +10,7 @@ import {
 import {
   claimsRequestForEndpoint,
   loadReleaseContext,
+  releaseIdFor,
 } from "@/lib/auth/oidc/disclosure/context";
 import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
@@ -141,7 +142,9 @@ describe("authorization_code id_token claims filtering", () => {
     expect(status).toBe(200);
     expect(json.id_token).toEqual(expect.any(String));
 
-    const releaseContext = await loadReleaseContext(TEST_REFERENCE_ID);
+    const releaseContext = await loadReleaseContext(
+      releaseIdFor(TEST_REFERENCE_ID, TEST_CLIENT_ID)
+    );
     expect(releaseContext).not.toBeNull();
     expect(
       claimsRequestForEndpoint(

@@ -6,11 +6,13 @@ import {
   claimsRequestForEndpoint,
   finalizeOauthDisclosureFromVerification,
   loadReleaseContext,
+  releaseIdFor,
   stagePendingOauthDisclosure,
 } from "@/lib/auth/oidc/disclosure/context";
 import {
   consumeIdentityPayload,
   createScopeHash,
+  finalReleaseIdentityKey,
   hasIdentityPayload,
   pendingOAuthIdentityKey,
 } from "@/lib/auth/oidc/disclosure/delivery";
@@ -88,7 +90,9 @@ describe("OAuth disclosure finalization", () => {
     });
 
     expect(releaseContext).not.toBeNull();
-    expect(releaseContext?.releaseId).toBe("oauth-reference-1");
+    expect(releaseContext?.releaseId).toBe(
+      releaseIdFor("oauth-reference-1", TEST_CLIENT_ID)
+    );
     expect(releaseContext?.clientId).toBe(TEST_CLIENT_ID);
     expect(releaseContext?.userId).toBe(userId);
     expect(releaseContext?.flowType).toBe("oauth");
@@ -110,7 +114,9 @@ describe("OAuth disclosure finalization", () => {
     expect(hasIdentityPayload(pendingOAuthIdentityKey(oauthRequestKey))).toBe(
       false
     );
-    const payload = consumeIdentityPayload("release:oauth-reference-1");
+    const payload = consumeIdentityPayload(
+      finalReleaseIdentityKey(releaseIdFor("oauth-reference-1", TEST_CLIENT_ID))
+    );
     expect(payload?.claims).toEqual({
       given_name: "Ada",
       family_name: "Lovelace",
@@ -144,8 +150,12 @@ describe("OAuth disclosure finalization", () => {
       )
     ).toEqual({ acr: null, auth_time: null });
 
-    const loaded = await loadReleaseContext("oauth-reference-claims-only");
-    expect(loaded?.releaseId).toBe("oauth-reference-claims-only");
+    const releaseId = releaseIdFor(
+      "oauth-reference-claims-only",
+      TEST_CLIENT_ID
+    );
+    const loaded = await loadReleaseContext(releaseId);
+    expect(loaded?.releaseId).toBe(releaseId);
     expect(loaded?.flowType).toBe("oauth");
   });
 

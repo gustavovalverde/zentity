@@ -90,6 +90,7 @@ import {
   hasReleaseContext,
   loadReleaseContext,
   type ReleaseContext,
+  releaseIdFor,
   touchReleaseContext,
   validateReleaseContextForSubject,
 } from "@/lib/auth/oidc/disclosure/context";
@@ -1039,14 +1040,14 @@ interface PendingCibaToken {
 }
 const pendingCibaToken = new Map<string, PendingCibaToken>();
 
-// Off-wire binding from an opaque access token's introspection re-derive to its
-// release context. The AS-owned jti no longer equals the release id, so userinfo
-// resolves the staged identity payload through this claim (opaque tokens only;
-// it never appears on a minted JWT).
+// Binds an access token to its release context so userinfo can resolve the
+// staged identity payload: JWT access tokens carry it, opaque tokens recover it
+// on the introspection re-derive.
 const RELEASE_BINDING_CLAIM = "zentity_release_binding";
 
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
+  clientId?: string;
   referenceId?: string;
   scopes: unknown;
   sessionId?: string | null;
@@ -1105,9 +1106,12 @@ async function buildIdTokenDisclosureClaims(input: {
   const authContextClaims = auth
     ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
     : {};
-  const releaseContext = input.referenceId
-    ? await loadReleaseContext(input.referenceId)
-    : null;
+  const releaseContext =
+    input.referenceId && input.clientId
+      ? await loadReleaseContext(
+          releaseIdFor(input.referenceId, input.clientId)
+        )
+      : null;
   const idTokenFilter = claimsRequestForEndpoint(
     releaseContext?.claimsRequest ?? null,
     "id_token"
@@ -1171,19 +1175,16 @@ async function buildAccessTokenDisclosureClaims(
 
   // Extend the identity-payload TTL whenever a token is minted for a
   // release-bound request so the payload survives until userinfo consumes it.
-  if (referenceId) {
-    const releaseContext = await loadReleaseContext(referenceId);
+  if (referenceId && clientId) {
+    const releaseContext = await loadReleaseContext(
+      releaseIdFor(referenceId, clientId)
+    );
     if (releaseContext) {
       await touchReleaseContext(
         releaseContext.releaseId,
         Date.now() + 3600 * 1000
       );
-      // Surface the release binding so userinfo can locate the staged identity
-      // payload. Opaque tokens strip it before the wire and recover it on the
-      // introspection re-derive; JWT access tokens carry it, since the AS owns
-      // the jti and a release-bound JWT cannot recover the reference otherwise.
-      // The binding is the client-known reference id, never PII.
-      claims[RELEASE_BINDING_CLAIM] = referenceId;
+      claims[RELEASE_BINDING_CLAIM] = releaseContext.releaseId;
     }
   }
 
@@ -1220,6 +1221,9 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
             // the authentication context falls back to referenceId/userId.
             return buildIdTokenDisclosureClaims({
               authContextId: null,
+              ...(info.client?.clientId
+                ? { clientId: info.client.clientId }
+                : {}),
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
               ...(info.sessionId === undefined
@@ -2196,18 +2200,19 @@ export const auth = betterAuth({
         // stashed; embed them here. The after-hook drains the rest of the stash.
         const pending = pendingCibaToken.get(cibaRequest.authReqId);
 
-        const releaseContext = await loadReleaseContext(cibaRequest.authReqId);
+        const releaseId = releaseIdFor(
+          cibaRequest.authReqId,
+          cibaRequest.clientId
+        );
+        const releaseContext = await loadReleaseContext(releaseId);
         if (
           releaseContext?.expectsIdentityPayload &&
-          !hasIdentityPayload(finalReleaseIdentityKey(cibaRequest.authReqId))
+          !hasIdentityPayload(finalReleaseIdentityKey(releaseId))
         ) {
           throw invalidGrantDisclosureError("identity_payload_missing");
         }
         if (releaseContext) {
-          await touchReleaseContext(
-            cibaRequest.authReqId,
-            Date.now() + 3600 * 1000
-          );
+          await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
         }
 
         // Re-mint the RAR server-side from the persisted (canonical) form and

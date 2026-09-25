@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
-import { clearReleaseContext } from "@/lib/auth/oidc/disclosure/context";
+import {
+  clearReleaseContext,
+  releaseIdFor,
+} from "@/lib/auth/oidc/disclosure/context";
 import { handleIdentityUnstage } from "@/lib/auth/oidc/disclosure/route-handlers";
 import {
   fetchCibaAuthReqIdHashById,
@@ -42,7 +45,7 @@ export function POST(request: Request): Promise<Response> {
         return result;
       }
 
-      return { releaseId: authReqIdHash };
+      return { releaseId: releaseIdFor(authReqIdHash, result.clientId) };
     },
     async (result) => {
       await clearReleaseContext((result as { releaseId: string }).releaseId);

@@ -3,6 +3,8 @@ import "server-only";
 import type { ClaimsRequest, ParsedClaimsParameter } from "./claims";
 import type { IdentityFields } from "./registry";
 
+import { createHash } from "node:crypto";
+
 import { eq, lt } from "drizzle-orm";
 
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
@@ -66,6 +68,17 @@ export class DisclosureBindingError extends Error {
     this.oauthError = oauthError;
     this.reason = reason;
   }
+}
+
+/**
+ * Scopes a release to one client. The provider's consent reference identifies
+ * a user, session, and scope set, so clients sharing it must not share a
+ * release.
+ */
+export function releaseIdFor(referenceId: string, clientId: string): string {
+  return createHash("sha256")
+    .update(JSON.stringify([clientId, referenceId]))
+    .digest("base64url");
 }
 
 function serializeClaimsRequest(
@@ -416,11 +429,12 @@ export async function finalizeOauthDisclosureFromVerification(input: {
     );
   }
 
+  const releaseId = releaseIdFor(referenceId, clientId);
   const expiresAt = releaseExpiresAt();
   await db
     .insert(oidcReleaseContexts)
     .values({
-      releaseId: referenceId,
+      releaseId,
       flowType: "oauth",
       userId: input.userId,
       clientId,
@@ -452,7 +466,7 @@ export async function finalizeOauthDisclosureFromVerification(input: {
   if (pending) {
     const promoted = promoteIdentityPayload(
       pendingOAuthIdentityKey(oauthRequestKey),
-      finalReleaseIdentityKey(referenceId)
+      finalReleaseIdentityKey(releaseId)
     );
     if (!promoted.ok) {
       log.error(
@@ -478,13 +492,13 @@ export async function finalizeOauthDisclosureFromVerification(input: {
       .run();
   }
 
-  return loadReleaseContext(referenceId);
+  return loadReleaseContext(releaseId);
 }
 
 export async function stageFinalCibaDisclosure(input: {
+  authReqId: string;
   clientId: string;
   claims: Partial<IdentityFields>;
-  releaseId: string;
   scopes: string[];
   scopeHash: string;
   intentJti: string;
@@ -499,16 +513,17 @@ export async function stageFinalCibaDisclosure(input: {
     return { ok: false, reason: "intent_reused" };
   }
 
+  const releaseId = releaseIdFor(input.authReqId, input.clientId);
   if (
-    (await loadReleaseContext(input.releaseId)) ||
-    hasIdentityPayload(finalReleaseIdentityKey(input.releaseId))
+    (await loadReleaseContext(releaseId)) ||
+    hasIdentityPayload(finalReleaseIdentityKey(releaseId))
   ) {
     return { ok: false, reason: "concurrent_stage" };
   }
 
   const expiresAt = releaseExpiresAt();
   const payloadResult = storeIdentityPayload({
-    bindingKey: finalReleaseIdentityKey(input.releaseId),
+    bindingKey: finalReleaseIdentityKey(releaseId),
     claims: input.claims,
     scopes: input.scopes,
     meta: {
@@ -526,7 +541,7 @@ export async function stageFinalCibaDisclosure(input: {
     const insertResult = await db
       .insert(oidcReleaseContexts)
       .values({
-        releaseId: input.releaseId,
+        releaseId,
         flowType: "ciba",
         userId: input.userId,
         clientId: input.clientId,
@@ -541,7 +556,7 @@ export async function stageFinalCibaDisclosure(input: {
       .run();
 
     if ((insertResult.rowsAffected ?? 0) === 0) {
-      clearIdentityPayload(finalReleaseIdentityKey(input.releaseId));
+      clearIdentityPayload(finalReleaseIdentityKey(releaseId));
       return (await isIntentJtiUsed(input.intentJti))
         ? { ok: false, reason: "intent_reused" }
         : { ok: false, reason: "concurrent_stage" };
@@ -553,10 +568,10 @@ export async function stageFinalCibaDisclosure(input: {
       expiresAt
     );
     if (!marked) {
-      clearIdentityPayload(finalReleaseIdentityKey(input.releaseId));
+      clearIdentityPayload(finalReleaseIdentityKey(releaseId));
       await db
         .delete(oidcReleaseContexts)
-        .where(eq(oidcReleaseContexts.releaseId, input.releaseId))
+        .where(eq(oidcReleaseContexts.releaseId, releaseId))
         .run();
       return { ok: false, reason: "intent_reused" };
     }
@@ -564,16 +579,16 @@ export async function stageFinalCibaDisclosure(input: {
     log.error(
       {
         event: "ciba_stage_failed",
-        releaseId: input.releaseId,
+        releaseId,
         clientId: input.clientId,
         error: err instanceof Error ? err.message : String(err),
       },
       "CIBA disclosure staging failed — rolling back release context"
     );
-    clearIdentityPayload(finalReleaseIdentityKey(input.releaseId));
+    clearIdentityPayload(finalReleaseIdentityKey(releaseId));
     await db
       .delete(oidcReleaseContexts)
-      .where(eq(oidcReleaseContexts.releaseId, input.releaseId))
+      .where(eq(oidcReleaseContexts.releaseId, releaseId))
       .run();
     throw new DisclosureBindingError("invalid_grant", "ciba_stage_failed");
   }

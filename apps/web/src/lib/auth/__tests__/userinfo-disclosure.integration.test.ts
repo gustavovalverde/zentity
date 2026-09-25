@@ -27,7 +27,9 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const REDIRECT_URI = "http://127.0.0.1/callback";
 const TEST_CLIENT_ID = "userinfo-disclosure-client";
 const TEST_AUTH_CODE_CLIENT_ID = "userinfo-disclosure-auth-code-client";
+const SECOND_AUTH_CODE_CLIENT_ID = "userinfo-disclosure-second-client";
 const TEST_AUTH_CODE_REFERENCE_ID = "userinfo-disclosure-auth-code-reference";
+const TEST_SESSION_ID = "session-userinfo-disclosure";
 const USERINFO_URL = "http://localhost:3000/api/auth/oauth2/userinfo";
 
 function clearIdentityPayloadStore(): void {
@@ -50,11 +52,11 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
     .run();
 }
 
-async function createAuthCodeTestClient() {
+async function createAuthCodeTestClient(clientId = TEST_AUTH_CODE_CLIENT_ID) {
   await db
     .insert(oauthClients)
     .values({
-      clientId: TEST_AUTH_CODE_CLIENT_ID,
+      clientId,
       name: "UserInfo Auth Code Disclosure Test Client",
       redirectUris: JSON.stringify([REDIRECT_URI]),
       grantTypes: JSON.stringify(["authorization_code"]),
@@ -142,6 +144,108 @@ async function makeUserInfoRequest(
   });
 }
 
+async function insertSession(userId: string, authContextId: string) {
+  const now = Date.now();
+  await db
+    .insert(sessions)
+    .values({
+      id: TEST_SESSION_ID,
+      token: "session-token-userinfo-disclosure",
+      userId,
+      authContextId,
+      createdAt: new Date(now - 60_000),
+      updatedAt: new Date(now - 60_000),
+      expiresAt: new Date(now + 60 * 60 * 1000),
+    })
+    .run();
+}
+
+/**
+ * Stages the identity (when given), stores an authorization code as the
+ * provider would after consent, and redeems it at the token endpoint.
+ */
+async function redeemAuthorizationCode(input: {
+  authContextId: string;
+  clientId: string;
+  identity?: { family_name: string; given_name: string };
+  referenceId: string;
+  userId: string;
+}) {
+  const identityScopes = ["identity.name"];
+  const codeVerifier = `pkce-verifier-${input.clientId}`;
+  const authorizationCode = `auth-code-${input.clientId}`;
+  const now = Date.now();
+  const { challenge } = await createPkceChallenge(codeVerifier);
+  const oauthQuery = {
+    client_id: input.clientId,
+    response_type: "code",
+    redirect_uri: REDIRECT_URI,
+    scope: `openid ${identityScopes.join(" ")}`,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  };
+
+  if (input.identity) {
+    const staged = await stagePendingOauthDisclosure({
+      userId: input.userId,
+      clientId: input.clientId,
+      claims: input.identity,
+      scopes: identityScopes,
+      scopeHash: createScopeHash(identityScopes),
+      intentJti: crypto.randomUUID(),
+      oauthRequestKey: computeOAuthRequestKey(oauthQuery),
+    });
+    if (!staged.ok) {
+      throw new Error(`Identity staging failed: ${staged.reason}`);
+    }
+  }
+
+  await db
+    .insert(verifications)
+    .values({
+      id: crypto.randomUUID(),
+      identifier: await hashStoredAuthorizationCode(authorizationCode),
+      value: JSON.stringify({
+        type: "authorization_code",
+        referenceId: input.referenceId,
+        query: oauthQuery,
+        userId: input.userId,
+        sessionId: TEST_SESSION_ID,
+        authContextId: input.authContextId,
+        authTime: now,
+      }),
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+      expiresAt: new Date(now + 5 * 60 * 1000),
+    })
+    .run();
+
+  const tokenResponse = await postTokenWithDpop({
+    grant_type: "authorization_code",
+    client_id: input.clientId,
+    code: authorizationCode,
+    code_verifier: codeVerifier,
+    redirect_uri: REDIRECT_URI,
+  });
+  const accessToken = tokenResponse.json.access_token;
+  if (tokenResponse.status !== 200 || typeof accessToken !== "string") {
+    throw new Error(
+      `Token request failed (${tokenResponse.status}): ${JSON.stringify(tokenResponse.json)}`
+    );
+  }
+  return { accessToken, dpopKeyPair: tokenResponse.dpopKeyPair };
+}
+
+async function fetchUserInfo(token: {
+  accessToken: string;
+  dpopKeyPair: DpopKeyPair;
+}) {
+  const response = await auth.handler(
+    await makeUserInfoRequest(token.accessToken, token.dpopKeyPair)
+  );
+  return { status: response.status, body: await parseHandlerJson(response) };
+}
+
 describe("userinfo disclosure binding", () => {
   let userId: string;
   let authContextId: string;
@@ -174,8 +278,7 @@ describe("userinfo disclosure binding", () => {
           given_name: "Ada",
           family_name: "Lovelace",
         },
-        // Release context keys on the stored hash, matching the token endpoint.
-        releaseId: hashCibaAuthReqId(authReqId),
+        authReqId: hashCibaAuthReqId(authReqId),
         scopes: identityScopes,
         scopeHash: createScopeHash(identityScopes),
         intentJti: crypto.randomUUID(),
@@ -214,95 +317,100 @@ describe("userinfo disclosure binding", () => {
 
   it("delivers OAuth authorization-code identity payloads without public release claims", async () => {
     await createAuthCodeTestClient();
-    const authorizationCode = "auth-code-userinfo-disclosure";
-    const codeVerifier = "pkce-verifier-userinfo-disclosure";
-    const sessionId = "session-userinfo-disclosure";
-    const now = Date.now();
-    const { challenge } = await createPkceChallenge(codeVerifier);
-    const identityScopes = ["identity.name"];
-    const oauthQuery = {
-      client_id: TEST_AUTH_CODE_CLIENT_ID,
-      response_type: "code",
-      redirect_uri: REDIRECT_URI,
-      scope: `openid ${identityScopes.join(" ")}`,
-      code_challenge: challenge,
-      code_challenge_method: "S256",
-    };
+    await insertSession(userId, authContextId);
 
-    expect(
-      await stagePendingOauthDisclosure({
-        userId,
-        clientId: TEST_AUTH_CODE_CLIENT_ID,
-        claims: {
-          given_name: "Grace",
-          family_name: "Hopper",
-        },
-        scopes: identityScopes,
-        scopeHash: createScopeHash(identityScopes),
-        intentJti: crypto.randomUUID(),
-        oauthRequestKey: computeOAuthRequestKey(oauthQuery),
-      })
-    ).toEqual({ ok: true });
-
-    await db
-      .insert(sessions)
-      .values({
-        id: sessionId,
-        token: "session-token-userinfo-disclosure",
-        userId,
-        authContextId,
-        createdAt: new Date(now - 60_000),
-        updatedAt: new Date(now - 60_000),
-        expiresAt: new Date(now + 60 * 60 * 1000),
-      })
-      .run();
-
-    await db
-      .insert(verifications)
-      .values({
-        id: crypto.randomUUID(),
-        identifier: await hashStoredAuthorizationCode(authorizationCode),
-        value: JSON.stringify({
-          type: "authorization_code",
-          referenceId: TEST_AUTH_CODE_REFERENCE_ID,
-          query: oauthQuery,
-          userId,
-          sessionId,
-          authContextId,
-          authTime: now,
-        }),
-        createdAt: new Date(now),
-        updatedAt: new Date(now),
-        expiresAt: new Date(now + 5 * 60 * 1000),
-      })
-      .run();
-
-    const tokenResponse = await postTokenWithDpop({
-      grant_type: "authorization_code",
-      client_id: TEST_AUTH_CODE_CLIENT_ID,
-      code: authorizationCode,
-      code_verifier: codeVerifier,
-      redirect_uri: REDIRECT_URI,
+    const token = await redeemAuthorizationCode({
+      authContextId,
+      clientId: TEST_AUTH_CODE_CLIENT_ID,
+      identity: { given_name: "Grace", family_name: "Hopper" },
+      referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+      userId,
     });
 
-    expect(tokenResponse.status).toBe(200);
-    expect(typeof tokenResponse.json.access_token).toBe("string");
-
-    const accessToken = tokenResponse.json.access_token as string;
-    if (accessToken.split(".").length === 3) {
-      const payload = decodeJwt(accessToken);
+    if (token.accessToken.split(".").length === 3) {
+      const payload = decodeJwt(token.accessToken);
       expect(payload).not.toHaveProperty("zentity_release_id");
       expect(payload).not.toHaveProperty("zentity_context_id");
     }
 
-    const userInfo = await auth.handler(
-      await makeUserInfoRequest(accessToken, tokenResponse.dpopKeyPair)
-    );
+    const userInfo = await fetchUserInfo(token);
     expect(userInfo.status).toBe(200);
-    await expect(parseHandlerJson(userInfo)).resolves.toMatchObject({
+    expect(userInfo.body).toMatchObject({
       sub: userId,
       given_name: "Grace",
       family_name: "Hopper",
+    });
+  });
+
+  // The provider derives one consent reference per user, session, and
+  // non-identity scope set, so every relying party a user signs in to during
+  // one session receives the same referenceId.
+  describe("two clients sharing a consent reference", () => {
+    beforeEach(async () => {
+      await createAuthCodeTestClient(TEST_AUTH_CODE_CLIENT_ID);
+      await createAuthCodeTestClient(SECOND_AUTH_CODE_CLIENT_ID);
+      await insertSession(userId, authContextId);
+    });
+
+    it("releases the staged identity only to the client that staged it", async () => {
+      const stagingClientToken = await redeemAuthorizationCode({
+        authContextId,
+        clientId: TEST_AUTH_CODE_CLIENT_ID,
+        identity: { given_name: "Grace", family_name: "Hopper" },
+        referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+        userId,
+      });
+      const otherClientToken = await redeemAuthorizationCode({
+        authContextId,
+        clientId: SECOND_AUTH_CODE_CLIENT_ID,
+        referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+        userId,
+      });
+
+      const otherUserInfo = await fetchUserInfo(otherClientToken);
+      expect(otherUserInfo.status).toBe(200);
+      expect(otherUserInfo.body.sub).toBe(userId);
+      expect(otherUserInfo.body).not.toHaveProperty("given_name");
+      expect(otherUserInfo.body).not.toHaveProperty("family_name");
+
+      const stagingUserInfo = await fetchUserInfo(stagingClientToken);
+      expect(stagingUserInfo.status).toBe(200);
+      expect(stagingUserInfo.body).toMatchObject({
+        sub: userId,
+        given_name: "Grace",
+        family_name: "Hopper",
+      });
+    });
+
+    it("keeps each client's pending identity release separate", async () => {
+      const firstToken = await redeemAuthorizationCode({
+        authContextId,
+        clientId: TEST_AUTH_CODE_CLIENT_ID,
+        identity: { given_name: "Grace", family_name: "Hopper" },
+        referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+        userId,
+      });
+      const secondToken = await redeemAuthorizationCode({
+        authContextId,
+        clientId: SECOND_AUTH_CODE_CLIENT_ID,
+        identity: { given_name: "Ada", family_name: "Lovelace" },
+        referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+        userId,
+      });
+
+      const secondUserInfo = await fetchUserInfo(secondToken);
+      expect(secondUserInfo.status).toBe(200);
+      expect(secondUserInfo.body).toMatchObject({
+        given_name: "Ada",
+        family_name: "Lovelace",
+      });
+
+      const firstUserInfo = await fetchUserInfo(firstToken);
+      expect(firstUserInfo.status).toBe(200);
+      expect(firstUserInfo.body).toMatchObject({
+        given_name: "Grace",
+        family_name: "Hopper",
+      });
     });
   });
 });
