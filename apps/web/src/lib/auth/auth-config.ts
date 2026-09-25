@@ -1580,6 +1580,10 @@ export const auth = betterAuth({
       "/ciba/authorize",
       "/ciba/reject",
     ] as unknown as boolean,
+    // In production x-forwarded-for carries both the Cloudflare and Railway hops.
+    ipAddress: {
+      ipAddressHeaders: ["cf-connecting-ip"],
+    },
   },
   rateLimit:
     isOidcE2e || process.env.NODE_ENV === "test"
