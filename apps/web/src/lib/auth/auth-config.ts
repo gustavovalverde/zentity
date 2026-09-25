@@ -1586,7 +1586,7 @@ export const auth = betterAuth({
     },
   },
   rateLimit:
-    isOidcE2e || process.env.NODE_ENV === "test"
+    isPlaywrightE2e || process.env.NODE_ENV === "test"
       ? { enabled: false }
       : {
           enabled: true,
