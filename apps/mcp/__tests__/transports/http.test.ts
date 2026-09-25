@@ -217,7 +217,7 @@ describe("HTTP transport middleware", () => {
     expect(body.scopes_supported).toEqual([
       "openid",
       "email",
-      "compliance:key:read",
+      "compliance:read",
       "proof:identity",
     ]);
   });

@@ -23,7 +23,7 @@ describe("Resource Metadata (RFC 9728)", () => {
     expect(metadata.scopes_supported).toEqual([
       "openid",
       "email",
-      "compliance:key:read",
+      "compliance:read",
       "proof:identity",
     ]);
   });

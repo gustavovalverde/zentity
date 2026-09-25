@@ -26,7 +26,7 @@ export function GET() {
       "offline_access",
       "proof:identity",
       ...PROOF_SCOPES,
-      "compliance:key:read",
+      "compliance:read",
       ...IDENTITY_SCOPES,
       "identity_verification",
       "poh",

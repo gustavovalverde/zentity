@@ -61,7 +61,7 @@ function extractScopes(source: string): string[] {
   const scopes = new Set<string>();
 
   const makeScopeRe = () =>
-    /(?:openid|offline_access|proof:[a-z_]+|identity\.[a-z]+|agent:[a-z_.]+|compliance:key:[a-z]+|identity_verification)/g;
+    /(?:openid|offline_access|proof:[a-z_]+|identity\.[a-z]+|agent:[a-z_.]+|compliance:[a-z]+|identity_verification)/g;
 
   const isPath = (v: string) =>
     v.startsWith(".") || v.startsWith("/") || v.includes("://");

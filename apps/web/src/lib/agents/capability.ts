@@ -70,7 +70,7 @@ export function deriveCapabilityName(
     return "my_profile";
   }
 
-  if (scopes.includes("compliance:key:read")) {
+  if (scopes.includes("compliance:read")) {
     return "check_compliance";
   }
 

@@ -306,7 +306,7 @@ const OPERATIONAL_ENTRIES = [
     description: "Introspect agent state",
   },
   {
-    scope: "compliance:key:read",
+    scope: "compliance:read",
     family: "operational",
     claims: [],
     delivery: [],
@@ -373,7 +373,7 @@ export const HIDDEN_SCOPES = new Set([
   "agent:session.register",
   "agent:session.revoke",
   "agent:introspect",
-  "compliance:key:read",
+  "compliance:read",
   "identity_verification",
   "poh",
 ]);
