@@ -1,6 +1,7 @@
 "use client";
 
 import { env } from "@/env";
+import { base64UrlToBytes } from "@/lib/privacy/primitives/symmetric";
 
 function isPushSupported(): boolean {
   return (
@@ -38,7 +39,7 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
   });
   await navigator.serviceWorker.ready;
 
-  const keyBytes = urlBase64ToUint8Array(vapidKey);
+  const keyBytes = base64UrlToBytes(vapidKey);
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: keyBytes.buffer as ArrayBuffer,
@@ -123,15 +124,4 @@ export async function getPushState(): Promise<
     .getSubscription()
     .catch(() => null);
   return subscription ? "subscribed" : "unsubscribed";
-}
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; i++) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
 }

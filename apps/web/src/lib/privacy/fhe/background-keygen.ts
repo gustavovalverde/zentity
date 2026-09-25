@@ -25,20 +25,12 @@ async function runBackgroundKeygen(): Promise<BackgroundKeygenResult | null> {
     prewarmTfheWorker();
 
     const keygen = await generateFheKeyMaterialInWorker();
-
-    const { fetchMsgpack } = await import("@/lib/http/binary-transport");
-    const registration = await fetchMsgpack<{ keyId: string }>(
-      "/api/fhe/keys/register",
-      {
-        serverKey: keygen.storedKeys.serverKey,
-        publicKey: keygen.storedKeys.publicKey,
-      },
-      { credentials: "include" }
-    );
+    const { registerFheKeys } = await import("./key-store");
+    const keyId = await registerFheKeys(keygen.storedKeys);
 
     const result: BackgroundKeygenResult = {
       storedKeys: keygen.storedKeys,
-      keyId: registration.keyId,
+      keyId,
       publicKeyFingerprint: keygen.publicKeyFingerprint,
     };
 

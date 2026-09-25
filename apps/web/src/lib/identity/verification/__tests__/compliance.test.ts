@@ -4,6 +4,7 @@ import {
   COMPLIANCE_ONCHAIN_TIERS,
   complianceOnchainTier,
   deriveComplianceStatus,
+  isFheComplete,
 } from "../compliance";
 
 type ComplianceInput = Parameters<typeof deriveComplianceStatus>[0];
@@ -222,5 +223,18 @@ describe("deriveComplianceStatus", () => {
       );
       expect(complianceOnchainTier(result)).toBe(0);
     });
+  });
+});
+
+describe("isFheComplete", () => {
+  it("returns true when both required encrypted attributes exist", () => {
+    expect(isFheComplete(["birth_year_offset", "liveness_score"])).toBe(true);
+    expect(isFheComplete(["dob_days", "liveness_score"])).toBe(true);
+  });
+
+  it("returns false when either required encrypted attribute is missing", () => {
+    expect(isFheComplete(["birth_year_offset"])).toBe(false);
+    expect(isFheComplete(["liveness_score"])).toBe(false);
+    expect(isFheComplete([])).toBe(false);
   });
 });

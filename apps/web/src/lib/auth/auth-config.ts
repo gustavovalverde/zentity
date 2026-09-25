@@ -1,6 +1,6 @@
 import type { AuthContext } from "@better-auth/core";
 import type { AapAccessTokenClaims } from "@zentity/sdk/protocol";
-import type { LoginMethod } from "@/lib/assurance/types";
+import type { LoginMethod } from "@/lib/assurance/tier";
 import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
 import { createHash } from "node:crypto";
@@ -1139,13 +1139,12 @@ async function buildAccessTokenDisclosureClaims(
         releaseContext.releaseId,
         Date.now() + 3600 * 1000
       );
-      // On the opaque-token introspection re-derive (grantType is absent here
-      // but set at JWT mint), surface the release binding so userinfo can locate
-      // the staged identity payload. It never reaches the wire: opaque tokens
-      // carry no claims, and the JWT mint path skips this branch.
-      if (info.grantType === undefined) {
-        claims[RELEASE_BINDING_CLAIM] = referenceId;
-      }
+      // Surface the release binding so userinfo can locate the staged identity
+      // payload. Opaque tokens strip it before the wire and recover it on the
+      // introspection re-derive; JWT access tokens carry it, since the AS owns
+      // the jti and a release-bound JWT cannot recover the reference otherwise.
+      // The binding is the client-known reference id, never PII.
+      claims[RELEASE_BINDING_CLAIM] = referenceId;
     }
   }
 
@@ -1967,13 +1966,13 @@ export const auth = betterAuth({
           }
         ).jwt;
         const clientId = jwt?.azp ?? jwt?.client_id;
-        // Opaque tokens surface the release binding (their re-derive injects it);
-        // JWT access tokens, when release-bound, carry the binding as their jti.
+        // Release-bound tokens carry the binding as RELEASE_BINDING_CLAIM: JWT
+        // access tokens on the wire, opaque tokens via their introspection
+        // re-derive.
         const releaseCandidate =
-          (typeof jwt?.[RELEASE_BINDING_CLAIM] === "string"
+          typeof jwt?.[RELEASE_BINDING_CLAIM] === "string"
             ? jwt[RELEASE_BINDING_CLAIM]
-            : undefined) ??
-          (typeof jwt?.jti === "string" ? jwt.jti : undefined);
+            : undefined;
         const releaseId =
           releaseCandidate && (await hasReleaseContext(releaseCandidate))
             ? releaseCandidate

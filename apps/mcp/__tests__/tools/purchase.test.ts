@@ -13,6 +13,10 @@ const mockOAuthContext = {
   accessToken: "test-token",
   accountSub: "user-123",
   clientId: "test-client",
+  dpopClient: {
+    proofFor: vi.fn().mockResolvedValue("mock-proof"),
+    withNonceRetry: vi.fn(),
+  },
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
@@ -52,7 +56,7 @@ vi.mock("../../src/runtime/agent-registration.js", () => ({
   signAgentAssertion: (...args: unknown[]) => mockSignAgentAssertion(...args),
 }));
 
-import { createServer } from "../../src/server/index.js";
+import { createServer } from "../../src/server.js";
 
 describe("purchase", () => {
   beforeEach(() => {

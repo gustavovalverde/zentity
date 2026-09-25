@@ -1,7 +1,8 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
+
 import { eq } from "drizzle-orm";
-import { nanoid } from "nanoid";
 
 import { db } from "@/lib/db/connection";
 import { verifications } from "@/lib/db/schema/auth";
@@ -47,7 +48,7 @@ export async function createFheEnrollmentContext(params: {
   contextToken: string;
   expiresAt: string;
 }> {
-  const contextToken = nanoid(32);
+  const contextToken = randomBytes(24).toString("base64url");
   const now = new Date();
   const expiresAt = new Date(now.getTime() + CONTEXT_TOKEN_TTL_MS);
 

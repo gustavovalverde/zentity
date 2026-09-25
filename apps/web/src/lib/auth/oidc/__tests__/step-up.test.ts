@@ -1,4 +1,4 @@
-import type { AccountTier } from "@/lib/assurance/types";
+import type { AccountTier } from "@/lib/assurance/tier";
 
 import { describe, expect, it } from "vitest";
 

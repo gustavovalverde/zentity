@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { reportRejection } from "@/lib/async-handler";
+import { useIsMobileDevice } from "@/lib/browser-hooks";
 
 const STORE_URLS = {
   ios: "https://apps.apple.com/app/zkpassport/id6477371975",
@@ -22,18 +23,8 @@ const STORE_URLS = {
     "https://play.google.com/store/apps/details?id=app.zkpassport.zkpassport",
 } as const;
 
-const MOBILE_UA_PATTERN = /iPhone|iPad|iPod|Android/i;
 const IOS_UA_PATTERN = /iPhone|iPad|iPod/i;
 const ANDROID_UA_PATTERN = /Android/i;
-
-function useIsMobile() {
-  return useMemo(() => {
-    if (typeof navigator === "undefined") {
-      return false;
-    }
-    return MOBILE_UA_PATTERN.test(navigator.userAgent);
-  }, []);
-}
 
 function usePlatform() {
   return useMemo(() => {
@@ -88,7 +79,7 @@ function StoreQrCode({ url }: Readonly<{ url: string }>) {
  * users see Play Store, unknown shows both).
  */
 export function DownloadZkPassportDialog() {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobileDevice();
   const platform = usePlatform();
 
   if (isMobile) {

@@ -1,4 +1,5 @@
 import {
+	base64url,
 	calculateJwkThumbprint,
 	decodeProtectedHeader,
 	importJWK,
@@ -6,7 +7,6 @@ import {
 	type JWTPayload,
 	jwtVerify,
 } from "jose";
-import { encodeBase64Url } from "./dpop-client";
 
 const DEFAULT_DPOP_MAX_AGE_SECONDS = 300;
 
@@ -56,7 +56,7 @@ async function hashAccessToken(token: string): Promise<string> {
 		"SHA-256",
 		new TextEncoder().encode(token),
 	);
-	return encodeBase64Url(new Uint8Array(digest));
+	return base64url.encode(new Uint8Array(digest));
 }
 
 function fail(code: DpopProofVerificationErrorCode, message: string): never {

@@ -1,4 +1,4 @@
-import type { SecurityPosture } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/tier";
 
 import crypto from "node:crypto";
 

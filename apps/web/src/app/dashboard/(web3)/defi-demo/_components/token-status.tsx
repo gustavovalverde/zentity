@@ -6,6 +6,7 @@
  * Displays token information and user's attestation status.
  */
 import { CheckCircle, Coins } from "lucide-react";
+import { formatUnits } from "viem";
 
 import {
   Card,
@@ -15,8 +16,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { formatTokenAmount } from "@/lib/blockchain/token-utils";
 import { trpcReact } from "@/lib/trpc/client";
+
+function formatTokenSupply(value: bigint | string, decimals: number): string {
+  const [whole, fraction] = formatUnits(BigInt(value), decimals).split(".");
+  const wholeWithSeparators = BigInt(whole ?? "0").toLocaleString();
+  return fraction ? `${wholeWithSeparators}.${fraction}` : wholeWithSeparators;
+}
 
 interface TokenStatusProps {
   networkId: string;
@@ -76,7 +82,7 @@ export function TokenStatus({
               <div>
                 <p className="text-muted-foreground">Total Supply</p>
                 <p className="font-medium">
-                  {formatTokenAmount(tokenInfo.totalSupply, tokenInfo.decimals)}{" "}
+                  {formatTokenSupply(tokenInfo.totalSupply, tokenInfo.decimals)}{" "}
                   {tokenInfo.symbol}
                 </p>
               </div>

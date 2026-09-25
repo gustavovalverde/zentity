@@ -4,16 +4,11 @@ vi.mock("../../src/config.js", () => ({
   config: { zentityUrl: "https://zentity.test" },
 }));
 
-vi.mock("../../src/runtime/dpop-proof.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
-}));
-
 const mockBeginCibaApproval = vi.fn();
 const mockCreatePendingApproval = vi.fn();
 const mockLogPendingApprovalHandoff = vi.fn();
 const mockPollCibaTokenOnce = vi.fn();
-vi.mock("../../src/services/ciba.js", () => ({
+vi.mock("@zentity/sdk", () => ({
   beginCibaApproval: (...args: unknown[]) => mockBeginCibaApproval(...args),
   createPendingApproval: (...args: unknown[]) =>
     mockCreatePendingApproval(...args),
@@ -43,6 +38,11 @@ const dpopKey = {
   publicJwk: { kty: "EC", crv: "P-256" },
 };
 
+const dpopClient = {
+  proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
+  withNonceRetry: vi.fn(),
+};
+
 const mockRuntime = {
   display: { name: "test-agent" },
   grants: [],
@@ -59,6 +59,7 @@ function makeOAuth(overrides: Record<string, unknown> = {}) {
     accessToken: "token-abc",
     accountSub: "sub-1",
     clientId: "client-1",
+    dpopClient,
     dpopKey,
     loginHint: "user@example.com",
     scopes: ["openid"],

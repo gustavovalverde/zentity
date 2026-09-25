@@ -292,6 +292,7 @@ export async function createWalletClient(
       redirect_uris: ["https://wallet.example/cb"],
       token_endpoint_auth_method: "none",
       skip_consent: true,
+      grant_types: ["urn:ietf:params:oauth:grant-type:pre-authorized_code"],
     },
     headers: {
       Cookie: cookieHeader,
@@ -303,6 +304,27 @@ export async function createWalletClient(
   if (!body.client_id) {
     throw new Error("Missing client_id from OAuth client creation");
   }
+  return body.client_id;
+}
+
+const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
+
+export async function registerCibaClient(
+  request: APIRequestContext,
+  labelPrefix = "ciba-e2e"
+) {
+  const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
+    data: {
+      client_name: `${labelPrefix}-${crypto.randomUUID().slice(0, 8)}`,
+      redirect_uris: ["http://localhost/cb"],
+      grant_types: [CIBA_GRANT_TYPE],
+      token_endpoint_auth_method: "none",
+      backchannel_token_delivery_mode: "poll",
+    },
+    headers: ORIGIN_HEADERS,
+  });
+  expect(res.ok()).toBeTruthy();
+  const body = (await res.json()) as { client_id: string };
   return body.client_id;
 }
 

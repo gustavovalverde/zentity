@@ -27,7 +27,8 @@ vi.mock("@/lib/db/connection", () => ({
   },
 }));
 
-vi.mock("@/lib/db/schema/auth", () => ({
+vi.mock("@/lib/db/schema/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/db/schema/auth")>()),
   users: { email: "email", emailVerified: "emailVerified", id: "id" },
 }));
 

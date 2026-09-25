@@ -16,7 +16,7 @@ import {
   type OAuthSessionContext,
   runWithAuth,
 } from "../runtime/auth-context.js";
-import { createServer } from "../server/index.js";
+import { createServer } from "../server.js";
 import {
   getMinimalMcpScopes,
   getRequiredScopesForRemoteRequest,
@@ -190,6 +190,7 @@ export function createApp(): Hono {
       accessToken: exchangedToken,
       accountSub: exchangeResult.accountSub ?? "",
       clientId: httpServerCredentials.clientId,
+      dpopClient: httpServerCredentials.dpopClient,
       dpopKey: httpServerCredentials.dpopKey,
       loginHint: exchangeResult.loginHint ?? "",
       scopes: exchangedScopes,
@@ -223,7 +224,7 @@ export function createApp(): Hono {
     });
     transports.set(newSessionId, { principalKey, transport });
 
-    const { server, cleanup } = createServer("remote");
+    const { server, cleanup } = createServer();
     transport.onclose = async () => {
       transports.delete(newSessionId);
       await cleanup();

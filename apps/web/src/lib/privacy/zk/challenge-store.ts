@@ -57,31 +57,18 @@ function generateNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
-function normalizeBinding(
-  bindingOrUserId?: ChallengeBinding | string
-): ChallengeBinding {
-  if (!bindingOrUserId) {
-    return {};
-  }
-  if (typeof bindingOrUserId === "string") {
-    return { userId: bindingOrUserId };
-  }
-  return bindingOrUserId;
-}
-
 /**
  * Create a new challenge for proof generation
  *
  * @param circuitType - The type of circuit this challenge is for
- * @param userId - Optional user ID to bind the challenge to
+ * @param binding - Optional context to bind the challenge to
  * @returns The created challenge
  */
 export async function createChallenge(
   circuitType: ProofType,
-  bindingOrUserId?: ChallengeBinding | string
+  binding: ChallengeBinding = {}
 ): Promise<Challenge> {
   await cleanupExpiredChallenges();
-  const binding = normalizeBinding(bindingOrUserId);
 
   const now = Date.now();
   const expiresAt = now + CHALLENGE_TTL_MS;
@@ -127,7 +114,7 @@ export async function createChallenge(
  *
  * @param nonce - The nonce from the proof's public inputs
  * @param circuitType - The expected circuit type
- * @param userId - Optional user ID to validate binding
+ * @param binding - Optional context to validate the challenge binding
  * @returns The challenge if valid, null otherwise
  *
  * IMPORTANT: This function consumes the challenge (one-time use)
@@ -135,9 +122,8 @@ export async function createChallenge(
 export async function consumeChallenge(
   nonce: string,
   circuitType: ProofType,
-  bindingOrUserId?: ChallengeBinding | string
+  binding: ChallengeBinding = {}
 ): Promise<Challenge | null> {
-  const binding = normalizeBinding(bindingOrUserId);
   // Cleanup runs during createChallenge(), so we skip it here
   return await db.transaction(async (tx) => {
     const row = await tx

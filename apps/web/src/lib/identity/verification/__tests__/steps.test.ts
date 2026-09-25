@@ -1,4 +1,4 @@
-import type { AccountAssurance } from "@/lib/assurance/types";
+import type { AccountAssurance } from "@/lib/assurance/tier";
 
 import { describe, expect, it } from "vitest";
 

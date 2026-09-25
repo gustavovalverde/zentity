@@ -6,8 +6,11 @@ import {
   jwtVerify,
 } from "jose";
 import type { AccessTokenClaims } from "../protocol/claims";
+import {
+  createDiscoveryResolver,
+  type DiscoveryDocument,
+} from "../protocol/discovery";
 
-const DEFAULT_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1000;
 
 type RemoteJwkSet = ReturnType<typeof createRemoteJWKSet>;
@@ -35,53 +38,8 @@ export interface VerifyAccessTokenOptions extends OpenIdTokenVerifierOptions {
   audience: string | string[];
 }
 
-interface OpenIdMetadata {
-  issuer: string;
-  jwks_uri: string;
-}
-
 function toUrl(value: string | URL): URL {
   return value instanceof URL ? value : new URL(value);
-}
-
-function resolveOpenIdDiscoveryUrl(options: OpenIdTokenVerifierOptions): URL {
-  if (options.discoveryUrl) {
-    return toUrl(options.discoveryUrl);
-  }
-
-  return new URL("/.well-known/openid-configuration", toUrl(options.issuerUrl));
-}
-
-function resolveCacheTtlMs(
-  headers: Headers,
-  fallbackTtlMs: number
-): number | null {
-  const cacheControl = headers.get("cache-control");
-  if (!cacheControl) {
-    return fallbackTtlMs;
-  }
-
-  const directives = cacheControl
-    .split(",")
-    .map((directive) => directive.trim().toLowerCase());
-
-  if (directives.includes("no-store")) {
-    return null;
-  }
-
-  const maxAgeDirective = directives.find((directive) =>
-    directive.startsWith("max-age=")
-  );
-  if (!maxAgeDirective) {
-    return fallbackTtlMs;
-  }
-
-  const maxAgeSeconds = Number(maxAgeDirective.slice("max-age=".length));
-  if (!Number.isFinite(maxAgeSeconds) || maxAgeSeconds < 0) {
-    return fallbackTtlMs;
-  }
-
-  return maxAgeSeconds * 1000;
 }
 
 export function createJwksTokenVerifier(
@@ -124,46 +82,34 @@ export function createJwksTokenVerifier(
 export function createOpenIdTokenVerifier(
   options: OpenIdTokenVerifierOptions
 ): TokenVerifier {
-  let cached:
+  const resolver = createDiscoveryResolver({
+    issuerUrl: options.issuerUrl,
+    ...(options.discoveryUrl ? { discoveryUrl: options.discoveryUrl } : {}),
+    ...(typeof options.discoveryTtlMs === "number"
+      ? { discoveryTtlMs: options.discoveryTtlMs }
+      : {}),
+  });
+  let cachedJwks:
     | {
-        expiresAt: number;
-        issuer: string;
-        jwks: RemoteJwkSet;
+        document: DiscoveryDocument;
+        value: RemoteJwkSet;
       }
     | undefined;
 
-  async function getMetadata() {
-    if (cached && Date.now() < cached.expiresAt) {
-      return cached;
+  async function getVerificationContext() {
+    const document = await resolver.read();
+    if (!document.jwks_uri) {
+      throw new Error("OpenID discovery response missing jwks_uri");
     }
 
-    const response = await fetch(resolveOpenIdDiscoveryUrl(options));
-    if (!response.ok) {
-      throw new Error(
-        `OpenID discovery request failed with HTTP ${response.status}`
-      );
+    if (!cachedJwks || cachedJwks.document !== document) {
+      cachedJwks = {
+        document,
+        value: createRemoteJWKSet(new URL(document.jwks_uri)),
+      };
     }
 
-    const metadata = (await response.json()) as Partial<OpenIdMetadata>;
-    if (
-      typeof metadata.issuer !== "string" ||
-      typeof metadata.jwks_uri !== "string"
-    ) {
-      throw new Error("OpenID discovery response missing issuer or jwks_uri");
-    }
-
-    const ttlMs = resolveCacheTtlMs(
-      response.headers,
-      options.discoveryTtlMs ?? DEFAULT_DISCOVERY_TTL_MS
-    );
-    const value = {
-      expiresAt: Date.now() + (ttlMs ?? 0),
-      issuer: metadata.issuer,
-      jwks: createRemoteJWKSet(new URL(metadata.jwks_uri)),
-    };
-
-    cached = ttlMs && ttlMs > 0 ? value : undefined;
-    return value;
+    return { issuer: document.issuer, jwks: cachedJwks.value };
   }
 
   return {
@@ -171,10 +117,10 @@ export function createOpenIdTokenVerifier(
       token: string,
       verifyOptions: JWTVerifyOptions = {}
     ): Promise<JWTVerifyResult<T>> {
-      const metadata = await getMetadata();
-      return jwtVerify<T>(token, metadata.jwks, {
+      const context = await getVerificationContext();
+      return jwtVerify<T>(token, context.jwks, {
         ...verifyOptions,
-        issuer: metadata.issuer,
+        issuer: context.issuer,
       });
     },
   };

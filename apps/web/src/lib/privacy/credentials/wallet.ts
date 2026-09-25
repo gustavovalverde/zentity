@@ -89,19 +89,6 @@ export function buildKekSignatureTypedData(params: {
 }
 
 /**
- * Convert a hex signature string to Uint8Array.
- * Handles both 0x-prefixed and raw hex strings.
- */
-export function signatureToBytes(signature: string): Uint8Array {
-  const hex = signature.startsWith("0x") ? signature.slice(2) : signature;
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-/**
  * Wrap a DEK using wallet signature-derived KEK.
  *
  * The AAD (Additional Authenticated Data) binds the wrapped DEK to:

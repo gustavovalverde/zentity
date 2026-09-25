@@ -3,6 +3,7 @@ import type { OpaqueClientOptions } from "./types";
 import { client, ready } from "@serenity-kit/opaque";
 
 import { env } from "@/env";
+import { base64UrlToBytes } from "@/lib/privacy/primitives/symmetric";
 
 /**
  * Better-fetch returns { data: T | null, error: E | null }
@@ -104,24 +105,6 @@ async function assertServerPublicKey(
 
 function wrapResult<T>(data: T): Result<T> {
   return { data, error: null };
-}
-
-/** Decode base64url export key from OPAQUE library to Uint8Array */
-function decodeExportKey(base64url: string): Uint8Array {
-  // Convert base64url to standard base64 (atob only accepts standard base64)
-  const base64 = base64url.replaceAll("-", "+").replaceAll("_", "/");
-  // Add padding if needed
-  const padded = base64.padEnd(
-    base64.length + ((4 - (base64.length % 4)) % 4),
-    "="
-  );
-
-  const binary = atob(padded);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.codePointAt(i) ?? 0;
-  }
-  return bytes;
 }
 
 /**
@@ -253,7 +236,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
 
           return wrapResult({
             success: true,
-            exportKey: decodeExportKey(exportKey),
+            exportKey: base64UrlToBytes(exportKey),
           });
         } catch (error) {
           return wrapError(error);
@@ -376,7 +359,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
 
               return wrapResult({
                 ...completeResponse.data,
-                exportKey: decodeExportKey(loginResult.exportKey),
+                exportKey: base64UrlToBytes(loginResult.exportKey),
               });
             } catch (error) {
               return wrapError(error);
@@ -499,7 +482,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
 
               return wrapResult({
                 ...completeResponse.data,
-                exportKey: decodeExportKey(exportKey),
+                exportKey: base64UrlToBytes(exportKey),
               });
             } catch (error) {
               return wrapError(error);
@@ -586,7 +569,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
 
               return wrapResult({
                 success: true,
-                exportKey: decodeExportKey(verifyResult.exportKey),
+                exportKey: base64UrlToBytes(verifyResult.exportKey),
               });
             } catch (error) {
               return wrapError(error);
@@ -687,7 +670,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
               return wrapResult({
                 success: true,
                 exportKey: setPasswordResult.data.exportKey,
-                oldExportKey: decodeExportKey(verifyResult.exportKey),
+                oldExportKey: base64UrlToBytes(verifyResult.exportKey),
               });
             } catch (error) {
               return wrapError(error);
@@ -820,7 +803,7 @@ export const opaqueClient = (options: OpaqueClientOptions = {}) => {
 
               return wrapResult({
                 success: true,
-                exportKey: decodeExportKey(exportKey),
+                exportKey: base64UrlToBytes(exportKey),
               });
             } catch (error) {
               return wrapError(error);

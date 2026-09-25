@@ -63,7 +63,7 @@ interface EncryptedBlob {
 
 const AES_GCM_IV_BYTES = 12;
 
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
 }
 
@@ -164,4 +164,45 @@ export function bytesToBase64Url(bytes: Uint8Array): string {
 
 export function base64UrlToBytes(base64Url: string): Uint8Array {
   return base64ToBytes(normalizeBase64(base64Url));
+}
+
+// ---------------------------------------------------------------------------
+// Hex encoding
+// ---------------------------------------------------------------------------
+
+export function hexToBytes(hex: string): Uint8Array {
+  const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (normalized.length === 0 || normalized.length % 2 !== 0) {
+    throw new Error("Expected even-length hex string");
+  }
+
+  const bytes = new Uint8Array(normalized.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = Number.parseInt(normalized.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+export function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (const byte of bytes) {
+    hex += byte.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+// ---------------------------------------------------------------------------
+// SHA-256 (WebCrypto, isomorphic)
+// ---------------------------------------------------------------------------
+
+export async function sha256Bytes(
+  input: Uint8Array | string
+): Promise<Uint8Array> {
+  const bytes = typeof input === "string" ? textEncoder.encode(input) : input;
+  const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes));
+  return new Uint8Array(digest);
+}
+
+export async function sha256Hex(input: Uint8Array | string): Promise<string> {
+  return bytesToHex(await sha256Bytes(input));
 }

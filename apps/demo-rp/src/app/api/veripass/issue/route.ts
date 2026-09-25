@@ -1,8 +1,4 @@
-import {
-  createDpopClient,
-  encodeBase64Url,
-  encodeStringBase64Url,
-} from "@zentity/sdk/rp";
+import { createDpopClient, requestTokenEndpoint } from "@zentity/sdk/rp";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -88,56 +84,29 @@ export async function POST(request: Request) {
     const credentialUrl = `${offer.credential_issuer}/oidc4vci/credential`;
 
     // 1. Exchange pre-authorized code for token (with DPoP)
-    const tokenBody = new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:pre-authorized_code",
-      "pre-authorized_code": grant["pre-authorized_code"],
-      client_id: env.OIDC4VCI_WALLET_CLIENT_ID,
-    });
-
-    const { response: tokenRes, result: tokenData } = await dpop.withNonceRetry(
-      async (nonce) => {
-        const dpopProof = await dpop.proofFor(
-          "POST",
-          tokenUrl,
-          undefined,
-          nonce
-        );
-        const response = await fetch(tokenUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            DPoP: dpopProof,
-          },
-          body: tokenBody,
-        });
-        if (
-          !response.ok &&
-          response.status !== 400 &&
-          response.status !== 401
-        ) {
-          const text = await response.text();
-          throw new Error(`Token exchange failed: ${response.status} ${text}`);
-        }
-        const result = response.ok
-          ? ((await response.json()) as {
-              access_token: string;
-              c_nonce: string;
-            })
-          : ({ access_token: "", c_nonce: "" } as {
-              access_token: string;
-              c_nonce: string;
-            });
-        return { response, result };
-      }
+    const { response: tokenRes, body: tokenBody } = await requestTokenEndpoint(
+      dpop,
+      tokenUrl,
+      new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:pre-authorized_code",
+        "pre-authorized_code": grant["pre-authorized_code"],
+        client_id: env.OIDC4VCI_WALLET_CLIENT_ID,
+      })
     );
 
     if (!tokenRes.ok) {
-      const text = await tokenRes.text().catch(() => "");
       return NextResponse.json(
-        { error: `Token exchange failed: ${tokenRes.status} ${text}` },
+        {
+          error: `Token exchange failed: ${tokenRes.status} ${JSON.stringify(tokenBody ?? {})}`,
+        },
         { status: 502 }
       );
     }
+
+    const tokenData = (tokenBody ?? {}) as {
+      access_token: string;
+      c_nonce: string;
+    };
 
     // 2. Generate holder key pair (EdDSA / Ed25519)
     const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
@@ -254,15 +223,15 @@ async function createProofJwt(
     iat: Math.floor(Date.now() / 1000),
   };
 
-  const headerB64 = encodeStringBase64Url(JSON.stringify(header));
-  const payloadB64 = encodeStringBase64Url(JSON.stringify(payload));
+  const headerB64 = Buffer.from(JSON.stringify(header)).toString("base64url");
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
   const signature = await crypto.subtle.sign(
     "Ed25519",
     holderPrivateKey,
     signingInput
   );
-  const sigB64 = encodeBase64Url(new Uint8Array(signature));
+  const sigB64 = Buffer.from(new Uint8Array(signature)).toString("base64url");
 
   return `${headerB64}.${payloadB64}.${sigB64}`;
 }

@@ -6,7 +6,7 @@
  * server component (to seed the step) and the client stepper hook.
  */
 
-import type { AccountAssurance } from "@/lib/assurance/types";
+import type { AccountAssurance } from "@/lib/assurance/tier";
 
 export type VerificationStep =
   | "enrollment"

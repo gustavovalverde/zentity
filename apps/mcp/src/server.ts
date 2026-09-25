@@ -1,15 +1,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerTools } from "../tools/index.js";
+import { registerCheckComplianceTool } from "./tools/check-compliance.js";
+import { registerMyProfileTool } from "./tools/my-profile.js";
+import { registerMyProofsTool } from "./tools/my-proofs.js";
+import { registerPurchaseTool } from "./tools/purchase.js";
+import { registerWhoamiTool } from "./tools/whoami.js";
 
 const VERSION = "0.1.0";
 
-type ServerSurface = "full" | "remote";
-
-export function createServer(surface?: ServerSurface): {
-  server: McpServer;
-  cleanup: () => Promise<void>;
-};
-export function createServer(_surface: ServerSurface = "full"): {
+export function createServer(): {
   server: McpServer;
   cleanup: () => Promise<void>;
 } {
@@ -28,7 +26,11 @@ export function createServer(_surface: ServerSurface = "full"): {
     }
   );
 
-  registerTools(server);
+  registerCheckComplianceTool(server);
+  registerMyProfileTool(server);
+  registerMyProofsTool(server);
+  registerPurchaseTool(server);
+  registerWhoamiTool(server);
 
   const cleanup = async () => {
     await server.close();

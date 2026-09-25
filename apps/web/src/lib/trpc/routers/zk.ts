@@ -58,8 +58,13 @@ import {
   getVerificationReadModel,
 } from "@/lib/identity/verification/read-model";
 import { withSpan } from "@/lib/observability/telemetry";
-import { createPresentation } from "@/lib/privacy/bbs/holder";
-import { deriveBbsKeyPair } from "@/lib/privacy/bbs/keygen";
+import {
+  createPresentation,
+  createWalletCredential,
+  deriveBbsKeyPair,
+  verifyPresentation as verifyBbsPresentation,
+  verifyCredential,
+} from "@/lib/privacy/bbs/credential";
 import {
   deserializeCredential,
   deserializePresentation,
@@ -67,13 +72,8 @@ import {
   type SerializedBbsPresentation,
   serializeCredential,
   serializePresentation,
-} from "@/lib/privacy/bbs/serialization";
-import {
-  createWalletCredential,
-  verifyCredential,
-} from "@/lib/privacy/bbs/signer";
-import { WALLET_CREDENTIAL_CLAIM_ORDER } from "@/lib/privacy/bbs/types";
-import { verifyPresentation as verifyBbsPresentation } from "@/lib/privacy/bbs/verifier";
+  WALLET_CREDENTIAL_CLAIM_ORDER,
+} from "@/lib/privacy/bbs/wire";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 import { bytesToBase64 } from "@/lib/privacy/primitives/symmetric";
 import { verifyAttestationClaim } from "@/lib/privacy/zk/attestation-claims";

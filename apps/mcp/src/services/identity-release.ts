@@ -1,16 +1,3 @@
-import { config } from "../config.js";
-import { signAgentAssertion } from "../runtime/agent-registration.js";
-import {
-  getOAuthContext,
-  requireAuth,
-  requireRuntimeState,
-  tryGetRuntimeState,
-} from "../runtime/auth-context.js";
-import {
-  createDpopProof,
-  type DpopKeyPair,
-  extractDpopNonce,
-} from "../runtime/dpop-proof.js";
 import {
   beginCibaApproval,
   type CibaPendingApproval,
@@ -19,7 +6,16 @@ import {
   logPendingApprovalHandoff,
   pollCibaTokenOnce,
   requestCibaApproval,
-} from "./ciba.js";
+} from "@zentity/sdk";
+import type { DpopClient } from "@zentity/sdk/rp";
+import { config } from "../config.js";
+import { signAgentAssertion } from "../runtime/agent-registration.js";
+import {
+  getOAuthContext,
+  requireAuth,
+  requireRuntimeState,
+  tryGetRuntimeState,
+} from "../runtime/auth-context.js";
 
 export interface IdentityClaims {
   address?: string | Record<string, unknown>;
@@ -84,7 +80,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
     tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
     clientId: oauth.clientId,
-    dpopKey: oauth.dpopKey,
+    dpopSigner: oauth.dpopClient,
     loginHint: oauth.loginHint,
     scope: "openid identity.name identity.address",
     bindingMessage,
@@ -93,7 +89,7 @@ export async function getIdentity(): Promise<IdentityClaims | null> {
     onPendingApproval: logPendingApprovalHandoff,
   });
 
-  const claims = await redeemRelease(tokenSet.accessToken, oauth.dpopKey);
+  const claims = await redeemRelease(tokenSet.accessToken, oauth.dpopClient);
   if (!claims) {
     return null;
   }
@@ -148,7 +144,7 @@ async function resolvePendingIdentity(
   tokenEndpoint: string
 ): Promise<IdentityResolution> {
   const pollResult = await pollCibaTokenOnce(
-    { clientId: oauth.clientId, dpopKey: oauth.dpopKey, tokenEndpoint },
+    { clientId: oauth.clientId, dpopSigner: oauth.dpopClient, tokenEndpoint },
     pending.pendingAuthorization
   );
 
@@ -156,7 +152,7 @@ async function resolvePendingIdentity(
     pendingIdentityCache.delete(userId);
     const claims = await redeemRelease(
       pollResult.tokenSet.accessToken,
-      oauth.dpopKey
+      oauth.dpopClient
     );
     if (claims) {
       identityCache.set(userId, {
@@ -215,7 +211,7 @@ async function initiateCibaIdentityUnlock(
     cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
     tokenEndpoint,
     clientId: oauth.clientId,
-    dpopKey: oauth.dpopKey,
+    dpopSigner: oauth.dpopClient,
     loginHint,
     scope,
     bindingMessage,
@@ -240,48 +236,29 @@ async function initiateCibaIdentityUnlock(
  */
 export function redeemRelease(
   cibaAccessToken: string,
-  dpopKey: DpopKeyPair
+  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">
 ): Promise<IdentityClaims | null> {
   const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
-  return redeemViaDpop(userinfoUrl, cibaAccessToken, dpopKey);
+  return redeemViaDpop(userinfoUrl, cibaAccessToken, dpopClient);
 }
 
 async function redeemViaDpop(
   userinfoUrl: string,
   cibaAccessToken: string,
-  dpopKey: DpopKeyPair
+  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">
 ): Promise<IdentityClaims | null> {
-  let dpopNonce: string | undefined;
-
-  let proof = await createDpopProof(
-    dpopKey,
-    "GET",
-    userinfoUrl,
-    cibaAccessToken,
-    dpopNonce
-  );
-  let response = await fetch(userinfoUrl, {
-    headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
-  });
-
-  const nonce = extractDpopNonce(response);
-  if (
-    nonce &&
-    dpopNonce !== nonce &&
-    (response.status === 400 || response.status === 401)
-  ) {
-    dpopNonce = nonce;
-    proof = await createDpopProof(
-      dpopKey,
+  const { response } = await dpopClient.withNonceRetry(async (nonce) => {
+    const proof = await dpopClient.proofFor(
       "GET",
       userinfoUrl,
       cibaAccessToken,
-      dpopNonce
+      nonce
     );
-    response = await fetch(userinfoUrl, {
+    const attemptResponse = await fetch(userinfoUrl, {
       headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
     });
-  }
+    return { response: attemptResponse, result: null };
+  });
 
   return parseUserinfoResponse(response);
 }

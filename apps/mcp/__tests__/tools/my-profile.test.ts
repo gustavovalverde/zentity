@@ -8,7 +8,7 @@ vi.mock("../../src/services/profile-read.js", () => ({
   readProfile: (...args: unknown[]) => mockReadProfile(...args),
 }));
 
-import { createServer } from "../../src/server/index.js";
+import { createServer } from "../../src/server.js";
 
 describe("my_profile", () => {
   beforeEach(() => {

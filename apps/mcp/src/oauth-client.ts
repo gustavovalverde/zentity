@@ -6,10 +6,13 @@ import {
   createInstalledClientAuth,
   type InstalledClientAuth,
   type InstalledClientCredentials,
-  type InstalledOAuthSession,
   normalizeUrl,
 } from "@zentity/sdk/node";
 import { config } from "./config.js";
+import {
+  type OAuthSessionContext,
+  withDpopClient,
+} from "./runtime/auth-context.js";
 import { RUNTIME_BOOTSTRAP_SCOPES } from "./runtime/bootstrap-scopes.js";
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
@@ -102,8 +105,8 @@ export function ensureMcpOAuthClientCredentials(options?: {
   return getMcpInstalledClientAuth().ensureClientCredentials(options);
 }
 
-export function ensureMcpOAuthSession(): Promise<InstalledOAuthSession> {
-  return getMcpInstalledClientAuth().ensureOAuthSession();
+export async function ensureMcpOAuthSession(): Promise<OAuthSessionContext> {
+  return withDpopClient(await getMcpInstalledClientAuth().ensureOAuthSession());
 }
 
 export function getCachedMcpOAuthIssuer(): string | undefined {
@@ -114,6 +117,8 @@ export function getCachedMcpOAuthJwksUri(): string | undefined {
   return getMcpInstalledClientAuth().getCachedJwksUri();
 }
 
-export function refreshMcpOAuthSession(): Promise<InstalledOAuthSession> {
-  return getMcpInstalledClientAuth().refreshOAuthSession();
+export async function refreshMcpOAuthSession(): Promise<OAuthSessionContext> {
+  return withDpopClient(
+    await getMcpInstalledClientAuth().refreshOAuthSession()
+  );
 }

@@ -2,7 +2,7 @@
  * Integration tests for attestation router.
  */
 
-import type { SecurityPosture } from "@/lib/assurance/types";
+import type { SecurityPosture } from "@/lib/assurance/tier";
 import type { Session } from "@/lib/auth/auth-config";
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";

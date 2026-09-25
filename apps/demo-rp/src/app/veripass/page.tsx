@@ -10,11 +10,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
-import { ClaimList } from "@/components/veripass/claim-list";
-import { CredentialCard } from "@/components/veripass/credential-card";
-import { PresentationResult } from "@/components/veripass/presentation-result";
-import { VerifierScenarios } from "@/components/veripass/verifier-scenarios";
-import { VeriPassHeader } from "@/components/veripass/veripass-header";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
 import { env } from "@/lib/env";
 import {
@@ -29,6 +24,11 @@ import {
 } from "@/lib/wallet";
 import type { VerifierScenario } from "@/scenarios/veripass/verifier-scenario";
 import { veripassWalletScenario } from "@/scenarios/veripass/wallet";
+import { ClaimList } from "./_components/claim-list";
+import { CredentialCard } from "./_components/credential-card";
+import { PresentationResult } from "./_components/presentation-result";
+import { VerifierScenarios } from "./_components/verifier-scenarios";
+import { VeriPassHeader } from "./_components/veripass-header";
 
 const scenario = veripassWalletScenario;
 

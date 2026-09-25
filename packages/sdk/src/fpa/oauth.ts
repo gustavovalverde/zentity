@@ -1,5 +1,6 @@
 import { decodeJwt } from "jose";
 import type { DpopClient } from "../rp/dpop-client";
+import { requestTokenEndpoint } from "../rp/token-request";
 import { fetchUserInfo } from "../rp/userinfo";
 
 export interface ExchangeAuthorizationCodeOptions {
@@ -73,23 +74,11 @@ async function requestToken(
   tokenEndpoint: string,
   body: URLSearchParams
 ): Promise<TokenResponse> {
-  const { response } = await dpopClient.withNonceRetry(async (nonce) => {
-    const proof = await dpopClient.proofFor(
-      "POST",
-      tokenEndpoint,
-      undefined,
-      nonce
-    );
-    const response = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body,
-    });
-    return { response, result: null };
-  });
+  const { response, body: responseBody } = await requestTokenEndpoint(
+    dpopClient,
+    tokenEndpoint,
+    body
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -97,7 +86,7 @@ async function requestToken(
     );
   }
 
-  return (await response.json()) as TokenResponse;
+  return responseBody as TokenResponse;
 }
 
 export async function resolveOAuthIdentity(

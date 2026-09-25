@@ -21,8 +21,11 @@ import { asyncHandler, reportRejection } from "@/lib/async-handler";
 
 /** Matches a valid Ethereum address (0x followed by 40 hex characters) */
 const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
+const TOKEN_DECIMALS = 18;
 
 import { useEffect, useState } from "react";
+import { parseUnits } from "viem";
 import { useBalance, useChainId } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -42,7 +45,6 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useConfidentialTransfer } from "@/lib/blockchain/confidential/token-transfer";
-import { parseTokenAmount } from "@/lib/blockchain/token-utils";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
 import { trpcReact } from "@/lib/trpc/client";
@@ -126,8 +128,10 @@ export function TransferForm({
     if (!trimmed) {
       return "Amount is required";
     }
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isNaN(parsed) || parsed <= 0) {
+    if (
+      !DECIMAL_AMOUNT_PATTERN.test(trimmed) ||
+      Number.parseFloat(trimmed) <= 0
+    ) {
       return "Amount must be greater than 0";
     }
     return null;
@@ -158,7 +162,7 @@ export function TransferForm({
 
     await transfer(
       trimmedRecipient as `0x${string}`,
-      parseTokenAmount(trimmedAmount)
+      parseUnits(trimmedAmount, TOKEN_DECIMALS)
     );
   };
 

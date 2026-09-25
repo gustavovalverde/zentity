@@ -12,10 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import {
-  buildKekSignatureTypedData,
-  signatureToBytes,
-} from "@/lib/privacy/credentials/wallet";
+import { buildKekSignatureTypedData } from "@/lib/privacy/credentials/wallet";
+import { hexToBytes } from "@/lib/privacy/primitives/symmetric";
 import {
   getStoredProfile,
   getStoredProfileWithCredential,
@@ -274,7 +272,7 @@ export function WalletVaultUnlockButton({
         );
       }
 
-      const signatureBytes = signatureToBytes(signature1);
+      const signatureBytes = hexToBytes(signature1);
 
       const profile = await getStoredProfileWithCredential({
         type: "wallet",

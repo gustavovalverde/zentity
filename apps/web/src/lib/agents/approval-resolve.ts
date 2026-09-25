@@ -1,3 +1,5 @@
+import type { AuthorizationDetail } from "./capability";
+
 import { and, eq } from "drizzle-orm";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
@@ -5,6 +7,8 @@ import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
+
+export type { AuthorizationDetail } from "./capability";
 
 export interface AgentIdentitySummary {
   model?: string;
@@ -17,14 +21,6 @@ export interface RegisteredAgentInfo {
   attestationTier: string;
   hostName: string;
   sessionId: string;
-}
-
-export interface AuthorizationDetail {
-  amount?: { currency?: string; value?: string };
-  item?: string;
-  merchant?: string;
-  type?: string;
-  [key: string]: unknown;
 }
 
 export interface CibaRequestDetails {

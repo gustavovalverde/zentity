@@ -9,7 +9,12 @@
  * Credential material is NEVER cached — each operation prompts for fresh material.
  */
 
-import type { EnrollmentCredential, EnvelopeFormat, SecretType } from "./types";
+import type {
+  EnrollmentCredential,
+  EnvelopeFormat,
+  KekSource,
+  SecretType,
+} from "./catalog";
 
 import { authClient } from "@/lib/auth/auth-client";
 import { evaluatePrf } from "@/lib/auth/passkey/prf";
@@ -49,7 +54,7 @@ import { decryptWithDek, encryptWithDek, generateDek } from "./envelope";
 import { downloadSecretBlob, uploadSecretBlob } from "./storage";
 
 // Re-export types
-export type { EnrollmentCredential } from "./types";
+export type { EnrollmentCredential } from "./catalog";
 
 const ENVELOPE_FORMAT_METADATA_KEY = "envelopeFormat";
 
@@ -214,7 +219,7 @@ export async function storeSecretWithCredential(params: {
   let wrappedDek: string;
   let credentialId: string;
   let prfSalt: string | undefined;
-  let kekSource: "prf" | "opaque" | "wallet" | "recovery";
+  let kekSource: KekSource;
 
   if (params.credential.type === "passkey") {
     const ctx = params.credential.context;

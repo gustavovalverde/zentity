@@ -4,7 +4,6 @@ import crypto from "node:crypto";
 
 import { after } from "next/server";
 
-import { isFheComplete } from "@/lib/assurance/compute";
 import {
   getAccountIdentity,
   getIdentityBundleByUserId,
@@ -15,7 +14,10 @@ import {
   getLatestEncryptedAttributeByUserAndType,
   insertEncryptedAttribute,
 } from "@/lib/db/queries/privacy";
-import { complianceOnchainTier } from "@/lib/identity/verification/compliance";
+import {
+  complianceOnchainTier,
+  isFheComplete,
+} from "@/lib/identity/verification/compliance";
 import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 import { logger } from "@/lib/logging/logger";
 import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";

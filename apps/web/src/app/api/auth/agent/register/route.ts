@@ -13,6 +13,11 @@ import {
   seedSessionGrantsFromHostPolicies,
 } from "@/lib/agents/approval-evaluate";
 import {
+  ATTESTED_HOST_POLICY_CAPABILITIES,
+  DEFAULT_HOST_POLICY_CAPABILITIES,
+  ensureCapabilitiesSeeded,
+} from "@/lib/agents/capability";
+import {
   AGENT_SESSION_REGISTER_SCOPE,
   registerSessionRequestSchema,
 } from "@/lib/agents/session";
@@ -20,11 +25,6 @@ import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { requireBootstrapAccessToken } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
-import {
-  ATTESTED_HOST_POLICY_CAPABILITIES,
-  DEFAULT_HOST_POLICY_CAPABILITIES,
-  ensureCapabilitiesSeeded,
-} from "@/lib/db/seed";
 
 export const runtime = "nodejs";
 

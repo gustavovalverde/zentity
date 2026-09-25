@@ -3,6 +3,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mockOAuthContext = {
   accessToken: "test-token",
   clientId: "test-client",
+  dpopClient: {
+    proofFor: vi.fn().mockResolvedValue("mock-proof"),
+    withNonceRetry: async (
+      attempt: (nonce?: string) => Promise<{ response: Response }>
+    ) => {
+      const initial = await attempt();
+      if (initial.response.status !== 400 && initial.response.status !== 401) {
+        return initial;
+      }
+      const nonce = initial.response.headers.get("DPoP-Nonce");
+      return nonce ? attempt(nonce) : initial;
+    },
+  },
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
@@ -23,27 +36,15 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/runtime/dpop-proof.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
-}));
-
 vi.mock("../../src/runtime/auth-context.js", () => ({
   getAuthContext: () => mockAuthContext,
   getOAuthContext: () => mockOAuthContext,
   requireAuth: () => Promise.resolve(mockAuthContext),
 }));
 
-vi.mock("../../src/services/ciba.js", () => ({
-  CibaDeniedError: class extends Error {},
-  CibaTimeoutError: class extends Error {},
-  logPendingApprovalHandoff: vi.fn(),
-  requestCibaApproval: vi.fn(),
-}));
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "../../src/server/index.js";
+import { createServer } from "../../src/server.js";
 
 describe("my_proofs", () => {
   afterEach(() => {

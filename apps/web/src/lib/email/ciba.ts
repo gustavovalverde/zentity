@@ -2,6 +2,10 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 
+import {
+  type AuthorizationDetail,
+  normalizeAuthorizationDetails,
+} from "@/lib/agents/capability";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 
@@ -14,14 +18,6 @@ import {
 
 function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
-}
-
-interface AuthorizationDetail {
-  amount?: { currency?: string; value?: string };
-  item?: string;
-  merchant?: string;
-  type?: string;
-  [key: string]: unknown;
 }
 
 function formatAuthorizationDetailsText(
@@ -60,17 +56,6 @@ ${d.merchant ? `<p style="margin:0;color:#6b7280;font-size:13px;">Merchant: ${d.
 </div>`;
     })
     .join("");
-}
-
-function parseAuthorizationDetails(raw: unknown): AuthorizationDetail[] | null {
-  if (!raw) {
-    return null;
-  }
-  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    return null;
-  }
-  return parsed as AuthorizationDetail[];
 }
 
 interface AgentIdentity {
@@ -159,16 +144,19 @@ export async function sendCibaNotification(params: {
     ? `${clientLabel} wants to ${params.bindingMessage}`
     : `${clientLabel} is requesting access`;
 
-  const parsedDetails = parseAuthorizationDetails(params.authorizationDetails);
+  const parsedDetails = normalizeAuthorizationDetails(
+    params.authorizationDetails
+  );
   const agent = params.registeredAgent ?? null;
 
   const agentLine = agent ? `\n${formatAgentText(agent)}\n` : "";
   const bindingLine = params.bindingMessage
     ? `\nMessage: "${params.bindingMessage}"\n`
     : "";
-  const detailsLine = parsedDetails
-    ? `\nAuthorization Details:\n${formatAuthorizationDetailsText(parsedDetails)}\n`
-    : "";
+  const detailsLine =
+    parsedDetails.length > 0
+      ? `\nAuthorization Details:\n${formatAuthorizationDetailsText(parsedDetails)}\n`
+      : "";
 
   const text = `${clientLabel} is requesting access to your account.\n\nScopes: ${scopeList}${agentLine}${bindingLine}${detailsLine}\nApprove or deny: ${params.approvalUrl}\n\nIf you did not expect this request, you can safely ignore it.`;
 
@@ -176,9 +164,10 @@ export async function sendCibaNotification(params: {
   const bindingHtml = params.bindingMessage
     ? `<p style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:16px 0;font-style:italic;">"${params.bindingMessage}"</p>`
     : "";
-  const detailsHtml = parsedDetails
-    ? formatAuthorizationDetailsHtml(parsedDetails)
-    : "";
+  const detailsHtml =
+    parsedDetails.length > 0
+      ? formatAuthorizationDetailsHtml(parsedDetails)
+      : "";
 
   const html = `<div style="font-family:system-ui,sans-serif;max-width:480px;margin:0 auto;">
 <h2 style="margin-bottom:4px;">${clientLabel}</h2>

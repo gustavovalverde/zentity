@@ -6,7 +6,7 @@ import { logger } from "@/lib/logging/logger";
 
 import { ingestChainValidityEvents } from "./chain-ingest";
 import { deliverPendingValidityDeliveries } from "./delivery";
-import { markDueIdentitiesStale } from "./freshness-worker";
+import { markDueIdentitiesStale } from "./freshness";
 
 /**
  * In-process scheduler for the validity-event pipeline.

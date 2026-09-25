@@ -57,18 +57,7 @@ const requestSchema = z.object({
   amountMinorUnits: z.number().int().nonnegative(),
 });
 
-const BASE64_PAD_RE = /=+$/;
-const BASE64_PLUS_RE = /\+/g;
-const BASE64_SLASH_RE = /\//g;
 const REGISTRY_UNKNOWN_RE = /payee_id is not registered/i;
-
-function base64url(bytes: Buffer): string {
-  return bytes
-    .toString("base64")
-    .replace(BASE64_PAD_RE, "")
-    .replace(BASE64_PLUS_RE, "-")
-    .replace(BASE64_SLASH_RE, "_");
-}
 
 function deriveIdempotencyKey(input: {
   userEmail: string;
@@ -77,7 +66,7 @@ function deriveIdempotencyKey(input: {
   amountMinorUnits: number;
 }): string {
   const canonical = `${input.userEmail}:${input.taskId}:${input.itemId}:${input.amountMinorUnits}`;
-  return base64url(createHash("sha256").update(canonical).digest());
+  return createHash("sha256").update(canonical).digest("base64url");
 }
 
 export async function POST(request: Request) {

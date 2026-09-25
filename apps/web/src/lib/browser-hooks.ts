@@ -18,7 +18,7 @@ const MACINTOSH_PATTERN = /Macintosh/i;
  * True on viewports narrower than 768px. Returns `undefined` during SSR so
  * callers can render a loading state and avoid desktop→mobile layout flash.
  */
-export function useIsMobile(): boolean | undefined {
+export function useIsMobileViewport(): boolean | undefined {
   const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
 
   useEffect(() => {
@@ -32,6 +32,26 @@ export function useIsMobile(): boolean | undefined {
     setIsMobile(globalThis.window.innerWidth < MOBILE_BREAKPOINT);
     return () => mql.removeEventListener("change", onChange);
   }, []);
+
+  return isMobile;
+}
+
+/**
+ * True when the user agent (or a touch-capable iPad reporting as Macintosh)
+ * is a mobile device. Resolved once on mount so deep-link targets render
+ * without a desktop→mobile flash.
+ */
+export function useIsMobileDevice(): boolean {
+  const [isMobile] = useState(() => {
+    if (typeof navigator === "undefined") {
+      return false;
+    }
+    return (
+      MOBILE_DEVICE_PATTERN.test(navigator.userAgent) ||
+      (navigator.maxTouchPoints > 1 &&
+        MACINTOSH_PATTERN.test(navigator.userAgent))
+    );
+  });
 
   return isMobile;
 }

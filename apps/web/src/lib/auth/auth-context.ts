@@ -4,7 +4,7 @@ import type {
   AuthenticationSourceKind,
   AuthenticationState,
   LoginMethod,
-} from "@/lib/assurance/types";
+} from "@/lib/assurance/tier";
 import type {
   AuthenticationContext,
   NewAuthenticationContext,
@@ -12,11 +12,8 @@ import type {
 
 import { desc, eq } from "drizzle-orm";
 
-import {
-  deriveAuthStrength,
-  isValidLoginMethod,
-} from "@/lib/assurance/compute";
 import { loginMethodToAmr } from "@/lib/assurance/oidc-claims";
+import { deriveAuthStrength, isValidLoginMethod } from "@/lib/assurance/tier";
 import { db } from "@/lib/db/connection";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";

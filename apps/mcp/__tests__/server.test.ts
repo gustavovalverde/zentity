@@ -1,7 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { describe, expect, it } from "vitest";
-import { createServer } from "../src/server/index.js";
+import { createServer } from "../src/server.js";
 
 describe("createServer", () => {
   it("returns server and cleanup function", () => {

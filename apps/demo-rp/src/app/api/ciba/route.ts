@@ -4,6 +4,7 @@ import {
   createDpopClient,
   type DpopClient,
   fetchUserInfo,
+  requestTokenEndpoint,
 } from "@zentity/sdk/rp";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
@@ -122,19 +123,12 @@ async function fetchTokenWithDpop(
   params: Record<string, string>
 ): Promise<{ body: unknown; dpop: DpopClient; status: number }> {
   const dpop = await createDpopClient();
-  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
-    const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body: new URLSearchParams(params),
-    });
-    return { response, result: await response.json() };
-  });
-  return { body: result, dpop, status: response.status };
+  const { body, response } = await requestTokenEndpoint(
+    dpop,
+    tokenUrl,
+    new URLSearchParams(params)
+  );
+  return { body, dpop, status: response.status };
 }
 
 export async function POST(request: Request) {

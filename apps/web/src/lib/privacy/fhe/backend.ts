@@ -5,7 +5,12 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { decode, encode } from "@msgpack/msgpack";
 
 import { env } from "@/env";
-import { HttpError } from "@/lib/http/fetch";
+import {
+  fetchWithTimeout,
+  HttpError,
+  safeReadBodyText,
+  TimeoutError,
+} from "@/lib/http/fetch";
 import {
   recordFheDuration,
   recordFhePayloadBytes,
@@ -63,26 +68,6 @@ export class FheServiceError extends Error {
   }
 }
 
-async function safeReadBodyText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
-}
-
-class TimeoutError extends Error {
-  readonly url: string;
-  readonly timeoutMs: number;
-
-  constructor(url: string, timeoutMs: number) {
-    super(`Request timed out after ${timeoutMs}ms`);
-    this.name = "TimeoutError";
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-  }
-}
-
 interface FetchMsgpackOptions extends RequestInit {
   timeoutMs?: number;
 }
@@ -97,24 +82,11 @@ async function fetchMsgpack<T>(
   const encoded = payload instanceof Uint8Array ? payload : encode(payload);
   const compressed = gzipSync(encoded);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...fetchInit,
-      signal: controller.signal,
-      body: compressed,
-    });
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new TimeoutError(url, timeoutMs);
-    }
-    throw error;
-  }
-  clearTimeout(timeoutId);
+  const response = await fetchWithTimeout(
+    url,
+    { ...fetchInit, body: compressed },
+    timeoutMs
+  );
 
   if (!response.ok) {
     const bodyText = await safeReadBodyText(response);
@@ -182,7 +154,7 @@ async function withFheError<T>(
         bodyText: error.bodyText,
       });
     }
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (error instanceof TimeoutError) {
       recordFheDuration(durationMs, {
         operation,
         result: "error",
@@ -224,10 +196,6 @@ interface FheBatchEncryptResponse {
   /** Encrypted DOB days (days since 1900-01-01, UTC) */
   dobDaysCiphertext?: Uint8Array | null;
   livenessScoreCiphertext?: Uint8Array | null;
-}
-
-interface FheVerifyAgeResult {
-  resultCiphertext: Uint8Array;
 }
 
 interface FheRegisterKeyResult {
@@ -311,48 +279,6 @@ export function registerFheKey(args: {
       },
       () =>
         fetchMsgpack<FheRegisterKeyResult>(url, encoded, {
-          method: "POST",
-          headers: buildMsgpackHeaders(
-            getInternalServiceAuthHeaders(args.requestId, args.flowId)
-          ),
-        })
-    )
-  );
-}
-
-/**
- * Verify age using DOB days format.
- */
-export function verifyAgeFromDobFhe(args: {
-  ciphertext: Uint8Array;
-  currentDays: number;
-  minAge: number;
-  keyId: string;
-  requestId?: string | undefined;
-  flowId?: string | undefined;
-}): Promise<FheVerifyAgeResult> {
-  const url = `${env.FHE_SERVICE_URL}/verify-age-from-dob`;
-  const payload = {
-    ciphertext: args.ciphertext,
-    currentDays: args.currentDays,
-    minAge: args.minAge,
-    keyId: args.keyId,
-  };
-  const encoded = encode(payload);
-  const payloadBytes = encoded.byteLength;
-  const ciphertextBytes = args.ciphertext.byteLength;
-  recordFhePayloadBytes(payloadBytes, { operation: "verify_age_from_dob" });
-  return withFheError("verify_age_from_dob", () =>
-    withSpan(
-      "fhe.verify_age_from_dob",
-      {
-        "fhe.operation": "verify_age_from_dob",
-        "fhe.request_bytes": payloadBytes,
-        "fhe.ciphertext_bytes": ciphertextBytes,
-        "fhe.key_id_hash": hashIdentifier(args.keyId),
-      },
-      () =>
-        fetchMsgpack<FheVerifyAgeResult>(url, encoded, {
           method: "POST",
           headers: buildMsgpackHeaders(
             getInternalServiceAuthHeaders(args.requestId, args.flowId)

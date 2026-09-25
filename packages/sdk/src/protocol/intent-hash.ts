@@ -32,6 +32,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { base64url } from "jose";
 
 export const INTENT_HASH_DOMAIN_SEPARATOR = "zentity.payauth.v1";
 export const INTENT_HASH_WIRE_PREFIX = "v1:sha256:";
@@ -85,7 +86,7 @@ export function intentHashToWireString(digest: Uint8Array): string {
 			`expected 32 bytes, got ${digest.length}`,
 		);
 	}
-	return INTENT_HASH_WIRE_PREFIX + base64urlNoPad(digest);
+	return INTENT_HASH_WIRE_PREFIX + base64url.encode(digest);
 }
 
 export function intentHashFromWireString(s: string): Uint8Array {
@@ -96,9 +97,9 @@ export function intentHashFromWireString(s: string): Uint8Array {
 		);
 	}
 	const encoded = s.slice(INTENT_HASH_WIRE_PREFIX.length);
-	let raw: Buffer;
+	let raw: Uint8Array;
 	try {
-		raw = Buffer.from(addBase64UrlPadding(encoded), "base64");
+		raw = base64url.decode(encoded);
 	} catch (err) {
 		throw new IntentHashError(
 			"payload-invalid",
@@ -136,24 +137,6 @@ function u64BigEndian(value: number | bigint): Buffer {
 
 function amountUnitByte(unit: AmountUnit): number {
 	return unit === "base" ? 0x00 : 0x01;
-}
-
-const BASE64URL_REPLACE = /[+/=]/g;
-const BASE64URL_REPLACEMENTS = { "+": "-", "/": "_", "=": "" } as const;
-
-function base64urlNoPad(bytes: Uint8Array): string {
-	return Buffer.from(bytes)
-		.toString("base64")
-		.replace(
-			BASE64URL_REPLACE,
-			(ch) => BASE64URL_REPLACEMENTS[ch as keyof typeof BASE64URL_REPLACEMENTS],
-		);
-}
-
-function addBase64UrlPadding(s: string): string {
-	const padded = s.replace(/-/g, "+").replace(/_/g, "/");
-	const remainder = padded.length % 4;
-	return remainder === 0 ? padded : padded + "=".repeat(4 - remainder);
 }
 
 export const ZCASH_TESTNET_MINIMAL_VECTOR = {

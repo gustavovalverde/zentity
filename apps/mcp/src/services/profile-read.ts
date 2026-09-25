@@ -191,7 +191,7 @@ export async function readProfile(input: {
       cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: oauth.clientId,
-      dpopKey: oauth.dpopKey,
+      dpopSigner: oauth.dpopClient,
       loginHint: oauth.loginHint || oauth.accountSub,
       scope,
       bindingMessage,
@@ -202,7 +202,10 @@ export async function readProfile(input: {
       fields: buildProfileFieldKey(fields),
     },
     onApproved: async (approval) => {
-      const claims = await redeemRelease(approval.accessToken, oauth.dpopKey);
+      const claims = await redeemRelease(
+        approval.accessToken,
+        oauth.dpopClient
+      );
       const result = mapProfileFromClaims({ claims, fields });
 
       if (claims) {

@@ -163,9 +163,6 @@ export const fheLimiter = createRateLimiter({ windowMs: MINUTE, max: 10 });
 /** CIBA endpoints: 20 req/min per user. */
 export const cibaLimiter = createRateLimiter({ windowMs: MINUTE, max: 20 });
 
-/** ZK proof verification: 5 req/min per session. */
-export const zkLimiter = createRateLimiter({ windowMs: MINUTE, max: 5 });
-
 /** OAuth2 identity endpoints: 10 req/min per session. */
 export const oauth2IdentityLimiter = createRateLimiter({
   windowMs: MINUTE,

@@ -1,7 +1,6 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth-config";
-import { rewriteDpopForUserinfo } from "@/lib/auth/oidc/haip/dpop";
 import {
   addWwwAuthenticate,
   unwrapBetterAuthEnvelope,
@@ -41,25 +40,8 @@ export async function GET(request: Request) {
   attachRequestContextToSpan(requestContext);
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
 
-  let effectiveRequest = canonicalRequest;
-  const url = new URL(canonicalRequest.url);
-  if (url.pathname.endsWith("/oauth2/userinfo")) {
-    try {
-      effectiveRequest = await rewriteDpopForUserinfo(request);
-    } catch (err) {
-      return new Response(
-        JSON.stringify({
-          error: "invalid_dpop_proof",
-          error_description:
-            err instanceof Error ? err.message : "DPoP validation failed",
-        }),
-        { status: 401, headers: { "content-type": "application/json" } }
-      );
-    }
-  }
-
-  const response = await authGET(effectiveRequest);
-  return addWwwAuthenticate(await unwrapIfNeeded(effectiveRequest, response));
+  const response = await authGET(canonicalRequest);
+  return addWwwAuthenticate(await unwrapIfNeeded(canonicalRequest, response));
 }
 
 export async function POST(request: Request) {

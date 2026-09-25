@@ -7,12 +7,12 @@
  * Profile data is PII that requires credential unlock.
  */
 
-import type { EnrollmentCredential, EnvelopeFormat } from "./types";
+import type { EnrollmentCredential, EnvelopeFormat } from "./catalog";
 
 import { parseBirthYearFromDob } from "@/lib/identity/verification/birth-year";
 
+import { SECRET_TYPES } from "./catalog";
 import { downloadSecretBlob } from "./storage";
-import { SECRET_TYPES } from "./types";
 
 const PROFILE_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 const CACHE_TTL_MS = 15 * 60 * 1000;

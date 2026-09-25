@@ -3,8 +3,8 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/cn";
 import { env } from "@/lib/env";
-import { cn } from "@/lib/utils";
 
 export function Nav() {
   const [isScrolled, setIsScrolled] = useState(false);

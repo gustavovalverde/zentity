@@ -1,12 +1,8 @@
+import type { DpopClient } from "@zentity/sdk/rp";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../config.js", () => ({
   config: { zentityUrl: "https://zentity.test" },
-}));
-
-vi.mock("../../runtime/dpop-proof.js", () => ({
-  createDpopProof: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  extractDpopNonce: vi.fn().mockReturnValue(undefined),
 }));
 
 const mockFetch = vi.fn();
@@ -19,9 +15,9 @@ function userinfoResponse(body: unknown, status = 200): Response {
   });
 }
 
-const dpopKey = {
-  privateJwk: { kty: "EC", crv: "P-256" },
-  publicJwk: { kty: "EC", crv: "P-256" },
+const dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry"> = {
+  proofFor: () => Promise.resolve("mock-dpop-proof"),
+  withNonceRetry: (attempt) => attempt(),
 };
 
 describe("redeemRelease – address parsing", () => {
@@ -38,7 +34,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       name: "Ada Lovelace",
@@ -66,7 +62,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       name: "Ada Lovelace",
@@ -86,7 +82,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       name: "Ada Lovelace",
@@ -106,7 +102,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       name: undefined,
@@ -126,7 +122,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       address: "123 Main St",
@@ -141,7 +137,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toBeNull();
   });
@@ -154,7 +150,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims).toEqual({
       name: "Direct User",
@@ -174,7 +170,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims?.address).toBeUndefined();
   });
@@ -189,7 +185,7 @@ describe("redeemRelease – address parsing", () => {
     const { redeemRelease } = await import(
       "../../services/identity-release.js"
     );
-    const claims = await redeemRelease("tok", dpopKey);
+    const claims = await redeemRelease("tok", dpopClient);
 
     expect(claims?.address).toBeUndefined();
   });

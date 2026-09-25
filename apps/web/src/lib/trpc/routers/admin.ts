@@ -9,7 +9,7 @@ import {
 import { listIdentityValiditySourceCursors } from "@/lib/db/queries/identity-validity";
 import { ingestChainValidityEvents } from "@/lib/identity/validity/chain-ingest";
 import { deliverPendingValidityDeliveries } from "@/lib/identity/validity/delivery";
-import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness-worker";
+import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness";
 
 import { adminProcedure, router } from "../server";
 

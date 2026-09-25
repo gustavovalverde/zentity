@@ -1,6 +1,6 @@
 import "server-only";
 
-import { type Attributes, metrics } from "@opentelemetry/api";
+import { type Attributes, type Histogram, metrics } from "@opentelemetry/api";
 
 import {
   getServiceName,
@@ -72,159 +72,6 @@ const zkVerifyDuration = meter.createHistogram("zentity.zk.verify.duration", {
   advice: durationAdvice,
 });
 
-const clientNoirProofDuration = meter.createHistogram(
-  "zentity.client.noir.proof.duration",
-  {
-    description: "Client-side Noir proof generation duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientNoirProofBytes = meter.createHistogram(
-  "zentity.client.noir.proof.bytes",
-  {
-    description: "Client-side Noir proof size.",
-    unit: "By",
-    advice: sizeAdvice,
-  }
-);
-
-const clientConfidentialEncryptDuration = meter.createHistogram(
-  "zentity.client.confidential.encrypt.duration",
-  {
-    description: "Client-side confidential encryption duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientConfidentialEncryptProofBytes = meter.createHistogram(
-  "zentity.client.confidential.encrypt.proof.bytes",
-  {
-    description: "Client-side confidential encryption proof size.",
-    unit: "By",
-    advice: sizeAdvice,
-  }
-);
-
-const clientConfidentialDecryptDuration = meter.createHistogram(
-  "zentity.client.confidential.decrypt.duration",
-  {
-    description: "Client-side confidential decrypt duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientConfidentialInitDuration = meter.createHistogram(
-  "zentity.client.confidential.init.duration",
-  {
-    description: "Client-side confidential SDK initialization duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheLoadDuration = meter.createHistogram(
-  "zentity.client.tfhe.load.duration",
-  {
-    description: "Client-side TFHE WASM load duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheLoadRetry = meter.createHistogram(
-  "zentity.client.tfhe.load.retry",
-  {
-    description: "Client-side TFHE WASM load retry delay.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheKeygenDuration = meter.createHistogram(
-  "zentity.client.tfhe.keygen.duration",
-  {
-    description: "Client-side TFHE key generation duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientPasskeyDuration = meter.createHistogram(
-  "zentity.client.passkey.duration",
-  {
-    description: "Client-side passkey operation duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientOpaqueDuration = meter.createHistogram(
-  "zentity.client.opaque.duration",
-  {
-    description: "Client-side OPAQUE authentication duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientWalletSignDuration = meter.createHistogram(
-  "zentity.client.wallet.sign.duration",
-  {
-    description: "Client-side wallet signature duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientFheEnrollmentStageDuration = meter.createHistogram(
-  "zentity.client.fhe.enrollment.stage.duration",
-  {
-    description: "Client-side FHE enrollment per-stage duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientFheEnrollmentTotalDuration = meter.createHistogram(
-  "zentity.client.fhe.enrollment.total.duration",
-  {
-    description: "Client-side FHE enrollment total duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheKeygenWorkerDuration = meter.createHistogram(
-  "zentity.client.tfhe.keygen.worker.duration",
-  {
-    description: "Client-side TFHE key generation duration (worker-internal).",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheInitDuration = meter.createHistogram(
-  "zentity.client.tfhe.init.duration",
-  {
-    description: "Client-side TFHE WASM init duration (prewarm).",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
-const clientTfheBgKeygenDuration = meter.createHistogram(
-  "zentity.client.tfhe.bg_keygen.duration",
-  {
-    description: "Background FHE key generation + registration duration.",
-    unit: "ms",
-    advice: durationAdvice,
-  }
-);
-
 function recordSafe(
   histogram: { record: (value: number, attributes?: Attributes) => void },
   value: number,
@@ -285,121 +132,26 @@ export function recordZkVerifyDuration(
   recordSafe(zkVerifyDuration, durationMs, attributes);
 }
 
-export function recordClientNoirProofDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientNoirProofDuration, durationMs, attributes);
-}
+const clientHistograms = new Map<string, Histogram>();
 
-export function recordClientNoirProofBytes(
-  bytes: number,
+/**
+ * Record a client-reported metric into a lazily-created histogram named
+ * `zentity.{name}`, bucketed by unit. The metric registry
+ * (CLIENT_METRIC_DEFINITIONS) is validated at the ingest route.
+ */
+export function recordClientMetricServer(
+  name: string,
+  unit: "ms" | "By",
+  value: number,
   attributes?: Attributes
 ): void {
-  recordSafe(clientNoirProofBytes, bytes, attributes);
-}
-
-export function recordClientConfidentialEncryptDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientConfidentialEncryptDuration, durationMs, attributes);
-}
-
-export function recordClientConfidentialEncryptProofBytes(
-  bytes: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientConfidentialEncryptProofBytes, bytes, attributes);
-}
-
-export function recordClientConfidentialDecryptDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientConfidentialDecryptDuration, durationMs, attributes);
-}
-
-export function recordClientConfidentialInitDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientConfidentialInitDuration, durationMs, attributes);
-}
-
-export function recordClientTfheLoadDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheLoadDuration, durationMs, attributes);
-}
-
-export function recordClientTfheLoadRetry(
-  delayMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheLoadRetry, delayMs, attributes);
-}
-
-export function recordClientTfheKeygenDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheKeygenDuration, durationMs, attributes);
-}
-
-export function recordClientPasskeyDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientPasskeyDuration, durationMs, attributes);
-}
-
-export function recordClientOpaqueDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientOpaqueDuration, durationMs, attributes);
-}
-
-export function recordClientWalletSignDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientWalletSignDuration, durationMs, attributes);
-}
-
-export function recordClientFheEnrollmentStageDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientFheEnrollmentStageDuration, durationMs, attributes);
-}
-
-export function recordClientFheEnrollmentTotalDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientFheEnrollmentTotalDuration, durationMs, attributes);
-}
-
-export function recordClientTfheKeygenWorkerDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheKeygenWorkerDuration, durationMs, attributes);
-}
-
-export function recordClientTfheInitDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheInitDuration, durationMs, attributes);
-}
-
-export function recordClientTfheBgKeygenDuration(
-  durationMs: number,
-  attributes?: Attributes
-): void {
-  recordSafe(clientTfheBgKeygenDuration, durationMs, attributes);
+  let histogram = clientHistograms.get(name);
+  if (!histogram) {
+    histogram = meter.createHistogram(`zentity.${name}`, {
+      unit,
+      advice: unit === "By" ? sizeAdvice : durationAdvice,
+    });
+    clientHistograms.set(name, histogram);
+  }
+  recordSafe(histogram, value, attributes);
 }

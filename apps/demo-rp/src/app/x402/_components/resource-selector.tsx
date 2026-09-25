@@ -1,8 +1,8 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import { Badge } from "@/components/ui/badge";
-import { WalletConnect } from "@/components/x402/wallet-connect";
 import type { X402FlowState, X402Resource } from "@/data/x402";
+import { WalletConnect } from "./wallet-connect";
 
 interface ResourceSelectorProps {
   onReset: () => void;

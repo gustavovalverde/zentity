@@ -8,6 +8,7 @@ import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   base64UrlToBytes,
   bytesToBase64Url,
+  toArrayBuffer,
 } from "@/lib/privacy/primitives/symmetric";
 
 export interface PrfSupportStatus {
@@ -23,10 +24,6 @@ interface PrfExtensionResults {
     results?: { first?: ArrayBuffer };
     resultsByCredential?: Record<string, ArrayBuffer>;
   };
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer;
 }
 
 export function buildPrfExtension(

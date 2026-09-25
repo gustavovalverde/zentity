@@ -2,8 +2,6 @@ import "server-only";
 
 import type { OcrProcessResult } from "./ocr-client";
 
-import { v4 as uuidv4 } from "uuid";
-
 import {
   computeClaimHash,
   getDocumentHashField,
@@ -261,8 +259,8 @@ export async function processDocumentWithOcr(
   params: ProcessDocumentParams
 ): Promise<DocumentProcessingResult> {
   const issues: string[] = [];
-  const draftId = params.existingDraftId ?? uuidv4();
-  const verificationId = params.existingVerificationId ?? uuidv4();
+  const draftId = params.existingDraftId ?? crypto.randomUUID();
+  const verificationId = params.existingVerificationId ?? crypto.randomUUID();
 
   // Call OCR service
   const ocrResult = await processDocumentOcr({

@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { UrlElicitationRequiredError } from "@modelcontextprotocol/sdk/types.js";
-import { config } from "../config.js";
-import type { OAuthSessionContext } from "../runtime/auth-context.js";
-import type { DpopKeyPair } from "../runtime/dpop-proof.js";
 import {
   beginCibaApproval,
   type CibaPendingApproval,
@@ -14,7 +11,10 @@ import {
   createPendingApproval,
   logPendingApprovalHandoff,
   pollCibaTokenOnce,
-} from "./ciba.js";
+} from "@zentity/sdk";
+import type { DpopClient } from "@zentity/sdk/rp";
+import { config } from "../config.js";
+import type { OAuthSessionContext } from "../runtime/auth-context.js";
 
 const INTERACTION_TTL_BUFFER_MS = 5000;
 const NOTIFICATION_RETRY_MS = 1000;
@@ -37,7 +37,7 @@ interface InteractiveToolFlowEntry {
   browserUrl: string;
   clientId: string;
   completionNotifier?: (() => Promise<void>) | undefined;
-  dpopKey: DpopKeyPair;
+  dpopClient: DpopClient;
   expiresAt: number;
   fingerprint: string;
   interactionId: string;
@@ -256,7 +256,7 @@ function pollInteractiveFlow(
       const pollResult = await pollCibaTokenOnce(
         {
           clientId: entry.clientId,
-          dpopKey: entry.dpopKey,
+          dpopSigner: entry.dpopClient,
           tokenEndpoint: entry.tokenEndpoint,
         },
         entry.pendingAuthorization
@@ -398,7 +398,7 @@ export async function beginOrResumeInteractiveFlow<T>(
     browserUrl,
     completionNotifier,
     clientId: params.oauth.clientId,
-    dpopKey: params.oauth.dpopKey,
+    dpopClient: params.oauth.dpopClient,
     tokenEndpoint: params.cibaRequest.tokenEndpoint,
   };
   storeInteractiveFlow(entry);

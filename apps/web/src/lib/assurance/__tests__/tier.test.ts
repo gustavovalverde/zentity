@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  computeAccountAssurance,
-  deriveAuthStrength,
-  isFheComplete,
-} from "../compute";
+import { computeAccountAssurance, deriveAuthStrength } from "../tier";
 
 describe("computeAccountAssurance", () => {
   it("returns tier 0 for unauthenticated users", () => {
@@ -139,18 +135,5 @@ describe("deriveAuthStrength", () => {
     expect(deriveAuthStrength("opaque")).toBe("basic");
     expect(deriveAuthStrength("oauth")).toBe("basic");
     expect(deriveAuthStrength(null)).toBe("basic");
-  });
-});
-
-describe("isFheComplete", () => {
-  it("returns true when both required encrypted attributes exist", () => {
-    expect(isFheComplete(["birth_year_offset", "liveness_score"])).toBe(true);
-    expect(isFheComplete(["dob_days", "liveness_score"])).toBe(true);
-  });
-
-  it("returns false when either required encrypted attribute is missing", () => {
-    expect(isFheComplete(["birth_year_offset"])).toBe(false);
-    expect(isFheComplete(["liveness_score"])).toBe(false);
-    expect(isFheComplete([])).toBe(false);
   });
 });

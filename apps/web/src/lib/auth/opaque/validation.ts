@@ -6,6 +6,8 @@ import {
   symmetricEncrypt,
 } from "better-auth/crypto";
 
+import { base64UrlToBytes } from "@/lib/privacy/primitives/symmetric";
+
 export const REGISTRATION_REQUEST_LENGTH = 32;
 export const REGISTRATION_RECORD_MIN_LENGTH = 170;
 export const REGISTRATION_RECORD_MAX_LENGTH = 200;
@@ -14,18 +16,12 @@ export const LOGIN_REQUEST_LENGTH = 96;
 const LOGIN_STATE_TTL_MS = 15 * 60 * 1000;
 const LOGIN_STATE_PAD_LENGTH = 1024;
 
-function base64UrlDecode(str: string): Buffer {
-  const padded = str + "=".repeat((4 - (str.length % 4)) % 4);
-  const normalized = padded.replaceAll("-", "+").replaceAll("_", "/");
-  return Buffer.from(normalized, "base64");
-}
-
 export function validateBase64Length(
   base64: string,
   expectedLength: number,
   fieldName: string
 ): void {
-  const bytes = base64UrlDecode(base64);
+  const bytes = base64UrlToBytes(base64);
   if (bytes.length !== expectedLength) {
     throw new APIError("BAD_REQUEST", {
       message: `Invalid ${fieldName}`,
@@ -39,7 +35,7 @@ export function validateBase64LengthRange(
   max: number,
   fieldName: string
 ): void {
-  const bytes = base64UrlDecode(base64);
+  const bytes = base64UrlToBytes(base64);
   if (bytes.length < min || bytes.length > max) {
     throw new APIError("BAD_REQUEST", {
       message: `Invalid ${fieldName}`,

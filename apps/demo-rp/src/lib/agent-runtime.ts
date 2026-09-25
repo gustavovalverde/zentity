@@ -1,14 +1,23 @@
 import "server-only";
 
-import crypto, { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
-  encodeEd25519DidKeyFromJwk,
-  PAYMENT_AUTHORIZATION_CAPABILITY,
-} from "@zentity/sdk/protocol";
-import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
+  AgentRegistrationError,
+  type HostAttestationTier,
+  type RegisteredAgentSession,
+  type RegisteredHost,
+  registerHost,
+  registerAgentSession as registerSdkAgentSession,
+  signAgentAssertion,
+} from "@zentity/sdk";
+import { PAYMENT_AUTHORIZATION_CAPABILITY } from "@zentity/sdk/protocol";
+import {
+  createDpopClientFromKeyPair,
+  requestTokenEndpoint,
+} from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
-import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
+import { exportJWK, generateKeyPair } from "jose";
 
 import {
   buildAgentRuntimePartitionKey,
@@ -39,10 +48,10 @@ const DISPLAY = {
 const REQUESTED_CAPABILITIES = [PAYMENT_AUTHORIZATION_CAPABILITY] as const;
 
 type AgentRuntimeRow = typeof agentRuntime.$inferSelect;
-type HostAttestationTier = "attested" | "self-declared" | "unverified";
 
 interface EnsureHostRegistrationOptions {
-  attestationHeaders?: Record<string, string>;
+  clientAttestationJwt?: string;
+  clientAttestationPopJwt?: string;
   requiredAttestationTier?: HostAttestationTier;
 }
 
@@ -65,14 +74,6 @@ function hasRegisteredSession(
   return Boolean(
     runtime.sessionId && runtime.sessionPrivateJwk && runtime.sessionPublicJwk
   );
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const encoded = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 async function generateEd25519Jwks() {
@@ -177,34 +178,6 @@ async function getOrCreateAgentRuntime(
   return created;
 }
 
-async function postJsonWithDpop(
-  url: string,
-  accessToken: string,
-  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>,
-  payload: unknown,
-  extraHeaders?: Record<string, string>
-): Promise<Response> {
-  const body = JSON.stringify(payload);
-
-  const attempt = async (nonce?: string) => {
-    const proof = await dpop.proofFor("POST", url, accessToken, nonce);
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `DPoP ${accessToken}`,
-        DPoP: proof,
-        ...extraHeaders,
-      },
-      body,
-    });
-    return { response, result: response };
-  };
-
-  const { response } = await dpop.withNonceRetry(attempt);
-  return response;
-}
-
 async function exchangeBootstrapAccessToken(
   userId: string,
   scenarioId: RouteScenarioId
@@ -225,39 +198,24 @@ async function exchangeBootstrapAccessToken(
     throw new Error("Client not registered. Register the demo client first.");
   }
 
-  const subjectToken = authAccount.accessToken;
   const dpop = await getPersistedDpopClient(
     scenarioId,
     authAccount.accessToken
   );
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
 
-  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
-    const proof = await dpop.proofFor("POST", tokenUrl, undefined, nonce);
-    const request = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body: new URLSearchParams({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        subject_token: subjectToken,
-        subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
-        client_id: client.clientId,
-        audience: env.ZENTITY_URL,
-        scope: AGENT_BOOTSTRAP_SCOPE,
-      }),
-    });
-
-    return {
-      response: request,
-      result: (await request.json().catch(() => ({}))) as Record<
-        string,
-        unknown
-      >,
-    };
-  });
+  const { body, response } = await requestTokenEndpoint(
+    dpop,
+    tokenUrl,
+    new URLSearchParams({
+      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      subject_token: authAccount.accessToken,
+      subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
+      client_id: client.clientId,
+      audience: env.ZENTITY_URL,
+      scope: AGENT_BOOTSTRAP_SCOPE,
+    })
+  );
 
   if (!response.ok) {
     if (response.status === 401) {
@@ -265,11 +223,12 @@ async function exchangeBootstrapAccessToken(
     }
 
     throw new Error(
-      `Bootstrap token exchange failed: ${response.status} ${JSON.stringify(result)}`
+      `Bootstrap token exchange failed: ${response.status} ${JSON.stringify(body ?? {})}`
     );
   }
 
-  const accessToken = result.access_token;
+  const accessToken = (body as Record<string, unknown> | undefined)
+    ?.access_token;
   if (typeof accessToken !== "string" || accessToken.length === 0) {
     throw new Error("Bootstrap token exchange did not return an access token");
   }
@@ -285,45 +244,44 @@ async function ensureHostRegistered(
   bootstrap: BootstrapAccessContext,
   options?: EnsureHostRegistrationOptions
 ): Promise<AgentRuntimeRow> {
-  const hostDid = encodeEd25519DidKeyFromJwk(JSON.parse(runtime.hostPublicJwk));
-  const response = await postJsonWithDpop(
-    `${env.ZENTITY_URL}/api/auth/agent/host/register`,
-    bootstrap.accessToken,
-    bootstrap.dpop,
-    {
-      did: hostDid,
-      name: HOST_NAME,
-    },
-    options?.attestationHeaders
-  );
-  if (!response.ok) {
-    if (response.status === 401) {
+  let registeredHost: RegisteredHost;
+  try {
+    registeredHost = await registerHost({
+      accessToken: bootstrap.accessToken,
+      dpopClient: bootstrap.dpop,
+      endpoint: `${env.ZENTITY_URL}/api/auth/agent/host/register`,
+      hostKey: {
+        privateKey: JSON.parse(runtime.hostPrivateJwk),
+        publicKey: JSON.parse(runtime.hostPublicJwk),
+      },
+      hostName: HOST_NAME,
+      ...(options?.clientAttestationJwt
+        ? { clientAttestationJwt: options.clientAttestationJwt }
+        : {}),
+      ...(options?.clientAttestationPopJwt
+        ? { clientAttestationPopJwt: options.clientAttestationPopJwt }
+        : {}),
+    });
+  } catch (error) {
+    if (error instanceof AgentRegistrationError && error.status === 401) {
       throw buildReauthError();
     }
-    throw new Error(
-      `Host registration failed: ${response.status} ${await response.text()}`
-    );
+    throw error;
   }
-
-  const body = (await response.json()) as {
-    attestation_tier?: HostAttestationTier;
-    hostId: string;
-  };
-  const attestationTier = body.attestation_tier ?? "unverified";
 
   if (
     options?.requiredAttestationTier &&
-    attestationTier !== options.requiredAttestationTier
+    registeredHost.attestationTier !== options.requiredAttestationTier
   ) {
     throw new Error(
-      `Host registration did not satisfy the required ${options.requiredAttestationTier} trust tier (got ${attestationTier}).`
+      `Host registration did not satisfy the required ${options.requiredAttestationTier} trust tier (got ${registeredHost.attestationTier}).`
     );
   }
 
   const [updated] = await getDb()
     .update(agentRuntime)
     .set({
-      hostId: body.hostId,
+      hostId: registeredHost.hostId,
       updatedAt: new Date(),
     })
     .where(eq(agentRuntime.id, runtime.id))
@@ -334,23 +292,6 @@ async function ensureHostRegistered(
   }
 
   return updated;
-}
-
-async function signHostJwt(
-  runtime: AgentRuntimeRow,
-  hostId: string
-): Promise<string> {
-  const privateKey = await importJWK(
-    JSON.parse(runtime.hostPrivateJwk),
-    "EdDSA"
-  );
-  return new SignJWT({})
-    .setProtectedHeader({ alg: "EdDSA", typ: "host-attestation+jwt" })
-    .setIssuer(hostId)
-    .setSubject("agent-registration")
-    .setIssuedAt()
-    .setExpirationTime("60s")
-    .sign(privateKey);
 }
 
 async function registerAgentSession(
@@ -366,37 +307,33 @@ async function registerAgentSession(
     throw new Error("Host must be registered before creating an agent session");
   }
 
-  const sessionKeys = await generateEd25519Jwks();
-  const sessionDid = encodeEd25519DidKeyFromJwk(sessionKeys.publicJwk);
-  const hostJwt = await signHostJwt(runtime, runtime.hostId);
-  const response = await postJsonWithDpop(
-    `${env.ZENTITY_URL}/api/auth/agent/register`,
-    bootstrap.accessToken,
-    bootstrap.dpop,
-    {
-      hostJwt,
-      did: sessionDid,
-      requestedCapabilities: [...REQUESTED_CAPABILITIES],
+  let registeredSession: RegisteredAgentSession;
+  try {
+    registeredSession = await registerSdkAgentSession({
+      accessToken: bootstrap.accessToken,
       display: DISPLAY,
-    }
-  );
-
-  if (!response.ok) {
-    if (response.status === 401) {
+      dpopClient: bootstrap.dpop,
+      endpoint: `${env.ZENTITY_URL}/api/auth/agent/register`,
+      hostId: runtime.hostId,
+      hostKey: {
+        privateKey: JSON.parse(runtime.hostPrivateJwk),
+        publicKey: JSON.parse(runtime.hostPublicJwk),
+      },
+      requestedCapabilities: [...REQUESTED_CAPABILITIES],
+    });
+  } catch (error) {
+    if (error instanceof AgentRegistrationError && error.status === 401) {
       throw buildReauthError();
     }
-    throw new Error(
-      `Agent registration failed: ${response.status} ${await response.text()}`
-    );
+    throw error;
   }
 
-  const body = (await response.json()) as { sessionId: string };
   const [updated] = await getDb()
     .update(agentRuntime)
     .set({
-      sessionId: body.sessionId,
-      sessionPublicJwk: JSON.stringify(sessionKeys.publicJwk),
-      sessionPrivateJwk: JSON.stringify(sessionKeys.privateJwk),
+      sessionId: registeredSession.sessionId,
+      sessionPublicJwk: JSON.stringify(registeredSession.sessionPublicKey),
+      sessionPrivateJwk: JSON.stringify(registeredSession.sessionPrivateKey),
       updatedAt: new Date(),
     })
     .where(eq(agentRuntime.id, runtime.id))
@@ -444,10 +381,8 @@ export async function prepareAgentAssertionForScenario(params: {
       env.ZENTITY_URL
     );
     runtime = await ensureHostRegistered(runtime, bootstrap, {
-      attestationHeaders: {
-        "OAuth-Client-Attestation": attestation,
-        "OAuth-Client-Attestation-PoP": attestationPop,
-      },
+      clientAttestationJwt: attestation,
+      clientAttestationPopJwt: attestationPop,
       requiredAttestationTier: "attested",
     });
 
@@ -468,21 +403,10 @@ export async function prepareAgentAssertionForScenario(params: {
     throw new Error("Agent runtime is missing registered session state");
   }
 
-  const privateKey = await importJWK(
-    JSON.parse(runtime.sessionPrivateJwk),
-    "EdDSA"
-  );
-  const taskHash = await sha256Hex(params.bindingMessage);
-
-  return new SignJWT({
-    host_id: runtime.hostId,
-    task_hash: taskHash,
-    task_id: randomUUID(),
-  })
-    .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })
-    .setIssuer(runtime.sessionId)
-    .setJti(randomUUID())
-    .setIssuedAt()
-    .setExpirationTime("60s")
-    .sign(privateKey);
+  return signAgentAssertion({
+    bindingMessage: params.bindingMessage,
+    hostId: runtime.hostId,
+    sessionId: runtime.sessionId,
+    sessionPrivateKey: JSON.parse(runtime.sessionPrivateJwk),
+  });
 }

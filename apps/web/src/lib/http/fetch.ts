@@ -27,7 +27,7 @@ export class HttpError extends Error {
   }
 }
 
-async function safeReadBodyText(response: Response): Promise<string> {
+export async function safeReadBodyText(response: Response): Promise<string> {
   try {
     return await response.text();
   } catch {
@@ -40,7 +40,7 @@ async function safeReadBodyText(response: Response): Promise<string> {
   }
 }
 
-class TimeoutError extends Error {
+export class TimeoutError extends Error {
   readonly url: string;
   readonly timeoutMs: number;
 
@@ -57,29 +57,32 @@ interface FetchJsonOptions extends RequestInit {
   timeoutMs?: number;
 }
 
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit | undefined,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new TimeoutError(url, timeoutMs);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function fetchJson<T>(
   url: string,
   init?: FetchJsonOptions
 ): Promise<T> {
   const { timeoutMs = 60_000, ...fetchInit } = init ?? {};
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      ...fetchInit,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new TimeoutError(url, timeoutMs);
-    }
-    throw error;
-  }
-  clearTimeout(timeoutId);
+  const response = await fetchWithTimeout(url, fetchInit, timeoutMs);
 
   if (!response.ok) {
     const bodyText = await safeReadBodyText(response);

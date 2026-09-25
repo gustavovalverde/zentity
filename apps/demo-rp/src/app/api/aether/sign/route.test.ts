@@ -54,28 +54,30 @@ vi.mock("@/lib/env", () => ({
 }));
 
 vi.mock("@zentity/sdk", async () => {
-  const actual = await vi.importActual<typeof import("@zentity/sdk")>(
-    "@zentity/sdk"
-  );
+  const actual =
+    await vi.importActual<typeof import("@zentity/sdk")>("@zentity/sdk");
   return { ...actual, requestCibaApproval: mocks.requestCibaApproval };
 });
 
 vi.mock("@zentity/sdk/rp", async () => {
-  const actual = await vi.importActual<typeof import("@zentity/sdk/rp")>(
-    "@zentity/sdk/rp"
-  );
-  return { ...actual, createWalletSpendRequest: mocks.createWalletSpendRequest };
+  const actual =
+    await vi.importActual<typeof import("@zentity/sdk/rp")>("@zentity/sdk/rp");
+  return {
+    ...actual,
+    createWalletSpendRequest: mocks.createWalletSpendRequest,
+  };
 });
 
 vi.mock("@/lib/zpay-client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/zpay-client")>(
-    "@/lib/zpay-client"
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/zpay-client")>(
+      "@/lib/zpay-client"
+    );
   return { ...actual, settlePayment: mocks.settlePayment };
 });
 
-import { POST } from "./route";
 import { ZpayError } from "@/lib/zpay-client";
+import { POST } from "./route";
 
 const PAYMENT_URI = "zcash:utest1qqexampleshieldedaddress0000";
 const VALID_BODY = {
@@ -183,7 +185,9 @@ describe("POST /api/aether/sign", () => {
     expect(rar?.intent_hash).toBe(expectedIntentHash());
 
     // CIBA and the wallet call use the same seed-derived DPoP client.
-    const walletSpendArgs = mocks.createWalletSpendRequest.mock.calls.at(0)?.[0] as {
+    const walletSpendArgs = mocks.createWalletSpendRequest.mock.calls.at(
+      0
+    )?.[0] as {
       dpopClient: unknown;
     };
     expect(walletSpendArgs.dpopClient).toBe(cibaArgs.dpopSigner);
@@ -196,7 +200,11 @@ describe("POST /api/aether/sign", () => {
       "fetch",
       vi.fn(async () =>
         Response.json(
-          { kind: "intent_mismatch", title: "intent mismatch", detail: "drift" },
+          {
+            kind: "intent_mismatch",
+            title: "intent mismatch",
+            detail: "drift",
+          },
           {
             status: 403,
             headers: { "content-type": "application/problem+json" },

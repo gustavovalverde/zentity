@@ -25,14 +25,10 @@ import {
 import { proofArtifacts, verificationChecks } from "@/lib/db/schema/privacy";
 
 import {
-  CHECK_TYPE_TO_COMPLIANCE_KEY,
-  type ComplianceChecks,
   type ComplianceResult,
-  DEFAULT_POLICY_VERSION,
+  deriveComplianceFromChecks,
   deriveComplianceStatus,
-  EMPTY_CHECKS,
-  type IdentityEvidenceStrength,
-  type VerificationCheckType,
+  isFheComplete,
   type VerificationMethod,
 } from "./compliance";
 import { selectLatestCompleteOcrProofRows } from "./ocr-completeness";
@@ -108,79 +104,6 @@ export interface VerificationReadModel {
   };
   verificationId: string | null;
   verifiedAt: string | null;
-}
-
-// ─── FHE completeness (inlined to avoid circular dep with assurance) ─
-
-function isFheComplete(attributeTypes: string[]): boolean {
-  const hasDob =
-    attributeTypes.includes("birth_year_offset") ||
-    attributeTypes.includes("dob_days");
-  const hasLiveness = attributeTypes.includes("liveness_score");
-  return hasDob && hasLiveness;
-}
-
-// ─── Compliance derivation from materialized checks ────────────────
-
-function deriveComplianceFromChecks(
-  rows: VerificationCheck[],
-  method: "ocr" | "nfc_chip",
-  birthYearOffset: number | null,
-  hasHumanityCredential: boolean
-): ComplianceResult {
-  const checks: ComplianceChecks = {
-    ...EMPTY_CHECKS,
-    sybilResistant: hasHumanityCredential,
-  };
-  for (const row of rows) {
-    const key =
-      CHECK_TYPE_TO_COMPLIANCE_KEY[row.checkType as VerificationCheckType];
-    if (key) {
-      checks[key] = row.passed;
-    }
-  }
-  checks.sybilResistant = checks.sybilResistant || hasHumanityCredential;
-
-  const verified = method !== null && Object.values(checks).every(Boolean);
-
-  return {
-    identity: {
-      verified,
-      method,
-      strength: deriveIdentityStrength(checks, method),
-    },
-    humanity: {
-      proven: hasHumanityCredential,
-    },
-    policy: {
-      version: DEFAULT_POLICY_VERSION,
-      checks,
-      birthYearOffset,
-    },
-  };
-}
-
-function deriveIdentityStrength(
-  checks: ComplianceChecks,
-  method: "ocr" | "nfc_chip"
-): IdentityEvidenceStrength {
-  if (method === "nfc_chip" && checks.documentVerified) {
-    return "cryptographic_chip";
-  }
-  if (method === "ocr") {
-    const corePassed =
-      checks.documentVerified &&
-      checks.livenessVerified &&
-      checks.faceMatchVerified &&
-      checks.ageVerified;
-    if (corePassed) {
-      return "documentary_full";
-    }
-    if (checks.documentVerified) {
-      return "documentary";
-    }
-  }
-  return "none";
 }
 
 // ─── DB queries ─────────────────────────────────────────────────────

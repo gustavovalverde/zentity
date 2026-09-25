@@ -2,6 +2,8 @@
 
 import { decode, encode } from "@msgpack/msgpack";
 
+import { HttpError, safeReadBodyText } from "@/lib/http/fetch";
+
 interface BinaryRequestOptions extends RequestInit {
   timeoutMs?: number;
 }
@@ -69,10 +71,15 @@ export async function fetchMsgpack<T>(
   }).finally(cleanup);
 
   if (!response.ok) {
-    const bodyText = await response.text().catch(() => "");
-    throw new Error(
-      bodyText || `Request failed: ${response.status} ${response.statusText}`
-    );
+    const bodyText = await safeReadBodyText(response);
+    throw new HttpError({
+      message:
+        bodyText || `Request failed: ${response.status} ${response.statusText}`,
+      status: response.status,
+      statusText: response.statusText,
+      url,
+      bodyText,
+    });
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());

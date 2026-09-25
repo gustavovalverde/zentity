@@ -6,7 +6,7 @@
  * enable compile-time type checking.
  *
  * @example
- * import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
+ * import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
  * const bundle = await trpc.secrets.getSecretBundle.query({
  *   secretType: SECRET_TYPES.FHE_KEYS,
  * });
@@ -41,6 +41,15 @@ export const secretTypeSchema = z.enum([
  * Derived from the schema for type safety.
  */
 export type SecretType = z.infer<typeof secretTypeSchema>;
+
+/**
+ * Credential source that derived the KEK wrapping a secret. `recovery`
+ * applies only to guardian-recovery wrappers; endpoints that never mint
+ * those use `kekSourceSchema.exclude(["recovery"])`.
+ */
+export const kekSourceSchema = z.enum(["prf", "opaque", "wallet", "recovery"]);
+
+export type KekSource = z.infer<typeof kekSourceSchema>;
 
 const wrappedDekJsonSchema = z.object({
   alg: z.string().min(1),

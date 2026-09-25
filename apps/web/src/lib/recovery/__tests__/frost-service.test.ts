@@ -1,7 +1,7 @@
 import { decodeJwt } from "jose";
 import { describe, expect, it } from "vitest";
 
-import { signGuardianAssertionJwt } from "@/lib/recovery/guardian-jwt";
+import { signGuardianAssertionJwt } from "@/lib/recovery/frost-service";
 
 describe("signGuardianAssertionJwt", () => {
   it("sets session_id to frostSessionId, not challengeId", async () => {

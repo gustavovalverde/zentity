@@ -1,8 +1,7 @@
 /**
  * Country Code Module
  *
- * Provides country code conversions, groups, and Merkle tree operations
- * for nationality proofs.
+ * Provides country code conversions and groups for nationality proofs.
  *
  * Uses zkpassport's weighted-sum encoding and i18n-iso-countries for
  * standardized country data.
@@ -20,8 +19,6 @@ import {
 } from "@zkpassport/utils";
 import countries from "i18n-iso-countries";
 import enLocale from "i18n-iso-countries/langs/en.json" with { type: "json" };
-
-import { ISO_3166_ALPHA3_TO_NUMERIC } from "@/lib/identity/verification/iso-3166-numeric";
 
 // i18n-iso-countries ships its browser build with no locale registered, so
 // getName/getAlpha3Code return undefined client-side (Node's entry auto-registers,
@@ -137,14 +134,6 @@ const PASSPORT_CODE_TO_ALPHA3: Record<string, string> = {
 
 const ALL_COUNTRIES_SET = new Set(ALL_COUNTRIES);
 
-/** Reverse map: ISO 3166-1 numeric → alpha-3 (built from the existing forward map) */
-const ISO_3166_NUMERIC_TO_ALPHA3 = new Map<number, string>(
-  Object.entries(ISO_3166_ALPHA3_TO_NUMERIC).map(([alpha3, num]) => [
-    num,
-    alpha3,
-  ])
-);
-
 function isValidAlpha3(code: string): boolean {
   return ALL_COUNTRIES_SET.has(code);
 }
@@ -152,7 +141,7 @@ function isValidAlpha3(code: string): boolean {
 function toAlpha3(code: string | number): string | undefined {
   if (typeof code === "number") {
     // Try ISO 3166-1 numeric first (used by on-chain attestation)
-    const fromIso = ISO_3166_NUMERIC_TO_ALPHA3.get(code);
+    const fromIso = countries.numericToAlpha3(code);
     if (fromIso) {
       return fromIso;
     }
@@ -204,31 +193,7 @@ export function getCountryName(code: string | number): string | undefined {
 }
 
 // ============================================================================
-// Group Functions
-// ============================================================================
-
-export function getCountriesInGroup(groupName: string): string[] | undefined {
-  return COUNTRY_GROUPS[groupName.toUpperCase() as CountryGroup];
-}
-
-export function isCountryInGroup(
-  countryCode: string | number,
-  groupName: string
-): boolean {
-  const alpha3 = toAlpha3(countryCode);
-  if (!alpha3) {
-    return false;
-  }
-  const group = getCountriesInGroup(groupName);
-  return group?.includes(alpha3) ?? false;
-}
-
-export function listCountryGroups(): CountryGroup[] {
-  return Object.keys(COUNTRY_GROUPS) as CountryGroup[];
-}
-
-// ============================================================================
-// Merkle Tree Functions
+// Merkle Tree Functions (nationality membership proof inputs)
 // ============================================================================
 
 interface NationalityCircuitInputs {
@@ -236,53 +201,6 @@ interface NationalityCircuitInputs {
   nationalityCode: number;
   pathElements: string[];
   pathIndices: number[];
-}
-
-async function buildMerkleTree(
-  countryCodes: number[],
-  poseidon2Hash: HashFn
-): Promise<{
-  root: bigint;
-  leaves: bigint[];
-  leafIndices: Map<number, number>;
-}> {
-  const treeSize = 2 ** TREE_DEPTH;
-  const paddedCodes = [...countryCodes];
-  while (paddedCodes.length < treeSize) {
-    paddedCodes.push(0);
-  }
-
-  const leaves: bigint[] = [];
-  const leafIndices = new Map<number, number>();
-
-  for (const code of paddedCodes) {
-    const leafHash = await poseidon2Hash([BigInt(code)]);
-    leaves.push(leafHash);
-    if (code !== 0) {
-      leafIndices.set(code, leaves.length - 1);
-    }
-  }
-
-  let currentLevel = leaves;
-  while (currentLevel.length > 1) {
-    const nextLevel: bigint[] = [];
-    for (let i = 0; i < currentLevel.length; i += 2) {
-      const left = currentLevel[i];
-      const right = currentLevel[i + 1];
-      if (left === undefined || right === undefined) {
-        throw new Error("Merkle tree level has odd number of elements");
-      }
-      const parent = await poseidon2Hash([left, right]);
-      nextLevel.push(parent);
-    }
-    currentLevel = nextLevel;
-  }
-
-  const root = currentLevel[0];
-  if (root === undefined) {
-    throw new Error("Empty Merkle tree");
-  }
-  return { root, leaves, leafIndices };
 }
 
 async function generateMerkleProof(
@@ -368,31 +286,6 @@ async function generateMerkleProof(
   }
 
   return { pathElements, pathIndices, merkleRoot, leafIndex };
-}
-
-const merkleRootCache = new Map<string, bigint>();
-
-export async function getMerkleRoot(
-  groupName: string,
-  poseidon2Hash: HashFn
-): Promise<bigint> {
-  const upperGroup = groupName.toUpperCase();
-  const cached = merkleRootCache.get(upperGroup);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  const group = COUNTRY_GROUPS[upperGroup as CountryGroup];
-  if (!group) {
-    throw new Error(`Unknown country group: ${groupName}`);
-  }
-
-  const codes = group.map((c) =>
-    getCountryWeightedSum(c as Parameters<typeof getCountryWeightedSum>[0])
-  );
-  const { root } = await buildMerkleTree(codes, poseidon2Hash);
-  merkleRootCache.set(upperGroup, root);
-  return root;
 }
 
 export async function generateNationalityProofInputs(

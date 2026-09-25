@@ -1,8 +1,10 @@
 import type { ChildProcess } from "node:child_process";
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+
+import { bootstrapDevServer, resolveServerDbUrl } from "./dev-server";
 
 // Top-level regex patterns for lint/performance/useTopLevelRegex compliance
 const NEWLINE_PATTERN = /\r?\n/;
@@ -29,36 +31,6 @@ const contractsScriptRunner = contractsPackageManager?.startsWith("bun@")
 const hardhatPort = Number(process.env.E2E_HARDHAT_PORT || 8545);
 const hardhatUrl = `http://127.0.0.1:${hardhatPort}`;
 let hardhatProcess: ChildProcess | null = null;
-
-function toFilePath(dbUrlOrPath: string | undefined): string | null {
-  if (!dbUrlOrPath) {
-    return null;
-  }
-  if (dbUrlOrPath.startsWith("libsql:")) {
-    return null;
-  }
-  if (dbUrlOrPath.startsWith("file:")) {
-    const raw = dbUrlOrPath.slice("file:".length);
-    if (raw === ":memory:" || raw === "::memory:") {
-      return null;
-    }
-    return raw;
-  }
-  return dbUrlOrPath;
-}
-
-function resetSqliteFile(dbFile: string) {
-  mkdirSync(path.dirname(dbFile), { recursive: true });
-  const extraFiles = [`${dbFile}-wal`, `${dbFile}-shm`, `${dbFile}-journal`];
-  if (existsSync(dbFile)) {
-    rmSync(dbFile, { force: true });
-  }
-  for (const extra of extraFiles) {
-    if (existsSync(extra)) {
-      rmSync(extra, { force: true });
-    }
-  }
-}
 
 async function waitForRpc(url: string): Promise<boolean> {
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -206,16 +178,11 @@ function deployContracts(): ContractsEnv {
 }
 
 function startDevServer(contracts: ContractsEnv) {
-  // Explicitly pass database env vars to ensure dev server uses the same DB as E2E tests
-  const dbUrl =
-    process.env.TURSO_DATABASE_URL || process.env.E2E_TURSO_DATABASE_URL;
-  const dbPath = process.env.E2E_DATABASE_PATH;
+  const dbUrl = resolveServerDbUrl();
 
   const env = {
     ...process.env,
-    // Ensure database URL is explicitly set
     ...(dbUrl ? { TURSO_DATABASE_URL: dbUrl } : {}),
-    ...(dbPath ? { E2E_DATABASE_PATH: dbPath } : {}),
     NEXT_PUBLIC_ENABLE_HARDHAT: "true",
     NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
     NEXT_PUBLIC_COOP: "same-origin",
@@ -229,47 +196,16 @@ function startDevServer(contracts: ContractsEnv) {
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
   };
 
-  const dbFile =
-    toFilePath(process.env.E2E_TURSO_DATABASE_URL) ??
-    toFilePath(process.env.TURSO_DATABASE_URL) ??
-    toFilePath(process.env.E2E_DATABASE_PATH);
-  if (dbFile) {
-    resetSqliteFile(dbFile);
-  }
-
-  const pushResult = spawnSync("npx", ["drizzle-kit", "push", "--force"], {
-    cwd: webRoot,
-    stdio: "inherit",
-    env,
-  });
-  if (pushResult.status !== 0) {
-    process.exit(pushResult.status ?? 1);
-  }
-
   console.log("[start-web3-dev] using database:", dbUrl || "default");
 
-  const dev = spawn("pnpm", ["run", "dev"], {
-    cwd: webRoot,
-    stdio: "inherit",
+  bootstrapDevServer({
     env,
-  });
-
-  const shutdown = () => {
-    if (dev && !dev.killed) {
-      dev.kill("SIGTERM");
-    }
-    if (hardhatProcess && !hardhatProcess.killed) {
-      hardhatProcess.kill("SIGTERM");
-    }
-  };
-
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
-  process.on("exit", shutdown);
-
-  dev.on("exit", (code) => {
-    shutdown();
-    process.exit(code ?? 0);
+    resetDb: true,
+    onShutdown: () => {
+      if (hardhatProcess && !hardhatProcess.killed) {
+        hardhatProcess.kill("SIGTERM");
+      }
+    },
   });
 }
 

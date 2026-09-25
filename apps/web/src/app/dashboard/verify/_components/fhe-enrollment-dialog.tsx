@@ -30,34 +30,23 @@ import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { listUserPasskeys, signInWithPasskey } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
-import { fetchMsgpack } from "@/lib/http/binary-transport";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import { setCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
+import { buildKekSignatureTypedData } from "@/lib/privacy/credentials/wallet";
+import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
 import {
-  buildKekSignatureTypedData,
-  signatureToBytes,
-} from "@/lib/privacy/credentials/wallet";
-import {
-  getPreGeneratedKeys,
-  startBackgroundKeygen,
-} from "@/lib/privacy/fhe/background-keygen";
+  enrollFheKeys,
+  setFheEnrollmentComplete,
+} from "@/lib/privacy/fhe/enrollment";
 import {
   getStoredFheKeys,
   persistFheKeyId,
-  storeFheKeysWithCredential,
+  registerFheKeys,
 } from "@/lib/privacy/fhe/key-store";
-import {
-  generateFheKeyMaterialForStorage,
-  prewarmTfheWorker,
-} from "@/lib/privacy/fhe/keygen-client";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/types";
-import {
-  deriveBindingSecret,
-  prepareBindingProofInputs,
-} from "@/lib/privacy/zk/binding-secret";
-import { AuthMode } from "@/lib/privacy/zk/proof-types";
-import { generateBaseCommitment } from "@/lib/privacy/zk/prove";
+import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
+import { hexToBytes } from "@/lib/privacy/primitives/symmetric";
+import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
 import { trpc } from "@/lib/trpc/client";
 
 type EnrollmentMethod = "passkey" | "wallet" | "password" | "create-password";
@@ -193,6 +182,49 @@ interface WalletContext {
   }) => Promise<string>;
 }
 
+async function checkExistingEnrollment(): Promise<boolean> {
+  const bundle = await trpc.secrets.getSecretBundle.query({
+    secretType: SECRET_TYPES.FHE_KEYS,
+  });
+
+  const existingKeyId =
+    bundle?.secret?.metadata && typeof bundle.secret.metadata.keyId === "string"
+      ? bundle.secret.metadata.keyId
+      : null;
+
+  if (existingKeyId && bundle?.wrappers?.length) {
+    await setFheEnrollmentComplete(existingKeyId);
+    return true;
+  }
+
+  if (bundle?.secret) {
+    try {
+      const existingKeys = await getStoredFheKeys();
+      if (existingKeys) {
+        const keyId =
+          existingKeys.keyId || (await registerFheKeys(existingKeys));
+
+        await persistFheKeyId(keyId, existingKeys.publicKeyFingerprint);
+        await setFheEnrollmentComplete(keyId);
+        return true;
+      }
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : "";
+      if (
+        !(
+          message.includes("No credentials are registered") ||
+          message.includes("Missing envelope format") ||
+          message.includes("Secret envelope format mismatch")
+        )
+      ) {
+        throw loadError;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function FheEnrollmentDialog({
   open = true,
   onOpenChange,
@@ -282,75 +314,6 @@ export function FheEnrollmentDialog({
     return methods;
   }, [hasPasskeys, hasPassword, prfSupported, wallet]);
 
-  const updateIdentityStatus = useCallback(async (keyId: string) => {
-    const response = await fetch("/api/fhe/status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fheKeyId: keyId, fheStatus: "complete" }),
-    });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      throw new Error(body?.error || "Failed to update enrollment status.");
-    }
-  }, []);
-
-  const checkExistingEnrollment = useCallback(async (): Promise<boolean> => {
-    const bundle = await trpc.secrets.getSecretBundle.query({
-      secretType: SECRET_TYPES.FHE_KEYS,
-    });
-
-    const existingKeyId =
-      bundle?.secret?.metadata &&
-      typeof bundle.secret.metadata.keyId === "string"
-        ? bundle.secret.metadata.keyId
-        : null;
-
-    if (existingKeyId && bundle?.wrappers?.length) {
-      await updateIdentityStatus(existingKeyId);
-      return true;
-    }
-
-    if (bundle?.secret) {
-      try {
-        const existingKeys = await getStoredFheKeys();
-        if (existingKeys) {
-          const { fetchMsgpack } = await import("@/lib/http/binary-transport");
-          const keyId =
-            existingKeys.keyId ||
-            (
-              await fetchMsgpack<{ keyId: string }>(
-                "/api/fhe/keys/register",
-                {
-                  serverKey: existingKeys.serverKey,
-                  publicKey: existingKeys.publicKey,
-                },
-                { credentials: "include" }
-              )
-            ).keyId;
-
-          await persistFheKeyId(keyId, existingKeys.publicKeyFingerprint);
-          await updateIdentityStatus(keyId);
-          return true;
-        }
-      } catch (loadError) {
-        const message = loadError instanceof Error ? loadError.message : "";
-        if (
-          !(
-            message.includes("No credentials are registered") ||
-            message.includes("Missing envelope format") ||
-            message.includes("Secret envelope format mismatch")
-          )
-        ) {
-          throw loadError;
-        }
-      }
-    }
-
-    return false;
-  }, [updateIdentityStatus]);
-
   const enrollPasskey = useCallback(
     async (userId: string) => {
       if (!hasPasskeys || prfSupported === false) {
@@ -393,61 +356,15 @@ export function FheEnrollmentDialog({
         prfSalt,
       });
 
-      advanceStage("generating");
-      const preGenerated = await getPreGeneratedKeys();
-      let storedKeys: Awaited<
-        ReturnType<typeof generateFheKeyMaterialForStorage>
-      >["storedKeys"];
-      let fingerprint: string;
-      if (preGenerated) {
-        storedKeys = preGenerated.storedKeys;
-        fingerprint = preGenerated.publicKeyFingerprint;
-      } else {
-        const generated = await generateFheKeyMaterialForStorage();
-        storedKeys = generated.storedKeys;
-        fingerprint = generated.publicKeyFingerprint;
-      }
-
-      const secretParams = await deriveBindingSecret({
-        authMode: AuthMode.PASSKEY,
-        userId,
-        documentHash: "0x00",
-        prfOutput,
-      });
-      const proofInputs = prepareBindingProofInputs(secretParams);
-      const credentialBindingCommitment = await generateBaseCommitment(
-        proofInputs.bindingSecretField,
-        proofInputs.userIdHashField
-      );
-
-      advanceStage("encrypting");
-      await storeFheKeysWithCredential({
-        keys: storedKeys,
+      await enrollFheKeys({
         credential: {
           type: "passkey",
           context: { userId, credentialId, prfOutput, prfSalt },
         },
-        credentialBindingCommitment,
+        onStage: advanceStage,
       });
-
-      advanceStage("registering");
-      const keyId = preGenerated
-        ? preGenerated.keyId
-        : (
-            await fetchMsgpack<{ keyId: string }>(
-              "/api/fhe/keys/register",
-              {
-                serverKey: storedKeys.serverKey,
-                publicKey: storedKeys.publicKey,
-              },
-              { credentials: "include" }
-            )
-          ).keyId;
-
-      await persistFheKeyId(keyId, fingerprint);
-      await updateIdentityStatus(keyId);
     },
-    [hasPasskeys, prfSupported, updateIdentityStatus, advanceStage]
+    [hasPasskeys, prfSupported, advanceStage]
   );
 
   const enrollOpaque = useCallback(
@@ -475,66 +392,15 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      advanceStage("generating");
-      const preGenerated = await getPreGeneratedKeys();
-      let storedKeys: Awaited<
-        ReturnType<typeof generateFheKeyMaterialForStorage>
-      >["storedKeys"];
-      let fingerprint: string;
-      if (preGenerated) {
-        storedKeys = preGenerated.storedKeys;
-        fingerprint = preGenerated.publicKeyFingerprint;
-      } else {
-        const generated = await generateFheKeyMaterialForStorage();
-        storedKeys = generated.storedKeys;
-        fingerprint = generated.publicKeyFingerprint;
-      }
-
-      const secretParams = await deriveBindingSecret({
-        authMode: AuthMode.OPAQUE,
-        userId,
-        documentHash: "0x00",
-        exportKey: result.data.exportKey,
-      });
-      const proofInputs = prepareBindingProofInputs(secretParams);
-      const credentialBindingCommitment = await generateBaseCommitment(
-        proofInputs.bindingSecretField,
-        proofInputs.userIdHashField
-      );
-
-      advanceStage("encrypting");
-      await storeFheKeysWithCredential({
-        keys: storedKeys,
+      await enrollFheKeys({
         credential: {
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
-        credentialBindingCommitment,
+        onStage: advanceStage,
       });
-
-      advanceStage("registering");
-      const keyId = preGenerated
-        ? preGenerated.keyId
-        : await (async () => {
-            const { fetchMsgpack } = await import(
-              "@/lib/http/binary-transport"
-            );
-            return (
-              await fetchMsgpack<{ keyId: string }>(
-                "/api/fhe/keys/register",
-                {
-                  serverKey: storedKeys.serverKey,
-                  publicKey: storedKeys.publicKey,
-                },
-                { credentials: "include" }
-              )
-            ).keyId;
-          })();
-
-      await persistFheKeyId(keyId, fingerprint);
-      await updateIdentityStatus(keyId);
     },
-    [password, updateIdentityStatus, advanceStage]
+    [password, advanceStage]
   );
 
   const enrollNewPassword = useCallback(
@@ -560,66 +426,15 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      advanceStage("generating");
-      const preGeneratedNew = await getPreGeneratedKeys();
-      let storedKeysNew: Awaited<
-        ReturnType<typeof generateFheKeyMaterialForStorage>
-      >["storedKeys"];
-      let fingerprintNew: string;
-      if (preGeneratedNew) {
-        storedKeysNew = preGeneratedNew.storedKeys;
-        fingerprintNew = preGeneratedNew.publicKeyFingerprint;
-      } else {
-        const generated = await generateFheKeyMaterialForStorage();
-        storedKeysNew = generated.storedKeys;
-        fingerprintNew = generated.publicKeyFingerprint;
-      }
-
-      const secretParams = await deriveBindingSecret({
-        authMode: AuthMode.OPAQUE,
-        userId,
-        documentHash: "0x00",
-        exportKey: result.data.exportKey,
-      });
-      const proofInputs = prepareBindingProofInputs(secretParams);
-      const credentialBindingCommitment = await generateBaseCommitment(
-        proofInputs.bindingSecretField,
-        proofInputs.userIdHashField
-      );
-
-      advanceStage("encrypting");
-      await storeFheKeysWithCredential({
-        keys: storedKeysNew,
+      await enrollFheKeys({
         credential: {
           type: "opaque",
           context: { userId, exportKey: result.data.exportKey },
         },
-        credentialBindingCommitment,
+        onStage: advanceStage,
       });
-
-      advanceStage("registering");
-      const keyId = preGeneratedNew
-        ? preGeneratedNew.keyId
-        : await (async () => {
-            const { fetchMsgpack } = await import(
-              "@/lib/http/binary-transport"
-            );
-            return (
-              await fetchMsgpack<{ keyId: string }>(
-                "/api/fhe/keys/register",
-                {
-                  serverKey: storedKeysNew.serverKey,
-                  publicKey: storedKeysNew.publicKey,
-                },
-                { credentials: "include" }
-              )
-            ).keyId;
-          })();
-
-      await persistFheKeyId(keyId, fingerprintNew);
-      await updateIdentityStatus(keyId);
     },
-    [password, updateIdentityStatus, advanceStage]
+    [password, advanceStage]
   );
 
   const enrollWallet = useCallback(
@@ -668,43 +483,14 @@ export function FheEnrollmentDialog({
         );
       }
 
-      const signatureBytes = signatureToBytes(signature1);
+      const signatureBytes = hexToBytes(signature1);
 
       setCachedBindingMaterial({ mode: "wallet", signatureBytes });
 
       const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 
-      advanceStage("generating");
-      const preGeneratedWallet = await getPreGeneratedKeys();
-      let storedKeysWallet: Awaited<
-        ReturnType<typeof generateFheKeyMaterialForStorage>
-      >["storedKeys"];
-      let fingerprintWallet: string;
-      if (preGeneratedWallet) {
-        storedKeysWallet = preGeneratedWallet.storedKeys;
-        fingerprintWallet = preGeneratedWallet.publicKeyFingerprint;
-      } else {
-        const generated = await generateFheKeyMaterialForStorage();
-        storedKeysWallet = generated.storedKeys;
-        fingerprintWallet = generated.publicKeyFingerprint;
-      }
-
-      const secretParams = await deriveBindingSecret({
-        authMode: AuthMode.WALLET,
-        userId,
-        documentHash: "0x00",
-        signatureBytes,
-      });
-      const proofInputs = prepareBindingProofInputs(secretParams);
-      const credentialBindingCommitment = await generateBaseCommitment(
-        proofInputs.bindingSecretField,
-        proofInputs.userIdHashField
-      );
-
-      advanceStage("encrypting");
-      await storeFheKeysWithCredential({
-        keys: storedKeysWallet,
+      await enrollFheKeys({
         credential: {
           type: "wallet",
           context: {
@@ -716,32 +502,10 @@ export function FheEnrollmentDialog({
             expiresAt,
           },
         },
-        credentialBindingCommitment,
+        onStage: advanceStage,
       });
-
-      advanceStage("registering");
-      const keyId = preGeneratedWallet
-        ? preGeneratedWallet.keyId
-        : await (async () => {
-            const { fetchMsgpack } = await import(
-              "@/lib/http/binary-transport"
-            );
-            return (
-              await fetchMsgpack<{ keyId: string }>(
-                "/api/fhe/keys/register",
-                {
-                  serverKey: storedKeysWallet.serverKey,
-                  publicKey: storedKeysWallet.publicKey,
-                },
-                { credentials: "include" }
-              )
-            ).keyId;
-          })();
-
-      await persistFheKeyId(keyId, fingerprintWallet);
-      await updateIdentityStatus(keyId);
     },
-    [wallet, updateIdentityStatus, advanceStage]
+    [wallet, advanceStage]
   );
 
   const handleEnroll = useCallback(
@@ -825,7 +589,6 @@ export function FheEnrollmentDialog({
       router,
       onComplete,
       onOpenChange,
-      checkExistingEnrollment,
       enrollPasskey,
       enrollOpaque,
       enrollNewPassword,

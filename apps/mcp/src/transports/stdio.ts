@@ -23,7 +23,7 @@ import {
   setDefaultAuth,
 } from "../runtime/auth-context.js";
 import { revokeAgentSession } from "../runtime/session-revoke.js";
-import { createServer } from "../server/index.js";
+import { createServer } from "../server.js";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
 let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -149,7 +149,7 @@ async function runAuth(
 }
 
 export async function startStdio(): Promise<void> {
-  const { server, cleanup } = createServer("full");
+  const { server, cleanup } = createServer();
   const transport = new StdioServerTransport();
   const initializedPromise = waitForInitialized(server);
 
