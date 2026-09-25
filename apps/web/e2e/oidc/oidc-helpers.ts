@@ -316,6 +316,7 @@ export async function registerCibaClient(
   const res = await request.post(`${AUTH_BASE_URL}/oauth2/register`, {
     data: {
       client_name: `${labelPrefix}-${crypto.randomUUID().slice(0, 8)}`,
+      application_type: "native",
       redirect_uris: ["http://localhost/cb"],
       grant_types: [CIBA_GRANT_TYPE],
       token_endpoint_auth_method: "none",

@@ -12,6 +12,7 @@ function buildRegistrationRequest(scope: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      application_type: "native",
       client_name: "Installed Agent",
       grant_types: ["authorization_code", "refresh_token"],
       redirect_uris: ["http://127.0.0.1/callback"],
