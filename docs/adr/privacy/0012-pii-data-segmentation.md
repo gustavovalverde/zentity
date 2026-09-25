@@ -73,4 +73,4 @@ This is intentional: verification is an atomic, single-session process. The flow
 - [ADR-0003: Passkey-Sealed Profile](0003-passkey-sealed-profile.md)
 - [ADR-0004: Consent-Based Disclosure](0004-consent-based-disclosure.md)
 - [ADR-0011: Selective Disclosure Scope Architecture](0011-selective-disclosure-scope-architecture.md)
-- [Attestation & Privacy Architecture](../../attestation-privacy-architecture.md)
+- [Attestation & Privacy Architecture](../../(architecture)/attestation-privacy-architecture.md)

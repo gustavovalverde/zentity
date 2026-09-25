@@ -37,5 +37,5 @@ Signed claims contain claim hashes (not raw values). Proofs bind to those hashes
 
 ## More Information
 
-* RFC: [docs/rfcs/0009-passkey-profile-pii.md](../../rfcs/0009-passkey-profile-pii.md)
-* Privacy architecture: [docs/attestation-privacy-architecture.md](../../attestation-privacy-architecture.md)
+* RFC: [docs/rfcs/0009-credential-sealed-profile-pii.md](../../rfcs/0009-credential-sealed-profile-pii.md)
+* Privacy architecture: [docs/(architecture)/attestation-privacy-architecture.md](../../(architecture)/attestation-privacy-architecture.md)

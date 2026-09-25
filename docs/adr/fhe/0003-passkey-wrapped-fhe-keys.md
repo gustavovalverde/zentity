@@ -41,4 +41,4 @@ A KEK (derived from passkey PRF, OPAQUE export key, or wallet signature via HKDF
 ## More Information
 
 * RFC: [docs/rfcs/0001-passkey-wrapped-fhe-keys.md](../../rfcs/0001-passkey-wrapped-fhe-keys.md)
-* Architecture: [docs/architecture.md](../../architecture.md) (Passkey‑Wrapped Client Key Ownership)
+* Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) (Passkey‑Wrapped Client Key Ownership)

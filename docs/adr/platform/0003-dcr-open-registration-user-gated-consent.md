@@ -165,4 +165,4 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 * Identity scope definitions: `apps/web/src/lib/auth/oidc/identity-scopes.ts`
 * Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 * Selective disclosure ADR: [ADR 0011](../privacy/0011-selective-disclosure-scope-architecture.md)
-* OAuth integrations: [docs/oauth-integrations.md](../../oauth-integrations.md)
+* OAuth integrations: [docs/(protocols)/oauth-integrations.md](../../(protocols)/oauth-integrations.md)

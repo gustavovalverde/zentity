@@ -6,7 +6,7 @@
 | **Created** | 2026-02-19 |
 | **Updated** | 2026-02-19 |
 | **Author** | Gustavo Valverde |
-| **Related** | [RFC-0026](0026-identity-assurance-lifecycle.md), [RFC-0020](0020-privacy-preserving-wallet-binding.md), [RFC-0009](0009-credential-sealed-profile-pii.md), [ADR privacy/0013](../adr/privacy/0013-enrollment-uniqueness-anchor.md) |
+| **Related** | [RFC-0026](0026-identity-assurance-lifecycle.md), [RFC-0020](0020-privacy-preserving-wallet-binding.md), [RFC-0009](0009-credential-sealed-profile-pii.md) |
 
 ---
 

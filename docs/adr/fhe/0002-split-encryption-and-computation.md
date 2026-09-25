@@ -38,5 +38,5 @@ For Web2 (off-chain), the client generates keys and encrypts attributes; the ser
 
 ## More Information
 
-* Attestation & Privacy: [docs/attestation-privacy-architecture.md](../../attestation-privacy-architecture.md) (Trust & Privacy Boundaries)
-* System Architecture: [docs/architecture.md](../../architecture.md) (FHE + privacy guarantees)
+* Attestation & Privacy: [docs/(architecture)/attestation-privacy-architecture.md](../../(architecture)/attestation-privacy-architecture.md) (Trust & Privacy Boundaries)
+* System Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) (FHE + privacy guarantees)

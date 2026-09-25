@@ -39,8 +39,8 @@ The server stores only encrypted blobs and metadata; plaintext profile values ar
 
 ## More Information
 
-* RFC: [docs/rfcs/0009-passkey-profile-pii.md](../../rfcs/0009-passkey-profile-pii.md)
-* Architecture: [docs/architecture.md](../../architecture.md) and [docs/attestation-privacy-architecture.md](../../attestation-privacy-architecture.md)
+* RFC: [docs/rfcs/0009-credential-sealed-profile-pii.md](../../rfcs/0009-credential-sealed-profile-pii.md)
+* Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) and [docs/(architecture)/attestation-privacy-architecture.md](../../(architecture)/attestation-privacy-architecture.md)
 
 ## Revision History
 

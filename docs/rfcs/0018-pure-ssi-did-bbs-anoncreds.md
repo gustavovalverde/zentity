@@ -331,4 +331,4 @@ Zentity already supports ZK predicate proofs (age, nationality group, etc.) via 
 - [did:key Method Specification](https://w3c-ccg.github.io/did-method-key/)
 - [BBS+ Signatures](https://www.w3.org/TR/vc-di-bbs/)
 - [AnonCreds Specification](https://hyperledger.github.io/anoncreds-spec/)
-- [SSI Architecture](../ssi-architecture.md)
+- [SSI Architecture](../(architecture)/ssi-architecture.md)

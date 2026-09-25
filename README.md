@@ -130,10 +130,8 @@ Most integrations need only proof scopes.
 - [ZK Nationality Proofs](docs/%28protocols%29/zk-nationality-proofs.md) - Merkle membership proofs
 - [Web3 Architecture](docs/%28architecture%29/web3-architecture.md) - Web2-to-Web3 transition, encrypted attestations, and Base mirror flow
 - [ADR-0005: Base compliance mirror for payment-time reads](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) - rationale for the x402/Base public-read boundary
-- [Blockchain Setup](docs/internal/blockchain-setup.md) - confidential chain and Base mirror envs and deployment
 - [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
 - [Password Security](docs/%28protocols%29/password-security.md) - OPAQUE password model and breach checks
-- [Deployment Verification](docs/internal/verification.md) - deployment verification
 - [Architecture Decision Records](docs/adr/README.md) - decision records
 - [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md) - API collection
 

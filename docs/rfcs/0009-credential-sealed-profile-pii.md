@@ -120,7 +120,7 @@ The profile secret requires an explicit credential unlock to access:
 
 ### OAuth Consent (Identity Scopes)
 
-When a relying party requests `identity.*` scopes, the consent page must unlock the profile secret to map PII fields to OIDC claims. The unlock UI adapts to the user's credential type (detected server-side from secret wrappers). See [OAuth Integrations](../oauth-integrations.md) for the full identity PII data flow.
+When a relying party requests `identity.*` scopes, the consent page must unlock the profile secret to map PII fields to OIDC claims. The unlock UI adapts to the user's credential type (detected server-side from secret wrappers). See [OAuth Integrations](../(protocols)/oauth-integrations.md) for the full identity PII data flow.
 
 ## Schema Changes
 

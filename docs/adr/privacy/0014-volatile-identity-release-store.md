@@ -66,5 +66,5 @@ Replay protection is handled separately by the durable `used_intent_jtis` table,
 - `apps/web/src/lib/auth/oidc/disclosure-context.ts` — durable exact disclosure metadata
 - `apps/web/src/lib/auth/oidc/identity-handler.ts` — shared intent/stage/unstage handlers
 - `apps/web/src/lib/auth/oidc/identity-intent.ts` — HMAC-signed intent token with JTI replay protection
-- Privacy architecture: [Attestation & Privacy Architecture](../../(understand)/attestation-privacy-architecture.md)
+- Privacy architecture: [Attestation & Privacy Architecture](../../(architecture)/attestation-privacy-architecture.md)
 - Builds on: [Consent-based disclosure](0004-consent-based-disclosure.md), [Passkey-sealed profile](0003-passkey-sealed-profile.md)

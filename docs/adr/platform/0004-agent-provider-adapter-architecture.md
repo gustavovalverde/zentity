@@ -318,7 +318,7 @@ Cons:
 
 ## More Information
 
-* Zentity architecture: [docs/agent-architecture.md](../../agent-architecture.md)
+* Zentity architecture: [docs/(architecture)/agent-architecture.md](../../(architecture)/agent-architecture.md)
 * PRD-09 workstream: internal plan surface `docs/plans/prd-09-agent-platform-hardening.md`
 * Compared repository: `/Users/gustavovalverde/dev/personal/agent-auth-v2`
 * Gmail example: `/Users/gustavovalverde/dev/personal/agent-auth-v2/examples/gmail-proxy`

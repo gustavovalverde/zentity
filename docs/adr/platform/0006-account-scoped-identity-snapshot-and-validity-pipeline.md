@@ -72,6 +72,4 @@ That split reduces entropy in two directions. Current-state updates stay in one 
 
 ## More Information
 
-* Shared implementation plan: [Shared Identity Foundation](../../plans/tasks/shared-identity-foundation.md)
-* Validity implementation plan: [Unified Identity Validity Pipeline](../../plans/tasks/prd-36/overview.md)
 * Public architecture overview: [System Architecture](../../(concepts)/architecture.md)

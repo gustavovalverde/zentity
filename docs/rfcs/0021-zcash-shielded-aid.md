@@ -835,8 +835,8 @@ The [Ztarknet proposal](https://forum.zcashcommunity.com/t/proposal-ztarknet-a-s
 
 - [RFC-0001: Passkey-Wrapped FHE Keys](0001-passkey-wrapped-fhe-keys.md)
 - [RFC-0020: Privacy-Preserving Wallet Binding](0020-privacy-preserving-wallet-binding.md)
-- [Zentity Web3 Architecture](../web3-architecture.md)
-- [Zentity Attestation & Privacy Architecture](../attestation-privacy-architecture.md)
+- [Zentity Web3 Architecture](../(architecture)/web3-architecture.md)
+- [Zentity Attestation & Privacy Architecture](../(architecture)/attestation-privacy-architecture.md)
 
 ### Source Code References (Validated January 2026)
 

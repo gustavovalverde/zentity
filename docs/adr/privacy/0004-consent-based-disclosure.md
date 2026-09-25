@@ -37,5 +37,5 @@ The server returns an evidence bundle (proofs, hashes, signed claims), while pla
 
 ## More Information
 
-* Architecture: [docs/architecture.md](../../architecture.md) (Consent-Based Disclosure)
-* Privacy architecture: [docs/attestation-privacy-architecture.md](../../attestation-privacy-architecture.md)
+* Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) (Consent-Based Disclosure)
+* Privacy architecture: [docs/(architecture)/attestation-privacy-architecture.md](../../(architecture)/attestation-privacy-architecture.md)
