@@ -104,6 +104,31 @@ describe("createFirstPartyAuth", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects claims without openid before contacting the issuer", async () => {
+    const authStateStorage = createMemoryAuthStateStorage();
+    const auth = createFirstPartyAuth({
+      issuerUrl: "https://issuer.example",
+      storage: authStateStorage.storage,
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    await expect(
+      auth.authenticate({
+        claims: JSON.stringify({ userinfo: { name: null } }),
+        clientId: "client-123",
+        identifier: "user@example.com",
+        redirectUri: "http://127.0.0.1/callback",
+        scope: "profile",
+        strategies: {
+          password: {
+            password: "correct horse battery staple",
+          },
+        },
+      })
+    ).rejects.toThrow("claims requires scope to include openid");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("authenticates through the OPAQUE challenge flow", async () => {
     const authStateStorage = createMemoryAuthStateStorage();
     const auth = createFirstPartyAuth({
