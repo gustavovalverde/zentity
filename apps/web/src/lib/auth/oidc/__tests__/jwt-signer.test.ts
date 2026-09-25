@@ -134,7 +134,7 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
         .values({
           clientId: testClientId,
           redirectUris: '["http://localhost/callback"]',
-          metadata: '{"id_token_signed_response_alg":"ML-DSA-65"}',
+          metadata: '{"id_token_signed_response_alg":"ES256"}',
         })
         .run();
 

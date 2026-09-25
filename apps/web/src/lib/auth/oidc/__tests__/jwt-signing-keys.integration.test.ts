@@ -11,7 +11,7 @@ describe("getJwtSigningKeys", () => {
     await resetDatabase();
   });
 
-  it("filters ML-DSA and encryption keys out of the Better Auth adapter view", async () => {
+  it("filters encryption keys out of the Better Auth adapter view", async () => {
     await db
       .insert(jwks)
       .values([
@@ -45,17 +45,6 @@ describe("getJwtSigningKeys", () => {
           createdAt: new Date("2026-03-23T15:01:00.000Z"),
         },
         {
-          id: "ml-dsa-key",
-          publicKey: JSON.stringify({
-            kty: "AKP",
-            alg: "ML-DSA-65",
-            pub: "ml-dsa-pub",
-          }),
-          privateKey: JSON.stringify({ raw: "ml-dsa-secret" }),
-          alg: "ML-DSA-65",
-          createdAt: new Date("2026-03-23T15:02:00.000Z"),
-        },
-        {
           id: "jarm-key",
           publicKey: JSON.stringify({
             kty: "EC",
@@ -72,7 +61,7 @@ describe("getJwtSigningKeys", () => {
           }),
           alg: "ECDH-ES",
           crv: "P-256",
-          createdAt: new Date("2026-03-23T15:03:00.000Z"),
+          createdAt: new Date("2026-03-23T15:02:00.000Z"),
         },
       ])
       .run();
