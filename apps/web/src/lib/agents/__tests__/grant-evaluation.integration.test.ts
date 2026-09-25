@@ -28,7 +28,6 @@ async function createOAuthClient(clientId: string) {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["urn:openid:params:grant-type:ciba"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }

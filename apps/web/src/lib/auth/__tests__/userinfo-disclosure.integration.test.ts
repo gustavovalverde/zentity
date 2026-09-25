@@ -46,7 +46,6 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }
@@ -57,7 +56,6 @@ async function createAuthCodeTestClient() {
     .values({
       clientId: TEST_AUTH_CODE_CLIENT_ID,
       name: "UserInfo Auth Code Disclosure Test Client",
-      public: true,
       redirectUris: JSON.stringify([REDIRECT_URI]),
       grantTypes: JSON.stringify(["authorization_code"]),
       responseTypes: JSON.stringify(["code"]),

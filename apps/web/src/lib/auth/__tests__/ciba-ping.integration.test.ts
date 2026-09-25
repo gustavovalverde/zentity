@@ -36,7 +36,6 @@ async function createTestClient(
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
-      public: true,
       ...overrides,
     })
     .run();

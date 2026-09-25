@@ -62,7 +62,6 @@ describe("oauth token auth_time normalization", () => {
       .values({
         clientId,
         name: "Installed Agent",
-        public: true,
         disabled: false,
         scopes: JSON.stringify(["openid", "email", "offline_access"]),
         grantTypes: JSON.stringify(["authorization_code", "refresh_token"]),

@@ -37,7 +37,6 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }

@@ -15,6 +15,11 @@ import {
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
+vi.mock("@better-auth/cimd/node", () => ({
+  fetchClientMetadataResource: (input: RequestInfo | URL, init?: RequestInit) =>
+    globalThis.fetch(input, init),
+}));
+
 const BASE = "http://localhost:3000";
 const PAR_URL = `${BASE}/api/auth/oauth2/par`;
 const CIMD_CLIENT_ID = "https://mcp-e2e.test/oauth";
@@ -110,7 +115,6 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
         redirectUris: JSON.stringify([REDIRECT_URI]),
         grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
         tokenEndpointAuthMethod: "none",
-        public: true,
         subjectType: "pairwise",
         trustLevel: 0,
         metadataUrl: CIMD_CLIENT_ID,

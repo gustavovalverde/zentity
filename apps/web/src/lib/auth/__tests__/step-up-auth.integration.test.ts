@@ -29,7 +29,6 @@ async function createTestClient() {
       redirectUris: JSON.stringify([REDIRECT_URI]),
       grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }

@@ -50,7 +50,6 @@ async function createTestClient() {
     .values({
       clientId: TEST_CLIENT_ID,
       name: "OAuth ID Token Filter Client",
-      public: true,
       disabled: false,
       scopes: JSON.stringify(["openid"]),
       grantTypes: JSON.stringify(["authorization_code"]),

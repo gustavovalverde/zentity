@@ -369,7 +369,6 @@ describe("remote MCP HTTP auth integration", () => {
         clientId: REMOTE_CLIENT_ID,
         grantTypes: JSON.stringify(["authorization_code", CIBA_GRANT_TYPE]),
         name: "Remote MCP Test Client",
-        public: true,
         redirectUris: JSON.stringify(["https://mcp-http.test/callback"]),
         subjectType: "pairwise",
         tokenEndpointAuthMethod: "none",

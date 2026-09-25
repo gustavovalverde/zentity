@@ -28,7 +28,6 @@ async function createTestClient() {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }
@@ -42,7 +41,6 @@ async function createFirstPartyClient() {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
-      public: true,
       firstParty: true,
     })
     .run();
