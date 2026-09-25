@@ -131,9 +131,9 @@ import {
   pinPaymentTokenAudience,
 } from "@/lib/auth/oidc/payment-mint";
 import {
+  enforceAuthorizeAcr,
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
-  enforceStepUp,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
@@ -1760,10 +1760,7 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
-        if (!ctx.query?.resource) {
-          ctx.query = { ...ctx.query, resource: appUrl };
-        }
-        await enforceStepUp(ctx, db);
+        await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         return;
       }

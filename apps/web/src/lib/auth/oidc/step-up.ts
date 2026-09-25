@@ -1,9 +1,8 @@
 /**
- * Step-Up Authentication: OIDC acr_values and max_age enforcement.
+ * Step-Up Authentication: Zentity assurance tiers requested via acr_values.
  *
- * Complete step-up pipeline per OIDC Core §3.1.2.1:
- * - Pure helpers: parse and evaluate acr_values / max_age
- * - Authorize endpoint hook: enforceStepUp (PAR + direct query paths)
+ * - Pure helpers: parse and evaluate acr_values
+ * - Authorize endpoint hook: enforceAuthorizeAcr (PAR + direct query paths)
  * - CIBA enforcement: approval-time and token-exchange safety net
  *
  * For first-party clients (FPA), the CIBA token exchange safety net returns
@@ -21,7 +20,6 @@ import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
-import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
   authChallengeSessions,
@@ -36,7 +34,6 @@ import {
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
-const MAX_AGE_REAUTH_TTL_MS = 300_000;
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 
 function parseAcrValues(raw: string): string[] {
@@ -68,19 +65,6 @@ export function findSatisfiedAcr(
 }
 
 /**
- * Check if the session age exceeds max_age seconds.
- * max_age=0 always returns true (force re-auth).
- */
-export function isMaxAgeExceeded(
-  sessionCreatedAt: string | Date,
-  maxAge: number
-): boolean {
-  const authTime = Math.floor(new Date(sessionCreatedAt).getTime() / 1000);
-  const now = Math.floor(Date.now() / 1000);
-  return now - authTime >= maxAge;
-}
-
-/**
  * Build an OAuth error redirect URL with error, description, and state.
  */
 export function buildOAuthErrorUrl(
@@ -102,90 +86,43 @@ export function buildOAuthErrorUrl(
 // Authorize endpoint enforcement
 // ---------------------------------------------------------------------------
 
-interface StepUpParams {
+interface AcrRequest {
   acr_values?: string;
-  max_age?: string;
-  prompt?: string;
   redirect_uri?: string;
   state?: string;
 }
-
-interface SessionInfo {
-  createdAt: string | Date;
-  userId: string;
-}
-
-type StepUpAction =
-  | { type: "login_required"; description: string }
-  | { type: "reauth" }
-  | { type: "acr_rejected"; description: string };
 
 function throwRedirect(url: string): never {
   throw new APIError("FOUND", undefined, new Headers({ location: url }));
 }
 
-async function evaluate(
-  params: StepUpParams,
-  session: SessionInfo
-): Promise<StepUpAction | null> {
-  const maxAgeStr = params.max_age;
-  const maxAge =
-    maxAgeStr === undefined ? undefined : Number.parseInt(maxAgeStr, 10);
-  const maxAgeExceeded =
-    maxAge !== undefined &&
-    !Number.isNaN(maxAge) &&
-    isMaxAgeExceeded(session.createdAt, maxAge);
-
-  if (params.prompt === "none" && maxAgeExceeded) {
-    return {
-      type: "login_required",
-      description:
-        "Session exceeds max_age and prompt=none forbids interaction",
-    };
+async function findAcrRejection(
+  acrValues: string,
+  userId: string
+): Promise<string | null> {
+  const assurance = await getAccountAssurance(userId, {
+    isAuthenticated: true,
+  });
+  if (findSatisfiedAcr(acrValues, assurance.tier)) {
+    return null;
   }
+  return `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${acrValues}`;
+}
 
-  if (maxAgeExceeded) {
-    return { type: "reauth" };
-  }
-
-  if (params.acr_values) {
-    const assurance = await getAccountAssurance(session.userId, {
-      isAuthenticated: true,
+function rejectAcr(params: AcrRequest, description: string): never {
+  if (!params.redirect_uri) {
+    throw new APIError("BAD_REQUEST", {
+      message: "interaction_required: no redirect_uri to return error",
     });
-    const satisfied = findSatisfiedAcr(params.acr_values, assurance.tier);
-    if (!satisfied) {
-      return {
-        type: "acr_rejected",
-        description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${params.acr_values}`,
-      };
-    }
   }
-
-  return null;
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: query params are untyped
-function extractQueryParams(query: any): StepUpParams {
-  return {
-    acr_values:
-      typeof query?.acr_values === "string" ? query.acr_values : undefined,
-    max_age: typeof query?.max_age === "string" ? query.max_age : undefined,
-    prompt: typeof query?.prompt === "string" ? query.prompt : undefined,
-    redirect_uri:
-      typeof query?.redirect_uri === "string" ? query.redirect_uri : undefined,
-    state: typeof query?.state === "string" ? query.state : undefined,
-  };
-}
-
-// biome-ignore lint/suspicious/noExplicitAny: query params are untyped
-function buildAuthorizeCallback(query: any): string {
-  const url = new URL("http://placeholder/api/auth/oauth2/authorize");
-  for (const [key, value] of Object.entries(query)) {
-    if (typeof value === "string") {
-      url.searchParams.set(key, value);
-    }
-  }
-  return `${url.pathname}${url.search}`;
+  throwRedirect(
+    buildOAuthErrorUrl(
+      params.redirect_uri,
+      params.state,
+      "interaction_required",
+      description
+    )
+  );
 }
 
 async function enforceFromPar(
@@ -217,161 +154,60 @@ async function enforceFromPar(
     return;
   }
 
-  const params = JSON.parse(record.requestParams) as StepUpParams;
-  if (!params.acr_values && params.max_age === undefined) {
+  const params = JSON.parse(record.requestParams) as AcrRequest;
+  if (!params.acr_values) {
     return;
   }
 
-  // zentity owns acr_values step-up semantics. The provider supports only
-  // acr "0", so strip the requested tier from the stored PAR after reading it;
-  // the request then validates, and the user's actual tier is conveyed through
-  // the namespaced zentity_assurance id-token claim.
-  if (params.acr_values) {
-    const { acr_values: _stripped, ...rest } = params;
-    await db
-      .update(haipPushedRequests)
-      .set({ requestParams: JSON.stringify(rest) })
-      .where(eq(haipPushedRequests.id, record.id))
-      .run();
-  }
-
-  const resolved = await getSessionFromCtx(ctx);
-  if (!resolved) {
+  const session = await getSessionFromCtx(ctx);
+  if (!session) {
     return;
   }
 
-  const session: SessionInfo = {
-    userId: resolved.user.id,
-    createdAt: resolved.session.createdAt,
-  };
-
-  const action = await evaluate(params, session);
-  if (!action) {
+  const rejection = await findAcrRejection(params.acr_values, session.user.id);
+  if (!rejection) {
     return;
   }
 
-  if (action.type === "login_required" && params.redirect_uri) {
-    await db
-      .delete(haipPushedRequests)
-      .where(eq(haipPushedRequests.id, record.id))
-      .run();
-    throwRedirect(
-      buildOAuthErrorUrl(
-        params.redirect_uri,
-        params.state,
-        "login_required",
-        action.description
-      )
-    );
-  }
-
-  if (action.type === "reauth") {
-    await db
-      .update(haipPushedRequests)
-      .set({ expiresAt: new Date(Date.now() + MAX_AGE_REAUTH_TTL_MS) })
-      .where(eq(haipPushedRequests.id, record.id))
-      .run();
-    const issuer = getAuthIssuer();
-    const base = new URL(issuer).origin;
-    const callbackPath = `/api/auth/oauth2/authorize?request_uri=${encodeURIComponent(requestUri)}&client_id=${encodeURIComponent(clientId)}`;
-    throwRedirect(
-      `${base}/sign-in?callbackURL=${encodeURIComponent(callbackPath)}`
-    );
-  }
-
-  if (action.type === "acr_rejected") {
-    await db
-      .delete(haipPushedRequests)
-      .where(eq(haipPushedRequests.id, record.id))
-      .run();
-    if (!params.redirect_uri) {
-      throw new APIError("BAD_REQUEST", {
-        message: "interaction_required: no redirect_uri to return error",
-      });
-    }
-    throwRedirect(
-      buildOAuthErrorUrl(
-        params.redirect_uri,
-        params.state,
-        "interaction_required",
-        action.description
-      )
-    );
-  }
+  await db
+    .delete(haipPushedRequests)
+    .where(eq(haipPushedRequests.id, record.id))
+    .run();
+  rejectAcr(params, rejection);
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
 async function enforceFromQuery(ctx: any) {
-  const params = extractQueryParams(ctx.query);
-  if (!params.acr_values && params.max_age === undefined) {
-    return;
-  }
-
-  // Strip the requested tier from the live query after reading it: the provider
-  // supports only acr "0", and the user's actual tier is conveyed through the
-  // namespaced zentity_assurance id-token claim.
-  if (params.acr_values) {
-    ctx.query.acr_values = undefined;
-  }
-
-  const resolved = await getSessionFromCtx(ctx);
-  if (!resolved) {
-    return;
-  }
-
-  const session: SessionInfo = {
-    userId: resolved.user.id,
-    createdAt: resolved.session.createdAt,
+  const query = ctx.query ?? {};
+  const params: AcrRequest = {
+    acr_values:
+      typeof query.acr_values === "string" ? query.acr_values : undefined,
+    redirect_uri:
+      typeof query.redirect_uri === "string" ? query.redirect_uri : undefined,
+    state: typeof query.state === "string" ? query.state : undefined,
   };
-
-  const action = await evaluate(params, session);
-  if (!action) {
+  if (!params.acr_values) {
     return;
   }
 
-  if (action.type === "login_required" && params.redirect_uri) {
-    throwRedirect(
-      buildOAuthErrorUrl(
-        params.redirect_uri,
-        params.state,
-        "login_required",
-        action.description
-      )
-    );
+  const session = await getSessionFromCtx(ctx);
+  if (!session) {
+    return;
   }
 
-  if (action.type === "reauth") {
-    const issuer = getAuthIssuer();
-    const base = new URL(issuer).origin;
-    const callbackPath = buildAuthorizeCallback(ctx.query);
-    throwRedirect(
-      `${base}/sign-in?callbackURL=${encodeURIComponent(callbackPath)}`
-    );
-  }
-
-  if (action.type === "acr_rejected") {
-    if (!params.redirect_uri) {
-      throw new APIError("BAD_REQUEST", {
-        message: "interaction_required: no redirect_uri to return error",
-      });
-    }
-    throwRedirect(
-      buildOAuthErrorUrl(
-        params.redirect_uri,
-        params.state,
-        "interaction_required",
-        action.description
-      )
-    );
+  const rejection = await findAcrRejection(params.acr_values, session.user.id);
+  if (rejection) {
+    rejectAcr(params, rejection);
   }
 }
 
 /**
- * Enforce acr_values and max_age on the authorize endpoint.
- * Called from the global before hook for /oauth2/authorize.
+ * Enforce Zentity assurance tiers requested through `acr_values` on the
+ * authorize endpoint. The provider treats `acr_values` as voluntary and owns
+ * `max_age`; an unmet tier returns `interaction_required` to the client.
  */
 // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
-export async function enforceStepUp(ctx: any, db: LibSQLDatabase<any>) {
+export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
   const requestUri =
     typeof ctx.query?.request_uri === "string"
       ? ctx.query.request_uri

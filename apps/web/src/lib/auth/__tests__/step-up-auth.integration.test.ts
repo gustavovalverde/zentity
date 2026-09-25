@@ -335,7 +335,11 @@ describe("step-up authentication: max_age", () => {
     const location = getRedirectLocation(response);
     expect(location).not.toBeNull();
     expect(location?.pathname).toBe("/sign-in");
-    expect(location?.searchParams.get("callbackURL")).toContain("request_uri=");
+    expect(location?.searchParams.get("request_uri")).toBeNull();
+    expect(location?.searchParams.get("client_id")).toBe(TEST_CLIENT_ID);
+    expect(location?.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
+    expect(location?.searchParams.get("max_age")).toBe("0");
+    expect(location?.searchParams.get("sig")).toBeTruthy();
   });
 
   it("max_age=99999 with fresh session does not trigger step-up re-auth", async () => {
@@ -358,41 +362,19 @@ describe("step-up authentication: max_age", () => {
     }
   });
 
-  it("PAR record preserved on max_age redirect for re-entry", async () => {
+  it("consumes PAR after signing resolved max_age re-entry parameters", async () => {
     const sessionToken = await insertSession(userId);
     const requestId = crypto.randomUUID();
     await insertParRequest(requestId, baseParParams({ max_age: "0" }));
 
     await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
 
-    // PAR record should still exist (not consumed)
     const record = await db
       .select()
       .from(haipPushedRequests)
       .where(eq(haipPushedRequests.requestId, requestId))
       .get();
-    expect(record).toBeDefined();
-  });
-
-  it("PAR TTL extended on max_age redirect", async () => {
-    const sessionToken = await insertSession(userId);
-    const requestId = crypto.randomUUID();
-    // Create with short TTL
-    await insertParRequest(requestId, baseParParams({ max_age: "0" }), {
-      expiresAt: new Date(Date.now() + 5000),
-    });
-
-    await auth.handler(buildAuthorizeRequest(requestId, sessionToken));
-
-    const record = await db
-      .select({ expiresAt: haipPushedRequests.expiresAt })
-      .from(haipPushedRequests)
-      .where(eq(haipPushedRequests.requestId, requestId))
-      .get();
-
-    // TTL should be extended to ~5 minutes from now
-    const fiveMinFromNow = Date.now() + 290_000;
-    expect(record?.expiresAt.getTime()).toBeGreaterThan(fiveMinFromNow);
+    expect(record).toBeUndefined();
   });
 
   it("stale session (old createdAt) triggers max_age redirect", async () => {
