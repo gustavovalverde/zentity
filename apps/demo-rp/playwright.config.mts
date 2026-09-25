@@ -79,6 +79,8 @@ export default defineConfig({
               PORT: issuerPort,
               NEXT_PUBLIC_ENABLE_HARDHAT: "false",
               NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
+              WALLET_AUDIENCE:
+                process.env.WALLET_AUDIENCE ?? "urn:zentity:wallet:zspend-demo",
             },
           },
         ]),

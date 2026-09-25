@@ -57,6 +57,8 @@ const webServerEnv = {
   PORT: webPort,
   TRUSTED_AGENT_ATTESTERS:
     process.env.TRUSTED_AGENT_ATTESTERS ?? "http://localhost:4999/jwks",
+  WALLET_AUDIENCE:
+    process.env.WALLET_AUDIENCE ?? "urn:zentity:wallet:zspend-demo",
   NEXT_PUBLIC_WORLD_ID_ENABLED:
     process.env.NEXT_PUBLIC_WORLD_ID_ENABLED ?? "true",
   NEXT_PUBLIC_WORLD_ID_APP_ID:
