@@ -54,6 +54,31 @@ describe("computeOAuthRequestKey", () => {
     expect(keyA).toBe(keyB);
   });
 
+  it("ignores Better Auth signed-query bookkeeping", () => {
+    const signedBrowserQuery = new URLSearchParams([
+      ["client_id", "client-a"],
+      ["response_type", "code"],
+      ["scope", "openid identity.name"],
+      ["ba_iat", "1786633057395"],
+      ["ba_pl", "session-a"],
+      ["ba_param", "ba_iat"],
+      ["ba_param", "ba_param"],
+      ["ba_param", "ba_pl"],
+      ["ba_param", "client_id"],
+      ["sig", "signature"],
+      ["exp", "1786633657"],
+    ]);
+    const storedAuthorizationQuery = {
+      client_id: "client-a",
+      response_type: "code",
+      scope: "openid identity.name",
+    };
+
+    expect(computeOAuthRequestKey(signedBrowserQuery)).toBe(
+      computeOAuthRequestKey(storedAuthorizationQuery)
+    );
+  });
+
   it("distinguishes materially different OAuth requests", () => {
     const base = computeOAuthRequestKey({
       client_id: "client-a",

@@ -321,16 +321,15 @@ export function OAuthConsentClient({
         );
       }
 
-      const { redirectURI, url } = response.data as {
-        redirectURI?: string;
+      // The auth client's redirect plugin follows `{ redirect, url }`; a second
+      // navigation here would race the one-time authorization callback.
+      const { redirect, url } = response.data as {
+        redirect?: boolean;
         url?: string;
       };
-      const redirectUrl = (redirectURI ?? url)?.trim();
-      if (!redirectUrl) {
+      if (!(redirect && url?.trim())) {
         throw new Error("Missing redirect URL from consent response.");
       }
-
-      globalThis.window.location.assign(redirectUrl);
     } catch (err) {
       // If staging succeeded but consent failed, clear the stale ephemeral
       // entry so the user can retry without hitting "concurrent_stage".

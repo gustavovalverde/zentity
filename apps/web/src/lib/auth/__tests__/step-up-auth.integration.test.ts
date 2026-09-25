@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { verifySignedOAuthQuery } from "@/lib/auth/oidc/oauth-request";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -244,6 +245,12 @@ describe("step-up authentication: acr_values", () => {
     expect(location?.searchParams.get("state")).toBe("consent-state");
     expect(location?.searchParams.get("request_uri")).toBeNull();
     expect(location?.searchParams.get("sig")).toBeTruthy();
+
+    const verified = await verifySignedOAuthQuery(
+      location?.search.slice(1) ?? ""
+    );
+    expect(verified.get("client_id")).toBe(TEST_CLIENT_ID);
+    expect(verified.has("sig")).toBe(false);
   });
 
   it("preference order: first satisfiable ACR wins", async () => {
