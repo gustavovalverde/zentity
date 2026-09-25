@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2026-02-03 |
-| **Updated** | 2026-02-04 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 | **Related** | [RFC-0022](0022-zkpass-integration.md), [RFC-0024](0024-reclaim-protocol-integration.md) |
 
@@ -2241,7 +2241,7 @@ Throughout the Zentity user journey, multiple proofs are generated:
 │  │  │      "employment_verified": true     // From Reclaim            │ │   │
 │  │  │    },                                                            │ │  │
 │  │  │    "proof": {                        // VC signature, NOT ZK    │ │   │
-│  │  │      "type": "MlDsa65Signature2024",                            │ │   │
+│  │  │      "type": "JsonWebSignature2020",                            │ │   │
 │  │  │      "verificationMethod": "did:web:zentity.xyz#key-1"          │ │   │
 │  │  │    }                                                             │ │  │
 │  │  │  }                                                                │ │ │
@@ -2266,7 +2266,7 @@ Throughout the Zentity user journey, multiple proofs are generated:
 **For OIDC4VCI/VP interoperability**: The proof system choice is **irrelevant** because:
 
 1. ZK proofs are verified by Zentity backend
-2. Zentity issues VCs with ML-DSA-65 signatures (post-quantum)
+2. Zentity signs the VCs it issues with its JWT signing keys
 3. Relying Parties verify VC signatures, not ZK proofs
 4. The credential format (JWT-VC, JSON-LD, SD-JWT) determines interoperability
 

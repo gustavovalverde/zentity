@@ -242,7 +242,6 @@ Notes:
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web push)
 - `RESEND_API_KEY` (transactional email)
 - `MAIL_FROM_EMAIL=no-reply@zentity.xyz`
-- `RECOVERY_ML_KEM_SECRET_KEY` (ML-KEM-768 base64, for secret recovery wrappers)
 - `DPOP_NONCE_TTL_SECONDS` (default: 30)
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
 - `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
@@ -368,13 +367,13 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 
 **Deep modules over shallow modules.** A module's interface cost (import path, directory entry, mental slot) must be justified by the complexity it hides. If combining two files produces a simpler interface for the same functionality, combine them. A 500-line cohesive module is preferable to five 100-line files that require understanding all five.
 
-**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `recovery/`, it's `keys.ts` not `recovery-keys.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
+**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `secrets/`, it's `vault.ts` not `secrets-vault.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
 
 **Sub-directory threshold: 4+ cohesive files.** Only create a sub-directory when a concern group has 4+ files after consolidation. Two-file directories are shallow modules at the directory level. Examples: `auth/oidc/haip/` (6 files, HAIP spec), `auth/oidc/disclosure/` (5 files, selective-disclosure registry).
 
 **Component co-location.** Route-scoped components live in `_components/` next to their page, not in `src/components/`. Only genuinely cross-route components (`tier-badge.tsx`, `vault-unlock.tsx`, `agent-approval-view.tsx`) belong at the `src/components/` root.
 
-**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `recovery.ts`, `organization.ts`, `oidc-credentials.ts`.
+**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `organization.ts`, `oidc-credentials.ts`.
 
 **No barrel files.** Avoid `index.ts` files that just re-export. If a module is 900 lines of business logic, name it after its domain (e.g., `vault.ts`), not `index.ts`.
 
@@ -398,7 +397,6 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `credentials` | WebAuthn credential management |
 | `compliantToken` | CompliantERC20 DeFi token operations |
-| `recovery` | Recovery public key and recovery wrappers for stored secrets |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
 | `admin` | JWKS signing key rotation, cleanup, and on-chain revocation retry (admin-only via `adminProcedure`) |
 

@@ -80,11 +80,10 @@ The authorization server MUST:
 - Require Pushed Authorization Requests (PAR, RFC 9126) for all authorization requests
 - Support DPoP (RFC 9449) for sender-constrained tokens
 - Issue access tokens signed with EdDSA (Ed25519) for compact signatures
-- Support `id_token_signed_response_alg` client metadata for per-client signing algorithm selection
+- Sign id_tokens with RS256
 
 The authorization server SHOULD:
 
-- Support multiple signing algorithms for id_tokens (RS256, ES256, EdDSA, ML-DSA-65)
 - Support Rich Authorization Requests (RFC 9396) for structured intent
 - Support Token Exchange (RFC 8693) for audience rebinding and scope attenuation
 - Support Back-Channel Logout (OIDC BCL) for federated session termination
@@ -292,11 +291,11 @@ Extension profiles MAY define additional step-up enforcement points. PACT enforc
 
 ### 8.1 Algorithm Selection
 
-The authorization server MUST support at least RS256 for id_tokens (OIDC Discovery 1.0 Section 3 mandatory). The authorization server SHOULD support ES256, EdDSA, and ML-DSA-65.
+The authorization server MUST sign id_tokens with RS256 (OIDC Discovery 1.0 Section 3 mandatory).
 
 Access tokens MUST be signed with EdDSA (compact 64-byte signatures for Bearer headers).
 
-Clients MAY declare a preferred id_token signing algorithm via `id_token_signed_response_alg` in their registration metadata. The authorization server MUST honor the declared preference if it supports the algorithm.
+The authorization server ignores `id_token_signed_response_alg` in client registration metadata; clients verify id_tokens with RS256.
 
 ### 8.2 Key Management
 
@@ -362,7 +361,7 @@ The authorization server's OpenID Provider Configuration (`/.well-known/openid-c
 - `backchannel_logout_session_supported: true`
 - `require_pushed_authorization_requests: true`
 - `dpop_signing_alg_values_supported`
-- `id_token_signing_alg_values_supported` (at minimum `["RS256"]`)
+- `id_token_signing_alg_values_supported` (`["RS256"]`)
 
 ### 11.2 Extension Discovery
 

@@ -6,7 +6,7 @@ Concise index for agents and humans. Deeper architecture lives in the repo root 
 
 1. **Glob before write.** Search `*{domain}*` in the target directory. If a file already owns the domain, read and extend it — don't create a sibling.
 2. **Deep modules win.** One cohesive 1000-line file beats ten 100-line files that must be understood together. Size is never a reason to split; directive/tree-shaking/history are.
-3. **`{domain}-{concern}.ts` naming, no stuttering.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. When the parent directory already owns the domain, drop the prefix: `email/auth.ts` not `email/auth-mailer.ts`, `recovery/keys.ts` not `recovery/recovery-keys.ts`.
+3. **`{domain}-{concern}.ts` naming, no stuttering.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. When the parent directory already owns the domain, drop the prefix: `email/auth.ts` not `email/auth-mailer.ts`, `secrets/vault.ts` not `secrets/secrets-vault.ts`.
 4. **Banned filename forms.** No `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, generic `service.ts` / `store.ts`. Rename by what the file actually does (`validation.ts`, `typed-data.ts`, `backend.ts`, `key-store.ts`, `posture.ts`, `labels.ts`).
 5. **Disambiguate cross-domain collisions.** "Attestation" means different things in three domains: on-chain (`blockchain/attestation/`), agent host (`agents/host-attestation.ts`), ZK signed claims (`privacy/zk/attestation-claims.ts`). Name by what each computes, not what it's called in the spec.
 6. **Sub-directory only with 4+ files.** A directory with one or two files is a shallow module at the directory level. Use a domain-prefixed filename at the parent level instead.
@@ -45,7 +45,6 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `logging/` | Pino logger, error logger, redaction |
 | `observability/` | Metrics, telemetry, request context, warmup |
 | `privacy/` | `zk/` (Noir + UltraHonk), `fhe/` (TFHE keys), `secrets/` (encrypted blobs + vault), `credentials/` (passkey/OPAQUE/wallet wrapping), `primitives/` (crypto base), `bbs/` (BBS+ signatures) |
-| `recovery/` | Recovery ML-KEM key for secret recovery wrappers |
 | `trpc/` | Server/client setup + `routers/` (one file per domain: `identity.ts`, `zk.ts`, `agent.ts`, etc.) |
 
 ### `src/components/`
