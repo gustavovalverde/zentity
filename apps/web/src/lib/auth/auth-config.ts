@@ -179,6 +179,7 @@ import {
 } from "@/lib/db/schema/organization";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
+import { clientIpAddressOptions } from "@/lib/http/rate-limit";
 import { validateSafeUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logger as rootLogger } from "@/lib/logging/logger";
@@ -1583,10 +1584,7 @@ export const auth = betterAuth({
       "/ciba/authorize",
       "/ciba/reject",
     ] as unknown as boolean,
-    // In production x-forwarded-for carries both the Cloudflare and Railway hops.
-    ipAddress: {
-      ipAddressHeaders: ["cf-connecting-ip"],
-    },
+    ipAddress: clientIpAddressOptions,
   },
   rateLimit:
     isPlaywrightE2e || process.env.NODE_ENV === "test"

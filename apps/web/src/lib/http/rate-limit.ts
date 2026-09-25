@@ -6,6 +6,8 @@
  * A periodic cleanup interval prunes stale entries.
  */
 
+import { getIP } from "@better-auth/core/utils/ip";
+
 interface RateLimitResult {
   limited: boolean;
   retryAfter?: number;
@@ -122,11 +124,18 @@ export function createRateLimiter(options: RateLimiterOptions): RateLimiter {
   return createRealRateLimiter(options);
 }
 
-/** Extract client IP from request headers. */
+/**
+ * Client-IP resolution shared with Better Auth's own rate limiter. Cloudflare
+ * sets cf-connecting-ip; x-forwarded-for is trusted only when it holds a single
+ * hop, since clients can prepend addresses to it.
+ */
+export const clientIpAddressOptions = {
+  ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"],
+};
+
 export function getClientIp(headers: Headers): string {
   return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    headers.get("x-real-ip") ??
+    getIP(headers, { advanced: { ipAddress: clientIpAddressOptions } }) ??
     "unknown"
   );
 }
