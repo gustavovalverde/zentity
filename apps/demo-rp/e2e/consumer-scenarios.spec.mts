@@ -92,6 +92,15 @@ test.describe("demo-rp consumer scenarios", () => {
       .click();
     const authReqId = await authReqIdPromise;
 
+    // The bridge opens the payment-events stream as soon as it mounts after
+    // approval, so the wait must be registered before approving.
+    const eventsRequestPromise = page.waitForRequest(
+      (req: import("@playwright/test").Request) =>
+        req.url().includes("/api/aether/payments/") &&
+        req.url().endsWith("/events"),
+      { timeout: 60_000 }
+    );
+
     await approveCibaRequest(authReqId);
 
     // After CIBA approval, the bridge replaces the legacy "Purchase
@@ -111,12 +120,7 @@ test.describe("demo-rp consumer scenarios", () => {
     // Confirm the SSE proxy route was actually hit by the browser.
     // The EventSource connection request is the deterministic proof
     // that the bridge wired up to the upstream events stream.
-    const proxyRequest = await page.waitForRequest(
-      (req: import("@playwright/test").Request) =>
-        req.url().includes("/api/aether/payments/") &&
-        req.url().endsWith("/events"),
-      { timeout: 10_000 }
-    );
+    const proxyRequest = await eventsRequestPromise;
     expect(proxyRequest.method()).toBe("GET");
   });
 });

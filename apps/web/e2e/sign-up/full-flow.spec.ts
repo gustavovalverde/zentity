@@ -16,6 +16,9 @@ const OPTIONAL_EMAIL_ADDRESS_PATTERN = /Email Address \(optional\)/i;
 const PASSWORD_LABEL_PATTERN = /^Password$/i;
 const CONFIRM_PASSWORD_PATTERN = /Confirm Password/i;
 const SIGN_IN_URL_PATTERN = /\/sign-in/;
+const PASSKEY_SUPPORT_PATTERN = /Checking passkey support/i;
+const CHECK_INBOX_PATTERN = /Check your inbox/i;
+const CONTINUE_TO_DASHBOARD_PATTERN = /Continue to dashboard/i;
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -31,33 +34,42 @@ async function openSignUp(page: Page) {
   await expect(
     page.getByRole("textbox", { name: OPTIONAL_EMAIL_ADDRESS_PATTERN })
   ).toBeVisible({ timeout: 10_000 });
+  // The passkey-support probe clears only after its client effect runs, so the
+  // form is hydrated and typed input is not reverted when React takes over.
+  await expect(page.getByText(PASSKEY_SUPPORT_PATTERN)).toHaveCount(0, {
+    timeout: 15_000,
+  });
 }
 
 async function openPasswordSignUp(page: Page, email?: string) {
   await openSignUp(page);
 
   if (email) {
-    await page
-      .getByRole("textbox", { name: OPTIONAL_EMAIL_ADDRESS_PATTERN })
-      .fill(email);
+    const emailInput = page.getByRole("textbox", {
+      name: OPTIONAL_EMAIL_ADDRESS_PATTERN,
+    });
+    await emailInput.fill(email);
+    await expect(emailInput).toHaveValue(email);
   }
 
-  const passwordOption = page.getByRole("button", {
-    name: PASSWORD_OPTION_PATTERN,
+  await page.getByRole("button", { name: PASSWORD_OPTION_PATTERN }).click();
+
+  await expect(page.getByLabel(PASSWORD_LABEL_PATTERN)).toBeVisible({
+    timeout: 10_000,
   });
-  const passwordInput = page.getByLabel(PASSWORD_LABEL_PATTERN);
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await passwordOption.click();
-    const visible = await passwordInput.isVisible().catch(() => false);
-    if (visible) {
-      break;
-    }
-    await page.waitForTimeout(250);
-  }
-
-  await expect(passwordInput).toBeVisible({ timeout: 10_000 });
   await expect(page.getByLabel(CONFIRM_PASSWORD_PATTERN)).toBeVisible();
+}
+
+async function submitPassword(page: Page, password: string) {
+  await page.getByLabel(PASSWORD_LABEL_PATTERN).fill(password);
+  const confirmInput = page.getByLabel(CONFIRM_PASSWORD_PATTERN);
+  await confirmInput.fill(password);
+  await confirmInput.blur();
+
+  await page.waitForTimeout(2000);
+  await page
+    .locator("form")
+    .evaluate((form) => (form as HTMLFormElement).requestSubmit());
 }
 
 test.describe("Sign-Up Flow", () => {
@@ -116,39 +128,28 @@ test.describe("Sign-Up Flow", () => {
   }) => {
     test.setTimeout(120_000);
 
-    await openPasswordSignUp(page, `signup-${Date.now()}@example.com`);
-
-    const password = `E2ePassword${Date.now()}!`;
-    await page.getByLabel(PASSWORD_LABEL_PATTERN).fill(password);
-    const confirmInput = page.getByLabel(CONFIRM_PASSWORD_PATTERN);
-    await confirmInput.fill(password);
-    await confirmInput.blur();
-
-    await page.waitForTimeout(2000);
-    await page
-      .locator("form")
-      .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+    await openPasswordSignUp(page);
+    await submitPassword(page, `E2ePassword${Date.now()}!`);
 
     await expect(page).toHaveURL(DASHBOARD_URL_PATTERN, { timeout: 60_000 });
   });
 
-  test("lands on the verification-ready dashboard after password signup", async ({
+  test("lands on the verification-ready dashboard after password signup with an email", async ({
     page,
   }) => {
     test.setTimeout(120_000);
 
-    await openPasswordSignUp(page, `tier1-${Date.now()}@example.com`);
+    const email = `tier1-${Date.now()}@example.com`;
+    await openPasswordSignUp(page, email);
+    await submitPassword(page, `TierOne${Date.now()}!`);
 
-    const password = `TierOne${Date.now()}!`;
-    await page.getByLabel(PASSWORD_LABEL_PATTERN).fill(password);
-    const confirmInput = page.getByLabel(CONFIRM_PASSWORD_PATTERN);
-    await confirmInput.fill(password);
-    await confirmInput.blur();
-
-    await page.waitForTimeout(2000);
+    await expect(
+      page.getByRole("heading", { name: CHECK_INBOX_PATTERN })
+    ).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(email)).toBeVisible();
     await page
-      .locator("form")
-      .evaluate((form) => (form as HTMLFormElement).requestSubmit());
+      .getByRole("link", { name: CONTINUE_TO_DASHBOARD_PATTERN })
+      .click();
 
     await expect(page).toHaveURL(DASHBOARD_URL_PATTERN, { timeout: 60_000 });
     await expect(page.getByText(ANONYMOUS_TIER_PATTERN).first()).toBeVisible({
