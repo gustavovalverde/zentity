@@ -1,10 +1,8 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { listBackchannelLogoutClients } from "@/lib/auth/oidc/backchannel-logout";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { listRpValidityNoticeClients } from "@/lib/identity/validity/rp-notice";
 import { resetDatabase } from "@/test-utils/db-test-utils";
 
 import { POST } from "./route";
@@ -63,20 +61,6 @@ describe("POST /api/auth/oauth2/register", () => {
       rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
       zentity_protected_resource: "http://localhost:3300",
     });
-
-    await expect(listBackchannelLogoutClients()).resolves.toEqual([
-      expect.objectContaining({
-        backchannelLogoutSessionRequired: true,
-        backchannelLogoutUri: `${RP_ORIGIN}/api/auth/backchannel-logout`,
-        clientId: payload.client_id,
-      }),
-    ]);
-    await expect(listRpValidityNoticeClients()).resolves.toEqual([
-      expect.objectContaining({
-        clientId: payload.client_id,
-        rpValidityNoticeUri: `${RP_ORIGIN}/api/auth/validity`,
-      }),
-    ]);
   });
 
   async function register(metadata: Record<string, unknown>) {

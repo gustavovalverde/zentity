@@ -2,7 +2,7 @@ import "server-only";
 
 import type { IdentityValidityEvent } from "@/lib/db/schema/identity";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
@@ -16,10 +16,16 @@ import {
   getIdentityValiditySnapshot,
   getLatestIdentityValidityEvent,
 } from "@/lib/db/queries/identity-validity";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import {
+  oauthAccessTokens,
+  oauthClients,
+  oauthConsents,
+  oauthRefreshTokens,
+} from "@/lib/db/schema/oauth-provider";
 
 const RP_VALIDITY_EVENT_URI = "https://zentity.xyz/events/validity-change";
 const RP_NOTICE_EXPIRY_SECONDS = 5 * 60;
+const RP_NOTICE_JWT_TYP = "secevent+jwt";
 
 interface RpValidityNoticeClient {
   clientId: string;
@@ -40,9 +46,50 @@ function parseClientMetadata(metadata: string | null): Record<string, unknown> {
   }
 }
 
-export async function listRpValidityNoticeClients(): Promise<
-  RpValidityNoticeClient[]
-> {
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+async function listAuthorizedClientIds(userId: string): Promise<string[]> {
+  const [consents, accessTokens, refreshTokens] = await Promise.all([
+    db
+      .select({ clientId: oauthConsents.clientId })
+      .from(oauthConsents)
+      .where(eq(oauthConsents.userId, userId))
+      .all(),
+    db
+      .select({ clientId: oauthAccessTokens.clientId })
+      .from(oauthAccessTokens)
+      .where(eq(oauthAccessTokens.userId, userId))
+      .all(),
+    db
+      .select({ clientId: oauthRefreshTokens.clientId })
+      .from(oauthRefreshTokens)
+      .where(eq(oauthRefreshTokens.userId, userId))
+      .all(),
+  ]);
+  return [
+    ...new Set(
+      [...consents, ...accessTokens, ...refreshTokens].map(
+        (row) => row.clientId
+      )
+    ),
+  ];
+}
+
+/**
+ * Clients that asked for validity notices and that this user authorized
+ * through a consent or a token grant. Other registered clients never learn
+ * about the user.
+ */
+export async function listRpValidityNoticeClients(
+  userId: string
+): Promise<RpValidityNoticeClient[]> {
+  const authorizedClientIds = await listAuthorizedClientIds(userId);
+  if (authorizedClientIds.length === 0) {
+    return [];
+  }
+
   const rows = await db
     .select({
       clientId: oauthClients.clientId,
@@ -53,52 +100,35 @@ export async function listRpValidityNoticeClients(): Promise<
       subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
-    .where(eq(oauthClients.disabled, false))
+    .where(
+      and(
+        eq(oauthClients.disabled, false),
+        inArray(oauthClients.clientId, authorizedClientIds)
+      )
+    )
     .all();
 
-  return rows
-    .filter((row): row is typeof row => {
-      const metadata = parseClientMetadata(row.metadata);
-      const metadataEnabled =
-        metadata.rp_validity_notice_enabled === true ||
-        metadata.rpValidityNoticeEnabled === true;
-      const metadataUri =
-        (typeof metadata.rp_validity_notice_uri === "string" &&
-        metadata.rp_validity_notice_uri.length > 0
-          ? metadata.rp_validity_notice_uri
-          : null) ??
-        (typeof metadata.rpValidityNoticeUri === "string" &&
-        metadata.rpValidityNoticeUri.length > 0
-          ? metadata.rpValidityNoticeUri
-          : null);
-      const effectiveEnabled = row.rpValidityNoticeEnabled || metadataEnabled;
-      const effectiveUri =
-        (typeof row.rpValidityNoticeUri === "string" &&
-        row.rpValidityNoticeUri.length > 0
-          ? row.rpValidityNoticeUri
-          : null) ?? metadataUri;
-
-      return Boolean(effectiveEnabled && effectiveUri);
-    })
-    .map((row) => {
-      const metadata = parseClientMetadata(row.metadata);
-      const metadataUri =
-        (typeof metadata.rp_validity_notice_uri === "string" &&
-        metadata.rp_validity_notice_uri.length > 0
-          ? metadata.rp_validity_notice_uri
-          : null) ??
-        (typeof metadata.rpValidityNoticeUri === "string" &&
-        metadata.rpValidityNoticeUri.length > 0
-          ? metadata.rpValidityNoticeUri
-          : null);
-
-      return {
-        clientId: row.clientId,
-        redirectUris: parseStoredStringArray(row.redirectUris),
-        rpValidityNoticeUri: row.rpValidityNoticeUri ?? metadataUri ?? "",
-        subjectType: row.subjectType,
-      };
-    });
+  return rows.flatMap((row) => {
+    const metadata = parseClientMetadata(row.metadata);
+    const enabled =
+      row.rpValidityNoticeEnabled ||
+      metadata.rp_validity_notice_enabled === true ||
+      metadata.rpValidityNoticeEnabled === true;
+    const uri =
+      nonEmptyString(row.rpValidityNoticeUri) ??
+      nonEmptyString(metadata.rp_validity_notice_uri) ??
+      nonEmptyString(metadata.rpValidityNoticeUri);
+    return enabled && uri
+      ? [
+          {
+            clientId: row.clientId,
+            redirectUris: parseStoredStringArray(row.redirectUris),
+            rpValidityNoticeUri: uri,
+            subjectType: row.subjectType,
+          },
+        ]
+      : [];
+  });
 }
 
 async function buildRpValidityNoticeJwt(args: {
@@ -107,7 +137,7 @@ async function buildRpValidityNoticeJwt(args: {
   event: IdentityValidityEvent;
   userId: string;
 }): Promise<string> {
-  const clients = await listRpValidityNoticeClients();
+  const clients = await listRpValidityNoticeClients(args.userId);
   const client = clients.find(
     (candidate) => candidate.clientId === args.clientId
   );
@@ -125,23 +155,26 @@ async function buildRpValidityNoticeJwt(args: {
   const issuer = getAuthIssuer();
   const now = Math.floor(Date.now() / 1000);
 
-  return await signJwt({
-    iss: issuer,
-    aud: args.clientId,
-    sub,
-    iat: now,
-    exp: now + RP_NOTICE_EXPIRY_SECONDS,
-    jti: args.deliveryId,
-    events: {
-      [RP_VALIDITY_EVENT_URI]: {
-        eventId: args.event.id,
-        eventKind: args.event.eventKind,
-        validityStatus: args.event.validityStatus,
-        occurredAt: args.event.createdAt,
-        ...(args.event.reason ? { reason: args.event.reason } : {}),
+  return await signJwt(
+    {
+      iss: issuer,
+      aud: args.clientId,
+      sub,
+      iat: now,
+      exp: now + RP_NOTICE_EXPIRY_SECONDS,
+      jti: args.deliveryId,
+      events: {
+        [RP_VALIDITY_EVENT_URI]: {
+          eventId: args.event.id,
+          eventKind: args.event.eventKind,
+          validityStatus: args.event.validityStatus,
+          occurredAt: args.event.createdAt,
+          ...(args.event.reason ? { reason: args.event.reason } : {}),
+        },
       },
     },
-  });
+    { typ: RP_NOTICE_JWT_TYP }
+  );
 }
 
 export async function postRpValidityNotice(args: {
@@ -150,7 +183,7 @@ export async function postRpValidityNotice(args: {
   event: IdentityValidityEvent;
   userId: string;
 }): Promise<void> {
-  const clients = await listRpValidityNoticeClients();
+  const clients = await listRpValidityNoticeClients(args.userId);
   const client = clients.find(
     (candidate) => candidate.clientId === args.clientId
   );

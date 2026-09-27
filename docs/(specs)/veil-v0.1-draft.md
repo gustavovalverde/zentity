@@ -337,10 +337,9 @@ Identity scopes MUST NOT be persisted in durable consent records. The full scope
 
 The authorization server MUST support OIDC Back-Channel Logout for federated session termination. On user sign-out:
 
-1. Query all registered clients with a `backchannel_logout_uri`.
-2. For each: build a logout token JWT with the client's pairwise `sub` and `sid` (if `backchannel_logout_session_required`).
-3. POST the logout token to the client's endpoint.
-4. Retry with exponential backoff on transient failures.
+1. Find the clients that hold access or refresh tokens for the ended session and registered a `backchannel_logout_uri`.
+2. For each: build a logout token (`typ: logout+jwt`, short `exp`) with the client's pairwise `sub` and the session's `sid`.
+3. POST the logout token to the client's endpoint once, without retransmission (OIDC BCL §2.5).
 
 ### 10.2 Extension Coordination
 

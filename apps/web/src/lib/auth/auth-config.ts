@@ -64,7 +64,6 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import { revokePendingCibaOnLogout } from "@/lib/auth/oidc/backchannel-logout";
 import {
   hashCibaAuthReqId,
   rawAuthReqIdFromApprovalUrl,
@@ -144,6 +143,7 @@ import { getTrustedOrigins } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
+import { rejectPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
@@ -182,6 +182,7 @@ import { sendCibaNotification } from "@/lib/email/ciba";
 import { clientIpAddressOptions } from "@/lib/http/rate-limit";
 import { validateSafeUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
+import { logError } from "@/lib/logging/error-logger";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
@@ -1721,7 +1722,13 @@ export const auth = betterAuth({
       },
       delete: {
         after: async (session) => {
-          await revokePendingCibaOnLogout(session.userId);
+          await rejectPendingCibaRequestsForUser(session.userId).catch(
+            (error: unknown) =>
+              logError(error, {
+                userId: session.userId,
+                operation: "ciba-logout-rejection",
+              })
+          );
         },
       },
     },

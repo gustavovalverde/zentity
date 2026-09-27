@@ -57,7 +57,6 @@ export type ValidityEventKind = (typeof validityEventKindEnum)[number];
 export const validityDeliveryTargetEnum = [
   "oidc4vci_credential_status",
   "ciba_request_cancellation",
-  "backchannel_logout",
   "blockchain_attestation_revocation",
   "mirror_compliance_write",
   "mirror_revocation_write",

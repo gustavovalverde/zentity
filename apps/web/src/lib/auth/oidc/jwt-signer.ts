@@ -265,12 +265,13 @@ export async function cleanupExpiredKeys(): Promise<number> {
 
 async function signWithAlg(
   payload: Record<string, unknown>,
-  alg: StandardAlg
+  alg: StandardAlg,
+  typ = "JWT"
 ): Promise<string> {
   const { kid, privateKey } = await getOrCreateSigningKey(alg);
 
   return new SignJWT(payload)
-    .setProtectedHeader({ alg, typ: "JWT", kid })
+    .setProtectedHeader({ alg, typ, kid })
     .sign(privateKey);
 }
 
@@ -307,12 +308,17 @@ async function projectAccessTokenSubject(
  * for the JWT plugin's configured algorithm and rejects a mismatched signer.
  */
 export async function signJwt(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  header?: { typ?: string }
 ): Promise<string> {
   if (typeof payload.scope === "string") {
-    return signWithAlg(await projectAccessTokenSubject(payload), "EdDSA");
+    return signWithAlg(
+      await projectAccessTokenSubject(payload),
+      "EdDSA",
+      header?.typ
+    );
   }
-  return signWithAlg(payload, "RS256");
+  return signWithAlg(payload, "RS256", header?.typ);
 }
 
 // ---------------------------------------------------------------------------

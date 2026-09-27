@@ -232,4 +232,32 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       }
     });
   });
+
+  describe("token types", () => {
+    function headerTyp(token: string): unknown {
+      return JSON.parse(
+        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
+      ).typ;
+    }
+
+    it("keeps the type the caller asks for", async () => {
+      const logoutToken = await signJwt(
+        { aud: "some-client-id", sub: "user-1", events: {} },
+        { typ: "logout+jwt" }
+      );
+      const accessToken = await signJwt(
+        { scope: "openid", sub: "client-1", client_id: "client-1" },
+        { typ: "at+jwt" }
+      );
+
+      expect(headerTyp(logoutToken)).toBe("logout+jwt");
+      expect(headerTyp(accessToken)).toBe("at+jwt");
+    });
+
+    it("types a JWT as JWT when the caller does not say otherwise", async () => {
+      const token = await signJwt({ aud: "some-client-id", sub: "user-1" });
+
+      expect(headerTyp(token)).toBe("JWT");
+    });
+  });
 });

@@ -596,7 +596,7 @@ Relying parties integrate two different post-authorization signals:
 - **Back-channel logout** ends sessions.
 - **Validity notice** reports that the underlying identity evidence changed.
 
-Push delivery uses a compact JWS POSTed to the registered `rp_validity_notice_uri`. Pull recovery uses `GET /api/auth/oauth2/validity` with the RP's DPoP-bound access token. The issuer resolves the caller's pairwise subject from the authenticated token and returns the latest immutable validity event plus the current snapshot status.
+Push delivery uses a compact JWS (`typ: secevent+jwt`, five-minute `exp`, `aud` set to the client) POSTed to the registered `rp_validity_notice_uri`, and only to clients the user authorized through a consent or a token grant. Pull recovery uses `GET /api/auth/oauth2/validity` with the RP's DPoP-bound access token. The issuer resolves the caller's pairwise subject from the authenticated token and returns the latest immutable validity event plus the current snapshot status.
 
 This matters because revocation, freshness, and re-verification are not the same thing. A user can be `stale` without being `revoked`, and a newer credential can supersede an older one without ending the session immediately. The validity transport gives RPs one explicit way to learn about those claim-level changes without overloading session semantics.
 
@@ -728,11 +728,11 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 **`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris`). This allows the RP to correlate the logout token with a specific session.
 
-**Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
+**Logout token format:** OIDC BCL §2.4 JWT with `typ: logout+jwt`, containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, `iat`, a two-minute `exp`, and `jti`.
 
-**Delivery:** The OAuth provider sends logout tokens to registered RPs itself whenever a session ends (sign-out or session deletion). The user's sign-out completes regardless of delivery success.
+**Delivery:** The OAuth provider sends logout tokens itself whenever a session ends (sign-out or session deletion), and only to clients that hold access or refresh tokens for that session. Identity revocation does not send logout tokens; relying parties learn about it from validity notices. The user's sign-out completes regardless of delivery success.
 
-**CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
+**CIBA revocation:** ending a session sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
 
 **Discovery fields:** `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
 

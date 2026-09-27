@@ -164,7 +164,7 @@ describe("revoke procedures", () => {
       },
       latestEventDeliveries: [
         {
-          target: "backchannel_logout",
+          target: "rp_validity_notice",
           targetKey: "rp-client-1",
           status: "retrying",
           attemptCount: 1,
@@ -340,7 +340,7 @@ describe("revoke procedures", () => {
         },
         latestValidityDeliveries: [
           {
-            target: "backchannel_logout",
+            target: "rp_validity_notice",
             targetKey: "rp-client-1",
             status: "retrying",
             attemptCount: 1,

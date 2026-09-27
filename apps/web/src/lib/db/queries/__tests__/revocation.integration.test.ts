@@ -25,6 +25,7 @@ import {
 import {
   jwks as jwksTable,
   oauthClients,
+  oauthConsents,
 } from "@/lib/db/schema/oauth-provider";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import {
@@ -87,6 +88,13 @@ async function createTestOAuthClient(
       subjectType: args.subjectType ?? "pairwise",
       backchannelLogoutUri: args.backchannelLogoutUri,
     })
+    .run();
+}
+
+async function grantConsent(userId: string, clientId: string) {
+  await db
+    .insert(oauthConsents)
+    .values({ clientId, userId, scopes: JSON.stringify(["openid"]) })
     .run();
 }
 
@@ -225,7 +233,7 @@ describe("identity revocation cascade", () => {
     expect(attestation?.status).toBe("revocation_pending");
   });
 
-  it("processes pending CIBA cancellation and back-channel logout through the delivery worker", async () => {
+  it("cancels pending CIBA requests without sending logout tokens", async () => {
     const fetchSpy = vi.fn<typeof fetch>();
     fetchSpy.mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
@@ -237,6 +245,7 @@ describe("identity revocation cascade", () => {
       {},
       { backchannelLogoutUri: "https://rp.example.com/backchannel-logout" }
     );
+    await grantConsent(userId, clientId);
     const { authReqId } = await createTestCibaRequest({
       clientId,
       userId,
@@ -256,21 +265,10 @@ describe("identity revocation cascade", () => {
       .from(identityValidityDeliveries)
       .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
       .all();
-    expect(scheduledRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          target: "ciba_request_cancellation",
-          // The cancellation keys on the stored (hashed) auth_req_id.
-          targetKey: hashCibaAuthReqId(authReqId),
-          status: "pending",
-        }),
-        expect.objectContaining({
-          target: "backchannel_logout",
-          targetKey: clientId,
-          status: "pending",
-        }),
-      ])
-    );
+    expect(scheduledRows.map((row) => row.target)).toEqual([
+      "ciba_request_cancellation",
+    ]);
+    expect(scheduledRows[0]?.targetKey).toBe(hashCibaAuthReqId(authReqId));
 
     await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
@@ -282,28 +280,7 @@ describe("identity revocation cascade", () => {
       .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
       .get();
     expect(cibaRow?.status).toBe("rejected");
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://rp.example.com/backchannel-logout",
-      expect.objectContaining({ method: "POST" })
-    );
-
-    const deliveredRows = await db
-      .select()
-      .from(identityValidityDeliveries)
-      .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
-      .all();
-    expect(deliveredRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          target: "ciba_request_cancellation",
-          status: "delivered",
-        }),
-        expect.objectContaining({
-          target: "backchannel_logout",
-          status: "delivered",
-        }),
-      ])
-    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("delivers RP validity notices and exposes the same event through pull recovery", async () => {
@@ -316,6 +293,11 @@ describe("identity revocation cascade", () => {
     await createTestOAuthClient(clientId, {
       rp_validity_notice_enabled: true,
       rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+    });
+    await grantConsent(userId, clientId);
+    await createTestOAuthClient("unauthorized-validity-client", {
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "https://observer.example.com/api/auth/validity",
     });
     await seedVerifiedIdentity(userId);
 
@@ -331,9 +313,13 @@ describe("identity revocation cascade", () => {
       .from(identityValidityDeliveries)
       .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
       .all();
-    const noticeDelivery = scheduledRows.find(
+    const noticeDeliveries = scheduledRows.filter(
       (delivery) => delivery.target === "rp_validity_notice"
     );
+    expect(noticeDeliveries.map((delivery) => delivery.targetKey)).toEqual([
+      clientId,
+    ]);
+    const noticeDelivery = noticeDeliveries[0];
     if (!noticeDelivery) {
       throw new Error(
         "Expected an RP validity notice delivery to be scheduled"
@@ -365,8 +351,11 @@ describe("identity revocation cascade", () => {
 
     expect(compactJws.split(".")).toHaveLength(3);
 
-    const { decodeJwt } = await import("jose");
+    const { decodeJwt, decodeProtectedHeader } = await import("jose");
     const payload = decodeJwt(compactJws);
+
+    expect(decodeProtectedHeader(compactJws).typ).toBe("secevent+jwt");
+    expect(typeof payload.exp).toBe("number");
 
     expect(payload.aud).toBe(clientId);
     expect(payload.jti).toBe(noticeDelivery.id);

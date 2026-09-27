@@ -55,6 +55,12 @@ Low-level proof and claim inserts stay pure writes. Verification lifecycle check
 
 That split reduces entropy in two directions. Current-state updates stay in one place, and downstream fan-out stays in one place. Future credential methods can therefore join the system by calling the same lifecycle checkpoints instead of adding a parallel validity architecture.
 
+### Delivery recipients
+
+Validity notices (`rp_validity_notice`) go only to relying parties the user authorized: clients with a consent record or an access or refresh token for that user. The recipient check runs again at delivery time, so a consent removed after scheduling stops the notice. A notice is a Security Event Token (`typ: secevent+jwt`) with `aud` set to the client, the client's subject identifier as `sub`, and a five-minute `exp`.
+
+Identity revocation does not end sessions, so the pipeline sends no logout tokens. Back-channel logout belongs to the OAuth provider, which sends `logout+jwt` tokens when a session ends, and only to clients holding tokens for that session.
+
 ### Expected Consequences
 
 * Current reads become simpler because they consume one account snapshot and one selected credential instead of re-ranking verification rows ad hoc.
@@ -73,3 +79,7 @@ That split reduces entropy in two directions. Current-state updates stay in one 
 ## More Information
 
 * Public architecture overview: [System Architecture](../../(concepts)/architecture.md)
+
+## Revision History
+
+* 2026-09-27: Validity notices go only to clients the user authorized and are typed `secevent+jwt`. The pipeline's own back-channel logout target is removed; logout tokens come only from the OAuth provider.
