@@ -111,7 +111,7 @@ import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
-  stripZentityHostedResources,
+  normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
 import {
@@ -1720,7 +1720,7 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
-          stripZentityHostedResources(ctx.body);
+          normalizeUserTokenResources(ctx.body);
         }
         return;
       }
@@ -1731,7 +1731,7 @@ export const auth = betterAuth({
         }
         beforeTokenValidateResource(ctx);
         if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
-          stripZentityHostedResources(ctx.body);
+          normalizeUserTokenResources(ctx.body);
         }
         await beforeTokenFinalizeDisclosureBindings(ctx);
         return;
@@ -1748,14 +1748,14 @@ export const auth = betterAuth({
           });
         }
         beforeValidateResourceUri(ctx);
-        stripZentityHostedResources(ctx.body);
+        normalizeUserTokenResources(ctx.body);
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         if (ctx.query) {
-          stripZentityHostedResources(ctx.query);
+          normalizeUserTokenResources(ctx.query);
         }
         return;
       }

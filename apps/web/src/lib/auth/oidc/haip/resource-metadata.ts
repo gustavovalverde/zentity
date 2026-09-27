@@ -62,17 +62,19 @@ export function isZentityHostedResource(resource: string): boolean {
 }
 
 /**
- * Removes Zentity-hosted resource indicators from user token request
- * parameters, so the OAuth provider issues an opaque token for them.
+ * Prepares the resource indicators of a user token request: each one takes the
+ * registered form (no trailing slash, so `https://mcp.example/` names
+ * `https://mcp.example`), and Zentity-hosted ones are dropped so the OAuth
+ * provider issues an opaque token for them.
  */
-export function stripZentityHostedResources(
+export function normalizeUserTokenResources(
   params: Record<string, unknown>
 ): void {
   const { resource } = params;
-  const external = (Array.isArray(resource) ? resource : [resource]).filter(
-    (value): value is string =>
-      typeof value === "string" && !isZentityHostedResource(value)
-  );
+  const external = (Array.isArray(resource) ? resource : [resource])
+    .filter((value): value is string => typeof value === "string")
+    .map(normalizeResource)
+    .filter((value) => !isZentityHostedResource(value));
   if (external.length === 0) {
     Reflect.deleteProperty(params, "resource");
   } else {

@@ -146,6 +146,12 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
       expect(record?.resource).toBe(env.MCP_PUBLIC_URL);
     });
 
+    it("stores a trailing-slash resource in its registered form", async () => {
+      const record = await pushAndReadRecord(`${env.MCP_PUBLIC_URL}/`);
+
+      expect(record?.resource).toBe(env.MCP_PUBLIC_URL);
+    });
+
     it("drops a Zentity-hosted resource so the token is opaque", async () => {
       const record = await pushAndReadRecord(VALID_RESOURCE);
 
