@@ -3,6 +3,11 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { getTrustedOrigins } from "@/lib/auth/origin";
+import {
+  buildContentSecurityPolicy,
+  CSP_NONCE_HEADER,
+  createCspNonce,
+} from "@/lib/http/content-security-policy";
 
 const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
@@ -11,6 +16,7 @@ const RESPONSE_REQUEST_ID_HEADER = "X-Request-Id";
 const RESPONSE_FLOW_ID_HEADER = "X-Flow-Id";
 
 const AUTH_PATH_PREFIX = "/api/auth";
+const CSP_EXEMPT_PREFIXES = ["/api/", "/push-sw.js"];
 
 function readHeader(headers: Headers, key: string): string | null {
   const value = headers.get(key);
@@ -61,11 +67,27 @@ export function proxy(request: NextRequest) {
 
   const flowId = resolveFlowId(request);
 
+  const isDocument = !CSP_EXEMPT_PREFIXES.some((prefix) =>
+    request.nextUrl.pathname.startsWith(prefix)
+  );
+  const nonce = createCspNonce();
+  const csp = isDocument
+    ? buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "production")
+    : null;
+  if (csp) {
+    headers.set(CSP_NONCE_HEADER, nonce);
+    headers.set("Content-Security-Policy", csp);
+  }
+
   const response = NextResponse.next({
     request: {
       headers,
     },
   });
+
+  if (csp) {
+    response.headers.set("Content-Security-Policy", csp);
+  }
 
   response.headers.set(RESPONSE_REQUEST_ID_HEADER, requestId);
   if (flowId) {

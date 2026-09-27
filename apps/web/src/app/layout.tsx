@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from "next";
 
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 
 import { PrivacyModeProvider } from "@/components/providers/privacy-mode-provider";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { env } from "@/env";
+import { CSP_NONCE_HEADER } from "@/lib/http/content-security-policy";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -55,6 +57,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get(CSP_NONCE_HEADER) ?? undefined;
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -72,6 +75,7 @@ export default async function RootLayout({
           defaultTheme="system"
           disableTransitionOnChange
           enableSystem
+          nonce={nonce}
         >
           <PrivacyModeProvider>
             {/* Skip to main content link for keyboard users */}
