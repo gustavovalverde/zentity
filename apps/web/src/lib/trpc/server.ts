@@ -10,13 +10,12 @@ import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/tier";
 
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 
-import { env } from "@/env";
 import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
@@ -173,33 +172,6 @@ async function resolveOpaqueSession(
   };
 }
 
-/**
- * Resolve session from internal service token headers.
- * Used by trusted internal services (MCP HTTP transport) that have
- * already validated the caller's identity and pass the user ID directly.
- */
-function resolveServiceTokenSession(
-  req: Request
-): Promise<ResolvedAuthSession> {
-  const token = req.headers.get("x-zentity-internal-token");
-  const userId = req.headers.get("x-zentity-user-id");
-
-  if (!(token && userId && env.INTERNAL_SERVICE_TOKEN)) {
-    return Promise.resolve({ session: null, authContext: null });
-  }
-
-  const expected = Buffer.from(env.INTERNAL_SERVICE_TOKEN);
-  const actual = Buffer.from(token);
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
-    return Promise.resolve({ session: null, authContext: null });
-  }
-
-  return buildSessionFromUserId(userId).then((session) => ({
-    session,
-    authContext: null,
-  }));
-}
-
 async function buildSessionFromUserId(
   userId: string,
   options?: { authContextId?: string | null; sessionId?: string }
@@ -277,19 +249,6 @@ export async function createTrpcContext(args: {
       logError(error, {
         requestId: requestContext.requestId,
         path: "auth.resolveOAuth",
-      });
-    }
-  }
-
-  if (!session) {
-    try {
-      const resolved = await resolveServiceTokenSession(args.req);
-      session = resolved.session;
-      authContext = resolved.authContext;
-    } catch (error) {
-      logError(error, {
-        requestId: requestContext.requestId,
-        path: "auth.resolveServiceToken",
       });
     }
   }

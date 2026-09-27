@@ -228,7 +228,7 @@ Notes:
 **Required env vars** (set via Railway dashboard):
 
 - `BETTER_AUTH_SECRET`, `OPAQUE_SERVER_SETUP`, `NEXT_PUBLIC_APP_URL`
-- `INTERNAL_SERVICE_TOKEN` (min 32 chars, shared across all services)
+- `INTERNAL_SERVICE_TOKEN` (min 32 chars; authenticates the web app to the FHE and OCR services and the wallet runtime to the revocation feed; never a user session)
 - `DEDUP_HMAC_SECRET` (min 32 chars, sybil dedup & per-RP nullifiers)
 - `PAIRWISE_SECRET` (min 32 chars, HAIP pairwise subject identifiers)
 - `KEY_ENCRYPTION_KEY` (min 32 chars, AES-256-GCM for JWKS at rest)
