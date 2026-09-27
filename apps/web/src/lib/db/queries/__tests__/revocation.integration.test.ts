@@ -1,7 +1,19 @@
+import type { AddressInfo } from "node:net";
+
 import crypto from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:http";
 
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
@@ -40,6 +52,46 @@ import {
   createTestUser,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
+
+const { lookupMock } = vi.hoisted(() => ({ lookupMock: vi.fn() }));
+
+vi.mock("node:dns/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:dns/promises")>();
+  lookupMock.mockImplementation(actual.lookup);
+  return {
+    ...actual,
+    default: { ...actual, lookup: lookupMock },
+    lookup: lookupMock,
+  };
+});
+
+async function startValidityReceiver(): Promise<{
+  close: () => Promise<void>;
+  received: string[];
+  url: string;
+}> {
+  const received: string[] = [];
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk as Buffer);
+    }
+    received.push(Buffer.concat(chunks).toString("utf8"));
+    res.writeHead(202).end();
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+    received,
+    url: `http://localhost:${port}/api/auth/validity`,
+  };
+}
 
 async function seedSigningKey(): Promise<{
   kid: string;
@@ -285,15 +337,14 @@ describe("identity revocation cascade", () => {
   });
 
   it("delivers RP validity notices and exposes the same event through pull recovery", async () => {
-    const fetchSpy = vi.fn<typeof fetch>();
-    fetchSpy.mockResolvedValue(new Response(null, { status: 202 }));
-    vi.stubGlobal("fetch", fetchSpy);
+    const receiver = await startValidityReceiver();
+    onTestFinished(receiver.close);
 
     await seedSigningKey();
     const clientId = "rp-validity-client";
     await createTestOAuthClient(clientId, {
       rp_validity_notice_enabled: true,
-      rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+      rp_validity_notice_uri: receiver.url,
     });
     await grantConsent(userId, clientId);
     await createTestOAuthClient("unauthorized-validity-client", {
@@ -332,18 +383,9 @@ describe("identity revocation cascade", () => {
       targets: ["rp_validity_notice"],
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://rp.example.com/api/auth/validity",
-      expect.objectContaining({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/jwt",
-        },
-      })
-    );
+    expect(receiver.received).toHaveLength(1);
 
-    const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
-    const compactJws = requestInit?.body;
+    const compactJws = receiver.received[0];
     if (typeof compactJws !== "string") {
       throw new Error(
         "Expected RP validity notice delivery to post a compact JWS"
@@ -397,6 +439,51 @@ describe("identity revocation cascade", () => {
         }),
       ])
     );
+  });
+
+  it("refuses RP validity notices to a hostname that resolves to loopback", async () => {
+    const actualDns =
+      await vi.importActual<typeof import("node:dns/promises")>(
+        "node:dns/promises"
+      );
+    lookupMock.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
+    onTestFinished(() => {
+      lookupMock.mockImplementation(actualDns.lookup);
+    });
+
+    await seedSigningKey();
+    const clientId = "rp-rebinding-client";
+    await createTestOAuthClient(clientId, {
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+    });
+    await grantConsent(userId, clientId);
+    await seedVerifiedIdentity(userId);
+
+    const result = await revokeIdentity(
+      userId,
+      "admin@zentity.app",
+      "fraud",
+      "admin"
+    );
+
+    await deliverPendingValidityDeliveries({
+      eventId: result.eventId as string,
+      targets: ["rp_validity_notice"],
+    });
+
+    expect(lookupMock).toHaveBeenCalledWith(
+      "rp.example.com",
+      expect.objectContaining({ all: true })
+    );
+
+    const notice = await db
+      .select()
+      .from(identityValidityDeliveries)
+      .where(eq(identityValidityDeliveries.targetKey, clientId))
+      .get();
+    expect(notice?.status).not.toBe("delivered");
+    expect(notice?.lastError).toContain("private or reserved");
   });
 
   it("revoked records filtered from getLatestVerification", async () => {

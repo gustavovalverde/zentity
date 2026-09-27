@@ -184,7 +184,7 @@ import {
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { clientIpAddressOptions } from "@/lib/http/rate-limit";
-import { validateSafeUrl } from "@/lib/http/url-safety";
+import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logError } from "@/lib/logging/error-logger";
 import { logger as rootLogger } from "@/lib/logging/logger";
@@ -484,6 +484,31 @@ function isValidHttpsUrl(value: string): boolean {
   }
 }
 
+const OUTBOUND_URL_FIELDS = [
+  "rp_validity_notice_uri",
+  "backchannel_client_notification_endpoint",
+] as const;
+
+function assertOutboundUrl(
+  field: string,
+  value: unknown,
+  error: "invalid_client_metadata" | "invalid_request"
+): void {
+  if (value === undefined) {
+    return;
+  }
+  const problem =
+    typeof value === "string"
+      ? validateOutboundUrl(value.trim())
+      : "must be a string";
+  if (problem) {
+    throw new APIError("BAD_REQUEST", {
+      error,
+      error_description: `${field} ${problem}`,
+    });
+  }
+}
+
 async function validateDcrRegistration(
   body: Record<string, unknown> | undefined
 ): Promise<void> {
@@ -522,14 +547,8 @@ async function validateDcrRegistration(
     });
   }
 
-  let rpValidityNoticeUri: string | undefined;
-  if (typeof body.rp_validity_notice_uri === "string") {
-    rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
-  }
-  if (rpValidityNoticeUri && !isDev && !isValidHttpsUrl(rpValidityNoticeUri)) {
-    throw new APIError("BAD_REQUEST", {
-      error_description: "rp_validity_notice_uri must be an HTTPS URL",
-    });
+  for (const field of OUTBOUND_URL_FIELDS) {
+    assertOutboundUrl(field, body[field], "invalid_client_metadata");
   }
 
   const protectedResource =
@@ -594,11 +613,10 @@ async function validateDcrRegistration(
       });
     }
 
-    // SSRF protection: block private IPs, enforce HTTPS in prod
-    const ssrfError = validateSafeUrl(iss, !isDev);
-    if (ssrfError) {
+    const issuerProblem = validateOutboundUrl(iss);
+    if (issuerProblem) {
       throw new APIError("BAD_REQUEST", {
-        error_description: `software_statement issuer URL rejected: ${ssrfError}`,
+        error_description: `software_statement issuer ${issuerProblem}`,
       });
     }
 
@@ -1767,6 +1785,11 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
+          assertOutboundUrl(
+            "client_notification_uri",
+            ctx.body.client_notification_uri,
+            "invalid_request"
+          );
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body);
         }
@@ -2203,9 +2226,10 @@ export const auth = betterAuth({
         } catch {
           return undefined;
         }
-        return (
-          (meta.backchannel_client_notification_endpoint as string) ?? undefined
-        );
+        const endpoint = meta.backchannel_client_notification_endpoint;
+        return typeof endpoint === "string" && !validateOutboundUrl(endpoint)
+          ? endpoint
+          : undefined;
       },
       buildAccessTokenClaims: async (cibaRequest) => {
         // The consumed row the plugin passes here carries only the plugin's

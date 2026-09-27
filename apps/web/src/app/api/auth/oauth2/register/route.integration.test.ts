@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -13,6 +13,10 @@ const RP_ORIGIN = "https://demo-rp.example";
 describe("POST /api/auth/oauth2/register", () => {
   beforeEach(async () => {
     await resetDatabase();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("persists logout and validity notice registrations", async () => {
@@ -140,5 +144,52 @@ describe("POST /api/auth/oauth2/register", () => {
 
     expect(status).toBe(400);
     expect(payload.error).toBe("invalid_redirect_uri");
+  });
+  it.each([
+    "https://10.0.0.5/validity",
+    "https://172.20.1.1/validity",
+    "https://192.168.1.10/validity",
+    "https://169.254.169.254/latest/meta-data",
+    "https://[fd12:3456::1]/validity",
+    "https://[::ffff:10.0.0.5]/validity",
+    "https://167772165/validity",
+    "https://012.0.0.5/validity",
+    "https://fhe.railway.internal/validity",
+    "https://metadata.google.internal/validity",
+    "http://demo-rp.example/validity",
+  ])("rejects rp_validity_notice_uri %s", async (uri) => {
+    const { status, payload, client } = await register({
+      client_name: "Internal Probe",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      rp_validity_notice_uri: uri,
+    });
+
+    expect(status).toBe(400);
+    expect(payload.error).toBe("invalid_client_metadata");
+    expect(client).toBeUndefined();
+  });
+
+  it("rejects loopback rp_validity_notice_uri in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { status, client } = await register({
+      client_name: "Loopback Probe",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      rp_validity_notice_uri: "https://127.0.0.1/validity",
+    });
+
+    expect(status).toBe(400);
+    expect(client).toBeUndefined();
+  });
+
+  it("rejects an internal backchannel_client_notification_endpoint", async () => {
+    const { status, payload } = await register({
+      client_name: "Ping Probe",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      backchannel_client_notification_endpoint:
+        "https://ocr.railway.internal:5004/notify",
+    });
+
+    expect(status).toBe(400);
+    expect(payload.error).toBe("invalid_client_metadata");
   });
 });

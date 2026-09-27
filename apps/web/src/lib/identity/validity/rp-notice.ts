@@ -22,6 +22,7 @@ import {
   oauthConsents,
   oauthRefreshTokens,
 } from "@/lib/db/schema/oauth-provider";
+import { postToPublicUrl } from "@/lib/http/outbound-post";
 
 const RP_VALIDITY_EVENT_URI = "https://zentity.xyz/events/validity-change";
 const RP_NOTICE_EXPIRY_SECONDS = 5 * 60;
@@ -193,18 +194,14 @@ export async function postRpValidityNotice(args: {
   }
 
   const token = await buildRpValidityNoticeJwt(args);
-  const response = await fetch(client.rpValidityNoticeUri, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/jwt",
-    },
+  const status = await postToPublicUrl(client.rpValidityNoticeUri, {
     body: token,
-    signal: AbortSignal.timeout(10_000),
+    headers: { "Content-Type": "application/jwt" },
   });
 
-  if (!response.ok) {
+  if (status < 200 || status >= 300) {
     throw new Error(
-      `RP validity notice delivery to ${args.clientId} failed with HTTP ${response.status}`
+      `RP validity notice delivery to ${args.clientId} failed with HTTP ${status}`
     );
   }
 }

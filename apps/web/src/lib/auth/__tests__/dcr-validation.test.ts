@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateSafeUrl } from "@/lib/http/url-safety";
+import { validateOutboundUrl } from "@/lib/http/url-safety";
 
 import { joinAuthIssuerPath } from "../oidc/well-known";
 
@@ -9,32 +9,22 @@ import { joinAuthIssuerPath } from "../oidc/well-known";
 // We test the building blocks directly.
 
 describe("DCR software_statement SSRF protection", () => {
-  describe("SSRF vectors rejected via validateSafeUrl", () => {
+  describe("SSRF vectors rejected via validateOutboundUrl", () => {
     it("rejects AWS metadata endpoint", () => {
       expect(
-        validateSafeUrl("http://169.254.169.254/latest/meta-data", false)
-      ).toContain("private");
-    });
-
-    it("rejects loopback", () => {
-      expect(validateSafeUrl("http://127.0.0.1/path", false)).toContain(
-        "private"
-      );
+        validateOutboundUrl("https://169.254.169.254/latest/meta-data")
+      ).toContain("private or reserved");
     });
 
     it("rejects internal network", () => {
-      expect(validateSafeUrl("http://10.0.0.1/.well-known", false)).toContain(
-        "private"
+      expect(validateOutboundUrl("https://10.0.0.1/.well-known")).toContain(
+        "private or reserved"
       );
     });
 
-    it("rejects IPv6 loopback", () => {
-      expect(validateSafeUrl("http://[::1]/path", false)).toContain("private");
-    });
-
-    it("enforces HTTPS in production", () => {
+    it("enforces HTTPS for public issuers", () => {
       expect(
-        validateSafeUrl("http://issuer.example.com/api/auth", true)
+        validateOutboundUrl("http://issuer.example.com/api/auth")
       ).toContain("HTTPS");
     });
   });
@@ -113,7 +103,7 @@ describe("DCR software_statement SSRF protection", () => {
       expect(trusted.includes(iss)).toBe(true);
 
       // SSRF check
-      expect(validateSafeUrl(iss, true)).toBeNull();
+      expect(validateOutboundUrl(iss)).toBeNull();
 
       // Path preservation
       const jwksUrl = joinAuthIssuerPath(iss, ".well-known/jwks.json");
