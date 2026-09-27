@@ -685,6 +685,8 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
 
 Clients follow `authorization_servers[0]` to the AS metadata, then proceed with DCR and authorization.
 
+Remote MCP clients (Claude Code, MCP Inspector, the MCP SDK) register with a Client ID Metadata Document or with DCR. A dynamic registration whose redirect URIs are all loopback HTTP registers as a native client even when it omits `application_type`. The AS lists `offline_access` in `scopes_supported`, so a client that registers the `refresh_token` grant and adds `offline_access` to its request, as the MCP refresh-token guidance (SEP-2207) describes, receives a refresh token. Refresh tokens rotate on every use and are bound to the client's DPoP key when it presents one. The MCP server's own protected resource metadata omits `offline_access`, because refresh is a concern between the client and the AS rather than a resource scope.
+
 ---
 
 The previous sections described the protocol mechanics. This final section describes the privacy properties that emerge from those mechanics.
