@@ -507,51 +507,6 @@ async function validateDcrRegistration(
     });
   }
 
-  const redirectUris = Array.isArray(body.redirect_uris)
-    ? body.redirect_uris
-    : undefined;
-  if (redirectUris) {
-    let pairwiseHost: string | null = null;
-    for (const uri of redirectUris) {
-      if (typeof uri !== "string") {
-        continue;
-      }
-      try {
-        const parsed = new URL(uri);
-        const isLocalhost = parsed.hostname === "localhost";
-        // RFC 8252 §7.3: loopback IPs (127.0.0.1, [::1]) are allowed with HTTP for native apps
-        const isLoopback =
-          parsed.hostname === "127.0.0.1" || parsed.hostname === "[::1]";
-        if (!isDev && isLocalhost) {
-          throw new APIError("BAD_REQUEST", {
-            error_description:
-              "redirect_uris must use HTTPS in production (localhost not allowed)",
-          });
-        }
-        if (!(isLocalhost || isLoopback) && parsed.protocol !== "https:") {
-          throw new APIError("BAD_REQUEST", {
-            error_description: `redirect_uri must use HTTPS: ${uri}`,
-          });
-        }
-        if (!pairwiseHost) {
-          pairwiseHost = parsed.host;
-        } else if (pairwiseHost !== parsed.host) {
-          throw new APIError("BAD_REQUEST", {
-            error_description:
-              "redirect_uris must share the same host until sector_identifier_uri is supported",
-          });
-        }
-      } catch (e) {
-        if (e instanceof APIError) {
-          throw e;
-        }
-        throw new APIError("BAD_REQUEST", {
-          error_description: `Invalid redirect_uri: ${uri}`,
-        });
-      }
-    }
-  }
-
   let rpValidityNoticeUri: string | undefined;
   if (typeof body.rp_validity_notice_uri === "string") {
     rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
@@ -652,9 +607,36 @@ type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 
+const LOOPBACK_REDIRECT_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function isLoopbackRedirectUri(uri: unknown): boolean {
+  if (typeof uri !== "string" || !URL.canParse(uri)) {
+    return false;
+  }
+  const url = new URL(uri);
+  return url.protocol === "http:" && LOOPBACK_REDIRECT_HOSTS.has(url.hostname);
+}
+
+// RFC 8252 §7.3: all-loopback redirects identify a native app, which OIDC DCR would default to "web".
+function inferNativeApplicationType(body: Record<string, unknown>) {
+  const redirectUris = body.redirect_uris;
+  if (
+    body.application_type === undefined &&
+    Array.isArray(redirectUris) &&
+    redirectUris.length > 0 &&
+    redirectUris.every(isLoopbackRedirectUri)
+  ) {
+    body.application_type = "native";
+  }
+}
+
 async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
-  if (ctx.body && !ctx.body.subject_type) {
+  if (!ctx.body) {
+    return;
+  }
+  inferNativeApplicationType(ctx.body);
+  if (!ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
   }
 }

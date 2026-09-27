@@ -1,6 +1,6 @@
 ---
 status: "accepted"
-date: "2026-02-07"
+date: "2026-09-27"
 builds-on: "[Selective Disclosure Scope Architecture](../privacy/0011-selective-disclosure-scope-architecture.md)"
 category: "platform"
 domains: [security, oauth, privacy]
@@ -116,6 +116,19 @@ A scope that was consented but has no backing data (e.g., `identity.dob` when th
 | External apps (all RPs) | DCR at `/api/auth/oauth2/register` | User-controlled consent page |
 | First-party apps | Same DCR mechanism | May set `skipConsent: true` via admin API |
 
+### Client type and redirect URIs
+
+Redirect URI rules follow OIDC Dynamic Client Registration and RFC 8252, enforced by the OAuth provider:
+
+| `application_type` | Allowed redirect URIs |
+|--------------------|-----------------------|
+| `web` | HTTPS on non-loopback hosts |
+| `native` | HTTP on exactly `localhost`, `127.0.0.1`, or `[::1]` (any port), reverse-domain private-use schemes, or HTTPS on non-loopback hosts |
+
+A registration that omits `application_type` and lists only loopback HTTP redirect URIs is registered as `native`. Loopback redirects are reachable only by an app on the user's device, so the registration can only be a native client; OIDC's `web` default would reject it. MCP clients built on older SDKs (for example MCP Inspector before 2.x) register this way. A registration with any non-loopback redirect URI keeps the `web` default, and a client that declares `web` cannot register loopback redirects.
+
+Client ID Metadata Documents (CIMD) follow the same table, with `native` as the default when the document omits `application_type`.
+
 ### Organization ownership
 
 Organization assignment is retained as an **operational management tool**, not a security boundary:
@@ -166,3 +179,7 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 * Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 * Selective disclosure ADR: [ADR 0011](../privacy/0011-selective-disclosure-scope-architecture.md)
 * OAuth integrations: [docs/(protocols)/oauth-integrations.md](../../(protocols)/oauth-integrations.md)
+
+## Revision History
+
+* 2026-09-27: Added client type and redirect URI rules. Loopback-only registrations without `application_type` register as `native`; `localhost` loopback redirects are accepted in every environment.
