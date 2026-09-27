@@ -1868,9 +1868,6 @@ export const auth = betterAuth({
     }),
     passkey({
       origin: getTrustedOrigins(),
-      registration: {
-        requireSession: false,
-      },
     }),
     organization({
       creatorRole: "owner",
