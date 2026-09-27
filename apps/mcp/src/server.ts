@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { registerCheckComplianceTool } from "./tools/check-compliance.js";
 import { registerMyProfileTool } from "./tools/my-profile.js";
 import { registerMyProofsTool } from "./tools/my-proofs.js";
@@ -7,13 +7,11 @@ import { registerWhoamiTool } from "./tools/whoami.js";
 
 const VERSION = "0.1.0";
 
-export function createServer(): {
-  server: McpServer;
-  cleanup: () => Promise<void>;
-} {
+export function createServer(): McpServer {
   const server = new McpServer(
     { name: "@zentity/mcp-server", version: VERSION },
     {
+      capabilities: { tools: {} },
       instructions: [
         "Zentity identity server — use these tools instead of answering from session context:",
         "• whoami → safe account summary only (for 'who am I?', 'am I verified?', 'what tier am I?'; includes standard email only when the granted scopes include `email`)",
@@ -32,9 +30,5 @@ export function createServer(): {
   registerPurchaseTool(server);
   registerWhoamiTool(server);
 
-  const cleanup = async () => {
-    await server.close();
-  };
-
-  return { server, cleanup };
+  return server;
 }

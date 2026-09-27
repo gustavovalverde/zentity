@@ -1,4 +1,8 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type {
+  InputRequiredResult,
+  McpServer,
+  ServerContext,
+} from "@modelcontextprotocol/server";
 import {
   ComplianceInsufficientError,
   createX402Fetch,
@@ -16,17 +20,19 @@ import { prefixBindingMessage } from "../agent.js";
 import { config } from "../config.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
+  getAuthContext,
   getOAuthContext,
-  requireAuth,
   tryGetRuntimeState,
+  withToolAuth,
 } from "../runtime/auth-context.js";
 import { redeemRelease } from "../services/identity-release.js";
 import {
   beginOrResumeInteractiveFlow,
-  throwUrlElicitationIfSupported,
+  type InteractiveToolInteraction,
+  requestUserAction,
 } from "../services/interactive-approval.js";
 
-const purchaseOutputSchema = {
+const purchaseOutputSchema = z.object({
   status: z.enum([
     "complete",
     "needs_user_action",
@@ -63,11 +69,9 @@ const purchaseOutputSchema = {
       status: z.number(),
     })
     .optional(),
-};
+});
 
-type PurchaseStructuredContent = z.infer<
-  z.ZodObject<typeof purchaseOutputSchema>
->;
+type PurchaseStructuredContent = z.infer<typeof purchaseOutputSchema>;
 
 function buildPurchaseResponse(structuredContent: PurchaseStructuredContent): {
   content: Array<{ type: "text"; text: string }>;
@@ -116,17 +120,9 @@ interface PurchaseParams {
 }
 
 class PurchaseNeedsUserActionError extends Error {
-  readonly interaction: Extract<
-    Awaited<ReturnType<typeof beginOrResumeInteractiveFlow>>,
-    { status: "needs_user_action" }
-  >["interaction"];
+  readonly interaction: InteractiveToolInteraction;
 
-  constructor(
-    interaction: Extract<
-      Awaited<ReturnType<typeof beginOrResumeInteractiveFlow>>,
-      { status: "needs_user_action" }
-    >["interaction"]
-  ) {
+  constructor(interaction: InteractiveToolInteraction) {
     super("User action is required to complete the x402 purchase");
     this.name = "PurchaseNeedsUserActionError";
     this.interaction = interaction;
@@ -313,14 +309,37 @@ async function requestProofOfHumanForPurchase(input: {
   };
 }
 
-async function fetchX402Purchase(input: {
+interface PurchaseInput {
   agentAssertion?: string | undefined;
   bindingMessage: string;
+  ctx: ServerContext;
   oauth: ReturnType<typeof getOAuthContext>;
   params: PurchaseParams;
   runtime: ReturnType<typeof tryGetRuntimeState>;
   server: McpServer;
-}): Promise<PurchaseStructuredContent> {
+}
+
+function needsUserActionResponse(
+  input: PurchaseInput,
+  interaction: InteractiveToolInteraction
+) {
+  return requestUserAction(
+    input.server,
+    input.ctx,
+    interaction,
+    buildPurchaseResponse({
+      status: "needs_user_action",
+      approved: null,
+      bindingMessage: input.bindingMessage,
+      fulfillment: null,
+      interaction,
+    })
+  );
+}
+
+async function fetchX402Purchase(
+  input: PurchaseInput
+): Promise<PurchaseStructuredContent> {
   let proofOfHumanClaims: ProofOfHumanClaims | undefined;
   let x402Context: X402PaymentContext | undefined;
 
@@ -329,7 +348,6 @@ async function fetchX402Purchase(input: {
       x402Context = context;
       assertX402Bounds(input.params, context);
       const outcome = await beginOrResumeInteractiveFlow({
-        server: input.server,
         toolName: "purchase",
         fingerprint: buildX402PurchaseFingerprint(
           input.oauth,
@@ -418,30 +436,12 @@ async function fetchX402Purchase(input: {
   };
 }
 
-async function runX402PurchaseTool(input: {
-  agentAssertion?: string | undefined;
-  bindingMessage: string;
-  oauth: ReturnType<typeof getOAuthContext>;
-  params: PurchaseParams;
-  runtime: ReturnType<typeof tryGetRuntimeState>;
-  server: McpServer;
-}) {
+async function runX402PurchaseTool(input: PurchaseInput) {
   try {
     return buildPurchaseResponse(await fetchX402Purchase(input));
   } catch (error) {
     if (error instanceof PurchaseNeedsUserActionError) {
-      const outcome = {
-        status: "needs_user_action" as const,
-        interaction: error.interaction,
-      };
-      throwUrlElicitationIfSupported(input.server, outcome);
-      return buildPurchaseResponse({
-        status: "needs_user_action",
-        approved: null,
-        bindingMessage: input.bindingMessage,
-        fulfillment: null,
-        interaction: error.interaction,
-      });
+      return needsUserActionResponse(input, error.interaction);
     }
     if (error instanceof ComplianceInsufficientError) {
       return buildPurchaseResponse({
@@ -474,16 +474,8 @@ async function runX402PurchaseTool(input: {
   }
 }
 
-async function runDirectPurchaseTool(input: {
-  agentAssertion?: string | undefined;
-  bindingMessage: string;
-  oauth: ReturnType<typeof getOAuthContext>;
-  params: PurchaseParams;
-  runtime: ReturnType<typeof tryGetRuntimeState>;
-  server: McpServer;
-}) {
+async function runDirectPurchaseTool(input: PurchaseInput) {
   const outcome = await beginOrResumeInteractiveFlow({
-    server: input.server,
     toolName: "purchase",
     fingerprint: buildPurchaseFingerprint(
       input.oauth,
@@ -530,14 +522,7 @@ async function runDirectPurchaseTool(input: {
   });
 
   if (outcome.status === "needs_user_action") {
-    throwUrlElicitationIfSupported(input.server, outcome);
-    return buildPurchaseResponse({
-      status: "needs_user_action",
-      approved: null,
-      bindingMessage: input.bindingMessage,
-      fulfillment: null,
-      interaction: outcome.interaction,
-    });
+    return needsUserActionResponse(input, outcome.interaction);
   }
 
   if (outcome.status === "complete") {
@@ -552,22 +537,12 @@ async function runDirectPurchaseTool(input: {
   });
 }
 
-async function runPurchaseTool(server: McpServer, params: PurchaseParams) {
-  let auth: Awaited<ReturnType<typeof requireAuth>>;
-  try {
-    auth = await requireAuth();
-  } catch (error) {
-    return {
-      isError: true,
-      content: [
-        {
-          type: "text" as const,
-          text: error instanceof Error ? error.message : "Not authenticated",
-        },
-      ],
-    };
-  }
-
+async function runPurchaseTool(
+  server: McpServer,
+  ctx: ServerContext,
+  params: PurchaseParams
+): Promise<ReturnType<typeof buildPurchaseResponse> | InputRequiredResult> {
+  const auth = getAuthContext();
   const oauth = getOAuthContext(auth);
   const runtime = tryGetRuntimeState(auth);
   const rawBindingMessage = params.url
@@ -584,6 +559,7 @@ async function runPurchaseTool(server: McpServer, params: PurchaseParams) {
   const purchaseInput = {
     agentAssertion,
     bindingMessage,
+    ctx,
     oauth,
     params,
     runtime,
@@ -602,7 +578,7 @@ export function registerPurchaseTool(server: McpServer): void {
       title: "Purchase",
       description:
         "Authorize and execute a purchase on behalf of the user. This tool owns the browser approval flow and returns fulfillment data after approval.",
-      inputSchema: {
+      inputSchema: z.object({
         amount: z.number().describe("Purchase amount"),
         currency: z.string().describe("Currency code (e.g. USD, EUR)"),
         description: z
@@ -637,37 +613,13 @@ export function registerPurchaseTool(server: McpServer): void {
           .url()
           .optional()
           .describe("Optional x402 merchant URL to fetch with PoH retry"),
-      },
+      }),
       outputSchema: purchaseOutputSchema,
       annotations: {
         readOnlyHint: false,
         idempotentHint: false,
       },
     },
-    ({
-      amount,
-      currency,
-      description,
-      item,
-      merchant,
-      maxAmount,
-      maxComplianceLevel,
-      network,
-      requires_age_verification,
-      url,
-    }) => {
-      return runPurchaseTool(server, {
-        amount,
-        currency,
-        description,
-        item,
-        merchant,
-        maxAmount,
-        maxComplianceLevel,
-        network,
-        requires_age_verification,
-        url,
-      });
-    }
+    withToolAuth(server, (params, ctx) => runPurchaseTool(server, ctx, params))
   );
 }

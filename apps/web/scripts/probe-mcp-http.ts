@@ -137,12 +137,13 @@ async function postTokenWithDpop(
   return { json: first.json, status: first.status };
 }
 
+const MCP_PROTOCOL_VERSION = "2025-11-25";
+
 async function callMcp(
   mcpUrl: string,
   accessToken: string,
   keyPair: DpopKeyPair,
-  body: Record<string, unknown>,
-  sessionId?: string
+  body: Record<string, unknown>
 ): Promise<Response> {
   const proof = await buildResourceProof(keyPair, "POST", mcpUrl, accessToken);
 
@@ -153,7 +154,7 @@ async function callMcp(
       Authorization: `DPoP ${accessToken}`,
       "Content-Type": "application/json",
       DPoP: proof,
-      ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+      "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
     },
     body: JSON.stringify(body),
   });
@@ -340,18 +341,16 @@ async function main(): Promise<void> {
         params: {
           capabilities: {},
           clientInfo: { name: "live-mcp-probe", version: "0.1.0" },
-          protocolVersion: "2025-03-26",
+          protocolVersion: MCP_PROTOCOL_VERSION,
         },
       }
     );
     const initializeBody = await initializeResponse.text();
-    const sessionId = initializeResponse.headers.get("mcp-session-id");
 
     console.log(
       JSON.stringify(
         {
           body: initializeBody,
-          sessionId,
           stage: "initialize",
           status: initializeResponse.status,
         },
@@ -360,27 +359,21 @@ async function main(): Promise<void> {
       )
     );
 
-    if (initializeResponse.status !== 200 || !sessionId) {
+    if (initializeResponse.status !== 200) {
       throw new Error(
         `Initialize failed: ${initializeResponse.status} ${initializeBody}`
       );
     }
 
-    const whoamiResponse = await callMcp(
-      mcpEndpoint,
-      accessToken,
-      keyPair,
-      {
-        id: 2,
-        jsonrpc: "2.0",
-        method: "tools/call",
-        params: {
-          arguments: {},
-          name: "whoami",
-        },
+    const whoamiResponse = await callMcp(mcpEndpoint, accessToken, keyPair, {
+      id: 2,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        arguments: {},
+        name: "whoami",
       },
-      sessionId
-    );
+    });
     const whoamiBody = await whoamiResponse.text();
     const whoamiJson = JSON.parse(whoamiBody) as JsonRpcToolResponse;
     const wwwAuthenticate = whoamiResponse.headers.get("www-authenticate");

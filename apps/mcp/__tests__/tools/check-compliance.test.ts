@@ -35,32 +35,12 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/runtime/auth-context.js", () => ({
-  getAuthContext: () => mockAuthContext,
-  getOAuthContext: () => mockOAuthContext,
-  requireAuth: () => Promise.resolve(mockAuthContext),
-}));
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "../../src/server.js";
+import { connectClient } from "../helpers/mcp-client.js";
 
 describe("check_compliance", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  async function createConnectedClient() {
-    const { server } = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "test-client", version: "0.1.0" });
-    await Promise.all([
-      client.connect(clientTransport),
-      server.connect(serverTransport),
-    ]);
-    return client;
-  }
 
   const NETWORKS_PAYLOAD = {
     networks: [
@@ -109,7 +89,7 @@ describe("check_compliance", () => {
   it("maps the attestation networks payload to the tool output", async () => {
     mockNetworksResponse();
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: {},
@@ -141,7 +121,7 @@ describe("check_compliance", () => {
   it("filters to the requested network", async () => {
     mockNetworksResponse();
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: { network: "hardhat" },
@@ -165,7 +145,7 @@ describe("check_compliance", () => {
   it("rejects an unknown network", async () => {
     mockNetworksResponse();
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: { network: "mainnet" },
@@ -182,7 +162,7 @@ describe("check_compliance", () => {
       new Response("Server error", { status: 500 })
     );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: {},

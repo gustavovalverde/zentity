@@ -35,32 +35,12 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/runtime/auth-context.js", () => ({
-  getAuthContext: () => mockAuthContext,
-  getOAuthContext: () => mockOAuthContext,
-  requireAuth: () => Promise.resolve(mockAuthContext),
-}));
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "../../src/server.js";
+import { connectClient } from "../helpers/mcp-client.js";
 
 describe("my_proofs", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  async function createConnectedClient() {
-    const { server } = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "test-client", version: "0.1.0" });
-    await Promise.all([
-      client.connect(clientTransport),
-      server.connect(serverTransport),
-    ]);
-    return client;
-  }
 
   it("returns checks from userinfo proof claims for verified user", async () => {
     // Userinfo returns OIDC proof claims (flat key-value, scope-filtered)
@@ -82,7 +62,7 @@ describe("my_proofs", () => {
       new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "my_proofs",
       arguments: {},
@@ -111,7 +91,7 @@ describe("my_proofs", () => {
       new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "my_proofs",
       arguments: {},
@@ -145,7 +125,7 @@ describe("my_proofs", () => {
       new Response(JSON.stringify(userinfoResponse), { status: 200 })
     );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "my_proofs",
       arguments: {},
@@ -169,7 +149,7 @@ describe("my_proofs", () => {
         new Response(JSON.stringify({ sub: "user-sub" }), { status: 200 })
       );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     await client.callTool({ name: "my_proofs", arguments: {} });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);

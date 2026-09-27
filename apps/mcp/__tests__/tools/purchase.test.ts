@@ -1,5 +1,3 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
@@ -39,23 +37,22 @@ const mockRuntimeState = {
   status: "active",
 };
 
-vi.mock("../../src/runtime/auth-context.js", () => ({
-  requireAuth: () => Promise.resolve({ oauth: mockOAuthContext }),
-  getOAuthContext: () => mockOAuthContext,
-  tryGetRuntimeState: () => mockRuntimeState,
-}));
-
 vi.mock("../../src/services/interactive-approval.js", () => ({
   beginOrResumeInteractiveFlow: (...args: unknown[]) =>
     mockBeginOrResumeInteractiveFlow(...args),
-  throwUrlElicitationIfSupported: vi.fn(),
+  requestUserAction: (
+    _server: unknown,
+    _ctx: unknown,
+    _interaction: unknown,
+    result: unknown
+  ) => result,
 }));
 
 vi.mock("../../src/runtime/agent-registration.js", () => ({
   signAgentAssertion: (...args: unknown[]) => mockSignAgentAssertion(...args),
 }));
 
-import { createServer } from "../../src/server.js";
+import { connectClient } from "../helpers/mcp-client.js";
 
 describe("purchase", () => {
   beforeEach(() => {
@@ -67,18 +64,6 @@ describe("purchase", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
-
-  async function createConnectedClient() {
-    const { server } = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "claude-code", version: "1.0.0" });
-    await Promise.all([
-      client.connect(clientTransport),
-      server.connect(serverTransport),
-    ]);
-    return client;
-  }
 
   const purchaseArgs = {
     merchant: "Acme Store",
@@ -127,7 +112,10 @@ describe("purchase", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     const result = await client.callTool({
       name: "purchase",
       arguments: purchaseArgs,
@@ -153,7 +141,10 @@ describe("purchase", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     const result = await client.callTool({
       name: "purchase",
       arguments: purchaseArgs,
@@ -178,7 +169,10 @@ describe("purchase", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     await client.callTool({
       name: "purchase",
       arguments: {
@@ -213,7 +207,10 @@ describe("purchase", () => {
       data: "poh-token",
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     const result = await client.callTool({
       name: "purchase",
       arguments: {
@@ -258,7 +255,10 @@ describe("purchase", () => {
       status: "denied",
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     const result = await client.callTool({
       name: "purchase",
       arguments: {
@@ -290,7 +290,10 @@ describe("purchase", () => {
       status: "expired",
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient({
+      auth: { oauth: mockOAuthContext, runtime: mockRuntimeState },
+      clientName: "claude-code",
+    });
     const result = await client.callTool({
       name: "purchase",
       arguments: {

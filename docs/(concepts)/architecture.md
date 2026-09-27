@@ -21,7 +21,7 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | CIBA | @better-auth/ciba (backchannel auth, poll + ping modes) | Agent-initiated async authorization via email/push notification and user approval. |
-| MCP identity server | Node.js, Hono, @modelcontextprotocol/sdk | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_profile, my_proofs, check_compliance, purchase). |
+| MCP identity server | Node.js, Hono, @modelcontextprotocol/server | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_profile, my_proofs, check_compliance, purchase). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram

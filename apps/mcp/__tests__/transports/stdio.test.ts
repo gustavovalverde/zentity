@@ -79,21 +79,7 @@ const bootstrapOauth = {
   accessToken: "bootstrap-token",
 };
 
-function createServerMock(clientInfo?: { name: string; version: string }) {
-  return {
-    server: {
-      getClientVersion: vi.fn().mockReturnValue(clientInfo),
-    },
-  } as const;
-}
-
-function deferredPromise() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
-}
+const CLAUDE_CODE = { name: "claude-code", version: "1.2.3" };
 
 describe("bootstrapRegisteredRuntime", () => {
   beforeEach(() => {
@@ -115,22 +101,12 @@ describe("bootstrapRegisteredRuntime", () => {
     vi.unstubAllEnvs();
   });
 
-  it("waits for initialization before registering the runtime and uses MCP clientInfo", async () => {
-    const initialized = deferredPromise();
-    const server = createServerMock({ name: "claude-code", version: "1.2.3" });
-
-    const bootstrapPromise = bootstrapRegisteredRuntime(
-      server as never,
-      initialized.promise
+  it("registers the runtime with the connected client's identity", async () => {
+    const auth = await bootstrapRegisteredRuntime(
+      Promise.resolve(baseOauth),
+      CLAUDE_CODE
     );
 
-    await Promise.resolve();
-    expect(mockEnsureMcpOAuthSession).not.toHaveBeenCalled();
-
-    initialized.resolve();
-    await bootstrapPromise;
-
-    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(1);
     expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(
       baseOauth
     );
@@ -145,15 +121,13 @@ describe("bootstrapRegisteredRuntime", () => {
       }),
       hostKeyNamespace
     );
+    expect(auth).toEqual({ oauth: baseOauth, runtime });
   });
 
   it("allows an explicit env override when clientInfo is absent", async () => {
     vi.stubEnv("ZENTITY_AGENT_NAME", "Custom Agent");
 
-    await bootstrapRegisteredRuntime(
-      createServerMock(undefined) as never,
-      Promise.resolve()
-    );
+    await bootstrapRegisteredRuntime(Promise.resolve(baseOauth), undefined);
 
     expect(mockRegisterAgentSession).toHaveBeenCalledWith(
       "http://localhost:3000",
@@ -169,10 +143,7 @@ describe("bootstrapRegisteredRuntime", () => {
 
   it("fails clearly when no runtime identity source is available", async () => {
     await expect(
-      bootstrapRegisteredRuntime(
-        createServerMock(undefined) as never,
-        Promise.resolve()
-      )
+      bootstrapRegisteredRuntime(Promise.resolve(baseOauth), undefined)
     ).rejects.toThrow("MCP clientInfo is required");
   });
 
@@ -181,9 +152,7 @@ describe("bootstrapRegisteredRuntime", () => {
       ...baseOauth,
       accessToken: "fresh-token",
     };
-    mockEnsureMcpOAuthSession
-      .mockResolvedValueOnce(baseOauth)
-      .mockResolvedValueOnce(refreshedOauth);
+    mockEnsureMcpOAuthSession.mockResolvedValueOnce(refreshedOauth);
     mockEnsureHostRegistered
       .mockRejectedValueOnce(
         new AgentRegistrationError(
@@ -199,12 +168,12 @@ describe("bootstrapRegisteredRuntime", () => {
     });
 
     const result = await bootstrapRegisteredRuntime(
-      createServerMock({ name: "claude-code", version: "1.2.3" }) as never,
-      Promise.resolve()
+      Promise.resolve(baseOauth),
+      CLAUDE_CODE
     );
 
     expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
-    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
+    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(1);
     expect(result.oauth.accessToken).toBe("fresh-token");
   });
 
@@ -223,8 +192,8 @@ describe("bootstrapRegisteredRuntime", () => {
       });
 
     const result = await bootstrapRegisteredRuntime(
-      createServerMock({ name: "claude-code", version: "1.2.3" }) as never,
-      Promise.resolve()
+      Promise.resolve(baseOauth),
+      CLAUDE_CODE
     );
 
     expect(mockClearCachedHostId).toHaveBeenCalledWith(
@@ -247,10 +216,7 @@ describe("bootstrapRegisteredRuntime", () => {
     );
 
     await expect(
-      bootstrapRegisteredRuntime(
-        createServerMock({ name: "claude-code", version: "1.2.3" }) as never,
-        Promise.resolve()
-      )
+      bootstrapRegisteredRuntime(Promise.resolve(baseOauth), CLAUDE_CODE)
     ).rejects.toThrow("Agent registration failed: 401 Invalid host JWT");
 
     expect(mockClearCachedHostId).not.toHaveBeenCalled();

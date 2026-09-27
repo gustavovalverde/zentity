@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { type McpServer, requireScopes } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { config } from "../config.js";
-import { requireAuth } from "../runtime/auth-context.js";
+import { withToolAuth } from "../runtime/auth-context.js";
 import { zentityFetch } from "../services/zentity-api.js";
 
 interface AttestationNetwork {
@@ -61,34 +61,20 @@ export function registerCheckComplianceTool(server: McpServer): void {
       title: "Check Compliance",
       description:
         "Check the user's on-chain attestation and blockchain compliance status. Use this for attestation or network compliance questions. This tool does not unlock vault data.",
-      inputSchema: {
+      inputSchema: z.object({
         network: z
           .string()
           .optional()
           .describe("Filter by blockchain network (e.g. 'sepolia')"),
-      },
+      }),
       outputSchema: complianceOutputSchema,
+      scopeChallenge: requireScopes("openid", "compliance:read"),
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async ({ network }) => {
-      try {
-        await requireAuth();
-      } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text:
-                error instanceof Error ? error.message : "Not authenticated",
-            },
-          ],
-        };
-      }
-
+    withToolAuth(server, async ({ network }) => {
       const response = await zentityFetch(
         `${config.zentityUrl}/api/trpc/attestation.networks`
       );
@@ -136,6 +122,6 @@ export function registerCheckComplianceTool(server: McpServer): void {
         ],
         structuredContent,
       };
-    }
+    })
   );
 }

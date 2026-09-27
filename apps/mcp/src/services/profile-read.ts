@@ -1,4 +1,3 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prefixBindingMessage } from "../agent.js";
 import { config } from "../config.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
@@ -130,7 +129,6 @@ function mapProfileFromClaims(input: {
 
 export async function readProfile(input: {
   fields: readonly PublicProfileField[];
-  server: McpServer;
 }): Promise<ProfileReadResult> {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
@@ -177,7 +175,6 @@ export async function readProfile(input: {
     : undefined;
 
   const flow = await beginOrResumeInteractiveFlow({
-    server: input.server,
     toolName: "my_profile",
     fingerprint: [
       userId,

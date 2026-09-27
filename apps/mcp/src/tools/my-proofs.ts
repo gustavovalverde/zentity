@@ -1,7 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { type McpServer, requireScopes } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { config } from "../config.js";
-import { requireAuth } from "../runtime/auth-context.js";
+import { withToolAuth } from "../runtime/auth-context.js";
 import { zentityFetch } from "../services/zentity-api.js";
 
 /**
@@ -61,7 +61,8 @@ export function registerMyProofsTool(server: McpServer): void {
       title: "My Proofs",
       description:
         "Check the user's proofs and verification-derived facts such as age status, proof inventory, and verification method. Use this for 'what proofs do I have?' or 'am I over 18?'.",
-      outputSchema: {
+      inputSchema: z.object({}),
+      outputSchema: z.object({
         verificationMethod: z.string().nullable(),
         verificationStrength: z.string(),
         verified: z.boolean(),
@@ -73,28 +74,14 @@ export function registerMyProofsTool(server: McpServer): void {
             passed: z.boolean(),
           })
         ),
-      },
+      }),
+      scopeChallenge: requireScopes("openid", "proof:identity"),
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
       },
     },
-    async () => {
-      try {
-        await requireAuth();
-      } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text:
-                error instanceof Error ? error.message : "Not authenticated",
-            },
-          ],
-        };
-      }
-
+    withToolAuth(server, async () => {
       const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
       const response = await zentityFetch(userinfoUrl);
 
@@ -139,6 +126,6 @@ export function registerMyProofsTool(server: McpServer): void {
         ],
         structuredContent,
       };
-    }
+    })
   );
 }

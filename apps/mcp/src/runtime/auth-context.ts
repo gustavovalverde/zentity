@@ -1,10 +1,14 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type {
+  CallToolResult,
+  Implementation,
+  McpServer,
+  ServerContext,
+} from "@modelcontextprotocol/server";
+import type { RegisteredAgentSession as AgentRuntimeState } from "@zentity/sdk";
 import type { InstalledOAuthSession } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
-import {
-  type AgentRuntimeState,
-  agentRuntimeStateStore,
-} from "./agent-session-state.js";
+import { clientInfoOf } from "../agent.js";
 
 export type OAuthSessionContext = InstalledOAuthSession & {
   dpopClient: DpopClient;
@@ -24,68 +28,62 @@ export interface AuthContext {
   runtime?: AgentRuntimeState;
 }
 
+type AuthResolver = (
+  clientInfo: Implementation | undefined
+) => Promise<AuthContext>;
+
 const authStorage = new AsyncLocalStorage<AuthContext>();
-let defaultAuth: AuthContext | undefined;
-let authPromise: Promise<void> | undefined;
-let authFactory: (() => Promise<void>) | undefined;
-
-export function setDefaultAuth(ctx: AuthContext | undefined): void {
-  defaultAuth = ctx;
-}
-
-export function setAuthPromise(p: Promise<void>): void {
-  authPromise = p;
-}
+const requestResolverStorage = new AsyncLocalStorage<AuthResolver>();
+let processAuthResolver: AuthResolver | undefined;
 
 /**
- * Register a factory that can re-trigger authentication.
- * Called from stdio.ts so that requireAuth() can retry on failure.
+ * Registers the resolver used when no request-scoped resolver exists
+ * (stdio, where one process serves one user).
  */
-export function setAuthFactory(factory: () => Promise<void>): void {
-  authFactory = factory;
-}
-
-/**
- * Wait for auth bootstrap, retrying if it failed and a factory is available.
- * Tool handlers should call this instead of getAuthContext() directly.
- */
-export async function requireAuth(): Promise<AuthContext> {
-  if (authPromise) {
-    try {
-      await authPromise;
-    } catch {
-      // Fall through to the retry path below.
-    }
-  }
-
-  // If auth succeeded, return the context
-  if (defaultAuth) {
-    return defaultAuth;
-  }
-
-  // Auth failed or never ran — retry if we have a factory
-  if (authFactory) {
-    console.error("[auth] Retrying authentication...");
-    authPromise = authFactory();
-    await authPromise;
-  }
-
-  return getAuthContext();
+export function setProcessAuthResolver(
+  resolver: AuthResolver | undefined
+): void {
+  processAuthResolver = resolver;
 }
 
 export function runWithAuth<T>(ctx: AuthContext, fn: () => T): T {
   return authStorage.run(ctx, fn);
 }
 
+/** Scopes a lazily resolved auth context to one HTTP request. */
+export function runWithAuthResolver<T>(resolver: AuthResolver, fn: () => T): T {
+  return requestResolverStorage.run(resolver, fn);
+}
+
+export function requireAuth(
+  clientInfo?: Implementation | undefined
+): Promise<AuthContext> {
+  const scoped = authStorage.getStore();
+  if (scoped) {
+    return Promise.resolve(scoped);
+  }
+  const requestResolver = requestResolverStorage.getStore();
+  if (requestResolver) {
+    return requestResolver(clientInfo);
+  }
+  if (!processAuthResolver) {
+    return Promise.reject(
+      new Error(
+        "Not authenticated — complete the MCP OAuth bootstrap first or check server logs"
+      )
+    );
+  }
+  return processAuthResolver(clientInfo);
+}
+
 export function getAuthContext(): AuthContext {
-  const ctx = authStorage.getStore() ?? defaultAuth;
+  const ctx = authStorage.getStore();
   if (!ctx) {
     throw new Error(
       "Not authenticated — complete the MCP OAuth bootstrap first or check server logs"
     );
   }
-  const runtime = ctx.runtime ?? agentRuntimeStateStore.getState();
-  return runtime ? { ...ctx, runtime } : ctx;
+  return ctx;
 }
 
 export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
@@ -95,15 +93,32 @@ export function getOAuthContext(ctx?: AuthContext): OAuthSessionContext {
 export function tryGetRuntimeState(
   ctx?: AuthContext
 ): AgentRuntimeState | undefined {
-  return (ctx ?? getAuthContext()).runtime ?? agentRuntimeStateStore.getState();
+  return (ctx ?? getAuthContext()).runtime;
 }
 
-export function requireRuntimeState(ctx?: AuthContext): AgentRuntimeState {
-  const runtime = tryGetRuntimeState(ctx);
-  if (!runtime) {
-    throw new Error(
-      "Agent runtime is not initialized — complete host and session registration first"
-    );
-  }
-  return runtime;
+/**
+ * Wraps a tool callback so it runs inside the caller's auth context. Auth
+ * failures become tool errors instead of protocol errors.
+ */
+export function withToolAuth<Args, R>(
+  server: McpServer,
+  handler: (args: Args, ctx: ServerContext) => Promise<R>
+): (args: Args, ctx: ServerContext) => Promise<R | CallToolResult> {
+  return async (args, ctx) => {
+    let auth: AuthContext;
+    try {
+      auth = await requireAuth(clientInfoOf(server, ctx));
+    } catch (error) {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: error instanceof Error ? error.message : "Not authenticated",
+          },
+        ],
+      };
+    }
+    return runWithAuth(auth, () => handler(args, ctx));
+  };
 }

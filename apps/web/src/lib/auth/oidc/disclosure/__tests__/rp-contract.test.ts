@@ -37,7 +37,9 @@ const DEMO_RP_ROUTE_REGISTRY_PATH = `${DEMO_RP_ROOT}/scenarios/route-scenario-re
 const MCP_SCOPE_SOURCE_FILES = [
   `${MCP_ROOT}/runtime/bootstrap-scopes.ts`,
   `${MCP_ROOT}/oauth-client.ts`,
-  `${MCP_ROOT}/transports/remote-scope-policy.ts`,
+  `${MCP_ROOT}/transports/resource-metadata.ts`,
+  `${MCP_ROOT}/tools/check-compliance.ts`,
+  `${MCP_ROOT}/tools/my-proofs.ts`,
   `${MCP_ROOT}/services/profile-fields.ts`,
   `${MCP_ROOT}/tools/purchase.ts`,
 ] as const;

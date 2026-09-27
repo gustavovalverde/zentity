@@ -6,7 +6,7 @@ async function main(): Promise<void> {
     await startHttp();
   } else {
     const { startStdio } = await import("./transports/stdio.js");
-    await startStdio();
+    startStdio();
   }
 }
 

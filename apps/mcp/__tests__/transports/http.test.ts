@@ -1,10 +1,29 @@
-import { deriveAppAudience } from "@zentity/sdk/node";
-import type { JWTPayload } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  TokenAuthError,
-  TokenAuthResult,
-} from "../../src/transports/token-auth.js";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import {
+  exportJWK,
+  generateKeyPair,
+  type CryptoKey as JoseCryptoKey,
+  type JWTPayload,
+  SignJWT,
+} from "jose";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+const ISSUER = "http://localhost:3000/api/auth";
+const JWKS_URL = "http://localhost:3000/api/auth/oauth2/jwks";
+const MCP_URL = "http://localhost:3200/mcp";
+const RESOURCE_METADATA_URL =
+  "http://localhost:3200/.well-known/oauth-protected-resource";
 
 vi.mock("../../src/config.js", () => ({
   config: {
@@ -16,192 +35,170 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-const mockValidateToken =
-  vi.fn<
-    (
-      authHeader: string | undefined,
-      dpopHeader: string | undefined,
-      method: string,
-      url: string,
-      requiredScopes?: string[]
-    ) => Promise<TokenAuthResult | TokenAuthError>
-  >();
-
-vi.mock("../../src/transports/token-auth.js", () => ({
-  validateToken: (...args: unknown[]) =>
-    mockValidateToken(
-      args[0] as string | undefined,
-      args[1] as string | undefined,
-      args[2] as string,
-      args[3] as string,
-      args[4] as string[] | undefined
-    ),
-  isAuthError: (result: unknown) =>
-    typeof result === "object" && result !== null && "status" in result,
-  resetJwks: vi.fn(),
+const { mockExchangeToken, mockFetchAccountSummary } = vi.hoisted(() => ({
+  mockExchangeToken: vi.fn(),
+  mockFetchAccountSummary: vi.fn(),
 }));
 
 vi.mock("@zentity/sdk/fpa", () => ({
-  exchangeToken: vi.fn().mockResolvedValue({
-    accessToken: "exchanged-token-123",
-    tokenType: "DPoP",
-    expiresIn: 3600,
-    scope: "openid",
-  }),
-}));
-
-const { mockDpopClient } = vi.hoisted(() => ({
-  mockDpopClient: {
-    keyPair: {
-      privateJwk: { kty: "EC", crv: "P-256" },
-      publicJwk: { kty: "EC", crv: "P-256" },
-    },
-    proofFor: vi.fn().mockResolvedValue("dpop-proof"),
-    withNonceRetry: vi.fn(),
-  },
-}));
-
-vi.mock("@zentity/sdk/rp", () => ({
-  createDpopClientFromKeyPair: vi.fn().mockResolvedValue(mockDpopClient),
+  exchangeToken: mockExchangeToken,
 }));
 
 vi.mock("../../src/oauth-client.js", () => ({
   discoverMcpOAuth: vi.fn().mockResolvedValue({
     issuer: "http://localhost:3000/api/auth",
+    jwks_uri: "http://localhost:3000/api/auth/oauth2/jwks",
     token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
-    authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
   }),
-  ensureMcpOAuthClientCredentials: vi.fn().mockResolvedValue({
-    clientId: "test-client",
-    dpopKey: {
-      privateJwk: { kty: "EC", crv: "P-256" },
-      publicJwk: { kty: "EC", crv: "P-256" },
-    },
-  }),
+  ensureMcpOAuthClientCredentials: vi.fn(),
+  getCachedMcpOAuthIssuer: () => "http://localhost:3000/api/auth",
+  getCachedMcpOAuthJwksUri: () => "http://localhost:3000/api/auth/oauth2/jwks",
 }));
 
-vi.mock("../../src/server.js", () => ({
-  createServer: vi.fn(() => ({
-    server: { connect: vi.fn() },
-    cleanup: vi.fn(),
-  })),
+vi.mock("../../src/services/account-summary.js", () => ({
+  fetchAccountSummary: mockFetchAccountSummary,
 }));
 
-import { exchangeToken } from "@zentity/sdk/fpa";
-import { discoverMcpOAuth } from "../../src/oauth-client.js";
-import {
-  createApp,
-  matchOrigin,
-  setServerCredentials,
-} from "../../src/transports/http.js";
+import { createApp, matchOrigin } from "../../src/transports/http.js";
 
-function validPayload(overrides: Partial<JWTPayload> = {}): TokenAuthResult {
-  return {
-    scheme: "Bearer",
-    payload: {
-      sub: "user-123",
-      client_id: "test-client",
-      scope: "openid",
-      iss: "http://localhost:3000",
-      ...overrides,
+const SUMMARY = {
+  authStrength: "strong",
+  checks: null,
+  email: null,
+  humanity: { proven: false, sources: [] },
+  loginMethod: "passkey",
+  memberSince: "2026-01-01",
+  profileToolHint: "my_profile",
+  tier: 2,
+  tierName: "Verified",
+  vaultFieldsAvailable: ["name", "address", "birthdate"],
+  verificationStrength: "documentary_full",
+};
+
+let signingKey: JoseCryptoKey;
+let jwks: { keys: Record<string, unknown>[] };
+
+function signAccessToken(claims: JWTPayload = {}): Promise<string> {
+  return new SignJWT({
+    aud: "http://localhost:3200",
+    azp: "remote-client",
+    scope: "openid",
+    sub: "user-123",
+    ...claims,
+  })
+    .setProtectedHeader({ alg: "EdDSA", kid: "test-key", typ: "at+jwt" })
+    .setIssuer(ISSUER)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(signingKey);
+}
+
+function createTestApp() {
+  return createApp({
+    clientId: "mcp-server-client",
+    dpopClient: {} as never,
+    dpopKey: {} as never,
+  });
+}
+
+function connectClient(
+  app: ReturnType<typeof createTestApp>,
+  token: string,
+  options: ConstructorParameters<typeof Client>[1] = {}
+) {
+  const client = new Client({ name: "http-test", version: "1.0.0" }, options);
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
+    fetch: (url, init) => app.request(url.toString(), init),
+    requestInit: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  return client.connect(transport).then(() => client);
+}
+
+function postToolCall(
+  app: ReturnType<typeof createTestApp>,
+  token: string | undefined,
+  name: string
+) {
+  return app.request(MCP_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": "2025-11-25",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-  };
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: {} },
+    }),
+  });
 }
 
-function authError(
-  status: 401 | 403,
-  error: string,
-  description: string,
-  scope?: string
-): TokenAuthError {
-  const parts = [
-    'Bearer realm="zentity-mcp"',
-    `error="${error}"`,
-    `error_description="${description}"`,
-    'resource_metadata="http://localhost:3200/.well-known/oauth-protected-resource"',
-  ];
-  if (scope) {
-    parts.push(`scope="${scope}"`);
-  }
-  return {
-    status,
-    wwwAuthenticate: parts.join(", "),
-    body: { error, error_description: description },
+beforeAll(async () => {
+  const pair = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  signingKey = pair.privateKey;
+  jwks = {
+    keys: [
+      { ...(await exportJWK(pair.publicKey)), alg: "EdDSA", kid: "test-key" },
+    ],
   };
-}
+});
+
+beforeEach(() => {
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+    String(input instanceof Request ? input.url : input) === JWKS_URL
+      ? Promise.resolve(Response.json(jwks))
+      : realFetch(input, init)
+  );
+  mockExchangeToken.mockResolvedValue({
+    accessToken: "exchanged-token",
+    accountSub: "user-123",
+    expiresIn: 3600,
+    scope: "openid",
+    tokenType: "DPoP",
+  });
+  mockFetchAccountSummary.mockResolvedValue(SUMMARY);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("matchOrigin", () => {
   const patterns = ["http://localhost:*", "http://127.0.0.1:*"];
 
-  it("matches localhost with any port", () => {
-    expect(matchOrigin("http://localhost:3000", patterns)).toBe(
-      "http://localhost:3000"
-    );
+  it("matches loopback origins on any port", () => {
     expect(matchOrigin("http://localhost:8080", patterns)).toBe(
       "http://localhost:8080"
     );
-  });
-
-  it("matches 127.0.0.1 with any port", () => {
-    expect(matchOrigin("http://127.0.0.1:5173", patterns)).toBe(
-      "http://127.0.0.1:5173"
+    expect(matchOrigin("http://127.0.0.1:3000", patterns)).toBe(
+      "http://127.0.0.1:3000"
     );
   });
 
-  it("rejects non-localhost origins", () => {
-    expect(matchOrigin("https://evil.com", patterns)).toBeUndefined();
-    expect(matchOrigin("http://example.com:3000", patterns)).toBeUndefined();
-  });
-
-  it("matches exact patterns", () => {
-    expect(matchOrigin("http://specific.dev", ["http://specific.dev"])).toBe(
-      "http://specific.dev"
-    );
+  it("rejects other origins", () => {
+    expect(matchOrigin("https://evil.example", patterns)).toBeUndefined();
   });
 });
 
-describe("HTTP transport middleware", () => {
-  let app: ReturnType<typeof createApp>;
-
-  beforeEach(() => {
-    mockValidateToken.mockReset();
-    vi.mocked(discoverMcpOAuth).mockResolvedValue({
-      issuer: "http://localhost:3000/api/auth",
-      token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
-      authorization_endpoint: "http://localhost:3000/api/auth/oauth2/authorize",
-    });
-    vi.mocked(exchangeToken).mockResolvedValue({
-      accessToken: "exchanged-token-123",
-      tokenType: "DPoP",
-      expiresIn: 3600,
-      scope: "openid",
-    });
-    setServerCredentials({
-      clientId: "test-client",
-      dpopClient: mockDpopClient as never,
-      dpopKey: {
-        privateJwk: { kty: "EC", crv: "P-256" },
-        publicJwk: { kty: "EC", crv: "P-256" },
-      },
-    });
-    app = createApp();
-  });
-
+describe("HTTP transport", () => {
   it("serves /health without auth", async () => {
-    const res = await app.request("/health");
+    const res = await createTestApp().request("/health");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
   });
 
-  it("serves /.well-known/oauth-protected-resource without auth", async () => {
-    const res = await app.request("/.well-known/oauth-protected-resource");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.resource).toBe("http://localhost:3200");
-    expect(body.authorization_servers).toContain(
-      "http://localhost:3000/api/auth"
+  it("publishes its protected resource metadata", async () => {
+    const res = await createTestApp().request(
+      "/.well-known/oauth-protected-resource"
     );
-    expect(body.bearer_methods_supported).toEqual(["header", "dpop"]);
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(res.status).toBe(200);
+    expect(body.resource).toBe("http://localhost:3200");
+    expect(body.authorization_servers).toEqual([ISSUER]);
     expect(body.scopes_supported).toEqual([
       "openid",
       "email",
@@ -210,343 +207,113 @@ describe("HTTP transport middleware", () => {
     ]);
   });
 
-  it("returns 401 with resource_metadata when no auth header", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(
-        401,
-        "invalid_request",
-        "Missing Authorization header",
-        "openid"
-      )
-    );
+  it("challenges unauthenticated requests with the resource metadata URL", async () => {
+    const res = await postToolCall(createTestApp(), undefined, "whoami");
 
-    const res = await app.request("/mcp", { method: "POST" });
     expect(res.status).toBe(401);
-
-    const wwwAuth = res.headers.get("WWW-Authenticate");
-    expect(wwwAuth).toContain("resource_metadata");
-    expect(wwwAuth).toContain('scope="openid"');
-
-    const body = await res.json();
-    expect(body.error).toBe("invalid_request");
-  });
-
-  it("returns 403 with resource_metadata and scope for insufficient scopes", async () => {
-    mockValidateToken.mockResolvedValue(
-      authError(
-        403,
-        "insufficient_scope",
-        "Token missing required scope(s): proof:identity",
-        "openid proof:identity"
-      )
-    );
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer no-scope-token",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        id: 1,
-        params: { name: "my_proofs", arguments: {} },
-      }),
-    });
-    expect(res.status).toBe(403);
-
-    const body = await res.json();
-    expect(body.error).toBe("insufficient_scope");
-
-    const wwwAuth = res.headers.get("WWW-Authenticate");
-    expect(wwwAuth).toContain("resource_metadata");
-    expect(wwwAuth).toContain('scope="openid proof:identity"');
-  });
-
-  it("uses minimal scopes for initialize", async () => {
-    mockValidateToken.mockResolvedValue(validPayload());
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        id: 1,
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "test", version: "1.0" },
-        },
-      }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(mockValidateToken).toHaveBeenCalledWith(
-      "Bearer valid-token",
-      undefined,
-      "POST",
-      expect.stringContaining("/mcp"),
-      ["openid"]
+    expect(res.headers.get("WWW-Authenticate")).toContain(
+      `resource_metadata="${RESOURCE_METADATA_URL}"`
     );
   });
 
-  it("challenges whoami with minimal account scopes", async () => {
-    mockValidateToken.mockResolvedValue(validPayload({ scope: "openid" }));
+  it("rejects tokens audienced to another resource", async () => {
+    const token = await signAccessToken({ aud: "http://localhost:3000" });
 
-    await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        id: 1,
-        params: { name: "whoami", arguments: {} },
-      }),
-    });
+    const res = await postToolCall(createTestApp(), token, "whoami");
 
-    expect(mockValidateToken).toHaveBeenCalledWith(
-      "Bearer valid-token",
-      undefined,
-      "POST",
-      expect.stringContaining("/mcp"),
-      ["openid"]
-    );
+    expect(res.status).toBe(401);
   });
 
-  it("challenges proof tools with proof scopes", async () => {
-    mockValidateToken.mockResolvedValue(
-      validPayload({ scope: "openid proof:identity" })
-    );
+  it("rejects DPoP-bound tokens presented without a DPoP proof", async () => {
+    const token = await signAccessToken({ cnf: { jkt: "thumbprint" } });
 
-    await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/call",
-        id: 1,
-        params: { name: "my_proofs", arguments: {} },
-      }),
-    });
+    const res = await postToolCall(createTestApp(), token, "whoami");
 
-    expect(mockValidateToken).toHaveBeenCalledWith(
-      "Bearer valid-token",
-      undefined,
-      "POST",
-      expect.stringContaining("/mcp"),
-      ["openid", "proof:identity"]
-    );
+    expect(res.status).toBe(401);
   });
 
-  it("creates an MCP session with a valid token after downstream token exchange", async () => {
-    mockValidateToken.mockResolvedValue(validPayload());
+  it("serves whoami to a 2025-era client after token exchange", async () => {
+    const app = createTestApp();
+    const token = await signAccessToken();
+    const client = await connectClient(app, token);
 
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        id: 1,
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "test", version: "1.0" },
-        },
-      }),
+    const result = await client.callTool({ name: "whoami", arguments: {} });
+
+    expect(client.getProtocolEra()).toBe("legacy");
+    expect(result.structuredContent).toMatchObject({
+      tier: 2,
+      tierName: "Verified",
     });
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get("mcp-session-id")).toBeTruthy();
-    expect(exchangeToken).toHaveBeenCalledWith(
+    expect(mockExchangeToken).toHaveBeenCalledWith(
       expect.objectContaining({
-        subjectToken: "valid-token",
         audience: "http://localhost:3000",
-        clientId: "test-client",
+        clientId: "mcp-server-client",
+        subjectToken: token,
       })
     );
   });
 
-  it("rejects reusing a session id across different principals", async () => {
-    mockValidateToken.mockResolvedValueOnce(validPayload({ sub: "user-123" }));
-
-    const initialize = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        id: 1,
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "test", version: "1.0" },
-        },
-      }),
+  it("serves whoami to a 2026-07-28 client", async () => {
+    const app = createTestApp();
+    const client = await connectClient(app, await signAccessToken(), {
+      versionNegotiation: { mode: { pin: "2026-07-28" } },
     });
 
-    expect(initialize.status).toBe(200);
-    const sessionId = initialize.headers.get("mcp-session-id");
-    expect(sessionId).toBeTruthy();
+    const result = await client.callTool({ name: "whoami", arguments: {} });
 
-    mockValidateToken.mockResolvedValueOnce(validPayload({ sub: "user-456" }));
-
-    const reuse = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer other-valid-token",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-        "mcp-session-id": sessionId ?? "",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "tools/list",
-        id: 2,
-        params: {},
-      }),
-    });
-
-    expect(reuse.status).toBe(403);
-    await expect(reuse.json()).resolves.toEqual({
-      error: "Session principal mismatch",
-    });
+    expect(client.getProtocolEra()).toBe("modern");
+    expect(result.structuredContent).toMatchObject({ tier: 2 });
   });
 
-  it("derives token exchange audience from the discovered public issuer", async () => {
-    mockValidateToken.mockResolvedValue(validPayload());
-    vi.mocked(discoverMcpOAuth).mockResolvedValueOnce({
-      issuer: "https://public.example/base/api/auth",
-      token_endpoint: "http://internal-web:3000/api/auth/oauth2/token",
-      authorization_endpoint:
-        "https://public.example/base/api/auth/oauth2/authorize",
-    });
+  it("challenges a tool call that needs more scope", async () => {
+    const token = await signAccessToken({ scope: "openid" });
 
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer valid-token",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        id: 1,
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "test", version: "1.0" },
-        },
-      }),
-    });
+    const res = await postToolCall(createTestApp(), token, "check_compliance");
+    const challenge = res.headers.get("WWW-Authenticate") ?? "";
 
-    expect(res.status).toBe(200);
-    expect(exchangeToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        audience: "https://public.example/base",
-      })
-    );
+    expect(res.status).toBe(403);
+    expect(challenge).toContain('error="insufficient_scope"');
+    expect(challenge).toContain('scope="openid compliance:read"');
+    expect(challenge).toContain(`resource_metadata="${RESOURCE_METADATA_URL}"`);
+    expect(mockExchangeToken).not.toHaveBeenCalled();
   });
 
-  it("returns 502 when token exchange fails", async () => {
-    mockValidateToken.mockResolvedValue(validPayload());
-    vi.mocked(exchangeToken).mockRejectedValueOnce(
-      new Error("Token exchange failed: 400 invalid_grant")
+  it("reports a failed downstream token exchange as a tool error", async () => {
+    mockExchangeToken.mockRejectedValueOnce(new Error("exchange failed"));
+    const client = await connectClient(
+      createTestApp(),
+      await signAccessToken()
     );
 
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: { Authorization: "Bearer valid-token" },
-    });
-    expect(res.status).toBe(502);
-    const body = await res.json();
-    expect(body.error).toBe("token_exchange_failed");
+    const result = await client.callTool({ name: "whoami", arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: "text", text: "exchange failed" }]);
   });
 
-  it("accepts DPoP tokens with valid proof", async () => {
-    mockValidateToken.mockResolvedValue({
-      scheme: "DPoP",
-      payload: {
-        sub: "user-123",
-        client_id: "test-client",
-        scope: "openid",
-        cnf: { jkt: "test-thumbprint" },
-      },
-      dpopPublicJwk: { kty: "EC", crv: "P-256" },
-    });
-
-    const res = await app.request("/mcp", {
-      method: "POST",
-      headers: {
-        Authorization: "DPoP valid-dpop-token",
-        DPoP: "valid-proof-jwt",
-        Accept: "application/json, text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "initialize",
-        id: 1,
-        params: {
-          protocolVersion: "2025-03-26",
-          capabilities: {},
-          clientInfo: { name: "test", version: "1.0" },
-        },
-      }),
-    });
-
-    expect(res.status).toBe(200);
-  });
-
-  it("sets CORS headers for allowed localhost origin", async () => {
-    const res = await app.request("/health", {
-      headers: { Origin: "http://localhost:3000" },
-    });
-    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
-      "http://localhost:3000"
+  it("exchanges the caller token only when a tool needs it", async () => {
+    const client = await connectClient(
+      createTestApp(),
+      await signAccessToken()
     );
+
+    await client.listTools();
+
+    expect(mockExchangeToken).not.toHaveBeenCalled();
   });
 
-  it("rejects CORS from non-localhost origin", async () => {
-    const res = await app.request("/health", {
-      headers: { Origin: "https://evil.com" },
+  it("allows CORS from loopback origins only", async () => {
+    const app = createTestApp();
+    const allowed = await app.request("/health", {
+      headers: { Origin: "http://localhost:6274" },
     });
-    const acao = res.headers.get("Access-Control-Allow-Origin");
-    expect(acao === null || acao === "").toBe(true);
-  });
-});
+    const denied = await app.request("/health", {
+      headers: { Origin: "https://evil.example" },
+    });
 
-describe("deriveAppAudience", () => {
-  it("strips the auth issuer suffix to recover the app audience", () => {
-    expect(deriveAppAudience("https://public.example/base/api/auth")).toBe(
-      "https://public.example/base"
+    expect(allowed.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://localhost:6274"
     );
-  });
-
-  it("falls back to the normalized issuer when the path is not an auth issuer", () => {
-    expect(deriveAppAudience("https://public.example/custom/")).toBe(
-      "https://public.example/custom"
-    );
+    expect(denied.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });

@@ -1,6 +1,11 @@
 import { config } from "../config.js";
-import { getRemoteMcpScopesSupported } from "./remote-scope-policy.js";
 
+const SCOPES_SUPPORTED = [
+  "openid",
+  "email",
+  "compliance:read",
+  "proof:identity",
+];
 const TRAILING_SLASHES = /\/+$/;
 const LEADING_SLASHES = /^\/+/;
 
@@ -22,7 +27,7 @@ export function getResourceMetadata(): Record<string, unknown> {
   return {
     resource: config.mcpPublicUrl,
     authorization_servers: [joinUrlPath(config.zentityUrl, "/api/auth")],
-    scopes_supported: getRemoteMcpScopesSupported(),
+    scopes_supported: SCOPES_SUPPORTED,
     bearer_methods_supported: ["header", "dpop"],
   };
 }

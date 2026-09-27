@@ -31,7 +31,7 @@ Monorepo with services communicating via REST APIs:
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
-| MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
+| MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/server | 3300 (HTTP) / stdio |
 
 Additional apps (not core services):
 

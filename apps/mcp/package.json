@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.0.2",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/server": "2.1.0",
     "@zentity/sdk": "workspace:*",
     "hono": "^4.13.9",
     "jose": "^6.2.1",
@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",
+    "@modelcontextprotocol/client": "2.1.0",
     "@types/node": "^25.5.0",
     "typescript": "^5.9.3",
     "ultracite": "7.3.2",
