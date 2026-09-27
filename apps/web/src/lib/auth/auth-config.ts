@@ -141,6 +141,7 @@ import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
+import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
@@ -1925,6 +1926,15 @@ export const auth = betterAuth({
         typeof session?.activeOrganizationId === "string"
           ? session.activeOrganizationId
           : undefined,
+      clientPrivileges: ({ action, session, user }) =>
+        canManageOAuthClients({
+          action,
+          organizationId:
+            typeof session?.activeOrganizationId === "string"
+              ? session.activeOrganizationId
+              : null,
+          userId: user?.id,
+        }),
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
       postLogin: {

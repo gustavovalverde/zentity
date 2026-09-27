@@ -3,24 +3,67 @@ import type { Session } from "@/lib/auth/auth-config";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { members } from "@/lib/db/schema/organization";
 
 const ADMIN_ROLES = new Set(["owner", "admin"]);
 
+type ClientAction =
+  | "configure-client-credentials-scopes"
+  | "create"
+  | "delete"
+  | "list"
+  | "read"
+  | "rotate"
+  | "update";
+
+async function findMemberRole(
+  organizationId: string,
+  userId: string
+): Promise<string | null> {
+  const member = await db
+    .select({ role: members.role })
+    .from(members)
+    .where(
+      and(
+        eq(members.organizationId, organizationId),
+        eq(members.userId, userId)
+      )
+    )
+    .limit(1)
+    .get();
+  return member?.role ?? null;
+}
+
+/**
+ * RBAC for the OAuth provider's client management endpoints. The provider
+ * checks ownership (the registering user or the active organization); this
+ * adds that only organization owners and admins manage organization clients.
+ */
+export async function canManageOAuthClients(input: {
+  action: ClientAction;
+  organizationId: string | null | undefined;
+  userId: string | undefined;
+}): Promise<boolean> {
+  if (input.action === "configure-client-credentials-scopes") {
+    return false;
+  }
+  if (!input.organizationId) {
+    return true;
+  }
+  if (!input.userId) {
+    return false;
+  }
+  const role = await findMemberRole(input.organizationId, input.userId);
+  return role !== null && ADMIN_ROLES.has(role);
+}
+
 export async function requireRpAdmin(
-  requestHeaders: Headers
+  session: Session
 ): Promise<
-  | { ok: true; session: Session; organizationId: string }
+  | { ok: true; organizationId: string }
   | { ok: false; response: NextResponse<{ error: string }> }
 > {
-  const sessionResult = await requireBrowserSession(requestHeaders);
-  if (!sessionResult.ok) {
-    return sessionResult;
-  }
-
-  const session = sessionResult.session;
   const organizationId = (session.session as Record<string, unknown>)
     .activeOrganizationId as string | null;
   if (!organizationId) {
@@ -33,19 +76,9 @@ export async function requireRpAdmin(
     };
   }
 
-  const member = await db
-    .select({ role: members.role })
-    .from(members)
-    .where(
-      and(
-        eq(members.organizationId, organizationId),
-        eq(members.userId, session.user.id)
-      )
-    )
-    .limit(1)
-    .get();
+  const role = await findMemberRole(organizationId, session.user.id);
 
-  if (!member) {
+  if (!role) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -55,7 +88,7 @@ export async function requireRpAdmin(
     };
   }
 
-  if (!ADMIN_ROLES.has(member.role)) {
+  if (!ADMIN_ROLES.has(role)) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -65,5 +98,5 @@ export async function requireRpAdmin(
     };
   }
 
-  return { ok: true, session, organizationId };
+  return { ok: true, organizationId };
 }

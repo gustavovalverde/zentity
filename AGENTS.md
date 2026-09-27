@@ -414,7 +414,7 @@ const result = await trpc.liveness.verify.mutate({ sessionId, ... });
 
 Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-auth's `oauthProvider` plugin. Endpoints are under `/api/auth/oauth2/*` with discovery at `/.well-known/*`.
 
-OAuth clients are managed through the **Applications** page (`/dashboard/developer`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
+OAuth clients are managed through the **Applications** page (`/dashboard/developer`) with organization-based ownership (via `referenceId` on the client table). `/api/rp-admin/clients/owned` lists the active organization's clients. Ownership is fixed at registration; clients cannot be transferred.
 
 **HAIP compliance** (`@better-auth/haip`): DPoP enforced at token endpoint (`requireDpop: true`); tRPC resource endpoints accept Bearer fallback. Server-managed nonce store (`DPOP_NONCE_TTL_SECONDS`, default 30s), PAR required (`requirePar: true`), wallet attestation (`TRUSTED_WALLET_ISSUERS`), JARM encrypted VP responses (ECDH-ES P-256), pairwise subject identifiers (`PAIRWISE_SECRET`, required min 32 chars). Discovery metadata enriched via `enrichDiscoveryMetadata()` in `well-known.ts` (NOT via plugin after-hook — Next.js routes call `auth.api.*` directly).
 
