@@ -50,6 +50,14 @@ interface GrantEvalResult {
   reason?: string | undefined;
 }
 
+const DECIMAL_AMOUNT_RE = /^(0|[1-9]\d*)(\.\d+)?$/;
+
+function parseSpendAmount(value: unknown): number | undefined {
+  return typeof value === "string" && DECIMAL_AMOUNT_RE.test(value)
+    ? Number(value)
+    : undefined;
+}
+
 function extractActionParams(
   details: AuthorizationDetail[]
 ): Record<string, unknown> {
@@ -61,9 +69,7 @@ function extractActionParams(
       | { namespace?: string; reference?: string }
       | undefined;
     return {
-      "amount.value": payment.amount?.value
-        ? Number.parseFloat(payment.amount.value)
-        : undefined,
+      "amount.value": parseSpendAmount(payment.amount?.value),
       "amount.currency": payment.amount?.currency,
       // Surface the unit so a boundary can pin it (e.g. {field:"amount.unit",
       // op:"eq", value:"base"}). amount.value caps are in whatever unit the
@@ -82,9 +88,7 @@ function extractActionParams(
   }
 
   return {
-    "amount.value": purchase.amount?.value
-      ? Number.parseFloat(purchase.amount.value)
-      : undefined,
+    "amount.value": parseSpendAmount(purchase.amount?.value),
     "amount.currency": purchase.amount?.currency,
     merchant: purchase.merchant,
     item: purchase.item,
@@ -390,9 +394,7 @@ export async function evaluateSessionGrants(
     (detail) =>
       detail.type === PAYMENT_AUTHORIZATION_TYPE || detail.type === "purchase"
   );
-  const spendAmount = spend?.amount?.value
-    ? Number.parseFloat(spend.amount.value)
-    : undefined;
+  const spendAmount = parseSpendAmount(spend?.amount?.value);
 
   for (const grant of activeGrants) {
     // A payment_authorization:sign grant authorizes on-chain spend. Never
@@ -425,6 +427,7 @@ export async function evaluateSessionGrants(
         sessionId,
         amount: spendAmount,
         currency: spend?.amount?.currency,
+        unit: (spend?.amount as { unit?: string } | undefined)?.unit,
       },
       {
         cooldownSec: grant.cooldownSec,
@@ -470,6 +473,7 @@ interface UsageEntry {
   hostPolicyId?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
   sessionId: string;
+  unit?: string | undefined;
 }
 
 function usageScopePredicate(entry: UsageEntry) {
@@ -531,10 +535,15 @@ function recordUsageIfAllowed(
       }
     }
 
-    if (limits.dailyLimitAmount !== undefined && entry.amount !== undefined) {
-      const currentAmount = await tx
+    if (limits.dailyLimitAmount !== undefined) {
+      if (entry.amount === undefined || !entry.currency) {
+        return false;
+      }
+      const spends = await tx
         .select({
-          totalAmount: sql<number>`coalesce(sum(${capabilityUsageLedger.amount}), 0)`,
+          amount: capabilityUsageLedger.amount,
+          currency: capabilityUsageLedger.currency,
+          unit: capabilityUsageLedger.unit,
         })
         .from(capabilityUsageLedger)
         .where(
@@ -544,12 +553,16 @@ function recordUsageIfAllowed(
             gte(capabilityUsageLedger.executedAt, dayStart)
           )
         )
-        .get();
+        .all();
 
-      if (
-        (currentAmount?.totalAmount ?? 0) + entry.amount >
-        limits.dailyLimitAmount
-      ) {
+      // One limit cannot bound spends in different currencies or units.
+      const mixed = spends.some(
+        (spend) =>
+          spend.currency !== entry.currency ||
+          (spend.unit ?? undefined) !== entry.unit
+      );
+      const spent = spends.reduce((sum, spend) => sum + (spend.amount ?? 0), 0);
+      if (mixed || spent + entry.amount > limits.dailyLimitAmount) {
         return false;
       }
     }
@@ -561,6 +574,7 @@ function recordUsageIfAllowed(
       sessionId: entry.sessionId,
       amount: entry.amount,
       currency: entry.currency,
+      unit: entry.unit,
       metadata: entry.metadata ? JSON.stringify(entry.metadata) : undefined,
       executedAt: new Date(now),
     });

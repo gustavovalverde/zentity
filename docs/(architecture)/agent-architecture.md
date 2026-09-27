@@ -245,6 +245,8 @@ Each grant can carry:
 
 The ledger is append-only and used as the enforcement source for cooldown and daily cap checks.
 
+A `daily_limit_amount` applies to one currency and unit. The amount must be a non-negative decimal string, and a spend whose currency or unit differs from the day's earlier spends under the same grant falls through to manual approval.
+
 ### What auto-approval can never do
 
 The evaluator refuses automatic approval in these cases:

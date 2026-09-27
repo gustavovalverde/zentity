@@ -255,6 +255,61 @@ describe("evaluateSessionGrants", () => {
     expect(result.approved).toBe(false);
   });
 
+  describe("daily amount limit", () => {
+    const paymentIn = (value: string, unit: string, currency = "ZEC") => ({
+      ...paymentRar({ value }),
+      amount: { currency, value, unit },
+    });
+
+    beforeEach(async () => {
+      await db
+        .insert(agentSessionGrants)
+        .values({
+          capabilityName: "payment_authorization:sign",
+          sessionId,
+          source: "host_policy",
+          status: "active",
+          dailyLimitAmount: 150_000,
+          grantedAt: new Date(),
+        })
+        .run();
+    });
+
+    function evaluate(detail: ReturnType<typeof paymentIn>) {
+      return evaluateSessionGrants(
+        sessionId,
+        "openid payment_authorization:sign",
+        [detail]
+      );
+    }
+
+    it.each([
+      "-50",
+      "5abc",
+      "1e3",
+      "",
+    ])("does not auto-approve the malformed amount %j", async (value) => {
+      expect((await evaluate(paymentIn(value, "base"))).approved).toBe(false);
+    });
+
+    it("counts spends in the same currency and unit against the limit", async () => {
+      expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(true);
+      expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(
+        false
+      );
+    });
+
+    it.each([
+      ["another unit", "1", "display", "ZEC"],
+      ["another currency", "1", "base", "USD"],
+    ])("does not auto-approve a spend in %s once the day has spending", async (_label, value, unit, currency) => {
+      expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(true);
+      expect((await evaluate(paymentIn(value, unit, currency))).approved).toBe(
+        false
+      );
+    });
+  });
+
   it("falls through to manual when a payment recipient is not allowlisted", async () => {
     await db
       .insert(agentSessionGrants)
