@@ -15,6 +15,8 @@
  * Options:
  *   --transport stdio|http   Transport to exercise (default: stdio)
  *   --era legacy|modern      Protocol era the client negotiates (default: legacy)
+ *   --port <port>            HTTP port; Zentity must list http://localhost:<port>
+ *                            as its MCP resource (default: 3300)
  *
  * Environment:
  *   ZENTITY_URL              Zentity base URL (default: http://localhost:3000)
@@ -24,7 +26,6 @@
 
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -43,6 +44,7 @@ const withCiba = args.includes("--with-ciba");
 const withAuth = withCiba || args.includes("--with-auth");
 const transportName = readOption("--transport", "stdio");
 const era = readOption("--era", "legacy");
+const httpPort = readOption("--port", "3300");
 const zentityUrl = process.env.ZENTITY_URL ?? "http://localhost:3000";
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 300_000);
 const serverEntry = resolve(import.meta.dirname, "../src/index.ts");
@@ -86,21 +88,6 @@ async function step(name: string, fn: () => Promise<string | undefined>) {
 
 function sleep(ms: number) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
-}
-
-function freePort(): Promise<number> {
-  return new Promise((resolvePort, reject) => {
-    const server = createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      server.close(() =>
-        typeof address === "object" && address
-          ? resolvePort(address.port)
-          : reject(new Error("No port"))
-      );
-    });
-  });
 }
 
 function clientOptions(): ClientOptions {
@@ -193,7 +180,7 @@ async function requestRemoteToken(mcpUrl: string) {
     body: JSON.stringify(
       buildLoopbackClientRegistration({
         clientName: "zentity-e2e-smoke",
-        grantTypes: ["urn:openid:params:grant-type:ciba"],
+        grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
         scope: REMOTE_SCOPES,
       })
     ),
@@ -224,11 +211,10 @@ async function requestRemoteToken(mcpUrl: string) {
 }
 
 async function connectHttp(home: string): Promise<Client> {
-  const port = await freePort();
-  const publicUrl = `http://localhost:${port}`;
+  const publicUrl = `http://localhost:${httpPort}`;
   const child = spawn(
     "bun",
-    ["run", serverEntry, "--transport", "http", "--port", String(port)],
+    ["run", serverEntry, "--transport", "http", "--port", httpPort],
     {
       env: {
         HOME: home,
