@@ -192,4 +192,20 @@ describe("POST /api/auth/oauth2/register", () => {
     expect(status).toBe(400);
     expect(payload.error).toBe("invalid_client_metadata");
   });
+
+  it("keeps the notification endpoint of a ping-mode CIBA client", async () => {
+    const { status, client } = await register({
+      client_name: "Ping Agent",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      grant_types: ["authorization_code", "urn:openid:params:grant-type:ciba"],
+      backchannel_token_delivery_mode: "ping",
+      backchannel_client_notification_endpoint: `${RP_ORIGIN}/ciba/notify`,
+    });
+
+    expect(status).toBe(201);
+    expect(JSON.parse(client?.metadata ?? "{}")).toMatchObject({
+      backchannel_client_notification_endpoint: `${RP_ORIGIN}/ciba/notify`,
+      backchannel_token_delivery_mode: "ping",
+    });
+  });
 });
