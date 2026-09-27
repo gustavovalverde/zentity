@@ -83,6 +83,10 @@ async function createCaller() {
   });
 }
 
+function sqliteTimestamp(ms: number): string {
+  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
+}
+
 function validInput() {
   return {
     secretId: "secret-123",
@@ -138,6 +142,7 @@ describe("credentialBindings.register", () => {
       authenticatedAt: Math.floor(Date.now() / 1000),
       sourceKind: "better_auth",
     });
+    dbMocks.get.mockResolvedValueOnce(null);
 
     const caller = await createCaller();
 
@@ -148,6 +153,49 @@ describe("credentialBindings.register", () => {
     expect(
       privacyMocks.upsertCredentialBindingCommitment
     ).not.toHaveBeenCalled();
+  });
+
+  it("accepts a passkey this user registered moments ago", async () => {
+    authMocks.getAuthenticationStateBySessionId.mockResolvedValue({
+      id: "auth-context-123",
+      loginMethod: "magic-link",
+      amr: ["email"],
+      authStrength: "basic",
+      authenticatedAt: Math.floor(Date.now() / 1000),
+      sourceKind: "better_auth",
+    });
+    dbMocks.get
+      .mockResolvedValueOnce({
+        createdAt: sqliteTimestamp(Date.now() - 30 * 1000),
+      })
+      .mockResolvedValueOnce({ secretId: "secret-123" });
+
+    const caller = await createCaller();
+
+    await expect(caller.register(validInput())).resolves.toEqual({
+      credentialBindingId: "binding-123",
+    });
+  });
+
+  it("rejects a passkey registered outside the freshness window", async () => {
+    authMocks.getAuthenticationStateBySessionId.mockResolvedValue({
+      id: "auth-context-123",
+      loginMethod: "magic-link",
+      amr: ["email"],
+      authStrength: "basic",
+      authenticatedAt: Math.floor(Date.now() / 1000),
+      sourceKind: "better_auth",
+    });
+    dbMocks.get.mockResolvedValueOnce({
+      createdAt: sqliteTimestamp(Date.now() - 10 * 60 * 1000),
+    });
+
+    const caller = await createCaller();
+
+    await expect(caller.register(validInput())).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      message: "Credential confirmation expired. Please try again.",
+    });
   });
 
   it("rejects stale credential confirmations", async () => {

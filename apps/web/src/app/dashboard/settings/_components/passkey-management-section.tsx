@@ -1,5 +1,7 @@
 "use client";
 
+import type { VaultAccess } from "@/lib/privacy/secrets/vault-access";
+
 import {
   Check,
   Edit2,
@@ -11,6 +13,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useOptimistic, useState } from "react";
 import { toast } from "sonner";
 
@@ -52,6 +55,7 @@ import {
 } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
@@ -63,8 +67,11 @@ import {
 } from "@/lib/auth/passkey/client";
 import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { generatePrfSalt } from "@/lib/privacy/credentials/derivation";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
-import { addWrapperForSecretType } from "@/lib/privacy/secrets/vault";
+import {
+  addVaultCredential,
+  removeVaultCredential,
+  type VaultKey,
+} from "@/lib/privacy/secrets/vault";
 
 interface PasskeyCredential {
   backedUp?: boolean | undefined;
@@ -112,7 +119,11 @@ interface EditState {
 
 const INITIAL_EDIT_STATE: EditState = { id: null, name: "" };
 
-export function PasskeyManagementSection() {
+export function PasskeyManagementSection({
+  access,
+}: Readonly<{ access: VaultAccess | null }>) {
+  const router = useRouter();
+  const { dialog: vaultKeyDialog, requestVaultKey } = useVaultKeyPrompt();
   const [passkeys, setPasskeys] = useState<PasskeyCredential[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,10 +177,7 @@ export function PasskeyManagementSection() {
       });
   }, [loadPasskeys]);
 
-  const addPasskeyAndWrapSecrets = async (params?: {
-    userId?: string;
-    exportKey?: Uint8Array;
-  }) => {
+  const registerPasskey = async (vaultKey: VaultKey | null) => {
     const prfSalt = generatePrfSalt();
     const registration = await registerPasskeyWithPrf({
       name: `Passkey ${optimisticPasskeys.length + 1}`,
@@ -180,25 +188,15 @@ export function PasskeyManagementSection() {
       throw new Error(registration.message);
     }
 
-    const { credentialId, prfOutput } = registration;
-
-    await addWrapperForSecretType({
-      secretType: SECRET_TYPES.FHE_KEYS,
-      newCredentialId: credentialId,
-      newPrfOutput: prfOutput,
-      newPrfSalt: prfSalt,
-      userId: params?.userId,
-      opaqueExportKey: params?.exportKey,
-    });
-
-    await addWrapperForSecretType({
-      secretType: SECRET_TYPES.PROFILE,
-      newCredentialId: credentialId,
-      newPrfOutput: prfOutput,
-      newPrfSalt: prfSalt,
-      userId: params?.userId,
-      opaqueExportKey: params?.exportKey,
-    });
+    if (vaultKey) {
+      await addVaultCredential(vaultKey, {
+        type: "passkey",
+        credentialId: registration.credentialId,
+        prfOutput: registration.prfOutput,
+        prfSalt,
+      });
+    }
+    router.refresh();
   };
 
   const handleAddPasskey = async () => {
@@ -209,26 +207,32 @@ export function PasskeyManagementSection() {
 
     setError(null);
     setPasswordError(null);
-
-    // First passkey for password-only users: step up with password.
-    if (optimisticPasskeys.length === 0) {
-      setPasswordPromptOpen(true);
-      return;
-    }
-
     setIsAdding(true);
     try {
-      // Step-up authentication: verify user identity with existing passkey
-      // before allowing new passkey registration. This prevents session hijacking
-      // attacks where an attacker with a stale session could add their own passkey.
-      const stepUp = await signInWithPasskey();
-      if (!stepUp.ok) {
-        throw new Error(
-          stepUp.message || "Please verify your identity to add a new passkey."
-        );
+      // Opening the vault proves possession of an existing credential, so a
+      // stolen session alone can't add a passkey that unlocks it.
+      const request = await requestVaultKey();
+      if (request.status === "cancelled") {
+        return;
       }
 
-      await addPasskeyAndWrapSecrets();
+      if (request.status === "no_vault") {
+        if (optimisticPasskeys.length === 0) {
+          setPasswordPromptOpen(true);
+          return;
+        }
+        const stepUp = await signInWithPasskey();
+        if (!stepUp.ok) {
+          throw new Error(
+            stepUp.message ||
+              "Please verify your identity to add a new passkey."
+          );
+        }
+      }
+
+      await registerPasskey(
+        request.status === "unlocked" ? request.vaultKey : null
+      );
 
       toast.success("Passkey added successfully!");
       await loadPasskeys();
@@ -280,16 +284,7 @@ export function PasskeyManagementSection() {
         throw new Error("Password verification failed. Please try again.");
       }
 
-      const userId = result.data.user?.id ?? null;
-      const exportKey = result.data.exportKey ?? null;
-
-      if (!(userId && exportKey)) {
-        throw new Error(
-          "Password verification succeeded but export key was missing."
-        );
-      }
-
-      await addPasskeyAndWrapSecrets({ userId, exportKey });
+      await registerPasskey(null);
 
       setPasswordPromptOpen(false);
       setPasswordValue("");
@@ -312,6 +307,21 @@ export function PasskeyManagementSection() {
     // Close dialog immediately for instant feedback
     setDeleteConfirm(null);
 
+    const credentialId = passkeys.find((p) => p.id === id)?.credentialID;
+    const connected = access?.passkeys.some(
+      (p) => p.credentialId === credentialId && p.connected
+    );
+    if (credentialId && connected) {
+      try {
+        await removeVaultCredential(credentialId);
+      } catch (err) {
+        toast.error("Failed to remove passkey", {
+          description: err instanceof Error ? err.message : "Please try again",
+        });
+        return;
+      }
+    }
+
     // Apply optimistic update - item disappears instantly
     applyOptimistic({ type: "delete", id });
 
@@ -322,6 +332,7 @@ export function PasskeyManagementSection() {
       }
       toast.success("Passkey removed successfully");
       await loadPasskeys();
+      router.refresh();
     } catch (err) {
       // On error, loadPasskeys will restore the item
       toast.error("Failed to remove passkey", {
@@ -538,6 +549,8 @@ export function PasskeyManagementSection() {
             </AlertDescription>
           </Alert>
         )}
+
+        {vaultKeyDialog}
 
         {/* Password confirmation dialog (first passkey for password-only users) */}
         <AlertDialog

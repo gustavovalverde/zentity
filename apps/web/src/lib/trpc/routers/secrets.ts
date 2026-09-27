@@ -1,7 +1,9 @@
 /**
  * Encrypted Secrets Router
  *
- * Stores passkey-wrapped secrets without server access to plaintext.
+ * Stores credential-wrapped secrets without server access to plaintext.
+ * Unlocking credentials wrap only the vault root; every other secret is
+ * wrapped under the vault key.
  */
 import "server-only";
 
@@ -9,9 +11,12 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
+import { clearIdentityBundleFheKey } from "@/lib/db/queries/identity";
 import {
-  deleteSecretWrapper,
+  deleteVaultSecrets,
+  detachVaultCredential,
   getEncryptedSecretByUserAndType,
   getSecretWrappersBySecretId,
   updateEncryptedSecretMetadata,
@@ -21,19 +26,90 @@ import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 import {
   kekSourceSchema,
   prfSaltSchema,
+  RECOVERY_KEY_CREDENTIAL_ID,
   secretTypeSchema,
+  unlockingKekSourceSchema,
+  VAULT_KEY_CREDENTIAL_ID,
+  VAULT_ROOT_SECRET_TYPE,
   wrappedDekSchema,
 } from "@/lib/privacy/secrets/catalog";
 import {
   computeSecretBlobRef,
+  deleteSecretBlob,
   getSecretBlobMaxBytes,
   isValidSecretBlobRef,
 } from "@/lib/privacy/secrets/storage.server";
+import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
 import { protectedProcedure, router } from "../server";
 
 const metadataSchema = z.record(z.string(), z.unknown()).nullable().optional();
 const sha256HexSchema = z.string().regex(/^[a-fA-F0-9]{64}$/);
+
+const VAULT_RESET_FRESHNESS_MS = 15 * 60 * 1000;
+
+function assertUnlockingWrapper(input: {
+  credentialId: string;
+  kekSource: z.infer<typeof unlockingKekSourceSchema>;
+  prfSalt?: string | undefined;
+}) {
+  const valid =
+    (input.kekSource === "prf" && Boolean(input.prfSalt)) ||
+    (input.kekSource === "opaque" && input.credentialId === "opaque") ||
+    (input.kekSource === "wallet" &&
+      input.credentialId.startsWith("wallet:")) ||
+    (input.kekSource === "recovery_key" &&
+      input.credentialId === RECOVERY_KEY_CREDENTIAL_ID);
+  if (!valid) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "Credential does not match its key source.",
+    });
+  }
+}
+
+function assertWrapperForSecretType(input: {
+  credentialId: string;
+  kekSource: z.infer<typeof kekSourceSchema>;
+  prfSalt?: string | undefined;
+  secretType: z.infer<typeof secretTypeSchema>;
+}) {
+  if (input.secretType !== VAULT_ROOT_SECRET_TYPE) {
+    if (
+      input.kekSource !== "vault" ||
+      input.credentialId !== VAULT_KEY_CREDENTIAL_ID
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Vault secrets must be wrapped under the vault key.",
+      });
+    }
+    return;
+  }
+
+  const kekSource = unlockingKekSourceSchema.safeParse(input.kekSource);
+  if (!kekSource.success || kekSource.data === "recovery_key") {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "The vault root must be wrapped by a sign-in credential.",
+    });
+  }
+  assertUnlockingWrapper({ ...input, kekSource: kekSource.data });
+}
+
+async function requireVaultRoot(userId: string) {
+  const root = await getEncryptedSecretByUserAndType(
+    userId,
+    VAULT_ROOT_SECRET_TYPE
+  );
+  if (!root) {
+    throw new TRPCError({
+      code: "NOT_FOUND",
+      message: "Encryption keys are not set up.",
+    });
+  }
+  return root;
+}
 
 export const secretsRouter = router({
   getPasskeyUser: protectedProcedure.query(({ ctx }) => ({
@@ -57,6 +133,8 @@ export const secretsRouter = router({
       return { secret, wrappers };
     }),
 
+  access: protectedProcedure.query(({ ctx }) => getVaultAccess(ctx.userId)),
+
   storeSecret: protectedProcedure
     .input(
       z.object({
@@ -69,7 +147,7 @@ export const secretsRouter = router({
         prfSalt: prfSaltSchema.optional(),
         credentialId: z.string().min(1),
         metadata: metadataSchema,
-        kekSource: kekSourceSchema.optional(),
+        kekSource: kekSourceSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -93,12 +171,17 @@ export const secretsRouter = router({
         });
       }
 
+      assertWrapperForSecretType(input);
+      const isRoot = input.secretType === VAULT_ROOT_SECRET_TYPE;
+      if (!isRoot) {
+        await requireVaultRoot(ctx.userId);
+      }
+
       const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
 
-      const result = await db.transaction(async (tx) => {
-        // Delete any existing secret with a different id for this user+type
+      const replacedSecretIds = await db.transaction(async (tx) => {
         const existing = await tx
-          .select()
+          .select({ id: encryptedSecrets.id })
           .from(encryptedSecrets)
           .where(
             and(
@@ -109,19 +192,24 @@ export const secretsRouter = router({
           .limit(1)
           .get();
 
+        let replaced: string[] = [];
         if (existing && existing.id !== input.secretId) {
-          await tx
-            .delete(encryptedSecrets)
-            .where(
-              and(
-                eq(encryptedSecrets.userId, ctx.userId),
-                eq(encryptedSecrets.secretType, input.secretType)
-              )
-            )
-            .run();
+          if (isRoot) {
+            // A new vault key orphans every secret wrapped under the old one.
+            replaced = await deleteVaultSecrets(ctx.userId, tx);
+          } else {
+            await tx
+              .delete(secretWrappers)
+              .where(eq(secretWrappers.secretId, existing.id))
+              .run();
+            await tx
+              .delete(encryptedSecrets)
+              .where(eq(encryptedSecrets.id, existing.id))
+              .run();
+            replaced = [existing.id];
+          }
         }
 
-        // Upsert the secret
         await tx
           .insert(encryptedSecrets)
           .values({
@@ -147,8 +235,6 @@ export const secretsRouter = router({
           })
           .run();
 
-        // Upsert the wrapper
-        const kekSource = input.kekSource ?? "prf";
         await tx
           .insert(secretWrappers)
           .values({
@@ -158,31 +244,28 @@ export const secretsRouter = router({
             credentialId: input.credentialId,
             wrappedDek: input.wrappedDek,
             prfSalt: input.prfSalt ?? null,
-            kekSource,
+            kekSource: input.kekSource,
           })
           .onConflictDoUpdate({
             target: [secretWrappers.secretId, secretWrappers.credentialId],
             set: {
               wrappedDek: input.wrappedDek,
               prfSalt: input.prfSalt ?? null,
-              kekSource,
+              kekSource: input.kekSource,
               updatedAt: sql`datetime('now')`,
             },
           })
           .run();
 
-        return true;
+        return replaced;
       });
 
-      if (!result) {
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to store secret.",
-        });
-      }
+      await Promise.all(
+        replacedSecretIds
+          .filter((id) => id !== input.secretId)
+          .map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
+      );
 
-      // Read back outside transaction using existing query functions
-      // (which parse metadata from JSON string to object)
       const secret = await getEncryptedSecretByUserAndType(
         ctx.userId,
         input.secretType
@@ -208,28 +291,25 @@ export const secretsRouter = router({
     .input(
       z.object({
         secretId: z.string().min(1),
-        secretType: secretTypeSchema,
         credentialId: z.string().min(1),
         wrappedDek: wrappedDekSchema,
         prfSalt: prfSaltSchema.optional(),
-        kekSource: kekSourceSchema.optional(),
+        kekSource: unlockingKekSourceSchema,
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const secret = await getEncryptedSecretByUserAndType(
-        ctx.userId,
-        input.secretType
-      );
-      if (!secret || secret.id !== input.secretId) {
+      assertUnlockingWrapper(input);
+      const root = await requireVaultRoot(ctx.userId);
+      if (root.id !== input.secretId) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Secret not found for user.",
+          code: "CONFLICT",
+          message: "Encryption keys changed. Please try again.",
         });
       }
 
       const wrapper = await upsertSecretWrapper({
         id: crypto.randomUUID(),
-        secretId: secret.id,
+        secretId: root.id,
         userId: ctx.userId,
         credentialId: input.credentialId,
         wrappedDek: input.wrappedDek,
@@ -240,39 +320,57 @@ export const secretsRouter = router({
       return { wrapper };
     }),
 
-  removeWrapper: protectedProcedure
-    .input(
-      z.object({
-        secretId: z.string().min(1),
-        credentialId: z.string().min(1),
-      })
-    )
+  removeCredential: protectedProcedure
+    .input(z.object({ credentialId: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const wrappers = await getSecretWrappersBySecretId(input.secretId);
+      const root = await requireVaultRoot(ctx.userId);
+      const wrappers = await getSecretWrappersBySecretId(root.id);
 
-      const wrapper = wrappers.find(
-        (w) => w.credentialId === input.credentialId && w.userId === ctx.userId
-      );
-      if (!wrapper) {
+      if (!wrappers.some((w) => w.credentialId === input.credentialId)) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "Wrapper not found for user.",
+          message: "This credential does not unlock your encrypted data.",
         });
       }
 
-      // Prevent removing the last wrapper
-      const userWrappers = wrappers.filter((w) => w.userId === ctx.userId);
-      if (userWrappers.length <= 1) {
+      const remaining = wrappers.filter(
+        (w) => w.credentialId !== input.credentialId
+      );
+      if (remaining.length === 0) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot remove the last wrapper for a secret.",
+          message:
+            "Add another way to open your encrypted data before removing this one.",
         });
       }
 
-      await deleteSecretWrapper(input.secretId, input.credentialId);
-
+      await detachVaultCredential(ctx.userId, input.credentialId);
       return { success: true };
     }),
+
+  resetVault: protectedProcedure.mutation(async ({ ctx }) => {
+    const authState =
+      (await getAuthenticationStateBySessionId(ctx.session.session.id)) ??
+      ctx.authContext ??
+      null;
+    if (
+      !authState ||
+      Date.now() - authState.authenticatedAt * 1000 > VAULT_RESET_FRESHNESS_MS
+    ) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Sign in again to start over with new keys.",
+      });
+    }
+
+    const deletedSecretIds = await deleteVaultSecrets(ctx.userId);
+    await clearIdentityBundleFheKey(ctx.userId);
+    await Promise.all(
+      deletedSecretIds.map((id) => deleteSecretBlob(computeSecretBlobRef(id)))
+    );
+
+    return { success: true };
+  }),
 
   updateSecretMetadata: protectedProcedure
     .input(

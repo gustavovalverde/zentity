@@ -4,18 +4,22 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/chrome/page-header";
+import { Web3Provider } from "@/components/providers/web3-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
 import { userHasPassword } from "@/lib/db/queries/auth";
 import { oauthClients, oauthConsents } from "@/lib/db/schema/oauth-provider";
+import { getVaultAccess } from "@/lib/privacy/secrets/vault-access";
 
+import { VaultAccessNotice } from "../_components/vault-access-notice";
 import { ConnectedAppsCard } from "./_components/connected-apps-card";
 import { DeleteAccountSection } from "./_components/delete-account-section";
 import { EmailSection } from "./_components/email-section";
 import { OpaqueChangePasswordSection } from "./_components/opaque-change-password-section";
 import { PasskeyManagementSection } from "./_components/passkey-management-section";
+import { RecoveryKeySection } from "./_components/recovery-key-section";
 import {
   ConnectedAccountsCard,
   SessionsCard,
@@ -39,7 +43,8 @@ export default async function SettingsPage({
 }: Readonly<{
   searchParams: Promise<{ tab?: string; walletRisk?: string }>;
 }>) {
-  const session = await getCachedSession(await headers());
+  const headersObj = await headers();
+  const session = await getCachedSession(headersObj);
   const params = await searchParams;
   const defaultTab = parseDefaultTab(params.tab);
   const showWalletRiskNotice = params.walletRisk === "1";
@@ -48,8 +53,9 @@ export default async function SettingsPage({
     redirect("/sign-in");
   }
 
-  const [hasPassword, consents] = await Promise.all([
+  const [hasPassword, access, consents] = await Promise.all([
     userHasPassword(session.user.id),
+    getVaultAccess(session.user.id),
     db
       .select({
         consentId: oauthConsents.id,
@@ -68,6 +74,16 @@ export default async function SettingsPage({
       )
       .where(eq(oauthConsents.userId, session.user.id)),
   ]);
+
+  const credentialSections = (
+    <>
+      <PasskeyManagementSection access={access} />
+      <TwoFactorCard hasPassword={hasPassword} />
+      {hasPassword ? <OpaqueChangePasswordSection /> : <SetPasswordSection />}
+      <WalletBindingSection />
+      <RecoveryKeySection access={access} />
+    </>
+  );
 
   return (
     <div className="space-y-6">
@@ -109,14 +125,14 @@ export default async function SettingsPage({
             description="Manage how you sign in to your account"
             title="Authentication"
           />
-          <PasskeyManagementSection />
-          <TwoFactorCard hasPassword={hasPassword} />
-          {hasPassword ? (
-            <OpaqueChangePasswordSection />
+          <VaultAccessNotice access={access} place="settings" />
+          {access?.wallet ? (
+            <Web3Provider cookies={headersObj.get("cookie")}>
+              {credentialSections}
+            </Web3Provider>
           ) : (
-            <SetPasswordSection />
+            credentialSections
           )}
-          <WalletBindingSection />
         </TabsContent>
 
         {/* PROFILE TAB - Your verified information */}

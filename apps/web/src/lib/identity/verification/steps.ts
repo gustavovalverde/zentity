@@ -52,10 +52,10 @@ export function computeInitialStep(
     return null;
   }
 
-  // Missing profile secret — re-verify from method selection
+  // Missing profile secret: re-verify, re-enrolling keys first if needed
   if (tier >= 2 && details.missingProfileSecret) {
     return {
-      step: "method",
+      step: hasEnrollment ? "method" : "enrollment",
       context: { missingProfileSecret: true, resetOnMount: false },
     };
   }

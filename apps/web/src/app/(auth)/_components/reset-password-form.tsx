@@ -68,10 +68,10 @@ export function ResetPasswordForm({ token }: Readonly<ResetPasswordFormProps>) {
           return;
         }
 
-        toast.success("Password reset successfully!", {
-          description: "You can now sign in with your new password.",
+        toast.success("Password reset", {
+          description: "Sign in with your new password.",
         });
-        router.push("/sign-in");
+        router.push("/sign-in?callbackURL=/recovery/vault");
       } catch {
         setError("An unexpected error occurred. Please try again.");
         toast.error("Reset failed");

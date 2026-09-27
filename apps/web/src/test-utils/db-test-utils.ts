@@ -45,6 +45,7 @@ import {
   oidc4vciOffers,
 } from "@/lib/db/schema/oidc-credentials";
 import {
+  credentialBindingCommitments,
   encryptedAttributes,
   encryptedSecrets,
   proofArtifacts,
@@ -72,6 +73,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(humanityCredentials).run();
     await tx.delete(signedClaims).run();
     await tx.delete(encryptedAttributes).run();
+    await tx.delete(credentialBindingCommitments).run();
     await tx.delete(secretWrappers).run();
     await tx.delete(encryptedSecrets).run();
     await tx.delete(verificationChecks).run();

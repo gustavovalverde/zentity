@@ -10,10 +10,10 @@ import "client-only";
  * and provides equivalent security to passkey PRF output.
  */
 
-import { deriveKekFromOpaqueExport, KEK_SOURCE } from "./derivation";
-import { unwrapDek, wrapDek } from "./wrap";
+import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 
-export const OPAQUE_CREDENTIAL_ID = "opaque";
+import { deriveKekFromOpaqueExport } from "./derivation";
+import { unwrapDek, wrapDek } from "./wrap";
 
 /**
  * Wrap a DEK using OPAQUE export key.
@@ -52,34 +52,4 @@ export async function unwrapDekWithOpaqueExport(params: {
     wrappedDek: params.wrappedDek,
     kek,
   });
-}
-
-/**
- * Create an OPAQUE wrapper for an existing secret.
- * This is used when a user sets up a password after already having PRF-based wrappers.
- *
- * Returns the wrapper data needed for storage in secret_wrappers table.
- */
-export async function createOpaqueWrapper(params: {
-  secretId: string;
-  userId: string;
-  dek: Uint8Array;
-  exportKey: Uint8Array;
-}): Promise<{
-  wrappedDek: string;
-  credentialId: string;
-  kekSource: typeof KEK_SOURCE.OPAQUE;
-}> {
-  const wrappedDek = await wrapDekWithOpaqueExport({
-    secretId: params.secretId,
-    userId: params.userId,
-    dek: params.dek,
-    exportKey: params.exportKey,
-  });
-
-  return {
-    wrappedDek,
-    credentialId: OPAQUE_CREDENTIAL_ID,
-    kekSource: KEK_SOURCE.OPAQUE,
-  };
 }

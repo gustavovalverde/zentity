@@ -677,6 +677,19 @@ export async function updateIdentityVerificationJobStatus(args: {
     .run();
 }
 
+export async function clearIdentityBundleFheKey(userId: string): Promise<void> {
+  await db
+    .update(identityBundles)
+    .set({
+      fheKeyId: null,
+      fheStatus: null,
+      fheError: null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(identityBundles.userId, userId))
+    .run();
+}
+
 export async function upsertIdentityBundle(
   data: {
     attestationExpiresAt?: string | null;

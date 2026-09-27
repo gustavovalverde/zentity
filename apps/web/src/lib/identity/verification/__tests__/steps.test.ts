@@ -66,6 +66,20 @@ describe("computeInitialStep", () => {
     expect(result?.context.missingProfileSecret).toBe(true);
   });
 
+  it("re-enrolls keys before re-verifying when the vault was reset", () => {
+    const assurance = makeAssurance({
+      tier: 3,
+      chipVerified: true,
+      missingProfileSecret: true,
+    });
+    const result = computeInitialStep(assurance, {
+      hasEnrollment: false,
+      zkPassportEnabled: false,
+    });
+    expect(result?.step).toBe("enrollment");
+    expect(result?.context.missingProfileSecret).toBe(true);
+  });
+
   it("returns 'method' for tier 2 users with zkPassport upgrade path", () => {
     const assurance = makeAssurance({ tier: 2 });
     const result = computeInitialStep(assurance, {

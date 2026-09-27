@@ -2,6 +2,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { KeyRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -30,8 +31,36 @@ import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
-import { updateOpaqueWrapperForSecretType } from "@/lib/privacy/secrets/vault";
+import {
+  addVaultCredential,
+  unlockVaultKey,
+} from "@/lib/privacy/secrets/vault";
+import { registerCredentialBinding } from "@/lib/privacy/zk/binding-context";
+
+async function reconnectPassword(params: {
+  userId: string;
+  oldExportKey: Uint8Array;
+  exportKey: Uint8Array;
+}): Promise<void> {
+  const vaultKey = await unlockVaultKey(
+    { type: "opaque", exportKey: params.oldExportKey },
+    { userId: params.userId }
+  );
+  if (!vaultKey) {
+    return;
+  }
+  await addVaultCredential(vaultKey, {
+    type: "opaque",
+    exportKey: params.exportKey,
+  });
+  await registerCredentialBinding({
+    secretId: vaultKey.secretId,
+    credential: {
+      type: "opaque",
+      context: { userId: params.userId, exportKey: params.exportKey },
+    },
+  });
+}
 
 interface OpaqueChangePasswordSectionProps {
   onPasswordChanged?: () => void;
@@ -50,6 +79,7 @@ export function OpaqueChangePasswordSection({
     "idle" | "checking" | "safe" | "compromised" | "error"
   >("idle");
   const { data: sessionData } = useSession();
+  const router = useRouter();
 
   const form = useForm({
     defaultValues: {
@@ -81,32 +111,19 @@ export function OpaqueChangePasswordSection({
           return;
         }
 
-        // Re-wrap secrets with new export key
         const userId = sessionData?.user?.id;
-        if (userId && result.data.oldExportKey && result.data.exportKey) {
+        if (userId) {
           try {
-            await Promise.all([
-              updateOpaqueWrapperForSecretType({
-                secretType: SECRET_TYPES.FHE_KEYS,
-                userId,
-                oldExportKey: result.data.oldExportKey,
-                newExportKey: result.data.exportKey,
-              }),
-              updateOpaqueWrapperForSecretType({
-                secretType: SECRET_TYPES.PROFILE,
-                userId,
-                oldExportKey: result.data.oldExportKey,
-                newExportKey: result.data.exportKey,
-              }),
-            ]);
+            await reconnectPassword({
+              userId,
+              oldExportKey: result.data.oldExportKey,
+              exportKey: result.data.exportKey,
+            });
           } catch {
-            toast.message(
-              "Password changed, but some encrypted data may need re-setup",
-              {
-                description:
-                  "Your encryption keys or profile data may need to be set up again.",
-              }
-            );
+            toast.message("Password changed", {
+              description:
+                "Your new password can't open your encrypted data yet. Connect it from your dashboard.",
+            });
           }
         }
 
@@ -115,6 +132,7 @@ export function OpaqueChangePasswordSection({
         });
         onPasswordChanged?.();
         form.reset();
+        router.refresh();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred";

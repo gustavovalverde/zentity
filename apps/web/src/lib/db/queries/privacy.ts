@@ -240,19 +240,62 @@ export async function upsertSecretWrapper(data: {
   return match;
 }
 
-export async function deleteSecretWrapper(
-  secretId: string,
+/**
+ * Stop a credential from unlocking the vault: delete its wrappers and revoke
+ * the identity-binding commitment derived from it.
+ */
+export async function detachVaultCredential(
+  userId: string,
   credentialId: string
 ): Promise<void> {
-  await db
-    .delete(secretWrappers)
-    .where(
-      and(
-        eq(secretWrappers.secretId, secretId),
-        eq(secretWrappers.credentialId, credentialId)
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(secretWrappers)
+      .where(
+        and(
+          eq(secretWrappers.userId, userId),
+          eq(secretWrappers.credentialId, credentialId)
+        )
       )
-    )
-    .run();
+      .run();
+    await tx
+      .update(credentialBindingCommitments)
+      .set({ revokedAt: sql`datetime('now')` })
+      .where(
+        and(
+          eq(credentialBindingCommitments.userId, userId),
+          eq(credentialBindingCommitments.credentialId, credentialId),
+          isNull(credentialBindingCommitments.revokedAt)
+        )
+      )
+      .run();
+  });
+}
+
+/**
+ * Delete every vault secret of a user with its wrappers and binding
+ * commitments. Returns the deleted secret ids so their blobs can be removed.
+ */
+export function deleteVaultSecrets(
+  userId: string,
+  executor: Pick<typeof db, "delete"> = db
+): Promise<string[]> {
+  const run = async (tx: Pick<typeof db, "delete">) => {
+    await tx
+      .delete(credentialBindingCommitments)
+      .where(eq(credentialBindingCommitments.userId, userId))
+      .run();
+    await tx
+      .delete(secretWrappers)
+      .where(eq(secretWrappers.userId, userId))
+      .run();
+    const rows = await tx
+      .delete(encryptedSecrets)
+      .where(eq(encryptedSecrets.userId, userId))
+      .returning({ id: encryptedSecrets.id });
+    return rows.map((row) => row.id);
+  };
+  return executor === db ? db.transaction(run) : run(executor);
 }
 
 export async function createProofSession(

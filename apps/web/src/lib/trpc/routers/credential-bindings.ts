@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { AuthenticationState } from "@zentity/sdk/protocol";
+
 import crypto from "node:crypto";
 
 import { TRPCError } from "@trpc/server";
@@ -9,6 +11,7 @@ import { z } from "zod";
 import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
 import { db } from "@/lib/db/connection";
 import { upsertCredentialBindingCommitment } from "@/lib/db/queries/privacy";
+import { passkeys } from "@/lib/db/schema/auth";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
 
 import { protectedProcedure, router } from "../server";
@@ -23,6 +26,44 @@ const credentialBindingCommitmentSchema = z
 
 function expectedLoginMethod(kind: z.infer<typeof credentialKindSchema>) {
   return kind === "wallet" ? "eip712" : kind;
+}
+
+function parseSqliteTimestamp(value: string): number {
+  return Date.parse(
+    value.includes("T") ? value : `${value.replace(" ", "T")}Z`
+  );
+}
+
+/**
+ * When the session last proved possession of the credential: a sign-in with
+ * it, or (for passkeys) registering it.
+ */
+async function credentialConfirmedAt(params: {
+  authContext: AuthenticationState | null;
+  credentialId: string;
+  credentialKind: z.infer<typeof credentialKindSchema>;
+  userId: string;
+}): Promise<number | null> {
+  const { authContext } = params;
+  if (authContext?.loginMethod === expectedLoginMethod(params.credentialKind)) {
+    return authContext.authenticatedAt * 1000;
+  }
+  if (params.credentialKind !== "passkey") {
+    return null;
+  }
+
+  const passkey = await db
+    .select({ createdAt: passkeys.createdAt })
+    .from(passkeys)
+    .where(
+      and(
+        eq(passkeys.userId, params.userId),
+        eq(passkeys.credentialID, params.credentialId)
+      )
+    )
+    .limit(1)
+    .get();
+  return passkey ? parseSqliteTimestamp(passkey.createdAt) : null;
 }
 
 function expectedKekSource(kind: z.infer<typeof credentialKindSchema>) {
@@ -44,16 +85,19 @@ export const credentialBindingsRouter = router({
         (await getAuthenticationStateBySessionId(ctx.session.session.id)) ??
         ctx.authContext ??
         null;
-      const expectedMethod = expectedLoginMethod(input.credentialKind);
-      if (authContext?.loginMethod !== expectedMethod) {
+      const confirmedAtMs = await credentialConfirmedAt({
+        authContext,
+        credentialId: input.credentialId,
+        credentialKind: input.credentialKind,
+        userId: ctx.userId,
+      });
+      if (confirmedAtMs === null) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Fresh credential confirmation is required.",
         });
       }
-
-      const authenticatedAtMs = authContext.authenticatedAt * 1000;
-      if (Date.now() - authenticatedAtMs > CREDENTIAL_BINDING_FRESHNESS_MS) {
+      if (Date.now() - confirmedAtMs > CREDENTIAL_BINDING_FRESHNESS_MS) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "Credential confirmation expired. Please try again.",
@@ -96,7 +140,7 @@ export const credentialBindingsRouter = router({
         credentialId: input.credentialId,
         credentialKind: input.credentialKind,
         commitment: input.credentialBindingCommitment,
-        authContextId: authContext.id,
+        authContextId: authContext?.id ?? null,
       });
 
       return { credentialBindingId: commitment.id };

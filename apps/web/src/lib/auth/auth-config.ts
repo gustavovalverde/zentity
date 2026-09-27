@@ -144,6 +144,7 @@ import { getTrustedOrigins } from "@/lib/auth/origin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
+import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
   accounts,
   passkeys,
@@ -182,6 +183,7 @@ import { validateSafeUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
+import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 
 const betterAuthSchema = {
   user: users,
@@ -1623,17 +1625,21 @@ export const auth = betterAuth({
             },
           },
         },
-  disabledPaths: enableEmailAndPassword
-    ? []
-    : [
-        "/sign-in/email",
-        "/sign-up/email",
-        "/request-password-reset",
-        "/recovery/password/reset",
-        "/change-password",
-        "/set-password",
-        "/verify-password",
-      ],
+  disabledPaths: [
+    "/admin/impersonate-user",
+    "/admin/stop-impersonating",
+    ...(enableEmailAndPassword
+      ? []
+      : [
+          "/sign-in/email",
+          "/sign-up/email",
+          "/request-password-reset",
+          "/recovery/password/reset",
+          "/change-password",
+          "/set-password",
+          "/verify-password",
+        ]),
+  ],
   emailAndPassword: enableEmailAndPassword
     ? { enabled: true }
     : { enabled: false },
@@ -1802,6 +1808,8 @@ export const auth = betterAuth({
         const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
       },
+      onPasswordReset: ({ user }) =>
+        detachVaultCredential(user.id, OPAQUE_CREDENTIAL_ID),
       revokeSessionsOnPasswordReset: true,
     }),
     anonymous({

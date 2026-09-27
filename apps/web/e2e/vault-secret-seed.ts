@@ -7,8 +7,9 @@ import { encode } from "@msgpack/msgpack";
 
 const DEFAULT_ENVELOPE_FORMAT: EnvelopeFormat = "json";
 const OPAQUE_CREDENTIAL_ID = "opaque";
-const OPAQUE_KEK_SOURCE = "opaque" as const;
 const OPAQUE_KEK_INFO = "zentity:kek:opaque";
+const VAULT_CREDENTIAL_ID = "vault";
+const VAULT_KEK_INFO = "zentity:kek:vault";
 const SECRET_AAD_CONTEXT = "zentity-secret-aad";
 const WRAP_AAD_CONTEXT = "zentity-wrap-aad";
 const AES_GCM_IV_BYTES = 12;
@@ -31,15 +32,16 @@ interface SeedSecretEnvelope {
   secretId: string;
 }
 
-interface SeedOpaqueSecretWrapper {
-  credentialId: typeof OPAQUE_CREDENTIAL_ID;
-  kekSource: typeof OPAQUE_KEK_SOURCE;
+interface SeedSecretWrapper {
+  credentialId: string;
+  kekSource: "opaque" | "vault";
   wrappedDek: string;
 }
 
-interface SeedOpaqueSecret {
+interface SeedSecret {
+  dek: Uint8Array;
   envelope: SeedSecretEnvelope;
-  wrapper: SeedOpaqueSecretWrapper;
+  wrapper: SeedSecretWrapper;
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -92,22 +94,18 @@ async function encryptSeedAesGcm(
   return { alg: "AES-GCM", ciphertext: new Uint8Array(ciphertext), iv };
 }
 
-async function deriveSeedKekFromOpaqueExport(
-  exportKey: Uint8Array,
-  userId: string
+async function deriveSeedKek(
+  ikm: Uint8Array,
+  userId: string,
+  info: string
 ): Promise<CryptoKey> {
   if (!userId) {
     throw new Error("userId is required for KEK derivation.");
   }
-  if (exportKey.byteLength !== 64) {
-    throw new Error(
-      `OPAQUE export key must be 64 bytes, got ${exportKey.byteLength}`
-    );
-  }
 
   const masterKey = await crypto.subtle.importKey(
     "raw",
-    toArrayBuffer(exportKey),
+    toArrayBuffer(ikm),
     "HKDF",
     false,
     ["deriveKey"]
@@ -118,7 +116,7 @@ async function deriveSeedKekFromOpaqueExport(
       name: "HKDF",
       salt: new TextEncoder().encode(userId),
       hash: "SHA-256",
-      info: new TextEncoder().encode(OPAQUE_KEK_INFO),
+      info: new TextEncoder().encode(info),
     },
     masterKey,
     { name: "AES-GCM", length: 256 },
@@ -205,41 +203,39 @@ async function encryptSeedSecretWithDek(params: {
   };
 }
 
-async function wrapSeedDekWithOpaqueExport(params: {
-  dek: Uint8Array;
-  exportKey: Uint8Array;
-  secretId: string;
-  userId: string;
-}): Promise<SeedOpaqueSecretWrapper> {
-  const kek = await deriveSeedKekFromOpaqueExport(
-    params.exportKey,
-    params.userId
-  );
-  const wrappedDek = await wrapSeedDek({
-    secretId: params.secretId,
-    credentialId: OPAQUE_CREDENTIAL_ID,
-    userId: params.userId,
-    dek: params.dek,
-    kek,
-  });
-
-  return {
-    wrappedDek,
-    credentialId: OPAQUE_CREDENTIAL_ID,
-    kekSource: OPAQUE_KEK_SOURCE,
-  };
-}
-
-export async function createE2EOpaqueSecret(params: {
+/**
+ * Seed a vault secret. The vault root (FHE keys) is wrapped with the OPAQUE
+ * export key; every other secret is wrapped under the root's DEK.
+ */
+export async function createE2EVaultSecret(params: {
   envelopeFormat?: EnvelopeFormat;
-  exportKey: Uint8Array;
   plaintext: Uint8Array;
   secretId: string;
   secretType: SecretType | string;
   userId: string;
-}): Promise<SeedOpaqueSecret> {
+  wrapWith:
+    | { type: "opaque"; exportKey: Uint8Array }
+    | { type: "vault"; vaultKey: Uint8Array };
+}): Promise<SeedSecret> {
   const dek = generateSeedDek();
-  const [envelope, wrapper] = await Promise.all([
+  const credentialId =
+    params.wrapWith.type === "opaque"
+      ? OPAQUE_CREDENTIAL_ID
+      : VAULT_CREDENTIAL_ID;
+  const kek =
+    params.wrapWith.type === "opaque"
+      ? await deriveSeedKek(
+          params.wrapWith.exportKey,
+          params.userId,
+          OPAQUE_KEK_INFO
+        )
+      : await deriveSeedKek(
+          params.wrapWith.vaultKey,
+          params.userId,
+          VAULT_KEK_INFO
+        );
+
+  const [envelope, wrappedDek] = await Promise.all([
     encryptSeedSecretWithDek({
       secretId: params.secretId,
       secretType: params.secretType,
@@ -247,13 +243,18 @@ export async function createE2EOpaqueSecret(params: {
       dek,
       envelopeFormat: params.envelopeFormat,
     }),
-    wrapSeedDekWithOpaqueExport({
+    wrapSeedDek({
       secretId: params.secretId,
+      credentialId,
       userId: params.userId,
       dek,
-      exportKey: params.exportKey,
+      kek,
     }),
   ]);
 
-  return { envelope, wrapper };
+  return {
+    dek,
+    envelope,
+    wrapper: { credentialId, kekSource: params.wrapWith.type, wrappedDek },
+  };
 }

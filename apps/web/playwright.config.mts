@@ -70,6 +70,7 @@ const webServerEnv = {
   WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT ?? "staging",
   HUMANITY_HMAC_SECRET:
     process.env.HUMANITY_HMAC_SECRET ?? "e2e-humanity-hmac-secret-32-chars-min",
+  MAILPIT_SEND_API_URL: "http://127.0.0.1:4998/api/v1/send",
   ...(process.env.E2E_OIDC_ONLY
     ? { E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY }
     : {}),
