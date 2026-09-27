@@ -304,13 +304,13 @@ The system has two distinct flows: **sign-up** (account creation) and **verifica
 1. **Credential choice** → User picks passkey, password (OPAQUE), or wallet (inline cards)
 2. **Session creation** → Passkey/password paths call `ensureAuthSession()` on demand to create an anonymous user; wallet (SIWE) creates its own user directly
 3. **Account completion** → `trpc.signUp.completeAccountCreation` links email/wallet, clears `isAnonymous`, creates identity bundle stub, then client invalidates the session cookie cache so the dashboard reads fresh data
-4. User lands on dashboard with **Tier 1** (account created, no FHE keys yet)
+4. User lands on dashboard with **Tier 0** (Anonymous: account created, no FHE keys yet). Tier 1 (Account) starts once FHE keys are enrolled at the verification preflight.
 
 FHE key enrollment is **not** part of sign-up — it happens as a verification preflight gate when the user starts identity verification. See [FHE Key Lifecycle](docs/(protocols)/fhe-key-lifecycle.md).
 
 **Verification Flow** (from `/dashboard/verify/*`):
 
-Users choose a verification method via `VerificationMethodCards` (OCR or NFC chip, gated by `NEXT_PUBLIC_ZKPASSPORT_ENABLED`). Both paths converge at the same `identity_verifications` table (unified schema with `method` discriminator: `"ocr"` | `"nfc_chip"`).
+Users choose a verification method via `VerificationMethodCards` (OCR gated by `DOCUMENT_OCR_ENABLED`, NFC chip gated by `NEXT_PUBLIC_ZKPASSPORT_ENABLED`). Both paths converge at the same `identity_verifications` table (unified schema with `method` discriminator: `"ocr"` | `"nfc_chip"`).
 
 **OCR path:**
 
@@ -414,13 +414,13 @@ const result = await trpc.liveness.verify.mutate({ sessionId, ... });
 
 Zentity acts as an OAuth 2.1 / OpenID Connect authorization server via better-auth's `oauthProvider` plugin. Endpoints are under `/api/auth/oauth2/*` with discovery at `/.well-known/*`.
 
-OAuth clients are managed through the **RP Admin UI** (`/dashboard/dev/rp-admin`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
+OAuth clients are managed through the **Applications** page (`/dashboard/developer`) with organization-based ownership (via `referenceId` on the client table). REST endpoints at `/api/rp-admin/clients/*` handle CRUD. DCR-registered clients can be adopted by organizations.
 
 **HAIP compliance** (`@better-auth/haip`): DPoP enforced at token endpoint (`requireDpop: true`); tRPC resource endpoints accept Bearer fallback. Server-managed nonce store (`DPOP_NONCE_TTL_SECONDS`, default 30s), PAR required (`requirePar: true`), wallet attestation (`TRUSTED_WALLET_ISSUERS`), JARM encrypted VP responses (ECDH-ES P-256), pairwise subject identifiers (`PAIRWISE_SECRET`, required min 32 chars). Discovery metadata enriched via `enrichDiscoveryMetadata()` in `well-known.ts` (NOT via plugin after-hook — Next.js routes call `auth.api.*` directly).
 
 **First-Party Apps** (`draft-ietf-oauth-first-party-apps`): Authorization Challenge Endpoint at `POST /api/oauth2/authorize-challenge` for CLI/headless clients. Supports OPAQUE (3-round) and EIP-712 wallet (2-round) challenge flows with DPoP-bound `auth_session`. Credential resolution: OPAQUE > EIP-712 > `redirect_to_web` (passkey-only). Only clients with `firstParty: true` can use the endpoint. Rate limited to 10 req/min per IP. Step-up re-authentication: when CIBA token exchange fails `acr_values`, FPA clients receive HTTP 403 + `auth_session` to re-authenticate via the challenge endpoint. Schema: `src/lib/db/schema/auth-challenge.ts`. Route: `src/app/api/oauth2/authorize-challenge/route.ts`.
 
-**CIBA** (`@better-auth/ciba`): Backchannel auth for agent authorization. Poll and ping modes. Endpoints: `POST /oauth2/bc-authorize`, `GET /ciba/verify`, `POST /ciba/authorize`, `POST /ciba/reject`. Grant type `urn:openid:params:grant-type:ciba` handled at the token endpoint via `customGrantTypeHandlers` (requires oauth-provider patch). Supports `authorization_details` (RAR) for structured action metadata and `acr_values` for assurance tier enforcement (checked at approval time and token exchange). Approval UI: standalone `/approve/[authReqId]` (push notification target, no dashboard chrome) and dashboard `/dashboard/agents/approve` (secondary). Listing at `/dashboard/agents` (Requests tab). Email notifications via `src/lib/email/ciba.ts`. Web push notifications: service worker (`public/push-sw.js`) with inline approve/deny actions, push subscription API at `/api/ciba/push/subscribe` and `/api/ciba/push/unsubscribe`, `PushManager` client in `src/lib/agents/push-client.ts`. VAPID env vars: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Identity PII delivery: ephemeral in-memory store with single-consume semantics (5-min TTL for OAuth2, 10-min for CIBA); PII delivered exclusively via userinfo endpoint, never in id_tokens. `requiresVaultUnlock`: identity-scoped requests show only "Deny" inline (vault unlock requires browser context). Schema: `src/lib/db/schema/ciba.ts`. Demo: Aether AI shopping agent at `apps/demo-rp/src/app/aether/`.
+**CIBA** (`@better-auth/ciba`): Backchannel auth for agent authorization. Poll and ping modes. Endpoints: `POST /oauth2/bc-authorize`, `GET /ciba/verify`, `POST /ciba/authorize`, `POST /ciba/reject`. Grant type `urn:openid:params:grant-type:ciba` handled at the token endpoint via `customGrantTypeHandlers` (requires oauth-provider patch). Supports `authorization_details` (RAR) for structured action metadata and `acr_values` for assurance tier enforcement (checked at approval time and token exchange). Approval UI: standalone `/approve/[authReqId]` (push and email target, no dashboard chrome). Listing at `/dashboard/agents` (Requests tab). Email notifications via `src/lib/email/ciba.ts`. Web push notifications: service worker (`public/push-sw.js`) with inline approve/deny actions, push subscription API at `/api/ciba/push/subscribe` and `/api/ciba/push/unsubscribe`, `PushManager` client in `src/lib/agents/push-client.ts`. VAPID env vars: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`. Identity PII delivery: ephemeral in-memory store with single-consume semantics (5-min TTL for OAuth2, 10-min for CIBA); PII delivered exclusively via userinfo endpoint, never in id_tokens. `requiresVaultUnlock`: identity-scoped requests show only "Deny" inline (vault unlock requires browser context). Schema: `src/lib/db/schema/ciba.ts`. Demo: Aether AI shopping agent at `apps/demo-rp/src/app/aether/`.
 
 **OID4VP verifier** (`apps/demo-rp`): VeriPass at `/veripass` with 4 scenarios (border, employer, venue, financial). Uses DCQL queries, JAR JWTs with x5c chain, `client_id_scheme: x509_hash`, JARM `direct_post.jwt` response mode. KB-JWT holder binding verified cryptographically in `apps/demo-rp/src/lib/verify.ts`. Dev certs required: `pnpm exec tsx scripts/generate-dev-certs.ts`.
 
@@ -486,6 +486,7 @@ MAIL_FROM_EMAIL=no-reply@zentity.xyz
 
 # Feature flags
 NEXT_PUBLIC_ZKPASSPORT_ENABLED=false     # Enable NFC chip verification via ZKPassport
+DOCUMENT_OCR_ENABLED=false               # Offer document scan (requires the OCR service)
 
 # Optional overrides
 OIDC4VP_JWKS_URL=                        # Override JWKS endpoint for VP token verification
