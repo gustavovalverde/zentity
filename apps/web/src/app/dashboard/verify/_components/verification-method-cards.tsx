@@ -19,6 +19,7 @@ const TENTATIVE_SUPPORT = 0.25;
 
 interface VerificationMethodCardsProps {
   countries: CountryDocumentEntry[];
+  documentOcrEnabled: boolean;
   onSelectDocument?: () => void;
   onSelectPassportChip?: () => void;
   zkPassportEnabled: boolean;
@@ -26,6 +27,7 @@ interface VerificationMethodCardsProps {
 
 export function VerificationMethodCards({
   countries,
+  documentOcrEnabled,
   onSelectDocument,
   onSelectPassportChip,
   zkPassportEnabled,
@@ -54,36 +56,47 @@ export function VerificationMethodCards({
           <p className="text-muted-foreground">
             Select your country to see verification options
           </p>
-          <button
-            className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
-            onClick={() => setSupportLevel(0)}
-            type="button"
-          >
-            Country not listed? Use Document Scan
-          </button>
+          {documentOcrEnabled && (
+            <button
+              className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              onClick={() => setSupportLevel(0)}
+              type="button"
+            >
+              Country not listed? Use Document Scan
+            </button>
+          )}
         </div>
       )}
 
       {nfcAvailable && (
-        <>
-          <NfcMethodSection
-            highlighted={nfcRecommended}
-            onSelect={onSelectPassportChip}
-            partial={nfcPartial}
-          />
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">or</span>
-            </div>
-          </div>
-        </>
+        <NfcMethodSection
+          highlighted={nfcRecommended}
+          onSelect={onSelectPassportChip}
+          partial={nfcPartial}
+        />
       )}
 
-      {(!zkPassportEnabled || countrySelected) && (
+      {nfcAvailable && documentOcrEnabled && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card px-2 text-muted-foreground">or</span>
+          </div>
+        </div>
+      )}
+
+      {!documentOcrEnabled &&
+        (zkPassportEnabled ? countrySelected && !nfcAvailable : true) && (
+          <p className="text-center text-muted-foreground text-sm">
+            {zkPassportEnabled
+              ? "Chip verification is not available for this document yet."
+              : "Identity verification is not available right now."}
+          </p>
+        )}
+
+      {documentOcrEnabled && (!zkPassportEnabled || countrySelected) && (
         <DocumentScanMethodSection
           highlighted={countrySelected && !nfcAvailable}
           isAlternative={nfcAvailable}

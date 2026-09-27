@@ -46,6 +46,7 @@ services:
       # Inter-service (Docker DNS)
       - FHE_SERVICE_URL=http://fhe-service:5001
       - OCR_SERVICE_URL=http://ocr-service:5004
+      - DOCUMENT_OCR_ENABLED=${DOCUMENT_OCR_ENABLED:-true}
       # Database
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:/var/lib/zentity/web/dev.db}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN:-}

@@ -21,6 +21,7 @@ import { VerificationMethodCards } from "./verification-method-cards";
 interface VerificationFlowProps {
   context: InitialStepContext;
   countries: CountryDocumentEntry[];
+  documentOcrEnabled: boolean;
   hasPasskeys: boolean;
   hasPassword: boolean;
   initialStep: VerificationStep;
@@ -40,6 +41,7 @@ export function VerificationFlow({
   initialStep,
   context,
   countries,
+  documentOcrEnabled,
   hasPasskeys,
   hasPassword,
   wallet,
@@ -91,6 +93,7 @@ export function VerificationFlow({
           <CardContent className="pt-6">
             <VerificationMethodCards
               countries={countries}
+              documentOcrEnabled={documentOcrEnabled}
               onSelectDocument={handleSelectDocument}
               onSelectPassportChip={handleSelectPassportChip}
               zkPassportEnabled={zkPassportEnabled}

@@ -76,7 +76,15 @@ export default async function VerifyPage() {
     redirect("/dashboard");
   }
 
-  const pageMeta = PAGE_TITLES[result.step];
+  const documentOcrEnabled = env.DOCUMENT_OCR_ENABLED;
+  const pageMeta =
+    result.step === "method" && !documentOcrEnabled
+      ? {
+          ...PAGE_TITLES.method,
+          description:
+            "Use your document's NFC chip to verify and unlock features",
+        }
+      : PAGE_TITLES[result.step];
   const showReVerifyHeader =
     result.context.missingProfileSecret && assurance.tier >= 2;
 
@@ -96,6 +104,7 @@ export default async function VerifyPage() {
       <VerificationFlow
         context={result.context}
         countries={countries}
+        documentOcrEnabled={documentOcrEnabled}
         hasPasskeys={posture.capabilities.hasPasskeys}
         hasPassword={hasPassword}
         initialStep={result.step}

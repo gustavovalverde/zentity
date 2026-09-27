@@ -69,6 +69,7 @@ export const env = createEnv({
     // Internal services
     FHE_SERVICE_URL: serviceUrl("http://localhost:5001"),
     OCR_SERVICE_URL: serviceUrl("http://localhost:5004"),
+    DOCUMENT_OCR_ENABLED: booleanStringWithDefault("false"),
     INTERNAL_SERVICE_TOKEN: z
       .string()
       .optional()
@@ -291,6 +292,7 @@ export const env = createEnv({
     DRIZZLE_LOG: process.env.DRIZZLE_LOG,
     FHE_SERVICE_URL: process.env.FHE_SERVICE_URL,
     OCR_SERVICE_URL: process.env.OCR_SERVICE_URL,
+    DOCUMENT_OCR_ENABLED: process.env.DOCUMENT_OCR_ENABLED,
     INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
     WALLET_AUDIENCE: process.env.WALLET_AUDIENCE,
     CRON_SECRET: process.env.CRON_SECRET,
