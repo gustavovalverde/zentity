@@ -4,10 +4,54 @@ import { config } from "../config.js";
 import { requireAuth } from "../runtime/auth-context.js";
 import { zentityFetch } from "../services/zentity-api.js";
 
-interface AttestationStatus {
-  attested: boolean;
-  lastAttestation?: string;
-  networks: string[];
+interface AttestationNetwork {
+  attestation: {
+    confirmedAt: string | null;
+    explorerUrl?: string;
+    status: string;
+  } | null;
+  id: string;
+  name: string;
+}
+
+const networkSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  attested: z.boolean(),
+  status: z.string().nullable(),
+  explorerUrl: z.string().nullable(),
+});
+
+const complianceOutputSchema = z.object({
+  attested: z.boolean(),
+  lastAttestation: z.string().nullable(),
+  networks: z.array(networkSchema),
+});
+
+type ComplianceOutput = z.infer<typeof complianceOutputSchema>;
+
+function toComplianceOutput(networks: AttestationNetwork[]): ComplianceOutput {
+  const mapped = networks.map((network) => ({
+    id: network.id,
+    name: network.name,
+    attested: network.attestation?.status === "confirmed",
+    status: network.attestation?.status ?? null,
+    explorerUrl: network.attestation?.explorerUrl ?? null,
+  }));
+  const confirmedAt = networks
+    .map((network) =>
+      network.attestation?.status === "confirmed"
+        ? network.attestation.confirmedAt
+        : null
+    )
+    .filter((value): value is string => value !== null)
+    .sort();
+
+  return {
+    attested: mapped.some((network) => network.attested),
+    lastAttestation: confirmedAt.at(-1) ?? null,
+    networks: mapped,
+  };
 }
 
 export function registerCheckComplianceTool(server: McpServer): void {
@@ -23,11 +67,7 @@ export function registerCheckComplianceTool(server: McpServer): void {
           .optional()
           .describe("Filter by blockchain network (e.g. 'sepolia')"),
       },
-      outputSchema: {
-        attested: z.boolean(),
-        lastAttestation: z.string().optional(),
-        networks: z.array(z.string()),
-      },
+      outputSchema: complianceOutputSchema,
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
@@ -49,12 +89,9 @@ export function registerCheckComplianceTool(server: McpServer): void {
         };
       }
 
-      let url = `${config.zentityUrl}/api/trpc/attestation.networks`;
-      if (network) {
-        url = `${config.zentityUrl}/api/trpc/attestation.status?input=${encodeURIComponent(JSON.stringify({ networkId: network }))}`;
-      }
-
-      const response = await zentityFetch(url);
+      const response = await zentityFetch(
+        `${config.zentityUrl}/api/trpc/attestation.networks`
+      );
 
       if (!response.ok) {
         const text = await response.text();
@@ -69,18 +106,32 @@ export function registerCheckComplianceTool(server: McpServer): void {
         };
       }
 
-      const data = (await response.json()) as {
-        result: { data: AttestationStatus };
-      };
-      const structuredContent = data.result.data as unknown as Record<
-        string,
-        unknown
-      >;
+      const { networks } = (
+        (await response.json()) as {
+          result: { data: { networks: AttestationNetwork[] } };
+        }
+      ).result.data;
+      const selected = network
+        ? networks.filter((candidate) => candidate.id === network)
+        : networks;
+      if (network && selected.length === 0) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: `Unknown network "${network}". Available networks: ${networks.map((candidate) => candidate.id).join(", ")}`,
+            },
+          ],
+        };
+      }
+
+      const structuredContent = toComplianceOutput(selected);
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(data.result.data, null, 2),
+            text: JSON.stringify(structuredContent, null, 2),
           },
         ],
         structuredContent,
