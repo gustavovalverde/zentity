@@ -83,10 +83,6 @@ async function createCaller() {
   });
 }
 
-function sqliteTimestamp(ms: number): string {
-  return new Date(ms).toISOString().replace("T", " ").slice(0, 19);
-}
-
 function validInput() {
   return {
     secretId: "secret-123",
@@ -166,7 +162,7 @@ describe("credentialBindings.register", () => {
     });
     dbMocks.get
       .mockResolvedValueOnce({
-        createdAt: sqliteTimestamp(Date.now() - 30 * 1000),
+        createdAt: new Date(Date.now() - 30 * 1000),
       })
       .mockResolvedValueOnce({ secretId: "secret-123" });
 
@@ -187,7 +183,7 @@ describe("credentialBindings.register", () => {
       sourceKind: "better_auth",
     });
     dbMocks.get.mockResolvedValueOnce({
-      createdAt: sqliteTimestamp(Date.now() - 10 * 60 * 1000),
+      createdAt: new Date(Date.now() - 10 * 60 * 1000),
     });
 
     const caller = await createCaller();

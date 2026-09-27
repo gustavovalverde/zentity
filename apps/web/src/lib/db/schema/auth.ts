@@ -138,7 +138,9 @@ export const passkeys = sqliteTable(
     deviceType: text("deviceType").notNull(),
     backedUp: integer("backedUp", { mode: "boolean" }).notNull().default(false),
     transports: text("transports"),
-    createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+    createdAt: integer("createdAt", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
     aaguid: text("aaguid"),
   },
   (table) => [

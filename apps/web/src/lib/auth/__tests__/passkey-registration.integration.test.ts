@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 
 import { makeSignature } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
-import { sessions } from "@/lib/db/schema/auth";
+import { passkeys, sessions } from "@/lib/db/schema/auth";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
 const REGISTER_OPTIONS_URL =
@@ -69,5 +70,31 @@ describe("passkey registration", () => {
     const response = await requestRegisterOptions();
 
     expect(response.status).toBe(401);
+  });
+
+  it("reports a valid creation date for a newly registered passkey", async () => {
+    await db
+      .insert(passkeys)
+      .values({
+        id: crypto.randomUUID(),
+        name: "Test passkey",
+        publicKey: "test-public-key",
+        userId,
+        credentialID: crypto.randomUUID(),
+        counter: 0,
+        deviceType: "singleDevice",
+        backedUp: true,
+        transports: JSON.stringify(["internal"]),
+      })
+      .run();
+
+    const [row] = await db
+      .select({ createdAt: passkeys.createdAt })
+      .from(passkeys)
+      .where(eq(passkeys.userId, userId));
+
+    expect(row?.createdAt).toBeInstanceOf(Date);
+    expect(Number.isNaN(row?.createdAt.getTime())).toBe(false);
+    expect(row?.createdAt.getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 });

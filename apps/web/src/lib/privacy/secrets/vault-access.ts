@@ -91,6 +91,7 @@ export async function getVaultAccess(
     secretId: root.id,
     passkeys: passkeyRows.map((row) => ({
       ...row,
+      createdAt: row.createdAt.toISOString(),
       connected: wrapperIds.has(row.credentialId),
     })),
     password: opaqueAccount
