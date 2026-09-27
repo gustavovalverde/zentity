@@ -37,7 +37,6 @@ interface AgentMessage {
 interface AgentChatProps {
   cibaState: CibaState;
   error: string | null;
-  exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   onTriggerCiba: () => void;
   preparationError: PreparationError | null;
@@ -114,7 +113,6 @@ export function AgentChat({
   task,
   cibaState,
   tokens,
-  exchangedTokens,
   userInfo,
   error,
   onTriggerCiba,
@@ -234,12 +232,10 @@ export function AgentChat({
         {(cibaState === "requesting" || cibaState === "polling") && (
           <CibaWaiting state={cibaState} />
         )}
-        {cibaState === "approved" && tokens && exchangedTokens && (
+        {cibaState === "approved" && prepared && (
           <div className="fade-in max-w-[85%] animate-in rounded-xl rounded-bl-sm bg-white/10 px-4 py-3 duration-300">
             <p className="text-sm text-white/80 leading-relaxed">
-              {prepared
-                ? "Approved. Hand the prepared payment to your wallet to broadcast."
-                : "Narrowing permissions for the merchant API..."}
+              Approved. Hand the prepared payment to your wallet to broadcast.
             </p>
           </div>
         )}
@@ -258,7 +254,6 @@ export function AgentChat({
         )}
         {cibaState === "approved" && tokens && !prepared && (
           <CibaResult
-            exchangedTokens={exchangedTokens}
             onReset={handleReset}
             pick={resolvePick(task)}
             tokens={tokens}
@@ -556,21 +551,32 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
     if (parts.length !== 3 || !payload) {
       return null;
     }
-    return JSON.parse(atob(payload)) as Record<string, unknown>;
+    return JSON.parse(
+      atob(payload.replaceAll("-", "+").replaceAll("_", "/"))
+    ) as Record<string, unknown>;
   } catch {
     return null;
   }
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: demo-rp receipt view renders ~10 optional claim sections from an AAP access token; extracting sub-components for each would obscure the single top-to-bottom render order this page is designed around
+function describeTokenResponse(
+  tokens: Record<string, unknown>
+): Record<string, unknown> {
+  const summary: Record<string, unknown> = {};
+  for (const key of ["token_type", "scope", "expires_in"]) {
+    if (tokens[key] !== undefined) {
+      summary[key] = tokens[key];
+    }
+  }
+  return summary;
+}
+
 function CibaResult({
   pick,
   onReset,
   tokens,
-  exchangedTokens,
   userInfo,
 }: {
-  exchangedTokens: Record<string, unknown> | null;
   onReset: () => void;
   pick: Product;
   tokens: Record<string, unknown>;
@@ -581,47 +587,16 @@ function CibaResult({
   const tax = pick.price * 0.0875;
   const total = pick.price + tax;
 
-  const exchangedPayload =
-    exchangedTokens && typeof exchangedTokens.access_token === "string"
-      ? decodeJwtPayload(exchangedTokens.access_token)
-      : null;
-  // Zentity-audienced access tokens are opaque; the exchanged merchant token carries the agent claims.
-  const jwtPayload =
-    (typeof tokens.access_token === "string"
-      ? decodeJwtPayload(tokens.access_token)
-      : null) ?? exchangedPayload;
-  const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
-  const agentClaim = jwtPayload?.agent as Record<string, unknown> | undefined;
-  const taskClaim = jwtPayload?.task as Record<string, unknown> | undefined;
-  const capabilitiesClaim = jwtPayload?.capabilities as unknown[] | undefined;
-  const oversightClaim = jwtPayload?.oversight as
-    | Record<string, unknown>
-    | undefined;
-  const auditClaim = jwtPayload?.audit as Record<string, unknown> | undefined;
+  const tokenResponse = describeTokenResponse(tokens);
+  const dpopJkt = typeof tokens.dpop_jkt === "string" ? tokens.dpop_jkt : null;
   const authorizationDetails = tokens.authorization_details as
     | unknown[]
     | undefined;
   const approvedPayment = extractApprovedPayment(authorizationDetails);
-
-  // Decode id_token for assurance claims. The OAuth provider owns standard
-  // `acr` (reports "0"); Zentity's tier/methods ride in the namespaced
-  // zentity_assurance claim, with a top-level fallback.
   const idTokenPayload =
     typeof tokens.id_token === "string"
       ? decodeJwtPayload(tokens.id_token)
       : null;
-  const assurance = idTokenPayload?.zentity_assurance as
-    | { acr?: string; amr?: string[] }
-    | undefined;
-  const acr = assurance?.acr ?? (idTokenPayload?.acr as string | undefined);
-  const amr = assurance?.amr ?? (idTokenPayload?.amr as string[] | undefined);
-
-  const exchangedAct = exchangedPayload?.act as
-    | Record<string, unknown>
-    | undefined;
-  const exchangedDelegation = exchangedPayload?.delegation as
-    | Record<string, unknown>
-    | undefined;
 
   return (
     <div className="fade-in animate-in space-y-3 duration-500">
@@ -669,8 +644,6 @@ function CibaResult({
           The agent never handled your credentials. You approved from your own
           device via CIBA, and the agent received only the scoped tokens it
           needed.
-          {exchangedTokens &&
-            " The token was further narrowed via RFC 8693 Token Exchange before calling the merchant API."}
         </p>
       </div>
 
@@ -678,175 +651,86 @@ function CibaResult({
 
       <AssuranceBadges claims={idTokenPayload ?? undefined} />
 
-      {(actClaim ||
-        agentClaim ||
-        taskClaim ||
-        capabilitiesClaim ||
-        oversightClaim ||
-        auditClaim ||
-        authorizationDetails ||
-        exchangedPayload) && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-          <button
-            className="flex w-full items-center justify-between text-left"
-            onClick={() => setShowDetails((prev) => !prev)}
-            type="button"
-          >
-            <span className="font-medium text-white/60 text-xs uppercase tracking-wider">
-              Token Details
-            </span>
-            <span className="text-white/40 text-xs">
-              {showDetails ? "Hide" : "Show"}
-            </span>
-          </button>
+      <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+        <button
+          className="flex w-full items-center justify-between text-left"
+          onClick={() => setShowDetails((prev) => !prev)}
+          type="button"
+        >
+          <span className="font-medium text-white/60 text-xs uppercase tracking-wider">
+            Token Details
+          </span>
+          <span className="text-white/40 text-xs">
+            {showDetails ? "Hide" : "Show"}
+          </span>
+        </button>
 
-          {showDetails && (
-            <div className="mt-3 space-y-3">
-              {acr && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    ID token — assurance (acr + amr)
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-cyan-300/80 text-xs">
-                    {JSON.stringify(
-                      { acr, acr_eidas: idTokenPayload?.acr_eidas, amr },
-                      null,
-                      2
-                    )}
-                  </pre>
-                </div>
-              )}
-              {agentClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — AAP agent
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-pink-300/80 text-xs">
-                    {JSON.stringify(agentClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {taskClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — AAP task
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-sky-300/80 text-xs">
-                    {JSON.stringify(taskClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {capabilitiesClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — AAP capabilities
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-teal-300/80 text-xs">
-                    {JSON.stringify(capabilitiesClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {oversightClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — AAP oversight
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-emerald-300/80 text-xs">
-                    {JSON.stringify(oversightClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {auditClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — AAP audit
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-indigo-300/80 text-xs">
-                    {JSON.stringify(auditClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {actClaim && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    CIBA token — act claim
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
-                    {JSON.stringify(actClaim, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {exchangedPayload && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    Exchanged token — act claim
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
-                    {JSON.stringify(exchangedAct, null, 2)}
-                  </pre>
-                  {exchangedDelegation && (
-                    <>
-                      <p className="mt-1.5 mb-1 text-white/50 text-xs">
-                        Exchanged token — AAP delegation
-                      </p>
-                      <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-orange-300/80 text-xs">
-                        {JSON.stringify(exchangedDelegation, null, 2)}
-                      </pre>
-                    </>
-                  )}
-                  <p className="mt-1.5 mb-1 text-white/50 text-xs">
-                    Exchanged token — audience
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
-                    {JSON.stringify(exchangedPayload.aud, null, 2)}
-                  </pre>
-                  <p className="mt-1.5 mb-1 text-white/50 text-xs">
-                    Exchanged token — scope
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-amber-300/80 text-xs">
-                    {JSON.stringify(exchangedPayload.scope, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {authorizationDetails && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    authorization_details (approved action)
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-blue-300/80 text-xs">
-                    {JSON.stringify(authorizationDetails, null, 2)}
-                  </pre>
-                </div>
-              )}
-              {userInfo && hasProofClaims(userInfo) && (
-                <div>
-                  <p className="mb-1 text-white/50 text-xs">
-                    Privacy claims — privacy-preserving proofs (no PII in token)
-                  </p>
-                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-fuchsia-300/80 text-xs">
-                    <Redacted>
-                      {JSON.stringify(extractProofClaims(userInfo), null, 2)}
-                    </Redacted>
-                  </pre>
-                </div>
-              )}
-              {userInfo &&
-                Object.keys(userInfo).some(
-                  (k) => !["sub", "iss", "aud"].includes(k)
-                ) && (
-                  <div>
-                    <p className="mb-1 text-white/50 text-xs">
-                      Userinfo — full response (via GET /userinfo)
-                    </p>
-                    <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-purple-300/80 text-xs">
-                      <Redacted>{JSON.stringify(userInfo, null, 2)}</Redacted>
-                    </pre>
-                  </div>
-                )}
+        {showDetails && (
+          <div className="mt-3 space-y-3">
+            <div>
+              <p className="mb-1 text-white/50 text-xs">
+                CIBA token response (access token is opaque)
+              </p>
+              <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-green-300/80 text-xs">
+                {JSON.stringify(tokenResponse, null, 2)}
+              </pre>
             </div>
-          )}
-        </div>
-      )}
+            {dpopJkt && (
+              <div>
+                <p className="mb-1 text-white/50 text-xs">
+                  DPoP binding — client key thumbprint (RFC 9449)
+                </p>
+                <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-teal-300/80 text-xs">
+                  {JSON.stringify({ jkt: dpopJkt }, null, 2)}
+                </pre>
+              </div>
+            )}
+            {idTokenPayload && (
+              <div>
+                <p className="mb-1 text-white/50 text-xs">ID token — claims</p>
+                <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-cyan-300/80 text-xs">
+                  {JSON.stringify(idTokenPayload, null, 2)}
+                </pre>
+              </div>
+            )}
+            {authorizationDetails && (
+              <div>
+                <p className="mb-1 text-white/50 text-xs">
+                  authorization_details (approved action, RFC 9396)
+                </p>
+                <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-blue-300/80 text-xs">
+                  {JSON.stringify(authorizationDetails, null, 2)}
+                </pre>
+              </div>
+            )}
+            {userInfo && hasProofClaims(userInfo) && (
+              <div>
+                <p className="mb-1 text-white/50 text-xs">
+                  Privacy claims — privacy-preserving proofs (no PII in token)
+                </p>
+                <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-fuchsia-300/80 text-xs">
+                  <Redacted>
+                    {JSON.stringify(extractProofClaims(userInfo), null, 2)}
+                  </Redacted>
+                </pre>
+              </div>
+            )}
+            {userInfo &&
+              Object.keys(userInfo).some(
+                (k) => !["sub", "iss", "aud"].includes(k)
+              ) && (
+                <div>
+                  <p className="mb-1 text-white/50 text-xs">
+                    Userinfo — full response (via GET /userinfo)
+                  </p>
+                  <pre className="overflow-x-auto rounded-md bg-black/30 p-2 font-mono text-purple-300/80 text-xs">
+                    <Redacted>{JSON.stringify(userInfo, null, 2)}</Redacted>
+                  </pre>
+                </div>
+              )}
+          </div>
+        )}
+      </div>
 
       <Button
         className="w-full text-white/60"

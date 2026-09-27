@@ -162,8 +162,9 @@ export default function AetherPage() {
   const [preparationError, setPreparationError] =
     useState<PreparationError | null>(null);
 
-  const { state, tokens, exchangedTokens, userInfo, error, startFlow, reset } =
-    useCibaFlow(scenario.id);
+  const { state, tokens, userInfo, error, startFlow, reset } = useCibaFlow(
+    scenario.id
+  );
 
   const userEmail = (claims?.email as string) || session?.user?.email || "";
 
@@ -330,7 +331,6 @@ export default function AetherPage() {
             <AgentChat
               cibaState={state}
               error={error}
-              exchangedTokens={exchangedTokens}
               onReset={handleReset}
               onTriggerCiba={triggerCiba}
               preparationError={preparationError}

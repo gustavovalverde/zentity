@@ -7,6 +7,7 @@ import {
   requestTokenEndpoint,
 } from "@zentity/sdk/rp";
 import { eq } from "drizzle-orm";
+import { calculateJwkThumbprint } from "jose";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -26,11 +27,6 @@ const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
  * - action: "token"     → Polls the token endpoint for CIBA grant
  * - action: "check-ping" → Checks if a ping callback has been received
  */
-const TOKEN_EXCHANGE_GRANT_TYPE =
-  "urn:ietf:params:oauth:grant-type:token-exchange";
-const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
-const MERCHANT_RESOURCE = "https://merchant.example.com/api";
-const EXCHANGE_SCOPE = "openid";
 
 const scenarioIdSchema = z.enum(ROUTE_SCENARIO_IDS);
 
@@ -53,11 +49,6 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("check-ping"),
     authReqId: z.string().min(1),
-  }),
-  z.object({
-    action: z.literal("token-exchange"),
-    scenarioId: scenarioIdSchema,
-    accessToken: z.string().min(1),
   }),
 ]);
 
@@ -193,33 +184,7 @@ export async function POST(request: Request) {
   }
 
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
-
-  if (data.action === "token-exchange") {
-    return handleTokenExchange(data, client, tokenUrl);
-  }
-
   return handleCibaToken(data, client, tokenUrl);
-}
-
-async function handleTokenExchange(
-  data: Extract<z.infer<typeof bodySchema>, { action: "token-exchange" }>,
-  client: { clientId: string; clientSecret: string | null },
-  tokenUrl: string
-): Promise<NextResponse> {
-  const params: Record<string, string> = {
-    grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-    client_id: client.clientId,
-    subject_token: data.accessToken,
-    subject_token_type: TOKEN_TYPE_ACCESS_TOKEN,
-    resource: MERCHANT_RESOURCE,
-    scope: EXCHANGE_SCOPE,
-  };
-  if (client.clientSecret) {
-    params.client_secret = client.clientSecret;
-  }
-
-  const { body, status } = await fetchTokenWithDpop(tokenUrl, params);
-  return NextResponse.json(body, { status });
 }
 
 async function handleCibaToken(
@@ -250,10 +215,15 @@ async function handleCibaToken(
     return NextResponse.json(body, { status });
   }
 
+  const dpopJkt = await calculateJwkThumbprint(
+    cibaTokenDpop.keyPair.publicJwk,
+    "sha256"
+  );
   const userinfo = await readUserInfo(cibaTokenDpop, cibaBody.access_token);
-  return userinfo
-    ? NextResponse.json({ ...cibaBody, userinfo }, { status })
-    : NextResponse.json(body, { status });
+  return NextResponse.json(
+    { ...cibaBody, dpop_jkt: dpopJkt, ...(userinfo ? { userinfo } : {}) },
+    { status }
+  );
 }
 
 async function readUserInfo(
