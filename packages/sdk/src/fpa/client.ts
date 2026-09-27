@@ -313,8 +313,6 @@ export interface FirstPartyAuth {
   }): Promise<ExchangeTokenResult>;
   generatePkce(): Promise<PkceChallenge>;
   getAccessToken(options?: { clientId?: string; resource?: string }): Promise<string>;
-  getCachedIssuer(): string | undefined;
-  getCachedJwksUri(): string | undefined;
   getOrCreateDpopClient(): Promise<DpopClient>;
   loadState(): Promise<StoredFirstPartyAuthState | undefined>;
   resumeAuthorization(
@@ -858,12 +856,6 @@ export function createFirstPartyAuth(
     exchangeToken: exchangeTokenInstance,
     generatePkce: generatePkceChallenge,
     getAccessToken: refreshAccessToken,
-    getCachedIssuer() {
-      return discovery.peek()?.issuer;
-    },
-    getCachedJwksUri() {
-      return discovery.peek()?.jwks_uri;
-    },
     getOrCreateDpopClient,
     loadState,
     resumeAuthorization,

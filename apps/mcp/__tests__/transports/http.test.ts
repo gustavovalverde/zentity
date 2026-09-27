@@ -44,17 +44,6 @@ vi.mock("@zentity/sdk/fpa", () => ({
   exchangeToken: mockExchangeToken,
 }));
 
-vi.mock("../../src/oauth-client.js", () => ({
-  discoverMcpOAuth: vi.fn().mockResolvedValue({
-    issuer: "http://localhost:3000/api/auth",
-    jwks_uri: "http://localhost:3000/api/auth/oauth2/jwks",
-    token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
-  }),
-  ensureMcpOAuthClientCredentials: vi.fn(),
-  getCachedMcpOAuthIssuer: () => "http://localhost:3000/api/auth",
-  getCachedMcpOAuthJwksUri: () => "http://localhost:3000/api/auth/oauth2/jwks",
-}));
-
 vi.mock("../../src/services/account-summary.js", () => ({
   fetchAccountSummary: mockFetchAccountSummary,
 }));
@@ -94,11 +83,18 @@ function signAccessToken(claims: JWTPayload = {}): Promise<string> {
 }
 
 function createTestApp() {
-  return createApp({
-    clientId: "mcp-server-client",
-    dpopClient: {} as never,
-    dpopKey: {} as never,
-  });
+  return createApp(
+    {
+      clientId: "mcp-server-client",
+      dpopClient: {} as never,
+      dpopKey: {} as never,
+    },
+    {
+      issuer: ISSUER,
+      jwksUrl: JWKS_URL,
+      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
+    }
+  );
 }
 
 function connectClient(

@@ -92,14 +92,6 @@ export async function ensureMcpOAuthSession(): Promise<OAuthSessionContext> {
   return withDpopClient(await getMcpInstalledClientAuth().ensureOAuthSession());
 }
 
-export function getCachedMcpOAuthIssuer(): string | undefined {
-  return getMcpInstalledClientAuth().getCachedIssuer();
-}
-
-export function getCachedMcpOAuthJwksUri(): string | undefined {
-  return getMcpInstalledClientAuth().getCachedJwksUri();
-}
-
 export async function refreshMcpOAuthSession(): Promise<OAuthSessionContext> {
   return withDpopClient(
     await getMcpInstalledClientAuth().refreshOAuthSession()

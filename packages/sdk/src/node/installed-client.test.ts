@@ -36,8 +36,6 @@ const mockFirstPartyAuth = {
   exchangeToken: vi.fn(),
   generatePkce: vi.fn(),
   getAccessToken: vi.fn(),
-  getCachedIssuer: vi.fn(),
-  getCachedJwksUri: vi.fn(),
   getOrCreateDpopClient: vi.fn(),
   loadState: vi.fn(),
   resumeAuthorization: vi.fn(),

@@ -1,8 +1,14 @@
+import { createMcpProtectedRequestHandler } from "@better-auth/mcp";
 import { serve } from "@hono/node-server";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { exchangeToken } from "@zentity/sdk/fpa";
-import { deriveAppAudience } from "@zentity/sdk/node";
+import { deriveAppAudience, normalizeUrl } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
+import {
+  createInMemoryDpopReplayStore,
+  DPOP_SIGNING_ALGORITHMS,
+  stripAccessTokenAuthorizationScheme,
+} from "better-auth/oauth2";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { config } from "../config.js";
@@ -16,10 +22,13 @@ import {
   runWithAuthResolver,
 } from "../runtime/auth-context.js";
 import { createServer } from "../server.js";
-import { getResourceMetadata } from "./resource-metadata.js";
-import { isAuthError, validateToken } from "./token-auth.js";
 
-const AUTH_SCHEME_PREFIX = /^(DPoP|Bearer)\s+/i;
+const SCOPES_SUPPORTED = [
+  "openid",
+  "email",
+  "compliance:read",
+  "proof:identity",
+];
 
 interface HttpServerCredentials {
   clientId: string;
@@ -27,15 +36,21 @@ interface HttpServerCredentials {
   dpopKey: OAuthSessionContext["dpopKey"];
 }
 
+interface AuthorizationServer {
+  issuer: string;
+  jwksUrl: string;
+  tokenEndpoint: string;
+}
+
 async function exchangeForZentity(
   credentials: HttpServerCredentials,
+  authorizationServer: AuthorizationServer,
   callerToken: string
 ): Promise<AuthContext> {
-  const discovery = await discoverMcpOAuth();
   const exchanged = await exchangeToken({
-    tokenEndpoint: discovery.token_endpoint,
+    tokenEndpoint: authorizationServer.tokenEndpoint,
     subjectToken: callerToken,
-    audience: deriveAppAudience(discovery.issuer),
+    audience: deriveAppAudience(authorizationServer.issuer),
     clientId: credentials.clientId,
     dpopClient: credentials.dpopClient,
   });
@@ -70,9 +85,52 @@ export function matchOrigin(
   return undefined;
 }
 
-export function createApp(credentials: HttpServerCredentials): Hono {
-  const app = new Hono();
+export function createApp(
+  credentials: HttpServerCredentials,
+  authorizationServer: AuthorizationServer
+): Hono {
+  const resource = normalizeUrl(config.mcpPublicUrl);
+  const resourceMetadataUrl = `${resource}/.well-known/oauth-protected-resource`;
   const mcp = createMcpHandler(() => createServer());
+
+  const handleMcpRequest = createMcpProtectedRequestHandler(
+    {
+      issuer: authorizationServer.issuer,
+      audience: resource,
+      jwksUrl: authorizationServer.jwksUrl,
+      requiredScopes: ["openid"],
+      dpop: { replayStore: createInMemoryDpopReplayStore() },
+    },
+    (request, claims) => {
+      const callerToken = stripAccessTokenAuthorizationScheme(
+        request.headers.get("authorization") ?? ""
+      );
+      let exchanged: Promise<AuthContext> | undefined;
+      const resolveAuth = () => {
+        exchanged ??= exchangeForZentity(
+          credentials,
+          authorizationServer,
+          callerToken
+        );
+        return exchanged;
+      };
+
+      return runWithAuthResolver(resolveAuth, () =>
+        mcp.fetch(request, {
+          authInfo: {
+            token: callerToken,
+            clientId: String(claims.azp ?? claims.client_id),
+            scopes:
+              typeof claims.scope === "string" ? claims.scope.split(" ") : [],
+            resource: new URL(resource),
+            resourceMetadataUrl,
+          },
+        })
+      );
+    }
+  );
+
+  const app = new Hono();
 
   app.use(
     cors({
@@ -84,58 +142,40 @@ export function createApp(credentials: HttpServerCredentials): Hono {
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   app.get("/.well-known/oauth-protected-resource", (c) =>
-    c.json(getResourceMetadata())
+    c.json({
+      resource,
+      authorization_servers: [authorizationServer.issuer],
+      scopes_supported: SCOPES_SUPPORTED,
+      bearer_methods_supported: ["header"],
+      dpop_signing_alg_values_supported: [...DPOP_SIGNING_ALGORITHMS],
+    })
   );
 
-  app.all("/mcp", async (c) => {
-    const authHeader = c.req.header("authorization");
-    const url = new URL(c.req.url);
-    url.search = "";
-    const result = await validateToken(
-      authHeader,
-      c.req.header("dpop"),
-      c.req.method,
-      url.href
-    );
-    if (isAuthError(result)) {
-      return c.json(result.body, result.status, {
-        "WWW-Authenticate": result.wwwAuthenticate,
-      });
-    }
-
-    const callerToken = authHeader?.replace(AUTH_SCHEME_PREFIX, "") ?? "";
-    let exchanged: Promise<AuthContext> | undefined;
-    const resolveAuth = () => {
-      exchanged ??= exchangeForZentity(credentials, callerToken);
-      return exchanged;
-    };
-
-    const tokenScopes =
-      typeof result.payload.scope === "string"
-        ? result.payload.scope.split(" ").filter(Boolean)
-        : [];
-    return runWithAuthResolver(resolveAuth, () =>
-      mcp.fetch(c.req.raw, {
-        authInfo: {
-          token: callerToken,
-          clientId: String(result.payload.azp ?? result.payload.client_id),
-          scopes: tokenScopes,
-          resource: new URL(config.mcpPublicUrl),
-        },
-      })
-    );
-  });
+  app.all("/mcp", (c) => handleMcpRequest(c.req.raw));
 
   return app;
 }
 
 export async function startHttp(): Promise<void> {
-  const { clientId, dpopKey } = await ensureMcpOAuthClientCredentials();
-  const app = createApp({
-    clientId,
-    dpopClient: await createDpopClientFromKeyPair(dpopKey),
-    dpopKey,
-  });
+  const [{ clientId, dpopKey }, discovery] = await Promise.all([
+    ensureMcpOAuthClientCredentials(),
+    discoverMcpOAuth(),
+  ]);
+  if (!discovery.jwks_uri) {
+    throw new Error("Authorization server discovery has no jwks_uri");
+  }
+  const app = createApp(
+    {
+      clientId,
+      dpopClient: await createDpopClientFromKeyPair(dpopKey),
+      dpopKey,
+    },
+    {
+      issuer: discovery.issuer,
+      jwksUrl: discovery.jwks_uri,
+      tokenEndpoint: discovery.token_endpoint,
+    }
+  );
   const { port } = config;
 
   serve({ fetch: app.fetch, port }, () => {

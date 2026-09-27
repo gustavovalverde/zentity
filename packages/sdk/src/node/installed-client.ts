@@ -46,8 +46,6 @@ export interface InstalledClientAuth {
     forceClientRegistration?: boolean;
   }): Promise<InstalledClientCredentials>;
   ensureOAuthSession(): Promise<InstalledOAuthSession>;
-  getCachedIssuer(): string | undefined;
-  getCachedJwksUri(): string | undefined;
   refreshOAuthSession(): Promise<InstalledOAuthSession>;
 }
 
@@ -224,12 +222,6 @@ export function createInstalledClientAuth(
     ensureClientCredentials,
     ensureOAuthSession() {
       return ensureOAuthSessionAttempt();
-    },
-    getCachedIssuer() {
-      return auth.getCachedIssuer();
-    },
-    getCachedJwksUri() {
-      return auth.getCachedJwksUri();
     },
     async refreshOAuthSession() {
       const clientCredentials = await ensureClientCredentials();
