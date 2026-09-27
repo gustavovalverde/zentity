@@ -321,6 +321,7 @@ export async function registerCibaClient(
       grant_types: [CIBA_GRANT_TYPE],
       token_endpoint_auth_method: "none",
       backchannel_token_delivery_mode: "poll",
+      subject_type: "public",
     },
     headers: ORIGIN_HEADERS,
   });

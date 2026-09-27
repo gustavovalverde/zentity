@@ -15,7 +15,7 @@ import { z } from "zod";
 
 import { prepareAgentAssertionForScenario } from "@/lib/agent-runtime";
 import { getAuth } from "@/lib/auth";
-import { readDcrClient } from "@/lib/dcr";
+import { readDcrClient, readZentitySubject } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import { parseProblemFromBody, type ServiceProblem } from "@/lib/problem-json";
 import { settlePayment, ZpayError } from "@/lib/zpay-client";
@@ -82,8 +82,11 @@ export async function POST(request: Request) {
 
   const auth = await getAuth();
   const session = await auth.api.getSession({ headers: await headers() });
-  const email = session?.user?.email;
-  if (!(session?.user?.id && email)) {
+  const userId = session?.user?.id;
+  const loginHint = userId
+    ? await readZentitySubject(AETHER_SCENARIO, userId)
+    : null;
+  if (!(userId && loginHint)) {
     return NextResponse.json(
       {
         error: "session_required",
@@ -131,7 +134,7 @@ export async function POST(request: Request) {
       prepareAgentAssertionForScenario({
         bindingMessage,
         scenarioId: AETHER_SCENARIO,
-        userId: session.user.id,
+        userId,
       }),
       getZpayDpopClient(),
     ]);
@@ -144,7 +147,7 @@ export async function POST(request: Request) {
       tokenEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/token`,
       clientId: client.clientId,
       dpopSigner: dpopClient,
-      loginHint: email,
+      loginHint,
       scope: `openid ${PAYMENT_AUTHORIZATION_CAPABILITY}`,
       authorizationDetails: [rar],
       // No `resource`: the issuer authoritatively pins aud=wallet thumbprint

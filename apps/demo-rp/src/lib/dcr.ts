@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/connection";
-import { dcrClient } from "@/lib/db/schema";
+import { account, dcrClient } from "@/lib/db/schema";
 import {
+  getOAuthProviderId,
   isRouteScenarioId,
   type RouteScenarioId,
 } from "@/scenarios/route-scenario-registry";
@@ -72,4 +73,26 @@ export async function findRouteScenarioByClientId(
   return row?.scenarioId && isRouteScenarioId(row.scenarioId)
     ? row.scenarioId
     : null;
+}
+
+/**
+ * The subject identifier Zentity issued to this scenario's client for the
+ * signed-in demo user, which is the only login hint Zentity accepts from it.
+ */
+export async function readZentitySubject(
+  scenarioId: RouteScenarioId,
+  userId: string
+): Promise<string | null> {
+  const row = await getDb()
+    .select({ accountId: account.accountId })
+    .from(account)
+    .where(
+      and(
+        eq(account.userId, userId),
+        eq(account.providerId, getOAuthProviderId(scenarioId))
+      )
+    )
+    .limit(1)
+    .get();
+  return row?.accountId ?? null;
 }

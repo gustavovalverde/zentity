@@ -93,6 +93,7 @@ describe("access token subjects", () => {
   });
 
   it("drops Zentity-hosted resources from backchannel requests", async () => {
+    const pairwiseSub = await resolveSubForClientId(userId, CLIENT_ID);
     for (const [resource, stored] of [
       [BASE, null],
       [MCP_RESOURCE, MCP_RESOURCE],
@@ -100,7 +101,7 @@ describe("access token subjects", () => {
       const { status, json } = await postJson("/oauth2/bc-authorize", {
         client_id: CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: pairwiseSub as string,
         resource,
       });
       expect({ status, json }).toMatchObject({ status: 200 });

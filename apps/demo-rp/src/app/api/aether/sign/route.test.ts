@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   readDcrClient: vi.fn(),
+  readZentitySubject: vi.fn(),
   prepareAgentAssertion: vi.fn(),
   requestCibaApproval: vi.fn(),
   createWalletSpendRequest: vi.fn(),
@@ -35,7 +36,10 @@ vi.mock("@/lib/auth", () => ({
   getAuth: vi.fn(async () => ({ api: { getSession: mocks.getSession } })),
 }));
 
-vi.mock("@/lib/dcr", () => ({ readDcrClient: mocks.readDcrClient }));
+vi.mock("@/lib/dcr", () => ({
+  readDcrClient: mocks.readDcrClient,
+  readZentitySubject: mocks.readZentitySubject,
+}));
 
 vi.mock("@/lib/agent-runtime", () => ({
   prepareAgentAssertionForScenario: mocks.prepareAgentAssertion,
@@ -129,6 +133,7 @@ describe("POST /api/aether/sign", () => {
       user: { id: "user-1", email: "user@example.com" },
     });
     mocks.readDcrClient.mockResolvedValue({ clientId: "aether-client" });
+    mocks.readZentitySubject.mockResolvedValue("aether-pairwise-sub");
     mocks.prepareAgentAssertion.mockResolvedValue("agent-assertion-jwt");
     mocks.requestCibaApproval.mockResolvedValue({ accessToken: "at.jwt" });
     mocks.createWalletSpendRequest.mockResolvedValue({
@@ -169,6 +174,9 @@ describe("POST /api/aether/sign", () => {
 
     const res = await post(VALID_BODY);
     expect(res.status).toBe(200);
+    expect(mocks.requestCibaApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ loginHint: "aether-pairwise-sub" })
+    );
     const body = await res.json();
     expect(body.transaction_id).toBe("tx_abc");
     expect(body.broadcast_kind).toBe("accepted");

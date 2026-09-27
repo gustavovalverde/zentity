@@ -18,7 +18,6 @@ interface CibaFlowState {
   reset: () => void;
   startFlow: (params: {
     acrValues?: string;
-    loginHint: string;
     scope: string;
     bindingMessage?: string;
     authorizationDetails?: string;
@@ -245,7 +244,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
   const startFlow = useCallback(
     async (params: {
       acrValues?: string;
-      loginHint: string;
       scope: string;
       bindingMessage?: string;
       authorizationDetails?: string;
@@ -261,7 +259,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
           body: JSON.stringify({
             action: "authorize",
             scenarioId,
-            loginHint: params.loginHint,
             scope: params.scope,
             bindingMessage: params.bindingMessage,
             authorizationDetails: params.authorizationDetails,

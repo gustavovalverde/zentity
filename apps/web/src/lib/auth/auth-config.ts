@@ -615,6 +615,24 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
+function requestClientId(ctx: {
+  body?: Record<string, unknown>;
+  headers?: Headers;
+}): string | null {
+  if (typeof ctx.body?.client_id === "string") {
+    return ctx.body.client_id;
+  }
+  const authorization = ctx.headers?.get("authorization");
+  if (!authorization?.startsWith("Basic ")) {
+    return null;
+  }
+  const decoded = Buffer.from(authorization.slice(6), "base64").toString(
+    "utf8"
+  );
+  const separator = decoded.indexOf(":");
+  return separator > 0 ? decodeURIComponent(decoded.slice(0, separator)) : null;
+}
+
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
 
@@ -2156,21 +2174,14 @@ export const auth = betterAuth({
       // Agent-Assertion, not a client secret. The plugin defaults to
       // confidential-only, which would reject every agent at bc-authorize.
       requireConfidentialClient: false,
+      // A client names the user only by the subject identifier it received
+      // from Zentity, so an unknown hint reveals nothing the client did not
+      // already hold and no client can prompt arbitrary accounts.
       async resolveUser(loginHint, ctx) {
-        const byId = await ctx.context.internalAdapter.findUserById(loginHint);
-        if (byId) {
-          return byId;
-        }
-        const byEmail =
-          await ctx.context.internalAdapter.findUserByEmail(loginHint);
-        if (byEmail) {
-          return byEmail.user;
-        }
-        const clientId = ctx.body?.client_id;
-        const userId =
-          typeof clientId === "string"
-            ? await resolveUserIdFromSub(loginHint, clientId)
-            : null;
+        const clientId = requestClientId(ctx);
+        const userId = clientId
+          ? await resolveUserIdFromSub(loginHint, clientId)
+          : null;
         return userId
           ? await ctx.context.internalAdapter.findUserById(userId)
           : null;
@@ -2353,7 +2364,7 @@ export const auth = betterAuth({
           agentName,
           requiresBiometric,
         });
-        await Promise.allSettled([
+        Promise.allSettled([
           sendWebPush(data.userId, pushPayload),
           sendCibaNotification({
             userId: data.userId,
@@ -2365,7 +2376,7 @@ export const auth = betterAuth({
             registeredAgent,
             approvalUrl: data.approvalUrl,
           }),
-        ]);
+        ]).catch(() => undefined);
       },
     }),
     tokenExchangePlugin(),
