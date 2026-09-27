@@ -39,9 +39,15 @@ function generateOpaqueSetup(): {
     { encoding: "utf8" }
   ).trim();
 
-  const publicKey = execSync(
-    "npx --yes @serenity-kit/opaque@latest get-server-public-key",
-    { encoding: "utf8", input: serverSetup }
+  const publicKey = execFileSync(
+    "npx",
+    [
+      "--yes",
+      "@serenity-kit/opaque@latest",
+      "get-server-public-key",
+      serverSetup,
+    ],
+    { encoding: "utf8" }
   ).trim();
 
   return { serverSetup, publicKey };
