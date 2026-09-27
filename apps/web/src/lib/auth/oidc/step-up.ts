@@ -9,8 +9,8 @@
  * HTTP 403 + auth_session so the client can re-authenticate via the
  * Authorization Challenge Endpoint instead of requiring a browser redirect.
  */
+import type { AccountTier } from "@zentity/sdk/protocol";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import type { AccountTier } from "@/lib/assurance/tier";
 
 import { randomBytes } from "node:crypto";
 

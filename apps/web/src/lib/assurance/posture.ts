@@ -4,15 +4,15 @@
  * Separates account proofing, authentication provenance, and account
  * capabilities. Security-sensitive callers should use SecurityPosture.
  */
-import "server-only";
-
-import type { Session } from "@/lib/auth/auth-config";
-import type { VerificationReadModel } from "@/lib/identity/verification/read-model";
 import type {
   AccountAssurance,
   AccountCapabilities,
   SecurityPosture,
-} from "./tier";
+} from "@zentity/sdk/protocol";
+import "server-only";
+
+import type { Session } from "@/lib/auth/auth-config";
+import type { VerificationReadModel } from "@/lib/identity/verification/read-model";
 
 import { and, eq } from "drizzle-orm";
 import { cache } from "react";

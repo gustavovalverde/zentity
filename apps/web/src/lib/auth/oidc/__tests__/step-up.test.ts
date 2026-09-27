@@ -1,4 +1,4 @@
-import type { AccountTier } from "@/lib/assurance/tier";
+import type { AccountTier } from "@zentity/sdk/protocol";
 
 import { describe, expect, it } from "vitest";
 

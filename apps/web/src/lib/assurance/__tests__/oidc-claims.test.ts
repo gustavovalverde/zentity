@@ -1,4 +1,4 @@
-import type { AccountTier } from "../tier";
+import type { AccountTier } from "@zentity/sdk/protocol";
 
 import crypto from "node:crypto";
 

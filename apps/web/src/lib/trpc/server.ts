@@ -5,9 +5,10 @@
  * All tRPC routers use these base procedures to handle public and
  * authenticated requests consistently.
  */
+import type { AuthenticationState } from "@zentity/sdk/protocol";
 import "server-only";
 
-import type { AuthenticationState, FeatureName } from "@/lib/assurance/tier";
+import type { FeatureName } from "@/lib/assurance/tier";
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 

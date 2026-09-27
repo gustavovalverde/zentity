@@ -6,7 +6,7 @@
  * server component (to seed the step) and the client stepper hook.
  */
 
-import type { AccountAssurance } from "@/lib/assurance/tier";
+import type { AccountAssurance } from "@zentity/sdk/protocol";
 
 export type VerificationStep =
   | "enrollment"

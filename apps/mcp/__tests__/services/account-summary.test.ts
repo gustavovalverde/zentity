@@ -18,7 +18,42 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
+import type { SecurityPosture } from "@zentity/sdk/protocol";
 import { fetchAccountSummary } from "../../src/services/account-summary.js";
+
+const SECURITY_POSTURE: SecurityPosture = {
+  assurance: {
+    tier: 2,
+    tierName: "Verified",
+    details: {
+      chipVerified: false,
+      documentVerified: true,
+      faceMatchVerified: true,
+      fheComplete: true,
+      hasIncompleteProofs: false,
+      hasSecuredKeys: true,
+      isAuthenticated: true,
+      livenessVerified: true,
+      missingProfileSecret: false,
+      needsDocumentReprocessing: false,
+      onChainAttested: false,
+      zkProofsComplete: true,
+    },
+  },
+  auth: {
+    amr: ["pop", "hwk"],
+    authenticatedAt: 1_767_225_600,
+    authStrength: "strong",
+    id: "auth-context-1",
+    loginMethod: "passkey",
+    sourceKind: "token_exchange",
+  },
+  capabilities: {
+    hasOpaqueAccount: false,
+    hasPasskeys: true,
+    hasWalletAuth: false,
+  },
+};
 
 describe("fetchAccountSummary", () => {
   beforeEach(() => {
@@ -35,13 +70,7 @@ describe("fetchAccountSummary", () => {
         new Response(
           JSON.stringify({
             result: {
-              data: {
-                authStrength: "strong",
-                details: { document: true },
-                loginMethod: "passkey",
-                tier: 2,
-                tierName: "Verified",
-              },
+              data: SECURITY_POSTURE,
             },
           }),
           { status: 200 }
@@ -68,6 +97,12 @@ describe("fetchAccountSummary", () => {
     const summary = await fetchAccountSummary();
 
     expect(summary.email).toBe("user@example.com");
+    expect(summary).toMatchObject({
+      tier: 2,
+      tierName: "Verified",
+      authStrength: "strong",
+      loginMethod: "passkey",
+    });
     expect(summary.vaultFieldsAvailable).toEqual([
       "name",
       "address",
@@ -84,13 +119,7 @@ describe("fetchAccountSummary", () => {
         new Response(
           JSON.stringify({
             result: {
-              data: {
-                authStrength: "strong",
-                details: { document: true },
-                loginMethod: "passkey",
-                tier: 2,
-                tierName: "Verified",
-              },
+              data: SECURITY_POSTURE,
             },
           }),
           { status: 200 }

@@ -1,4 +1,4 @@
-import type { AccountTier, TierName } from "@/lib/assurance/tier";
+import type { AccountTier, TierName } from "@zentity/sdk/protocol";
 
 import { CheckCircle2, CircleUser, ShieldCheck, User } from "lucide-react";
 

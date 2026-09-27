@@ -1,4 +1,17 @@
 export type {
+	AccountAssurance,
+	AccountCapabilities,
+	AccountTier,
+	AuthenticationSourceKind,
+	AuthenticationState,
+	AuthStrength,
+	LoginMethod,
+	SecurityPosture,
+	TierName,
+	VerificationDetails,
+} from "./assurance";
+export { TIER_NAMES } from "./assurance";
+export type {
 	AapAccessTokenClaims,
 	AccessTokenActClaim,
 	AccessTokenAuditClaim,

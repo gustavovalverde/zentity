@@ -1,4 +1,4 @@
-import type { SecurityPosture } from "@/lib/assurance/tier";
+import type { SecurityPosture } from "@zentity/sdk/protocol";
 
 import crypto from "node:crypto";
 
