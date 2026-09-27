@@ -26,7 +26,7 @@ The profile composes and constrains the following specifications:
 |---------|---------------|
 | Authorization Framework | OAuth 2.1 (draft-ietf-oauth-v2-1) |
 | Proof Key | PKCE (RFC 7636), mandatory |
-| Pushed Authorization | PAR (RFC 9126), mandatory |
+| Pushed Authorization | PAR (RFC 9126), recommended |
 | Sender Constraining | DPoP (RFC 9449) |
 | Identity Layer | OpenID Connect Core 1.0 |
 | Structured Intent | Rich Authorization Requests (RFC 9396) |
@@ -77,13 +77,13 @@ The following OAuth 2.1 options are mandatory under this profile. Requirements t
 The authorization server MUST:
 
 - Support OAuth 2.1 (draft-ietf-oauth-v2-1) authorization code flow with PKCE
-- Require Pushed Authorization Requests (PAR, RFC 9126) for all authorization requests
 - Support DPoP (RFC 9449) for sender-constrained tokens
 - Issue access tokens signed with EdDSA (Ed25519) for compact signatures
 - Sign id_tokens with RS256
 
 The authorization server SHOULD:
 
+- Require Pushed Authorization Requests (PAR, RFC 9126) for all authorization requests
 - Support Rich Authorization Requests (RFC 9396) for structured intent
 - Support Token Exchange (RFC 8693) for audience rebinding and scope attenuation
 - Support Back-Channel Logout (OIDC BCL) for federated session termination
