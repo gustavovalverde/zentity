@@ -17,6 +17,8 @@ const ORIGIN_HEADERS = {
 };
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TOKEN_URL = `${AUTH_BASE_URL}/oauth2/token`;
+// Zentity-audienced access tokens are opaque; an outside resource server gets a readable JWT.
+const MCP_RESOURCE = process.env.MCP_PUBLIC_URL ?? "http://localhost:3300";
 
 test.describe("Registered agent assertion in CIBA flow", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
@@ -46,7 +48,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
         scope: "openid",
         binding_message: "Agent claims E2E test",
         agent_claims: agentClaims,
-        resource: BASE_URL,
+        resource: MCP_RESOURCE,
       },
       headers: ORIGIN_HEADERS,
     });
@@ -68,7 +70,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id,
         client_id: clientId,
-        resource: BASE_URL,
+        resource: MCP_RESOURCE,
       },
       headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });
@@ -96,7 +98,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
         login_hint: session.email,
         scope: "openid",
         binding_message: "No agent claims test",
-        resource: BASE_URL,
+        resource: MCP_RESOURCE,
       },
       headers: ORIGIN_HEADERS,
     });
@@ -114,7 +116,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id,
         client_id: clientId,
-        resource: BASE_URL,
+        resource: MCP_RESOURCE,
       },
       headers: { Origin: BASE_URL, DPoP: dpop.proof },
     });

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import {
@@ -114,27 +115,44 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
       expect(status).toBeLessThan(400);
     });
 
-    it("persists resource on the PAR record", async () => {
+    async function pushAndReadRecord(resource: string) {
       const { status } = await postPar({
         client_id: TEST_CLIENT_ID,
         response_type: "code",
         redirect_uri: "http://localhost/callback",
         scope: "openid",
-        resource: VALID_RESOURCE,
+        resource,
         code_challenge: "test-challenge",
         code_challenge_method: "S256",
       });
-      expect(status).toBeLessThan(400);
+      if (status >= 400) {
+        throw new Error(`PAR failed with ${status}`);
+      }
 
-      const record = await db
-        .select({ resource: haipPushedRequests.resource })
+      return await db
+        .select({
+          requestParams: haipPushedRequests.requestParams,
+          resource: haipPushedRequests.resource,
+        })
         .from(haipPushedRequests)
         .where(eq(haipPushedRequests.clientId, TEST_CLIENT_ID))
         .limit(1)
         .get();
+    }
 
-      expect(record).toBeDefined();
-      expect(record?.resource).toBe(VALID_RESOURCE);
+    it("persists a resource outside Zentity on the PAR record", async () => {
+      const record = await pushAndReadRecord(env.MCP_PUBLIC_URL);
+
+      expect(record?.resource).toBe(env.MCP_PUBLIC_URL);
+    });
+
+    it("drops a Zentity-hosted resource so the token is opaque", async () => {
+      const record = await pushAndReadRecord(VALID_RESOURCE);
+
+      expect(record?.resource).toBeNull();
+      expect(JSON.parse(record?.requestParams ?? "{}")).not.toHaveProperty(
+        "resource"
+      );
     });
   });
 

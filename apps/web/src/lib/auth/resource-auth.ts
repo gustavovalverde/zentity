@@ -4,9 +4,8 @@ import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { env } from "@/env";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
-import { verifyAccessToken, verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -19,7 +18,6 @@ import {
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
-const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 
 interface UserAccessPrincipal {
   clientId: string;
@@ -70,44 +68,27 @@ function hasRequiredScopes(
   return requiredScopes.every((scope) => scopes.includes(scope));
 }
 
-function audienceIncludes(audience: unknown, expected: string): boolean {
-  if (typeof audience === "string") {
-    return audience === expected;
-  }
-
-  return Array.isArray(audience) && audience.includes(expected);
-}
-
-function getClientIdFromPayload(
-  payload: Record<string, unknown>
-): string | undefined {
-  return (
-    (payload.client_id as string | undefined) ??
-    (payload.azp as string | undefined)
-  );
-}
-
-async function resolveOpaqueUserAccessToken(
-  request: Request,
-  token: string,
-  scheme: string
+async function resolveBootstrapPrincipal(
+  request: Request
 ): Promise<UserAccessPrincipal | null> {
-  const accessToken = await loadOpaqueAccessToken(token);
-  if (!accessToken?.userId || accessToken.expiresAt < new Date()) {
+  const match = request.headers.get("authorization")?.match(AUTH_HEADER_RE);
+  const scheme = match?.[1];
+  const token = match?.[2];
+  if (!(scheme && token) || scheme.toLowerCase() !== "dpop") {
     return null;
   }
 
-  if (accessToken.dpopJkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return null;
-    }
-    const validDpop = await validateOpaqueAccessTokenDpop(
-      request,
-      accessToken.dpopJkt
-    );
-    if (!validDpop) {
-      return null;
-    }
+  const accessToken = await loadOpaqueAccessToken(token);
+  if (
+    !(accessToken?.userId && accessToken.dpopJkt) ||
+    accessToken.expiresAt < new Date() ||
+    accessToken.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
+  ) {
+    return null;
+  }
+
+  if (!(await validateOpaqueAccessTokenDpop(request, accessToken.dpopJkt))) {
+    return null;
   }
 
   return {
@@ -117,91 +98,6 @@ async function resolveOpaqueUserAccessToken(
     scopes: accessToken.scopes,
     token,
   };
-}
-
-async function resolveJwtUserAccessToken(
-  request: Request,
-  token: string,
-  scheme: string,
-  options?: { requiredTokenUse?: string }
-): Promise<UserAccessPrincipal | null> {
-  const payload =
-    options?.requiredTokenUse === undefined
-      ? await verifyAccessToken(token)
-      : await verifyAuthIssuedJwt(token);
-  if (!payload?.sub) {
-    return null;
-  }
-
-  if (options?.requiredTokenUse) {
-    if (payload.zentity_token_use !== options.requiredTokenUse) {
-      return null;
-    }
-    if (!audienceIncludes(payload.aud, appUrl)) {
-      return null;
-    }
-  }
-
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  if (cnf?.jkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return null;
-    }
-    try {
-      await dpopValidator({
-        request,
-        tokenPayload: payload as Record<string, unknown>,
-      });
-    } catch {
-      return null;
-    }
-  } else if (options?.requiredTokenUse) {
-    return null;
-  }
-
-  const clientId = getClientIdFromPayload(payload as Record<string, unknown>);
-  if (!clientId) {
-    return null;
-  }
-
-  return {
-    kind: "user_access_token",
-    userId: payload.sub,
-    clientId,
-    scopes:
-      typeof payload.scope === "string"
-        ? payload.scope.split(" ").filter(Boolean)
-        : [],
-    token,
-  };
-}
-
-function resolveUserAccessPrincipal(
-  request: Request,
-  options?: { requiredTokenUse?: string }
-): Promise<UserAccessPrincipal | null> {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) {
-    return Promise.resolve(null);
-  }
-
-  const match = authHeader.match(AUTH_HEADER_RE);
-  if (!(match?.[1] && match[2])) {
-    return Promise.resolve(null);
-  }
-
-  const scheme = match[1];
-  const token = match[2];
-
-  if (token.startsWith("eyJ")) {
-    return resolveJwtUserAccessToken(request, token, scheme, options);
-  }
-
-  if (options?.requiredTokenUse) {
-    return Promise.resolve(null);
-  }
-
-  return resolveOpaqueUserAccessToken(request, token, scheme);
 }
 
 function asClientCredentialsPrincipal(
@@ -241,9 +137,7 @@ export async function requireBootstrapAccessToken(
   request: Request,
   requiredScopes: string[] = []
 ): Promise<UserTokenSuccess | AuthFailure> {
-  const principal = await resolveUserAccessPrincipal(request, {
-    requiredTokenUse: AGENT_BOOTSTRAP_TOKEN_USE,
-  });
+  const principal = await resolveBootstrapPrincipal(request);
   if (!principal) {
     return authError(401, "Bootstrap access token required");
   }

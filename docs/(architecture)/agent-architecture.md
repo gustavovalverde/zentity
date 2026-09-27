@@ -617,7 +617,7 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-Tokens issued by token exchange to a non-agent audience outside Zentity carry pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience.
+Tokens issued by token exchange to a non-agent audience outside Zentity are JWTs carrying pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience. For an audience Zentity serves, token exchange returns an opaque token.
 
 The full binding chain is:
 

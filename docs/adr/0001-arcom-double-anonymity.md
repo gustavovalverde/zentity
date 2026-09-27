@@ -90,19 +90,14 @@ User -> RP (adult site)
     [zero persistent linkage remains in Zentity's DB]
 ```
 
-## Why Pairwise Clients Get Opaque Access Tokens
+## Which Access Tokens Clients Can Read
 
-JWT access tokens cannot use pairwise `sub` because the AS's own endpoints depend on `jwt.sub` for internal user lookup:
+The privacy boundary is what a client can decode. No token a client holds carries the real user id:
 
-- `/oauth2/userinfo` calls `findUserById(jwt.sub)` — a pairwise HMAC would fail lookup.
-- `/oauth2/introspect` re-resolves `sub` via `resolveIntrospectionSub` — applying pairwise to an already-pairwise value would double-hash.
+- **Opaque access tokens** for every endpoint Zentity serves (`userinfo`, the app's APIs). Zentity resolves them server-side. The `before` hooks on `/oauth2/authorize`, `/oauth2/par`, `/oauth2/bc-authorize`, and `/oauth2/token` drop Zentity-hosted `resource` indicators from user token requests, so the OAuth provider issues an opaque token, and token exchange mints opaque tokens for those audiences.
+- **JWT access tokens** only for resource servers outside Zentity (the MCP server, an agent wallet) and the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier: pairwise for pairwise clients. Introspection returns that `sub` unchanged, and Zentity maps it back to the user through the pairwise subject index when it needs to.
 
-The privacy boundary is the **token format**, not the `sub` claim value:
-
-- **Opaque access tokens** (default for pairwise clients): RP can't decode the token. It uses it as a bearer for userinfo/introspection, which resolve pairwise `sub` at the presentation layer.
-- **JWT access tokens** (only for public clients with `resource`): RP can decode `sub: user.id`. These are for resource-server API calls where `user.id` is needed for authorization.
-
-Pairwise clients are **guarded from receiving JWT access tokens** — the `before` hook on `/oauth2/token` strips `resource` for pairwise clients, forcing opaque AT issuance. This ensures the RP only ever sees pairwise `sub` (via id_token, userinfo, or introspection).
+The rule is recorded in [ADR privacy/0015](privacy/0015-disclosure-surface-assignment.md), rule 4.
 
 ### Spec alignment
 
@@ -118,3 +113,7 @@ This approach is compliant with all relevant OAuth/OIDC specifications:
 
 - **OID4VP presentation** — True issuer-unlinkability via credential-based presentation. Zentity already issues SD-JWT VCs; the missing piece is the RP-initiated presentation flow.
 - **BBS+ anonymous credentials** — Long-term goal for multi-show unlinkability without any OAuth flow.
+
+## Revision History
+
+- 2026-09-27: Replaced the pairwise-client token guard with the access-token rule: opaque tokens for Zentity-served endpoints, and JWT access tokens that carry the client's subject identifier for resource servers outside Zentity.

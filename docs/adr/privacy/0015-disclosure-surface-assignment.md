@@ -89,21 +89,20 @@ Rationale:
 * They are appropriate for values that only the target resource server should consume.
 * They are not appropriate for copying profile or vault data.
 
-#### 4. The subject identifier follows the reader of the surface
+#### 4. No client-readable artifact carries the real user id
 
-Pairwise subjects stop third-party relying parties from correlating one user across clients. Which `sub` a surface carries depends on who reads it:
+Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client.
 
-* `id_token`, `userinfo` responses, and introspection responses are read by the client, so a pairwise client receives its pairwise subject there.
-* An access token audienced to an endpoint Zentity itself serves (the app origin, the auth issuer, and every resource under the issuer, including `userinfo`) carries the real user id. Zentity is the only party that validates it, and this matches the access tokens Better Auth issues natively.
-* An access token audienced to any other resource server (the MCP server, an agent wallet) carries the requesting client's pairwise subject, because that resource server is outside Zentity.
-
-Zentity's own resource servers therefore read `sub` from their access tokens as the user id, and project the client's pairwise subject whenever they return an identifier to the client.
+* `id_token`, `userinfo`, introspection, and proof-of-human responses project the client's subject.
+* Access tokens for endpoints Zentity serves (the app origin, the auth issuer, and every resource under it, including `userinfo`) are opaque reference tokens that Zentity resolves server-side. Zentity drops Zentity-hosted `resource` indicators from user token requests so the OAuth provider issues opaque tokens, and token exchange mints opaque tokens for those audiences. Claims such a token would otherwise carry (actor, delegation, token use) stay with the stored token.
+* JWT access tokens exist only for resource servers outside Zentity (the MCP server, an agent wallet) and for the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier. Zentity endpoints that receive one, such as token exchange and agent introspection, map it back to the user through the pairwise subject index.
+* A client names the user back to Zentity with the subject it received, for example as a CIBA `login_hint`.
 
 Rationale:
 
-* `userinfo` and Zentity's resource servers look the user up by the token's `sub`; a pairwise subject there would need a reverse lookup on every request.
-* One rule per audience keeps every token Zentity validates on the same subject contract, including tokens minted by token exchange.
-* A holder can decode a JWT access token, so a client holding a Zentity-audienced JWT can read the real user id. The identifiers a relying party is meant to consume (ID token, userinfo, introspection) stay pairwise.
+* A holder can decode a JWT, so a JWT that reached two clients with the real user id would let them correlate the user.
+* `userinfo` and Zentity's resource servers look the user up by the token; an opaque token resolves to the user server-side without exposing the id.
+* Resource servers outside Zentity verify JWTs locally and need an identifier for the user, not the user id itself.
 
 #### 5. `proof:sybil` is access-token-only
 
@@ -182,3 +181,4 @@ What does not change by channel:
 ## Revision History
 
 * 2026-09-27: Added rule 4. Access tokens audienced to Zentity-served endpoints carry the real user id; pairwise subjects apply to client-facing surfaces and to access tokens for resource servers outside Zentity.
+* 2026-09-27: Rewrote rule 4. No client-readable artifact carries the real user id: access tokens for Zentity-served endpoints are opaque, and JWT access tokens (resource servers outside Zentity and the OID4VCI credential endpoint) carry the requesting client's subject identifier.

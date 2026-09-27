@@ -75,7 +75,6 @@ export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
 // ── Locally-issued JWT verification ────────────────────────────────────
 
 const authIssuer = getAuthIssuer();
-const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 
 async function getLocalJwks() {
   const rows = await db.select().from(jwksTable).all();
@@ -93,28 +92,6 @@ export async function verifyAuthIssuedJwt(
     const jwks = await getLocalJwks();
     const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
     return payload;
-  } catch {
-    return null;
-  }
-}
-
-export async function verifyAccessToken(
-  token: string
-): Promise<JWTPayload | null> {
-  try {
-    const payload = await verifyAuthIssuedJwt(token);
-    if (!payload) {
-      return null;
-    }
-    if (payload.sub) {
-      const jwks = await getLocalJwks();
-      await jwtVerify(token, jwks, {
-        issuer: authIssuer,
-        audience: [appUrl, authIssuer],
-      });
-      return payload;
-    }
-    return null;
   } catch {
     return null;
   }

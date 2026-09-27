@@ -511,7 +511,6 @@ describe("RP contract — id_token signing", () => {
   it("access tokens use EdDSA", async () => {
     const token = await signJwt({
       scope: "openid email proof:verification",
-      azp: "zentity-demo-bank",
       sub: "user-123",
     });
 

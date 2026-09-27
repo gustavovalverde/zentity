@@ -727,6 +727,9 @@ export function createFirstPartyAuth(
       ...(exchangeOptions.scope ? { scope: exchangeOptions.scope } : {}),
       subjectToken: exchangeOptions.subjectToken,
       tokenEndpoint: requireTokenEndpoint(document),
+      ...(document.userinfo_endpoint
+        ? { userInfoEndpoint: document.userinfo_endpoint }
+        : {}),
     });
   }
 

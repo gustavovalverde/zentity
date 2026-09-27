@@ -7,7 +7,7 @@ import {
   generateKeyPair,
   SignJWT,
 } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
@@ -16,6 +16,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
+import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
   computePairwiseSub,
   resolveSubForClient,
@@ -45,6 +46,7 @@ const APP_AUDIENCE = "http://localhost:3000";
 const CREDENTIAL_AUDIENCE = `${authIssuer}/oidc4vci/credential`;
 const MCP_AUDIENCE = env.MCP_PUBLIC_URL;
 const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
+const JWT_SHAPE = /^eyJ[^.]*\.[^.]*\.[^.]*$/;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
 let testKid: string;
@@ -148,6 +150,25 @@ function mintAccessToken(
     .sign(testKeyPair.privateKey);
 }
 
+async function exchangedClaims(
+  token: string
+): Promise<Record<string, unknown>> {
+  if (token.startsWith("eyJ")) {
+    return decodeJwt(token);
+  }
+  const row = await loadOpaqueAccessToken(token);
+  if (!row) {
+    throw new Error("Exchanged opaque token is not stored");
+  }
+  return {
+    ...row.exchangeClaims,
+    sub: row.userId,
+    scope: row.scopes.join(" "),
+    jti: row.referenceId,
+    ...(row.dpopJkt ? { cnf: { jkt: row.dpopJkt } } : {}),
+  };
+}
+
 function mintIdToken(
   sub: string,
   aud: string = TEST_CLIENT_ID,
@@ -203,7 +224,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(json.token_type).toBe("DPoP");
       expect(json.scope).toBe("openid identity.name");
 
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.scope).toBe("openid identity.name");
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
     });
@@ -228,7 +249,7 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.cnf).toEqual({ jkt: dpopJkt });
     });
 
@@ -310,7 +331,7 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.cnf).toEqual({ jkt: resourceServerJkt });
       expect(payload.act).toEqual({ sub: resourceServerClientId });
     });
@@ -356,12 +377,12 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: APP_AUDIENCE,
+        resource: MCP_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(APP_AUDIENCE);
+      expect(payload.aud).toBe(MCP_AUDIENCE);
     });
 
     it("binds audience to audience parameter when resource is absent", async () => {
@@ -372,12 +393,12 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        audience: CREDENTIAL_AUDIENCE,
+        audience: MCP_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(CREDENTIAL_AUDIENCE);
+      expect(payload.aud).toBe(MCP_AUDIENCE);
     });
 
     it("prefers resource over audience for aud binding", async () => {
@@ -388,13 +409,32 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        resource: APP_AUDIENCE,
+        resource: MCP_AUDIENCE,
         audience: CREDENTIAL_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.aud).toBe(APP_AUDIENCE);
+      expect(payload.aud).toBe(MCP_AUDIENCE);
+    });
+
+    it("issues opaque tokens for Zentity-hosted audiences", async () => {
+      const subjectToken = await mintAccessToken(userId);
+
+      for (const audience of [APP_AUDIENCE, authIssuer, CREDENTIAL_AUDIENCE]) {
+        const { status, json } = await postTokenWithDpop({
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          audience,
+        });
+
+        expect(status).toBe(200);
+        expect(json.access_token).not.toMatch(JWT_SHAPE);
+        const row = await loadOpaqueAccessToken(json.access_token as string);
+        expect(row?.userId).toBe(userId);
+      }
     });
 
     it("rejects unregistered target audiences", async () => {
@@ -483,7 +523,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
 
       expect(payload.act).toEqual(parentPayload.act);
       expect(payload.task).toEqual(parentPayload.task);
@@ -540,7 +580,9 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(firstExchange.status).toBe(200);
-      const firstPayload = decodeJwt(firstExchange.json.access_token as string);
+      const firstPayload = await exchangedClaims(
+        firstExchange.json.access_token as string
+      );
       expect(firstPayload.delegation).toEqual({
         depth: 1,
         max_depth: 1,
@@ -581,7 +623,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(json.issued_token_type).toBe(ID_TOKEN_TYPE);
       expect(json.token_type).toBe("N_A");
 
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(userId);
       expect(payload.iss).toBe(authIssuer);
       expect(payload.aud).toBe(TEST_CLIENT_ID);
@@ -640,7 +682,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.acr).toBe("urn:zentity:assurance:tier-1");
       expect(payload.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
       expect(payload.amr).toEqual(["pop", "hwk", "user"]);
@@ -664,7 +706,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       expect(json.issued_token_type).toBe(ID_TOKEN_TYPE);
 
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.at_hash).toBeUndefined();
     });
   });
@@ -685,7 +727,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(json.issued_token_type).toBe(ACCESS_TOKEN_TYPE);
       expect(json.token_type).toBe("DPoP");
 
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(userId);
       expect(payload.act).toEqual({ sub: TEST_CLIENT_ID });
     });
@@ -705,7 +747,7 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(200);
       expect(json.scope).toBe("openid");
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.scope).toBe("openid");
     });
   });
@@ -762,7 +804,9 @@ describe("Token Exchange (RFC 8693)", () => {
         scope: "openid identity.name",
       });
 
-      const firstPayload = decodeJwt(firstExchange.json.access_token as string);
+      const firstPayload = await exchangedClaims(
+        firstExchange.json.access_token as string
+      );
       expect(firstPayload.act).toEqual({ sub: agentAId });
 
       // Second exchange must prove possession of agent A's sender-constrained token.
@@ -781,7 +825,9 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(200);
-      const secondPayload = decodeJwt(secondExchange.access_token as string);
+      const secondPayload = await exchangedClaims(
+        secondExchange.access_token as string
+      );
       expect(secondPayload.act).toEqual({
         sub: agentBId,
         act: { sub: agentAId },
@@ -807,7 +853,7 @@ describe("Token Exchange (RFC 8693)", () => {
         .run();
     }
 
-    it("keeps the real subject in access tokens audienced to Zentity", async () => {
+    it("resolves opaque Zentity-audienced tokens at userinfo to the client's pairwise subject", async () => {
       await createPairwiseClient();
       const subjectToken = await mintAccessToken(userId);
 
@@ -821,19 +867,8 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(200);
       const accessToken = json.access_token as string;
-      expect(decodeJwt(accessToken).sub).toBe(userId);
+      expect(accessToken).not.toMatch(JWT_SHAPE);
 
-      const { GET: serveJwks } = await import(
-        "@/app/api/auth/oauth2/jwks/route"
-      );
-      const realFetch = globalThis.fetch;
-      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
-        String(input instanceof Request ? input.url : input).endsWith(
-          "/oauth2/jwks"
-        )
-          ? serveJwks()
-          : realFetch(input, init)
-      );
       const userinfoResponse = await auth.handler(
         new Request(USERINFO_URL, {
           method: "GET",
@@ -872,7 +907,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(
         await computePairwiseSub(
           userId,
@@ -895,7 +930,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
 
       expect(payload.sub).not.toBe(userId);
 
@@ -919,7 +954,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(userId);
     });
 
@@ -944,7 +979,7 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      const payload = decodeJwt(json.access_token as string);
+      const payload = await exchangedClaims(json.access_token as string);
       expect(payload.sub).toBe(userId);
     });
   });

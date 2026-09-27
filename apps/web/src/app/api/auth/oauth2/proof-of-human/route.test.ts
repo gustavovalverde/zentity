@@ -3,16 +3,11 @@ import type { VerificationReadModel } from "@/lib/identity/verification/read-mod
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  verifyAccessToken: vi.fn(),
   signJwt: vi.fn(),
   getVerificationReadModel: vi.fn(),
   resolveSubForClientId: vi.fn(),
   loadOpaqueAccessToken: vi.fn(),
   validateOpaqueAccessTokenDpop: vi.fn(),
-}));
-
-vi.mock("@/lib/auth/jwt", () => ({
-  verifyAccessToken: mocks.verifyAccessToken,
 }));
 
 vi.mock("@/lib/auth/oidc/jwt-signer", () => ({
@@ -45,20 +40,23 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 
 function makeDpopRequest(headers: Record<string, string> = {}): Request {
   return makeRequest({
-    authorization: "DPoP eyJhbGciOiJFZERTQSJ9.test.sig",
+    authorization: "DPoP opaque-access-token",
     dpop: "test-dpop-proof",
     ...headers,
   });
 }
 
-function makeAccessTokenPayload(overrides: Record<string, unknown> = {}) {
+function makeStoredToken(overrides: Record<string, unknown> = {}) {
   return {
-    sub: "user-123",
-    client_id: "client-a",
-    scope: "openid poh",
-    iss: "http://localhost:3000/api/auth",
-    aud: "http://localhost:3000",
-    cnf: { jkt: TEST_DPOP_JKT },
+    authContextId: null,
+    clientId: "client-a",
+    dpopJkt: TEST_DPOP_JKT,
+    exchangeClaims: {},
+    expiresAt: new Date(Date.now() + 60_000),
+    referenceId: null,
+    scopes: ["openid", "poh"],
+    sessionId: null,
+    userId: "user-123",
     ...overrides,
   };
 }
@@ -127,7 +125,7 @@ function makeVerifiedModel(
 }
 
 function setupVerifiedUser() {
-  mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+  mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
   mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
   mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
   mocks.signJwt.mockResolvedValue("signed-poh-jwt");
@@ -191,7 +189,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("returns 401 when token verification fails", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(null);
+    mocks.loadOpaqueAccessToken.mockResolvedValue(null);
 
     const response = await POST(makeDpopRequest());
 
@@ -201,8 +199,8 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("returns 403 insufficient_scope when poh scope is missing", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ scope: "openid email" })
+    mocks.loadOpaqueAccessToken.mockResolvedValue(
+      makeStoredToken({ scopes: ["openid", "email"] })
     );
     mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
 
@@ -215,8 +213,8 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("rejects access tokens that lack a DPoP binding", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ cnf: undefined })
+    mocks.loadOpaqueAccessToken.mockResolvedValue(
+      makeStoredToken({ dpopJkt: null })
     );
 
     const response = await POST(makeDpopRequest());
@@ -227,7 +225,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("returns 403 not_verified when neither identity nor humanity is present", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
     mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
@@ -261,7 +259,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("issues a humanity-only token (identity.verified=false, humanity.proven=true)", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
     mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
@@ -300,7 +298,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("issues a cryptographic_chip-strength token without leaking the method", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
     mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
@@ -348,10 +346,10 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("rejects DPoP-bound JWT access tokens sent with Bearer authorization", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
 
     const response = await POST(
-      makeRequest({ authorization: "Bearer eyJhbGciOiJFZERTQSJ9.test.sig" })
+      makeRequest({ authorization: "Bearer opaque-access-token" })
     );
 
     expect(response.status).toBe(401);
@@ -360,7 +358,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("rejects requests when DPoP proof validation fails", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
     mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(false);
 
     const response = await POST(makeDpopRequest({ dpop: "bad-proof" }));
@@ -377,12 +375,12 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
     mocks.signJwt.mockResolvedValue("jwt");
 
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ client_id: "client-a" })
+    mocks.loadOpaqueAccessToken.mockResolvedValue(
+      makeStoredToken({ clientId: "client-a" })
     );
     await POST(makeDpopRequest());
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({ client_id: "client-b" })
+    mocks.loadOpaqueAccessToken.mockResolvedValue(
+      makeStoredToken({ clientId: "client-b" })
     );
     await POST(makeDpopRequest());
 
@@ -394,12 +392,10 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(mocks.getVerificationReadModel).toHaveBeenCalledWith("user-123");
   });
 
-  it("returns 401 when access token has no client_id or azp", async () => {
-    mocks.verifyAccessToken.mockResolvedValue({
-      sub: "user-sub",
-      scope: "openid poh",
-      cnf: { jkt: TEST_DPOP_JKT },
-    });
+  it("returns 401 when the access token has expired", async () => {
+    mocks.loadOpaqueAccessToken.mockResolvedValue(
+      makeStoredToken({ expiresAt: new Date(Date.now() - 1000) })
+    );
 
     const response = await POST(makeDpopRequest());
 
@@ -409,7 +405,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("returns 401 when the token's client is unknown", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
+    mocks.loadOpaqueAccessToken.mockResolvedValue(makeStoredToken());
     mocks.resolveSubForClientId.mockResolvedValue(null);
 
     const response = await POST(makeDpopRequest());

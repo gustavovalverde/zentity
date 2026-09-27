@@ -20,6 +20,7 @@ import {
   nonceIdentifier,
   verifyEip712Signature,
 } from "@/lib/auth/eip712/typed-data";
+import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   createDummyRegistrationRecord,
@@ -268,7 +269,12 @@ async function handleInitialRequest(
   if (!parsed.success) {
     return errorJson(400, "invalid_request", parsed.error.issues[0]?.message);
   }
-  const params = parsed.data;
+  const { resource, ...rest } = parsed.data;
+  const params = {
+    ...rest,
+    resource:
+      resource && !isZentityHostedResource(resource) ? resource : undefined,
+  };
 
   if (
     params.claims &&

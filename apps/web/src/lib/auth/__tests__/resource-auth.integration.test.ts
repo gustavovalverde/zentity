@@ -2,38 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const {
-  mockCreateDpopAccessTokenValidator,
-  mockExtractAccessToken,
-  mockValidateOAuthAccessToken,
-  mockVerifyAccessToken,
-  mockVerifyAuthIssuedJwt,
-} = vi.hoisted(() => ({
-  mockCreateDpopAccessTokenValidator: vi.fn(() => vi.fn()),
-  mockExtractAccessToken: vi.fn(),
-  mockValidateOAuthAccessToken: vi.fn(),
-  mockVerifyAccessToken: vi.fn(),
-  mockVerifyAuthIssuedJwt: vi.fn(),
-}));
+const { mockLoadOpaqueAccessToken, mockValidateOpaqueAccessTokenDpop } =
+  vi.hoisted(() => ({
+    mockLoadOpaqueAccessToken: vi.fn(),
+    mockValidateOpaqueAccessTokenDpop: vi.fn(),
+  }));
 
-vi.mock("@better-auth/haip", () => ({
-  createDpopAccessTokenValidator: mockCreateDpopAccessTokenValidator,
-}));
-
-vi.mock("@/lib/auth/oidc/oauth-request", () => ({
-  extractAccessToken: mockExtractAccessToken,
-  validateOAuthAccessToken: mockValidateOAuthAccessToken,
-}));
-
-vi.mock("@/lib/db/connection", () => ({
-  db: {
-    select: vi.fn(),
-  },
-}));
-
-vi.mock("@/lib/auth/jwt", () => ({
-  verifyAccessToken: mockVerifyAccessToken,
-  verifyAuthIssuedJwt: mockVerifyAuthIssuedJwt,
+vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
+  loadOpaqueAccessToken: mockLoadOpaqueAccessToken,
+  validateOpaqueAccessTokenDpop: mockValidateOpaqueAccessTokenDpop,
 }));
 
 vi.mock("../auth-config", () => ({
@@ -46,34 +23,40 @@ vi.mock("../auth-config", () => ({
 
 import { requireBootstrapAccessToken } from "../resource-auth";
 
+function bootstrapRequest(scheme = "DPoP") {
+  return new Request("http://localhost/api/auth/agent/host/register", {
+    headers: {
+      Authorization: `${scheme} opaque-bootstrap-token`,
+      DPoP: "proof",
+    },
+  });
+}
+
+function storedToken(overrides: Record<string, unknown> = {}) {
+  return {
+    authContextId: null,
+    clientId: "pairwise-client",
+    dpopJkt: "thumbprint",
+    exchangeClaims: { zentity_token_use: "agent_bootstrap" },
+    expiresAt: new Date(Date.now() + 60_000),
+    referenceId: "jti-1",
+    scopes: ["agent:host.register", "agent:session.register"],
+    sessionId: null,
+    userId: "raw-user-id",
+    ...overrides,
+  };
+}
+
 describe("requireBootstrapAccessToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockValidateOpaqueAccessTokenDpop.mockResolvedValue(true);
   });
 
-  it("reads the user id from the bootstrap JWT subject", async () => {
-    const dpopValidator = vi.fn(async () => undefined);
-    mockCreateDpopAccessTokenValidator.mockReturnValueOnce(dpopValidator);
-    mockVerifyAuthIssuedJwt.mockResolvedValueOnce({
-      aud: "http://localhost:3000",
-      azp: "pairwise-client",
-      cnf: { jkt: "thumbprint" },
-      scope: "agent:host.register agent:session.register",
-      sub: "raw-user-id",
-      zentity_token_use: "agent_bootstrap",
-    });
+  it("resolves a DPoP-bound opaque bootstrap token to its user", async () => {
+    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken());
 
-    const request = new Request(
-      "http://localhost/api/auth/agent/host/register",
-      {
-        headers: {
-          Authorization: "DPoP eyJ.bootstrap-token",
-          DPoP: "proof",
-        },
-      }
-    );
-
-    const result = await requireBootstrapAccessToken(request, [
+    const result = await requireBootstrapAccessToken(bootstrapRequest(), [
       "agent:host.register",
     ]);
 
@@ -84,40 +67,33 @@ describe("requireBootstrapAccessToken", () => {
         userId: "raw-user-id",
         clientId: "pairwise-client",
         scopes: ["agent:host.register", "agent:session.register"],
-        token: "eyJ.bootstrap-token",
+        token: "opaque-bootstrap-token",
       },
     });
   });
 
-  it("rejects tokens without the bootstrap token use claim", async () => {
-    const dpopValidator = vi.fn(async () => undefined);
-    mockCreateDpopAccessTokenValidator.mockReturnValueOnce(dpopValidator);
-    mockVerifyAuthIssuedJwt.mockResolvedValueOnce({
-      aud: "http://localhost:3000",
-      azp: "pairwise-client",
-      cnf: { jkt: "thumbprint" },
-      scope: "agent:host.register agent:session.register",
-      sub: "pairwise-subject",
-    });
+  it.each([
+    ["without the bootstrap token use claim", { exchangeClaims: {} }],
+    ["without a DPoP binding", { dpopJkt: null }],
+    ["after expiry", { expiresAt: new Date(Date.now() - 1000) }],
+  ])("rejects tokens %s", async (_label, overrides) => {
+    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken(overrides));
 
-    const request = new Request(
-      "http://localhost/api/auth/agent/host/register",
-      {
-        headers: {
-          Authorization: "DPoP eyJ.bootstrap-token",
-          DPoP: "proof",
-        },
-      }
-    );
-
-    const result = await requireBootstrapAccessToken(request, [
+    const result = await requireBootstrapAccessToken(bootstrapRequest(), [
       "agent:host.register",
     ]);
 
     expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error("Expected bootstrap access token validation to fail");
-    }
-    expect(result.response.status).toBe(401);
+  });
+
+  it("rejects bootstrap tokens presented as Bearer", async () => {
+    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken());
+
+    const result = await requireBootstrapAccessToken(
+      bootstrapRequest("Bearer"),
+      ["agent:host.register"]
+    );
+
+    expect(result.ok).toBe(false);
   });
 });

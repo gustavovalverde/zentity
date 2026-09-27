@@ -1,7 +1,5 @@
 import "server-only";
 
-import { verifyAccessToken } from "@/lib/auth/jwt";
-
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -16,54 +14,6 @@ interface ProtectedResourcePrincipal {
   scopes: string[];
   sub: string;
   userId: string;
-}
-
-async function resolveJwtPrincipal(
-  token: string,
-  request: Request,
-  scheme: string
-): Promise<ProtectedResourcePrincipal | null> {
-  if (scheme.toLowerCase() !== "dpop") {
-    return null;
-  }
-
-  const payload = await verifyAccessToken(token);
-  if (!payload?.sub) {
-    return null;
-  }
-
-  const clientId =
-    (payload.client_id as string | undefined) ??
-    (payload.azp as string | undefined);
-  if (!clientId) {
-    return null;
-  }
-
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  if (!cnf?.jkt) {
-    return null;
-  }
-
-  const valid = await validateOpaqueAccessTokenDpop(request, cnf.jkt);
-  if (!valid) {
-    return null;
-  }
-
-  const sub = await resolveSubForClientId(payload.sub, clientId);
-  if (!sub) {
-    return null;
-  }
-
-  return {
-    sub,
-    userId: payload.sub,
-    clientId,
-    scopes:
-      typeof payload.scope === "string"
-        ? payload.scope.split(" ").filter(Boolean)
-        : [],
-    dpopJkt: cnf.jkt,
-  };
 }
 
 async function resolveOpaquePrincipal(
@@ -106,22 +56,10 @@ async function resolveOpaquePrincipal(
 export async function resolveProtectedResourcePrincipal(
   request: Request
 ): Promise<ProtectedResourcePrincipal | null> {
-  const authHeader = request.headers.get("authorization");
-  if (!authHeader) {
-    return null;
-  }
-
-  const match = authHeader.match(AUTH_HEADER_RE);
+  const match = request.headers.get("authorization")?.match(AUTH_HEADER_RE);
   if (!(match?.[1] && match[2])) {
     return null;
   }
 
-  const scheme = match[1];
-  const token = match[2];
-
-  if (token.startsWith("eyJ")) {
-    return await resolveJwtPrincipal(token, request, scheme);
-  }
-
-  return await resolveOpaquePrincipal(token, request, scheme);
+  return await resolveOpaquePrincipal(match[2], request, match[1]);
 }

@@ -109,7 +109,10 @@ import {
 } from "@/lib/auth/oidc/disclosure/registry";
 import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
+import {
+  getProtectedResourceAudiences,
+  stripZentityHostedResources,
+} from "@/lib/auth/oidc/haip/resource-metadata";
 import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
 import {
   loadX5cChain,
@@ -117,6 +120,10 @@ import {
 } from "@/lib/auth/oidc/haip/x509-validation";
 import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
+import {
+  resolveSubForClientId,
+  resolveUserIdFromSub,
+} from "@/lib/auth/oidc/pairwise";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
   buildPaymentAuthorizationClaims,
@@ -606,6 +613,13 @@ async function validateDcrRegistration(
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
+const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
+
+const USER_TOKEN_GRANT_TYPES = new Set<unknown>([
+  "authorization_code",
+  "refresh_token",
+  "urn:openid:params:grant-type:ciba",
+]);
 
 const LOOPBACK_REDIRECT_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -712,6 +726,25 @@ async function readReturnedResponseBody(
   }
 
   return returned as Record<string, unknown>;
+}
+
+// JWT access tokens already carry the issuing client's subject; the provider would project it a second time.
+async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
+  const token =
+    typeof ctx.body?.token === "string"
+      ? ctx.body.token.replace(ACCESS_TOKEN_SCHEME_RE, "")
+      : "";
+  if (token.split(".").length !== 3) {
+    return;
+  }
+  const introspection = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
+  );
+  const { sub } = decodeJwt(token);
+  if (!introspection?.active || typeof sub !== "string") {
+    return;
+  }
+  return ctx.json({ ...introspection, sub });
 }
 
 function accessTokenJti(token: string): string | undefined {
@@ -865,26 +898,6 @@ async function beforeVpResponse(ctx: HookCtx) {
         message: result.error ?? "x509 chain validation failed",
       });
     }
-  }
-}
-
-async function beforeTokenPairwiseGuard(ctx: HookCtx) {
-  if (!ctx.body?.resource) {
-    return;
-  }
-  const clientId =
-    typeof ctx.body.client_id === "string" ? ctx.body.client_id : undefined;
-  if (!clientId) {
-    return;
-  }
-  const client = await db
-    .select({ subjectType: oauthClients.subjectType })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, clientId))
-    .limit(1)
-    .get();
-  if (client?.subjectType === "pairwise") {
-    ctx.body.resource = undefined;
   }
 }
 
@@ -1157,9 +1170,13 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
     init(ctx: AuthContext) {
       extendOAuthProvider(ctx, {
         claims: {
-          idToken: (info: OAuthClaimExtensionInput) => {
+          idToken: async (info: OAuthClaimExtensionInput) => {
             if (!info.user?.id) {
               return {};
+            }
+            // Indexes the subject this client receives so it can name the user back.
+            if (info.client?.clientId) {
+              await resolveSubForClientId(info.user.id, info.client.clientId);
             }
             // sessionId is present on the plain authorization_code path; it is
             // undefined for client_credentials / opaque introspection, where
@@ -1703,16 +1720,19 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
+          stripZentityHostedResources(ctx.body);
         }
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        await beforeTokenPairwiseGuard(ctx);
         if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
           await enforceCibaTokenAcr(ctx, db);
           await beforeCibaTokenLoadAgent(ctx);
         }
         beforeTokenValidateResource(ctx);
+        if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
+          stripZentityHostedResources(ctx.body);
+        }
         await beforeTokenFinalizeDisclosureBindings(ctx);
         return;
       }
@@ -1728,11 +1748,15 @@ export const auth = betterAuth({
           });
         }
         beforeValidateResourceUri(ctx);
+        stripZentityHostedResources(ctx.body);
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
+        if (ctx.query) {
+          stripZentityHostedResources(ctx.query);
+        }
         return;
       }
       if (ctx.path === "/ciba/authorize") {
@@ -1759,7 +1783,12 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/ciba/authorize") {
         await afterCibaAuthorizePersistAuthContext(ctx);
+        return;
       }
+      if (ctx.path === "/oauth2/introspect") {
+        return afterIntrospectKeepJwtSubject(ctx);
+      }
+      return;
     }),
   },
   plugins: [
@@ -1909,6 +1938,10 @@ export const auth = betterAuth({
           }
         ).jwt;
         const clientId = jwt?.azp ?? jwt?.client_id;
+        // Indexes the subject this client receives so it can name the user back.
+        if (clientId) {
+          await resolveSubForClientId(user.id, clientId);
+        }
         // Release-bound tokens carry the binding as RELEASE_BINDING_CLAIM: JWT
         // access tokens on the wire, opaque tokens via their introspection
         // re-derive.
@@ -2094,7 +2127,17 @@ export const auth = betterAuth({
         }
         const byEmail =
           await ctx.context.internalAdapter.findUserByEmail(loginHint);
-        return byEmail?.user ?? null;
+        if (byEmail) {
+          return byEmail.user;
+        }
+        const clientId = ctx.body?.client_id;
+        const userId =
+          typeof clientId === "string"
+            ? await resolveUserIdFromSub(loginHint, clientId)
+            : null;
+        return userId
+          ? await ctx.context.internalAdapter.findUserById(userId)
+          : null;
       },
       async resolveClientNotificationEndpoint(clientId) {
         const client = await db

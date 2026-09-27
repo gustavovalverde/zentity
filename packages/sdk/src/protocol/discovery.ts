@@ -12,6 +12,7 @@ export interface DiscoveryDocument {
 	registration_endpoint?: string;
 	require_pushed_authorization_requests?: boolean;
 	token_endpoint?: string;
+	userinfo_endpoint?: string;
 }
 
 export interface DiscoveryResolverOptions {
@@ -100,6 +101,7 @@ export function parseDiscoveryDocument(body: unknown): DiscoveryDocument {
 		"pushed_authorization_request_endpoint",
 		"registration_endpoint",
 		"token_endpoint",
+		"userinfo_endpoint",
 	] as const;
 	const optionalBooleans = [
 		"client_id_metadata_document_supported",

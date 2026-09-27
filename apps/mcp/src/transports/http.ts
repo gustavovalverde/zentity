@@ -40,6 +40,7 @@ interface AuthorizationServer {
   issuer: string;
   jwksUrl: string;
   tokenEndpoint: string;
+  userInfoEndpoint?: string | undefined;
 }
 
 async function exchangeForZentity(
@@ -53,6 +54,9 @@ async function exchangeForZentity(
     audience: deriveAppAudience(authorizationServer.issuer),
     clientId: credentials.clientId,
     dpopClient: credentials.dpopClient,
+    ...(authorizationServer.userInfoEndpoint
+      ? { userInfoEndpoint: authorizationServer.userInfoEndpoint }
+      : {}),
   });
   return {
     oauth: {
@@ -174,6 +178,7 @@ export async function startHttp(): Promise<void> {
       issuer: discovery.issuer,
       jwksUrl: discovery.jwks_uri,
       tokenEndpoint: discovery.token_endpoint,
+      userInfoEndpoint: discovery.userinfo_endpoint,
     }
   );
   const { port } = config;
