@@ -55,10 +55,10 @@ export function VerificationFlow({
     router.refresh();
   }, [router]);
 
-  const handleEnrollmentComplete = useCallback(
-    () => stepper.goTo("method"),
-    [stepper]
-  );
+  const handleEnrollmentComplete = useCallback(() => {
+    stepper.goTo("method");
+    router.refresh();
+  }, [stepper, router]);
 
   const handleSelectDocument = useCallback(
     () => stepper.goTo("document"),
