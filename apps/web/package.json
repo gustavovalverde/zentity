@@ -166,7 +166,6 @@
     "@types/web-push": "^3.6.4",
     "@vitest/coverage-v8": "4.1.0",
     "drizzle-kit": "0.31.10",
-    "glob": "^13.0.6",
     "jsdom": "29.0.0",
     "knip": "5.87.0",
     "markdownlint-cli": "0.48.0",

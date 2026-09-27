@@ -662,9 +662,6 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
-      glob:
-        specifier: ^13.0.6
-        version: 13.0.6
       jsdom:
         specifier: 29.0.0
         version: 29.0.0(@noble/hashes@2.2.0)
