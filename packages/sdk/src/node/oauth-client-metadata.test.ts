@@ -43,6 +43,30 @@ describe("oauth client metadata helpers", () => {
     });
   });
 
+  it("registers CIBA clients for poll delivery", () => {
+    const grantTypes = [
+      "authorization_code",
+      "urn:openid:params:grant-type:ciba",
+    ];
+
+    expect(
+      buildLoopbackClientRegistration({
+        clientName: "Example CLI",
+        grantTypes,
+        scope: "openid",
+      })
+    ).toMatchObject({ backchannel_token_delivery_mode: "poll" });
+    expect(
+      buildOAuthClientMetadata({
+        clientId: "https://example.com/.well-known/oauth-client.json",
+        clientName: "Example MCP",
+        grantTypes,
+        redirectUris: ["http://127.0.0.1/callback"],
+        scope: "openid",
+      })
+    ).toMatchObject({ backchannel_token_delivery_mode: "poll" });
+  });
+
   it("normalizes trailing slashes from URLs", () => {
     expect(normalizeUrl("https://example.com/base///")).toBe(
       "https://example.com/base"
