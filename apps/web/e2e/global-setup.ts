@@ -1320,13 +1320,18 @@ export default async function globalSetup(config: GlobalSetupConfig) {
     });
   }
 
+  const storageState = await api.storageState();
   if (SHOULD_PROMOTE_WEB3_AUTH) {
     await promoteLatestSessionToPasskeyAuth(E2E_DB_URL, email);
     if (DEFAULT_APP_DB_URL !== E2E_DB_URL) {
       await promoteLatestSessionToPasskeyAuth(DEFAULT_APP_DB_URL, email);
     }
+    // The cached session cookie still carries the password login context.
+    storageState.cookies = storageState.cookies.filter(
+      (cookie) => !cookie.name.includes("session_data")
+    );
   }
 
-  await api.storageState({ path: AUTH_STATE_PATH });
+  writeFileSync(AUTH_STATE_PATH, JSON.stringify(storageState, null, 2));
   await api.dispose();
 }
