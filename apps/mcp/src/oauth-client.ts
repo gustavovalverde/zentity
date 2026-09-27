@@ -63,6 +63,13 @@ function getMcpInstalledClientAuth(): InstalledClientAuth {
       issuerUrl: config.zentityUrl,
       loginResource: config.zentityUrl,
       loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" "),
+      ...(config.openBrowser
+        ? {}
+        : {
+            openUrl: (url: string) => {
+              console.error(`[auth] Open this URL to sign in: ${url}`);
+            },
+          }),
       storage: createFirstPartyAuthFileStorage({
         issuerUrl: config.zentityUrl,
         namespace: "mcp-server",

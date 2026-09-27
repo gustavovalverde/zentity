@@ -102,10 +102,7 @@ describe("bootstrapRegisteredRuntime", () => {
   });
 
   it("registers the runtime with the connected client's identity", async () => {
-    const auth = await bootstrapRegisteredRuntime(
-      Promise.resolve(baseOauth),
-      CLAUDE_CODE
-    );
+    const auth = await bootstrapRegisteredRuntime(CLAUDE_CODE);
 
     expect(mockPrepareBootstrapRegistrationAuth).toHaveBeenCalledWith(
       baseOauth
@@ -127,7 +124,7 @@ describe("bootstrapRegisteredRuntime", () => {
   it("allows an explicit env override when clientInfo is absent", async () => {
     vi.stubEnv("ZENTITY_AGENT_NAME", "Custom Agent");
 
-    await bootstrapRegisteredRuntime(Promise.resolve(baseOauth), undefined);
+    await bootstrapRegisteredRuntime(undefined);
 
     expect(mockRegisterAgentSession).toHaveBeenCalledWith(
       "http://localhost:3000",
@@ -142,9 +139,9 @@ describe("bootstrapRegisteredRuntime", () => {
   });
 
   it("fails clearly when no runtime identity source is available", async () => {
-    await expect(
-      bootstrapRegisteredRuntime(Promise.resolve(baseOauth), undefined)
-    ).rejects.toThrow("MCP clientInfo is required");
+    await expect(bootstrapRegisteredRuntime(undefined)).rejects.toThrow(
+      "MCP clientInfo is required"
+    );
   });
 
   it("clears stale tokens and re-authenticates when registration loses scope", async () => {
@@ -152,7 +149,9 @@ describe("bootstrapRegisteredRuntime", () => {
       ...baseOauth,
       accessToken: "fresh-token",
     };
-    mockEnsureMcpOAuthSession.mockResolvedValueOnce(refreshedOauth);
+    mockEnsureMcpOAuthSession
+      .mockResolvedValueOnce(baseOauth)
+      .mockResolvedValueOnce(refreshedOauth);
     mockEnsureHostRegistered
       .mockRejectedValueOnce(
         new AgentRegistrationError(
@@ -167,13 +166,10 @@ describe("bootstrapRegisteredRuntime", () => {
       hostId: "host-456",
     });
 
-    const result = await bootstrapRegisteredRuntime(
-      Promise.resolve(baseOauth),
-      CLAUDE_CODE
-    );
+    const result = await bootstrapRegisteredRuntime(CLAUDE_CODE);
 
     expect(mockClearMcpOAuthTokens).toHaveBeenCalledTimes(1);
-    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(1);
+    expect(mockEnsureMcpOAuthSession).toHaveBeenCalledTimes(2);
     expect(result.oauth.accessToken).toBe("fresh-token");
   });
 
@@ -191,10 +187,7 @@ describe("bootstrapRegisteredRuntime", () => {
         sessionId: "session-456",
       });
 
-    const result = await bootstrapRegisteredRuntime(
-      Promise.resolve(baseOauth),
-      CLAUDE_CODE
-    );
+    const result = await bootstrapRegisteredRuntime(CLAUDE_CODE);
 
     expect(mockClearCachedHostId).toHaveBeenCalledWith(
       "http://localhost:3000",
@@ -215,9 +208,9 @@ describe("bootstrapRegisteredRuntime", () => {
       )
     );
 
-    await expect(
-      bootstrapRegisteredRuntime(Promise.resolve(baseOauth), CLAUDE_CODE)
-    ).rejects.toThrow("Agent registration failed: 401 Invalid host JWT");
+    await expect(bootstrapRegisteredRuntime(CLAUDE_CODE)).rejects.toThrow(
+      "Agent registration failed: 401 Invalid host JWT"
+    );
 
     expect(mockClearCachedHostId).not.toHaveBeenCalled();
     expect(mockClearMcpOAuthTokens).not.toHaveBeenCalled();

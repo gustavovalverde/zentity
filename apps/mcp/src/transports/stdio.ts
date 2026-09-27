@@ -48,10 +48,9 @@ async function registerRuntime(
 }
 
 export async function bootstrapRegisteredRuntime(
-  oauthSession: Promise<OAuthSessionContext>,
   clientInfo: Implementation | undefined
 ): Promise<AuthContext> {
-  const oauth = await oauthSession;
+  const oauth = await ensureMcpOAuthSession();
   try {
     return await registerRuntime(oauth, clientInfo);
   } catch (error) {
@@ -75,12 +74,6 @@ export async function bootstrapRegisteredRuntime(
 }
 
 export function startStdio(): void {
-  let oauthSession = ensureMcpOAuthSession();
-  oauthSession.catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[auth] Authentication failed: ${message}`);
-  });
-
   let current: AuthContext | undefined;
   let pending: Promise<AuthContext> | undefined;
   let refreshTimer: ReturnType<typeof setInterval> | undefined;
@@ -102,7 +95,7 @@ export function startStdio(): void {
     if (current) {
       return Promise.resolve(current);
     }
-    pending ??= bootstrapRegisteredRuntime(oauthSession, clientInfo).then(
+    pending ??= bootstrapRegisteredRuntime(clientInfo).then(
       (auth) => {
         current = auth;
         refreshTimer ??= setInterval(refresh, REFRESH_INTERVAL_MS);
@@ -111,7 +104,8 @@ export function startStdio(): void {
       },
       (error: unknown) => {
         pending = undefined;
-        oauthSession = ensureMcpOAuthSession();
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[auth] Authentication failed: ${message}`);
         throw error;
       }
     );

@@ -19,6 +19,7 @@ export const config = {
   port,
   zentityUrl: process.env.ZENTITY_URL ?? "http://localhost:3000",
   mcpPublicUrl: process.env.MCP_PUBLIC_URL ?? `http://localhost:${port}`,
+  openBrowser: process.env.ZENTITY_MCP_NO_BROWSER !== "1",
   allowedOrigins: (
     process.env.MCP_ALLOWED_ORIGINS ?? "http://localhost:*,http://127.0.0.1:*"
   ).split(","),
