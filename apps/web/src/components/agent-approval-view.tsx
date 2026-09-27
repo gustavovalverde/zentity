@@ -155,16 +155,10 @@ function formatExpiresAt(
   }
 }
 
-function PaymentAuthorizationCard({
-  bindingMessage,
-  detail,
-}: Readonly<{ bindingMessage: string | undefined; detail: unknown }>) {
+function PaymentAuthorizationCard({ detail }: Readonly<{ detail: unknown }>) {
   const { data, error, isPending } =
     trpcReact.agent.previewPaymentAuthorization.useQuery(
-      {
-        authorizationDetails: [detail],
-        ...(bindingMessage ? { bindingMessage } : {}),
-      },
+      { authorizationDetails: [detail] },
       { retry: false, staleTime: 60_000 }
     );
 
@@ -225,12 +219,6 @@ function PaymentAuthorizationCard({
             {formatExpiresAt(data.expiresAt)}
           </dd>
         </div>
-        {data.bindingMessage ? (
-          <div className="flex gap-2">
-            <dt className="font-medium">Confirm:</dt>
-            <dd className="text-muted-foreground">{data.bindingMessage}</dd>
-          </div>
-        ) : null}
       </dl>
     </div>
   );
@@ -757,17 +745,26 @@ export function AgentApprovalView({
           <CardTitle>
             {interactionCopy?.title ??
               (details?.binding_message
-                ? `${details?.client_name ?? "An application"} wants to ${details.binding_message}`
+                ? `${details?.client_name ?? "An application"} is requesting your approval`
                 : `${details?.client_name ?? "An application"} is requesting access`)}
           </CardTitle>
           <CardDescription>
-            {interactionCopy?.description ?? (
-              <>
-                Review what{" "}
-                <strong>{details?.client_name ?? "the application"}</strong>{" "}
-                wants to do on your behalf.
-              </>
-            )}
+            {interactionCopy?.description ??
+              (details?.binding_message ? (
+                <>
+                  Check that this message matches the one shown by{" "}
+                  {details.client_name ?? "the application"}:{" "}
+                  <strong className="text-foreground">
+                    {details.binding_message}
+                  </strong>
+                </>
+              ) : (
+                <>
+                  Review what{" "}
+                  <strong>{details?.client_name ?? "the application"}</strong>{" "}
+                  wants to do on your behalf.
+                </>
+              ))}
           </CardDescription>
         </CardHeader>
 
@@ -824,7 +821,6 @@ export function AgentApprovalView({
                         : `idx-${i}`;
                     return (
                       <PaymentAuthorizationCard
-                        bindingMessage={details.binding_message}
                         detail={detail}
                         key={`detail-payment-${paymentId}`}
                       />

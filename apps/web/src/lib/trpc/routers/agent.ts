@@ -3,6 +3,7 @@ import type { EffectiveSessionLifecycle } from "@/lib/agents/session";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { formatPaymentAmount } from "@/lib/agents/labels";
 import {
   AgentManagementError,
   getHostDetailForUser,
@@ -224,7 +225,6 @@ export const agentRouter = router({
     .input(
       z.object({
         authorizationDetails: z.unknown(),
-        bindingMessage: z.string().optional(),
       })
     )
     .query(async ({ input }) => {
@@ -243,20 +243,14 @@ export const agentRouter = router({
         });
       }
 
-      const amountDisplay =
-        parsed.amount.unit === "base"
-          ? `${parsed.amount.value} ${parsed.amount.currency} (base unit)`
-          : `${parsed.amount.value} ${parsed.amount.currency}`;
-
       return {
         chain: `${parsed.chain.namespace}:${parsed.chain.reference}`,
         recipient: parsed.recipient,
-        amountDisplay,
+        amountDisplay: formatPaymentAmount(parsed.amount),
         amount: parsed.amount,
         paymentId: parsed.payment_id,
         intentHash: parsed.intent_hash,
         expiresAt: parsed.expires_at,
-        bindingMessage: input.bindingMessage ?? null,
       };
     }),
 });

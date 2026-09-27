@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import webpush from "web-push";
 
 import { env } from "@/env";
+import { formatPaymentAmount } from "@/lib/agents/labels";
 import { isIdentityScope } from "@/lib/auth/oidc/disclosure/registry";
 import { db } from "@/lib/db/connection";
 import { pushSubscriptions } from "@/lib/db/schema/ciba";
@@ -100,12 +101,8 @@ function findPaymentAuthorization(
 function projectPaymentAuthorization(
   entry: PaymentAuthorization
 ): PaymentAuthorizationProjection {
-  const amountDisplay =
-    entry.amount.unit === "base"
-      ? `${entry.amount.value} ${entry.amount.currency} (base unit)`
-      : `${entry.amount.value} ${entry.amount.currency}`;
   return {
-    amountDisplay,
+    amountDisplay: formatPaymentAmount(entry.amount),
     chain: `${entry.chain.namespace}:${entry.chain.reference}`,
     paymentId: entry.payment_id,
     recipient: entry.recipient,

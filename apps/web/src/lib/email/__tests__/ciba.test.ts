@@ -169,4 +169,52 @@ describe("ciba-mailer", () => {
       expect(payload.html).toContain('href="#"');
     });
   });
+
+  describe("request summary", () => {
+    beforeEach(() => {
+      mockDbGet.mockReturnValue({
+        email: "alice@example.com",
+        emailVerified: true,
+      });
+    });
+
+    it("keeps the binding message out of the subject", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        clientName: "Aether AI",
+        bindingMessage: "Confirm code: 4F2A",
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.subject).toBe("Aether AI is requesting your approval");
+      expect(payload.text).toContain('Message: "Confirm code: 4F2A"');
+    });
+
+    it("formats payment amounts in the asset's display unit", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        authorizationDetails: [
+          {
+            type: "payment_authorization",
+            chain: { namespace: "zcash", reference: "test" },
+            recipient: "zcash:test:utest1qq0",
+            amount: { currency: "ZEC", value: "1", unit: "base" },
+            payment_id: "01KT9A0V431VGD5YH7R7G635HC",
+            intent_hash:
+              "v1:sha256:tH5IGJbnV6NxSl9nmwbFc8EWDF6rfYcXgOfHFmmIjUQ",
+            expires_at: { kind: "block_height", value: 4_047_100 },
+          },
+        ],
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.text).toContain(
+        "Payment: 0.00000001 ZEC to zcash:test:utest1qq0"
+      );
+      expect(payload.html).toContain("0.00000001 ZEC");
+      expect(payload.html).not.toContain("base unit");
+    });
+  });
 });

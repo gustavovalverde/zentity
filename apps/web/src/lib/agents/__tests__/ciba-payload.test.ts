@@ -105,4 +105,29 @@ describe("buildCibaPushPayload", () => {
 
     expect(payload.title).toBe("Claude Code requests approval");
   });
+
+  it("formats payment amounts in the asset's display unit", () => {
+    const payload = buildCibaPushPayload({
+      authReqId: "req-1",
+      approvalUrl: APPROVAL_URL,
+      scope: "openid",
+      clientName: "Aether AI",
+      authorizationDetails: [
+        {
+          type: "payment_authorization",
+          chain: { namespace: "zcash", reference: "test" },
+          recipient: "zcash:test:utest1qq0",
+          amount: { currency: "ZEC", value: "1", unit: "base" },
+          payment_id: "01KT9A0V431VGD5YH7R7G635HC",
+          intent_hash: "v1:sha256:tH5IGJbnV6NxSl9nmwbFc8EWDF6rfYcXgOfHFmmIjUQ",
+          expires_at: { kind: "block_height", value: 4_047_100 },
+        },
+      ],
+    });
+
+    expect(payload.data.payment).toMatchObject({
+      amountDisplay: "0.00000001 ZEC",
+    });
+    expect(payload.body).toContain("Aether AI: 0.00000001 ZEC on zcash:test");
+  });
 });

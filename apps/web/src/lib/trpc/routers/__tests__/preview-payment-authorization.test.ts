@@ -47,25 +47,15 @@ describe("agent.previewPaymentAuthorization", () => {
     const caller = await createCaller("user-1");
     const preview = await caller.previewPaymentAuthorization({
       authorizationDetails: [VALID_ENTRY],
-      bindingMessage: "Confirm code: AB12CD",
     });
 
     expect(preview.chain).toBe("zcash:test");
     expect(preview.recipient).toBe(VALID_ENTRY.recipient);
     expect(preview.amount).toEqual(VALID_ENTRY.amount);
-    expect(preview.amountDisplay).toContain("50000000 ZEC");
+    expect(preview.amountDisplay).toBe("0.5 ZEC");
     expect(preview.paymentId).toBe(VALID_ENTRY.payment_id);
     expect(preview.intentHash).toBe(VALID_ENTRY.intent_hash);
     expect(preview.expiresAt).toEqual(VALID_ENTRY.expires_at);
-    expect(preview.bindingMessage).toBe("Confirm code: AB12CD");
-  });
-
-  it("returns null bindingMessage when none was provided", async () => {
-    const caller = await createCaller("user-1");
-    const preview = await caller.previewPaymentAuthorization({
-      authorizationDetails: [VALID_ENTRY],
-    });
-    expect(preview.bindingMessage).toBeNull();
   });
 
   it("formats display unit amounts without the (base unit) suffix", async () => {
