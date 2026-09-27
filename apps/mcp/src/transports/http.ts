@@ -192,7 +192,6 @@ export function createApp(): Hono {
       clientId: httpServerCredentials.clientId,
       dpopClient: httpServerCredentials.dpopClient,
       dpopKey: httpServerCredentials.dpopKey,
-      loginHint: exchangeResult.loginHint ?? "",
       scopes: exchangedScopes,
     };
 

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   verifyAccessToken: vi.fn(),
   signJwt: vi.fn(),
   getVerificationReadModel: vi.fn(),
-  resolveUserIdFromSub: vi.fn(),
+  resolveSubForClientId: vi.fn(),
   loadOpaqueAccessToken: vi.fn(),
   validateOpaqueAccessTokenDpop: vi.fn(),
 }));
@@ -24,7 +24,7 @@ vi.mock("@/lib/identity/verification/read-model", () => ({
 }));
 
 vi.mock("@/lib/auth/oidc/pairwise", () => ({
-  resolveUserIdFromSub: mocks.resolveUserIdFromSub,
+  resolveSubForClientId: mocks.resolveSubForClientId,
 }));
 
 vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
@@ -53,7 +53,7 @@ function makeDpopRequest(headers: Record<string, string> = {}): Request {
 
 function makeAccessTokenPayload(overrides: Record<string, unknown> = {}) {
   return {
-    sub: "pairwise-sub-for-client-a",
+    sub: "user-123",
     client_id: "client-a",
     scope: "openid poh",
     iss: "http://localhost:3000/api/auth",
@@ -128,7 +128,7 @@ function makeVerifiedModel(
 
 function setupVerifiedUser() {
   mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-  mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+  mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
   mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
   mocks.signJwt.mockResolvedValue("signed-poh-jwt");
 }
@@ -204,7 +204,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     mocks.verifyAccessToken.mockResolvedValue(
       makeAccessTokenPayload({ scope: "openid email" })
     );
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
 
     const response = await POST(makeDpopRequest());
 
@@ -228,7 +228,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
   it("returns 403 not_verified when neither identity nor humanity is present", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-456");
+    mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
         verificationId: null,
@@ -262,7 +262,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
   it("issues a humanity-only token (identity.verified=false, humanity.proven=true)", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
         verificationId: null,
@@ -301,7 +301,7 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
 
   it("issues a cryptographic_chip-strength token without leaking the method", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
+    mocks.resolveSubForClientId.mockResolvedValue("pairwise-sub-for-client-a");
     mocks.getVerificationReadModel.mockResolvedValue(
       makeVerifiedModel({
         method: "nfc_chip",
@@ -369,40 +369,29 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(mocks.signJwt).not.toHaveBeenCalled();
   });
 
-  it("uses pairwise sub from the access token; different clients get different subs", async () => {
-    mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({
-        sub: "pairwise-sub-client-a",
-        client_id: "client-a",
-      })
+  it("projects the client's pairwise sub; different clients get different subs", async () => {
+    mocks.resolveSubForClientId.mockImplementation(
+      (userId: string, clientId: string) =>
+        Promise.resolve(`pairwise-${clientId}-${userId}`)
     );
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
     mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
-    mocks.signJwt.mockResolvedValue("jwt-a");
+    mocks.signJwt.mockResolvedValue("jwt");
 
-    await POST(makeDpopRequest());
-    const subA = (mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>)
-      .sub;
-
-    vi.clearAllMocks();
-    mocks.validateOpaqueAccessTokenDpop.mockResolvedValue(true);
     mocks.verifyAccessToken.mockResolvedValue(
-      makeAccessTokenPayload({
-        sub: "pairwise-sub-client-b",
-        client_id: "client-b",
-      })
+      makeAccessTokenPayload({ client_id: "client-a" })
     );
-    mocks.resolveUserIdFromSub.mockResolvedValue("user-123");
-    mocks.getVerificationReadModel.mockResolvedValue(makeVerifiedModel());
-    mocks.signJwt.mockResolvedValue("jwt-b");
-
     await POST(makeDpopRequest());
-    const subB = (mocks.signJwt.mock.calls[0]?.[0] as Record<string, unknown>)
-      .sub;
+    mocks.verifyAccessToken.mockResolvedValue(
+      makeAccessTokenPayload({ client_id: "client-b" })
+    );
+    await POST(makeDpopRequest());
 
-    expect(subA).toBe("pairwise-sub-client-a");
-    expect(subB).toBe("pairwise-sub-client-b");
-    expect(subA).not.toBe(subB);
+    const [subA, subB] = mocks.signJwt.mock.calls.map(
+      (call) => (call[0] as Record<string, unknown>).sub
+    );
+    expect(subA).toBe("pairwise-client-a-user-123");
+    expect(subB).toBe("pairwise-client-b-user-123");
+    expect(mocks.getVerificationReadModel).toHaveBeenCalledWith("user-123");
   });
 
   it("returns 401 when access token has no client_id or azp", async () => {
@@ -419,9 +408,9 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     expect(body.error).toBe("invalid_token");
   });
 
-  it("returns 401 when resolveUserIdFromSub returns null", async () => {
+  it("returns 401 when the token's client is unknown", async () => {
     mocks.verifyAccessToken.mockResolvedValue(makeAccessTokenPayload());
-    mocks.resolveUserIdFromSub.mockResolvedValue(null);
+    mocks.resolveSubForClientId.mockResolvedValue(null);
 
     const response = await POST(makeDpopRequest());
 

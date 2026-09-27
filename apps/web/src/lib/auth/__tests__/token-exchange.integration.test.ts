@@ -7,8 +7,9 @@ import {
   generateKeyPair,
   SignJWT,
 } from "jose";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { env } from "@/env";
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { auth } from "@/lib/auth/auth-config";
 import {
@@ -30,6 +31,7 @@ import {
 } from "@/lib/db/schema/oauth-provider";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import {
+  buildDpopProof,
   createTestDpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
@@ -41,6 +43,8 @@ const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 const authIssuer = getAuthIssuer();
 const APP_AUDIENCE = "http://localhost:3000";
 const CREDENTIAL_AUDIENCE = `${authIssuer}/oidc4vci/credential`;
+const MCP_AUDIENCE = env.MCP_PUBLIC_URL;
+const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
 let testKid: string;
@@ -803,7 +807,59 @@ describe("Token Exchange (RFC 8693)", () => {
         .run();
     }
 
-    it("uses pairwise sub in access token output", async () => {
+    it("keeps the real subject in access tokens audienced to Zentity", async () => {
+      await createPairwiseClient();
+      const subjectToken = await mintAccessToken(userId);
+
+      const { status, json, dpopKeyPair } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: PAIRWISE_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        audience: APP_AUDIENCE,
+      });
+
+      expect(status).toBe(200);
+      const accessToken = json.access_token as string;
+      expect(decodeJwt(accessToken).sub).toBe(userId);
+
+      const { GET: serveJwks } = await import(
+        "@/app/api/auth/oauth2/jwks/route"
+      );
+      const realFetch = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) =>
+        String(input instanceof Request ? input.url : input).endsWith(
+          "/oauth2/jwks"
+        )
+          ? serveJwks()
+          : realFetch(input, init)
+      );
+      const userinfoResponse = await auth.handler(
+        new Request(USERINFO_URL, {
+          method: "GET",
+          headers: {
+            authorization: `DPoP ${accessToken}`,
+            DPoP: await buildDpopProof(
+              dpopKeyPair,
+              "GET",
+              USERINFO_URL,
+              accessToken
+            ),
+          },
+        })
+      );
+      expect(userinfoResponse.status).toBe(200);
+      const userinfo = parseTokenResponse(await userinfoResponse.text());
+      expect(userinfo.sub).toBe(
+        await computePairwiseSub(
+          userId,
+          [PAIRWISE_REDIRECT],
+          process.env.PAIRWISE_SECRET as string
+        )
+      );
+    });
+
+    it("uses pairwise sub in access tokens audienced to a separate resource server", async () => {
       await createPairwiseClient();
       const subjectToken = await mintAccessToken(userId);
 
@@ -812,21 +868,18 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: PAIRWISE_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
+        audience: MCP_AUDIENCE,
       });
 
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
-
-      // Must NOT be the raw userId
-      expect(payload.sub).not.toBe(userId);
-
-      // Must match the deterministic pairwise computation
-      const expectedSub = await computePairwiseSub(
-        userId,
-        [PAIRWISE_REDIRECT],
-        process.env.PAIRWISE_SECRET as string
+      expect(payload.sub).toBe(
+        await computePairwiseSub(
+          userId,
+          [PAIRWISE_REDIRECT],
+          process.env.PAIRWISE_SECRET as string
+        )
       );
-      expect(payload.sub).toBe(expectedSub);
     });
 
     it("uses pairwise sub in id_token output", async () => {
@@ -891,9 +944,8 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(200);
-      // Output sub should also be pairwise (same client)
       const payload = decodeJwt(json.access_token as string);
-      expect(payload.sub).toBe(pairwiseSub);
+      expect(payload.sub).toBe(userId);
     });
   });
 

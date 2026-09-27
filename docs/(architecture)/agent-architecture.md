@@ -617,7 +617,7 @@ The delegated access token carries:
 - `act.sub` for the acting agent session
 - AAP `agent`, `task`, `capabilities`, `oversight`, and `audit`
 
-Tokens issued by token exchange to a non-agent audience carry pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience.
+Tokens issued by token exchange to a non-agent audience outside Zentity carry pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`, all rebound for the target audience.
 
 The full binding chain is:
 
@@ -751,7 +751,7 @@ When a tool needs user approval:
 3. it starts a CIBA request
 4. it polls until approval, denial, or timeout
 
-When the tool needs the delegated token rebound to a non-agent relying party (a merchant, facilitator, or RP API), the downstream client can exchange the CIBA access token through RFC 8693 token exchange. The exchange rebinds the audience and narrows the claim set: agent control-plane sections are dropped, leaving only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
+When the tool needs the delegated token rebound to a non-agent relying party (a merchant or facilitator), the downstream client can exchange the CIBA access token through RFC 8693 token exchange. The exchange rebinds the audience and narrows the claim set: agent control-plane sections are dropped, leaving only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
 
 ### Session expiry
 

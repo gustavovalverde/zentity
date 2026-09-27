@@ -54,7 +54,6 @@ const baseOauth = {
     privateJwk: { crv: "P-256", kty: "EC" },
     publicJwk: { crv: "P-256", kty: "EC" },
   },
-  loginHint: "user-123",
   scopes: [],
 };
 

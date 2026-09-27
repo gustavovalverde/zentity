@@ -89,7 +89,23 @@ Rationale:
 * They are appropriate for values that only the target resource server should consume.
 * They are not appropriate for copying profile or vault data.
 
-#### 4. `proof:sybil` is access-token-only
+#### 4. The subject identifier follows the reader of the surface
+
+Pairwise subjects stop third-party relying parties from correlating one user across clients. Which `sub` a surface carries depends on who reads it:
+
+* `id_token`, `userinfo` responses, and introspection responses are read by the client, so a pairwise client receives its pairwise subject there.
+* An access token audienced to an endpoint Zentity itself serves (the app origin, the auth issuer, and every resource under the issuer, including `userinfo`) carries the real user id. Zentity is the only party that validates it, and this matches the access tokens Better Auth issues natively.
+* An access token audienced to any other resource server (the MCP server, an agent wallet) carries the requesting client's pairwise subject, because that resource server is outside Zentity.
+
+Zentity's own resource servers therefore read `sub` from their access tokens as the user id, and project the client's pairwise subject whenever they return an identifier to the client.
+
+Rationale:
+
+* `userinfo` and Zentity's resource servers look the user up by the token's `sub`; a pairwise subject there would need a reverse lookup on every request.
+* One rule per audience keeps every token Zentity validates on the same subject contract, including tokens minted by token exchange.
+* A holder can decode a JWT access token, so a client holding a Zentity-audienced JWT can read the real user id. The identifiers a relying party is meant to consume (ID token, userinfo, introspection) stay pairwise.
+
+#### 5. `proof:sybil` is access-token-only
 
 `proof:sybil` is the only proof scope whose claim (`sybil_nullifier`) is delivered in the access token only.
 
@@ -102,7 +118,7 @@ Rationale:
 
 In other words, `proof:sybil` remains in the proof family because it is non-PII, but its delivery surface follows the logic of an operational anti-abuse artifact.
 
-#### 5. `email` remains standard, but never default
+#### 6. `email` remains standard, but never default
 
 `email` is standard account/session identity, not vault-gated `identity.*` disclosure.
 
@@ -117,7 +133,7 @@ Rationale:
 * Treating `email` as "always available because the session knows it" would violate data minimization and double-anonymity requirements.
 * This keeps anonymous and double-anonymous relying parties possible: they simply do not request `email`.
 
-#### 6. Channels adapt transport and UX, not disclosure semantics
+#### 7. Channels adapt transport and UX, not disclosure semantics
 
 Browser OAuth, CIBA, MCP, and demo RPs all use the same disclosure classes and surface rules.
 
@@ -162,3 +178,7 @@ What does not change by channel:
 * Double-anonymity posture: [ADR-0001](../0001-arcom-double-anonymity.md)
 * Code authority: `apps/web/src/lib/auth/oidc/disclosure/registry.ts`
 * Contract tests: `apps/web/src/lib/auth/oidc/disclosure/__tests__/rp-contract.test.ts`
+
+## Revision History
+
+* 2026-09-27: Added rule 4. Access tokens audienced to Zentity-served endpoints carry the real user id; pairwise subjects apply to client-facing surfaces and to access tokens for resource servers outside Zentity.

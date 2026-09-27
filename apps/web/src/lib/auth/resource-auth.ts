@@ -16,7 +16,6 @@ import {
   type OAuthTokenValidationResult,
   validateOAuthAccessToken,
 } from "@/lib/auth/oidc/oauth-request";
-import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
@@ -165,14 +164,9 @@ async function resolveJwtUserAccessToken(
     return null;
   }
 
-  const userId = await resolveUserIdFromSub(payload.sub, clientId);
-  if (!userId) {
-    return null;
-  }
-
   return {
     kind: "user_access_token",
-    userId,
+    userId: payload.sub,
     clientId,
     scopes:
       typeof payload.scope === "string"

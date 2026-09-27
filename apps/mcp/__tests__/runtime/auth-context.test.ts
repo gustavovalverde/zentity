@@ -20,7 +20,6 @@ function makeOAuth() {
     accountSub: "sub-1",
     clientId: "client-1",
     dpopKey,
-    loginHint: "user@example.com",
     scopes: ["openid"],
   };
 }
@@ -47,10 +46,10 @@ describe("AuthContext", () => {
 
     const result = runWithAuth(ctx, () => {
       const retrieved = getAuthContext();
-      return retrieved.oauth.loginHint;
+      return retrieved.oauth.accountSub;
     });
 
-    expect(result).toBe("user@example.com");
+    expect(result).toBe("sub-1");
   });
 
   it("throws when accessed outside runWithAuth", () => {

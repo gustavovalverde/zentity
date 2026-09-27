@@ -6,14 +6,12 @@ const {
   mockCreateDpopAccessTokenValidator,
   mockExtractAccessToken,
   mockValidateOAuthAccessToken,
-  mockResolveUserIdFromSub,
   mockVerifyAccessToken,
   mockVerifyAuthIssuedJwt,
 } = vi.hoisted(() => ({
   mockCreateDpopAccessTokenValidator: vi.fn(() => vi.fn()),
   mockExtractAccessToken: vi.fn(),
   mockValidateOAuthAccessToken: vi.fn(),
-  mockResolveUserIdFromSub: vi.fn(),
   mockVerifyAccessToken: vi.fn(),
   mockVerifyAuthIssuedJwt: vi.fn(),
 }));
@@ -25,10 +23,6 @@ vi.mock("@better-auth/haip", () => ({
 vi.mock("@/lib/auth/oidc/oauth-request", () => ({
   extractAccessToken: mockExtractAccessToken,
   validateOAuthAccessToken: mockValidateOAuthAccessToken,
-}));
-
-vi.mock("@/lib/auth/oidc/pairwise", () => ({
-  resolveUserIdFromSub: mockResolveUserIdFromSub,
 }));
 
 vi.mock("@/lib/db/connection", () => ({
@@ -57,7 +51,7 @@ describe("requireBootstrapAccessToken", () => {
     vi.clearAllMocks();
   });
 
-  it("maps pairwise bootstrap JWT subjects back to raw user ids", async () => {
+  it("reads the user id from the bootstrap JWT subject", async () => {
     const dpopValidator = vi.fn(async () => undefined);
     mockCreateDpopAccessTokenValidator.mockReturnValueOnce(dpopValidator);
     mockVerifyAuthIssuedJwt.mockResolvedValueOnce({
@@ -65,10 +59,9 @@ describe("requireBootstrapAccessToken", () => {
       azp: "pairwise-client",
       cnf: { jkt: "thumbprint" },
       scope: "agent:host.register agent:session.register",
-      sub: "pairwise-subject",
+      sub: "raw-user-id",
       zentity_token_use: "agent_bootstrap",
     });
-    mockResolveUserIdFromSub.mockResolvedValueOnce("raw-user-id");
 
     const request = new Request(
       "http://localhost/api/auth/agent/host/register",

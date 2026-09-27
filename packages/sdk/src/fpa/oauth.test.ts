@@ -99,10 +99,9 @@ describe("oauth helpers", () => {
     expect(body.get("resource")).toBe("https://resource.example");
   });
 
-  it("extracts downstream identity hints from an exchanged app token", async () => {
+  it("extracts the subject from an exchanged token", async () => {
     const accessToken = `${encodeJwtSegment({ alg: "none" })}.${encodeJwtSegment({
-      sub: "pairwise-subject",
-      zentity_login_hint: "user-123",
+      sub: "user-123",
     })}.`;
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -127,9 +126,8 @@ describe("oauth helpers", () => {
 
     expect(result).toEqual({
       accessToken,
-      accountSub: "pairwise-subject",
+      accountSub: "user-123",
       expiresIn: 3600,
-      loginHint: "user-123",
       scope: "purchase",
       tokenType: "DPoP",
     });

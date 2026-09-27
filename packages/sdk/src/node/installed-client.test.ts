@@ -86,7 +86,6 @@ describe("createInstalledClientAuth", () => {
       accessToken: "app-access-token",
       accountSub: "user-123",
       expiresIn: 3600,
-      loginHint: "user@example.com",
       scope: "openid",
       tokenType: "DPoP",
     });
@@ -125,7 +124,6 @@ describe("createInstalledClientAuth", () => {
       accessToken: "app-access-token",
       accountSub: "user-123",
       clientId: "client-1",
-      loginHint: "user@example.com",
       scopes: ["openid"],
     });
   });
@@ -207,7 +205,6 @@ describe("createInstalledClientAuth", () => {
         accessToken: "browser-app-access-token",
         accountSub: "user-123",
         expiresIn: 3600,
-        loginHint: "user@example.com",
         scope: "openid",
         tokenType: "DPoP",
       });

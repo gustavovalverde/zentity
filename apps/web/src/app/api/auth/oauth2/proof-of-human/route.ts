@@ -49,7 +49,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "not_verified" }, { status: 403 });
   }
 
-  // Use the access token's sub (already pairwise if client is configured for it)
   const sub = principal.sub;
   const now = Math.floor(Date.now() / 1000);
   const issuer = env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASHES, "");

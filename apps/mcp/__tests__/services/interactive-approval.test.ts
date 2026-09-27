@@ -53,7 +53,6 @@ const oauth: OAuthSessionContext = {
   clientId: "client-123",
   dpopClient: mockDpopClient,
   dpopKey: mockDpopKey,
-  loginHint: "user@example.com",
   scopes: ["openid"],
 };
 
@@ -85,7 +84,7 @@ function createParams(input: {
       tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
       clientId: oauth.clientId,
       dpopSigner: oauth.dpopClient,
-      loginHint: oauth.loginHint,
+      loginHint: oauth.accountSub,
       scope: "openid identity.name",
       bindingMessage: "Claude Code: Share my name",
       resource: "http://localhost:3000",

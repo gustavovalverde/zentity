@@ -166,7 +166,7 @@ function buildPurchaseFingerprint(
   params: PurchaseParams
 ): string {
   return [
-    oauth.accountSub || oauth.loginHint,
+    oauth.accountSub,
     oauth.clientId,
     runtime?.sessionId ?? "no-runtime",
     "purchase",
@@ -195,7 +195,7 @@ function buildX402PurchaseFingerprint(
   params: PurchaseParams
 ): string {
   return [
-    oauth.accountSub || oauth.loginHint,
+    oauth.accountSub,
     oauth.clientId,
     runtime?.sessionId ?? "no-runtime",
     "x402",
@@ -342,7 +342,7 @@ async function fetchX402Purchase(input: {
           tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
           clientId: input.oauth.clientId,
           dpopSigner: input.oauth.dpopClient,
-          loginHint: input.oauth.loginHint || input.oauth.accountSub,
+          loginHint: input.oauth.accountSub,
           scope: buildX402PurchaseScope(),
           bindingMessage: input.bindingMessage,
           authorizationDetails: [
@@ -496,7 +496,7 @@ async function runDirectPurchaseTool(input: {
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: input.oauth.clientId,
       dpopSigner: input.oauth.dpopClient,
-      loginHint: input.oauth.loginHint || input.oauth.accountSub,
+      loginHint: input.oauth.accountSub,
       scope: buildPurchaseScope(
         Boolean(input.params.requires_age_verification)
       ),

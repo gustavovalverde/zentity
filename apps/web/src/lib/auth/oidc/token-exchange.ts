@@ -50,6 +50,7 @@ import {
 import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
+  accessTokenCarriesRealSubject,
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
@@ -81,7 +82,6 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
-const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const tokenExchangeAudiences = getProtectedResourceAudiences({
@@ -692,8 +692,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       }
     }
 
-    // Resolve pairwise subject for the requesting client (used by both output paths)
-    const outputSub = client.redirectUris
+    const clientSub = client.redirectUris
       ? await resolveSubForClient(rawUserId, {
           subjectType: client.subjectType ?? null,
           redirectUris: parseStoredStringArray(client.redirectUris),
@@ -763,7 +762,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
-        sub: outputSub,
+        sub: clientSub,
         aud: client.clientId,
         azp: client.clientId,
         jti,
@@ -799,7 +798,9 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
 
     const accessTokenPayload: Record<string, unknown> = {
       iss: authIssuer,
-      sub: outputSub,
+      sub: accessTokenCarriesRealSubject(targetAudience)
+        ? rawUserId
+        : clientSub,
       aud: targetAudience,
       azp: client.clientId,
       jti,
@@ -812,9 +813,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
         : {}),
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
-        : {}),
-      ...(targetAudience === appUrl
-        ? { [APP_LOGIN_HINT_CLAIM]: rawUserId }
         : {}),
       act: actClaim,
       ...(exchangedAccessTokenClaims ?? {}),

@@ -39,7 +39,6 @@ const MCP_SCOPE_SOURCE_FILES = [
   `${MCP_ROOT}/oauth-client.ts`,
   `${MCP_ROOT}/transports/remote-scope-policy.ts`,
   `${MCP_ROOT}/services/profile-fields.ts`,
-  `${MCP_ROOT}/services/identity-release.ts`,
   `${MCP_ROOT}/tools/purchase.ts`,
 ] as const;
 
@@ -363,8 +362,8 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     }
   });
 
-  it("identity.ts scope strings are registered identity scopes", async () => {
-    const source = await readSource(`${MCP_ROOT}/services/identity-release.ts`);
+  it("profile field scopes are registered identity scopes", async () => {
+    const source = await readSource(`${MCP_ROOT}/services/profile-fields.ts`);
     const scopes = extractScopes(source);
     const identityScopes = scopes.filter((s) => s.startsWith("identity."));
 
@@ -372,7 +371,7 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     for (const scope of identityScopes) {
       expect(
         IDENTITY_SCOPES.includes(scope as never),
-        `identity-release.ts uses "${scope}" which is not in IDENTITY_SCOPES`
+        `profile-fields.ts uses "${scope}" which is not in IDENTITY_SCOPES`
       ).toBe(true);
     }
   });

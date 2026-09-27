@@ -135,7 +135,7 @@ export async function readProfile(input: {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
   const runtime = tryGetRuntimeState(auth);
-  const userId = oauth.accountSub || oauth.loginHint;
+  const userId = oauth.accountSub;
   const fields = normalizeProfileFields(input.fields);
   const cacheKey = buildProfileCacheKey({
     userId,
@@ -192,7 +192,7 @@ export async function readProfile(input: {
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: oauth.clientId,
       dpopSigner: oauth.dpopClient,
-      loginHint: oauth.loginHint || oauth.accountSub,
+      loginHint: oauth.accountSub,
       scope,
       bindingMessage,
       resource: config.zentityUrl,

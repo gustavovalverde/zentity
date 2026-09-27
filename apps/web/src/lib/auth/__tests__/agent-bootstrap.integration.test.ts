@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -153,13 +152,7 @@ describe("agent bootstrap token exchange", () => {
     expect(payload.aud).toBe(APP_URL);
     expect(payload.zentity_token_use).toBe(AGENT_BOOTSTRAP_TOKEN_USE);
     expect(payload.scope).toBe(BOOTSTRAP_SCOPE);
-    expect(payload.zentity_login_hint).toBe(userId);
-    expect(payload.sub).toBe(
-      await resolveSubForClient(userId, {
-        redirectUris: [REDIRECT_URI],
-        subjectType: "pairwise",
-      })
-    );
+    expect(payload.sub).toBe(userId);
 
     const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
     const proof = await buildResourceDpopProof(

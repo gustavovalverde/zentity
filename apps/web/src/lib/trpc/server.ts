@@ -29,7 +29,6 @@ import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -164,12 +163,7 @@ async function resolveJwtSession(
     }
   }
 
-  const clientId =
-    (payload.client_id as string | undefined) ??
-    (payload.azp as string | undefined);
-  const userId = clientId
-    ? ((await resolveUserIdFromSub(payload.sub, clientId)) ?? payload.sub)
-    : payload.sub;
+  const userId = payload.sub;
 
   const sessionId = typeof payload.sid === "string" ? payload.sid : undefined;
   const authContextId =

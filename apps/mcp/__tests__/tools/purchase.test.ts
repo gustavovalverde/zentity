@@ -21,7 +21,6 @@ const mockOAuthContext = {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
   },
-  loginHint: "user@example.com",
 };
 
 const mockRuntimeState = {

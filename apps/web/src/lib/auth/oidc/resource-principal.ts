@@ -1,17 +1,12 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
-
 import { verifyAccessToken } from "@/lib/auth/jwt";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import { db } from "@/lib/db/connection";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "./haip/opaque-access-token";
-import { resolveSubForClient, resolveUserIdFromSub } from "./pairwise";
+import { resolveSubForClientId } from "./pairwise";
 
 const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 
@@ -54,14 +49,14 @@ async function resolveJwtPrincipal(
     return null;
   }
 
-  const userId = await resolveUserIdFromSub(payload.sub, clientId);
-  if (!userId) {
+  const sub = await resolveSubForClientId(payload.sub, clientId);
+  if (!sub) {
     return null;
   }
 
   return {
-    sub: payload.sub,
-    userId,
+    sub,
+    userId: payload.sub,
     clientId,
     scopes:
       typeof payload.scope === "string"
@@ -94,24 +89,10 @@ async function resolveOpaquePrincipal(
     return null;
   }
 
-  const client = await db
-    .select({
-      subjectType: oauthClients.subjectType,
-      redirectUris: oauthClients.redirectUris,
-    })
-    .from(oauthClients)
-    .where(eq(oauthClients.clientId, row.clientId))
-    .limit(1)
-    .get();
-
-  if (!client) {
+  const sub = await resolveSubForClientId(row.userId, row.clientId);
+  if (!sub) {
     return null;
   }
-
-  const sub = await resolveSubForClient(row.userId, {
-    subjectType: client.subjectType,
-    redirectUris: parseStoredStringArray(client.redirectUris),
-  });
 
   return {
     sub,

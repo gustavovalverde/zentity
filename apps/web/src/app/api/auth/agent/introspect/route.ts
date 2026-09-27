@@ -8,6 +8,7 @@ import { observeSessionLifecycle } from "@/lib/agents/session";
 import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
+  accessTokenCarriesRealSubject,
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
@@ -133,10 +134,11 @@ export async function POST(request: Request) {
 
   let rawUserId = opaqueToken?.userId ?? null;
   if (!rawUserId && typeof payload?.sub === "string") {
-    rawUserId = tokenClient
-      ? ((await resolveUserIdFromSubForClient(payload.sub, tokenClient)) ??
-        payload.sub)
-      : payload.sub;
+    if (accessTokenCarriesRealSubject(payload.aud)) {
+      rawUserId = payload.sub;
+    } else if (tokenClient) {
+      rawUserId = await resolveUserIdFromSubForClient(payload.sub, tokenClient);
+    }
   }
 
   let projectedSub: string | undefined;
