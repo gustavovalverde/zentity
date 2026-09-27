@@ -2088,8 +2088,7 @@ export const auth = betterAuth({
       allowPasswordless: true,
     }),
     haip({
-      requirePar: true,
-      requireDpop: true,
+      requirePar: false,
       parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,
       ...(trustedWalletIssuers

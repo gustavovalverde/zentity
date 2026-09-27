@@ -108,7 +108,7 @@ sequenceDiagram
 
 **Grant type**: `authorization_code`
 
-PAR is required: all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
+PAR is optional: a client may push its authorization request to the PAR endpoint and pass the returned `request_uri` (60-second TTL) to the authorize endpoint, or send the request parameters directly.
 
 ### First-Party Challenge (headless, no redirect)
 
@@ -657,7 +657,7 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "backchannel_authentication_endpoint": "https://app.zentity.xyz/api/auth/oauth2/bc-authorize",
   "authorization_challenge_endpoint": "https://app.zentity.xyz/api/oauth2/authorize-challenge",
   "pushed_authorization_request_endpoint": "https://app.zentity.xyz/api/auth/oauth2/par",
-  "require_pushed_authorization_requests": true,
+  "require_pushed_authorization_requests": false,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
   "dpop_signing_alg_values_supported": ["ES256"],
   "id_token_signing_alg_values_supported": ["RS256"],
@@ -737,7 +737,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 | Feature | Standard | Status |
 | --- | --- | --- |
 | DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer fallback |
-| PAR | RFC 9126 | Required |
+| PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply) |
 | Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
 | x5c certificate chain | RFC 5280 | Full chain validation: SHA-256 thumbprint match + validity period (leaf + CA) + CA signature via `X509Certificate.checkIssued()` |

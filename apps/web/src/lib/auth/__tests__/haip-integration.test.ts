@@ -49,10 +49,10 @@ describe("HAIP — discovery metadata", () => {
     );
   });
 
-  it("OpenID config advertises require_pushed_authorization_requests", async () => {
+  it("OpenID config does not require PAR", async () => {
     const metadata = await getEnrichedOpenIdConfig();
 
-    expect(metadata.require_pushed_authorization_requests).toBe(true);
+    expect(metadata.require_pushed_authorization_requests).toBe(false);
   });
 
   it("OpenID config includes DPoP signing algorithm support", async () => {

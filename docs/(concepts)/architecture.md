@@ -250,7 +250,7 @@ sequenceDiagram
   API-->>RP: Identity PII + scope-filtered proof claims
 ```
 
-All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for protocol details.
+Access tokens are sender-constrained with DPoP when the client presents a proof, and clients may push authorization requests through PAR. See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for protocol details.
 
 ### Agent Authorization (CIBA)
 

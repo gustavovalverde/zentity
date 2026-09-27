@@ -92,7 +92,7 @@ describe("oidc discovery — HAIP metadata fields", () => {
       issuer: "https://example.com/api/auth",
       pushed_authorization_request_endpoint:
         "https://example.com/api/auth/oauth2/par",
-      require_pushed_authorization_requests: true,
+      require_pushed_authorization_requests: false,
       dpop_signing_alg_values_supported: ["ES256"],
       authorization_details_types_supported: ["openid_credential"],
     });
@@ -100,7 +100,7 @@ describe("oidc discovery — HAIP metadata fields", () => {
     expect(enriched.pushed_authorization_request_endpoint).toBe(
       "https://example.com/api/auth/oauth2/par"
     );
-    expect(enriched.require_pushed_authorization_requests).toBe(true);
+    expect(enriched.require_pushed_authorization_requests).toBe(false);
     expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
     expect(enriched.authorization_details_types_supported).toContain(
       "openid_credential"
@@ -117,7 +117,7 @@ describe("oidc discovery — HAIP metadata fields", () => {
     expect(enriched.pushed_authorization_request_endpoint).toContain(
       "oauth2/par"
     );
-    expect(enriched.require_pushed_authorization_requests).toBe(true);
+    expect(enriched.require_pushed_authorization_requests).toBe(false);
     expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
   });
 
