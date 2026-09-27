@@ -197,7 +197,7 @@ This system intentionally splits data across server storage and client-only acce
 
 ### What "vault" means here
 
-The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrappers`) that can only be decrypted client-side after WebAuthn + PRF, OPAQUE export-key derivation, or wallet signature + HKDF derivation.
+The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrappers`) that can only be decrypted client-side after WebAuthn + PRF, OPAQUE export-key derivation, wallet signature + HKDF derivation, or the user's recovery key.
 
 ---
 
