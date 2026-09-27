@@ -1,5 +1,6 @@
 import "server-only";
 
+import { eq } from "drizzle-orm";
 import {
   createLocalJWKSet,
   createRemoteJWKSet,
@@ -9,10 +10,10 @@ import {
   jwtVerify,
 } from "jose";
 
-import { isTokenRevoked } from "@/lib/auth/oidc/token-revocation";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/oauth-provider";
+import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { logger } from "@/lib/logging/logger";
 
@@ -113,6 +114,16 @@ export async function verifyAuthIssuedJwt(
   } catch {
     return null;
   }
+}
+
+export async function isTokenRevoked(jti: string): Promise<boolean> {
+  const row = await db
+    .select({ jti: revokedTokens.jti })
+    .from(revokedTokens)
+    .where(eq(revokedTokens.jti, jti))
+    .limit(1)
+    .get();
+  return Boolean(row);
 }
 
 export async function verifyIssuedAccessToken(

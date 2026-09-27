@@ -2,7 +2,6 @@ import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { revokeToken } from "@/lib/auth/oidc/token-revocation";
 import { db } from "@/lib/db/connection";
 import {
   oauthAccessTokens,
@@ -41,10 +40,7 @@ describe("tRPC context", () => {
     expect(context.session).toBeNull();
   });
 
-  it.each([
-    ["the provider marked it revoked", "provider"],
-    ["it was revoked through RFC 7009", "rfc7009"],
-  ])("rejects an opaque access token once %s", async (_label, how) => {
+  it("rejects an opaque access token once the provider marks it revoked", async () => {
     const userId = await createTestUser();
     const { sessionId } = await createTestSession(userId);
     await db
@@ -68,15 +64,11 @@ describe("tRPC context", () => {
       });
     expect((await contextFor()).session?.user.id).toBe(userId);
 
-    if (how === "provider") {
-      await db
-        .update(oauthAccessTokens)
-        .set({ revoked: new Date() })
-        .where(eq(oauthAccessTokens.clientId, "opaque-client"))
-        .run();
-    } else {
-      await revokeToken({ token });
-    }
+    await db
+      .update(oauthAccessTokens)
+      .set({ revoked: new Date() })
+      .where(eq(oauthAccessTokens.clientId, "opaque-client"))
+      .run();
 
     expect((await contextFor()).session).toBeNull();
   });

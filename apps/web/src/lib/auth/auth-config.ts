@@ -141,6 +141,11 @@ import {
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
+import {
+  beforeRevokeJwtAccessToken,
+  beforeUserInfoRejectRevokedToken,
+  revokedAccessTokenJti,
+} from "@/lib/auth/oidc/token-revocation";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
@@ -784,8 +789,14 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   const introspection = await readReturnedResponseBody(
     (ctx.context as { returned?: unknown }).returned
   );
+  if (!introspection?.active) {
+    return;
+  }
+  if (await revokedAccessTokenJti(token)) {
+    return ctx.json({ active: false });
+  }
   const { sub } = decodeJwt(token);
-  if (!introspection?.active || typeof sub !== "string") {
+  if (typeof sub !== "string") {
     return;
   }
   return ctx.json({ ...introspection, sub });
@@ -1774,6 +1785,12 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/oauth2/revoke") {
+        return beforeRevokeJwtAccessToken(ctx);
+      }
+      if (ctx.path === "/oauth2/userinfo") {
+        return beforeUserInfoRejectRevokedToken(ctx);
+      }
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }

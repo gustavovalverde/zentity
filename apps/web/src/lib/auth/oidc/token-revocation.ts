@@ -1,122 +1,148 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import type { GenericEndpointContext } from "@better-auth/core";
+
+import {
+  getOAuthProviderApi,
+  type OAuthOptions,
+  type Scope,
+} from "@better-auth/oauth-provider";
+import { APIError } from "better-auth";
 import { decodeJwt } from "jose";
 
-import { hashOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { isTokenRevoked, verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import { db } from "@/lib/db/connection";
-import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 
 /**
- * RFC 7009 token revocation backend.
+ * RFC 7009 revocation for JWT access tokens.
  *
- * Looks up the supplied `token` in the OAuth access-token store, extracts the
- * `jti`, and writes a `revoked_token` row keyed on that id. The wallet
- * runtime's revocation poller (Proposal-0003 D-6) queries this table via the
- * delta endpoint at `/api/auth/oauth2/revoked?since=` and fails closed when
- * its cache outruns the issuer.
+ * The OAuth provider's native `/oauth2/revoke` endpoint authenticates the
+ * client and revokes opaque access tokens and refresh tokens it issued. A JWT
+ * access token has no server-side row, so this before-hook takes over for
+ * JWT-shaped tokens: it authenticates the client through the provider, checks
+ * the token's signature and ownership, and records its `jti` in
+ * `revoked_token`. Userinfo, introspection, Zentity resource verification, and
+ * the wallet runtime's delta poller (`/api/auth/oauth2/revoked`) all consult
+ * that table.
  *
- * Idempotent: revoking an already-revoked token returns `{ revoked: true }`
- * without writing a duplicate row.
- *
- * The function deliberately accepts both opaque tokens (stored hashed in
- * `oauth_access_token.token`, which is also marked revoked) and `at+jwt`
- * (decoded directly for the `jti`), so RFC 7009 callers can pass whichever
- * form they hold.
+ * Per RFC 7009 §2.2 an unknown, invalid, expired, or foreign token still
+ * answers 200 so the caller learns nothing about its validity.
  */
 
-export interface RevokeTokenInput {
-  /** Free-form operator-supplied reason; recorded verbatim. */
-  reason?: string;
-  /** Either the opaque token string or a serialized `at+jwt`. */
-  token: string;
-  /** RFC 7009 `token_type_hint`. Optional. */
-  tokenTypeHint?: "access_token" | "refresh_token";
+const ACCESS_TOKEN_TYP = "at+jwt";
+const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
+
+function isJwtShaped(token: string): boolean {
+  return token.split(".").length === 3;
 }
 
-export interface RevokeTokenOutput {
-  /** The `jti` that was revoked, when known. */
-  jti?: string;
-  /** True when the token's `jti` is now in the revocation set. */
-  revoked: boolean;
-  /** True when the token was unknown to the issuer (RFC 7009 returns 200 anyway). */
-  unknown: boolean;
+function revocationAccepted(): Response {
+  return new Response(null, {
+    status: 200,
+    headers: { "Cache-Control": "no-store" },
+  });
 }
 
-const JWT_PREFIX = "eyJ";
-
-/**
- * Revokes `token` if the issuer recognises it. RFC 7009 §2.2 specifies that
- * an unknown token returns success without surfacing the existence question
- * to the caller; this implementation honours that by returning
- * `{ revoked: false, unknown: true }` and letting the route serialize
- * 200 OK regardless.
- */
-export async function revokeToken(
-  input: RevokeTokenInput
-): Promise<RevokeTokenOutput> {
-  const meta = await resolveTokenMeta(input.token);
-  if (!meta.jti) {
-    return { revoked: false, unknown: true };
+async function authenticateRevokingClient(
+  ctx: GenericEndpointContext
+): Promise<string> {
+  const options = ctx.context.getPlugin("oauth-provider")
+    ?.options as OAuthOptions<Scope[]>;
+  try {
+    const { client } = await getOAuthProviderApi(
+      ctx,
+      options
+    ).authenticateClient({ requireCredentials: false });
+    return client.clientId;
+  } catch (error) {
+    if (error instanceof APIError && error.body?.error === "invalid_request") {
+      throw new APIError("UNAUTHORIZED", {
+        error: "invalid_client",
+        error_description: "missing required credentials",
+      });
+    }
+    throw error;
   }
-
-  await db
-    .insert(revokedTokens)
-    .values({
-      jti: meta.jti,
-      reason: input.reason ?? input.tokenTypeHint ?? null,
-      // Recorded so a revocation can be grouped by acting agent (`act.sub`)
-      // and by destination wallet (`aud`). Populated only for at+jwt; opaque
-      // tokens carry no claims to read.
-      actorSub: meta.actorSub ?? null,
-      audience: meta.audience ?? null,
-    })
-    .onConflictDoNothing({ target: revokedTokens.jti });
-
-  return { revoked: true, jti: meta.jti, unknown: false };
 }
 
-interface TokenMeta {
-  actorSub?: string;
-  audience?: string;
-  jti?: string;
-}
-
-function resolveAudience(aud: unknown): string | undefined {
+function firstAudience(aud: unknown): string | null {
   if (typeof aud === "string") {
     return aud;
   }
-  if (Array.isArray(aud) && typeof aud[0] === "string") {
-    return aud[0];
-  }
-  return undefined;
+  return Array.isArray(aud) && typeof aud[0] === "string" ? aud[0] : null;
 }
 
-async function resolveTokenMeta(token: string): Promise<TokenMeta> {
-  if (token.startsWith(JWT_PREFIX)) {
-    try {
-      const claims = decodeJwt(token);
-      const jti = typeof claims.jti === "string" ? claims.jti : undefined;
-      const act = claims.act as { sub?: unknown } | undefined;
-      const actorSub = typeof act?.sub === "string" ? act.sub : undefined;
-      const audience = resolveAudience(claims.aud);
-      return { actorSub, audience, jti };
-    } catch {
-      return {};
-    }
+export async function beforeRevokeJwtAccessToken(
+  ctx: GenericEndpointContext
+): Promise<Response | undefined> {
+  const raw = ctx.body?.token;
+  const token =
+    typeof raw === "string" ? raw.replace(ACCESS_TOKEN_SCHEME_RE, "") : "";
+  if (!isJwtShaped(token)) {
+    return;
   }
 
-  const [row] = await db
-    .update(oauthAccessTokens)
-    .set({ revoked: new Date() })
-    .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
-    .returning({ referenceId: oauthAccessTokens.referenceId });
+  const clientId = await authenticateRevokingClient(ctx);
+  const payload = await verifyAuthIssuedJwt(token, { typ: ACCESS_TOKEN_TYP });
+  if (!payload || typeof payload.jti !== "string") {
+    return revocationAccepted();
+  }
+  const issuedTo = payload.azp ?? payload.client_id;
+  if (issuedTo !== clientId) {
+    return revocationAccepted();
+  }
 
-  const jti = row?.referenceId;
-  return {
-    jti: typeof jti === "string" && jti.length > 0 ? jti : undefined,
-  };
+  const act = payload.act as { sub?: unknown } | undefined;
+  await db
+    .insert(revokedTokens)
+    .values({
+      jti: payload.jti,
+      reason:
+        typeof ctx.body?.token_type_hint === "string"
+          ? ctx.body.token_type_hint
+          : null,
+      actorSub: typeof act?.sub === "string" ? act.sub : null,
+      audience: firstAudience(payload.aud),
+    })
+    .onConflictDoNothing({ target: revokedTokens.jti });
+
+  return revocationAccepted();
+}
+
+/**
+ * Returns the `jti` of a JWT-shaped access token when that token has been
+ * revoked. The signature is not checked: a match only ever denies access.
+ */
+export async function revokedAccessTokenJti(
+  token: string
+): Promise<string | undefined> {
+  const value = token.replace(ACCESS_TOKEN_SCHEME_RE, "");
+  if (!isJwtShaped(value)) {
+    return;
+  }
+  let jti: unknown;
+  try {
+    jti = decodeJwt(value).jti;
+  } catch {
+    return;
+  }
+  if (typeof jti === "string" && (await isTokenRevoked(jti))) {
+    return jti;
+  }
+  return;
+}
+
+export async function beforeUserInfoRejectRevokedToken(
+  ctx: GenericEndpointContext
+): Promise<void> {
+  const authorization = ctx.request?.headers.get("authorization");
+  if (authorization && (await revokedAccessTokenJti(authorization))) {
+    throw new APIError("UNAUTHORIZED", {
+      error: "invalid_token",
+      error_description: "access token revoked",
+    });
+  }
 }
 
 /**
@@ -146,14 +172,4 @@ export async function listRevocationsSince(input: {
     jti: row.jti,
     reason: row.reason,
   }));
-}
-
-export async function isTokenRevoked(jti: string): Promise<boolean> {
-  const row = await db
-    .select({ jti: revokedTokens.jti })
-    .from(revokedTokens)
-    .where(eq(revokedTokens.jti, jti))
-    .limit(1)
-    .get();
-  return Boolean(row);
 }

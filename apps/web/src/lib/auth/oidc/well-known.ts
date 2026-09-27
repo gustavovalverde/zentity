@@ -91,13 +91,6 @@ export function enrichDiscoveryMetadata(
         | undefined) ?? []),
       "payment_authorization",
     ],
-    // RFC 7009 Token Revocation; the wallet runtime's revocation poller
-    // (Proposal-0003 D-6) consumes the delta endpoint at /oauth2/revoked.
-    ...(issuer
-      ? {
-          revocation_endpoint: `${issuer}/oauth2/revoke`,
-        }
-      : {}),
     // Proof-of-Human (PRD-22)
     ...(issuer
       ? {
