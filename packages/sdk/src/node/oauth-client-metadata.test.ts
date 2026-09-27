@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLoopbackClientRegistration,
-  buildOAuthClientMetadata,
   normalizeUrl,
 } from "./oauth-client-metadata";
 
@@ -24,44 +23,11 @@ describe("oauth client metadata helpers", () => {
     });
   });
 
-  it("builds a public OAuth client metadata document", () => {
-    expect(
-      buildOAuthClientMetadata({
-        clientId: "https://example.com/.well-known/oauth-client.json",
-        clientName: "Example MCP",
-        grantTypes: ["authorization_code", "refresh_token"],
-        redirectUris: ["http://127.0.0.1/callback"],
-        scope: "openid",
-      })
-    ).toEqual({
-      client_id: "https://example.com/.well-known/oauth-client.json",
-      client_name: "Example MCP",
-      grant_types: ["authorization_code", "refresh_token"],
-      redirect_uris: ["http://127.0.0.1/callback"],
-      scope: "openid",
-      token_endpoint_auth_method: "none",
-    });
-  });
-
   it("registers CIBA clients for poll delivery", () => {
-    const grantTypes = [
-      "authorization_code",
-      "urn:openid:params:grant-type:ciba",
-    ];
-
     expect(
       buildLoopbackClientRegistration({
         clientName: "Example CLI",
-        grantTypes,
-        scope: "openid",
-      })
-    ).toMatchObject({ backchannel_token_delivery_mode: "poll" });
-    expect(
-      buildOAuthClientMetadata({
-        clientId: "https://example.com/.well-known/oauth-client.json",
-        clientName: "Example MCP",
-        grantTypes,
-        redirectUris: ["http://127.0.0.1/callback"],
+        grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
         scope: "openid",
       })
     ).toMatchObject({ backchannel_token_delivery_mode: "poll" });

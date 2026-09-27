@@ -335,6 +335,7 @@ const defaultClientScopes = [
 ];
 const allowedClientScopes = [
   ...defaultClientScopes,
+  "compliance:read",
   "email",
   "proof:humanity",
   "proof:humanity:rp_unique",

@@ -66,18 +66,6 @@ vi.mock("@zentity/sdk/rp", () => ({
 }));
 
 vi.mock("../../src/oauth-client.js", () => ({
-  buildMcpRemoteClientMetadata: vi.fn(() => ({
-    client_id: "http://localhost:3200/.well-known/oauth-client.json",
-    client_name: "@zentity/mcp-server",
-    grant_types: [
-      "authorization_code",
-      "refresh_token",
-      "urn:openid:params:grant-type:ciba",
-    ],
-    redirect_uris: ["http://127.0.0.1/callback"],
-    scope: "openid",
-    token_endpoint_auth_method: "none",
-  })),
   discoverMcpOAuth: vi.fn().mockResolvedValue({
     issuer: "http://localhost:3000/api/auth",
     token_endpoint: "http://localhost:3000/api/auth/oauth2/token",
@@ -220,19 +208,6 @@ describe("HTTP transport middleware", () => {
       "compliance:read",
       "proof:identity",
     ]);
-  });
-
-  it("serves a remote-client metadata document without bootstrap grants", async () => {
-    const res = await app.request("/.well-known/oauth-client.json");
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.grant_types).toEqual([
-      "authorization_code",
-      "refresh_token",
-      "urn:openid:params:grant-type:ciba",
-    ]);
-    expect(body.scope).toBe("openid");
-    expect(body.scope).not.toContain("offline_access");
   });
 
   it("returns 401 with resource_metadata when no auth header", async () => {

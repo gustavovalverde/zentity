@@ -8,7 +8,6 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { config } from "../config.js";
 import {
-  buildMcpRemoteClientMetadata,
   discoverMcpOAuth,
   ensureMcpOAuthClientCredentials,
 } from "../oauth-client.js";
@@ -123,13 +122,6 @@ export function createApp(): Hono {
   app.get("/.well-known/oauth-protected-resource", (c) =>
     c.json(getResourceMetadata())
   );
-
-  app.get("/.well-known/oauth-client.json", (c) => {
-    return c.json(buildMcpRemoteClientMetadata(), 200, {
-      "Cache-Control": "max-age=86400",
-      "Content-Type": "application/json",
-    });
-  });
 
   const transports = new Map<string, HttpSessionEntry>();
 

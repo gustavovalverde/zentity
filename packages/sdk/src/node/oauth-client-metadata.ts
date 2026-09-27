@@ -11,15 +11,6 @@ export interface BuildLoopbackClientRegistrationOptions {
   tokenEndpointAuthMethod?: string;
 }
 
-export interface BuildOAuthClientMetadataOptions {
-  clientId: string;
-  clientName: string;
-  grantTypes: readonly string[];
-  redirectUris: readonly string[];
-  scope: string;
-  tokenEndpointAuthMethod?: string;
-}
-
 export function normalizeUrl(value: string): string {
   return value.replace(TRAILING_SLASHES_RE, "");
 }
@@ -41,20 +32,6 @@ export function buildLoopbackClientRegistration(
     grant_types: [...options.grantTypes],
     redirect_uris: [options.redirectUri ?? DEFAULT_LOOPBACK_REDIRECT_URI],
     response_types: [...(options.responseTypes ?? ["code"])],
-    scope: options.scope,
-    token_endpoint_auth_method: options.tokenEndpointAuthMethod ?? "none",
-    ...cibaDeliveryMetadata(options.grantTypes),
-  };
-}
-
-export function buildOAuthClientMetadata(
-  options: BuildOAuthClientMetadataOptions
-): Record<string, unknown> {
-  return {
-    client_id: options.clientId,
-    client_name: options.clientName,
-    grant_types: [...options.grantTypes],
-    redirect_uris: [...options.redirectUris],
     scope: options.scope,
     token_endpoint_auth_method: options.tokenEndpointAuthMethod ?? "none",
     ...cibaDeliveryMetadata(options.grantTypes),

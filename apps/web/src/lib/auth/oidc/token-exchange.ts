@@ -95,7 +95,6 @@ const tokenExchangeUserinfoAudience = joinAuthIssuerPath(
   authIssuer,
   "oauth2/userinfo"
 );
-const CLIENT_METADATA_PATH_SUFFIX = "/.well-known/oauth-client.json";
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const TRAILING_SLASHES = /\/+$/;
 
@@ -163,38 +162,12 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   }
 }
 
-function resolveClientIdResourceAudience(clientId: string): string | undefined {
-  try {
-    const url = new URL(clientId);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return undefined;
-    }
-    if (!url.pathname.endsWith(CLIENT_METADATA_PATH_SUFFIX)) {
-      return undefined;
-    }
-
-    url.pathname =
-      url.pathname.slice(0, -CLIENT_METADATA_PATH_SUFFIX.length) || "/";
-    url.search = "";
-    url.hash = "";
-
-    return normalizeResourceAudience(url.href);
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveClientResourceAudience(
-  clientId: string,
-  metadata: unknown
-): string | undefined {
+function resolveClientResourceAudience(metadata: unknown): string | undefined {
   const metadataResource =
     parseJsonRecord(metadata)[PROTECTED_RESOURCE_METADATA_FIELD];
-  if (typeof metadataResource === "string" && metadataResource.length > 0) {
-    return normalizeResourceAudience(metadataResource);
-  }
-
-  return resolveClientIdResourceAudience(clientId);
+  return typeof metadataResource === "string" && metadataResource.length > 0
+    ? normalizeResourceAudience(metadataResource)
+    : undefined;
 }
 
 async function loadClientResourceAudience(
@@ -207,7 +180,7 @@ async function loadClientResourceAudience(
     .limit(1)
     .get();
 
-  return resolveClientResourceAudience(clientId, row?.metadata);
+  return resolveClientResourceAudience(row?.metadata);
 }
 
 function canRebindDpopForResourceServer(input: {
