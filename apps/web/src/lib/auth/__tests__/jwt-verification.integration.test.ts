@@ -4,6 +4,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { jwks as jwksTable } from "@/lib/db/schema/oauth-provider";
@@ -28,7 +29,7 @@ async function ensureSigningKey() {
     .values({
       id: testKid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: "EdDSA",
       crv: "Ed25519",
     })

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import { attachHumanityCredential } from "@/lib/db/queries/humanity";
@@ -58,7 +59,7 @@ async function seedSigningKey(): Promise<{
     .values({
       id: kid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: "EdDSA",
       crv: "Ed25519",
     })

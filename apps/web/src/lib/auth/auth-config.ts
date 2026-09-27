@@ -117,7 +117,11 @@ import {
   loadX5cChain,
   validateX509Chain,
 } from "@/lib/auth/oidc/haip/x509-validation";
-import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  createJwtSigningKey,
+  getJwtSigningKeys,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   resolveSubForClientId,
@@ -1881,14 +1885,14 @@ export const auth = betterAuth({
         // Keep framework defaults aligned with OIDC's RS256 id_token default.
         // Access tokens still use EdDSA via the custom signJwt dispatcher below.
         keyPairConfig: { alg: "RS256" },
-        // Better Auth's OIDC4VCI signer reads JWKS rows directly from the
-        // adapter. In this app those rows are stored as plain JWK JSON, so the
-        // issuer must not attempt Better Auth envelope decryption here.
+        // The adapter encrypts rows with KEY_ENCRYPTION_KEY and hands Better
+        // Auth plain JWK JSON, so Better Auth must not decrypt them again.
         disablePrivateKeyEncryption: true,
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       },
       adapter: {
         getJwks: getJwtSigningKeys,
+        createJwk: createJwtSigningKey,
       },
       jwt: {
         issuer: authIssuer,

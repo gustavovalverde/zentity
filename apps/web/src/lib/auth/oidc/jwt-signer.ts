@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { Jwk } from "better-auth/plugins";
+
 import {
   createCipheriv,
   createDecipheriv,
@@ -10,6 +12,7 @@ import {
 import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
+import { env } from "@/env";
 import { invalidateLocalKeySet } from "@/lib/auth/jwt";
 import { db } from "@/lib/db/connection";
 import { type Jwk as JwkRow, jwks } from "@/lib/db/schema/oauth-provider";
@@ -31,30 +34,15 @@ interface EncryptedEnvelope {
   v: number;
 }
 
-function deriveKek(raw: string): Buffer {
-  return createHash("sha256").update(raw).digest();
-}
-
 let cachedKek: Buffer | null = null;
 
-function getKek(): Buffer | null {
-  if (cachedKek) {
-    return cachedKek;
-  }
-  const raw = process.env.KEY_ENCRYPTION_KEY;
-  if (!raw) {
-    return null;
-  }
-  cachedKek = deriveKek(raw);
+function getKek(): Buffer {
+  cachedKek ??= createHash("sha256").update(env.KEY_ENCRYPTION_KEY).digest();
   return cachedKek;
 }
 
 export function encryptPrivateKey(plaintext: string): string {
   const kek = getKek();
-  if (!kek) {
-    return plaintext;
-  }
-
   const iv = randomBytes(ENVELOPE_IV_BYTES);
   const cipher = createCipheriv(ENVELOPE_ALG, kek, iv, {
     authTagLength: ENVELOPE_AUTH_TAG_BYTES,
@@ -74,18 +62,11 @@ export function encryptPrivateKey(plaintext: string): string {
 }
 
 export function decryptPrivateKey(stored: string): string {
-  const kek = getKek();
-
   if (!isEncryptedEnvelope(stored)) {
-    return stored;
+    throw new Error("JWKS private key is not encrypted");
   }
 
-  if (!kek) {
-    throw new Error(
-      "KEY_ENCRYPTION_KEY is required to decrypt JWKS private keys"
-    );
-  }
-
+  const kek = getKek();
   const envelope = JSON.parse(stored) as EncryptedEnvelope;
   const iv = Buffer.from(envelope.iv, "base64");
   const combined = Buffer.from(envelope.ct, "base64");
@@ -381,11 +362,33 @@ export async function getJwtSigningKeys(): Promise<JwtSigningKey[]> {
     return {
       id: row.id,
       publicKey: row.publicKey,
-      privateKey: row.privateKey,
+      privateKey: decryptPrivateKey(row.privateKey),
       createdAt: row.createdAt,
       alg: row.alg,
       ...(crv ? { crv } : {}),
       ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
     };
   });
+}
+
+/**
+ * Better Auth's key creation path (used when OIDC4VCI finds no signing key).
+ * The row is encrypted like every other key; the caller gets the plain key.
+ */
+export async function createJwtSigningKey(key: Omit<Jwk, "id">): Promise<Jwk> {
+  const id = crypto.randomUUID();
+  await db
+    .insert(jwks)
+    .values({
+      id,
+      publicKey: key.publicKey,
+      privateKey: encryptPrivateKey(key.privateKey),
+      alg: key.alg ?? null,
+      crv: key.crv ?? null,
+      createdAt: key.createdAt,
+      expiresAt: key.expiresAt ?? null,
+    })
+    .run();
+  invalidateLocalKeySet();
+  return { ...key, id };
 }

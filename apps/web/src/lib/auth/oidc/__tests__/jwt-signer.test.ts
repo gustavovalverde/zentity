@@ -5,6 +5,7 @@ import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { jwks, oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -34,7 +35,9 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       .values({
         id: edDsaKid,
         publicKey: JSON.stringify(edDsaPublicJwk),
-        privateKey: JSON.stringify(await exportJWK(edDsa.privateKey)),
+        privateKey: encryptPrivateKey(
+          JSON.stringify(await exportJWK(edDsa.privateKey))
+        ),
         alg: "EdDSA",
         crv: "Ed25519",
       })
@@ -53,7 +56,9 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       .values({
         id: rsaKid,
         publicKey: JSON.stringify(rsaPublicJwk),
-        privateKey: JSON.stringify(await exportJWK(rsa.privateKey)),
+        privateKey: encryptPrivateKey(
+          JSON.stringify(await exportJWK(rsa.privateKey))
+        ),
         alg: "RS256",
         crv: null,
       })

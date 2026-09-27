@@ -17,6 +17,7 @@ import {
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import {
   computePairwiseSub,
   resolveSubForClient,
@@ -65,7 +66,7 @@ async function ensureSigningKey() {
     .values({
       id: testKid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: "EdDSA",
       crv: "Ed25519",
     })

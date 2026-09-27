@@ -34,6 +34,7 @@ process.env.HUMANITY_HMAC_SECRET ||=
 process.env.PAIRWISE_SECRET ||= "test-pairwise-secret-minimum-32-chars";
 process.env.CLAIM_SIGNING_SECRET ||= "test-claim-signing-secret-min-32-chars";
 process.env.CIPHERTEXT_HMAC_SECRET ||= "test-ciphertext-hmac-secret-min-32ch";
+process.env.KEY_ENCRYPTION_KEY ||= "test-key-encryption-key-minimum-32-chars";
 process.env.DRIZZLE_LOG ||= "false";
 
 // React act() environment must be set on every realm where React runs.
