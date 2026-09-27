@@ -71,13 +71,15 @@ export class DisclosureBindingError extends Error {
 }
 
 /**
- * Scopes a release to one client. The provider's consent reference identifies
- * a user, session, and scope set, so clients sharing it must not share a
- * release.
+ * Identifies the release of one authorization (an authorization code or a CIBA
+ * request) to one client.
  */
-export function releaseIdFor(referenceId: string, clientId: string): string {
+export function releaseIdFor(
+  authorizationId: string,
+  clientId: string
+): string {
   return createHash("sha256")
-    .update(JSON.stringify([clientId, referenceId]))
+    .update(JSON.stringify([clientId, authorizationId]))
     .digest("base64url");
 }
 
@@ -375,8 +377,8 @@ export async function clearPendingOauthDisclosure(
 }
 
 export async function finalizeOauthDisclosureFromVerification(input: {
+  authorizationId: string;
   query: Record<string, unknown>;
-  referenceId?: string;
   userId: string;
 }): Promise<ReleaseContext | null> {
   await cleanupExpiredPendingOauthDisclosures();
@@ -390,19 +392,16 @@ export async function finalizeOauthDisclosureFromVerification(input: {
     return null;
   }
 
-  const referenceId = input.referenceId;
   const clientId =
     typeof input.query.client_id === "string" ? input.query.client_id : null;
-  if (!(referenceId && clientId)) {
+  if (!clientId) {
     log.error(
       {
         event: "oauth_binding_metadata_missing",
         userId: input.userId,
-        hasReferenceId: Boolean(referenceId),
-        hasClientId: Boolean(clientId),
         hasPending: Boolean(pending),
       },
-      "Token exchange missing referenceId or clientId — identity disclosure cannot be bound (is postLogin.consentReferenceId configured?)"
+      "Token exchange missing clientId — identity disclosure cannot be bound"
     );
     throw new DisclosureBindingError(
       "invalid_grant",
@@ -419,7 +418,6 @@ export async function finalizeOauthDisclosureFromVerification(input: {
         event: "oauth_identity_payload_missing",
         userId: input.userId,
         clientId,
-        referenceId,
       },
       "Pending disclosure exists in DB but ephemeral payload not found in memory (TTL expired or different process instance)"
     );
@@ -429,7 +427,7 @@ export async function finalizeOauthDisclosureFromVerification(input: {
     );
   }
 
-  const releaseId = releaseIdFor(referenceId, clientId);
+  const releaseId = releaseIdFor(input.authorizationId, clientId);
   const expiresAt = releaseExpiresAt();
   await db
     .insert(oidcReleaseContexts)
@@ -475,7 +473,6 @@ export async function finalizeOauthDisclosureFromVerification(input: {
           reason: promoted.reason,
           userId: input.userId,
           clientId,
-          referenceId,
         },
         "Failed to promote ephemeral identity payload from pending to release"
       );

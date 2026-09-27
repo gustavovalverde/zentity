@@ -190,6 +190,20 @@ describe("getAuth provider userinfo", () => {
     ).rejects.toThrow("ID token at_hash mismatch");
   });
 
+  it("returns no profile when the userinfo request fails", async () => {
+    authMocks.fetchUserInfo.mockResolvedValueOnce(null);
+
+    const provider = await loadProviderConfig();
+
+    await expect(
+      provider.getUserInfo({
+        accessToken: "access-token",
+        idToken: "id-token",
+      })
+    ).resolves.toBeNull();
+    expect(authMocks.verifyToken).not.toHaveBeenCalled();
+  });
+
   it("configures id_token verification against the Zentity issuer", async () => {
     const provider = await loadProviderConfig();
 

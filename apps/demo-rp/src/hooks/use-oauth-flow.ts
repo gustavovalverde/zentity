@@ -7,6 +7,8 @@ import type { RouteScenario } from "@/scenarios/route-scenario";
 const ERROR_MESSAGES: Record<string, string> = {
   interaction_required:
     "Identity verification required. This service requires a higher assurance level than your current account provides. Please complete identity verification on Zentity first.",
+  unable_to_get_user_info:
+    "Zentity did not return your profile, so you were not signed in. Try signing in again.",
 };
 
 function resolveCallbackUrl(defaultPath: string): string {

@@ -143,7 +143,10 @@ describe("authorization_code id_token claims filtering", () => {
     expect(json.id_token).toEqual(expect.any(String));
 
     const releaseContext = await loadReleaseContext(
-      releaseIdFor(TEST_REFERENCE_ID, TEST_CLIENT_ID)
+      releaseIdFor(
+        await hashStoredAuthorizationCode(authorizationCode),
+        TEST_CLIENT_ID
+      )
     );
     expect(releaseContext).not.toBeNull();
     expect(
