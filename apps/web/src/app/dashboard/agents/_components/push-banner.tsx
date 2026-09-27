@@ -51,8 +51,12 @@ function useIsIOSInstallable(): boolean {
   return isIOSInstallable;
 }
 
+const ENABLE_FAILED_MESSAGE =
+  "Notifications could not be turned on in this browser. Private windows and some browsers, such as Brave, block push notifications. Check your browser settings or try another browser.";
+
 export function PushNotificationBanner() {
   const [state, setState] = useState<PushState>("loading");
+  const [enableError, setEnableError] = useState<string | null>(null);
   const isIOSInstallable = useIsIOSInstallable();
 
   useEffect(() => {
@@ -61,8 +65,21 @@ export function PushNotificationBanner() {
 
   const handleEnable = useCallback(async () => {
     setState("loading");
-    const sub = await subscribeToPush();
-    setState(sub ? "subscribed" : await getPushState());
+    setEnableError(null);
+    try {
+      if (await subscribeToPush()) {
+        setState("subscribed");
+        return;
+      }
+      const nextState = await getPushState();
+      setState(nextState);
+      if (nextState !== "denied") {
+        setEnableError(ENABLE_FAILED_MESSAGE);
+      }
+    } catch {
+      setState("prompt");
+      setEnableError(ENABLE_FAILED_MESSAGE);
+    }
   }, []);
 
   const handleDisable = useCallback(async () => {
@@ -139,6 +156,9 @@ export function PushNotificationBanner() {
           requests without checking email. If you use multiple devices, each one
           needs its own opt-in.
         </span>
+        {enableError ? (
+          <span className="text-destructive">{enableError}</span>
+        ) : null}
         <Button
           className="mt-1"
           onClick={asyncHandler(handleEnable)}
