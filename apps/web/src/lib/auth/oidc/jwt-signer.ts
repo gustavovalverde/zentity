@@ -10,6 +10,7 @@ import {
 import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 
+import { invalidateLocalKeySet } from "@/lib/auth/jwt";
 import { db } from "@/lib/db/connection";
 import { type Jwk as JwkRow, jwks } from "@/lib/db/schema/oauth-provider";
 
@@ -214,6 +215,7 @@ async function createSigningKey(alg: StandardAlg): Promise<CachedSigningKey> {
     })
     .run();
 
+  invalidateLocalKeySet();
   const result = { kid, privateKey: keyPair.privateKey };
   keyCache.set(alg, result);
   return result;
@@ -260,6 +262,7 @@ export async function rotateSigningKey(
 export async function cleanupExpiredKeys(): Promise<number> {
   const now = new Date();
   const result = await db.delete(jwks).where(lt(jwks.expiresAt, now)).run();
+  invalidateLocalKeySet();
   return result.rowsAffected;
 }
 

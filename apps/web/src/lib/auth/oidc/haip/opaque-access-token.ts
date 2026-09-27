@@ -24,7 +24,7 @@ interface OpaqueAccessTokenRecord {
   userId: string | null;
 }
 
-function hashOpaqueAccessToken(token: string): string {
+export function hashOpaqueAccessToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
 }
 
@@ -85,6 +85,7 @@ export async function loadOpaqueAccessToken(
       exchangeClaims: oauthAccessTokens.exchangeClaims,
       expiresAt: oauthAccessTokens.expiresAt,
       referenceId: oauthAccessTokens.referenceId,
+      revoked: oauthAccessTokens.revoked,
       sessionId: oauthAccessTokens.sessionId,
       scopes: oauthAccessTokens.scopes,
       userId: oauthAccessTokens.userId,
@@ -94,7 +95,7 @@ export async function loadOpaqueAccessToken(
     .limit(1)
     .get();
 
-  if (!row) {
+  if (!row || row.revoked) {
     return null;
   }
 

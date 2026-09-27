@@ -55,6 +55,7 @@ import {
   verificationChecks,
   zkChallenges,
 } from "@/lib/db/schema/privacy";
+import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 
 interface CreateUserInput {
   createdAt?: Date;
@@ -90,6 +91,7 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(oidc4vciOffers).run();
     await tx.delete(oidc4idaVerifiedClaims).run();
     await tx.delete(zkChallenges).run();
+    await tx.delete(revokedTokens).run();
     await tx.delete(usedIntentJtis).run();
     await tx.delete(pushSubscriptions).run();
     await tx.delete(authChallengeSessions).run();

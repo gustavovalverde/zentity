@@ -13,10 +13,10 @@ import { createHmac } from "node:crypto";
 
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint } from "jose";
+import { calculateJwkThumbprint, type JWTPayload } from "jose";
 
 import { env } from "@/env";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -181,19 +181,13 @@ export function validateResourceUri(
 export interface OAuthTokenValidationResult {
   clientId?: string;
   error?: string;
+  payload?: JWTPayload;
   scopes?: string[];
   valid: boolean;
 }
 
 const authIssuer = getAuthIssuer();
 const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
-
-function audienceIncludes(audience: unknown, expected: string): boolean {
-  if (typeof audience === "string") {
-    return audience === expected;
-  }
-  return Array.isArray(audience) && audience.includes(expected);
-}
 
 export function extractAccessToken(headers: Headers): string | null {
   const authHeader = headers.get("Authorization");
@@ -225,12 +219,8 @@ export async function validateOAuthAccessToken(
       };
     }
 
-    const payload = await verifyAuthIssuedJwt(token);
+    const payload = await verifyIssuedAccessToken(token, RP_API_AUDIENCE);
     if (!payload) {
-      return { valid: false, error: "Invalid access token" };
-    }
-
-    if (!audienceIncludes(payload.aud, RP_API_AUDIENCE)) {
       return { valid: false, error: "Invalid access token" };
     }
 
@@ -278,6 +268,7 @@ export async function validateOAuthAccessToken(
     return {
       valid: true,
       clientId,
+      payload,
       scopes,
     };
   } catch {

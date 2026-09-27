@@ -3,6 +3,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 
+import { hashOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
@@ -19,9 +20,10 @@ import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
  * Idempotent: revoking an already-revoked token returns `{ revoked: true }`
  * without writing a duplicate row.
  *
- * The function deliberately accepts both opaque tokens (stored in
- * `oauth_access_token.token`) and `at+jwt` (decoded directly for the `jti`),
- * so RFC 7009 callers can pass whichever form they hold.
+ * The function deliberately accepts both opaque tokens (stored hashed in
+ * `oauth_access_token.token`, which is also marked revoked) and `at+jwt`
+ * (decoded directly for the `jti`), so RFC 7009 callers can pass whichever
+ * form they hold.
  */
 
 export interface RevokeTokenInput {
@@ -106,10 +108,10 @@ async function resolveTokenMeta(token: string): Promise<TokenMeta> {
   }
 
   const [row] = await db
-    .select({ referenceId: oauthAccessTokens.referenceId })
-    .from(oauthAccessTokens)
-    .where(eq(oauthAccessTokens.token, token))
-    .limit(1);
+    .update(oauthAccessTokens)
+    .set({ revoked: new Date() })
+    .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
+    .returning({ referenceId: oauthAccessTokens.referenceId });
 
   const jti = row?.referenceId;
   return {
@@ -144,4 +146,14 @@ export async function listRevocationsSince(input: {
     jti: row.jti,
     reason: row.reason,
   }));
+}
+
+export async function isTokenRevoked(jti: string): Promise<boolean> {
+  const row = await db
+    .select({ jti: revokedTokens.jti })
+    .from(revokedTokens)
+    .where(eq(revokedTokens.jti, jti))
+    .limit(1)
+    .get();
+  return Boolean(row);
 }
