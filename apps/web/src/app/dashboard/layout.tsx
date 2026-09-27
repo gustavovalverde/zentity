@@ -13,6 +13,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { configuredSocialProviders } from "@/lib/auth/auth-config";
 import { getCachedSession } from "@/lib/auth/session";
 import { getIdentityBundleByUserId } from "@/lib/db/queries/identity";
 
@@ -40,7 +41,7 @@ export default async function DashboardLayout({
     <TrpcProvider>
       <FheBackgroundKeygen hasEnrollment={hasEnrollment} />
       <PasskeyAuthProvider>
-        <BetterAuthUIProvider>
+        <BetterAuthUIProvider socialProviders={configuredSocialProviders}>
           <SidebarProvider>
             <AppSidebar user={session.user} />
             <SidebarInset>

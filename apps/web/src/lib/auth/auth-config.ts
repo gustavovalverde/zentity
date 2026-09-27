@@ -1511,6 +1511,35 @@ async function afterCibaAuthorizePersistAuthContext(ctx: HookCtx) {
     .run();
 }
 
+const socialProviders = {
+  ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
+    ? {
+        google: {
+          clientId: env.GOOGLE_CLIENT_ID,
+          clientSecret: env.GOOGLE_CLIENT_SECRET,
+          disableSignUp: true,
+          disableDefaultScope: true,
+          scope: ["openid", "email"],
+        },
+      }
+    : {}),
+  ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+    ? {
+        github: {
+          clientId: env.GITHUB_CLIENT_ID,
+          clientSecret: env.GITHUB_CLIENT_SECRET,
+          disableSignUp: true,
+        },
+      }
+    : {}),
+};
+
+export type SocialProviderId = keyof typeof socialProviders;
+
+export const configuredSocialProviders = Object.keys(
+  socialProviders
+) as SocialProviderId[];
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -1655,28 +1684,7 @@ export const auth = betterAuth({
       },
     },
   },
-  socialProviders: {
-    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? {
-          google: {
-            clientId: env.GOOGLE_CLIENT_ID,
-            clientSecret: env.GOOGLE_CLIENT_SECRET,
-            disableSignUp: true,
-            disableDefaultScope: true,
-            scope: ["openid", "email"],
-          },
-        }
-      : {}),
-    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
-      ? {
-          github: {
-            clientId: env.GITHUB_CLIENT_ID,
-            clientSecret: env.GITHUB_CLIENT_SECRET,
-            disableSignUp: true,
-          },
-        }
-      : {}),
-  },
+  socialProviders,
   session: {
     expiresIn: 60 * 60 * 24 * 7, // 7 days
     updateAge: 60 * 60 * 24, // Update session every 24 hours

@@ -7,6 +7,7 @@ import { BetterAuthUIProvider } from "@/components/providers/auth-ui-provider";
 import { PasskeyAuthProvider } from "@/components/providers/passkey-auth-provider";
 import { TrpcProvider } from "@/components/providers/trpc-provider";
 import { Web3Provider } from "@/components/providers/web3-provider";
+import { configuredSocialProviders } from "@/lib/auth/auth-config";
 
 export default async function AuthLayout({
   children,
@@ -32,7 +33,9 @@ export default async function AuthLayout({
         <TrpcProvider>
           <Web3Provider cookies={cookies}>
             <PasskeyAuthProvider>
-              <BetterAuthUIProvider>{children}</BetterAuthUIProvider>
+              <BetterAuthUIProvider socialProviders={configuredSocialProviders}>
+                {children}
+              </BetterAuthUIProvider>
             </PasskeyAuthProvider>
           </Web3Provider>
         </TrpcProvider>
