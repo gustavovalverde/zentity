@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Fingerprint,
-  Lock,
-  Shield,
-  ShieldAlert,
-  ShieldCheck,
-} from "lucide-react";
+import { Fingerprint, Lock, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,15 +10,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import {
-  computeShieldColor,
-  type EncryptionLevel,
-  type SecurityBadgeInput,
-  type ShieldColor,
-} from "./security-badges";
+export type EncryptionLevel = "none" | "standard" | "post-quantum";
+
+export interface SecurityBadgeInput {
+  encryptionLevel: EncryptionLevel;
+  isPairwise: boolean;
+  requiresDpop: boolean;
+}
 
 interface SecurityBadge {
-  icon: typeof Shield;
+  icon: typeof Lock;
   label: string;
   tooltip: string;
 }
@@ -45,31 +40,8 @@ const ENCRYPTION_BADGES: Record<
   },
 };
 
-const SHIELD_ICONS: Record<ShieldColor, typeof Shield> = {
-  green: ShieldCheck,
-  yellow: Shield,
-  gray: ShieldAlert,
-};
-
 function deriveSecurityBadges(input: SecurityBadgeInput): SecurityBadge[] {
   const badges: SecurityBadge[] = [];
-
-  if (input.signingAlg !== "RS256") {
-    const shieldColor = computeShieldColor(input);
-    badges.push({
-      icon: SHIELD_ICONS[shieldColor],
-      label: input.signingAlg,
-      tooltip: `Tokens signed with ${input.signingAlg}`,
-    });
-
-    if (input.signingAlg === "ML-DSA-65") {
-      badges.push({
-        icon: ShieldCheck,
-        label: "Quantum-safe",
-        tooltip: "Protected against future quantum computing threats",
-      });
-    }
-  }
 
   if (input.encryptionLevel !== "none") {
     badges.push(ENCRYPTION_BADGES[input.encryptionLevel]);

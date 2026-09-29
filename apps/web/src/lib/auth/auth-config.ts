@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 
 import { ciba, deliverPing } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopAccessTokenValidator,
@@ -37,7 +38,7 @@ import {
   twoFactor,
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
@@ -58,7 +59,6 @@ import {
 } from "@/lib/agents/token-snapshot";
 import { buildNamespacedAssuranceClaim } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { reportRejection } from "@/lib/async-handler";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createSessionAuthenticationContext,
@@ -66,10 +66,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import {
-  revokePendingCibaOnLogout,
-  sendBackchannelLogout,
-} from "@/lib/auth/oidc/backchannel-logout";
+import { revokePendingCibaOnLogout } from "@/lib/auth/oidc/backchannel-logout";
 import {
   hashCibaAuthReqId,
   rawAuthReqIdFromApprovalUrl,
@@ -93,6 +90,7 @@ import {
   hasReleaseContext,
   loadReleaseContext,
   type ReleaseContext,
+  releaseIdFor,
   touchReleaseContext,
   validateReleaseContextForSubject,
 } from "@/lib/auth/oidc/disclosure/context";
@@ -124,15 +122,14 @@ import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import { deletePairwiseSubjectsForUser } from "@/lib/auth/oidc/pairwise-subject-index";
 import {
   buildPaymentAuthorizationClaims,
-  canonicalizePaymentRar,
   PAYMENT_AUTHORIZATION_SCOPE,
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-  pinPaymentTokenAudience,
+  pinPaymentRequest,
 } from "@/lib/auth/oidc/payment-mint";
 import {
+  enforceAuthorizeAcr,
   enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
-  enforceStepUp,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
@@ -163,6 +160,7 @@ import {
   haipVpSessions,
   jwks,
   oauthAccessTokens,
+  oauthClientAssertions,
   oauthClientResources,
   oauthClients,
   oauthConsents,
@@ -181,6 +179,7 @@ import {
 } from "@/lib/db/schema/organization";
 import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
+import { clientIpAddressOptions } from "@/lib/http/rate-limit";
 import { validateSafeUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logger as rootLogger } from "@/lib/logging/logger";
@@ -195,6 +194,7 @@ const betterAuthSchema = {
   passkey: passkeys,
   walletAddress: walletAddresses,
   oauthClient: oauthClients,
+  oauthClientAssertion: oauthClientAssertions,
   oauthRefreshToken: oauthRefreshTokens,
   oauthAccessToken: oauthAccessTokens,
   oauthConsent: oauthConsents,
@@ -323,6 +323,8 @@ async function applyCimdClientPosture(clientId: string) {
 }
 
 const cimdOptions = {
+  fetchClientMetadataResource,
+  metadataProfile: "mcp-2026-07-28" as const,
   onClientCreated: async ({ client }: { client: { clientId: string } }) => {
     await applyCimdClientPosture(client.clientId);
     cimdLog.info(
@@ -587,17 +589,6 @@ async function validateDcrRegistration(
     }
   }
 
-  // OIDC BCL: validate backchannel_logout_uri if present
-  const bclUri =
-    typeof body.backchannel_logout_uri === "string"
-      ? body.backchannel_logout_uri.trim()
-      : undefined;
-  if (bclUri && !isDev && !isValidHttpsUrl(bclUri)) {
-    throw new APIError("BAD_REQUEST", {
-      error_description: "backchannel_logout_uri must be an HTTPS URL",
-    });
-  }
-
   let rpValidityNoticeUri: string | undefined;
   if (typeof body.rp_validity_notice_uri === "string") {
     rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
@@ -702,6 +693,55 @@ async function beforeDcrRegister(ctx: HookCtx) {
   await validateDcrRegistration(ctx.body);
   if (ctx.body && !ctx.body.subject_type) {
     ctx.body.subject_type = "pairwise";
+  }
+}
+
+// Magic-link verification deletes every account row of a user whose email is
+// unverified. For OPAQUE and wallet users that row is the only credential.
+const EMAIL_PROOF_PROTECTED_PROVIDERS = ["opaque", "eip712"];
+
+async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
+  const token =
+    typeof ctx.query?.token === "string" ? ctx.query.token : undefined;
+  if (!token) {
+    return;
+  }
+
+  const verification = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, token))
+    .limit(1)
+    .get();
+  if (!verification) {
+    return;
+  }
+
+  let email: unknown;
+  try {
+    email = (JSON.parse(verification.value) as { email?: unknown }).email;
+  } catch {
+    return;
+  }
+  if (typeof email !== "string") {
+    return;
+  }
+
+  const protectedAccount = await db
+    .select({ id: accounts.id })
+    .from(users)
+    .innerJoin(accounts, eq(accounts.userId, users.id))
+    .where(
+      and(
+        eq(users.email, email.toLowerCase()),
+        eq(users.emailVerified, false),
+        inArray(accounts.providerId, EMAIL_PROOF_PROTECTED_PROVIDERS)
+      )
+    )
+    .limit(1)
+    .get();
+  if (protectedAccount) {
+    throw ctx.redirect(`${appUrl}/sign-in?error=email_unverified`);
   }
 }
 
@@ -1000,14 +1040,14 @@ interface PendingCibaToken {
 }
 const pendingCibaToken = new Map<string, PendingCibaToken>();
 
-// Off-wire binding from an opaque access token's introspection re-derive to its
-// release context. The AS-owned jti no longer equals the release id, so userinfo
-// resolves the staged identity payload through this claim (opaque tokens only;
-// it never appears on a minted JWT).
+// Binds an access token to its release context so userinfo can resolve the
+// staged identity payload: JWT access tokens carry it, opaque tokens recover it
+// on the introspection re-derive.
 const RELEASE_BINDING_CLAIM = "zentity_release_binding";
 
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
+  clientId?: string;
   referenceId?: string;
   scopes: unknown;
   sessionId?: string | null;
@@ -1066,9 +1106,12 @@ async function buildIdTokenDisclosureClaims(input: {
   const authContextClaims = auth
     ? { [AUTHENTICATION_CONTEXT_CLAIM]: auth.id }
     : {};
-  const releaseContext = input.referenceId
-    ? await loadReleaseContext(input.referenceId)
-    : null;
+  const releaseContext =
+    input.referenceId && input.clientId
+      ? await loadReleaseContext(
+          releaseIdFor(input.referenceId, input.clientId)
+        )
+      : null;
   const idTokenFilter = claimsRequestForEndpoint(
     releaseContext?.claimsRequest ?? null,
     "id_token"
@@ -1132,19 +1175,16 @@ async function buildAccessTokenDisclosureClaims(
 
   // Extend the identity-payload TTL whenever a token is minted for a
   // release-bound request so the payload survives until userinfo consumes it.
-  if (referenceId) {
-    const releaseContext = await loadReleaseContext(referenceId);
+  if (referenceId && clientId) {
+    const releaseContext = await loadReleaseContext(
+      releaseIdFor(referenceId, clientId)
+    );
     if (releaseContext) {
       await touchReleaseContext(
         releaseContext.releaseId,
         Date.now() + 3600 * 1000
       );
-      // Surface the release binding so userinfo can locate the staged identity
-      // payload. Opaque tokens strip it before the wire and recover it on the
-      // introspection re-derive; JWT access tokens carry it, since the AS owns
-      // the jti and a release-bound JWT cannot recover the reference otherwise.
-      // The binding is the client-known reference id, never PII.
-      claims[RELEASE_BINDING_CLAIM] = referenceId;
+      claims[RELEASE_BINDING_CLAIM] = releaseContext.releaseId;
     }
   }
 
@@ -1181,6 +1221,9 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
             // the authentication context falls back to referenceId/userId.
             return buildIdTokenDisclosureClaims({
               authContextId: null,
+              ...(info.client?.clientId
+                ? { clientId: info.client.clientId }
+                : {}),
               ...(info.referenceId ? { referenceId: info.referenceId } : {}),
               scopes: info.scopes,
               ...(info.sessionId === undefined
@@ -1541,9 +1584,10 @@ export const auth = betterAuth({
       "/ciba/authorize",
       "/ciba/reject",
     ] as unknown as boolean,
+    ipAddress: clientIpAddressOptions,
   },
   rateLimit:
-    isOidcE2e || process.env.NODE_ENV === "test"
+    isPlaywrightE2e || process.env.NODE_ENV === "test"
       ? { enabled: false }
       : {
           enabled: true,
@@ -1636,7 +1680,7 @@ export const auth = betterAuth({
     },
     changeEmail: {
       enabled: true,
-      updateEmailWithoutVerification: true,
+      updateEmailWithoutVerification: false,
       sendChangeEmailConfirmation: async ({ user, newEmail, url }) => {
         const { sendChangeEmailConfirmation } = await import(
           "@/lib/email/auth"
@@ -1661,6 +1705,11 @@ export const auth = betterAuth({
         before: async (session) => ({
           data: { ...session, ipAddress: null, userAgent: null },
         }),
+      },
+      delete: {
+        after: async (session) => {
+          await revokePendingCibaOnLogout(session.userId);
+        },
       },
     },
   },
@@ -1713,25 +1762,20 @@ export const auth = betterAuth({
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
+      if (ctx.path === "/magic-link/verify") {
+        return beforeMagicLinkProtectCredentials(ctx);
+      }
       if (ctx.path === "/oidc4vp/response") {
         return beforeVpResponse(ctx);
       }
       if (ctx.path === "/oauth2/bc-authorize") {
-        const canonical = canonicalizePaymentRar(
-          ctx.body?.authorization_details
-        );
-        if (canonical && ctx.body) {
-          ctx.body.authorization_details = canonical;
+        if (ctx.body) {
+          pinPaymentRequest(ctx.body);
         }
         return;
       }
       if (ctx.path === "/oauth2/token") {
         await beforeTokenPairwiseGuard(ctx);
-        // Pin aud=wallet identity URI for a payment grant AFTER the pairwise
-        // guard, which would otherwise strip the resource for pairwise agents.
-        if (ctx.body) {
-          await pinPaymentTokenAudience(ctx.body);
-        }
         if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
           await enforceCibaTokenAcr(ctx, db);
           await beforeCibaTokenLoadAgent(ctx);
@@ -1755,26 +1799,12 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
-        if (!ctx.query?.resource) {
-          ctx.query = { ...ctx.query, resource: appUrl };
-        }
-        await enforceStepUp(ctx, db);
+        await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         return;
       }
       if (ctx.path === "/ciba/authorize") {
         return enforceCibaApprovalAcr(ctx, db);
-      }
-      if (ctx.path === "/sign-out") {
-        // Capture session before sign-out deletes it — needed for BCL
-        const session = await getSessionFromCtx(ctx);
-        if (session?.user?.id) {
-          (ctx.context as Record<string, unknown>).__bclUserId =
-            session.user.id;
-          (ctx.context as Record<string, unknown>).__bclSessionId =
-            session.session.id;
-        }
-        return;
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
@@ -1801,19 +1831,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/two-factor/disable") {
         await afterTwoFactorDisableGuardianCleanup(ctx);
-      }
-      if (ctx.path === "/sign-out") {
-        const userId = (ctx.context as Record<string, unknown>).__bclUserId;
-        const sessionId = (ctx.context as Record<string, unknown>)
-          .__bclSessionId;
-        if (typeof userId === "string") {
-          // Fire-and-forget — don't block the logout response
-          sendBackchannelLogout(
-            userId,
-            typeof sessionId === "string" ? sessionId : undefined
-          ).catch(reportRejection);
-          revokePendingCibaOnLogout(userId).catch(reportRejection);
-        }
       }
     }),
   },
@@ -1874,7 +1891,6 @@ export const auth = betterAuth({
       },
     }),
     oauthProvider({
-      silenceWarnings: { oauthAuthServerConfig: true },
       accessTokenExpiresIn: 3600,
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
@@ -2062,10 +2078,9 @@ export const auth = betterAuth({
         return filterClaimsByRequest(allClaims, userinfoFilter);
       },
     }),
-    // Client ID Metadata Documents (MCP CIMD). The native plugin owns the
-    // fetch/validate/cache/persist path through clientDiscovery; SSRF defenses
-    // are a superset of the previous hand-rolled validator. CIMD clients are
-    // restricted to authorization_code + refresh_token by the plugin.
+    // Client ID Metadata Documents (MCP CIMD). The plugin owns fetching,
+    // validation, caching, and persistence through clientDiscovery; the
+    // provider enforces each discovered client's registered grants.
     cimd(cimdOptions),
     exactDisclosureClaimsPlugin(),
     oidc4ida({
@@ -2117,6 +2132,8 @@ export const auth = betterAuth({
           : [];
       },
       verifyStatusList: true,
+      // The status list token is minted after the verifier snapshots the clock.
+      clockSkewSeconds: 30,
       requiredClaimKeys: ["verification_level", "verified"],
     }),
     // Two-factor authentication (TOTP) as optional backup for password users
@@ -2174,18 +2191,19 @@ export const auth = betterAuth({
         // stashed; embed them here. The after-hook drains the rest of the stash.
         const pending = pendingCibaToken.get(cibaRequest.authReqId);
 
-        const releaseContext = await loadReleaseContext(cibaRequest.authReqId);
+        const releaseId = releaseIdFor(
+          cibaRequest.authReqId,
+          cibaRequest.clientId
+        );
+        const releaseContext = await loadReleaseContext(releaseId);
         if (
           releaseContext?.expectsIdentityPayload &&
-          !hasIdentityPayload(finalReleaseIdentityKey(cibaRequest.authReqId))
+          !hasIdentityPayload(finalReleaseIdentityKey(releaseId))
         ) {
           throw invalidGrantDisclosureError("identity_payload_missing");
         }
         if (releaseContext) {
-          await touchReleaseContext(
-            cibaRequest.authReqId,
-            Date.now() + 3600 * 1000
-          );
+          await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
         }
 
         // Re-mint the RAR server-side from the persisted (canonical) form and

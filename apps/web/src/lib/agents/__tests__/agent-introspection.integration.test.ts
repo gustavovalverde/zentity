@@ -47,7 +47,6 @@ async function createOAuthClient(
   scopes: string[] = ["openid"],
   options?: {
     clientSecret?: string;
-    public?: boolean;
     redirectUris?: string[];
     subjectType?: "pairwise" | "public";
     tokenEndpointAuthMethod?: "client_secret_post" | "none";
@@ -62,8 +61,10 @@ async function createOAuthClient(
         options?.redirectUris ?? ["http://localhost/callback"]
       ),
       grantTypes: JSON.stringify(grantTypes),
+      clientCredentialsScopes: grantTypes.includes("client_credentials")
+        ? JSON.stringify(scopes)
+        : null,
       tokenEndpointAuthMethod: options?.tokenEndpointAuthMethod ?? "none",
-      public: options?.public ?? true,
       subjectType: options?.subjectType,
       ...(options?.clientSecret
         ? {
@@ -246,7 +247,6 @@ describe("Agent Introspection", () => {
       ["agent:introspect"],
       {
         clientSecret: "introspector-secret",
-        public: false,
         tokenEndpointAuthMethod: "client_secret_post",
       }
     );

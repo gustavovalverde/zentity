@@ -45,7 +45,6 @@ async function createClient(input: {
       redirectUris: JSON.stringify(["https://rp.example.com/callback"]),
       grantTypes: JSON.stringify(["authorization_code"]),
       metadata: input.metadata ? JSON.stringify(input.metadata) : null,
-      public: true,
       subjectType: input.subjectType,
       tokenEndpointAuthMethod: "none",
     })

@@ -7,10 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
-import {
-  jwks as jwksTable,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
@@ -20,30 +17,12 @@ import {
 const BCL_URI = "https://rp.example.com/backchannel-logout";
 const BCL_CLIENT_ID = "bcl-test-client";
 
-async function seedSigningKey() {
-  const { generateKeyPair, exportJWK } = await import("jose");
-  const keyPair = await generateKeyPair("EdDSA", {
-    crv: "Ed25519",
-    extractable: true,
-  });
-  const kid = crypto.randomUUID();
-  const publicJwk = await exportJWK(keyPair.publicKey);
-  const privateJwk = await exportJWK(keyPair.privateKey);
-  await db
-    .insert(jwksTable)
-    .values({
-      id: kid,
-      publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
-      alg: "EdDSA",
-      crv: "Ed25519",
-    })
-    .run();
-}
-
 async function createBclClient(
   clientId: string,
-  metadata: Record<string, unknown>
+  backchannel: {
+    backchannelLogoutSessionRequired?: boolean;
+    backchannelLogoutUri?: string;
+  } = {}
 ) {
   await db
     .insert(oauthClients)
@@ -51,19 +30,30 @@ async function createBclClient(
       clientId,
       name: "BCL Test Client",
       redirectUris: JSON.stringify(["http://localhost/callback"]),
-      metadata: JSON.stringify(metadata),
+      ...backchannel,
     })
     .run();
 }
 
+async function sendLogout(sessionId?: string) {
+  const { sendBackchannelLogoutToClient } = await import(
+    "@/lib/auth/oidc/backchannel-logout"
+  );
+  await sendBackchannelLogoutToClient({
+    clientId: BCL_CLIENT_ID,
+    userId,
+    ...(sessionId ? { sessionId } : {}),
+  });
+}
+
+let userId: string;
+
 describe("back-channel logout", () => {
-  let userId: string;
   const fetchSpy = vi.fn<typeof fetch>();
 
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
-    await seedSigningKey();
 
     fetchSpy.mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
@@ -74,14 +64,9 @@ describe("back-channel logout", () => {
   });
 
   it("delivers logout token to BCL-registered client", async () => {
-    await createBclClient(BCL_CLIENT_ID, {
-      backchannel_logout_uri: BCL_URI,
-    });
+    await createBclClient(BCL_CLIENT_ID, { backchannelLogoutUri: BCL_URI });
 
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId);
+    await sendLogout();
 
     expect(fetchSpy).toHaveBeenCalledWith(
       BCL_URI,
@@ -90,14 +75,9 @@ describe("back-channel logout", () => {
   });
 
   it("logout token has correct JWT structure", async () => {
-    await createBclClient(BCL_CLIENT_ID, {
-      backchannel_logout_uri: BCL_URI,
-    });
+    await createBclClient(BCL_CLIENT_ID, { backchannelLogoutUri: BCL_URI });
 
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId);
+    await sendLogout();
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -117,15 +97,12 @@ describe("back-channel logout", () => {
 
   it("includes sid when backchannel_logout_session_required", async () => {
     await createBclClient(BCL_CLIENT_ID, {
-      backchannel_logout_uri: BCL_URI,
-      backchannel_logout_session_required: true,
+      backchannelLogoutUri: BCL_URI,
+      backchannelLogoutSessionRequired: true,
     });
 
     const sessionId = crypto.randomUUID();
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId, sessionId);
+    await sendLogout(sessionId);
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -134,14 +111,9 @@ describe("back-channel logout", () => {
   });
 
   it("omits sid when session_required is false", async () => {
-    await createBclClient(BCL_CLIENT_ID, {
-      backchannel_logout_uri: BCL_URI,
-    });
+    await createBclClient(BCL_CLIENT_ID, { backchannelLogoutUri: BCL_URI });
 
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId, "session-123");
+    await sendLogout("session-123");
 
     const body = fetchSpy.mock.calls[0]?.[1]?.body as string;
     const params = new URLSearchParams(body);
@@ -150,26 +122,18 @@ describe("back-channel logout", () => {
   });
 
   it("skips clients without backchannel_logout_uri", async () => {
-    await createBclClient("no-bcl-client", {});
+    await createBclClient(BCL_CLIENT_ID);
 
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId);
+    await sendLogout();
 
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("jti is unique across multiple logout events", async () => {
-    await createBclClient(BCL_CLIENT_ID, {
-      backchannel_logout_uri: BCL_URI,
-    });
+    await createBclClient(BCL_CLIENT_ID, { backchannelLogoutUri: BCL_URI });
 
-    const { sendBackchannelLogout } = await import(
-      "@/lib/auth/oidc/backchannel-logout"
-    );
-    await sendBackchannelLogout(userId);
-    await sendBackchannelLogout(userId);
+    await sendLogout();
+    await sendLogout();
 
     const getJti = (callIndex: number) => {
       const body = fetchSpy.mock.calls[callIndex]?.[1]?.body as string;
@@ -182,7 +146,7 @@ describe("back-channel logout", () => {
 
   it("revokePendingCibaOnLogout rejects pending CIBA requests", async () => {
     const authReqId = crypto.randomUUID();
-    await createBclClient(BCL_CLIENT_ID, {});
+    await createBclClient(BCL_CLIENT_ID);
     await db
       .insert(cibaRequests)
       .values({
@@ -209,7 +173,7 @@ describe("back-channel logout", () => {
   });
 
   it("revokePendingCibaOnLogout does not affect non-pending requests", async () => {
-    await createBclClient(BCL_CLIENT_ID, {});
+    await createBclClient(BCL_CLIENT_ID);
     const { authReqId: approvedId } = await createTestCibaRequest({
       clientId: BCL_CLIENT_ID,
       userId,

@@ -191,7 +191,6 @@ async function seedProbeState(
         JSON.stringify(["https://example.com/callback"]),
         JSON.stringify([CIBA_GRANT_TYPE]),
         "none",
-        1,
         "pairwise",
       ],
       sql: `
@@ -202,9 +201,8 @@ async function seedProbeState(
           redirect_uris,
           grant_types,
           token_endpoint_auth_method,
-          public,
           subject_type
-        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?)
       `,
     },
     {

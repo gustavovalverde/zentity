@@ -79,7 +79,6 @@ async function createTestClient(
       grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
       ...(metadata ? { metadata: JSON.stringify(metadata) } : {}),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }
@@ -799,7 +798,6 @@ describe("Token Exchange (RFC 8693)", () => {
           redirectUris: JSON.stringify([PAIRWISE_REDIRECT]),
           grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
           tokenEndpointAuthMethod: "none",
-          public: true,
           subjectType: "pairwise",
         })
         .run();

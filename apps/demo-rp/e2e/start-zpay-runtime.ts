@@ -69,6 +69,9 @@ function start() {
     ZPAY_SERVER__BIND_ADDR: `127.0.0.1:${appPort}`,
     ZPAY_OPS__BIND_ADDR: `127.0.0.1:${opsPort}`,
     ZPAY_NETWORK: "testnet",
+    // The payee's pay_to is a placeholder that zpay rejects at startup
+    // unless demo payees are allowed.
+    ZPAY_ALLOW_DEMO_PAYEE: "1",
     ZPAY_STORE__BACKEND: "libsql",
     ZPAY_STORE__URL: libsqlUrl,
     ZPAY_PAYEES__CONFIG_PATH: payeeConfigPath,

@@ -131,7 +131,7 @@ describe("JWKS signing key rotation", () => {
     });
 
     it("returns null oldKid when no key exists for algorithm", async () => {
-      const { oldKid, newKid } = await rotateSigningKey("ES256");
+      const { oldKid, newKid } = await rotateSigningKey("RS256");
 
       expect(oldKid).toBeNull();
       expect(newKid).toBeTruthy();

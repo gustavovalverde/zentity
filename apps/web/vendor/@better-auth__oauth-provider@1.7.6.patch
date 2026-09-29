@@ -1,0 +1,32 @@
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+index 0f25dedd409ee3bf612b5a0641ee3745a4389625..11ae328ae5a65c8e46e74640f1e65679ec525ba8 100644
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -193,4 +193,7 @@ declare function consumeClientAssertion(ctx: GenericEndpointContext, opts: OAuth
+   expectedAudience: string;
+ }): Promise<void>;
+ //#endregion
+-export { ActiveAccessTokenPayload, AuthMethod, AuthServerMetadata, AuthorizePrompt, BearerMethodsSupported, ClientDiscovery, ClientMetadataResourceFetch, ClientRegistrationRequest, Confirmation, DEFAULT_OAUTH_SCOPES, DEVICE_CODE_GRANT_TYPE, GrantType, InitialAccessTokenAuthorization, OAuthAuthenticatedClient, OAuthAuthorizationQuery, OAuthClaimExtensionInput, type OAuthClient, OAuthClientAdministrativeResponse, OAuthClientAuthenticationInput, OAuthClientAuthenticationRequest, OAuthClientAuthenticationResult, OAuthClientAuthenticationStrategy, type OAuthClientMetadata, OAuthClientRegistrationResponse, OAuthClientResource, OAuthConsent, type OAuthDeviceAuthorizationOptions, type OAuthEndpointErrorResult, type OAuthEndpointRedirectContext, type OAuthErrorCode, OAuthExtensionGrantHandler, OAuthExtensionGrantHandlerInput, type OAuthFieldErrorCode, type OAuthFieldErrorCodeMap, OAuthMetadataExtensionInput, OAuthOpaqueAccessToken, OAuthOptions, OAuthProviderApi, OAuthProviderExtension, type OAuthRedirectOnError, OAuthRefreshToken, OAuthResource, OAuthResourceInput, OAuthTokenIssueParams, OAuthTokenResponse, OAuthUserInfoExtensionInput, OIDCMetadata, Prompt, type ResourceServerMetadata, ResourceUriSchema, SchemaClient, Scope, StoreTokenType, StoredAuthorizationQuery, TokenEndpointAuthMethod, TokenType, VerificationValue, authServerMetadata, consumeClientAssertion, createResourceServerChallenge, extendOAuthProvider, getIssuer, getOAuthProviderApi, getOAuthProviderState, metadataResponse, oauthAuthorizationServerMetadata, oauthClientMetadataSchema, oauthDeviceAuthorization, oauthProvider, oauthProviderAuthServerMetadata, oauthProviderOpenIdConfigMetadata, oidcServerMetadata };
+\ No newline at end of file
++//#region src/utils/index.d.ts
++declare function verifyOAuthQueryParams(oauth_query: string, secret: string): Promise<boolean>;
++//#endregion
++export { ActiveAccessTokenPayload, AuthMethod, AuthServerMetadata, AuthorizePrompt, BearerMethodsSupported, ClientDiscovery, ClientMetadataResourceFetch, ClientRegistrationRequest, Confirmation, DEFAULT_OAUTH_SCOPES, DEVICE_CODE_GRANT_TYPE, GrantType, InitialAccessTokenAuthorization, OAuthAuthenticatedClient, OAuthAuthorizationQuery, OAuthClaimExtensionInput, type OAuthClient, OAuthClientAdministrativeResponse, OAuthClientAuthenticationInput, OAuthClientAuthenticationRequest, OAuthClientAuthenticationResult, OAuthClientAuthenticationStrategy, type OAuthClientMetadata, OAuthClientRegistrationResponse, OAuthClientResource, OAuthConsent, type OAuthDeviceAuthorizationOptions, type OAuthEndpointErrorResult, type OAuthEndpointRedirectContext, type OAuthErrorCode, OAuthExtensionGrantHandler, OAuthExtensionGrantHandlerInput, type OAuthFieldErrorCode, type OAuthFieldErrorCodeMap, OAuthMetadataExtensionInput, OAuthOpaqueAccessToken, OAuthOptions, OAuthProviderApi, OAuthProviderExtension, type OAuthRedirectOnError, OAuthRefreshToken, OAuthResource, OAuthResourceInput, OAuthTokenIssueParams, OAuthTokenResponse, OAuthUserInfoExtensionInput, OIDCMetadata, Prompt, type ResourceServerMetadata, ResourceUriSchema, SchemaClient, Scope, StoreTokenType, StoredAuthorizationQuery, TokenEndpointAuthMethod, TokenType, VerificationValue, authServerMetadata, consumeClientAssertion, createResourceServerChallenge, extendOAuthProvider, getIssuer, getOAuthProviderApi, getOAuthProviderState, metadataResponse, oauthAuthorizationServerMetadata, oauthClientMetadataSchema, oauthDeviceAuthorization, oauthProvider, oauthProviderAuthServerMetadata, oauthProviderOpenIdConfigMetadata, oidcServerMetadata, verifyOAuthQueryParams };
+\ No newline at end of file
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 48a98edb1743681b5b335bb06c09e53e83f22e02..2ad72e41e95130c374a8a8b17743c90af99f9ffe 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -1,5 +1,5 @@
+ import { C as resolveResourcePolicy, c as ResourceUriSchema, i as getOAuthProviderApi, p as oauthClientMetadataSchema, v as extractRepeatedResourceFromForm } from "./introspect-CbYi2MJT.mjs";
+-import { D as validateClientScopes, N as extendOAuthProvider, T as toResourceList, a as getClient, f as normalizeClientAuthenticationParameters, s as getOAuthProviderPlugin, w as toAudienceClaim } from "./utils-CoqjzHuU.mjs";
++import { D as validateClientScopes, N as extendOAuthProvider, O as verifyOAuthQueryParams, T as toResourceList, a as getClient, f as normalizeClientAuthenticationParameters, s as getOAuthProviderPlugin, w as toAudienceClaim } from "./utils-CoqjzHuU.mjs";
+ import { d as metadataResponse, f as oauthAuthorizationServerMetadata, h as oidcServerMetadata, i as oauthProvider, m as oauthProviderOpenIdConfigMetadata, n as DEFAULT_OAUTH_SCOPES, p as oauthProviderAuthServerMetadata, r as getOAuthProviderState, s as consumeClientAssertion, t as getIssuer, u as authServerMetadata } from "./authorize-CLuqtSXQ.mjs";
+ import { t as createResourceServerChallenge } from "./resource-challenge-Damwi0Or.mjs";
+ import { APIError } from "better-auth/api";
+@@ -228,4 +228,4 @@ function oauthDeviceAuthorization(options = {}) {
+ 	};
+ }
+ //#endregion
+-export { DEFAULT_OAUTH_SCOPES, DEVICE_CODE_GRANT_TYPE, ResourceUriSchema, authServerMetadata, consumeClientAssertion, createResourceServerChallenge, extendOAuthProvider, getIssuer, getOAuthProviderApi, getOAuthProviderState, metadataResponse, oauthAuthorizationServerMetadata, oauthClientMetadataSchema, oauthDeviceAuthorization, oauthProvider, oauthProviderAuthServerMetadata, oauthProviderOpenIdConfigMetadata, oidcServerMetadata };
++export { DEFAULT_OAUTH_SCOPES, DEVICE_CODE_GRANT_TYPE, ResourceUriSchema, authServerMetadata, consumeClientAssertion, createResourceServerChallenge, extendOAuthProvider, getIssuer, getOAuthProviderApi, getOAuthProviderState, metadataResponse, oauthAuthorizationServerMetadata, oauthClientMetadataSchema, oauthDeviceAuthorization, oauthProvider, oauthProviderAuthServerMetadata, oauthProviderOpenIdConfigMetadata, oidcServerMetadata, verifyOAuthQueryParams };

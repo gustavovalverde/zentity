@@ -10,7 +10,7 @@ const currentDir =
 const webRoot = join(currentDir, "..", "web");
 const authStatePath = join(webRoot, "e2e", ".auth", "user.json");
 const issuerBaseURL =
-  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://127.0.0.1:3100";
+  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3100";
 const demoRpBaseURL =
   process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ?? "http://localhost:3102";
 const useExternalIssuerServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
@@ -79,6 +79,8 @@ export default defineConfig({
               PORT: issuerPort,
               NEXT_PUBLIC_ENABLE_HARDHAT: "false",
               NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: "false",
+              WALLET_AUDIENCE:
+                process.env.WALLET_AUDIENCE ?? "urn:zentity:wallet:zspend-demo",
             },
           },
         ]),
@@ -122,7 +124,7 @@ export default defineConfig({
           {
             command: "pnpm exec tsx e2e/start-zpay-runtime.ts",
             cwd: currentDir,
-            url: `${zpayBaseURL}/x402/v2/accepts?payee_id=${zpayPayeeId}`,
+            url: `${zpayBaseURL}/zpay/v1/accepts?payee_id=${zpayPayeeId}`,
             reuseExistingServer: false,
             timeout: 300 * 1000,
             env: {

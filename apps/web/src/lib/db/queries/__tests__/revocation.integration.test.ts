@@ -73,6 +73,7 @@ async function createTestOAuthClient(
   clientId: string,
   metadata: Record<string, unknown>,
   args: {
+    backchannelLogoutUri?: string;
     subjectType?: "pairwise" | "public" | null;
   } = {}
 ) {
@@ -84,6 +85,7 @@ async function createTestOAuthClient(
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       metadata: JSON.stringify(metadata),
       subjectType: args.subjectType ?? "pairwise",
+      backchannelLogoutUri: args.backchannelLogoutUri,
     })
     .run();
 }
@@ -230,9 +232,11 @@ describe("identity revocation cascade", () => {
 
     const clientId = "bcl-validity-client";
     await seedSigningKey();
-    await createTestOAuthClient(clientId, {
-      backchannel_logout_uri: "https://rp.example.com/backchannel-logout",
-    });
+    await createTestOAuthClient(
+      clientId,
+      {},
+      { backchannelLogoutUri: "https://rp.example.com/backchannel-logout" }
+    );
     const { authReqId } = await createTestCibaRequest({
       clientId,
       userId,

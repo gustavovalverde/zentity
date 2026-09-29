@@ -83,7 +83,7 @@ function findPaymentAuthorization(
   try {
     return parsePaymentAuthorization(authorizationDetails);
   } catch (error) {
-    // The RAR is validated and canonicalized at bc-authorize (canonicalizePaymentRar
+    // The RAR is validated and canonicalized at bc-authorize (pinPaymentRequest
     // throws invalid_request there), so a parse failure here means corruption.
     // Log it but return null rather than throwing: this runs inside the
     // fire-and-forget notification path, where a throw would silently abort BOTH

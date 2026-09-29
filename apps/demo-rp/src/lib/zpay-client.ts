@@ -2,17 +2,19 @@ import "server-only";
 
 import { env } from "@/lib/env";
 import { parseProblem, type ServiceProblem } from "@/lib/problem-json";
+import { getZpayDpopClient } from "@/lib/zpay-dpop";
 
 /**
- * Server-side wrapper for zpay's HTTP surface.
+ * Server-side wrapper for zpay's payment lifecycle API (`/zpay/v1`).
  *
- * - `preparePayment` posts to `/x402/v2/prepare` and returns the
+ * - `preparePayment` posts to `/zpay/v1/prepare` and returns the
  *   bare `Preparation` payload (payment_id, payment_uri, amount_zat,
  *   expiry_height, memo_bytes).
+ * - `settlePayment` forwards wallet-signed bytes to `/zpay/v1/settle`.
  * - `getPaymentStatus` reads the canonical snapshot via
- *   `/x402/v2/payments/{id}` (bridge polling fallback).
+ *   `/zpay/v1/payments/{id}` (bridge polling fallback).
  * - `proxyPaymentEvents` pipes the upstream SSE stream from
- *   `/x402/v2/payments/{id}/events` through the demo-rp domain so the
+ *   `/zpay/v1/payments/{id}/events` through the demo-rp domain so the
  *   browser EventSource never talks to zpay directly. The Next.js
  *   route handler that wires this MUST set `runtime = "nodejs"` and
  *   `dynamic = "force-dynamic"` so the platform never buffers or
@@ -22,6 +24,9 @@ import { parseProblem, type ServiceProblem } from "@/lib/problem-json";
  * should pull it from there directly; the helper is intentionally
  * client-safe so the in-page bridge can re-derive without dragging in
  * this server-only module.
+ *
+ * Writes carry a DPoP proof from the payment channel's key
+ * (`getZpayDpopClient`), minted here for the exact request URL.
  *
  * Field names match zpay's wire vocabulary (snake_case) instead of
  * being re-cased to camelCase. The wire shape is the contract; the
@@ -62,6 +67,25 @@ export class ZpayError extends Error {
   get kind(): string {
     return this.problem?.kind ?? "unknown";
   }
+}
+
+const ZPAY_API_PATH = "/zpay/v1";
+
+function zpayUrl(path: string): string {
+  return `${env.ZPAY_URL}${ZPAY_API_PATH}${path}`;
+}
+
+async function postWithDpop(path: string, body: unknown): Promise<Response> {
+  const url = zpayUrl(path);
+  const dpop = await getZpayDpopClient();
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      DPoP: await dpop.proofFor("POST", url),
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 function formatProblemMessage(
@@ -137,19 +161,15 @@ export interface Preparation {
 
 export interface PreparePaymentInput {
   /**
-   * DPoP proof JWT minted for this exact request. zpay requires every
-   * `POST /x402/v2/prepare` call to carry a valid `DPoP` header; the
-   * proof's JWK thumbprint becomes the first half of the
-   * `(jkt, idempotency_key)` idempotency composite stored on the
-   * prepared row.
-   */
-  dpopProof: string;
-  /**
    * Optional evidence-pack hash (32 raw bytes) binding the payment to
    * a zentity proof set. zpay grows the protocol memo from 66 to 98
    * bytes when this is present.
    */
   evidencePackHash?: number[];
+  /**
+   * Scoped to the DPoP key: zpay stores the `(jkt, idempotency_key)`
+   * composite on the prepared row.
+   */
   idempotencyKey: string;
   network: PaymentNetwork;
   /**
@@ -170,7 +190,6 @@ export interface PreparePaymentInput {
 export async function preparePayment(
   input: PreparePaymentInput
 ): Promise<Preparation> {
-  const baseUrl = env.ZPAY_URL;
   const body: Record<string, unknown> = {
     payee_id: input.payeeId,
     network: input.network,
@@ -183,29 +202,20 @@ export async function preparePayment(
     body.evidence_pack_hash = input.evidencePackHash;
   }
 
-  const response = await fetch(`${baseUrl}/x402/v2/prepare`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      DPoP: input.dpopProof,
-    },
-    body: JSON.stringify(body),
-  });
+  const response = await postWithDpop("/prepare", body);
 
   if (!response.ok) {
-    throw await buildZpayError("/x402/v2/prepare", response);
+    throw await buildZpayError("/zpay/v1/prepare", response);
   }
 
   const preparation = (await response.json()) as Preparation;
   if (!(preparation.payment_id && preparation.payment_uri)) {
-    throw new Error("zpay /x402/v2/prepare response missing payment_id/uri");
+    throw new Error("zpay /zpay/v1/prepare response missing payment_id/uri");
   }
   return preparation;
 }
 
 export interface SettlePaymentInput {
-  /** DPoP proof minted for `POST {ZPAY_URL}/x402/v2/settle`. */
-  dpopProof: string;
   paymentId: string;
   /** Hex-encoded signed v5 Zcash transaction. */
   rawTxHex: string;
@@ -227,28 +237,20 @@ export interface SettlementResponse {
 }
 
 /**
- * Forwards a wallet-signed transaction to zpay's `/x402/v2/settle`. The BFF
+ * Forwards a wallet-signed transaction to zpay's `/zpay/v1/settle`. The BFF
  * orchestrator at `/api/aether/sign` calls this after obtaining the signed
  * bytes from `zspend-runtime`.
  */
 export async function settlePayment(
   input: SettlePaymentInput
 ): Promise<SettlementResponse> {
-  const baseUrl = env.ZPAY_URL;
-  const response = await fetch(`${baseUrl}/x402/v2/settle`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      DPoP: input.dpopProof,
-    },
-    body: JSON.stringify({
-      payment_id: input.paymentId,
-      raw_tx_hex: input.rawTxHex,
-    }),
+  const response = await postWithDpop("/settle", {
+    payment_id: input.paymentId,
+    raw_tx_hex: input.rawTxHex,
   });
 
   if (!response.ok) {
-    throw await buildZpayError("/x402/v2/settle", response);
+    throw await buildZpayError("/zpay/v1/settle", response);
   }
   return (await response.json()) as SettlementResponse;
 }
@@ -256,14 +258,13 @@ export async function settlePayment(
 export async function getPaymentStatus(
   paymentId: string
 ): Promise<PaymentStatusSnapshot> {
-  const baseUrl = env.ZPAY_URL;
   const response = await fetch(
-    `${baseUrl}/x402/v2/payments/${encodeURIComponent(paymentId)}`,
+    zpayUrl(`/payments/${encodeURIComponent(paymentId)}`),
     { headers: { Accept: "application/json" } }
   );
   if (!response.ok) {
     throw new Error(
-      `zpay /x402/v2/payments/${paymentId} returned ${response.status}`
+      `zpay /zpay/v1/payments/${paymentId} returned ${response.status}`
     );
   }
   const snapshot = (await response.json()) as PaymentStatusSnapshot;
@@ -287,9 +288,8 @@ export async function proxyPaymentEvents(
   paymentId: string,
   request: Request
 ): Promise<Response> {
-  const baseUrl = env.ZPAY_URL;
   const upstream = await fetch(
-    `${baseUrl}/x402/v2/payments/${encodeURIComponent(paymentId)}/events`,
+    zpayUrl(`/payments/${encodeURIComponent(paymentId)}/events`),
     {
       signal: request.signal,
       headers: { Accept: "text/event-stream" },

@@ -66,17 +66,26 @@ describe("createRealRateLimiter", () => {
 });
 
 describe("getClientIp", () => {
-  it("extracts from x-forwarded-for", () => {
+  it("uses the Cloudflare client IP over x-forwarded-for", () => {
+    const h = new Headers({
+      "cf-connecting-ip": "203.0.113.7",
+      "x-forwarded-for": "1.2.3.4, 10.0.0.1",
+    });
+    expect(getClientIp(h)).toBe("203.0.113.7");
+  });
+
+  it("uses a single-hop x-forwarded-for", () => {
+    const h = new Headers({ "x-forwarded-for": "198.51.100.4" });
+    expect(getClientIp(h)).toBe("198.51.100.4");
+  });
+
+  it("never trusts the spoofable leftmost address of a multi-hop x-forwarded-for", () => {
     const h = new Headers({ "x-forwarded-for": "1.2.3.4, 10.0.0.1" });
-    expect(getClientIp(h)).toBe("1.2.3.4");
+    expect(getClientIp(h)).not.toBe("1.2.3.4");
   });
 
-  it("falls back to x-real-ip", () => {
+  it("ignores x-real-ip", () => {
     const h = new Headers({ "x-real-ip": "5.6.7.8" });
-    expect(getClientIp(h)).toBe("5.6.7.8");
-  });
-
-  it("returns unknown when no headers", () => {
-    expect(getClientIp(new Headers())).toBe("unknown");
+    expect(getClientIp(h)).not.toBe("5.6.7.8");
   });
 });

@@ -23,7 +23,7 @@ const useExternalServer = process.env.E2E_EXTERNAL_WEB_SERVER === "true";
 const useWebServer = !useExternalServer && process.env.E2E_SEPOLIA !== "true";
 const defaultBaseURL = useExternalServer
   ? "http://localhost:3000"
-  : "http://127.0.0.1:3100";
+  : "http://localhost:3100";
 const baseURL = process.env.PLAYWRIGHT_TEST_BASE_URL ?? defaultBaseURL;
 const baseUrl = new URL(baseURL);
 const webPort = baseUrl.port || (baseUrl.protocol === "https:" ? "443" : "80");
@@ -57,6 +57,8 @@ const webServerEnv = {
   PORT: webPort,
   TRUSTED_AGENT_ATTESTERS:
     process.env.TRUSTED_AGENT_ATTESTERS ?? "http://localhost:4999/jwks",
+  WALLET_AUDIENCE:
+    process.env.WALLET_AUDIENCE ?? "urn:zentity:wallet:zspend-demo",
   NEXT_PUBLIC_WORLD_ID_ENABLED:
     process.env.NEXT_PUBLIC_WORLD_ID_ENABLED ?? "true",
   NEXT_PUBLIC_WORLD_ID_APP_ID:

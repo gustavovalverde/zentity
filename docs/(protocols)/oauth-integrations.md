@@ -34,8 +34,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `POST /api/auth/oauth2/token` | OAuth 2.1 | Token exchange (all grant types) |
 | `POST /api/auth/oauth2/introspect` | RFC 7662 | Token introspection |
 | `POST /api/auth/oauth2/revoke` | RFC 7009 | Token revocation |
-| `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519, ML-DSA-65) |
-| `GET /api/auth/jwks` | (custom) | Post-quantum signing keys (ML-DSA-65) |
+| `GET /api/auth/oauth2/jwks` | RFC 7517 | Public signing keys (RSA, Ed25519) |
 
 ### User data
 
@@ -329,7 +328,7 @@ The `ath` claim is only included when presenting the access token at a resource 
 | Token | Format | Signing |
 | --- | --- | --- |
 | Access token | Opaque (random string) | n/a |
-| ID token | JWT | RS256 (default), ES256, EdDSA, or ML-DSA-65 per client preference |
+| ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
 Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
@@ -338,12 +337,11 @@ Access tokens are opaque by design; they prevent `sub` leakage for pairwise clie
 
 | Algorithm | Usage | Notes |
 | --- | --- | --- |
-| RS256 | ID tokens (default) | OIDC Discovery 1.0 mandates RS256 support |
+| RS256 | ID tokens | OIDC Discovery 1.0 mandates RS256 support |
 | ES256 | DPoP proofs | Client-side only |
 | EdDSA | Access token JWTs (internal) | Compact 64-byte signatures |
-| ML-DSA-65 | ID tokens (opt-in) | Post-quantum, requires compatible JWT library |
 
-Clients opt into non-default signing algorithms via `id_token_signed_response_alg` in DCR metadata. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
+ID tokens are always RS256: the OAuth provider computes `at_hash` for its configured algorithm, so `id_token_signed_response_alg` is not honored. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
 
 ### Client registration
 
@@ -359,7 +357,7 @@ All clients register via RFC 7591 Dynamic Client Registration. CIBA clients regi
 }
 ```
 
-Optional metadata fields: `id_token_signed_response_alg` (signing algorithm preference), `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
+Optional metadata fields: `optionalScopes` (scopes selectable but not required at consent), `backchannel_client_notification_endpoint` (CIBA ping mode callback URL), `backchannel_logout_uri` (OIDC Back-Channel Logout endpoint), `subject_type` (`"pairwise"` default for the human `sub`, `"public"` available), and `agent_subject_type` (`"pairwise"` default for `act.sub`/`agent.id`, `"public"` available independently of the user setting). Clients with the `firstParty` flag can use the Authorization Challenge Endpoint: headless authentication without redirects, and step-up `auth_session` tokens on authorization failure.
 
 **`software_statement` validation:** If a `software_statement` is present in the DCR request, it must be a syntactically valid JWT (three base64url-encoded parts with a parseable JSON payload). Malformed statements return HTTP 400. The JSON payload is parsed with duplicate-key rejection before the issuer is read. The signature is not verified (no trusted SSA issuers configured), but strict structural validation prevents garbage data or parser-ambiguous issuer metadata from being accepted.
 
@@ -663,7 +661,7 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "require_pushed_authorization_requests": true,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
   "dpop_signing_alg_values_supported": ["ES256"],
-  "id_token_signing_alg_values_supported": ["RS256", "ES256", "EdDSA", "ML-DSA-65"],
+  "id_token_signing_alg_values_supported": ["RS256"],
   "subject_types_supported": ["public", "pairwise"],
   "acr_values_supported": ["urn:zentity:assurance:tier-0", "urn:zentity:assurance:tier-1", "urn:zentity:assurance:tier-2", "urn:zentity:assurance:tier-3"],
   "backchannel_token_delivery_modes_supported": ["poll", "ping"],
@@ -723,13 +721,13 @@ The server never stores plaintext PII. The user's profile secret (encrypted with
 
 Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session ends.
 
-**RP registration:** Include `backchannel_logout_uri` in DCR client metadata. The URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
+**RP registration:** Include `backchannel_logout_uri` in the DCR request. The provider validates it and stores it on the client record; the URI must be an HTTPS endpoint that accepts POST requests with a `logout_token` form parameter.
 
-**`sid` claim:** Injected into id_tokens only for clients with a registered `backchannel_logout_uri`. This allows the RP to correlate the logout token with a specific session.
+**`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris`). This allows the RP to correlate the logout token with a specific session.
 
 **Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
 
-**Retry behavior:** 10-second timeout per RP. On 5xx responses, retries at 1s then 3s (exponential backoff). The user's sign-out completes regardless of delivery success.
+**Delivery:** The OAuth provider sends logout tokens to registered RPs itself whenever a session ends (sign-out or session deletion). The user's sign-out completes regardless of delivery success.
 
 **CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
 

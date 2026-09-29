@@ -76,11 +76,12 @@ describe("/api/dcr POST", () => {
       ((requestInit as RequestInit | undefined)?.body as string) ?? "{}"
     );
     expect(requestBody).toMatchObject({
-      backchannel_logout_uri:
-        "http://localhost:3102/api/auth/backchannel-logout",
+      application_type: "native",
+      post_logout_redirect_uris: ["http://localhost:3102/bank"],
       rp_validity_notice_enabled: true,
       rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
     });
+    expect(requestBody).not.toHaveProperty("backchannel_logout_uri");
   });
 
   it("returns JSON when local persistence fails after upstream registration", async () => {

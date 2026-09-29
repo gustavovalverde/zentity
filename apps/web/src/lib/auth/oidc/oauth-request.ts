@@ -11,7 +11,7 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 
-import { constantTimeEqual, makeSignature } from "better-auth/crypto";
+import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
 import { eq } from "drizzle-orm";
 import { calculateJwkThumbprint } from "jose";
 
@@ -28,23 +28,12 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 export async function verifySignedOAuthQuery(
   query: string
 ): Promise<URLSearchParams> {
-  const params = new URLSearchParams(query);
-  const sig = params.get("sig");
-  const exp = Number(params.get("exp"));
-  params.delete("sig");
-
-  const verifySig = await makeSignature(
-    params.toString(),
-    env.BETTER_AUTH_SECRET
-  );
-  if (
-    !(sig && constantTimeEqual(sig, verifySig)) ||
-    Number.isNaN(exp) ||
-    new Date(exp * 1000) < new Date()
-  ) {
+  if (!(await verifyOAuthQueryParams(query, env.BETTER_AUTH_SECRET))) {
     throw new Error("invalid_signature");
   }
 
+  const params = new URLSearchParams(query);
+  params.delete("sig");
   params.delete("exp");
   return params;
 }
@@ -59,6 +48,16 @@ export function parseRequestedScopes(queryParams: URLSearchParams): string[] {
 // ---------------------------------------------------------------------------
 // Canonical OAuth request key (stable hash for idempotency + correlation)
 // ---------------------------------------------------------------------------
+
+// The signature envelope and Better Auth's signed-query bookkeeping change as
+// the same authorization request moves between the consent page and the API.
+const OAUTH_QUERY_ENVELOPE_FIELDS = new Set([
+  "sig",
+  "exp",
+  "ba_iat",
+  "ba_param",
+  "ba_pl",
+]);
 
 type CanonicalQueryValue =
   | null
@@ -99,7 +98,8 @@ function canonicalizeQueryRecord(
   return Object.fromEntries(
     Object.entries(query)
       .filter(
-        ([key, value]) => key !== "sig" && key !== "exp" && value !== undefined
+        ([key, value]) =>
+          !OAUTH_QUERY_ENVELOPE_FIELDS.has(key) && value !== undefined
       )
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => [key, normalizeCanonicalValue(value)])
@@ -113,7 +113,7 @@ function canonicalizeOAuthQuery(
     const record: Record<string, string | string[]> = {};
     const keys = [...new Set(query.keys())].sort((a, b) => a.localeCompare(b));
     for (const key of keys) {
-      if (key === "sig" || key === "exp") {
+      if (OAUTH_QUERY_ENVELOPE_FIELDS.has(key)) {
         continue;
       }
       const values = query.getAll(key);

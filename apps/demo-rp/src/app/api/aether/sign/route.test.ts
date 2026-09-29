@@ -231,7 +231,7 @@ describe("POST /api/aether/sign", () => {
     );
     mocks.settlePayment.mockRejectedValue(
       new ZpayError({
-        endpoint: "/x402/v2/settle",
+        endpoint: "/zpay/v1/settle",
         status: 409,
         problem: { kind: "rejected", title: "double spend" },
         message: "rejected",

@@ -14,6 +14,7 @@ describe("oauth client metadata helpers", () => {
         scope: "openid offline_access",
       })
     ).toEqual({
+      application_type: "native",
       client_name: "Example CLI",
       grant_types: ["authorization_code", "refresh_token"],
       redirect_uris: ["http://127.0.0.1/callback"],

@@ -47,7 +47,6 @@ async function createTestClient() {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
       firstParty: true,
     })
     .run();
@@ -62,7 +61,6 @@ async function createThirdPartyClient() {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify(["authorization_code"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
       firstParty: false,
     })
     .run();
@@ -724,7 +722,6 @@ describe("Authorization Challenge Endpoint", () => {
           redirectUris: JSON.stringify(["http://localhost/callback"]),
           grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "authorization_code"]),
           tokenEndpointAuthMethod: "none",
-          public: true,
           firstParty: true,
         })
         .run();

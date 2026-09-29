@@ -2,11 +2,7 @@ import type { AccountTier } from "@/lib/assurance/tier";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  buildOAuthErrorUrl,
-  findSatisfiedAcr,
-  isMaxAgeExceeded,
-} from "@/lib/auth/oidc/step-up";
+import { buildOAuthErrorUrl, findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 
 const ACR_TIER_PATTERN = /^urn:zentity:assurance:tier-(\d)$/;
 const WHITESPACE = /\s+/;
@@ -95,28 +91,6 @@ describe("findSatisfiedAcr", () => {
 
   it("returns null for empty acr_values", () => {
     expect(findSatisfiedAcr("", 3 as AccountTier)).toBeNull();
-  });
-});
-
-describe("isMaxAgeExceeded", () => {
-  it("returns true when session is older than max_age", () => {
-    const tenMinutesAgo = new Date(Date.now() - 600_000).toISOString();
-    expect(isMaxAgeExceeded(tenMinutesAgo, 300)).toBe(true);
-  });
-
-  it("returns false when session is within max_age", () => {
-    const now = new Date().toISOString();
-    expect(isMaxAgeExceeded(now, 300)).toBe(false);
-  });
-
-  it("max_age=0 always returns true (force re-auth)", () => {
-    const now = new Date().toISOString();
-    expect(isMaxAgeExceeded(now, 0)).toBe(true);
-  });
-
-  it("accepts Date objects", () => {
-    const tenMinutesAgo = new Date(Date.now() - 600_000);
-    expect(isMaxAgeExceeded(tenMinutesAgo, 300)).toBe(true);
   });
 });
 

@@ -48,10 +48,18 @@ export default function SignInPage() {
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (searchParams.get("error") === "signup_disabled") {
+    const error = searchParams.get("error");
+    if (error === "signup_disabled") {
       toast.error("No account found", {
         description:
           "Please sign up first, then link your social account from Settings.",
+      });
+      window.history.replaceState({}, "", "/sign-in");
+    }
+    if (error === "email_unverified") {
+      toast.error("Email link not available", {
+        description:
+          "Sign in with your password or wallet, then verify your email address before using email sign-in links.",
       });
       window.history.replaceState({}, "", "/sign-in");
     }

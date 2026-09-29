@@ -13,7 +13,7 @@ import { markDueIdentitiesStale } from "@/lib/identity/validity/freshness";
 
 import { adminProcedure, router } from "../server";
 
-const algSchema = z.enum(["RS256", "ES256", "EdDSA"]);
+const algSchema = z.enum(["RS256", "EdDSA"]);
 
 export const adminRouter = router({
   rotateSigningKey: adminProcedure

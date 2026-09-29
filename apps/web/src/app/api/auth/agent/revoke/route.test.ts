@@ -26,7 +26,6 @@ async function createOAuthClient(clientId: string) {
       clientId,
       grantTypes: JSON.stringify(["authorization_code"]),
       name: clientId,
-      public: true,
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       tokenEndpointAuthMethod: "none",
     })

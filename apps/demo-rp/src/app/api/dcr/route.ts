@@ -21,6 +21,20 @@ function scenarioRedirectUri(scenarioId: RouteScenarioId): string {
 }
 
 /**
+ * Zentity registers web clients only with HTTPS, non-loopback redirects and
+ * refuses back-channel logout targets that are not publicly routable HTTPS.
+ */
+function isPublicHttpsOrigin(): boolean {
+  const { hostname, protocol } = new URL(env.NEXT_PUBLIC_APP_URL);
+  return (
+    protocol === "https:" &&
+    hostname !== "localhost" &&
+    hostname !== "127.0.0.1" &&
+    hostname !== "[::1]"
+  );
+}
+
+/**
  * Confirm a cached client_id is still registered at Zentity.
  *
  * The pushed-authorization-request endpoint validates the client before issuing
@@ -67,17 +81,24 @@ async function registerScenarioClient(
 ): Promise<string> {
   const scenario = getRouteScenario(scenarioId);
   const grantTypes = scenario.dcr.grantTypes ?? ["authorization_code"];
+  const publicHttpsOrigin = isPublicHttpsOrigin();
   const response = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       client_name: scenario.dcr.clientName,
+      application_type: publicHttpsOrigin ? "web" : "native",
       redirect_uris: [scenarioRedirectUri(scenarioId)],
+      post_logout_redirect_uris: [`${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`],
       scope: scenario.dcr.requestedScopes,
       token_endpoint_auth_method: "none",
       grant_types: grantTypes,
       response_types: ["code"],
-      backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+      ...(publicHttpsOrigin
+        ? {
+            backchannel_logout_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/backchannel-logout`,
+          }
+        : {}),
       rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
       rp_validity_notice_enabled: true,
       // CIBA clients must advertise a token delivery mode; the provider rejects

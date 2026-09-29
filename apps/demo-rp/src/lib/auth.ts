@@ -216,6 +216,7 @@ async function syncClaimsToDb(
 
 function makeProviderConfig(
   oauthProviderId: string,
+  scenarioId: RouteScenarioId,
   clientId: string,
   scopes: string[],
   authorizationUrlParams?: Record<string, string>
@@ -224,6 +225,7 @@ function makeProviderConfig(
     providerId: oauthProviderId,
     discoveryUrl: `${env.ZENTITY_URL}/.well-known/openid-configuration`,
     clientId,
+    postLogoutRedirectURI: `${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`,
     scopes,
     pkce: true,
     overrideUserInfo: true,
@@ -390,6 +392,7 @@ function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
           return [
             makeProviderConfig(
               scenario.oauthProviderId,
+              scenario.id,
               clientId,
               scenario.signInScopes,
               buildAuthorizationUrlParams(scenario)

@@ -22,7 +22,7 @@ const webE2eDir = join(currentDir, "..", "..", "web", "e2e");
 const webAuthStatePath = join(webE2eDir, ".auth", "user.json");
 const webAuthSeedPath = join(webE2eDir, ".auth", "seed.json");
 const issuerBaseURL =
-  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://127.0.0.1:3100";
+  process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3100";
 const demoRpBaseURL =
   process.env.PLAYWRIGHT_DEMO_RP_BASE_URL ?? "http://localhost:3102";
 const veripassWalletClientId =

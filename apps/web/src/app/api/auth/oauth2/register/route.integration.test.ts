@@ -10,13 +10,14 @@ import { resetDatabase } from "@/test-utils/db-test-utils";
 import { POST } from "./route";
 
 const REGISTER_URL = "http://localhost:3000/api/auth/oauth2/register";
+const RP_ORIGIN = "https://demo-rp.example";
 
 describe("POST /api/auth/oauth2/register", () => {
   beforeEach(async () => {
     await resetDatabase();
   });
 
-  it("persists backchannel logout and validity notice registrations", async () => {
+  it("persists logout and validity notice registrations", async () => {
     const response = await POST(
       new Request(REGISTER_URL, {
         method: "POST",
@@ -25,14 +26,14 @@ describe("POST /api/auth/oauth2/register", () => {
         },
         body: JSON.stringify({
           backchannel_logout_session_required: true,
-          backchannel_logout_uri:
-            "http://localhost:3102/api/auth/backchannel-logout",
+          backchannel_logout_uri: `${RP_ORIGIN}/api/auth/backchannel-logout`,
           client_name: "Demo RP",
           grant_types: ["authorization_code", "refresh_token"],
-          redirect_uris: ["http://127.0.0.1/callback"],
+          post_logout_redirect_uris: [`${RP_ORIGIN}/bank`],
+          redirect_uris: [`${RP_ORIGIN}/callback`],
           response_types: ["code"],
           rp_validity_notice_enabled: true,
-          rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+          rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
           scope: "openid email offline_access",
           token_endpoint_auth_method: "none",
           zentity_protected_resource: "http://localhost:3300",
@@ -50,33 +51,30 @@ describe("POST /api/auth/oauth2/register", () => {
     });
 
     expect(client).toMatchObject({
+      backchannelLogoutSessionRequired: true,
+      backchannelLogoutUri: `${RP_ORIGIN}/api/auth/backchannel-logout`,
       clientId: payload.client_id,
       enableEndSession: true,
       rpValidityNoticeEnabled: true,
-      rpValidityNoticeUri: "http://localhost:3102/api/auth/validity",
+      rpValidityNoticeUri: `${RP_ORIGIN}/api/auth/validity`,
     });
-    expect(client?.metadata).toEqual(expect.any(String));
     expect(JSON.parse(client?.metadata ?? "{}")).toMatchObject({
-      backchannel_logout_session_required: true,
-      backchannel_logout_uri:
-        "http://localhost:3102/api/auth/backchannel-logout",
       rp_validity_notice_enabled: true,
-      rp_validity_notice_uri: "http://localhost:3102/api/auth/validity",
+      rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
       zentity_protected_resource: "http://localhost:3300",
     });
 
     await expect(listBackchannelLogoutClients()).resolves.toEqual([
       expect.objectContaining({
         backchannelLogoutSessionRequired: true,
-        backchannelLogoutUri:
-          "http://localhost:3102/api/auth/backchannel-logout",
+        backchannelLogoutUri: `${RP_ORIGIN}/api/auth/backchannel-logout`,
         clientId: payload.client_id,
       }),
     ]);
     await expect(listRpValidityNoticeClients()).resolves.toEqual([
       expect.objectContaining({
         clientId: payload.client_id,
-        rpValidityNoticeUri: "http://localhost:3102/api/auth/validity",
+        rpValidityNoticeUri: `${RP_ORIGIN}/api/auth/validity`,
       }),
     ]);
   });

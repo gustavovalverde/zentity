@@ -2,15 +2,13 @@
  * HAIP Compliance Integration Tests
  *
  * Validates that HAIP-specific features are correctly wired into the auth config:
- * - ES256 signing key creation and usage
  * - DPoP metadata in discovery
  * - PAR endpoint exposure
  * - HAIP plugin metadata injection
  * - JARM decryption key provisioning
  */
 
-import { createLocalJWKSet, jwtVerify } from "jose";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { db } from "@/lib/db/connection";
@@ -23,8 +21,6 @@ import {
   unwrapMetadata,
 } from "../oidc/well-known";
 
-let signJwt: typeof import("../oidc/jwt-signer").signJwt;
-
 async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
   const allKeys = await db.select().from(jwks);
   return allKeys.map((row) => ({
@@ -34,70 +30,6 @@ async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
     ...(row.crv ? { crv: row.crv } : {}),
   }));
 }
-
-describe("HAIP — ES256 signing support", () => {
-  beforeAll(async () => {
-    const mod = await import("../oidc/jwt-signer");
-    signJwt = mod.signJwt;
-
-    // Warm up: create ES256 key by inserting a client with ES256 preference
-    // then signing a token for that client
-    await db
-      .insert((await import("@/lib/db/schema/oauth-provider")).oauthClients)
-      .values({
-        clientId: "haip-test-es256",
-        name: "HAIP ES256 Test Client",
-        clientSecret: "test-secret",
-        redirectUris: JSON.stringify(["http://localhost/callback"]),
-        metadata: JSON.stringify({
-          id_token_signed_response_alg: "ES256",
-        }),
-      })
-      .onConflictDoNothing()
-      .run();
-
-    // Trigger lazy ES256 key creation
-    await signJwt({ aud: "haip-test-es256", sub: "test" });
-  });
-
-  it("creates ES256 key on first use and serves it in JWKS", async () => {
-    const keys = await buildJwksFromDb();
-    const es256Key = keys.find((k) => k.alg === "ES256");
-
-    expect(es256Key).toBeDefined();
-    expect(es256Key?.kty).toBe("EC");
-    expect(es256Key?.crv).toBe("P-256");
-    expect(es256Key?.kid).toBeDefined();
-  });
-
-  it("signs id_token with ES256 when client opts in", async () => {
-    const token = await signJwt({
-      aud: "haip-test-es256",
-      sub: "user-haip",
-      iss: "http://localhost:3000/api/auth",
-    });
-
-    const keys = await buildJwksFromDb();
-    const localJwks = createLocalJWKSet({ keys });
-    const { protectedHeader } = await jwtVerify(token, localJwks);
-
-    expect(protectedHeader.alg).toBe("ES256");
-  });
-
-  it("access tokens still use EdDSA regardless of client ES256 preference", async () => {
-    const token = await signJwt({
-      scope: "openid",
-      azp: "haip-test-es256",
-      sub: "user-haip",
-    });
-
-    const keys = await buildJwksFromDb();
-    const localJwks = createLocalJWKSet({ keys });
-    const { protectedHeader } = await jwtVerify(token, localJwks);
-
-    expect(protectedHeader.alg).toBe("EdDSA");
-  });
-});
 
 describe("HAIP — discovery metadata", () => {
   async function getEnrichedOpenIdConfig(): Promise<Record<string, unknown>> {

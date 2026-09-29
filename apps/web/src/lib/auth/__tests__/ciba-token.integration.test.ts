@@ -37,7 +37,6 @@ async function createTestClient(clientId = TEST_CLIENT_ID) {
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE, "refresh_token"]),
       tokenEndpointAuthMethod: "none",
-      public: true,
     })
     .run();
 }
@@ -310,7 +309,6 @@ describe("CIBA token endpoint", () => {
         redirectUris: JSON.stringify(["http://localhost/callback"]),
         grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
         tokenEndpointAuthMethod: "none",
-        public: true,
       })
       .run();
 

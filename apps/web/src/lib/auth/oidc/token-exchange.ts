@@ -48,7 +48,7 @@ import {
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
-import { getClientSigningAlg, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
   resolveUserIdFromSub,
@@ -761,7 +761,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       const assurance = await getAccountAssurance(rawUserId, {
         isAuthenticated: true,
       });
-      const signingAlg = await getClientSigningAlg(client.clientId);
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
         sub: outputSub,
@@ -777,7 +776,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           ? {}
           : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
         ...(subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
-          ? { at_hash: computeAtHash(subjectToken, signingAlg) }
+          ? { at_hash: computeAtHash(subjectToken, "RS256") }
           : {}),
       };
 
