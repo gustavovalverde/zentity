@@ -46,7 +46,6 @@ apps/demo-rp
 apps/mcp
 apps/ocr
 apps/fhe
-apps/signer
 
 # The demo image also builds from the repository root because it consumes the
 # workspace SDK and the web app's vendored Better Auth packages.

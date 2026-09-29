@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { gunzipSync, gzipSync } from "node:zlib";
 
-const WEB_URL = process.env.WEB_URL ?? "http://localhost:3000";
+const OCR_URL = process.env.OCR_URL ?? "http://localhost:5004";
 const FHE_URL = process.env.FHE_URL ?? "http://localhost:5001";
 const JAEGER_URL = process.env.JAEGER_URL ?? "http://localhost:16686";
 const INTERNAL_TOKEN = process.env.INTERNAL_SERVICE_TOKEN ?? "";
@@ -115,10 +115,16 @@ async function run() {
   const imageBytes = await readFile("fixtures/passport.jpg");
   const imageBase64 = imageBytes.toString("base64");
 
-  await timed("OCR via web /api/ocr", () =>
-    fetchJson(`${WEB_URL}/api/ocr`, {
+  const commonHeaders: Record<string, string> = {};
+  if (INTERNAL_TOKEN) {
+    commonHeaders["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
+  }
+
+  await timed("OCR process", () =>
+    fetchJson(`${OCR_URL}/process`, {
       method: "POST",
       headers: withTraceHeaders({
+        ...commonHeaders,
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({ image: imageBase64 }),
@@ -126,11 +132,6 @@ async function run() {
   );
 
   const keyId = await timed("Resolve FHE key id", getKeyId);
-
-  const commonHeaders: Record<string, string> = {};
-  if (INTERNAL_TOKEN) {
-    commonHeaders["X-Zentity-Internal-Token"] = INTERNAL_TOKEN;
-  }
 
   await timed("FHE encrypt batch", () =>
     fetchMsgpack(

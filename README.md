@@ -130,10 +130,8 @@ Most integrations need only proof scopes.
 - [ZK Nationality Proofs](docs/%28protocols%29/zk-nationality-proofs.md) - Merkle membership proofs
 - [Web3 Architecture](docs/%28architecture%29/web3-architecture.md) - Web2-to-Web3 transition, encrypted attestations, and Base mirror flow
 - [ADR-0005: Base compliance mirror for payment-time reads](docs/adr/fhe/0005-base-compliance-mirror-for-payment-reads.md) - rationale for the x402/Base public-read boundary
-- [Blockchain Setup](docs/internal/blockchain-setup.md) - confidential chain and Base mirror envs and deployment
 - [OAuth Integrations](docs/%28protocols%29/oauth-integrations.md) - OAuth provider, client management, scopes, OIDC4VCI/VP
 - [Password Security](docs/%28protocols%29/password-security.md) - OPAQUE password model and breach checks
-- [Deployment Verification](docs/internal/verification.md) - deployment verification
 - [Architecture Decision Records](docs/adr/README.md) - decision records
 - [tooling/bruno-collection/README.md](tooling/bruno-collection/README.md) - API collection
 
@@ -162,24 +160,15 @@ docker compose up --build
 <details>
 <summary>Building individual services with Docker</summary>
 
-The web service requires a secret for building (BuildKit secret mount):
+No image needs secrets at build time. The web service reads `BETTER_AUTH_SECRET`
+and its other secrets from the container environment at runtime, and builds from
+the repository root because it depends on workspace packages:
 
 ```bash
-# Generate a secret file (one-time setup)
-openssl rand -base64 32 > ~/.zentity-auth-secret
-
-# Build web service
-docker build \
-  --secret id=better_auth_secret,src=$HOME/.zentity-auth-secret \
-  -t zentity-web apps/web
-
-# FHE and OCR services don't require secrets
+docker build -f apps/web/Dockerfile -t zentity-web .
 docker build -t zentity-fhe apps/fhe
 docker build -t zentity-ocr apps/ocr
 ```
-
-**Why?** Secrets are never baked into image layers. The build fails without the
-secret to prevent running with insecure defaults.
 
 </details>
 
@@ -239,7 +228,6 @@ flowchart LR
 - Passkey-first auth with OPAQUE password and wallet (EIP-712) alternatives
 - Credential-sealed profile secret for user-controlled PII (client decrypt only)
 - Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
-- Social recovery with guardian approvals (email + authenticator), backed by FROST signer services
 - OAuth 2.1 provider flow (authorize, consent, token exchange)
 - HAIP compliance: DPoP with server-managed nonce store, PAR (required), wallet attestation, pairwise subject identifiers
 - OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)
@@ -297,8 +285,6 @@ Details: [System Architecture](docs/%28concepts%29/architecture.md) |
 | Web Frontend | Next.js 16, React 19, Noir.js, bb.js, Human.js | 3000 |
 | FHE Service | Rust, Axum, TFHE-rs | 5001 |
 | OCR Service | Python, FastAPI, RapidOCR | 5004 |
-| Signer Coordinator | Rust (Actix), FROST coordinator | 5002 |
-| Signer Services | Rust (Actix), FROST signers | 5101+ |
 | MCP Server | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 ## License

@@ -147,7 +147,7 @@ export default function SignInPage() {
           <div className="flex justify-end">
             <Link
               className="text-muted-foreground text-xs hover:text-primary hover:underline"
-              href="/recovery/guardian"
+              href="/recovery/passkey"
             >
               Lost your passkey?
             </Link>

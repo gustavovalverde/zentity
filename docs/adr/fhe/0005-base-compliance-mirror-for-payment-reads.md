@@ -65,6 +65,3 @@ The package `@zentity/contracts` exports the mirror ABI, deployment manifest, ty
 
 * Runtime architecture: [Web3 Architecture](<../../(architecture)/web3-architecture.md>)
 * Privacy boundary: [Attestation & Privacy Architecture](<../../(architecture)/attestation-privacy-architecture.md>)
-* Payment integration: [RFC-0044: x402 Compliance Integration](../../rfcs/0044-x402-compliance-integration.md)
-* Implementation plan: [PRD-29 Base mirror and contracts package](../../plans/prd-29-base-mirror-and-contracts-package.md)
-* Product task: [PRD-39 x402 compliance oracle](../../plans/tasks/prd-39-x402-compliance-oracle.md)

@@ -287,8 +287,7 @@ describe("RFC 9728 — protected resource metadata", () => {
     for (const is of IDENTITY_SCOPES) {
       expect(scopes).toContain(is);
     }
-    expect(scopes).toContain("compliance:key:read");
-    expect(scopes).toContain("compliance:key:write");
+    expect(scopes).toContain("compliance:read");
     expect(scopes).toContain("identity_verification");
   });
 

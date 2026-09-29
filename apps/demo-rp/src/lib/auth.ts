@@ -75,7 +75,6 @@ const ALG_TO_HASH: Record<string, string> = {
   ES256: "sha256",
   PS256: "sha256",
   EdDSA: "sha512",
-  "ML-DSA-65": "sha256",
 };
 
 function validateAtHash(accessToken: string, idToken: string, atHash: string) {

@@ -16,7 +16,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Field,
-  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -73,9 +72,9 @@ export function ForgotPasswordForm() {
 
   const validateIdentifier = (value: string) => {
     if (!value.trim()) {
-      return "Email or recovery ID is required";
+      return "Email is required";
     }
-    if (value.includes("@") && !isEmail(value)) {
+    if (!isEmail(value)) {
       return "Invalid email address";
     }
     return;
@@ -120,7 +119,6 @@ export function ForgotPasswordForm() {
                   spellCheck={false}
                   value={field.state.value}
                 />
-                <FieldDescription>Or use a Recovery ID</FieldDescription>
                 <FieldError>{errorMessage}</FieldError>
               </Field>
             );

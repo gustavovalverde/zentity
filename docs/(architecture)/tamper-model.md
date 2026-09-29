@@ -68,8 +68,6 @@ flowchart TB
         blob["Secret Blob Client Hash"]
         jwks["JWKS Encryption at Rest"]
         jarm["JARM Response Encryption"]
-        mlkem["ML-KEM TOFU Pinning"]
-        frost["FROST Crypto-Gated DEK"]
     end
 
     subgraph identity["Identity Binding"]
@@ -161,7 +159,7 @@ The previous section addressed forgery of values that enter the system. The next
 
 ## Key and Ciphertext Integrity
 
-Every control in this section addresses storage-level attacks: an adversary with database access who substitutes, extracts, or corrupts stored cryptographic material. They differ in what is protected (FHE ciphertexts, FHE public keys, encrypted secret blobs, JWKS private keys, JARM encryption keys, or recovery key material) and the binding mechanism that detects tampering.
+Every control in this section addresses storage-level attacks: an adversary with database access who substitutes, extracts, or corrupts stored cryptographic material. They differ in what is protected (FHE ciphertexts, FHE public keys, encrypted secret blobs, JWKS private keys, or JARM encryption keys) and the binding mechanism that detects tampering.
 
 ### FHE Ciphertext HMAC Binding
 
@@ -199,18 +197,6 @@ The tag is verified with timing-safe comparison on every read. A tampered or sub
 **Threat:** OID4VP presentation responses intercepted in transit or extracted from server storage, exposing holder credentials.
 
 **Control:** JARM responses are encrypted with ECDH-ES using a P-256 key that is lazy-created on first VP session and persisted encrypted. Keys rotate every 90 days; expired keys are retained for a grace period so in-flight VP responses can still be decrypted. The private key component follows the same AES-256-GCM envelope encryption as other JWKS keys.
-
-### ML-KEM Recovery Key TOFU Pinning
-
-**Threat:** Key substitution, where an attacker replaces the ML-KEM-768 public key after a user has stored recovery wrappers. The user's wrappers are encrypted under the original key, but new wrappers (or recovery attempts) would use the attacker's key.
-
-**Control:** Trust-On-First-Use (TOFU) pinning records `SHA-256(publicKey)` per user on first wrapper store. Every subsequent wrapper operation and recovery challenge verifies the stored fingerprint against the current key. A mismatch throws before any wrap/unwrap proceeds.
-
-### FROST Crypto-Gated DEK Release
-
-**Threat:** Server bypass, where an attacker with DB access reads wrapped DEK material and unwraps without guardian authorization.
-
-**Control:** The FROST aggregated signature is cryptographically entangled with DEK release. HKDF-SHA256 derives a 32-byte AES-256-GCM key from the signature and challenge ID. The recovery DEK is wrapped under this key at enrollment time. Without a valid FROST threshold signature for the specific challenge, the unwrap key cannot be derived and the DEK remains inaccessible. Combined with ML-KEM TOFU pinning, this provides defense-in-depth: pinning catches key substitution, crypto-gating prevents server bypass.
 
 ---
 

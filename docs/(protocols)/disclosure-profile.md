@@ -90,8 +90,7 @@ These control resource access with no claim payload.
 | `agent:session.register` | Register an agent session |
 | `agent:session.revoke` | Revoke an agent session |
 | `agent:introspect` | Introspect agent state |
-| `compliance:key:read` | Read FHE compliance key |
-| `compliance:key:write` | Manage FHE compliance key |
+| `compliance:read` | Read attestation and compliance status |
 | `identity_verification` | OID4VCI credential issuance |
 
 ## Delivery rules
@@ -200,7 +199,7 @@ This is requested via the `claims` parameter with a `verified_claims` entry, not
 2. `whoami` → standard session claims (`openid`, optional `email`)
 3. `my_profile(fields)` → compiles fields to identity scopes via CIBA
 4. `my_proofs` → proof claims via `proof:identity` scope
-5. `check_compliance` → operational `compliance:key:read` scope
+5. `check_compliance` → operational `compliance:read` scope
 6. `purchase` → action metadata via `authorization_details` + identity scopes for fulfillment
 7. The MCP transport layer requires only `openid` — identity scopes are negotiated per-tool via CIBA
 

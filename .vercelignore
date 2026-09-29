@@ -5,7 +5,6 @@
 # Apps not deployed to Vercel (Rust/Python services or local-only)
 /apps/fhe
 /apps/ocr
-/apps/signer
 /apps/mcp
 
 # demo-rp depends on @better-auth tarballs in apps/web/vendor/ and on

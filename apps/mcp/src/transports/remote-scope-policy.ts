@@ -16,7 +16,7 @@ const MINIMAL_MCP_SCOPES = ["openid"] as const;
 const OPTIONAL_REMOTE_DISCLOSURE_SCOPES = ["email"] as const;
 
 const REMOTE_TOOL_SCOPE_REQUIREMENTS: Record<string, string[]> = {
-  check_compliance: ["openid", "compliance:key:read"],
+  check_compliance: ["openid", "compliance:read"],
   my_proofs: ["openid", "proof:identity"],
   my_profile: ["openid"],
   purchase: ["openid"],

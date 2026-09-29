@@ -7,7 +7,6 @@
  *   pnpm test:e2e --project=web3-hardhat
  *   pnpm test:e2e --project=web3-sepolia
  *   pnpm test:e2e --project=oidc
- *   pnpm test:e2e --project=recovery
  *   pnpm test:e2e --project=dashboard
  */
 import { join } from "node:path";
@@ -100,8 +99,8 @@ export default defineConfig({
       use: chromeOptions,
     },
     // Automation smoke tests - validate the seeded auth session works
-    // end-to-end. Runs early so session mutations by later specs (recovery,
-    // sign-up) don't invalidate the cookie before we can check it.
+    // end-to-end. Runs early so session mutations by later specs (sign-up)
+    // don't invalidate the cookie before we can check it.
     {
       name: "automation",
       testMatch: /e2e\/automation\/.*\.spec\.ts/,
@@ -135,13 +134,6 @@ export default defineConfig({
     {
       name: "oidc",
       testMatch: /e2e\/oidc\/.*\.spec\.ts/,
-      use: chromeOptions,
-    },
-    // Recovery flow tests - run last; recovery flows rotate credentials
-    // and invalidate the seeded session.
-    {
-      name: "recovery",
-      testMatch: /e2e\/recovery\/.*\.spec\.ts/,
       use: chromeOptions,
     },
   ],

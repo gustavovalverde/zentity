@@ -1,36 +1,4 @@
-import type {
-  Account as BetterAuthAccount,
-  User as BetterAuthUser,
-} from "better-auth";
-
-export interface OpaqueResolvedUser {
-  accounts: BetterAuthAccount[];
-  user: BetterAuthUser;
-}
-
-/**
- * Flexible context type for OPAQUE operations.
- * Uses a permissive type to avoid conflicts with better-auth's strict internal types.
- */
-export interface OpaqueEndpointContext {
-  context: {
-    internalAdapter: {
-      findUserByEmail: (
-        email: string,
-        options?: { includeAccounts: boolean }
-      ) => Promise<OpaqueResolvedUser | null>;
-      findUserById: (id: string) => Promise<BetterAuthUser | null>;
-      findAccounts: (userId: string) => Promise<BetterAuthAccount[]>;
-      [key: string]: unknown;
-    };
-    [key: string]: unknown;
-  };
-}
-
-export type ResolveUserByIdentifier = (
-  identifier: string,
-  ctx: OpaqueEndpointContext
-) => Promise<OpaqueResolvedUser | null>;
+import type { User as BetterAuthUser } from "better-auth";
 
 interface OpaquePasswordResetOptions {
   /**
@@ -61,11 +29,6 @@ interface OpaquePasswordResetOptions {
 
 export interface OpaquePluginOptions
   extends Partial<OpaquePasswordResetOptions> {
-  /**
-   * Resolve a user + accounts from a login identifier (email or recovery ID).
-   * If omitted, we fall back to email lookup only.
-   */
-  resolveUserByIdentifier?: ResolveUserByIdentifier;
   /**
    * OPAQUE server setup string or a getter function that returns it.
    * Using a getter function allows lazy evaluation (deferred until runtime),

@@ -6,7 +6,7 @@ const SIGN_UP_LINK_PATTERN = /sign up/i;
 const SIGN_UP_URL_PATTERN = /sign-up/;
 const CREATE_ACCOUNT_PATTERN = /create account/i;
 const EMAIL_ADDRESS_PATTERN = /Email Address/i;
-const EMAIL_OR_RECOVERY_ID_PATTERN = /Email or Recovery ID/i;
+const EMAIL_LABEL_PATTERN = /^Email$/i;
 const PASSWORD_LABEL_PATTERN = /^Password$/i;
 const CONFIRM_PASSWORD_PATTERN = /Confirm Password/i;
 const SIGN_IN_BUTTON_PATTERN = /^sign in$/i;
@@ -84,7 +84,7 @@ test.describe("Authentication Flow", () => {
     await page.goto("/sign-in");
 
     await expect(
-      page.getByRole("textbox", { name: EMAIL_OR_RECOVERY_ID_PATTERN })
+      page.getByRole("textbox", { name: EMAIL_LABEL_PATTERN })
     ).toBeVisible({ timeout: 10_000 });
     await expect(page.getByLabel(PASSWORD_LABEL_PATTERN)).toBeVisible();
     await expect(

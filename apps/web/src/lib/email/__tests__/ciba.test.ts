@@ -98,4 +98,75 @@ describe("ciba-mailer", () => {
     expect(mockSendMailpitMessage).not.toHaveBeenCalled();
     expect(mockSendResendMessage).not.toHaveBeenCalled();
   });
+
+  describe("HTML escaping", () => {
+    beforeEach(() => {
+      mockDbGet.mockReturnValue({
+        email: "alice@example.com",
+        emailVerified: true,
+      });
+    });
+
+    it("escapes an HTML-injecting client name", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        clientName: '<a href="https://evil.example">An application</a>',
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.html).not.toContain('<a href="https://evil.example">');
+      expect(payload.html).toContain(
+        "&lt;a href=&quot;https://evil.example&quot;&gt;"
+      );
+    });
+
+    it("escapes an attribute-breakout binding message", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        bindingMessage: '"><script>alert(1)</script>',
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.html).not.toContain('"><script>');
+      expect(payload.html).toContain(
+        "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"
+      );
+    });
+
+    it("escapes HTML injected via authorization_details fields", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        authorizationDetails: [
+          {
+            type: "purchase",
+            item: "<img src=x onerror=alert(1)>",
+            merchant: '<a href="https://evil.example">merchant</a>',
+            amount: { value: "10.00", currency: "USD" },
+          },
+        ],
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.html).not.toContain("<img src=x onerror=alert(1)>");
+      expect(payload.html).not.toContain(
+        '<a href="https://evil.example">merchant</a>'
+      );
+      expect(payload.html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    });
+
+    it("falls back to a safe href for a non-http(s) approval URL", async () => {
+      const { sendCibaNotification } = await import("../ciba");
+      await sendCibaNotification({
+        ...DEFAULT_PARAMS,
+        approvalUrl: "javascript:alert(document.cookie)",
+      });
+
+      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      expect(payload.html).not.toContain("javascript:alert");
+      expect(payload.html).toContain('href="#"');
+    });
+  });
 });

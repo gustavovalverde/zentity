@@ -100,7 +100,6 @@ export type FeatureName =
   | "verification"
   | "attestation"
   | "token_minting"
-  | "guardian_recovery"
   | "enhanced_credentials";
 
 // ─── Login method and auth strength ────────────────────────────────
@@ -200,7 +199,7 @@ export function computeAccountAssurance(
 
 /**
  * On-chain operations (attestation, minting) require both Tier 2 and strong
- * auth; guardian recovery requires strong auth (passkey).
+ * auth.
  */
 const FEATURE_REQUIREMENTS: Record<FeatureName, FeatureRequirement> = {
   dashboard: { minTier: 1, requiresStrongAuth: false },
@@ -208,7 +207,6 @@ const FEATURE_REQUIREMENTS: Record<FeatureName, FeatureRequirement> = {
   verification: { minTier: 1, requiresStrongAuth: false },
   attestation: { minTier: 2, requiresStrongAuth: true },
   token_minting: { minTier: 2, requiresStrongAuth: true },
-  guardian_recovery: { minTier: 1, requiresStrongAuth: true },
   enhanced_credentials: { minTier: 3, requiresStrongAuth: false },
 };
 

@@ -1,6 +1,6 @@
 ---
 status: "accepted"
-date: "2026-01-04"
+date: "2026-09-25"
 builds-on: "[ADR](0001-passkey-first-auth-prf-custody.md)"
 category: "business"
 domains: [privacy]
@@ -16,7 +16,7 @@ We need a single, privacy-preserving way to store user PII without allowing the 
 
 * No server-decryptable PII at rest
 * Single, consistent encryption mechanism for profile data
-* Keep email available for auth and recovery when provided; Recovery ID is the fallback for email-less accounts
+* Keep email available for auth and recovery when provided
 * Support all credential types: passkey (PRF), password (OPAQUE), and wallet (EIP-712)
 
 ## Decision Outcome
@@ -39,5 +39,9 @@ The server stores only encrypted blobs and metadata; plaintext profile values ar
 
 ## More Information
 
-* RFC: [docs/rfcs/0009-passkey-profile-pii.md](../../rfcs/0009-passkey-profile-pii.md)
-* Architecture: [docs/architecture.md](../../architecture.md) and [docs/attestation-privacy-architecture.md](../../attestation-privacy-architecture.md)
+* RFC: [docs/rfcs/0009-credential-sealed-profile-pii.md](../../rfcs/0009-credential-sealed-profile-pii.md)
+* Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) and [docs/(architecture)/attestation-privacy-architecture.md](../../(architecture)/attestation-privacy-architecture.md)
+
+## Revision History
+
+* 2026-09-25: Recovery IDs removed. Email is the only identifier for password sign-in and password reset.

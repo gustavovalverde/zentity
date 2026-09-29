@@ -21,7 +21,6 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | CIBA | @better-auth/ciba (backchannel auth, poll + ping modes) | Agent-initiated async authorization via email/push notification and user approval. |
-| Social recovery signing | FROST signer services (Rust/Actix) | Threshold signing for guardian-approved recovery (and future registrar). |
 | MCP identity server | Node.js, Hono, @modelcontextprotocol/sdk | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_profile, my_proofs, check_compliance, purchase). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
@@ -46,9 +45,6 @@ flowchart LR
   subgraph Services["Backend Services"]
     OCR["OCR :5004\nRapidOCR"]
     FHE["FHE :5001\nTFHE-rs"]
-    SIGNER["FROST Coordinator :5002"]
-    SIGNERS["Signer Nodes :5101+"]
-    SIGNER --> SIGNERS
   end
 
   subgraph Mobile["Mobile Device"]
@@ -73,7 +69,6 @@ flowchart LR
 
   API -->|"encrypt"| FHE
   FHE -->|"ciphertext"| API
-  API -->|"recovery signing"| SIGNER
   API -->|"encrypted attestation"| FHEVM["fhEVM Sepolia"]
   API -->|"mirror delivery"| BASE["Base Mirror\nisCompliant"]
 ```
@@ -108,13 +103,9 @@ Raw document images, selfies, plaintext PII, and biometric templates are never s
 
 ---
 
-## Social Recovery
+## Account Recovery
 
-Zentity supports guardian-approved recovery for passkey loss. Recovery is initiated with email or a Recovery ID, guardians approve via email links or authenticator codes, and the signer services perform FROST threshold signing once the approval threshold is met. Recovery wrappers are stored in `recovery_secret_wrappers`, and the signer coordinator is contacted from the Next.js server (not the browser).
-
-The FROST aggregated signature is not just an authorization gate; it is cryptographically entangled with key custody. The signature is used as input key material for `HKDF-SHA256(ikm=signature, salt=challengeId, info="zentity:frost-unwrap")` to derive an AES-256-GCM key that unwraps the recovery DEKs. Without the real FROST signature, the DEKs cannot be recovered even with DB access.
-
-Three guardian types are supported: `email` (approval link), `twoFactor` (authenticator code), and `custodialEmail` (Zentity-operated signer, limited to 1 per user, cannot be the sole guardian).
+The server cannot unwrap any data key, so account recovery restores sign-in, not sealed secrets. A user who loses a passkey signs in with an email magic link and registers a new passkey (`/recovery/passkey`); password users reset through `/recovery/password`. The new credential can seal the existing data keys only when another registered credential unwraps them in the browser. When every credential is lost, the sealed profile and FHE keys are unrecoverable and the user re-verifies to generate fresh keys.
 
 ---
 
@@ -223,7 +214,7 @@ Wallet authentication uses EIP-712 typed data signing to derive the KEK:
 
 - User signs an EIP-712 typed data message during wallet authentication and verification preflight.
 - At sign-up, we run a best-effort stability check (sign twice, compare) to reject clearly unstable signers before key wrapping.
-- This check does not guarantee future wallet behavior across firmware/app changes or device migration, so wallet users should add a backup passkey and/or guardian recovery wrapper.
+- This check does not guarantee future wallet behavior across firmware/app changes or device migration, so wallet users should add a backup passkey.
 - Signature bytes are processed through **HKDF-SHA256** to derive the KEK.
 - The private key never leaves the wallet; the signature stays in the browser.
 - Server stores the wallet address for account association.

@@ -1,7 +1,6 @@
 import type { AuthContext } from "@better-auth/core";
 import type { AapAccessTokenClaims } from "@zentity/sdk/protocol";
 import type { LoginMethod } from "@/lib/assurance/tier";
-import type { OpaqueEndpointContext } from "@/lib/auth/opaque/types";
 
 import { createHash } from "node:crypto";
 
@@ -140,12 +139,6 @@ import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import {
-  deleteRecoveryGuardian,
-  getRecoveryConfigByUserId,
-  getRecoveryGuardianByType,
-  getUserByRecoveryId,
-} from "@/lib/db/queries/recovery";
-import {
   accounts,
   passkeys,
   sessions,
@@ -177,7 +170,6 @@ import {
   members,
   organizations,
 } from "@/lib/db/schema/organization";
-import { RECOVERY_GUARDIAN_TYPE_TWO_FACTOR } from "@/lib/db/schema/recovery";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { clientIpAddressOptions } from "@/lib/http/rate-limit";
 import { validateSafeUrl } from "@/lib/http/url-safety";
@@ -268,35 +260,6 @@ const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
     return "credential";
   }
   return null;
-};
-
-const resolveOpaqueUserByIdentifier = async (
-  identifier: string,
-  ctx: OpaqueEndpointContext
-) => {
-  const normalized = identifier.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-
-  if (normalized.includes("@")) {
-    return ctx.context.internalAdapter.findUserByEmail(normalized, {
-      includeAccounts: true,
-    });
-  }
-
-  const recoveryMatch = await getUserByRecoveryId(normalized);
-  if (!recoveryMatch) {
-    return null;
-  }
-
-  const user = await ctx.context.internalAdapter.findUserById(recoveryMatch.id);
-  if (!user) {
-    return null;
-  }
-
-  const accounts = await ctx.context.internalAdapter.findAccounts(user.id);
-  return { user, accounts };
 };
 
 const identityReleaseLog = rootLogger.child({
@@ -1466,27 +1429,6 @@ async function afterParPersistResource(ctx: HookCtx) {
     .run();
 }
 
-async function afterTwoFactorDisableGuardianCleanup(ctx: HookCtx) {
-  const sessionCtx = ctx.context as {
-    session?: { user?: { id?: string } };
-  };
-  const userId = sessionCtx.session?.user?.id;
-  if (!userId) {
-    return;
-  }
-  const config = await getRecoveryConfigByUserId(userId);
-  if (!config) {
-    return;
-  }
-  const guardian = await getRecoveryGuardianByType({
-    recoveryConfigId: config.id,
-    guardianType: RECOVERY_GUARDIAN_TYPE_TWO_FACTOR,
-  });
-  if (guardian) {
-    await deleteRecoveryGuardian(guardian.id);
-  }
-}
-
 function expireSessionDataCookie(ctx: HookCtx) {
   const authCookies = (
     ctx.context as {
@@ -1827,10 +1769,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/ciba/authorize") {
         await afterCibaAuthorizePersistAuthContext(ctx);
-        return;
-      }
-      if (ctx.path === "/two-factor/disable") {
-        await afterTwoFactorDisableGuardianCleanup(ctx);
       }
     }),
   },
@@ -1841,7 +1779,6 @@ export const auth = betterAuth({
     }),
     opaque({
       serverSetup: () => env.OPAQUE_SERVER_SETUP,
-      resolveUserByIdentifier: resolveOpaqueUserByIdentifier,
       sendResetPassword: async ({ user, url }) => {
         const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
@@ -2179,7 +2116,12 @@ export const auth = betterAuth({
         if (!client?.metadata) {
           return undefined;
         }
-        const meta = JSON.parse(client.metadata) as Record<string, unknown>;
+        let meta: Record<string, unknown>;
+        try {
+          meta = JSON.parse(client.metadata) as Record<string, unknown>;
+        } catch {
+          return undefined;
+        }
         return (
           (meta.backchannel_client_notification_endpoint as string) ?? undefined
         );

@@ -1,6 +1,6 @@
 ---
 status: "accepted"
-date: "2026-01-10"
+date: "2026-09-25"
 category: "technical"
 domains: [platform, security, privacy, web3]
 builds-on: "[Better Auth Passkey Integration + Anonymous Sign-Up](../privacy/0008-better-auth-passkey-integration.md)"
@@ -33,7 +33,6 @@ We apply small, targeted patches to the published packages and commit the patch 
 
 2) **better-auth**
    * Adds `allowPasswordless` support for two-factor backup code generation so passkey-only users can enable TOTP + backup codes.
-   * Aligns with recovery flows that treat 2FA devices as guardians.
 
 3) **@daveyplate/better-auth-ui**
    * Changes backup codes UI to download-only (no inline list) to reduce shoulder-surfing risk.
@@ -48,7 +47,6 @@ We apply small, targeted patches to the published packages and commit the patch 
 ### Expected Consequences
 
 * Passkey-only accounts can enable TOTP and backup codes without a password.
-* Recovery guardians can use authenticator codes as approvals (RFC-0014).
 * Backup codes are still available but not displayed inline by default.
 * Ongoing maintenance required to update/remove patches when upstream changes.
 
@@ -60,6 +58,9 @@ We apply small, targeted patches to the published packages and commit the patch 
 
 ## More Information
 
-* RFC-0014: FROST Social Recovery
 * `docs/adr/privacy/0008-better-auth-passkey-integration.md`
 * Bun patch workflow: `bun patch` / `bun patch --commit`
+
+## Revision History
+
+* 2026-09-25: Guardian recovery removed; two-factor devices no longer act as recovery guardians.

@@ -58,7 +58,6 @@ jobs:
               - 'apps/ocr/**'
             rust:
               - 'apps/fhe/**'
-              - 'apps/signer/**'
             sdk:
               - 'packages/sdk/**'
               - 'package.json'
@@ -179,7 +178,7 @@ jobs:
           PYTHONPATH: src
 
   # ============================================
-  # Rust (apps/fhe + apps/signer)
+  # Rust (apps/fhe)
   # ============================================
   rust-test:
     name: Rust Tests
@@ -195,8 +194,6 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: FHE service tests
         run: cargo test --manifest-path apps/fhe/Cargo.toml
-      - name: Signer service tests
-        run: cargo test --manifest-path apps/signer/Cargo.toml
 
   # ============================================
   # Summary
@@ -233,7 +230,7 @@ jobs:
             echo "| SDK | $(format_status "$SDK_RESULT") |"
             echo "| MCP Server | $(format_status "$MCP_RESULT") |"
             echo "| Python (OCR) | $(format_status "$PYTHON_RESULT") |"
-            echo "| Rust (FHE + Signer) | $(format_status "$RUST_RESULT") |"
+            echo "| Rust (FHE) | $(format_status "$RUST_RESULT") |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$WEB_RESULT" = "failure" ] || [ "$SDK_RESULT" = "failure" ] || \

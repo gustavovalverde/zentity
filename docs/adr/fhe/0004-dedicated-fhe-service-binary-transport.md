@@ -38,5 +38,5 @@ The web app registers public/server keys with the FHE service, stores ciphertext
 
 ## More Information
 
-* Architecture: [docs/architecture.md](../../architecture.md) (FHE transport + service split)
+* Architecture: [docs/(concepts)/architecture.md](../../(concepts)/architecture.md) (FHE transport + service split)
 * Observability: [docs/rfcs/0006-observability.md](../../rfcs/0006-observability.md) (cross-service tracing)

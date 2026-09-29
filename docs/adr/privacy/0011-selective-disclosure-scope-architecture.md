@@ -101,4 +101,4 @@ Zentity also supports two additional disclosure paths alongside scopes:
 * Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
 * Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 * Previous ADR: [Consent-Based Disclosure](0004-consent-based-disclosure.md)
-* OAuth integrations: [docs/oauth-integrations.md](../../oauth-integrations.md)
+* OAuth integrations: [docs/(protocols)/oauth-integrations.md](../../(protocols)/oauth-integrations.md)

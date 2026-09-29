@@ -6,7 +6,7 @@ Concise index for agents and humans. Deeper architecture lives in the repo root 
 
 1. **Glob before write.** Search `*{domain}*` in the target directory. If a file already owns the domain, read and extend it — don't create a sibling.
 2. **Deep modules win.** One cohesive 1000-line file beats ten 100-line files that must be understood together. Size is never a reason to split; directive/tree-shaking/history are.
-3. **`{domain}-{concern}.ts` naming, no stuttering.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. When the parent directory already owns the domain, drop the prefix: `email/auth.ts` not `email/auth-mailer.ts`, `recovery/keys.ts` not `recovery/recovery-keys.ts`.
+3. **`{domain}-{concern}.ts` naming, no stuttering.** Every filename must predict its content: `password.ts`, `well-known.ts`, `agent-schemas.ts`. When the parent directory already owns the domain, drop the prefix: `email/auth.ts` not `email/auth-mailer.ts`, `secrets/vault.ts` not `secrets/secrets-vault.ts`.
 4. **Banned filename forms.** No `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, generic `service.ts` / `store.ts`. Rename by what the file actually does (`validation.ts`, `typed-data.ts`, `backend.ts`, `key-store.ts`, `posture.ts`, `labels.ts`).
 5. **Disambiguate cross-domain collisions.** "Attestation" means different things in three domains: on-chain (`blockchain/attestation/`), agent host (`agents/host-attestation.ts`), ZK signed claims (`privacy/zk/attestation-claims.ts`). Name by what each computes, not what it's called in the spec.
 6. **Sub-directory only with 4+ files.** A directory with one or two files is a shallow module at the directory level. Use a domain-prefixed filename at the parent level instead.
@@ -21,7 +21,7 @@ Concise index for agents and humans. Deeper architecture lives in the repo root 
 | `(auth)/` | Sign-in, sign-up, recovery, 2FA, magic link — route group shares provider shell |
 | `(consent)/` | Standalone consent screens (no dashboard chrome): OAuth consent, MCP interactive, CIBA approve |
 | `.well-known/` | OAuth/OIDC/agent discovery endpoints |
-| `api/` | REST endpoints grouped by domain noun: `fhe/`, `zk/`, `ciba/`, `oauth2/`, `status/`, `rp-admin/`, `secrets/`, `ocr/`, `password/`, `assets/` |
+| `api/` | REST endpoints grouped by domain noun: `fhe/`, `zk/`, `ciba/`, `oauth2/`, `status/`, `rp-admin/`, `secrets/`, `password/`, `assets/` |
 | `api/trpc/[trpc]/` | tRPC handler — all typed API calls flow through here |
 | `dashboard/` | Authenticated user area: `verify/`, `settings/`, `agents/`, `developer/`, `(web3)/` |
 
@@ -39,13 +39,12 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `auth/oidc/` | OIDC provider: JWT signing, disclosure, HAIP (DPoP/PAR/JARM), back-channel logout, step-up |
 | `blockchain/` | Confidential-chain provider + helpers (`confidential/`), on-chain attestation (`attestation/`), wagmi config, tx error mapping |
 | `db/` | Drizzle schema (`schema/`) + queries (`queries/`), one file per bounded context |
-| `email/` | Resend transport + domain mailers (auth, CIBA, recovery) |
+| `email/` | Resend transport + domain mailers (auth, CIBA) |
 | `http/` | Rate limiting, URL safety, binary transport, API route response helpers |
 | `identity/` | Verification flows: `document/` (OCR), `liveness/` (multi-gesture), `verification/` (orchestration) |
 | `logging/` | Pino logger, error logger, redaction |
 | `observability/` | Metrics, telemetry, request context, warmup |
 | `privacy/` | `zk/` (Noir + UltraHonk), `fhe/` (TFHE keys), `secrets/` (encrypted blobs + vault), `credentials/` (passkey/OPAQUE/wallet wrapping), `primitives/` (crypto base), `bbs/` (BBS+ signatures) |
-| `recovery/` | FROST threshold recovery, guardian JWT |
 | `trpc/` | Server/client setup + `routers/` (one file per domain: `identity.ts`, `zk.ts`, `agent.ts`, etc.) |
 
 ### `src/components/`

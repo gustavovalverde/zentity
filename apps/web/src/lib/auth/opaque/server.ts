@@ -1,8 +1,4 @@
-import type {
-  OpaqueEndpointContext,
-  OpaquePluginOptions,
-  ResolveUserByIdentifier,
-} from "./types";
+import type { OpaquePluginOptions } from "./types";
 
 import { randomBytes } from "node:crypto";
 
@@ -37,18 +33,6 @@ const DEFAULT_SIGNUP_TOKEN_EXPIRY = 15 * 60; // 15 minutes for sign-up
 
 const normalizeIdentifier = (identifier: string) =>
   identifier.trim().toLowerCase();
-
-const defaultResolveUserByIdentifier: ResolveUserByIdentifier = (
-  identifier,
-  ctx
-) => {
-  if (!identifier) {
-    return Promise.resolve(null);
-  }
-  return ctx.context.internalAdapter.findUserByEmail(identifier, {
-    includeAccounts: true,
-  });
-};
 
 async function upsertOpaqueAccount(params: {
   // biome-ignore lint/suspicious/noExplicitAny: better-auth internal types are too strict
@@ -113,9 +97,6 @@ export const opaque = (options: OpaquePluginOptions) => {
     return setup;
   };
 
-  const resolveUserByIdentifier =
-    options.resolveUserByIdentifier ?? defaultResolveUserByIdentifier;
-
   return {
     id: "opaque",
     init: async () => {
@@ -149,11 +130,10 @@ export const opaque = (options: OpaquePluginOptions) => {
               loginRequest: ctx.body.loginRequest,
               serverSetup: getServerSetup(),
               secret: ctx.context.secret,
-              resolveUser: (id) =>
-                resolveUserByIdentifier(
-                  id,
-                  ctx as unknown as OpaqueEndpointContext
-                ),
+              resolveUser: (email) =>
+                ctx.context.internalAdapter.findUserByEmail(email, {
+                  includeAccounts: true,
+                }),
             });
             return { challenge: result.challenge, state: result.state };
           } catch (err) {
@@ -418,9 +398,9 @@ export const opaque = (options: OpaquePluginOptions) => {
             });
           }
 
-          const resolved = await resolveUserByIdentifier(
+          const resolved = await ctx.context.internalAdapter.findUserByEmail(
             identifier,
-            ctx as unknown as OpaqueEndpointContext
+            { includeAccounts: true }
           );
           const expiresIn =
             options.resetPasswordTokenExpiresIn ?? DEFAULT_RESET_TOKEN_EXPIRY;

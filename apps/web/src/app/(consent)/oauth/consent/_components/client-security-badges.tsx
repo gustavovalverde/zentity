@@ -1,6 +1,6 @@
 "use client";
 
-import { Fingerprint, Lock, ShieldCheck } from "lucide-react";
+import { Fingerprint, Lock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,10 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export type EncryptionLevel = "none" | "standard" | "post-quantum";
-
 export interface SecurityBadgeInput {
-  encryptionLevel: EncryptionLevel;
   isPairwise: boolean;
   requiresDpop: boolean;
 }
@@ -24,28 +21,8 @@ interface SecurityBadge {
   tooltip: string;
 }
 
-const ENCRYPTION_BADGES: Record<
-  Exclude<EncryptionLevel, "none">,
-  SecurityBadge
-> = {
-  standard: {
-    icon: Lock,
-    label: "Encrypted",
-    tooltip: "Your data is encrypted in transit and at rest",
-  },
-  "post-quantum": {
-    icon: ShieldCheck,
-    label: "Quantum-safe",
-    tooltip: "Your data is protected with quantum-resistant encryption",
-  },
-};
-
 function deriveSecurityBadges(input: SecurityBadgeInput): SecurityBadge[] {
   const badges: SecurityBadge[] = [];
-
-  if (input.encryptionLevel !== "none") {
-    badges.push(ENCRYPTION_BADGES[input.encryptionLevel]);
-  }
 
   if (input.isPairwise) {
     badges.push({

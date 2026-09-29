@@ -75,9 +75,6 @@ const nextConfig: NextConfig = {
     "@zentity/contracts",
     "viem",
 
-    // Post-quantum cryptography
-    "@noble/post-quantum",
-
     // OpenTelemetry (auto-instrumentations alone imports ~30 Node modules)
     "@opentelemetry/sdk-node",
     "@opentelemetry/auto-instrumentations-node",

@@ -185,7 +185,6 @@ export async function initTelemetry(): Promise<void> {
                   url.startsWith("/favicon") ||
                   url.startsWith("/robots.txt") ||
                   url.startsWith("/api/status/health") ||
-                  url.startsWith("/api/ocr/health") ||
                   url.startsWith("/api/zk/health") ||
                   url.startsWith("/api/password/pwned") ||
                   url.startsWith("/api/status/metrics/client") ||

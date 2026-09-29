@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Draft |
 | **Created** | 2026-01-24 |
-| **Updated** | 2026-01-24 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 | **Related** | [RFC-0001](0001-passkey-wrapped-fhe-keys.md), [RFC-0014](0014-frost-social-recovery.md), [RFC-0020](0020-privacy-preserving-wallet-binding.md) |
 
@@ -212,7 +212,7 @@ For MVP, Noir proofs remain off-chain with API-based verification:
 
 - Generate proofs off-chain using existing UltraHonk infrastructure
 - Include proof set hash in credential (SHA-256 of all proofs)
-- Credential signed by Zentity issuer key (ML-DSA-65)
+- Credential signed by Zentity issuer key (Ed25519)
 - Registered merchants verify via Zentity API
 
 **Future (Phase 2):** With Noir's Halo2 backend, proofs can be embedded directly in ZIP 231 memo bundles for fully decentralized verification. See "Proof Strategy: Phased Approach" below.
@@ -229,7 +229,7 @@ This prevents credential theft/replay.
 
 ### 8. Proof Strategy: Phased Approach
 
-**Phase 1 (MVP):** Off-chain proofs + ML-DSA-65 signed credentials
+**Phase 1 (MVP):** Off-chain proofs + Ed25519-signed credentials
 
 - Use existing Noir/UltraHonk infrastructure
 - Merchants verify via Zentity API
@@ -295,13 +295,13 @@ The credential must fit within Zcash's 512-byte memo field (ZIP 302). Format:
 | 116-119 | Eligibility Level | 4 | 0-3 (maps to Zentity tiers) |
 | 120-127 | Valid From | 8 | Unix timestamp (ms) |
 | 128-135 | Valid Until | 8 | Unix timestamp (ms) |
-| 136-139 | Signature Length | 4 | ML-DSA-65 signature length (3309) |
-| 140-143 | Public Key Length | 4 | ML-DSA-65 public key length (1952) |
-| 144-175 | Issuer PK Hash | 32 | SHA-256 of ML-DSA-65 public key |
+| 136-139 | Signature Length | 4 | Ed25519 signature length (64) |
+| 140-143 | Public Key Length | 4 | Ed25519 public key length (32) |
+| 144-175 | Issuer PK Hash | 32 | SHA-256 of Ed25519 public key |
 | 176-287 | Reserved | 112 | Future: Halo2 proof reference |
 | 288-511 | Padding | 224 | Zero-padded (or additional claims) |
 
-> **Note**: ML-DSA-65 signatures (3309 bytes) and public keys (1952 bytes) exceed ZIP 302's 512-byte memo limit. Phase 1 credentials include only the issuer public key hash for compact identification. The full signature is verified via the Zentity API (merchants call the verification endpoint). Phase 2 with ZIP 231 memo bundles (16 KiB) will embed full ML-DSA-65 signatures for decentralized verification.
+> **Note**: Phase 1 credentials include only the issuer public key hash for compact identification. The signature is verified via the Zentity API (merchants call the verification endpoint). Phase 2 with ZIP 231 memo bundles (16 KiB) will embed the full Ed25519 signature for decentralized verification.
 
 ### Phase 2 Format (ZIP 231 Memo Bundles)
 
@@ -396,7 +396,7 @@ apps/web/src/lib/aid/signing.ts
    - `padToMemoSize()` - Pad to 512 bytes
 
 4. **Signing** (`signing.ts`)
-   - ML-DSA-65 key management (post-quantum digital signatures)
+   - Ed25519 issuer key management
    - `signCredential()` - Issuer signature
    - `verifySignature()` - Signature validation
 
@@ -561,7 +561,7 @@ credentials: {
 | Threat | Mitigation |
 |--------|------------|
 | Credential theft | Binding commitment ties credential to user's identity proofs |
-| Credential forgery | ML-DSA-65 signature from Zentity issuer key |
+| Credential forgery | Ed25519 signature from Zentity issuer key |
 | Replay attacks | Validity period + unique binding commitment |
 | Cross-merchant correlation | Viewing keys are address-specific; merchants can't correlate |
 | Merchant collusion | Credential contains no PII; only eligibility level |
@@ -607,7 +607,7 @@ To use a stolen credential, an attacker would need:
    }
 
 4. Zentity validates:
-   ├─> Signature (ML-DSA-65 from issuer key, verified via API)
+   ├─> Signature (Ed25519 from issuer key, verified via API)
    ├─> Expiry (validFrom <= now <= validUntil)
    ├─> Revocation (not in revocation list)
    └─> Program (credential type matches program)
@@ -648,8 +648,8 @@ For selective disclosure, share the Orchard IVK with merchants.
 # Zebra RPC connection
 ZCASH_ZEBRA_RPC_URL=http://localhost:8232
 
-# Issuer signing key (ML-DSA-65 secret key, base64-encoded 4032 bytes)
-ZCASH_ISSUER_PRIVATE_KEY=<base64-encoded-ml-dsa-65-secret-key>
+# Issuer signing key (Ed25519 secret key, base64-encoded 32 bytes)
+ZCASH_ISSUER_PRIVATE_KEY=<base64-encoded-ed25519-secret-key>
 
 # Network (mainnet, testnet, regtest)
 ZCASH_NETWORK=testnet
@@ -666,7 +666,7 @@ ZCASH_RPC_PASSWORD=
 ### Unit Tests
 
 - Credential serialization/deserialization roundtrip
-- ML-DSA-65 signature creation and verification
+- Ed25519 signature creation and verification
 - Expiry and revocation validation
 - Binding commitment generation
 
@@ -730,7 +730,7 @@ Single credential proving eligibility for multiple programs (e.g., food + medica
 
 ### Medium-Term: Threshold Issuance
 
-FROST-based multi-party credential issuance (no single issuer can forge). Leverages existing FROST infrastructure from RFC-0014.
+FROST-based multi-party credential issuance (no single issuer can forge).
 
 ### Long-Term: Recursive Proof Aggregation
 
@@ -835,8 +835,8 @@ The [Ztarknet proposal](https://forum.zcashcommunity.com/t/proposal-ztarknet-a-s
 
 - [RFC-0001: Passkey-Wrapped FHE Keys](0001-passkey-wrapped-fhe-keys.md)
 - [RFC-0020: Privacy-Preserving Wallet Binding](0020-privacy-preserving-wallet-binding.md)
-- [Zentity Web3 Architecture](../web3-architecture.md)
-- [Zentity Attestation & Privacy Architecture](../attestation-privacy-architecture.md)
+- [Zentity Web3 Architecture](../(architecture)/web3-architecture.md)
+- [Zentity Attestation & Privacy Architecture](../(architecture)/attestation-privacy-architecture.md)
 
 ### Source Code References (Validated January 2026)
 

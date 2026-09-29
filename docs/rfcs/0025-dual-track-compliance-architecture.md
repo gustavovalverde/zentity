@@ -2294,7 +2294,6 @@ The following questions remain for future consideration:
 
 - [RFC-0016: OIDC4VCI/VP](./0016-oidc-vc-issuance-and-presentation.md) — Current VC issuance design
 - [RFC-0018: Pure SSI - DIDs, BBS+, AnonCreds](./0018-pure-ssi-did-bbs-anoncreds.md) — Unlinkability roadmap
-- [ZK Proof Gateway Research](../research/zk-proof-gateway-research.md) — TEE-based proving research
 
 ### OAuth & OpenID Specifications
 

@@ -106,7 +106,7 @@ ZK proofs let a verifier learn only a boolean outcome (e.g., "over 18") while th
 
 ## Supporting Techniques
 
-- **JWT Signing (RS256 + EdDSA)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) signs every id_token per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size). Signing keys are generated on first use and persisted in the database (standard OIDC provider pattern), distinct from encryption keys (like the ML-KEM recovery key) which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](<../(protocols)/oauth-integrations.md#jwt-signing-and-jwks>).
+- **JWT Signing (RS256 + EdDSA)**: Zentity signs OAuth tokens (access tokens, ID tokens) and SD-JWT verifiable credentials. RS256 (RSA-2048) signs every id_token per OIDC Discovery 1.0 §3. EdDSA (Ed25519) is used for access tokens (compact size). Signing keys are generated on first use and persisted in the database (standard OIDC provider pattern), distinct from encryption keys, which require env-var management because key loss means permanent data loss. See [OAuth Integrations § JWT signing](<../(protocols)/oauth-integrations.md#jwt-signing-and-jwks>).
 - **JWKS Private Key Encryption at Rest**: When `KEY_ENCRYPTION_KEY` is set (required in production, min 32 chars), JWKS private keys are encrypted with AES-256-GCM before storage. The KEK is derived via `SHA-256(KEY_ENCRYPTION_KEY)` to normalize any input to 32 bytes. Stored format: `{"v":1,"iv":"...","ct":"..."}` (version field enables future format changes). Plaintext detection: if stored value doesn't start with `{"v":`, it's treated as plaintext (backward-compatible migration). No KEK = no-op (keys stored as plaintext, for dev convenience).
 - **JARM Key Rotation**: ECDH-ES P-256 decryption keys for JARM responses are rotated every 90 days (`KEY_LIFETIME_MS`). On expiry, a new key is generated and the old key is retained in the `jwks` table for a grace period (in-flight VP responses can still be decrypted). The cache is invalidated on rotation so the new key is used immediately.
 - **Merkle Trees**: Enable group membership proofs (e.g., EU nationality) without revealing which country. Used inside ZK proofs.
@@ -149,7 +149,7 @@ Web3 wallet authentication uses EIP-712 typed data signing for key derivation:
 
 - The user signs an EIP-712 typed data message during wallet authentication and verification preflight to derive a KEK (via HKDF) that wraps/unlocks the DEK, mirroring the passkey PRF flow.
 - At sign-up, we perform a best-effort stability check (sign twice, compare) to reject obviously unstable wallet signers.
-- This check is not a long-term guarantee across wallet firmware/app changes or device migrations. Wallet users should immediately add a backup passkey and/or guardian recovery wrapper.
+- This check is not a long-term guarantee across wallet firmware/app changes or device migrations. Wallet users should immediately add a backup passkey.
 - Sign-in also requires a **SIWE (EIP-191)** signature for session authentication (nonce-based replay protection).
 - The private key never leaves the wallet; the signature stays in the browser.
 - Supports hardware wallets (Ledger/Trezor) for enhanced security.

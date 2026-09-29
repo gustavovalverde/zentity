@@ -21,7 +21,6 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 - [Architecture](docs/(concepts)/architecture.md) — Components, data flow, storage model
 - [Agent Architecture](docs/(architecture)/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
 - [ZK Architecture](docs/(protocols)/zk-architecture.md) — Noir circuits and proving
-- [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
 ## Architecture
 
@@ -32,7 +31,6 @@ Monorepo with services communicating via REST APIs:
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
-| FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
 | MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 Additional apps (not core services):
@@ -47,7 +45,6 @@ The frontend handles:
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
 - **tRPC API layer** with type-safe routers for all backend operations
 - OAuth 2.1 / OpenID Connect provider for third-party integrations (via better-auth)
-- **FROST threshold signatures** for guardian-based key recovery
 
 ## Route Architecture
 
@@ -157,19 +154,6 @@ ruff check src            # Lint (if dev deps installed)
 ruff format src           # Format
 ```
 
-### FROST Signer Service (apps/signer)
-
-FROST threshold signature service for guardian-based key recovery. Consists of a coordinator and multiple signer instances.
-
-```bash
-cargo build --release              # Build
-cargo run --bin coordinator        # Run coordinator (port 5002)
-cargo run --bin signer             # Run signer instance (port 5101+)
-cargo test                         # Run tests
-```
-
-See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
-
 ### MCP Server (apps/mcp)
 
 MCP identity server supporting HTTP and stdio transports.
@@ -193,26 +177,45 @@ docker-compose up -d     # Detached mode
 
 ## Deployment
 
-### Vercel (Landing Page)
+### Vercel
 
-The landing page (`apps/landing`) deploys to Vercel. Configuration is in `apps/landing/vercel.json`. The Vercel project has `rootDirectory: apps/landing`, so **deploy from the monorepo root** (not from `apps/landing/`):
+Two apps deploy to Vercel from the repo root: `apps/landing` and `apps/demo-rp`. Both Vercel projects use a Root Directory pointing into the monorepo, with the upload coming from the repo root so workspace deps (`@zentity/sdk`, `apps/web/vendor/*` tarballs) are visible to the build.
+
+**Landing page** (`apps/landing`): the repo-root `.vercel/project.json` link is bound to this project (`rootDirectory: apps/landing`). Deploy from the repo root:
 
 ```bash
-vercel --prod            # Run from repo root
+vercel --prod
 ```
+
+**demo-rp** (`apps/demo-rp`): Vercel project has `rootDirectory: apps/demo-rp`, install/build commands = `pnpm install` / `pnpm run build`. The app depends on `apps/web/vendor/*` (better-auth tarballs) and `packages/sdk` (workspace), which is why the upload spans the whole repo. Deploy via the helper script — it swaps the repo-root link from landing to demo-rp, runs `vercel deploy --prod`, then restores the landing link on exit:
+
+```bash
+./apps/demo-rp/scripts/deploy-to-vercel.sh --prod
+```
+
+`.vercelignore` at the repo root trims the parts of `apps/web` not needed by demo-rp (src, public, `.next`, etc.) while keeping `apps/web/vendor/` and `apps/web/patches/`. Vercel's serverless filesystem is read-only outside `/tmp`, so any code that persists generated keys must use `/tmp` when `process.env.VERCEL` is set (see `apps/demo-rp/src/lib/attestation.ts`).
 
 ### Railway (Backend Services)
 
 Backend services deploy to Railway using Dockerfiles. Each service has a `railway.toml` for configuration.
 
-**Important**: Use `--path-as-root` flag to deploy from service subdirectories in this monorepo.
+**Web service** depends on the `@zentity/sdk` workspace package, so its Dockerfile builds with the repo root as Docker context. Deploy via the staging script — it rsyncs only what the Dockerfile needs into a temp directory, places `railway.toml` at the upload root (so `[deploy]` settings persist), then runs `railway up`:
 
 ```bash
-# Deploy individual services
+./apps/web/scripts/deploy-to-railway.sh
+```
+
+**Other services** are self-contained and deploy with `--path-as-root`:
+
+```bash
 railway up apps/fhe --path-as-root --service fhe
 railway up apps/ocr --path-as-root --service ocr
-railway up apps/web --path-as-root --service web
 ```
+
+Notes:
+
+- Railway CLI honors `.gitignore` (not `.dockerignore`) when filtering uploads. The web staging script works around this by rsync-filtering before upload.
+- The web service has `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile` set so Railway finds the Dockerfile inside the repo-root upload.
 
 **Service URLs (production)**:
 
@@ -227,17 +230,25 @@ railway up apps/web --path-as-root --service web
 - `DEDUP_HMAC_SECRET` (min 32 chars, sybil dedup & per-RP nullifiers)
 - `PAIRWISE_SECRET` (min 32 chars, HAIP pairwise subject identifiers)
 - `KEY_ENCRYPTION_KEY` (min 32 chars, AES-256-GCM for JWKS at rest)
+- `CRON_SECRET` (min 32 chars, Bearer auth for `/api/cron/*` triggers)
+- `CLAIM_SIGNING_SECRET` (min 32 chars, signed claim issuer secret)
+- `CIPHERTEXT_HMAC_SECRET` (min 32 chars, FHE ciphertext integrity)
+- `BBS_ISSUER_SECRET` (BBS+ issuer signing key)
+- `SECRET_BLOB_DIR` (typically `/var/lib/zentity/web/secret-blobs`, persisted via volume)
 - `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - `FHE_SERVICE_URL`, `OCR_SERVICE_URL`
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web push)
 - `RESEND_API_KEY` (transactional email)
 - `MAIL_FROM_EMAIL=no-reply@zentity.xyz`
-- `SIGNER_COORDINATOR_URL`, `SIGNER_ENDPOINTS` (FROST recovery)
-- `RECOVERY_ML_KEM_SECRET_KEY` (ML-KEM-768 base64, for recovery flow)
 - `DPOP_NONCE_TTL_SECONDS` (default: 30)
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
 - `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
 - `X5C_LEAF_PEM`, `X5C_CA_PEM`
+
+**Conditional env vars** (required only when the corresponding feature is enabled):
+
+- World ID PoH (when `NEXT_PUBLIC_WORLD_ID_ENABLED=true`): `HUMANITY_HMAC_SECRET` (min 32 chars), `NEXT_PUBLIC_WORLD_ID_APP_ID`, `WORLD_ID_RP_ID`, `WORLD_ID_RP_SIGNING_KEY` (32-byte hex), `WORLD_ID_ENVIRONMENT` (`production` or `staging`)
+- Base Sepolia mirror (when `NEXT_PUBLIC_ENABLE_BASE_SEPOLIA=true`): `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_RPC_URL`, `BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY`, `BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR`
 
 ### Manual Setup (without Docker)
 
@@ -317,9 +328,9 @@ Users choose a verification method via `VerificationMethodCards` (OCR or NFC chi
 
 Levels: `none`(1) → `basic`(2) → `full`(3) → `chip`(4). Level is `chip` when NFC + sybilResistant; `full` when all 7 checks pass; `basic` when >= half pass; `none` otherwise. `verified` is true only for `full` or `chip`.
 
-7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/uniqueIdentifier).
+7 boolean checks: `documentVerified` (doc_validity ZK proof), `livenessVerified` (liveness_score claim), `ageVerified` (age_verification ZK proof), `faceMatchVerified` (face_match ZK proof or face_match_score claim), `nationalityVerified` (nationality_membership ZK proof), `identityBound` (identity_binding ZK proof), `sybilResistant` (dedupKey/chipNullifier).
 
-NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `uniqueIdentifier`.
+NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/`faceMatchVerified` from `chip_verification` signed claim **type presence** (boolean payloads ignored); `nationalityVerified` from `hasNationalityCommitment`; `identityBound`/`sybilResistant` from `chipNullifier`.
 
 **Identity Revocation:** `revokeIdentity()` (`src/lib/db/queries/identity.ts`) executes a cascade in a single DB transaction: (1) mark `identity_verifications` as revoked (`revokedAt`, `revokedBy`, `revokedReason`), (2) mark `identity_bundle` as revoked, (3) set OID4VCI credentials to `status=1` (revoked). Step 4 revokes on-chain attestations **outside** the transaction (best-effort). After revocation, assurance tier drops to Tier 1. Revoked dedup keys are auto-released for re-registration. Triggered via `identity.revokeVerification` (admin) or `identity.selfRevoke` (user GDPR).
 
@@ -328,7 +339,7 @@ NFC chip path: `documentVerified` always true; `livenessVerified`/`ageVerified`/
 1. **Country/document pre-check** → `buildCountryDocumentList` (uses `@zkpassport/registry`) confirms NFC support
 2. **ZKPassport deep-link** → Opens ZKPassport mobile app for NFC chip reading + proof generation
 3. **Server verification** → `trpc.passportChip.submitResult` verifies proofs server-side via `zkpassport.verify()`
-4. **Nullifier check** → `uniqueIdentifier` prevents duplicate passport registrations across accounts
+4. **Nullifier check** → `chipNullifier` (translated at the ZKPassport SDK boundary from the SDK-external `uniqueIdentifier`) prevents duplicate passport registrations across accounts
 5. **FHE Encryption** → Same as OCR path; synthetic liveness score (1.0) from physical chip possession
 
 **Blockchain (optional)** → After verification, users can attest on-chain via `trpc.attestation.*`
@@ -354,13 +365,13 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 
 **Deep modules over shallow modules.** A module's interface cost (import path, directory entry, mental slot) must be justified by the complexity it hides. If combining two files produces a simpler interface for the same functionality, combine them. A 500-line cohesive module is preferable to five 100-line files that require understanding all five.
 
-**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `recovery/`, it's `keys.ts` not `recovery-keys.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
+**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `secrets/`, it's `vault.ts` not `secrets-vault.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
 
 **Sub-directory threshold: 4+ cohesive files.** Only create a sub-directory when a concern group has 4+ files after consolidation. Two-file directories are shallow modules at the directory level. Examples: `auth/oidc/haip/` (6 files, HAIP spec), `auth/oidc/disclosure/` (5 files, selective-disclosure registry).
 
 **Component co-location.** Route-scoped components live in `_components/` next to their page, not in `src/components/`. Only genuinely cross-route components (`tier-badge.tsx`, `vault-unlock.tsx`, `agent-approval-view.tsx`) belong at the `src/components/` root.
 
-**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `recovery.ts`, `organization.ts`, `oidc-credentials.ts`.
+**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `organization.ts`, `oidc-credentials.ts`.
 
 **No barrel files.** Avoid `index.ts` files that just re-export. If a module is 900 lines of business logic, name it after its domain (e.g., `vault.ts`), not `index.ts`.
 
@@ -384,7 +395,6 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `credentials` | WebAuthn credential management |
 | `compliantToken` | CompliantERC20 DeFi token operations |
-| `recovery` | FROST guardian-based key recovery flow |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
 | `admin` | JWKS signing key rotation, cleanup, and on-chain revocation retry (admin-only via `adminProcedure`) |
 
@@ -464,8 +474,6 @@ OCR_SERVICE_URL=http://localhost:5004
 PAIRWISE_SECRET=<min-32-char-string>    # Required (z.string().min(32)), pairwise subject identifiers
 KEY_ENCRYPTION_KEY=<min-32-char-string> # Optional in dev, required in production (min 32 chars). AES-256-GCM envelope encryption for JWKS private keys at rest.
 DEDUP_HMAC_SECRET=<min-32-char-string>  # Required (z.string().min(32)). HMAC key for sybil dedup and per-RP nullifiers.
-CUSTODIAL_SIGNER_URL=                   # Optional. URL of the custodial signer instance for zero-friction recovery.
-CUSTODIAL_SIGNER_ID=                    # Optional. Signer ID of the custodial signer instance.
 
 # Web Push (auto-generated by pnpm setup)
 VAPID_PUBLIC_KEY=<vapid-key>            # Required in production

@@ -79,12 +79,6 @@ repos:
         language: system
         files: ^apps/fhe/Cargo\.toml$
         pass_filenames: false
-      - id: lockfile-sync-signer
-        name: Cargo lockfile sync (signer)
-        entry: bash -c 'cd apps/signer && cargo check --locked 2>&1 | tail -3'
-        language: system
-        files: ^apps/signer/Cargo\.toml$
-        pass_filenames: false
 
   # ===========================================
   # Web app — decomposed checks (each hook has a scoped file filter)
@@ -210,24 +204,6 @@ repos:
         entry: cargo clippy --manifest-path apps/fhe/Cargo.toml -- -D warnings
         language: system
         files: ^apps/fhe/.*\.rs$
-        pass_filenames: false
-
-  # ===========================================
-  # Rust (apps/signer)
-  # ===========================================
-  - repo: local
-    hooks:
-      - id: cargo-fmt-signer
-        name: cargo fmt (signer)
-        entry: cargo fmt --manifest-path apps/signer/Cargo.toml --
-        language: system
-        files: ^apps/signer/.*\.rs$
-        pass_filenames: false
-      - id: cargo-clippy-signer
-        name: cargo clippy (signer)
-        entry: cargo clippy --manifest-path apps/signer/Cargo.toml -- -D warnings
-        language: system
-        files: ^apps/signer/.*\.rs$
         pass_filenames: false
 
   # ===========================================

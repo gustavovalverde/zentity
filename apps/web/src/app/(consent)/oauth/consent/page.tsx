@@ -1,9 +1,6 @@
-import type {
-  EncryptionLevel,
-  SecurityBadgeInput,
-} from "./_components/client-security-badges";
+import type { SecurityBadgeInput } from "./_components/client-security-badges";
 
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { env } from "@/env";
@@ -14,7 +11,7 @@ import {
 } from "@/lib/auth/session";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { oauthClients, rpEncryptionKeys } from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { OAuthConsentClient } from "./consent-client";
 import {
@@ -94,30 +91,9 @@ export default async function OAuthConsentPage({
 
     const isPairwise = row?.subjectType === "pairwise" && !!env.PAIRWISE_SECRET;
 
-    // Query compliance encryption key for this client
-    let encryptionLevel: EncryptionLevel = "none";
-    const encKey = await db
-      .select({ keyAlgorithm: rpEncryptionKeys.keyAlgorithm })
-      .from(rpEncryptionKeys)
-      .where(
-        and(
-          eq(rpEncryptionKeys.clientId, clientId),
-          eq(rpEncryptionKeys.status, "active")
-        )
-      )
-      .limit(1)
-      .get();
-
-    if (encKey?.keyAlgorithm === "ml-kem-768") {
-      encryptionLevel = "post-quantum";
-    } else if (encKey) {
-      encryptionLevel = "standard";
-    }
-
     securityBadgeInput = {
       isPairwise,
       requiresDpop,
-      encryptionLevel,
     };
   }
 

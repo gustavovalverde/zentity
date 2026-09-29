@@ -40,7 +40,6 @@ Each credential type derives a KEK through a different mechanism, but all use HK
 | **Passkey** | WebAuthn PRF extension output (32 bytes) | HKDF-SHA256 |
 | **OPAQUE** | PAKE protocol export key (64 bytes) | HKDF-SHA256 |
 | **Wallet** | EIP-712 typed data signature (65 bytes) | HKDF-SHA256 |
-| **FROST recovery** | Aggregated FROST signature (hex, 64 bytes) | ML-KEM-768 decapsulation for DEK unwrap; HKDF-SHA256 from signature + challenge ID for FROST-wrapped DEKs |
 
 The DEK is wrapped with the KEK using AES-256-GCM with authenticated additional data (AAD) binding the secret to a specific user and credential.
 
@@ -62,7 +61,6 @@ The FHE key bundle passes through distinct phases. What varies across phases is 
 | **FHE computation** | Yes (decrypt results) | Yes (to unwrap DEK) |
 | **OAuth to RP** | No | No |
 | **Credential management** | Yes (re-wrap DEK) | Yes (to unwrap then re-wrap) |
-| **Recovery (FROST guardian threshold)** | Yes | No (FROST signature replaces credential) |
 
 The FHE service stores the registered public key and server key, addressed by a key identifier. Most server-side operations during verification use only this identifier and do not require unwrapping the local key bundle.
 
@@ -110,7 +108,7 @@ This constraint is why OPAQUE users see re-authentication requests when their se
 
 Wallet-derived KEKs are operationally fragile compared to passkeys and passwords. ECDSA permits multiple valid signatures for the same message, and sign-up includes a best-effort stability check (sign twice, compare). If a wallet later emits different signature bytes for the same payload, the derived KEK changes and wallet-only wrappers become unrecoverable.
 
-For this reason, wallet-auth users should set up at least one independent recovery path immediately: add a backup passkey, or enable guardian recovery wrappers.
+For this reason, wallet-auth users should set up at least one independent recovery path immediately: add a backup passkey.
 
 ---
 
@@ -155,7 +153,7 @@ The server stores the encrypted FHE key bundle (ciphertext), the wrapped DEK, an
 
 ### Replay Protection
 
-DEK wrapping uses Authenticated Additional Data (AAD) binding the wrapped key to a specific secret ID, credential ID, and user ID. This prevents a wrapped DEK from being used with different secrets or users. Recovery wrappers use additional AAD binding with a recovery-specific context to prevent cross-user and cross-secret wrapper substitution.
+DEK wrapping uses Authenticated Additional Data (AAD) binding the wrapped key to a specific secret ID, credential ID, and user ID. This prevents a wrapped DEK from being used with different secrets or users.
 
 ### FHE Ciphertext Integrity
 
@@ -171,7 +169,7 @@ The server never accepts client-encrypted values as FHE truth. FHE inputs are de
 
 ### Multi-Credential Support
 
-Users can have multiple credentials wrapping the same DEK: primary passkey plus backup passkey, passkey plus OPAQUE password, or passkey plus recovery guardians; custodial email guardians are limited to one and cannot be the sole guardian. Each credential has its own wrapper entry; the DEK itself is shared. Recovery wrappers use ML-KEM-768 encapsulated DEK envelopes.
+Users can have multiple credentials wrapping the same DEK: primary passkey plus backup passkey, or passkey plus OPAQUE password. Each credential has its own wrapper entry; the DEK itself is shared.
 
 ## Related Documentation
 

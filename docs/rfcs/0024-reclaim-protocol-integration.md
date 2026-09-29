@@ -940,4 +940,3 @@ TOPRF_SHARE_PRIVATE_KEY=...
 - [Attestor-Core Repository](https://github.com/reclaimprotocol/attestor-core) — Self-hosted attestor implementation
 - [Attestor-Core Run Server Guide](https://github.com/reclaimprotocol/attestor-core/blob/main/docs/run-server.md)
 - ["Proxying is Enough" Security Paper](https://blog.reclaimprotocol.org/posts/zk-in-zktls)
-- [ZK Proof Gateway Research](../research/zk-proof-gateway-research.md)

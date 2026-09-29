@@ -16,7 +16,6 @@
  * - identity: Identity verification (document OCR, proofs, revocation)
  * - liveness: Multi-gesture liveness detection sessions
  * - passportChip: ZKPassport NFC chip verification
- * - recovery: FROST guardian-based key recovery
  * - secrets: Passkey-wrapped secret storage
  * - signUp: Account creation wizard state management
  * - zk: ZK proof verification, storage, BBS+ credentials, challenge management
@@ -35,7 +34,6 @@ import { credentialsRouter } from "./credentials";
 import { identityRouter } from "./identity";
 import { livenessRouter } from "./liveness";
 import { passportChipRouter } from "./passport-chip";
-import { recoveryRouter } from "./recovery";
 import { secretsRouter } from "./secrets";
 import { signUpRouter } from "./sign-up";
 import { zkRouter } from "./zk";
@@ -52,7 +50,6 @@ export const appRouter = router({
   identity: identityRouter,
   liveness: livenessRouter,
   passportChip: passportChipRouter,
-  recovery: recoveryRouter,
   secrets: secretsRouter,
   signUp: signUpRouter,
   compliantToken: compliantTokenRouter,

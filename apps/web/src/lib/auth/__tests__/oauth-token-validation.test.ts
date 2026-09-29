@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
@@ -29,13 +27,10 @@ vi.mock("@/lib/auth/jwt", () => ({
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 
 import {
-  computeKeyFingerprint,
   extractAccessToken,
   validateOAuthAccessToken,
 } from "../oidc/oauth-request";
 
-// Regex for validating SHA-256 hex fingerprint (64 hex characters)
-const SHA256_HEX_REGEX = /^[a-f0-9]{64}$/;
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
 const JWT_TOKEN = "eyJ.test-token";
 
@@ -85,32 +80,6 @@ describe("oauth token validation", () => {
     });
   });
 
-  describe("computeKeyFingerprint", () => {
-    it("computes SHA-256 fingerprint of base64 key", async () => {
-      const keyBytes = crypto.randomBytes(32);
-      const keyBase64 = keyBytes.toString("base64");
-
-      const fingerprint = await computeKeyFingerprint(keyBase64);
-
-      // Fingerprint should be hex string of SHA-256 hash
-      expect(fingerprint).toMatch(SHA256_HEX_REGEX);
-
-      // Should be deterministic
-      const fingerprint2 = await computeKeyFingerprint(keyBase64);
-      expect(fingerprint).toBe(fingerprint2);
-    });
-
-    it("produces different fingerprints for different keys", async () => {
-      const key1 = crypto.randomBytes(32).toString("base64");
-      const key2 = crypto.randomBytes(32).toString("base64");
-
-      const fp1 = await computeKeyFingerprint(key1);
-      const fp2 = await computeKeyFingerprint(key2);
-
-      expect(fp1).not.toBe(fp2);
-    });
-  });
-
   describe("validateOAuthAccessToken", () => {
     beforeEach(() => {
       vi.clearAllMocks();
@@ -129,7 +98,7 @@ describe("oauth token validation", () => {
         aud: RP_API_AUDIENCE,
         sub: "user-123",
         azp: "test-client",
-        scope: "compliance:key:read",
+        scope: "agent:introspect",
       });
 
       const result = await validateOAuthAccessToken(JWT_TOKEN);
@@ -140,7 +109,7 @@ describe("oauth token validation", () => {
     it("returns invalid when client_id is missing", async () => {
       vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
-        scope: "compliance:key:read",
+        scope: "agent:introspect",
       });
 
       const result = await validateOAuthAccessToken(JWT_TOKEN);
@@ -153,7 +122,7 @@ describe("oauth token validation", () => {
       vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "test-client",
-        scope: "compliance:key:read",
+        scope: "agent:introspect",
       });
 
       vi.mocked(db.select).mockReturnValue({
@@ -176,7 +145,7 @@ describe("oauth token validation", () => {
       vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "missing-client",
-        scope: "compliance:key:read",
+        scope: "agent:introspect",
       });
 
       vi.mocked(db.select).mockReturnValue({
@@ -199,7 +168,7 @@ describe("oauth token validation", () => {
       vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "test-client",
-        scope: "compliance:key:read compliance:key:write",
+        scope: "agent:introspect agent:session.revoke",
       });
 
       vi.mocked(db.select).mockReturnValue({
@@ -216,8 +185,8 @@ describe("oauth token validation", () => {
       expect(result.valid).toBe(true);
       expect(result.clientId).toBe("test-client");
       expect(result.scopes).toEqual([
-        "compliance:key:read",
-        "compliance:key:write",
+        "agent:introspect",
+        "agent:session.revoke",
       ]);
     });
 

@@ -159,6 +159,6 @@ What does not change by channel:
 * Integration guide: `docs/(protocols)/oauth-integrations.md`
 * Scope architecture: [ADR-0011](0011-selective-disclosure-scope-architecture.md)
 * Volatile identity staging: [ADR-0014](0014-volatile-identity-release-store.md)
-* Double-anonymity posture: [ADR-0001](../../0001-arcom-double-anonymity.md)
-* Code authority: `apps/web/src/lib/auth/oidc/disclosure-registry.ts`
-* Contract tests: `apps/web/src/lib/auth/oidc/__tests__/rp-contract.test.ts`
+* Double-anonymity posture: [ADR-0001](../0001-arcom-double-anonymity.md)
+* Code authority: `apps/web/src/lib/auth/oidc/disclosure/registry.ts`
+* Contract tests: `apps/web/src/lib/auth/oidc/disclosure/__tests__/rp-contract.test.ts`

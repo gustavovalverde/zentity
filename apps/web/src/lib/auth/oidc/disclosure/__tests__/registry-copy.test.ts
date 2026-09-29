@@ -70,8 +70,7 @@ describe("disclosure registry — copy and visibility", () => {
         "agent:session.register",
         "agent:session.revoke",
         "agent:introspect",
-        "compliance:key:read",
-        "compliance:key:write",
+        "compliance:read",
         "identity_verification",
       ];
 

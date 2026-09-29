@@ -34,7 +34,7 @@ Passkey PRF output anchors encryption/decryption of user secrets and aligns auth
 
 * Password-first auth with optional passkeys (weaker privacy guarantees).
 * Passkeys only without PRF custody (breaks secret unlocking model).
-* Wallet-only auth via EIP-712 signatures (now implemented as an alternative for Web3-native users—see ADR: OPAQUE and [Cryptographic Pillars](../../cryptographic-pillars.md)).
+* Wallet-only auth via EIP-712 signatures (now implemented as an alternative for Web3-native users—see ADR: OPAQUE and [Cryptographic Pillars](../../(concepts)/cryptographic-pillars.md)).
 
 ## Related Decisions
 

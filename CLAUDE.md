@@ -23,7 +23,6 @@ Zentity is a privacy-preserving compliance/KYC platform using passkeys, OPAQUE p
 - [Architecture](docs/(concepts)/architecture.md) — Components, data flow, storage model
 - [Agent Architecture](docs/(architecture)/agent-architecture.md) — Durable hosts, ephemeral agent sessions, CIBA approval, and token exchange
 - [ZK Architecture](docs/(protocols)/zk-architecture.md) — Noir circuits and proving
-- [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) — Guardian-based key recovery
 
 ## Architecture
 
@@ -34,7 +33,6 @@ Monorepo with services communicating via REST APIs:
 | Web Frontend | `apps/web` | Next.js 16, React 19, TypeScript, Human.js, Noir.js | 3000 |
 | FHE Service | `apps/fhe` | Rust, Axum, TFHE-rs, ReDB | 5001 |
 | OCR | `apps/ocr` | Python, FastAPI, RapidOCR | 5004 |
-| FROST Signer | `apps/signer` | Rust, Actix, FROST (coordinator + signers) | 5002, 5101+ |
 | MCP Server | `apps/mcp` | Node.js, Hono, @modelcontextprotocol/sdk | 3300 (HTTP) / stdio |
 
 Additional apps (not core services):
@@ -49,7 +47,6 @@ The frontend handles:
 - **ZK proofs generated CLIENT-SIDE** using Noir.js and Barretenberg (UltraHonk)
 - **tRPC API layer** with type-safe routers for all backend operations
 - OAuth 2.1 / OpenID Connect provider for third-party integrations (via better-auth)
-- **FROST threshold signatures** for guardian-based key recovery
 
 ## Route Architecture
 
@@ -159,19 +156,6 @@ ruff check src            # Lint (if dev deps installed)
 ruff format src           # Format
 ```
 
-### FROST Signer Service (apps/signer)
-
-FROST threshold signature service for guardian-based key recovery. Consists of a coordinator and multiple signer instances.
-
-```bash
-cargo build --release              # Build
-cargo run --bin coordinator        # Run coordinator (port 5002)
-cargo run --bin signer             # Run signer instance (port 5101+)
-cargo test                         # Run tests
-```
-
-See [FROST Threshold Recovery](docs/rfcs/0014-frost-social-recovery.md) and [Railway Signer Deployment](docs/railway-signer-deployment.md).
-
 ### MCP Server (apps/mcp)
 
 MCP identity server supporting HTTP and stdio transports.
@@ -258,8 +242,6 @@ Notes:
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (web push)
 - `RESEND_API_KEY` (transactional email)
 - `MAIL_FROM_EMAIL=no-reply@zentity.xyz`
-- `SIGNER_COORDINATOR_URL`, `SIGNER_ENDPOINTS` (FROST recovery)
-- `RECOVERY_ML_KEM_SECRET_KEY` (ML-KEM-768 base64, for recovery flow)
 - `DPOP_NONCE_TTL_SECONDS` (default: 30)
 - `TRUSTED_WALLET_ISSUERS` (comma-separated, optional)
 - `TRUSTED_AGENT_ATTESTERS` (comma-separated JWKS URLs for agent attestation verification, optional)
@@ -385,13 +367,13 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 
 **Deep modules over shallow modules.** A module's interface cost (import path, directory entry, mental slot) must be justified by the complexity it hides. If combining two files produces a simpler interface for the same functionality, combine them. A 500-line cohesive module is preferable to five 100-line files that require understanding all five.
 
-**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `recovery/`, it's `keys.ts` not `recovery-keys.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
+**`{domain}-{concern}.ts` naming, no stuttering inside bounded dirs.** The filename must predict its content. When the parent directory already owns the domain, drop the prefix: inside `email/`, it's `auth.ts` not `auth-mailer.ts`; inside `secrets/`, it's `vault.ts` not `secrets-vault.ts`. Banned: `utils.ts`, `helpers.ts`, `shared.ts`, `common.ts`, `data.ts`, standalone `types.ts`, `service.ts`, `store.ts` — name by what the file actually does.
 
 **Sub-directory threshold: 4+ cohesive files.** Only create a sub-directory when a concern group has 4+ files after consolidation. Two-file directories are shallow modules at the directory level. Examples: `auth/oidc/haip/` (6 files, HAIP spec), `auth/oidc/disclosure/` (5 files, selective-disclosure registry).
 
 **Component co-location.** Route-scoped components live in `_components/` next to their page, not in `src/components/`. Only genuinely cross-route components (`tier-badge.tsx`, `vault-unlock.tsx`, `agent-approval-view.tsx`) belong at the `src/components/` root.
 
-**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `recovery.ts`, `organization.ts`, `oidc-credentials.ts`.
+**Schema by bounded context.** Schema files group by domain boundary: `auth.ts`, `oauth-provider.ts`, `identity.ts`, `privacy.ts`, `agent.ts`, `ciba.ts`, `organization.ts`, `oidc-credentials.ts`.
 
 **No barrel files.** Avoid `index.ts` files that just re-export. If a module is 900 lines of business logic, name it after its domain (e.g., `vault.ts`), not `index.ts`.
 
@@ -415,7 +397,6 @@ All API operations go through tRPC at `/api/trpc/*`. Routers are in `src/lib/trp
 | `secrets` | Encrypted secrets CRUD for passkey-wrapped keys |
 | `credentials` | WebAuthn credential management |
 | `compliantToken` | CompliantERC20 DeFi token operations |
-| `recovery` | FROST guardian-based key recovery flow |
 | `passportChip` | ZKPassport NFC chip verification (submit proof results, poll FHE status) |
 | `admin` | JWKS signing key rotation, cleanup, and on-chain revocation retry (admin-only via `adminProcedure`) |
 
@@ -495,8 +476,6 @@ OCR_SERVICE_URL=http://localhost:5004
 PAIRWISE_SECRET=<min-32-char-string>    # Required (z.string().min(32)), pairwise subject identifiers
 KEY_ENCRYPTION_KEY=<min-32-char-string> # Optional in dev, required in production (min 32 chars). AES-256-GCM envelope encryption for JWKS private keys at rest.
 DEDUP_HMAC_SECRET=<min-32-char-string>  # Required (z.string().min(32)). HMAC key for sybil dedup and per-RP nullifiers.
-CUSTODIAL_SIGNER_URL=                   # Optional. URL of the custodial signer instance for zero-friction recovery.
-CUSTODIAL_SIGNER_ID=                    # Optional. Signer ID of the custodial signer instance.
 
 # Web Push (auto-generated by pnpm setup)
 VAPID_PUBLIC_KEY=<vapid-key>            # Required in production

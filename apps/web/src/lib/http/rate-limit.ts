@@ -163,9 +163,6 @@ export function rateLimitResponse(retryAfter = 60): Response {
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
-/** OCR proxy: 5 req/min per session. */
-export const ocrLimiter = createRateLimiter({ windowMs: MINUTE, max: 5 });
-
 /** FHE endpoints: 10 req/min per session. */
 export const fheLimiter = createRateLimiter({ windowMs: MINUTE, max: 10 });
 

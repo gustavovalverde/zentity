@@ -257,10 +257,6 @@ erDiagram
   USERS ||--o{ OIDC4VCI_ISSUED_CREDENTIALS : holds
   OIDC4VCI_OFFERS ||--o| OIDC4VCI_ISSUED_CREDENTIALS : fulfills
 
-  USERS ||--o{ GUARDIANS : recovers
-  USERS ||--o| RECOVERY_KEY_PINS : pins
-  GUARDIANS ||--o{ RECOVERY_CHALLENGES : authorizes
-
   USERS ||--o{ AGENT_HOSTS : owns
   AGENT_HOSTS ||--o{ AGENT_SESSIONS : runs
   AGENT_HOSTS ||--o{ AGENT_HOST_POLICIES : defaults

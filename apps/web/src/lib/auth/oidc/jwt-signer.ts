@@ -325,9 +325,8 @@ function isStandardJwtSigningAlg(
 }
 
 /**
- * Better-auth's OIDC4VCI/JWT internals use this adapter to enumerate standard
- * signing keys. Filtered to exclude ML-DSA and encryption keys that `jose`
- * cannot import directly.
+ * Better-auth's OIDC4VCI/JWT internals use this adapter to enumerate signing
+ * keys. Filtered to exclude the JARM encryption key stored in the same table.
  */
 export async function getJwtSigningKeys(): Promise<JwtSigningKey[]> {
   const rows = await db.select().from(jwks);

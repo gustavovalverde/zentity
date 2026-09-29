@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Proposed |
 | **Created** | 2026-01-14 |
-| **Updated** | 2026-01-14 |
+| **Updated** | 2026-09-25 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -20,7 +20,6 @@ Zentity already implements the core SSI principles:
 - **Selective disclosure** via SD-JWT disclosure keys
 - **Portable presentations** via OIDC4VP
 - **Anti-correlation** via pairwise subject identifiers (`sub` per RP)
-- **Threshold recovery** via FROST guardians
 
 The system is fully functional for SSI use cases. The features in this RFC extend interoperability with DID-native ecosystems and provide advanced privacy features.
 
@@ -332,4 +331,4 @@ Zentity already supports ZK predicate proofs (age, nationality group, etc.) via 
 - [did:key Method Specification](https://w3c-ccg.github.io/did-method-key/)
 - [BBS+ Signatures](https://www.w3.org/TR/vc-di-bbs/)
 - [AnonCreds Specification](https://hyperledger.github.io/anoncreds-spec/)
-- [SSI Architecture](../ssi-architecture.md)
+- [SSI Architecture](../(architecture)/ssi-architecture.md)
