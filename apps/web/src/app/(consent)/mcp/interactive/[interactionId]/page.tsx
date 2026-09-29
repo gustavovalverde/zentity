@@ -1,13 +1,10 @@
-import { and, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AgentApprovalView } from "@/components/agent-approval-view";
+import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
-import { db } from "@/lib/db/connection";
-import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 
 interface InteractionCopy {
   deniedDescription?: string;
@@ -106,28 +103,13 @@ export default async function McpInteractivePage({
     );
   }
 
-  const detected = await detectAuthMode(session.user.id);
-  const { authMode } = detected;
-  const { wallet } = detected;
+  const [detected, assurance, approval] = await Promise.all([
+    detectAuthMode(session.user.id),
+    getAccountAssurance(session.user.id),
+    resolveCibaApprovalData(authReqId, session.user.id),
+  ]);
 
-  const cibaRow = await db
-    .select({
-      agentSessionId: cibaRequests.agentSessionId,
-      displayName: cibaRequests.displayName,
-      model: cibaRequests.model,
-      runtime: cibaRequests.runtime,
-    })
-    .from(cibaRequests)
-    .where(
-      and(
-        eq(cibaRequests.authReqId, authReqId),
-        eq(cibaRequests.userId, session.user.id)
-      )
-    )
-    .limit(1)
-    .get();
-
-  if (!cibaRow) {
+  if (!approval) {
     return (
       <div className="w-full max-w-md">
         <div className="rounded-lg border p-6 text-center">
@@ -137,58 +119,17 @@ export default async function McpInteractivePage({
     );
   }
 
-  const agentIdentity =
-    cibaRow.displayName == null
-      ? null
-      : {
-          name: cibaRow.displayName,
-          ...(cibaRow.model ? { model: cibaRow.model } : {}),
-          ...(cibaRow.runtime ? { runtime: cibaRow.runtime } : {}),
-        };
-
-  let registeredAgent: {
-    attestationProvider: string | null;
-    attestationTier: string;
-    hostName: string;
-    sessionId: string;
-  } | null = null;
-
-  if (cibaRow.agentSessionId) {
-    const agentRow = await db
-      .select({
-        sessionId: agentSessions.id,
-        hostName: agentHosts.name,
-        attestationProvider: agentHosts.attestationProvider,
-        attestationTier: agentHosts.attestationTier,
-      })
-      .from(agentSessions)
-      .innerJoin(agentHosts, eq(agentSessions.hostId, agentHosts.id))
-      .where(eq(agentSessions.id, cibaRow.agentSessionId))
-      .limit(1)
-      .get();
-
-    if (agentRow) {
-      registeredAgent = {
-        hostName: agentRow.hostName,
-        attestationProvider: agentRow.attestationProvider,
-        attestationTier: agentRow.attestationTier,
-        sessionId: agentRow.sessionId,
-      };
-    }
-  }
-
-  const assurance = await getAccountAssurance(session.user.id);
-
   return (
     <div className="w-full max-w-md">
       <AgentApprovalView
-        agentIdentity={agentIdentity}
-        authMode={authMode}
+        agentIdentity={approval.agentIdentity}
+        authMode={detected.authMode}
         authReqId={authReqId}
+        initialRequest={approval.request}
         interactionCopy={buildInteractionCopy({ tool, fields })}
-        registeredAgent={registeredAgent}
+        registeredAgent={approval.registeredAgent}
         userTier={assurance.tier}
-        wallet={wallet}
+        wallet={detected.wallet}
       />
     </div>
   );

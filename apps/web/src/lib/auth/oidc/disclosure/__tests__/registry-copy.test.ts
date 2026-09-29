@@ -70,7 +70,6 @@ describe("disclosure registry — copy and visibility", () => {
         "agent:session.register",
         "agent:session.revoke",
         "agent:introspect",
-        "compliance:read",
         "identity_verification",
       ];
 
@@ -84,6 +83,7 @@ describe("disclosure registry — copy and visibility", () => {
 
     it("does not hide user-facing scopes", () => {
       const mustBeVisible = [
+        "compliance:read",
         "email",
         "offline_access",
         "proof:verification",

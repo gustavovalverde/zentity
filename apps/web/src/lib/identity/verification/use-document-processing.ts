@@ -273,6 +273,9 @@ export function useDocumentProcessing(
           error instanceof Error ? error.message : "Failed to process document";
         setUploadError(errorMsg);
         toast.error("Processing failed", { description: errorMsg });
+        setFileName(null);
+        setPreviewUrl(null);
+        storeSet({ idDocument: null, idDocumentBase64: null });
         setProcessingState("idle");
       }
     },

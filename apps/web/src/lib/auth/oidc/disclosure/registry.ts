@@ -373,7 +373,6 @@ export const HIDDEN_SCOPES = new Set([
   "agent:session.register",
   "agent:session.revoke",
   "agent:introspect",
-  "compliance:read",
   "identity_verification",
   "poh",
 ]);

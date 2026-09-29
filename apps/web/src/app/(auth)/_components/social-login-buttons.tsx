@@ -1,6 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import type { ReactElement } from "react";
+import type { SocialProviderId } from "@/lib/auth/auth-config";
+
+import { AuthUIContext } from "@daveyplate/better-auth-ui";
+import { useContext, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -8,10 +12,29 @@ import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { prepareForNewSession } from "@/lib/auth/session-cleanup";
 
-export function SocialLoginButtons() {
-  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
+const PROVIDER_BUTTONS = {
+  google: { label: "Continue with Google", Icon: GoogleIcon },
+  github: { label: "Continue with GitHub", Icon: GithubIcon },
+} satisfies Record<
+  SocialProviderId,
+  { label: string; Icon: (props: { className?: string }) => ReactElement }
+>;
 
-  const handleSocialLogin = async (provider: "google" | "github") => {
+function isKnownProvider(provider: string): provider is SocialProviderId {
+  return Object.hasOwn(PROVIDER_BUTTONS, provider);
+}
+
+export function SocialLoginButtons() {
+  const { social } = useContext(AuthUIContext);
+  const providers = (social?.providers ?? []).filter(isKnownProvider);
+  const [loadingProvider, setLoadingProvider] =
+    useState<SocialProviderId | null>(null);
+
+  if (providers.length === 0) {
+    return null;
+  }
+
+  const handleSocialLogin = async (provider: SocialProviderId) => {
     setLoadingProvider(provider);
     prepareForNewSession();
     try {
@@ -27,32 +50,25 @@ export function SocialLoginButtons() {
 
   return (
     <div className="flex flex-col gap-3">
-      <Button
-        className="w-full"
-        disabled={loadingProvider !== null}
-        onClick={asyncHandler(() => handleSocialLogin("google"))}
-        variant="outline"
-      >
-        {loadingProvider === "google" ? (
-          <Spinner className="mr-2 size-4" />
-        ) : (
-          <GoogleIcon className="mr-2 size-4" />
-        )}
-        Continue with Google
-      </Button>
-      <Button
-        className="w-full"
-        disabled={loadingProvider !== null}
-        onClick={asyncHandler(() => handleSocialLogin("github"))}
-        variant="outline"
-      >
-        {loadingProvider === "github" ? (
-          <Spinner className="mr-2 size-4" />
-        ) : (
-          <GithubIcon className="mr-2 size-4" />
-        )}
-        Continue with GitHub
-      </Button>
+      {providers.map((provider) => {
+        const { label, Icon } = PROVIDER_BUTTONS[provider];
+        return (
+          <Button
+            className="w-full"
+            disabled={loadingProvider !== null}
+            key={provider}
+            onClick={asyncHandler(() => handleSocialLogin(provider))}
+            variant="outline"
+          >
+            {loadingProvider === provider ? (
+              <Spinner className="mr-2 size-4" />
+            ) : (
+              <Icon className="mr-2 size-4" />
+            )}
+            {label}
+          </Button>
+        );
+      })}
     </div>
   );
 }

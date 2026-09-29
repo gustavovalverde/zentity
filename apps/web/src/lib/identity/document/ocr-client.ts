@@ -1,7 +1,7 @@
 import "server-only";
 
 import { env } from "@/env";
-import { fetchJson } from "@/lib/http/fetch";
+import { fetchJson, HttpError, TimeoutError } from "@/lib/http/fetch";
 import {
   recordOcrDuration,
   recordOcrImageBytes,
@@ -52,6 +52,21 @@ export interface OcrProcessResult {
   documentType: string;
   extractedData?: OcrExtractedData;
   validationIssues: string[];
+}
+
+export class OcrServiceUnavailableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("OCR service unavailable", options);
+    this.name = "OcrServiceUnavailableError";
+  }
+}
+
+function isServiceUnavailable(error: unknown): boolean {
+  if (error instanceof HttpError) {
+    return error.status >= 500;
+  }
+  // fetch rejects with TypeError when the service cannot be reached
+  return error instanceof TimeoutError || error instanceof TypeError;
 }
 
 /** OCR processing timeout (40 seconds) - slightly less than client timeout. */
@@ -134,6 +149,10 @@ export function processDocumentOcr(args: {
             }),
             body: payload,
             timeoutMs: OCR_TIMEOUT_MS,
+          }).catch((error: unknown) => {
+            throw isServiceUnavailable(error)
+              ? new OcrServiceUnavailableError({ cause: error })
+              : error;
           }),
       })
   );

@@ -5,9 +5,9 @@ vi.mock("server-only", () => ({}));
 
 const fetchJson = vi.fn();
 
-vi.mock("@/lib/http/fetch", () => ({
+vi.mock("@/lib/http/fetch", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/http/fetch")>()),
   fetchJson: (...args: unknown[]) => fetchJson(...args),
-  HttpError: class HttpError extends Error {},
 }));
 
 vi.mock("@/env", () => ({
@@ -17,7 +17,19 @@ vi.mock("@/env", () => ({
   },
 }));
 
-import { processDocumentOcr } from "../ocr-client";
+import { HttpError, TimeoutError } from "@/lib/http/fetch";
+
+import { OcrServiceUnavailableError, processDocumentOcr } from "../ocr-client";
+
+function httpError(status: number) {
+  return new HttpError({
+    message: `Request failed: ${status}`,
+    status,
+    statusText: "",
+    url: "http://ocr.local/process",
+    bodyText: "",
+  });
+}
 
 describe("ocr-client request logging", () => {
   beforeEach(() => {
@@ -69,5 +81,24 @@ describe("ocr-client request logging", () => {
     ).rejects.toThrow("Image payload too large for OCR processing");
 
     expect(fetchJson).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an unreachable service", new TypeError("fetch failed")],
+    ["a timeout", new TimeoutError("http://ocr.local/process", 40_000)],
+    ["a 503 response", httpError(503)],
+  ])("reports %s as service unavailable", async (_label, error) => {
+    fetchJson.mockRejectedValue(error);
+
+    await expect(processDocumentOcr({ image: "base64" })).rejects.toThrow(
+      OcrServiceUnavailableError
+    );
+  });
+
+  it("passes client errors through unchanged", async () => {
+    const error = httpError(422);
+    fetchJson.mockRejectedValue(error);
+
+    await expect(processDocumentOcr({ image: "base64" })).rejects.toBe(error);
   });
 });

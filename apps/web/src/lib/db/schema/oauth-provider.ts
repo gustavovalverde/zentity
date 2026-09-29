@@ -153,6 +153,7 @@ export const oauthAccessTokens = sqliteTable(
     revoked: integer("revoked", { mode: "timestamp_ms" }),
     confirmation: text("confirmation"),
     scopes: text("scopes").notNull(),
+    exchangeClaims: text("exchange_claims"),
   },
   (table) => [
     uniqueIndex("oauth_access_token_token_unique").on(table.token),

@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
+import { glob } from "node:fs/promises";
 import { join } from "node:path";
-
-import { glob } from "glob";
 
 const VERSION_PREFIX_RE = /^[~^]/;
 
@@ -70,9 +69,9 @@ async function main() {
     .filter(([, value]) => !value)
     .map(([key]) => key);
 
-  const artifactPaths = await glob("noir-circuits/*/artifacts/*.json", {
-    cwd: root,
-  });
+  const artifactPaths = await Array.fromAsync(
+    glob("noir-circuits/*/artifacts/*.json", { cwd: root })
+  );
 
   if (artifactPaths.length === 0) {
     console.error("No Noir artifacts found in noir-circuits/*/artifacts");

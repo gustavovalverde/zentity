@@ -1,9 +1,9 @@
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
 import type { DpopKeyPair } from "@zentity/sdk/rp";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OAuthSessionContext } from "../../src/runtime/auth-context.js";
 
 const mockBeginCibaApproval = vi.fn();
-const mockLogPendingApprovalHandoff = vi.fn();
 const mockPollCibaTokenOnce = vi.fn();
 
 vi.mock("../../src/config.js", () => ({
@@ -16,203 +16,220 @@ vi.mock("../../src/config.js", () => ({
 
 vi.mock("@zentity/sdk", () => ({
   beginCibaApproval: (...args: unknown[]) => mockBeginCibaApproval(...args),
-  createPendingApproval: (
-    _params: { resource?: string | undefined },
-    pendingAuthorization: {
-      authReqId: string;
-      expiresIn: number;
-      intervalSeconds: number;
-    }
-  ) => ({
-    approvalUrl: `http://localhost:3000/approve/${pendingAuthorization.authReqId}`,
-    authReqId: pendingAuthorization.authReqId,
-    expiresIn: pendingAuthorization.expiresIn,
-    intervalSeconds: pendingAuthorization.intervalSeconds,
-  }),
-  logPendingApprovalHandoff: (...args: unknown[]) =>
-    mockLogPendingApprovalHandoff(...args),
+  createPendingApproval: vi.fn(),
+  logPendingApprovalHandoff: vi.fn(),
   pollCibaTokenOnce: (...args: unknown[]) => mockPollCibaTokenOnce(...args),
 }));
 
-import { beginOrResumeInteractiveFlow } from "../../src/services/interactive-approval.js";
+import {
+  beginOrResumeInteractiveFlow,
+  requestUserAction,
+} from "../../src/services/interactive-approval.js";
 
 const mockDpopKey: DpopKeyPair = {
   privateJwk: { kty: "EC", crv: "P-256" },
   publicJwk: { kty: "EC", crv: "P-256" },
 };
 
-const mockDpopClient = {
-  keyPair: mockDpopKey,
-  proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  withNonceRetry: vi.fn(),
-};
-
 const oauth: OAuthSessionContext = {
   accessToken: "access-token",
   accountSub: "user-123",
   clientId: "client-123",
-  dpopClient: mockDpopClient,
+  dpopClient: {
+    keyPair: mockDpopKey,
+    proofFor: vi.fn(),
+    withNonceRetry: vi.fn(),
+  },
   dpopKey: mockDpopKey,
-  loginHint: "user@example.com",
   scopes: ["openid"],
 };
 
-function createServerDouble(notifier: ReturnType<typeof vi.fn>) {
+function createParams(fingerprint: string) {
   return {
-    server: {
-      createElicitationCompletionNotifier: () => notifier,
-      getClientCapabilities: () => ({
-        elicitation: {
-          url: {},
-        },
-      }),
-    },
-  } as const;
-}
-
-function createParams(input: {
-  fingerprint: string;
-  notifier: ReturnType<typeof vi.fn>;
-  onApproved?: (tokenSet: { accessToken: string }) => Promise<{ ok: true }>;
-}) {
-  return {
-    server: createServerDouble(input.notifier),
     toolName: "my_profile" as const,
-    fingerprint: input.fingerprint,
+    fingerprint,
     oauth,
     cibaRequest: {
       cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
       tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
       clientId: oauth.clientId,
       dpopSigner: oauth.dpopClient,
-      loginHint: oauth.loginHint,
+      loginHint: oauth.accountSub,
       scope: "openid identity.name",
       bindingMessage: "Claude Code: Share my name",
       resource: "http://localhost:3000",
     },
-    onApproved:
-      input.onApproved ?? (() => Promise.resolve({ ok: true as const })),
+    browserSearchParams: { fields: "name" },
+    onApproved: (tokenSet: { accessToken: string }) =>
+      Promise.resolve({ token: tokenSet.accessToken }),
   };
 }
 
+const PENDING = {
+  authReqId: "auth-req-1",
+  expiresIn: 300,
+  intervalSeconds: 5,
+};
+
 describe("interactive tool flow", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
     mockBeginCibaApproval.mockReset();
-    mockLogPendingApprovalHandoff.mockReset();
     mockPollCibaTokenOnce.mockReset();
+    mockBeginCibaApproval.mockResolvedValue(PENDING);
   });
 
-  afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
-  });
+  it("starts a CIBA request and returns the browser interaction", async () => {
+    const outcome = await beginOrResumeInteractiveFlow(createParams("start"));
 
-  it("notifies URL elicitation completion after background polling approves the flow", async () => {
-    const notifier = vi.fn().mockResolvedValue(undefined);
-    mockBeginCibaApproval.mockResolvedValue({
-      authReqId: "auth-req-1",
-      expiresIn: 300,
-      intervalSeconds: 2,
-    });
-    mockPollCibaTokenOnce.mockResolvedValue({
-      status: "approved",
-      tokenSet: {
-        accessToken: "approved-token",
-      },
-    });
-
-    const first = await beginOrResumeInteractiveFlow(
-      createParams({
-        fingerprint: "fp-background",
-        notifier,
-      })
-    );
-
-    expect(first.status).toBe("needs_user_action");
-    expect(notifier).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(2000);
-
-    expect(mockPollCibaTokenOnce).toHaveBeenCalledTimes(1);
-    expect(notifier).toHaveBeenCalledTimes(1);
-
-    const onApproved = vi.fn().mockResolvedValue({ ok: true as const });
-    const resumed = await beginOrResumeInteractiveFlow(
-      createParams({
-        fingerprint: "fp-background",
-        notifier,
-        onApproved,
-      })
-    );
-
-    expect(onApproved).toHaveBeenCalledWith({
-      accessToken: "approved-token",
-    });
-    expect(resumed).toEqual({
-      status: "complete",
-      data: { ok: true },
-    });
-  });
-
-  it("retries completion notification after a transient notifier failure", async () => {
-    const notifier = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("temporary failure"))
-      .mockResolvedValueOnce(undefined);
-    mockBeginCibaApproval.mockResolvedValue({
-      authReqId: "auth-req-retry",
-      expiresIn: 300,
-      intervalSeconds: 2,
-    });
-    mockPollCibaTokenOnce.mockResolvedValue({
-      status: "approved",
-      tokenSet: {
-        accessToken: "approved-token",
-      },
-    });
-
-    const first = await beginOrResumeInteractiveFlow(
-      createParams({
-        fingerprint: "fp-retry",
-        notifier,
-      })
-    );
-
-    expect(first.status).toBe("needs_user_action");
-
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(notifier).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(notifier).toHaveBeenCalledTimes(2);
-  });
-
-  it("emits a first-party interaction URL without browser callback parameters", async () => {
-    const notifier = vi.fn().mockResolvedValue(undefined);
-    mockBeginCibaApproval.mockResolvedValue({
-      authReqId: "auth-req-2",
-      expiresIn: 300,
-      intervalSeconds: 60,
-    });
-
-    const first = await beginOrResumeInteractiveFlow(
-      createParams({
-        fingerprint: "fp-url-shape",
-        notifier,
-      })
-    );
-
-    expect(first.status).toBe("needs_user_action");
-    if (first.status !== "needs_user_action") {
-      throw new Error("Expected interactive flow to require user action");
+    expect(outcome.status).toBe("needs_user_action");
+    if (outcome.status !== "needs_user_action") {
+      return;
     }
+    const url = new URL(outcome.interaction.url);
+    expect(url.origin).toBe("http://localhost:3000");
+    expect(url.pathname.startsWith("/mcp/interactive/")).toBe(true);
+    expect(url.searchParams.get("authReqId")).toBe("auth-req-1");
+    expect(url.searchParams.get("tool")).toBe("my_profile");
+    expect(url.searchParams.get("fields")).toBe("name");
+    expect(mockPollCibaTokenOnce).not.toHaveBeenCalled();
+  });
 
-    const browserUrl = new URL(first.interaction.url);
-    expect(browserUrl.origin).toBe("http://localhost:3000");
-    expect(browserUrl.pathname).toContain("/mcp/interactive/");
-    expect(browserUrl.searchParams.get("authReqId")).toBe("auth-req-2");
-    expect(browserUrl.searchParams.get("tool")).toBe("my_profile");
-    expect(browserUrl.searchParams.has("callback")).toBe(false);
+  it("keeps waiting while the approval is pending", async () => {
+    await beginOrResumeInteractiveFlow(createParams("pending"));
+    mockPollCibaTokenOnce.mockResolvedValue({
+      status: "pending",
+      pendingAuthorization: PENDING,
+    });
+
+    const outcome = await beginOrResumeInteractiveFlow(createParams("pending"));
+
+    expect(outcome.status).toBe("needs_user_action");
+    expect(mockBeginCibaApproval).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes with the approved token and forgets the flow", async () => {
+    await beginOrResumeInteractiveFlow(createParams("approved"));
+    mockPollCibaTokenOnce.mockResolvedValueOnce({
+      status: "approved",
+      tokenSet: { accessToken: "approved-token" },
+    });
+
+    const outcome = await beginOrResumeInteractiveFlow(
+      createParams("approved")
+    );
+    expect(outcome).toEqual({
+      status: "complete",
+      data: { token: "approved-token" },
+    });
+
+    await beginOrResumeInteractiveFlow(createParams("approved"));
+    expect(mockBeginCibaApproval).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports denial and expiry", async () => {
+    await beginOrResumeInteractiveFlow(createParams("denied"));
+    mockPollCibaTokenOnce.mockResolvedValueOnce({
+      status: "denied",
+      message: "User denied",
+    });
+    await expect(
+      beginOrResumeInteractiveFlow(createParams("denied"))
+    ).resolves.toEqual({ status: "denied" });
+
+    await beginOrResumeInteractiveFlow(createParams("expired"));
+    mockPollCibaTokenOnce.mockResolvedValueOnce({ status: "timed_out" });
+    await expect(
+      beginOrResumeInteractiveFlow(createParams("expired"))
+    ).resolves.toEqual({ status: "expired" });
+  });
+
+  it("keeps the flow when a poll fails", async () => {
+    await beginOrResumeInteractiveFlow(createParams("flaky"));
+    mockPollCibaTokenOnce.mockRejectedValueOnce(new Error("network down"));
+
+    const outcome = await beginOrResumeInteractiveFlow(createParams("flaky"));
+
+    expect(outcome.status).toBe("needs_user_action");
+  });
+});
+
+describe("requestUserAction", () => {
+  const interaction = {
+    mode: "url" as const,
+    url: "http://localhost:3000/mcp/interactive/abc",
+    message: "Open the link",
+    expiresAt: "2026-09-27T12:00:00.000Z",
+  };
+  const fallback = { structuredContent: { status: "needs_user_action" } };
+
+  function serverWith(capabilities: unknown) {
+    return {
+      server: { getClientCapabilities: () => capabilities },
+    } as unknown as McpServer;
+  }
+
+  function contextWith(mcpReq: Record<string, unknown> = {}) {
+    return { mcpReq } as unknown as ServerContext;
+  }
+
+  it("asks URL-elicitation clients to open the approval page", () => {
+    const result = requestUserAction(
+      serverWith({ elicitation: { url: {} } }),
+      contextWith(),
+      interaction,
+      fallback
+    );
+
+    expect(result).toMatchObject({
+      inputRequests: {
+        approval: {
+          method: "elicitation/create",
+          params: {
+            mode: "url",
+            url: interaction.url,
+            message: interaction.message,
+          },
+        },
+      },
+    });
+  });
+
+  it("reads client capabilities from the per-request envelope", () => {
+    const result = requestUserAction(
+      serverWith(undefined),
+      contextWith({
+        envelope: {
+          "io.modelcontextprotocol/clientCapabilities": {
+            elicitation: { url: {} },
+          },
+        },
+      }),
+      interaction,
+      fallback
+    );
+
+    expect(result).not.toBe(fallback);
+  });
+
+  it("returns the structured result to clients without URL elicitation", () => {
+    expect(
+      requestUserAction(
+        serverWith({ elicitation: { form: {} } }),
+        contextWith(),
+        interaction,
+        fallback
+      )
+    ).toBe(fallback);
+  });
+
+  it("does not ask again once the client answered", () => {
+    expect(
+      requestUserAction(
+        serverWith({ elicitation: { url: {} } }),
+        contextWith({ inputResponses: { approval: { action: "accept" } } }),
+        interaction,
+        fallback
+      )
+    ).toBe(fallback);
   });
 });

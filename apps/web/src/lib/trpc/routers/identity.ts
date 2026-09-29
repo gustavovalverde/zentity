@@ -36,6 +36,7 @@ import {
 } from "@/lib/db/queries/identity";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import { fheLimiter } from "@/lib/http/rate-limit";
+import { OcrServiceUnavailableError } from "@/lib/identity/document/ocr-client";
 import { processDocumentWithOcr } from "@/lib/identity/document/process";
 import {
   ANTISPOOF_LIVE_THRESHOLD,
@@ -77,6 +78,14 @@ const prepareDocumentProcedure = protectedProcedure
   .mutation(async ({ ctx, input }) => {
     const userId = ctx.session.user.id;
 
+    if (!env.DOCUMENT_OCR_ENABLED) {
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message:
+          "Document scanning is not available. Verify with your passport chip instead.",
+      });
+    }
+
     ctx.span?.setAttribute(
       "dashboard.document_image_bytes",
       Buffer.byteLength(input.image)
@@ -100,6 +109,20 @@ const prepareDocumentProcedure = protectedProcedure
       existingVerificationId: isReverification
         ? undefined
         : existingDraft?.verificationId,
+    }).catch((error: unknown) => {
+      if (error instanceof OcrServiceUnavailableError) {
+        logger.error(
+          { error: String(error.cause), requestId: ctx.requestId },
+          "Document OCR service unavailable"
+        );
+        throw new TRPCError({
+          code: "SERVICE_UNAVAILABLE",
+          message:
+            "Document scanning is unavailable right now, so your document was not checked. Try again in a few minutes.",
+          cause: error,
+        });
+      }
+      throw error;
     });
 
     ctx.span?.setAttribute(

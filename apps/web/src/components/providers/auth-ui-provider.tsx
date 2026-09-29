@@ -2,6 +2,7 @@
 
 import type { BetterFetchOption } from "better-auth/react";
 import type { ComponentProps, ReactNode } from "react";
+import type { SocialProviderId } from "@/lib/auth/auth-config";
 
 import { AuthUIProvider } from "@daveyplate/better-auth-ui";
 import Link from "next/link";
@@ -18,6 +19,7 @@ type AuthClientBase = ReturnType<
 
 interface BetterAuthUIProviderProps {
   children: ReactNode;
+  socialProviders: SocialProviderId[];
 }
 
 /**
@@ -29,6 +31,7 @@ interface BetterAuthUIProviderProps {
  */
 export function BetterAuthUIProvider({
   children,
+  socialProviders,
 }: Readonly<BetterAuthUIProviderProps>) {
   const router = useRouter();
   const authUiClient = useMemo(() => {
@@ -217,9 +220,7 @@ export function BetterAuthUIProvider({
       passkey={false} // Disabled - using custom PRF flow for FHE key derivation
       redirectTo="/dashboard"
       replace={router.replace}
-      social={{
-        providers: ["google", "github"],
-      }}
+      social={{ providers: socialProviders }}
       twoFactor={["totp"]}
       viewPaths={{
         SIGN_IN: "sign-in",

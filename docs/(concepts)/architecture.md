@@ -21,7 +21,7 @@ Zentity's architecture separates proving (browser), verifying (server), and comp
 | Verifiable credentials | OIDC4VCI, OIDC4VP, SD-JWT VC, DCQL, JARM | Credential issuance and wallet presentation via OpenID standards. |
 | HAIP compliance | @better-auth/haip (DPoP, PAR, JARM, wallet attestation, DCQL) | High Assurance Interoperability Profile for regulated wallet integrations. |
 | CIBA | @better-auth/ciba (backchannel auth, poll + ping modes) | Agent-initiated async authorization via email/push notification and user approval. |
-| MCP identity server | Node.js, Hono, @modelcontextprotocol/sdk | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_profile, my_proofs, check_compliance, purchase). |
+| MCP identity server | Node.js, Hono, @modelcontextprotocol/server | HTTP/stdio MCP server with OAuth-authenticated identity tools (whoami, my_profile, my_proofs, check_compliance, purchase). |
 | Observability | OpenTelemetry | Cross-service tracing with privacy-safe attributes. |
 
 ### System Diagram
@@ -132,7 +132,7 @@ For DCR clients, Zentity defaults to pairwise subject identifiers (`subject_type
 - Consent records deleted after authorization code issuance (transient linkage)
 - Access token DB records deleted after JWT issuance
 - Session IP/UA metadata scrubbed
-- Opaque access tokens forced for pairwise clients (no JWT `sub` leakage)
+- Opaque access tokens for Zentity's own endpoints; JWT access tokens for outside resource servers carry the client's pairwise `sub`
 
 ---
 
@@ -250,7 +250,7 @@ sequenceDiagram
   API-->>RP: Identity PII + scope-filtered proof claims
 ```
 
-All token requests require DPoP (sender-constrained tokens) and PAR (pushed authorization requests). See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for protocol details.
+Access tokens are sender-constrained with DPoP when the client presents a proof, and clients may push authorization requests through PAR. See [OAuth Integrations](<../(protocols)/oauth-integrations.md>) for protocol details.
 
 ### Agent Authorization (CIBA)
 

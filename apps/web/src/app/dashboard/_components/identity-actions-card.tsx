@@ -1,6 +1,6 @@
 "use client";
 
-import type { SecurityPosture } from "@/lib/assurance/tier";
+import type { SecurityPosture } from "@zentity/sdk/protocol";
 
 import { ArrowRight, FileCheck2, Lock, Stamp, Zap } from "lucide-react";
 import Link from "next/link";

@@ -1,10 +1,10 @@
-import "server-only";
-
 import type {
   AuthenticationSourceKind,
   AuthenticationState,
   LoginMethod,
-} from "@/lib/assurance/tier";
+} from "@zentity/sdk/protocol";
+import "server-only";
+
 import type {
   AuthenticationContext,
   NewAuthenticationContext,

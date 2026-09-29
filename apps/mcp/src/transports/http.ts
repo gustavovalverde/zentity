@@ -1,35 +1,34 @@
-import { randomUUID } from "node:crypto";
+import { createMcpProtectedRequestHandler } from "@better-auth/mcp";
 import { serve } from "@hono/node-server";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import { type ExchangeTokenResult, exchangeToken } from "@zentity/sdk/fpa";
-import { deriveAppAudience } from "@zentity/sdk/node";
+import { createMcpHandler } from "@modelcontextprotocol/server";
+import { exchangeToken } from "@zentity/sdk/fpa";
+import { deriveAppAudience, normalizeUrl } from "@zentity/sdk/node";
 import { createDpopClientFromKeyPair, type DpopClient } from "@zentity/sdk/rp";
+import {
+  createInMemoryDpopReplayStore,
+  DPOP_SIGNING_ALGORITHMS,
+  stripAccessTokenAuthorizationScheme,
+} from "better-auth/oauth2";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { config } from "../config.js";
 import {
-  buildMcpRemoteClientMetadata,
   discoverMcpOAuth,
   ensureMcpOAuthClientCredentials,
 } from "../oauth-client.js";
 import {
+  type AuthContext,
   type OAuthSessionContext,
-  runWithAuth,
+  runWithAuthResolver,
 } from "../runtime/auth-context.js";
 import { createServer } from "../server.js";
-import {
-  getMinimalMcpScopes,
-  getRequiredScopesForRemoteRequest,
-} from "./remote-scope-policy.js";
-import { getResourceMetadata } from "./resource-metadata.js";
-import {
-  isAuthError,
-  type TokenAuthResult,
-  validateToken,
-} from "./token-auth.js";
 
-const DPOP_PREFIX = /^DPoP\s+/i;
-const BEARER_PREFIX = /^Bearer\s+/i;
+const SCOPES_SUPPORTED = [
+  "openid",
+  "email",
+  "compliance:read",
+  "proof:identity",
+];
 
 interface HttpServerCredentials {
   clientId: string;
@@ -37,48 +36,38 @@ interface HttpServerCredentials {
   dpopKey: OAuthSessionContext["dpopKey"];
 }
 
-let httpServerCredentials: HttpServerCredentials | undefined;
-
-interface HttpSessionEntry {
-  principalKey: string;
-  transport: WebStandardStreamableHTTPServerTransport;
+interface AuthorizationServer {
+  issuer: string;
+  jwksUrl: string;
+  tokenEndpoint: string;
+  userInfoEndpoint?: string | undefined;
 }
 
-export function setServerCredentials(creds: HttpServerCredentials): void {
-  httpServerCredentials = creds;
-}
-
-function getTransport(
-  transports: Map<string, HttpSessionEntry>,
-  sessionId: string | undefined
-): HttpSessionEntry | undefined {
-  return sessionId ? transports.get(sessionId) : undefined;
-}
-
-function extractCnfJkt(result: TokenAuthResult): string {
-  const cnf = result.payload.cnf;
-  if (
-    cnf &&
-    typeof cnf === "object" &&
-    "jkt" in cnf &&
-    typeof (cnf as Record<string, unknown>).jkt === "string"
-  ) {
-    return (cnf as Record<string, unknown>).jkt as string;
-  }
-
-  return "";
-}
-
-function buildPrincipalKey(result: TokenAuthResult): string {
-  return JSON.stringify({
-    azp:
-      (result.payload.azp as string | undefined) ??
-      (result.payload.client_id as string | undefined) ??
-      "",
-    iss: (result.payload.iss as string | undefined) ?? "",
-    jkt: extractCnfJkt(result),
-    sub: (result.payload.sub as string | undefined) ?? "",
+async function exchangeForZentity(
+  credentials: HttpServerCredentials,
+  authorizationServer: AuthorizationServer,
+  callerToken: string
+): Promise<AuthContext> {
+  const exchanged = await exchangeToken({
+    tokenEndpoint: authorizationServer.tokenEndpoint,
+    subjectToken: callerToken,
+    audience: deriveAppAudience(authorizationServer.issuer),
+    clientId: credentials.clientId,
+    dpopClient: credentials.dpopClient,
+    ...(authorizationServer.userInfoEndpoint
+      ? { userInfoEndpoint: authorizationServer.userInfoEndpoint }
+      : {}),
   });
+  return {
+    oauth: {
+      accessToken: exchanged.accessToken,
+      accountSub: exchanged.accountSub ?? "",
+      clientId: credentials.clientId,
+      dpopClient: credentials.dpopClient,
+      dpopKey: credentials.dpopKey,
+      scopes: exchanged.scope?.split(" ").filter(Boolean) ?? [],
+    },
+  };
 }
 
 export function matchOrigin(
@@ -100,185 +89,98 @@ export function matchOrigin(
   return undefined;
 }
 
-export function createApp(): Hono {
+export function createApp(
+  credentials: HttpServerCredentials,
+  authorizationServer: AuthorizationServer
+): Hono {
+  const resource = normalizeUrl(config.mcpPublicUrl);
+  const resourceMetadataUrl = `${resource}/.well-known/oauth-protected-resource`;
+  const mcp = createMcpHandler(() => createServer());
+
+  const handleMcpRequest = createMcpProtectedRequestHandler(
+    {
+      issuer: authorizationServer.issuer,
+      audience: resource,
+      jwksUrl: authorizationServer.jwksUrl,
+      requiredScopes: ["openid"],
+      dpop: { replayStore: createInMemoryDpopReplayStore() },
+    },
+    (request, claims) => {
+      const callerToken = stripAccessTokenAuthorizationScheme(
+        request.headers.get("authorization") ?? ""
+      );
+      let exchanged: Promise<AuthContext> | undefined;
+      const resolveAuth = () => {
+        exchanged ??= exchangeForZentity(
+          credentials,
+          authorizationServer,
+          callerToken
+        );
+        return exchanged;
+      };
+
+      return runWithAuthResolver(resolveAuth, () =>
+        mcp.fetch(request, {
+          authInfo: {
+            token: callerToken,
+            clientId: String(claims.azp ?? claims.client_id),
+            scopes:
+              typeof claims.scope === "string" ? claims.scope.split(" ") : [],
+            resource: new URL(resource),
+            resourceMetadataUrl,
+          },
+        })
+      );
+    }
+  );
+
   const app = new Hono();
 
   app.use(
     cors({
       origin: (origin) => matchOrigin(origin, config.allowedOrigins) ?? "",
-      allowHeaders: [
-        "Authorization",
-        "Content-Type",
-        "DPoP",
-        "mcp-session-id",
-        "Last-Event-ID",
-        "mcp-protocol-version",
-      ],
-      exposeHeaders: ["mcp-session-id", "DPoP-Nonce"],
+      exposeHeaders: ["DPoP-Nonce", "WWW-Authenticate"],
     })
   );
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
   app.get("/.well-known/oauth-protected-resource", (c) =>
-    c.json(getResourceMetadata())
+    c.json({
+      resource,
+      authorization_servers: [authorizationServer.issuer],
+      scopes_supported: SCOPES_SUPPORTED,
+      bearer_methods_supported: ["header"],
+      dpop_signing_alg_values_supported: [...DPOP_SIGNING_ALGORITHMS],
+    })
   );
 
-  app.get("/.well-known/oauth-client.json", (c) => {
-    return c.json(buildMcpRemoteClientMetadata(), 200, {
-      "Cache-Control": "max-age=86400",
-      "Content-Type": "application/json",
-    });
-  });
-
-  const transports = new Map<string, HttpSessionEntry>();
-
-  app.use("/mcp", async (c, next) => {
-    const authHeader = c.req.header("authorization");
-    const dpopHeader = c.req.header("dpop");
-    const method = c.req.method;
-    const fullHref = new URL(c.req.url).href;
-    const url = fullHref.split("?")[0] ?? fullHref;
-    const requiredScopes = await getRequiredScopesForRemoteRequest(c.req.raw);
-
-    const result = await validateToken(
-      authHeader,
-      dpopHeader,
-      method,
-      url,
-      requiredScopes
-    );
-
-    if (isAuthError(result)) {
-      return c.json(result.body, result.status, {
-        "WWW-Authenticate": result.wwwAuthenticate,
-      });
-    }
-
-    if (!httpServerCredentials) {
-      return c.json({ error: "Server not bootstrapped" }, 503);
-    }
-
-    const callerToken =
-      authHeader?.replace(DPOP_PREFIX, "").replace(BEARER_PREFIX, "") ?? "";
-    let exchangeResult: ExchangeTokenResult;
-    let exchangedToken: string;
-    let exchangedScopes = getMinimalMcpScopes();
-    try {
-      const discovery = await discoverMcpOAuth();
-      exchangeResult = await exchangeToken({
-        tokenEndpoint: discovery.token_endpoint,
-        subjectToken: callerToken,
-        audience: deriveAppAudience(discovery.issuer),
-        clientId: httpServerCredentials.clientId,
-        dpopClient: httpServerCredentials.dpopClient,
-      });
-      exchangedToken = exchangeResult.accessToken;
-      exchangedScopes =
-        typeof exchangeResult.scope === "string"
-          ? exchangeResult.scope.split(" ").filter(Boolean)
-          : exchangedScopes;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json(
-        { error: "token_exchange_failed", error_description: message },
-        502
-      );
-    }
-
-    const oauth: OAuthSessionContext = {
-      accessToken: exchangedToken,
-      accountSub: exchangeResult.accountSub ?? "",
-      clientId: httpServerCredentials.clientId,
-      dpopClient: httpServerCredentials.dpopClient,
-      dpopKey: httpServerCredentials.dpopKey,
-      loginHint: exchangeResult.loginHint ?? "",
-      scopes: exchangedScopes,
-    };
-
-    c.set("authInfo" as never, result);
-    c.set("oauthCtx" as never, oauth);
-    c.set("principalKey" as never, buildPrincipalKey(result));
-
-    return next();
-  });
-
-  app.post("/mcp", async (c) => {
-    const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
-    const principalKey = c.get("principalKey" as never) as string;
-    const sessionId = c.req.header("mcp-session-id");
-    const existing = getTransport(transports, sessionId);
-
-    if (existing) {
-      if (existing.principalKey !== principalKey) {
-        return c.json({ error: "Session principal mismatch" }, 403);
-      }
-      return runWithAuth({ oauth }, () =>
-        existing.transport.handleRequest(c.req.raw)
-      );
-    }
-
-    const newSessionId = randomUUID();
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: () => newSessionId,
-    });
-    transports.set(newSessionId, { principalKey, transport });
-
-    const { server, cleanup } = createServer();
-    transport.onclose = async () => {
-      transports.delete(newSessionId);
-      await cleanup();
-    };
-    await server.connect(transport);
-
-    return runWithAuth({ oauth }, () => transport.handleRequest(c.req.raw));
-  });
-
-  app.get("/mcp", (c) => {
-    const oauth = c.get("oauthCtx" as never) as OAuthSessionContext;
-    const principalKey = c.get("principalKey" as never) as string;
-    const sessionId = c.req.header("mcp-session-id");
-    const entry = getTransport(transports, sessionId);
-    if (!entry) {
-      return c.json({ error: "No active session" }, 400);
-    }
-    if (entry.principalKey !== principalKey) {
-      return c.json({ error: "Session principal mismatch" }, 403);
-    }
-    return runWithAuth({ oauth }, () =>
-      entry.transport.handleRequest(c.req.raw)
-    );
-  });
-
-  app.delete("/mcp", async (c) => {
-    const principalKey = c.get("principalKey" as never) as string;
-    const sessionId = c.req.header("mcp-session-id");
-    const entry = getTransport(transports, sessionId);
-    if (!entry) {
-      return c.json({ error: "No active session" }, 400);
-    }
-    if (entry.principalKey !== principalKey) {
-      return c.json({ error: "Session principal mismatch" }, 403);
-    }
-    await entry.transport.close();
-    if (sessionId) {
-      transports.delete(sessionId);
-    }
-    return c.body(null, 204);
-  });
+  app.all("/mcp", (c) => handleMcpRequest(c.req.raw));
 
   return app;
 }
 
 export async function startHttp(): Promise<void> {
-  const { clientId, dpopKey } = await ensureMcpOAuthClientCredentials();
-  httpServerCredentials = {
-    clientId,
-    dpopClient: await createDpopClientFromKeyPair(dpopKey),
-    dpopKey,
-  };
-
-  const app = createApp();
+  const [{ clientId, dpopKey }, discovery] = await Promise.all([
+    ensureMcpOAuthClientCredentials(),
+    discoverMcpOAuth(),
+  ]);
+  if (!discovery.jwks_uri) {
+    throw new Error("Authorization server discovery has no jwks_uri");
+  }
+  const app = createApp(
+    {
+      clientId,
+      dpopClient: await createDpopClientFromKeyPair(dpopKey),
+      dpopKey,
+    },
+    {
+      issuer: discovery.issuer,
+      jwksUrl: discovery.jwks_uri,
+      tokenEndpoint: discovery.token_endpoint,
+      userInfoEndpoint: discovery.userinfo_endpoint,
+    }
+  );
   const { port } = config;
 
   serve({ fetch: app.fetch, port }, () => {

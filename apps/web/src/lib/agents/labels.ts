@@ -131,3 +131,32 @@ export function formatUsageSummary(
 
   return parts.join(" · ");
 }
+
+const ASSET_DECIMALS: Record<string, number> = {
+  ZEC: 8,
+};
+
+const BASE_UNIT_AMOUNT_RE = /^\d+$/;
+const TRAILING_ZEROS_RE = /0+$/;
+
+export function formatPaymentAmount(amount: {
+  currency: string;
+  unit: "base" | "display";
+  value: string;
+}): string {
+  if (amount.unit === "display") {
+    return `${amount.value} ${amount.currency}`;
+  }
+  const decimals = ASSET_DECIMALS[amount.currency];
+  if (decimals === undefined || !BASE_UNIT_AMOUNT_RE.test(amount.value)) {
+    return `${amount.value} ${amount.currency} (base unit)`;
+  }
+  const scale = 10n ** BigInt(decimals);
+  const baseUnits = BigInt(amount.value);
+  const whole = (baseUnits / scale).toString();
+  const fraction = (baseUnits % scale)
+    .toString()
+    .padStart(decimals, "0")
+    .replace(TRAILING_ZEROS_RE, "");
+  return `${fraction ? `${whole}.${fraction}` : whole} ${amount.currency}`;
+}

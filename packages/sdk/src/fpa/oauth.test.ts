@@ -99,10 +99,9 @@ describe("oauth helpers", () => {
     expect(body.get("resource")).toBe("https://resource.example");
   });
 
-  it("extracts downstream identity hints from an exchanged app token", async () => {
+  it("extracts the subject from an exchanged token", async () => {
     const accessToken = `${encodeJwtSegment({ alg: "none" })}.${encodeJwtSegment({
-      sub: "pairwise-subject",
-      zentity_login_hint: "user-123",
+      sub: "user-123",
     })}.`;
 
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
@@ -127,12 +126,41 @@ describe("oauth helpers", () => {
 
     expect(result).toEqual({
       accessToken,
-      accountSub: "pairwise-subject",
+      accountSub: "user-123",
       expiresIn: 3600,
-      loginHint: "user-123",
       scope: "purchase",
       tokenType: "DPoP",
     });
+  });
+
+  it("resolves an opaque exchanged token's subject through userinfo", async () => {
+    mockFetchUserInfo.mockResolvedValue({ sub: "pairwise-sub" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        access_token: "opaque-token",
+        expires_in: 3600,
+        issued_token_type: "urn:ietf:params:oauth:token-type:access_token",
+        scope: "openid",
+        token_type: "DPoP",
+      })
+    );
+
+    const result = await exchangeToken({
+      audience: "https://issuer.example",
+      clientId: "client-123",
+      dpopClient: createMockDpopClient(),
+      subjectToken: "subject-token",
+      tokenEndpoint: "https://issuer.example/oauth/token",
+      userInfoEndpoint: "https://issuer.example/oauth/userinfo",
+    });
+
+    expect(result.accountSub).toBe("pairwise-sub");
+    expect(mockFetchUserInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "opaque-token",
+        userInfoUrl: "https://issuer.example/oauth/userinfo",
+      })
+    );
   });
 
   it("throws when the token endpoint rejects the request", async () => {

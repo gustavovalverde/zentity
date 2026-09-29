@@ -65,19 +65,14 @@ describe("dynamic client registration scopes", () => {
     );
   });
 
-  it("rejects compliance:read for dynamically registered clients", async () => {
+  it("allows dynamically registered clients to request compliance:read", async () => {
     const response = await auth.handler(
-      buildRegistrationRequest("openid email offline_access compliance:read")
+      buildRegistrationRequest("openid compliance:read")
     );
-    const text = await response.text();
+    const body = (await response.json()) as { scope?: string };
 
-    expect(response.status).toBe(400);
-    expect(JSON.parse(text)).toEqual(
-      expect.objectContaining({
-        error: "invalid_scope",
-      })
-    );
-    expect(text).toContain("compliance:read");
+    expect(response.status).toBeLessThan(400);
+    expect(body.scope?.split(" ")).toContain("compliance:read");
   });
 
   it("enables RP-Initiated Logout when a client registers a return URI", async () => {

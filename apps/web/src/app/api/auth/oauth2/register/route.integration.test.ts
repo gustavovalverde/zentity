@@ -78,4 +78,83 @@ describe("POST /api/auth/oauth2/register", () => {
       }),
     ]);
   });
+
+  async function register(metadata: Record<string, unknown>) {
+    const response = await POST(
+      new Request(REGISTER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          token_endpoint_auth_method: "none",
+          ...metadata,
+        }),
+      })
+    );
+    const payload = (await response.json()) as {
+      client_id?: string;
+      error?: string;
+    };
+    const client = payload.client_id
+      ? await db.query.oauthClients.findFirst({
+          where: eq(oauthClients.clientId, payload.client_id),
+        })
+      : undefined;
+    return { status: response.status, payload, client };
+  }
+
+  it("registers loopback-only clients without application_type as native", async () => {
+    const { status, client } = await register({
+      client_name: "MCP Inspector",
+      client_uri: "https://github.com/modelcontextprotocol/inspector",
+      redirect_uris: [
+        "http://localhost:6274/oauth/callback",
+        "http://localhost:6274/oauth/callback/debug",
+      ],
+    });
+
+    expect(status).toBe(201);
+    expect(client?.applicationType).toBe("native");
+  });
+
+  it("registers loopback IP redirects without application_type as native", async () => {
+    const { status, client } = await register({
+      client_name: "CLI",
+      redirect_uris: ["http://127.0.0.1:47123/callback"],
+    });
+
+    expect(status).toBe(201);
+    expect(client?.applicationType).toBe("native");
+  });
+
+  it("keeps web defaults for clients that are not loopback-only", async () => {
+    const web = await register({
+      client_name: "Web RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+    });
+    const mixed = await register({
+      client_name: "Mixed RP",
+      redirect_uris: [
+        `${RP_ORIGIN}/callback`,
+        "http://localhost:4000/callback",
+      ],
+    });
+
+    expect(web.status).toBe(201);
+    expect(web.client?.applicationType).toBe("web");
+    expect(mixed.status).toBe(400);
+    expect(mixed.payload.error).toBe("invalid_redirect_uri");
+  });
+
+  it("rejects loopback redirects for clients that declare themselves web", async () => {
+    const { status, payload } = await register({
+      application_type: "web",
+      client_name: "Web RP",
+      redirect_uris: ["http://localhost:4000/callback"],
+    });
+
+    expect(status).toBe(400);
+    expect(payload.error).toBe("invalid_redirect_uri");
+  });
 });

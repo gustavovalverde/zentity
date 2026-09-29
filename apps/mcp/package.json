@@ -23,15 +23,20 @@
     "test:e2e": "pnpm run build:sdk && bun run scripts/e2e-smoke.ts"
   },
   "dependencies": {
+    "@better-auth/core": "1.7.6",
+    "@better-auth/mcp": "1.7.6",
     "@hono/node-server": "^2.0.2",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/server": "2.1.0",
     "@zentity/sdk": "workspace:*",
+    "better-auth": "1.7.6",
+    "better-call": "1.4.0",
     "hono": "^4.13.9",
     "jose": "^6.2.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",
+    "@modelcontextprotocol/client": "2.1.0",
     "@types/node": "^25.5.0",
     "typescript": "^5.9.3",
     "ultracite": "7.3.2",

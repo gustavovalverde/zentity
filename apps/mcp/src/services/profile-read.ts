@@ -1,4 +1,3 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prefixBindingMessage } from "../agent.js";
 import { config } from "../config.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
@@ -130,12 +129,11 @@ function mapProfileFromClaims(input: {
 
 export async function readProfile(input: {
   fields: readonly PublicProfileField[];
-  server: McpServer;
 }): Promise<ProfileReadResult> {
   const auth = await requireAuth();
   const oauth = getOAuthContext(auth);
   const runtime = tryGetRuntimeState(auth);
-  const userId = oauth.accountSub || oauth.loginHint;
+  const userId = oauth.accountSub;
   const fields = normalizeProfileFields(input.fields);
   const cacheKey = buildProfileCacheKey({
     userId,
@@ -177,7 +175,6 @@ export async function readProfile(input: {
     : undefined;
 
   const flow = await beginOrResumeInteractiveFlow({
-    server: input.server,
     toolName: "my_profile",
     fingerprint: [
       userId,
@@ -192,7 +189,7 @@ export async function readProfile(input: {
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: oauth.clientId,
       dpopSigner: oauth.dpopClient,
-      loginHint: oauth.loginHint || oauth.accountSub,
+      loginHint: oauth.accountSub,
       scope,
       bindingMessage,
       resource: config.zentityUrl,

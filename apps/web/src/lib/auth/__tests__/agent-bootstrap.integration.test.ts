@@ -1,12 +1,12 @@
 import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
-import { calculateJwkThumbprint, decodeJwt, SignJWT } from "jose";
+import { calculateJwkThumbprint, SignJWT } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { resolveSubForClient } from "@/lib/auth/oidc/pairwise";
+import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
@@ -149,17 +149,13 @@ describe("agent bootstrap token exchange", () => {
     expect(json.scope).toBe(BOOTSTRAP_SCOPE);
 
     const bootstrapToken = json.access_token as string;
-    const payload = decodeJwt(bootstrapToken);
-    expect(payload.aud).toBe(APP_URL);
-    expect(payload.zentity_token_use).toBe(AGENT_BOOTSTRAP_TOKEN_USE);
-    expect(payload.scope).toBe(BOOTSTRAP_SCOPE);
-    expect(payload.zentity_login_hint).toBe(userId);
-    expect(payload.sub).toBe(
-      await resolveSubForClient(userId, {
-        redirectUris: [REDIRECT_URI],
-        subjectType: "pairwise",
-      })
+    const stored = await loadOpaqueAccessToken(bootstrapToken);
+    expect(stored?.exchangeClaims.zentity_token_use).toBe(
+      AGENT_BOOTSTRAP_TOKEN_USE
     );
+    expect(stored?.scopes.join(" ")).toBe(BOOTSTRAP_SCOPE);
+    expect(stored?.userId).toBe(userId);
+    expect(stored?.dpopJkt).toBe(dpopJkt);
 
     const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
     const proof = await buildResourceDpopProof(

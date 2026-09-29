@@ -4,13 +4,15 @@ import type { AddressInfo } from "node:net";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { once } from "node:events";
+import { mkdtempSync } from "node:fs";
 import {
   createServer as createHttpServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -286,6 +288,7 @@ function startMcpSubprocess(authBaseUrl: string): ChildProcess {
     {
       env: {
         ...process.env,
+        HOME: mkdtempSync(join(tmpdir(), "zentity-mcp-http-")),
         ZENTITY_URL: authBaseUrl,
         MCP_PUBLIC_URL,
         MCP_ALLOWED_ORIGINS: "*",
@@ -358,7 +361,7 @@ describe("remote MCP HTTP auth integration", () => {
     authHarness = undefined;
   });
 
-  it("accepts initialize for the MCP resource and step-up challenges scoped tools", async () => {
+  it("serves initialize and whoami statelessly for an MCP-audienced token", async () => {
     authHarness = await startAuthHarness();
 
     const userId = await createTestUser();
@@ -433,7 +436,7 @@ describe("remote MCP HTTP auth integration", () => {
         method: "initialize",
         id: 1,
         params: {
-          protocolVersion: "2025-03-26",
+          protocolVersion: "2025-11-25",
           capabilities: {},
           clientInfo: { name: "integration-test", version: "0.1.0" },
         },
@@ -459,9 +462,6 @@ describe("remote MCP HTTP auth integration", () => {
       })
     );
 
-    const sessionId = initializeResponse.headers.get("mcp-session-id");
-    expect(sessionId).toBeTruthy();
-
     const whoamiProof = await buildResourceDpopProof(
       resourceKeyPair,
       "POST",
@@ -475,7 +475,7 @@ describe("remote MCP HTTP auth integration", () => {
         Authorization: `DPoP ${accessToken}`,
         "Content-Type": "application/json",
         DPoP: whoamiProof,
-        "mcp-session-id": sessionId ?? "",
+        "MCP-Protocol-Version": "2025-11-25",
       },
       body: JSON.stringify({
         jsonrpc: "2.0",

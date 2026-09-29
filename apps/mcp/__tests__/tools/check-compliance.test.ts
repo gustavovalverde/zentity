@@ -20,7 +20,6 @@ const mockOAuthContext = {
     privateJwk: { kty: "EC", crv: "P-256" },
     publicJwk: { kty: "EC", crv: "P-256" },
   },
-  loginHint: "user-sub",
 };
 
 const mockAuthContext = {
@@ -36,77 +35,125 @@ vi.mock("../../src/config.js", () => ({
   },
 }));
 
-vi.mock("../../src/runtime/auth-context.js", () => ({
-  getAuthContext: () => mockAuthContext,
-  getOAuthContext: () => mockOAuthContext,
-  requireAuth: () => Promise.resolve(mockAuthContext),
-}));
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer } from "../../src/server.js";
+import { connectClient } from "../helpers/mcp-client.js";
 
 describe("check_compliance", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  async function createConnectedClient() {
-    const { server } = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "test-client", version: "0.1.0" });
-    await Promise.all([
-      client.connect(clientTransport),
-      server.connect(serverTransport),
-    ]);
-    return client;
-  }
+  const NETWORKS_PAYLOAD = {
+    networks: [
+      {
+        id: "sepolia",
+        name: "Sepolia",
+        chainId: 11_155_111,
+        type: "fhevm",
+        features: ["encrypted"],
+        explorer: "https://sepolia.etherscan.io",
+        identityRegistry: "0xregistry",
+        complianceRules: null,
+        attestation: {
+          id: "att-1",
+          status: "confirmed",
+          txHash: "0xabc",
+          blockNumber: 42,
+          confirmedAt: "2026-03-10T12:00:00.000Z",
+          errorMessage: null,
+          explorerUrl: "https://sepolia.etherscan.io/tx/0xabc",
+          walletAddress: "0xwallet",
+        },
+      },
+      {
+        id: "hardhat",
+        name: "Hardhat",
+        chainId: 31_337,
+        type: "fhevm",
+        features: [],
+        explorer: null,
+        identityRegistry: null,
+        complianceRules: null,
+        attestation: null,
+      },
+    ],
+  };
 
-  it("returns attestation status", async () => {
-    const statusData = {
-      attested: true,
-      networks: ["sepolia"],
-      lastAttestation: "2026-03-10T12:00:00Z",
-    };
+  function mockNetworksResponse() {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ result: { data: statusData } }), {
+      new Response(JSON.stringify({ result: { data: NETWORKS_PAYLOAD } }), {
         status: 200,
       })
     );
+  }
 
-    const client = await createConnectedClient();
+  it("maps the attestation networks payload to the tool output", async () => {
+    mockNetworksResponse();
+
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: {},
     });
 
-    const parsed = JSON.parse(
-      (result.content as Array<{ text: string }>)[0].text
-    );
-    expect(parsed.attested).toBe(true);
-    expect(parsed.networks).toEqual(["sepolia"]);
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toEqual({
+      attested: true,
+      lastAttestation: "2026-03-10T12:00:00.000Z",
+      networks: [
+        {
+          id: "sepolia",
+          name: "Sepolia",
+          attested: true,
+          status: "confirmed",
+          explorerUrl: "https://sepolia.etherscan.io/tx/0xabc",
+        },
+        {
+          id: "hardhat",
+          name: "Hardhat",
+          attested: false,
+          status: null,
+          explorerUrl: null,
+        },
+      ],
+    });
   });
 
-  it("passes network filter in query params", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          result: { data: { attested: false, networks: [] } },
-        }),
-        { status: 200 }
-      )
-    );
+  it("filters to the requested network", async () => {
+    mockNetworksResponse();
 
-    const client = await createConnectedClient();
-    await client.callTool({
+    const client = await connectClient({ auth: mockAuthContext });
+    const result = await client.callTool({
       name: "check_compliance",
-      arguments: { network: "sepolia" },
+      arguments: { network: "hardhat" },
     });
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining("sepolia"),
-      expect.any(Object)
+    expect(result.structuredContent).toEqual({
+      attested: false,
+      lastAttestation: null,
+      networks: [
+        {
+          id: "hardhat",
+          name: "Hardhat",
+          attested: false,
+          status: null,
+          explorerUrl: null,
+        },
+      ],
+    });
+  });
+
+  it("rejects an unknown network", async () => {
+    mockNetworksResponse();
+
+    const client = await connectClient({ auth: mockAuthContext });
+    const result = await client.callTool({
+      name: "check_compliance",
+      arguments: { network: "mainnet" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0].text).toContain(
+      "sepolia, hardhat"
     );
   });
 
@@ -115,7 +162,7 @@ describe("check_compliance", () => {
       new Response("Server error", { status: 500 })
     );
 
-    const client = await createConnectedClient();
+    const client = await connectClient({ auth: mockAuthContext });
     const result = await client.callTool({
       name: "check_compliance",
       arguments: {},

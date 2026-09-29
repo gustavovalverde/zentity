@@ -1,15 +1,8 @@
+import type { SecurityPosture } from "@zentity/sdk/protocol";
 import { config } from "../config.js";
 import { getOAuthContext, requireAuth } from "../runtime/auth-context.js";
 import { PROFILE_FIELDS } from "./profile-fields.js";
 import { zentityFetch } from "./zentity-api.js";
-
-interface AssuranceProfile {
-  authStrength: string;
-  details: Record<string, boolean>;
-  loginMethod: string;
-  tier: number;
-  tierName: string;
-}
 
 interface ComplianceChecks {
   ageVerified: boolean;
@@ -74,8 +67,8 @@ export async function fetchAccountSummary(): Promise<AccountSummary> {
     zentityFetch(`${config.zentityUrl}/api/trpc/account.getData`),
   ]);
 
-  const profile = profileRes.ok
-    ? ((await profileRes.json()) as { result: { data: AssuranceProfile } })
+  const posture = profileRes.ok
+    ? ((await profileRes.json()) as { result: { data: SecurityPosture } })
         .result.data
     : null;
 
@@ -89,14 +82,12 @@ export async function fetchAccountSummary(): Promise<AccountSummary> {
   return {
     email: canDiscloseEmail ? (account?.email ?? null) : null,
     memberSince: account?.createdAt ?? null,
-    tier: profile?.tier ?? null,
-    tierName: profile?.tierName ?? null,
+    tier: posture?.assurance.tier ?? null,
+    tierName: posture?.assurance.tierName ?? null,
     verificationStrength: account?.verification?.identity?.strength ?? null,
-    authStrength: profile?.authStrength ?? null,
-    loginMethod: profile?.loginMethod ?? null,
-    checks: checks
-      ? (checks as unknown as Record<string, boolean>)
-      : (profile?.details ?? null),
+    authStrength: posture?.auth?.authStrength ?? null,
+    loginMethod: posture?.auth?.loginMethod ?? null,
+    checks: checks ? { ...checks } : null,
     humanity: {
       proven: account?.verification?.humanity?.proven ?? false,
       sources: account?.humanityCredentials ?? [],

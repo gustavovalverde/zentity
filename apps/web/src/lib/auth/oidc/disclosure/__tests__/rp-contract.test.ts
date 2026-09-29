@@ -37,9 +37,10 @@ const DEMO_RP_ROUTE_REGISTRY_PATH = `${DEMO_RP_ROOT}/scenarios/route-scenario-re
 const MCP_SCOPE_SOURCE_FILES = [
   `${MCP_ROOT}/runtime/bootstrap-scopes.ts`,
   `${MCP_ROOT}/oauth-client.ts`,
-  `${MCP_ROOT}/transports/remote-scope-policy.ts`,
+  `${MCP_ROOT}/transports/http.ts`,
+  `${MCP_ROOT}/tools/check-compliance.ts`,
+  `${MCP_ROOT}/tools/my-proofs.ts`,
   `${MCP_ROOT}/services/profile-fields.ts`,
-  `${MCP_ROOT}/services/identity-release.ts`,
   `${MCP_ROOT}/tools/purchase.ts`,
 ] as const;
 
@@ -363,8 +364,8 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     }
   });
 
-  it("identity.ts scope strings are registered identity scopes", async () => {
-    const source = await readSource(`${MCP_ROOT}/services/identity-release.ts`);
+  it("profile field scopes are registered identity scopes", async () => {
+    const source = await readSource(`${MCP_ROOT}/services/profile-fields.ts`);
     const scopes = extractScopes(source);
     const identityScopes = scopes.filter((s) => s.startsWith("identity."));
 
@@ -372,7 +373,7 @@ describe("cross-channel contract — MCP semantic alignment", () => {
     for (const scope of identityScopes) {
       expect(
         IDENTITY_SCOPES.includes(scope as never),
-        `identity-release.ts uses "${scope}" which is not in IDENTITY_SCOPES`
+        `profile-fields.ts uses "${scope}" which is not in IDENTITY_SCOPES`
       ).toBe(true);
     }
   });
@@ -510,7 +511,6 @@ describe("RP contract — id_token signing", () => {
   it("access tokens use EdDSA", async () => {
     const token = await signJwt({
       scope: "openid email proof:verification",
-      azp: "zentity-demo-bank",
       sub: "user-123",
     });
 

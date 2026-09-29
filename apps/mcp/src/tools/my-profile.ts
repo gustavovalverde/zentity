@@ -1,6 +1,7 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { throwUrlElicitationIfSupported } from "../services/interactive-approval.js";
+import { withToolAuth } from "../runtime/auth-context.js";
+import { requestUserAction } from "../services/interactive-approval.js";
 import {
   normalizeProfileFields,
   PROFILE_FIELDS,
@@ -59,7 +60,7 @@ const profileNameSchema = z.object({
   family: z.string().nullable(),
 });
 
-const profileOutputSchema = {
+const profileOutputSchema = z.object({
   status: z.enum([
     "complete",
     "needs_user_action",
@@ -82,11 +83,9 @@ const profileOutputSchema = {
       expiresAt: z.string(),
     })
     .optional(),
-};
+});
 
-type MyProfileStructuredContent = z.infer<
-  z.ZodObject<typeof profileOutputSchema>
->;
+type MyProfileStructuredContent = z.infer<typeof profileOutputSchema>;
 
 function toolResult(structuredContent: MyProfileStructuredContent) {
   return {
@@ -114,23 +113,15 @@ export function registerMyProfileTool(server: McpServer): void {
         idempotentHint: true,
       },
     },
-    async ({ fields }) => {
-      const normalizedFields = normalizeProfileFields(
-        fields as PublicProfileField[]
-      );
+    withToolAuth(server, async ({ fields }, ctx) => {
       const result = await readProfile({
-        server,
-        fields: normalizedFields,
+        fields: normalizeProfileFields(fields as PublicProfileField[]),
       });
+      const response = toolResult(result);
 
-      if (result.status === "needs_user_action" && result.interaction) {
-        throwUrlElicitationIfSupported(server, {
-          status: "needs_user_action",
-          interaction: result.interaction,
-        });
-      }
-
-      return toolResult(result);
-    }
+      return result.interaction
+        ? requestUserAction(server, ctx, result.interaction, response)
+        : response;
+    })
   );
 }

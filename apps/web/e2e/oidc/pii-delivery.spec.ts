@@ -151,9 +151,8 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
       expect(idTokenPayload.exp).toBeTruthy();
     }
 
-    // 9. Assert: access_token contains no release_handle
-    const atPayload = decodeJwt(tokenBody.access_token);
-    expect(atPayload.release_handle).toBeUndefined();
+    // 9. Assert: the Zentity-audienced access token is opaque to the client
+    expect(tokenBody.access_token.split(".")).toHaveLength(1);
 
     // 10. Call userinfo → assert identity PII is returned. The access token is
     // DPoP-bound, so userinfo requires DPoP presentation with an ath proof.

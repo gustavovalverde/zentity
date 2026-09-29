@@ -581,10 +581,15 @@ function CibaResult({
   const tax = pick.price * 0.0875;
   const total = pick.price + tax;
 
-  const jwtPayload =
-    typeof tokens.access_token === "string"
-      ? decodeJwtPayload(tokens.access_token)
+  const exchangedPayload =
+    exchangedTokens && typeof exchangedTokens.access_token === "string"
+      ? decodeJwtPayload(exchangedTokens.access_token)
       : null;
+  // Zentity-audienced access tokens are opaque; the exchanged merchant token carries the agent claims.
+  const jwtPayload =
+    (typeof tokens.access_token === "string"
+      ? decodeJwtPayload(tokens.access_token)
+      : null) ?? exchangedPayload;
   const actClaim = jwtPayload?.act as Record<string, unknown> | undefined;
   const agentClaim = jwtPayload?.agent as Record<string, unknown> | undefined;
   const taskClaim = jwtPayload?.task as Record<string, unknown> | undefined;
@@ -611,10 +616,6 @@ function CibaResult({
   const acr = assurance?.acr ?? (idTokenPayload?.acr as string | undefined);
   const amr = assurance?.amr ?? (idTokenPayload?.amr as string[] | undefined);
 
-  const exchangedPayload =
-    exchangedTokens && typeof exchangedTokens.access_token === "string"
-      ? decodeJwtPayload(exchangedTokens.access_token)
-      : null;
   const exchangedAct = exchangedPayload?.act as
     | Record<string, unknown>
     | undefined;

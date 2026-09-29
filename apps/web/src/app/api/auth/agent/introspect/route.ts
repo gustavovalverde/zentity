@@ -132,11 +132,8 @@ export async function POST(request: Request) {
   }
 
   let rawUserId = opaqueToken?.userId ?? null;
-  if (!rawUserId && typeof payload?.sub === "string") {
-    rawUserId = tokenClient
-      ? ((await resolveUserIdFromSubForClient(payload.sub, tokenClient)) ??
-        payload.sub)
-      : payload.sub;
+  if (!rawUserId && typeof payload?.sub === "string" && tokenClient) {
+    rawUserId = await resolveUserIdFromSubForClient(payload.sub, tokenClient);
   }
 
   let projectedSub: string | undefined;

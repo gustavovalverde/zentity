@@ -89,7 +89,22 @@ Rationale:
 * They are appropriate for values that only the target resource server should consume.
 * They are not appropriate for copying profile or vault data.
 
-#### 4. `proof:sybil` is access-token-only
+#### 4. No client-readable artifact carries the real user id
+
+Pairwise subjects stop relying parties from correlating one user across clients. Every artifact a client can read therefore carries that client's subject identifier: its pairwise subject for a pairwise client, the user id for a public client.
+
+* `id_token`, `userinfo`, introspection, and proof-of-human responses project the client's subject.
+* Access tokens for endpoints Zentity serves (the app origin, the auth issuer, and every resource under it, including `userinfo`) are opaque reference tokens that Zentity resolves server-side. Zentity drops Zentity-hosted `resource` indicators from user token requests so the OAuth provider issues opaque tokens, and token exchange mints opaque tokens for those audiences. Claims such a token would otherwise carry (actor, delegation, token use) stay with the stored token.
+* JWT access tokens exist only for resource servers outside Zentity (the MCP server, an agent wallet) and for the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier. Zentity endpoints that receive one, such as token exchange and agent introspection, map it back to the user through the pairwise subject index.
+* A client names the user back to Zentity with the subject it received, for example as a CIBA `login_hint`.
+
+Rationale:
+
+* A holder can decode a JWT, so a JWT that reached two clients with the real user id would let them correlate the user.
+* `userinfo` and Zentity's resource servers look the user up by the token; an opaque token resolves to the user server-side without exposing the id.
+* Resource servers outside Zentity verify JWTs locally and need an identifier for the user, not the user id itself.
+
+#### 5. `proof:sybil` is access-token-only
 
 `proof:sybil` is the only proof scope whose claim (`sybil_nullifier`) is delivered in the access token only.
 
@@ -102,7 +117,7 @@ Rationale:
 
 In other words, `proof:sybil` remains in the proof family because it is non-PII, but its delivery surface follows the logic of an operational anti-abuse artifact.
 
-#### 5. `email` remains standard, but never default
+#### 6. `email` remains standard, but never default
 
 `email` is standard account/session identity, not vault-gated `identity.*` disclosure.
 
@@ -117,7 +132,7 @@ Rationale:
 * Treating `email` as "always available because the session knows it" would violate data minimization and double-anonymity requirements.
 * This keeps anonymous and double-anonymous relying parties possible: they simply do not request `email`.
 
-#### 6. Channels adapt transport and UX, not disclosure semantics
+#### 7. Channels adapt transport and UX, not disclosure semantics
 
 Browser OAuth, CIBA, MCP, and demo RPs all use the same disclosure classes and surface rules.
 
@@ -162,3 +177,8 @@ What does not change by channel:
 * Double-anonymity posture: [ADR-0001](../0001-arcom-double-anonymity.md)
 * Code authority: `apps/web/src/lib/auth/oidc/disclosure/registry.ts`
 * Contract tests: `apps/web/src/lib/auth/oidc/disclosure/__tests__/rp-contract.test.ts`
+
+## Revision History
+
+* 2026-09-27: Added rule 4. Access tokens audienced to Zentity-served endpoints carry the real user id; pairwise subjects apply to client-facing surfaces and to access tokens for resource servers outside Zentity.
+* 2026-09-27: Rewrote rule 4. No client-readable artifact carries the real user id: access tokens for Zentity-served endpoints are opaque, and JWT access tokens (resource servers outside Zentity and the OID4VCI credential endpoint) carry the requesting client's subject identifier.

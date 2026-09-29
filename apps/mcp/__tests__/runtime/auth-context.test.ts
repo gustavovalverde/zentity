@@ -1,107 +1,97 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { agentRuntimeStateStore } from "../../src/runtime/agent-session-state.js";
+import type { McpServer, ServerContext } from "@modelcontextprotocol/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type AuthContext,
   getAuthContext,
-  requireRuntimeState,
+  requireAuth,
   runWithAuth,
-  setDefaultAuth,
-  tryGetRuntimeState,
+  setProcessAuthResolver,
+  withToolAuth,
 } from "../../src/runtime/auth-context.js";
 
-const dpopKey = {
-  privateJwk: { kty: "EC", crv: "P-256" },
-  publicJwk: { kty: "EC", crv: "P-256" },
-};
-
-function makeOAuth() {
+function makeAuth(accountSub: string): AuthContext {
   return {
-    accessToken: "token-abc",
-    accountSub: "sub-1",
-    clientId: "client-1",
-    dpopKey,
-    loginHint: "user@example.com",
-    scopes: ["openid"],
+    oauth: {
+      accessToken: "token-abc",
+      accountSub,
+      clientId: "client-1",
+      dpopClient: {} as AuthContext["oauth"]["dpopClient"],
+      dpopKey: {} as AuthContext["oauth"]["dpopKey"],
+      scopes: ["openid"],
+    },
   };
 }
 
-const mockRuntime = {
-  display: { name: "test-agent" },
-  grants: [],
-  hostId: "host-1",
-  sessionDid: "did:key:zSession",
-  sessionId: "session-1",
-  sessionPrivateKey: { kty: "OKP", crv: "Ed25519" },
-  sessionPublicKey: { kty: "OKP", crv: "Ed25519" },
-  status: "active",
-};
+const server = {
+  server: { getClientVersion: () => ({ name: "claude-code", version: "1.0" }) },
+} as unknown as McpServer;
+const ctx = { mcpReq: {} } as unknown as ServerContext;
 
-describe("AuthContext", () => {
-  beforeEach(() => {
-    setDefaultAuth(undefined);
-    agentRuntimeStateStore.clear();
+describe("auth context", () => {
+  afterEach(() => {
+    setProcessAuthResolver(undefined);
   });
 
-  it("provides auth context inside runWithAuth", () => {
-    const ctx: AuthContext = { oauth: makeOAuth() };
-
-    const result = runWithAuth(ctx, () => {
-      const retrieved = getAuthContext();
-      return retrieved.oauth.loginHint;
-    });
-
-    expect(result).toBe("user@example.com");
+  it("exposes the request-scoped context inside runWithAuth", () => {
+    const sub = runWithAuth(
+      makeAuth("sub-1"),
+      () => getAuthContext().oauth.accountSub
+    );
+    expect(sub).toBe("sub-1");
   });
 
-  it("throws when accessed outside runWithAuth", () => {
+  it("throws outside any auth scope", () => {
     expect(() => getAuthContext()).toThrow("Not authenticated");
   });
 
-  describe("tryGetRuntimeState", () => {
-    it("returns undefined when no runtime is available", () => {
-      const ctx: AuthContext = { oauth: makeOAuth() };
-      setDefaultAuth(ctx);
+  it("prefers the request-scoped context over the process resolver", async () => {
+    const resolver = vi.fn(() => Promise.resolve(makeAuth("process")));
+    setProcessAuthResolver(resolver);
 
-      expect(tryGetRuntimeState()).toBeUndefined();
-    });
+    const auth = await runWithAuth(makeAuth("request"), () => requireAuth());
 
-    it("returns runtime from auth context", () => {
-      const ctx: AuthContext = {
-        oauth: makeOAuth(),
-        runtime: mockRuntime,
-      };
-      setDefaultAuth(ctx);
+    expect(auth.oauth.accountSub).toBe("request");
+    expect(resolver).not.toHaveBeenCalled();
+  });
 
-      expect(tryGetRuntimeState()).toBe(mockRuntime);
-    });
+  it("resolves the process context with the caller's client identity", async () => {
+    const resolver = vi.fn(() => Promise.resolve(makeAuth("process")));
+    setProcessAuthResolver(resolver);
 
-    it("returns runtime from agentRuntimeStateStore as fallback", () => {
-      const ctx: AuthContext = { oauth: makeOAuth() };
-      setDefaultAuth(ctx);
-      agentRuntimeStateStore.setState(mockRuntime);
+    const auth = await requireAuth({ name: "codex-cli", version: "2.0" });
 
-      expect(tryGetRuntimeState()).toBe(mockRuntime);
+    expect(auth.oauth.accountSub).toBe("process");
+    expect(resolver).toHaveBeenCalledWith({
+      name: "codex-cli",
+      version: "2.0",
     });
   });
 
-  describe("requireRuntimeState", () => {
-    it("throws when no runtime is available", () => {
-      const ctx: AuthContext = { oauth: makeOAuth() };
-      setDefaultAuth(ctx);
+  it("rejects when neither a request scope nor a resolver exists", async () => {
+    await expect(requireAuth()).rejects.toThrow("Not authenticated");
+  });
 
-      expect(() => requireRuntimeState()).toThrow(
-        "Agent runtime is not initialized"
-      );
+  it("runs tool handlers inside the resolved auth context", async () => {
+    const resolver = vi.fn(() => Promise.resolve(makeAuth("tool-user")));
+    setProcessAuthResolver(resolver);
+    const tool = withToolAuth(server, async () =>
+      Promise.resolve(getAuthContext().oauth.accountSub)
+    );
+
+    await expect(tool({}, ctx)).resolves.toBe("tool-user");
+    expect(resolver).toHaveBeenCalledWith({
+      name: "claude-code",
+      version: "1.0",
     });
+  });
 
-    it("returns runtime when available", () => {
-      const ctx: AuthContext = {
-        oauth: makeOAuth(),
-        runtime: mockRuntime,
-      };
-      setDefaultAuth(ctx);
+  it("turns auth failures into tool errors", async () => {
+    setProcessAuthResolver(() => Promise.reject(new Error("login required")));
+    const tool = withToolAuth(server, async () => Promise.resolve("never"));
 
-      expect(requireRuntimeState()).toBe(mockRuntime);
+    await expect(tool({}, ctx)).resolves.toEqual({
+      isError: true,
+      content: [{ type: "text", text: "login required" }],
     });
   });
 });

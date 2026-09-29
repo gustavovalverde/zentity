@@ -1,6 +1,6 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { eq } from "drizzle-orm";
@@ -16,6 +16,7 @@ interface OpaqueAccessTokenRecord {
   authContextId: string | null;
   clientId: string;
   dpopJkt: string | null;
+  exchangeClaims: Record<string, unknown>;
   expiresAt: Date;
   referenceId: string | null;
   scopes: string[];
@@ -47,6 +48,20 @@ export async function extractDpopThumbprint(
   return undefined;
 }
 
+function parseExchangeClaims(raw: string | null): Record<string, unknown> {
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 function jktFromConfirmation(confirmation: string | null): string | null {
   if (!confirmation) {
     return null;
@@ -67,6 +82,7 @@ export async function loadOpaqueAccessToken(
       authContextId: oauthAccessTokens.authContextId,
       clientId: oauthAccessTokens.clientId,
       confirmation: oauthAccessTokens.confirmation,
+      exchangeClaims: oauthAccessTokens.exchangeClaims,
       expiresAt: oauthAccessTokens.expiresAt,
       referenceId: oauthAccessTokens.referenceId,
       sessionId: oauthAccessTokens.sessionId,
@@ -86,12 +102,51 @@ export async function loadOpaqueAccessToken(
     authContextId: row.authContextId,
     clientId: row.clientId,
     dpopJkt: jktFromConfirmation(row.confirmation),
+    exchangeClaims: parseExchangeClaims(row.exchangeClaims),
     expiresAt: row.expiresAt,
     referenceId: row.referenceId,
     sessionId: row.sessionId,
     scopes: parseStoredStringArray(row.scopes),
     userId: row.userId,
   };
+}
+
+/**
+ * Mints an opaque access token in the OAuth provider's token store, so
+ * userinfo, introspection, and Zentity's resource servers resolve it like a
+ * natively issued one. Claims the token would otherwise carry in a JWT are
+ * kept server-side.
+ */
+export async function mintOpaqueAccessToken(input: {
+  authContextId?: string | undefined;
+  clientId: string;
+  dpopJkt?: string | undefined;
+  exchangeClaims: Record<string, unknown>;
+  expiresAt: Date;
+  referenceId: string;
+  scopes: string[];
+  sessionId?: string | undefined;
+  userId: string;
+}): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await db
+    .insert(oauthAccessTokens)
+    .values({
+      token: hashOpaqueAccessToken(token),
+      clientId: input.clientId,
+      sessionId: input.sessionId ?? null,
+      authContextId: input.authContextId ?? null,
+      userId: input.userId,
+      referenceId: input.referenceId,
+      scopes: JSON.stringify(input.scopes),
+      expiresAt: input.expiresAt,
+      confirmation: input.dpopJkt
+        ? JSON.stringify({ jkt: input.dpopJkt })
+        : null,
+      exchangeClaims: JSON.stringify(input.exchangeClaims),
+    })
+    .run();
+  return token;
 }
 
 export async function persistOpaqueAccessTokenDpopBinding(

@@ -15,7 +15,7 @@ import { logger } from "@/lib/logging/logger";
 import { toNumericCode } from "@/lib/privacy/zk/country";
 
 import { dobToDaysSince1900 } from "../verification/birth-year";
-import { processDocumentOcr } from "./ocr-client";
+import { OcrServiceUnavailableError, processDocumentOcr } from "./ocr-client";
 
 /** Matches a string containing only digits */
 const DIGITS_ONLY_PATTERN = /^\d+$/;
@@ -267,7 +267,10 @@ export async function processDocumentWithOcr(
     image: params.image,
     requestId: params.requestId,
     flowId: params.flowId,
-  }).catch((error) => {
+  }).catch((error: unknown) => {
+    if (error instanceof OcrServiceUnavailableError) {
+      throw error;
+    }
     logger.error(
       { error: String(error), requestId: params.requestId },
       "Document OCR processing failed"

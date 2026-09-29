@@ -1,11 +1,16 @@
 import "server-only";
 
+import {
+  type PaymentAuthorization,
+  parsePaymentAuthorization,
+} from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 
 import {
   type AuthorizationDetail,
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
+import { formatPaymentAmount } from "@/lib/agents/labels";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 
@@ -47,11 +52,28 @@ function escapeHtmlHref(url: string): string {
   return "#";
 }
 
+function parsePaymentDetail(
+  detail: AuthorizationDetail
+): PaymentAuthorization | null {
+  if (detail.type !== "payment_authorization") {
+    return null;
+  }
+  try {
+    return parsePaymentAuthorization([detail]);
+  } catch {
+    return null;
+  }
+}
+
 function formatAuthorizationDetailsText(
   details: AuthorizationDetail[]
 ): string {
   return details
     .map((d) => {
+      const payment = parsePaymentDetail(d);
+      if (payment) {
+        return `Payment: ${formatPaymentAmount(payment.amount)} to ${payment.recipient}`;
+      }
       if (d.type === "purchase" && d.amount?.value) {
         const currency = d.amount.currency ?? "USD";
         return `${d.item ?? "Item"} — $${d.amount.value} ${currency}${d.merchant ? ` (${d.merchant})` : ""}`;
@@ -66,6 +88,14 @@ function formatAuthorizationDetailsHtml(
 ): string {
   return details
     .map((d) => {
+      const payment = parsePaymentDetail(d);
+      if (payment) {
+        return `<div style="background:#f3f4f6;padding:12px 16px;border-radius:8px;margin:12px 0;">
+<p style="margin:0 0 4px;font-weight:600;">Payment</p>
+<p style="margin:0 0 4px;font-size:18px;font-weight:700;">${escapeHtml(formatPaymentAmount(payment.amount))}</p>
+<p style="margin:0;color:#6b7280;font-size:13px;word-break:break-all;">To: ${escapeHtml(payment.recipient)}</p>
+</div>`;
+      }
       if (d.type === "purchase") {
         const amount = d.amount?.value
           ? `$${escapeHtml(d.amount.value)} ${escapeHtml(d.amount.currency ?? "USD")}`
@@ -168,7 +198,7 @@ export async function sendCibaNotification(params: {
     .join(", ");
 
   const subject = params.bindingMessage
-    ? `${clientLabel} wants to ${params.bindingMessage}`
+    ? `${clientLabel} is requesting your approval`
     : `${clientLabel} is requesting access`;
 
   const parsedDetails = normalizeAuthorizationDetails(

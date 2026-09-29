@@ -1,7 +1,6 @@
 import type { FirstPartyAuthDiscoveryDocument } from "@zentity/sdk/fpa";
 import {
   buildLoopbackClientRegistration,
-  buildOAuthClientMetadata,
   createFirstPartyAuthFileStorage,
   createInstalledClientAuth,
   type InstalledClientAuth,
@@ -16,9 +15,7 @@ import {
 import { RUNTIME_BOOTSTRAP_SCOPES } from "./runtime/bootstrap-scopes.js";
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
-const CLIENT_METADATA_PATH = "/.well-known/oauth-client.json";
 const MCP_SERVER_CLIENT_NAME = "@zentity/mcp-server";
-const REMOTE_MCP_DEFAULT_SCOPE = "openid";
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 
 const INSTALLED_AGENT_LOGIN_SCOPES = [
@@ -42,14 +39,10 @@ const INSTALLED_AGENT_REGISTRATION_SCOPES = [
   ...RUNTIME_BOOTSTRAP_SCOPES,
 ] as const;
 
-const REMOTE_CLIENT_GRANT_TYPES = [
+const INSTALLED_AGENT_GRANT_TYPES = [
   "authorization_code",
   "refresh_token",
   "urn:openid:params:grant-type:ciba",
-] as const;
-
-const INSTALLED_AGENT_GRANT_TYPES = [
-  ...REMOTE_CLIENT_GRANT_TYPES,
   "urn:ietf:params:oauth:grant-type:token-exchange",
 ] as const;
 
@@ -70,6 +63,13 @@ function getMcpInstalledClientAuth(): InstalledClientAuth {
       issuerUrl: config.zentityUrl,
       loginResource: config.zentityUrl,
       loginScope: INSTALLED_AGENT_LOGIN_SCOPES.join(" "),
+      ...(config.openBrowser
+        ? {}
+        : {
+            openUrl: (url: string) => {
+              console.error(`[auth] Open this URL to sign in: ${url}`);
+            },
+          }),
       storage: createFirstPartyAuthFileStorage({
         issuerUrl: config.zentityUrl,
         namespace: "mcp-server",
@@ -79,16 +79,6 @@ function getMcpInstalledClientAuth(): InstalledClientAuth {
   }
 
   return cachedInstalledClientAuth;
-}
-
-export function buildMcpRemoteClientMetadata(): Record<string, unknown> {
-  return buildOAuthClientMetadata({
-    clientId: `${normalizeUrl(config.mcpPublicUrl)}${CLIENT_METADATA_PATH}`,
-    clientName: MCP_SERVER_CLIENT_NAME,
-    grantTypes: REMOTE_CLIENT_GRANT_TYPES,
-    redirectUris: [LOOPBACK_REDIRECT_URI],
-    scope: REMOTE_MCP_DEFAULT_SCOPE,
-  });
 }
 
 export function clearMcpOAuthTokens(): Promise<void> {
@@ -107,14 +97,6 @@ export function ensureMcpOAuthClientCredentials(options?: {
 
 export async function ensureMcpOAuthSession(): Promise<OAuthSessionContext> {
   return withDpopClient(await getMcpInstalledClientAuth().ensureOAuthSession());
-}
-
-export function getCachedMcpOAuthIssuer(): string | undefined {
-  return getMcpInstalledClientAuth().getCachedIssuer();
-}
-
-export function getCachedMcpOAuthJwksUri(): string | undefined {
-  return getMcpInstalledClientAuth().getCachedJwksUri();
 }
 
 export async function refreshMcpOAuthSession(): Promise<OAuthSessionContext> {

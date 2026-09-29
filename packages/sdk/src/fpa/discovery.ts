@@ -15,6 +15,7 @@ export interface FirstPartyAuthDiscoveryDocument {
   registration_endpoint?: string;
   require_pushed_authorization_requests?: boolean;
   token_endpoint: string;
+  userinfo_endpoint?: string;
 }
 
 export interface CreateDiscoveryResolverOptions {

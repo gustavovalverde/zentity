@@ -1,5 +1,3 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockReadProfile = vi.fn();
@@ -8,24 +6,12 @@ vi.mock("../../src/services/profile-read.js", () => ({
   readProfile: (...args: unknown[]) => mockReadProfile(...args),
 }));
 
-import { createServer } from "../../src/server.js";
+import { connectClient } from "../helpers/mcp-client.js";
 
 describe("my_profile", () => {
   beforeEach(() => {
     mockReadProfile.mockReset();
   });
-
-  async function createConnectedClient() {
-    const { server } = createServer();
-    const [clientTransport, serverTransport] =
-      InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: "test-client", version: "0.1.0" });
-    await Promise.all([
-      client.connect(clientTransport),
-      server.connect(serverTransport),
-    ]);
-    return client;
-  }
 
   it("returns typed profile data when disclosure is complete", async () => {
     mockReadProfile.mockResolvedValue({
@@ -41,7 +27,7 @@ describe("my_profile", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient();
     const result = await client.callTool({
       name: "my_profile",
       arguments: { fields: ["name"] },
@@ -57,7 +43,7 @@ describe("my_profile", () => {
   });
 
   it("requires an explicit field list", async () => {
-    const client = await createConnectedClient();
+    const client = await connectClient();
     const result = await client.callTool({
       name: "my_profile",
     });
@@ -83,7 +69,7 @@ describe("my_profile", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient();
     await client.callTool({
       name: "my_profile",
       arguments: { fields: '["address", "name"]' },
@@ -97,7 +83,7 @@ describe("my_profile", () => {
   });
 
   it("rejects standard account email as a profile field", async () => {
-    const client = await createConnectedClient();
+    const client = await connectClient();
 
     const result = await client.callTool({
       name: "my_profile",
@@ -124,7 +110,7 @@ describe("my_profile", () => {
       },
     });
 
-    const client = await createConnectedClient();
+    const client = await connectClient();
     const result = await client.callTool({
       name: "my_profile",
       arguments: { fields: ["name"] },

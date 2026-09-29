@@ -5,6 +5,7 @@ import {
   formatConstraints,
   formatGrantSource,
   formatHostTier,
+  formatPaymentAmount,
   formatUsageSummary,
 } from "../labels";
 
@@ -130,5 +131,31 @@ describe("formatUsageSummary", () => {
     expect(formatUsageSummary(3, 50, 100)).toBe(
       "3 of 50 daily actions · $100 daily limit"
     );
+  });
+});
+
+describe("formatPaymentAmount", () => {
+  it.each([
+    ["1", "0.00000001 ZEC"],
+    ["50000000", "0.5 ZEC"],
+    ["100000000", "1 ZEC"],
+    ["123456789012", "1234.56789012 ZEC"],
+    ["0", "0 ZEC"],
+  ])("formats %s zatoshi as %s", (value, expected) => {
+    expect(formatPaymentAmount({ currency: "ZEC", unit: "base", value })).toBe(
+      expected
+    );
+  });
+
+  it("keeps display amounts as given", () => {
+    expect(
+      formatPaymentAmount({ currency: "ZEC", unit: "display", value: "0.5" })
+    ).toBe("0.5 ZEC");
+  });
+
+  it("labels base amounts of an asset with unknown decimals", () => {
+    expect(
+      formatPaymentAmount({ currency: "XYZ", unit: "base", value: "42" })
+    ).toBe("42 XYZ (base unit)");
   });
 });

@@ -51,6 +51,30 @@ export async function resolveSubForClient(
   return userId;
 }
 
+export async function resolveSubForClientId(
+  userId: string,
+  clientId: string
+): Promise<string | null> {
+  const client = await db
+    .select({
+      subjectType: oauthClients.subjectType,
+      redirectUris: oauthClients.redirectUris,
+    })
+    .from(oauthClients)
+    .where(eq(oauthClients.clientId, clientId))
+    .limit(1)
+    .get();
+
+  if (!client) {
+    return null;
+  }
+
+  return resolveSubForClient(userId, {
+    subjectType: client.subjectType,
+    redirectUris: parseStoredStringArray(client.redirectUris),
+  });
+}
+
 /**
  * Reverse direction with pre-fetched client config.
  * Use when the caller already has client data (avoids a redundant query).
@@ -71,8 +95,8 @@ export async function resolveUserIdFromSubForClient(
 }
 
 /**
- * Reverse direction: given a `sub` from an id_token and the issuing client ID,
- * resolve back to the raw userId. Looks up the client first.
+ * Reverse direction: given the `sub` a client received (ID token or access
+ * token) and that client's ID, resolve back to the raw userId.
  */
 export async function resolveUserIdFromSub(
   sub: string,

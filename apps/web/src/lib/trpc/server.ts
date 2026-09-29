@@ -5,9 +5,10 @@
  * All tRPC routers use these base procedures to handle public and
  * authenticated requests consistently.
  */
+import type { AuthenticationState } from "@zentity/sdk/protocol";
 import "server-only";
 
-import type { AuthenticationState, FeatureName } from "@/lib/assurance/tier";
+import type { FeatureName } from "@/lib/assurance/tier";
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
@@ -19,16 +20,11 @@ import { env } from "@/env";
 import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
-import {
-  AUTHENTICATION_CONTEXT_CLAIM,
-  resolveAuthenticationContext,
-} from "@/lib/auth/auth-context";
-import { verifyAccessToken } from "@/lib/auth/jwt";
+import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -111,9 +107,9 @@ async function loadPersistedSession(
 }
 
 /**
- * Resolve a user from an OAuth access token (DPoP or Bearer).
- * Handles both JWT tokens (decode + sub lookup) and opaque tokens (hash lookup).
- * Validates DPoP proof-of-possession when the token is DPoP-bound (cnf.jkt).
+ * Resolve a user from an OAuth access token (DPoP or Bearer). User access
+ * tokens for Zentity's own endpoints are opaque; the DPoP proof is validated
+ * when the token is DPoP-bound.
  */
 async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   const authHeader = req.headers.get("authorization");
@@ -126,78 +122,7 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
     return { session: null, authContext: null };
   }
 
-  const scheme = match[1];
-  const token = match[2];
-
-  // JWT tokens start with "eyJ" (base64url-encoded "{")
-  if (token.startsWith("eyJ")) {
-    return await resolveJwtSession(token, scheme, req);
-  }
-
-  return await resolveOpaqueSession(req, token, scheme);
-}
-
-async function resolveJwtSession(
-  token: string,
-  scheme: string,
-  req: Request
-): Promise<ResolvedAuthSession> {
-  const payload = await verifyAccessToken(token);
-  if (!payload?.sub) {
-    return { session: null, authContext: null };
-  }
-
-  // Enforce DPoP proof-of-possession for DPoP-bound tokens
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  if (cnf?.jkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return { session: null, authContext: null };
-    }
-    try {
-      const validDpop = await validateOpaqueAccessTokenDpop(req, cnf.jkt);
-      if (!validDpop) {
-        return { session: null, authContext: null };
-      }
-    } catch {
-      return { session: null, authContext: null };
-    }
-  }
-
-  const clientId =
-    (payload.client_id as string | undefined) ??
-    (payload.azp as string | undefined);
-  const userId = clientId
-    ? ((await resolveUserIdFromSub(payload.sub, clientId)) ?? payload.sub)
-    : payload.sub;
-
-  const sessionId = typeof payload.sid === "string" ? payload.sid : undefined;
-  const authContextId =
-    typeof payload[AUTHENTICATION_CONTEXT_CLAIM] === "string"
-      ? (payload[AUTHENTICATION_CONTEXT_CLAIM] as string)
-      : undefined;
-  const authContext = await resolveAuthenticationContext({
-    authContextId,
-    sessionId,
-  });
-
-  if (sessionId) {
-    const session = await loadPersistedSession(sessionId);
-    if (!(session && authContext)) {
-      return { session: null, authContext: null };
-    }
-    return { session, authContext };
-  }
-
-  if (!authContext) {
-    return { session: null, authContext: null };
-  }
-
-  return {
-    authContext,
-    session: await buildSessionFromUserId(userId, {
-      authContextId: authContext.id,
-    }),
-  };
+  return await resolveOpaqueSession(req, match[2], match[1]);
 }
 
 async function resolveOpaqueSession(

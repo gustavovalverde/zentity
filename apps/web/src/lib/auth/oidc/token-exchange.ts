@@ -45,9 +45,13 @@ import {
 import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,
+  mintOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { getProtectedResourceAudiences } from "@/lib/auth/oidc/haip/resource-metadata";
+import {
+  getProtectedResourceAudiences,
+  isZentityHostedResource,
+} from "@/lib/auth/oidc/haip/resource-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
@@ -81,7 +85,6 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
 const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
-const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const tokenExchangeAudiences = getProtectedResourceAudiences({
@@ -95,7 +98,6 @@ const tokenExchangeUserinfoAudience = joinAuthIssuerPath(
   authIssuer,
   "oauth2/userinfo"
 );
-const CLIENT_METADATA_PATH_SUFFIX = "/.well-known/oauth-client.json";
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const TRAILING_SLASHES = /\/+$/;
 
@@ -163,38 +165,12 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   }
 }
 
-function resolveClientIdResourceAudience(clientId: string): string | undefined {
-  try {
-    const url = new URL(clientId);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return undefined;
-    }
-    if (!url.pathname.endsWith(CLIENT_METADATA_PATH_SUFFIX)) {
-      return undefined;
-    }
-
-    url.pathname =
-      url.pathname.slice(0, -CLIENT_METADATA_PATH_SUFFIX.length) || "/";
-    url.search = "";
-    url.hash = "";
-
-    return normalizeResourceAudience(url.href);
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveClientResourceAudience(
-  clientId: string,
-  metadata: unknown
-): string | undefined {
+function resolveClientResourceAudience(metadata: unknown): string | undefined {
   const metadataResource =
     parseJsonRecord(metadata)[PROTECTED_RESOURCE_METADATA_FIELD];
-  if (typeof metadataResource === "string" && metadataResource.length > 0) {
-    return normalizeResourceAudience(metadataResource);
-  }
-
-  return resolveClientIdResourceAudience(clientId);
+  return typeof metadataResource === "string" && metadataResource.length > 0
+    ? normalizeResourceAudience(metadataResource)
+    : undefined;
 }
 
 async function loadClientResourceAudience(
@@ -207,7 +183,7 @@ async function loadClientResourceAudience(
     .limit(1)
     .get();
 
-  return resolveClientResourceAudience(clientId, row?.metadata);
+  return resolveClientResourceAudience(row?.metadata);
 }
 
 function canRebindDpopForResourceServer(input: {
@@ -406,6 +382,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     // Verify the subject token JWT (must be issued by this AS)
     let subjectPayload: Record<string, unknown>;
     let subjectDpopJkt: string | undefined;
+    let opaqueSubjectUserId: string | undefined;
     try {
       if (
         subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
@@ -416,6 +393,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           throw new Error("Opaque subject token not found");
         }
         subjectDpopJkt = opaqueSubject.dpopJkt ?? undefined;
+        opaqueSubjectUserId = opaqueSubject.userId;
 
         const tokenSnapshot = opaqueSubject.referenceId
           ? await resolveTokenSnapshotForTokenJti(
@@ -437,6 +415,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           ...(opaqueSubject.referenceId
             ? { jti: opaqueSubject.referenceId }
             : {}),
+          ...opaqueSubject.exchangeClaims,
           ...(tokenSnapshot?.claims ?? {}),
         };
       } else {
@@ -482,7 +461,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    // Resolve pairwise sub → raw userId for id_token subjects
+    // Resolve the client-facing sub back to the raw userId
     const sourceClientId =
       (subjectPayload.azp as string | undefined) ??
       (subjectPayload.client_id as string | undefined) ??
@@ -512,8 +491,8 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    let rawUserId = sub;
-    if (sourceClientId) {
+    let rawUserId = opaqueSubjectUserId ?? sub;
+    if (!opaqueSubjectUserId && sourceClientId) {
       rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
     }
 
@@ -692,14 +671,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       }
     }
 
-    // Resolve pairwise subject for the requesting client (used by both output paths)
-    const outputSub = client.redirectUris
-      ? await resolveSubForClient(rawUserId, {
-          subjectType: client.subjectType ?? null,
-          redirectUris: parseStoredStringArray(client.redirectUris),
-        })
-      : rawUserId;
-
     const outputActorSub = actorSessionId
       ? await resolveAgentSubForClient(actorSessionId, client.clientId)
       : parentAccessTokenClaims.act?.sub;
@@ -758,12 +729,18 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
 
     // ID Token output
     if (outputType === TOKEN_TYPE_ID_TOKEN) {
+      const clientSub = client.redirectUris
+        ? await resolveSubForClient(rawUserId, {
+            subjectType: client.subjectType ?? null,
+            redirectUris: parseStoredStringArray(client.redirectUris),
+          })
+        : rawUserId;
       const assurance = await getAccountAssurance(rawUserId, {
         isAuthenticated: true,
       });
       const idTokenPayload: Record<string, unknown> = {
         iss: authIssuer,
-        sub: outputSub,
+        sub: clientSub,
         aud: client.clientId,
         azp: client.clientId,
         jti,
@@ -797,31 +774,41 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       );
     }
 
-    const accessTokenPayload: Record<string, unknown> = {
-      iss: authIssuer,
-      sub: outputSub,
-      aud: targetAudience,
-      azp: client.clientId,
-      jti,
-      scope: targetScopes.join(" "),
-      iat: now,
-      exp,
-      ...(subjectSessionId ? { sid: subjectSessionId } : {}),
-      ...(!subjectSessionId && subjectAuth
-        ? { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }
-        : {}),
+    const exchangeClaims: Record<string, unknown> = {
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
         : {}),
-      ...(targetAudience === appUrl
-        ? { [APP_LOGIN_HINT_CLAIM]: rawUserId }
-        : {}),
       act: actClaim,
       ...(exchangedAccessTokenClaims ?? {}),
-      ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
     };
-
-    const accessToken = await signJwt(accessTokenPayload);
+    const accessToken = isZentityHostedResource(targetAudience)
+      ? await mintOpaqueAccessToken({
+          authContextId: subjectSessionId ? undefined : subjectAuth.id,
+          clientId: client.clientId,
+          dpopJkt,
+          exchangeClaims,
+          expiresAt: new Date(exp * 1000),
+          referenceId: jti,
+          scopes: targetScopes,
+          sessionId: subjectSessionId,
+          userId: rawUserId,
+        })
+      : await signJwt({
+          iss: authIssuer,
+          sub: rawUserId,
+          aud: targetAudience,
+          azp: client.clientId,
+          jti,
+          scope: targetScopes.join(" "),
+          iat: now,
+          exp,
+          ...(subjectSessionId ? { sid: subjectSessionId } : {}),
+          ...(subjectSessionId
+            ? {}
+            : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
+          ...exchangeClaims,
+          ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
+        });
     if (storedSubjectSnapshot) {
       await persistTokenSnapshot({
         tokenJti: jti,

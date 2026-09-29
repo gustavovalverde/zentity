@@ -20,6 +20,7 @@ export interface ExchangeTokenOptions {
   scope?: string;
   subjectToken: string;
   tokenEndpoint: string;
+  userInfoEndpoint?: string;
 }
 
 export interface TokenResult {
@@ -36,7 +37,6 @@ export interface ExchangeTokenResult {
   accessToken: string;
   accountSub?: string;
   expiresIn: number;
-  loginHint?: string;
   scope?: string;
   tokenType: string;
 }
@@ -49,8 +49,6 @@ interface TokenResponse {
   scope?: string;
   token_type: string;
 }
-
-const APP_LOGIN_HINT_CLAIM = "zentity_login_hint";
 
 function decodeJwtClaim(
   token: string | undefined,
@@ -87,6 +85,22 @@ async function requestToken(
   }
 
   return responseBody as TokenResponse;
+}
+
+async function readUserInfoSubject(
+  userInfoEndpoint: string,
+  accessToken: string,
+  dpopClient: DpopClient
+): Promise<string | undefined> {
+  const userInfo = await fetchUserInfo({
+    accessToken,
+    dpopClient,
+    unwrapResponseEnvelope: false,
+    userInfoUrl: userInfoEndpoint,
+  });
+  return typeof userInfo?.sub === "string" && userInfo.sub
+    ? userInfo.sub
+    : undefined;
 }
 
 export async function resolveOAuthIdentity(
@@ -182,8 +196,15 @@ export async function exchangeToken(
   }
 
   const data = await requestToken(options.dpopClient, options.tokenEndpoint, body);
-  const accountSub = decodeJwtClaim(data.access_token, "sub");
-  const loginHint = decodeJwtClaim(data.access_token, APP_LOGIN_HINT_CLAIM);
+  const accountSub =
+    decodeJwtClaim(data.access_token, "sub") ??
+    (options.userInfoEndpoint
+      ? await readUserInfoSubject(
+          options.userInfoEndpoint,
+          data.access_token,
+          options.dpopClient
+        )
+      : undefined);
 
   return {
     accessToken: data.access_token,
@@ -191,6 +212,5 @@ export async function exchangeToken(
     expiresIn: data.expires_in ?? 3600,
     ...(data.scope ? { scope: data.scope } : {}),
     ...(accountSub ? { accountSub } : {}),
-    ...(loginHint ? { loginHint } : {}),
   };
 }

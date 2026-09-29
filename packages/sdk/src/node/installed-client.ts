@@ -23,7 +23,6 @@ export interface InstalledOAuthSession {
   accountSub: string;
   clientId: string;
   dpopKey: DpopKeyPair;
-  loginHint: string;
   scopes: string[];
 }
 
@@ -47,8 +46,6 @@ export interface InstalledClientAuth {
     forceClientRegistration?: boolean;
   }): Promise<InstalledClientCredentials>;
   ensureOAuthSession(): Promise<InstalledOAuthSession>;
-  getCachedIssuer(): string | undefined;
-  getCachedJwksUri(): string | undefined;
   refreshOAuthSession(): Promise<InstalledOAuthSession>;
 }
 
@@ -63,14 +60,6 @@ function isInvalidClientError(error: unknown): boolean {
   );
 }
 
-function readStoredIdentity(
-  authState: StoredFirstPartyAuthState | undefined
-): Pick<InstalledOAuthSession, "accountSub" | "loginHint"> {
-  return {
-    accountSub: authState?.accountSub ?? "",
-    loginHint: authState?.loginHint ?? "",
-  };
-}
 
 function requireDpopKey(
   authState: StoredFirstPartyAuthState | undefined
@@ -141,14 +130,15 @@ export function createInstalledClientAuth(
         : {}),
       subjectToken: loginAccessToken,
     });
-    const storedIdentity = readStoredIdentity(await auth.loadState());
+    if (!tokenSet.accountSub) {
+      throw new Error("Exchanged access token carries no subject");
+    }
 
     return {
       accessToken: tokenSet.accessToken,
-      accountSub: tokenSet.accountSub ?? storedIdentity.accountSub,
+      accountSub: tokenSet.accountSub,
       clientId: clientCredentials.clientId,
       dpopKey: clientCredentials.dpopKey,
-      loginHint: tokenSet.loginHint ?? storedIdentity.loginHint,
       scopes: readScopes(tokenSet.scope),
     };
   }
@@ -232,12 +222,6 @@ export function createInstalledClientAuth(
     ensureClientCredentials,
     ensureOAuthSession() {
       return ensureOAuthSessionAttempt();
-    },
-    getCachedIssuer() {
-      return auth.getCachedIssuer();
-    },
-    getCachedJwksUri() {
-      return auth.getCachedJwksUri();
     },
     async refreshOAuthSession() {
       const clientCredentials = await ensureClientCredentials();

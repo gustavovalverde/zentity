@@ -108,7 +108,7 @@ sequenceDiagram
 
 **Grant type**: `authorization_code`
 
-PAR is required: all authorization requests must first be pushed to the PAR endpoint, which returns a `request_uri` (60-second TTL) passed to the authorize endpoint.
+PAR is optional: a client may push its authorization request to the PAR endpoint and pass the returned `request_uri` (60-second TTL) to the authorize endpoint, or send the request parameters directly.
 
 ### First-Party Challenge (headless, no redirect)
 
@@ -215,7 +215,7 @@ sequenceDiagram
 
 CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. Unverified JWT payloads used to route agent assertions are parsed with duplicate-key rejection before issuer/session selection, so JSON parser ambiguity cannot change which key or session is used for verification. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
 
-The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/ciba`. Push notifications route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome). The dashboard-integrated page at `/dashboard/ciba/approve` is a secondary entry point.
+The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome).
 
 **`requiresVaultUnlock`**: When a CIBA request includes identity scopes, the push notification shows only a "Deny" inline action (vault unlock requires a full browser context). All clicks route the user to the approval page where they can unlock their vault and approve.
 
@@ -657,7 +657,7 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "backchannel_authentication_endpoint": "https://app.zentity.xyz/api/auth/oauth2/bc-authorize",
   "authorization_challenge_endpoint": "https://app.zentity.xyz/api/oauth2/authorize-challenge",
   "pushed_authorization_request_endpoint": "https://app.zentity.xyz/api/auth/oauth2/par",
-  "require_pushed_authorization_requests": true,
+  "require_pushed_authorization_requests": false,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],
   "dpop_signing_alg_values_supported": ["ES256"],
   "id_token_signing_alg_values_supported": ["RS256"],
@@ -684,6 +684,8 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
 ```
 
 Clients follow `authorization_servers[0]` to the AS metadata, then proceed with DCR and authorization.
+
+Remote MCP clients (Claude Code, MCP Inspector, the MCP SDK) register with a Client ID Metadata Document or with DCR. A dynamic registration whose redirect URIs are all loopback HTTP registers as a native client even when it omits `application_type`. The AS lists `offline_access` in `scopes_supported`, so a client that registers the `refresh_token` grant and adds `offline_access` to its request, as the MCP refresh-token guidance (SEP-2207) describes, receives a refresh token. Refresh tokens rotate on every use and are bound to the client's DPoP key when it presents one. The MCP server's own protected resource metadata omits `offline_access`, because refresh is a concern between the client and the AS rather than a resource scope.
 
 ---
 
@@ -737,7 +739,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 | Feature | Standard | Status |
 | --- | --- | --- |
 | DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer fallback |
-| PAR | RFC 9126 | Required |
+| PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply) |
 | Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
 | x5c certificate chain | RFC 5280 | Full chain validation: SHA-256 thumbprint match + validity period (leaf + CA) + CA signature via `X509Certificate.checkIssued()` |
