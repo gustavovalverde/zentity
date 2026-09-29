@@ -14,14 +14,15 @@ import "server-only";
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
 
-let ready = false;
+// instrumentation.ts and route handlers load separate copies of this module.
+const WARMUP_KEY = Symbol.for("zentity.warmup-complete");
 
 export function markWarmupComplete(): void {
-  ready = true;
+  (globalThis as Record<symbol, boolean>)[WARMUP_KEY] = true;
 }
 
 export function isWarmupComplete(): boolean {
-  return ready;
+  return (globalThis as Record<symbol, boolean>)[WARMUP_KEY] === true;
 }
 
 interface ServiceHealth {
