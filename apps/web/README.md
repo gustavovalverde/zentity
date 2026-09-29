@@ -208,8 +208,9 @@ src/
 
 | Route | Purpose |
 | --- | --- |
-| `/recovery/passkey` | Register a new passkey after magic-link sign-in |
+| `/recovery/passkey` | Register a new passkey after magic-link sign-in and move the vault to it |
 | `/recovery/password` | Request a password reset link |
+| `/recovery/vault` | Connect sign-in methods that can't open the vault yet, or start over with new keys |
 | `/verify-2fa` | Two-factor verification UI |
 
 ## ZK Proof Development
@@ -280,7 +281,7 @@ Zentity stores privacy-preserving artifacts across multiple tables:
 - **signed_claims** — server-signed OCR/liveness/face match claims
 - **attestation_evidence** — policy_hash + proof_set_hash for audits
 - **encrypted_secrets** — passkey-wrapped secrets (FHE keys, profile data)
-- **secret_wrappers** — per-passkey DEK wrappers for multi-passkey access
+- **secret_wrappers** — vault key wrappers per unlocking credential (passkey, password, wallet, recovery key) on the root secret; one vault-key wrapper on every other secret
 - **passkey** — WebAuthn credential metadata (better-auth)
 
 Important: proofs are bound to server-signed claims + document hash, but not yet

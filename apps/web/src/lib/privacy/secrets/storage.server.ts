@@ -156,3 +156,11 @@ export async function secretBlobExists(blobRef: string): Promise<boolean> {
     return false;
   }
 }
+
+export async function deleteSecretBlob(blobRef: string): Promise<void> {
+  if (!isValidSecretBlobRef(blobRef)) {
+    return;
+  }
+  const dir = await ensureBlobDir();
+  await unlink(resolveBlobPath(dir, blobRef)).catch(() => undefined);
+}

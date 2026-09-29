@@ -144,6 +144,7 @@ import { getTrustedOrigins } from "@/lib/auth/origin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
+import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
   accounts,
   passkeys,
@@ -182,6 +183,7 @@ import { validateSafeUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
+import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 
 const betterAuthSchema = {
   user: users,
@@ -905,30 +907,20 @@ function hashAuthorizationCodeIdentifier(code: string): string {
   return createHash("sha256").update(code).digest("base64url");
 }
 
+/**
+ * Rebinds an authorization code to its own reference before the grant redeems
+ * it, so every token the code issues references this one authorization rather
+ * than the consent it shares with later sign-ins, then finalizes any identity
+ * release the authorization staged against that reference.
+ */
 async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
   const code = typeof ctx.body?.code === "string" ? ctx.body.code : undefined;
   if (!code) {
     return;
   }
 
-  let record = await db
-    .select({ value: verifications.value })
-    .from(verifications)
-    .where(eq(verifications.identifier, code))
-    .limit(1)
-    .get();
-  if (!record?.value) {
-    const hashedCode = hashAuthorizationCodeIdentifier(code);
-    if (hashedCode !== code) {
-      record = await db
-        .select({ value: verifications.value })
-        .from(verifications)
-        .where(eq(verifications.identifier, hashedCode))
-        .limit(1)
-        .get();
-    }
-  }
-  if (!record?.value) {
+  const record = await findAuthorizationCodeRecord(code);
+  if (!record) {
     return;
   }
 
@@ -948,11 +940,22 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     return;
   }
 
+  const authorizationId = record.identifier;
+  if (stored.referenceId !== authorizationId) {
+    await db
+      .update(verifications)
+      .set({
+        value: JSON.stringify({ ...stored, referenceId: authorizationId }),
+      })
+      .where(eq(verifications.identifier, authorizationId))
+      .run();
+  }
+
   try {
     await finalizeOauthDisclosureFromVerification({
+      authorizationId,
       query: stored.query ?? {},
       userId: stored.userId,
-      ...(stored.referenceId ? { referenceId: stored.referenceId } : {}),
     });
   } catch (error) {
     if (error instanceof DisclosureBindingError) {
@@ -963,7 +966,6 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
           oauthError: error.oauthError,
           userId: stored.userId,
           clientId: stored.query?.client_id,
-          hasReferenceId: Boolean(stored.referenceId),
           scopes: stored.query?.scope,
         },
         "Disclosure binding failed during token exchange"
@@ -981,6 +983,24 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     );
     throw error;
   }
+}
+
+async function findAuthorizationCodeRecord(
+  code: string
+): Promise<{ identifier: string; value: string } | null> {
+  const identifiers = [code, hashAuthorizationCodeIdentifier(code)];
+  for (const identifier of identifiers) {
+    const record = await db
+      .select({ value: verifications.value })
+      .from(verifications)
+      .where(eq(verifications.identifier, identifier))
+      .limit(1)
+      .get();
+    if (record?.value) {
+      return { identifier, value: record.value };
+    }
+  }
+  return null;
 }
 
 // The CIBA request row is consumed (deleted) before the token claims run, so
@@ -1623,17 +1643,21 @@ export const auth = betterAuth({
             },
           },
         },
-  disabledPaths: enableEmailAndPassword
-    ? []
-    : [
-        "/sign-in/email",
-        "/sign-up/email",
-        "/request-password-reset",
-        "/recovery/password/reset",
-        "/change-password",
-        "/set-password",
-        "/verify-password",
-      ],
+  disabledPaths: [
+    "/admin/impersonate-user",
+    "/admin/stop-impersonating",
+    ...(enableEmailAndPassword
+      ? []
+      : [
+          "/sign-in/email",
+          "/sign-up/email",
+          "/request-password-reset",
+          "/recovery/password/reset",
+          "/change-password",
+          "/set-password",
+          "/verify-password",
+        ]),
+  ],
   emailAndPassword: enableEmailAndPassword
     ? { enabled: true }
     : { enabled: false },
@@ -1802,6 +1826,8 @@ export const auth = betterAuth({
         const { sendResetPasswordEmail } = await import("@/lib/email/auth");
         await sendResetPasswordEmail({ user, url });
       },
+      onPasswordReset: ({ user }) =>
+        detachVaultCredential(user.id, OPAQUE_CREDENTIAL_ID),
       revokeSessionsOnPasswordReset: true,
     }),
     anonymous({

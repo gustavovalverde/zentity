@@ -84,14 +84,14 @@ describe("OAuth disclosure finalization", () => {
     );
 
     const releaseContext = await finalizeOauthDisclosureFromVerification({
+      authorizationId: "oauth-authorization-1",
       query,
       userId,
-      referenceId: "oauth-reference-1",
     });
 
     expect(releaseContext).not.toBeNull();
     expect(releaseContext?.releaseId).toBe(
-      releaseIdFor("oauth-reference-1", TEST_CLIENT_ID)
+      releaseIdFor("oauth-authorization-1", TEST_CLIENT_ID)
     );
     expect(releaseContext?.clientId).toBe(TEST_CLIENT_ID);
     expect(releaseContext?.userId).toBe(userId);
@@ -115,7 +115,9 @@ describe("OAuth disclosure finalization", () => {
       false
     );
     const payload = consumeIdentityPayload(
-      finalReleaseIdentityKey(releaseIdFor("oauth-reference-1", TEST_CLIENT_ID))
+      finalReleaseIdentityKey(
+        releaseIdFor("oauth-authorization-1", TEST_CLIENT_ID)
+      )
     );
     expect(payload?.claims).toEqual({
       given_name: "Ada",
@@ -135,9 +137,9 @@ describe("OAuth disclosure finalization", () => {
     };
 
     const releaseContext = await finalizeOauthDisclosureFromVerification({
+      authorizationId: "oauth-authorization-claims-only",
       query,
       userId,
-      referenceId: "oauth-reference-claims-only",
     });
 
     expect(releaseContext).not.toBeNull();
@@ -151,7 +153,7 @@ describe("OAuth disclosure finalization", () => {
     ).toEqual({ acr: null, auth_time: null });
 
     const releaseId = releaseIdFor(
-      "oauth-reference-claims-only",
+      "oauth-authorization-claims-only",
       TEST_CLIENT_ID
     );
     const loaded = await loadReleaseContext(releaseId);
@@ -162,8 +164,8 @@ describe("OAuth disclosure finalization", () => {
   it("fails closed when exact OAuth binding metadata is incomplete", async () => {
     await expect(
       finalizeOauthDisclosureFromVerification({
+        authorizationId: "oauth-authorization-no-client",
         query: {
-          client_id: TEST_CLIENT_ID,
           response_type: "code",
           scope: "openid",
           claims: JSON.stringify({ userinfo: { given_name: null } }),

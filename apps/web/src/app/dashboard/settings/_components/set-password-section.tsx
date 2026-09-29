@@ -2,6 +2,7 @@
 
 import { useForm } from "@tanstack/react-form";
 import { KeyRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,15 +24,15 @@ import {
 } from "@/components/ui/field";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Spinner } from "@/components/ui/spinner";
+import { useVaultKeyPrompt } from "@/components/vault-unlock";
 import { reportRejection } from "@/lib/async-handler";
-import { authClient, useSession } from "@/lib/auth/auth-client";
+import { authClient } from "@/lib/auth/auth-client";
 import {
   getPasswordLengthError,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
-import { addOpaqueWrapperForSecretType } from "@/lib/privacy/secrets/vault";
+import { addVaultCredential } from "@/lib/privacy/secrets/vault";
 
 interface SetPasswordSectionProps {
   onPasswordSet?: () => void;
@@ -52,7 +53,8 @@ export function SetPasswordSection({
   const [breachStatus, setBreachStatus] = useState<
     "idle" | "checking" | "safe" | "compromised" | "error"
   >("idle");
-  const { data: sessionData } = useSession();
+  const router = useRouter();
+  const { dialog, requestVaultKey } = useVaultKeyPrompt();
 
   const form = useForm({
     defaultValues: {
@@ -69,6 +71,11 @@ export function SetPasswordSection({
       setError(null);
 
       try {
+        const request = await requestVaultKey();
+        if (request.status === "cancelled") {
+          return;
+        }
+
         const result = await authClient.opaque.setPassword({
           password: value.newPassword,
         });
@@ -82,30 +89,11 @@ export function SetPasswordSection({
           return;
         }
 
-        const userId = sessionData?.user?.id;
-        if (userId) {
-          try {
-            await Promise.all([
-              addOpaqueWrapperForSecretType({
-                secretType: SECRET_TYPES.FHE_KEYS,
-                userId,
-                exportKey: result.data.exportKey,
-              }),
-              addOpaqueWrapperForSecretType({
-                secretType: SECRET_TYPES.PROFILE,
-                userId,
-                exportKey: result.data.exportKey,
-              }),
-            ]);
-          } catch {
-            toast.message(
-              "Password set, but secret wrappers could not be prepared yet."
-            );
-          }
-        } else {
-          toast.message(
-            "Password set, but secret wrappers could not be prepared yet."
-          );
+        if (request.status === "unlocked") {
+          await addVaultCredential(request.vaultKey, {
+            type: "opaque",
+            exportKey: result.data.exportKey,
+          });
         }
 
         toast.success("Password set successfully", {
@@ -113,6 +101,7 @@ export function SetPasswordSection({
         });
         onPasswordSet?.();
         form.reset();
+        router.refresh();
       } catch (err) {
         const message =
           err instanceof Error ? err.message : "An unexpected error occurred";
@@ -293,6 +282,7 @@ export function SetPasswordSection({
           </Button>
         </form>
       </CardContent>
+      {dialog}
     </Card>
   );
 }

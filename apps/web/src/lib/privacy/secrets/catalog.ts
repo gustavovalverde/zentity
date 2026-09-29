@@ -43,11 +43,32 @@ export const secretTypeSchema = z.enum([
 export type SecretType = z.infer<typeof secretTypeSchema>;
 
 /**
- * Credential source that derived the KEK wrapping a secret.
+ * The root secret of a user's vault. Its DEK is the vault key: every
+ * unlocking credential wraps it, and every other vault secret's DEK is
+ * wrapped under a KEK derived from it.
  */
-export const kekSourceSchema = z.enum(["prf", "opaque", "wallet"]);
+export const VAULT_ROOT_SECRET_TYPE = SECRET_TYPES.FHE_KEYS;
 
-export type KekSource = z.infer<typeof kekSourceSchema>;
+export const VAULT_KEY_CREDENTIAL_ID = "vault";
+export const OPAQUE_CREDENTIAL_ID = "opaque";
+export const RECOVERY_KEY_CREDENTIAL_ID = "recovery_key";
+
+/**
+ * Source of the KEK wrapping a secret's DEK: an unlocking credential for the
+ * root secret, or the vault key for every other secret.
+ */
+export const unlockingKekSourceSchema = z.enum([
+  "prf",
+  "opaque",
+  "wallet",
+  "recovery_key",
+]);
+export const kekSourceSchema = z.enum([
+  ...unlockingKekSourceSchema.options,
+  "vault",
+]);
+
+export type UnlockingKekSource = z.infer<typeof unlockingKekSourceSchema>;
 
 const wrappedDekJsonSchema = z.object({
   alg: z.string().min(1),

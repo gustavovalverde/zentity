@@ -14,20 +14,30 @@ import "client-only";
 
 import type { BindingContext } from "@/lib/identity/verification/finalize-and-prove";
 import type { CachedBindingMaterial } from "@/lib/privacy/credentials/cache";
+import type { EnrollmentCredential } from "@/lib/privacy/secrets/catalog";
 
 import { evaluatePrf } from "@/lib/auth/passkey/prf";
 import {
   clearCachedBindingMaterial,
   getCachedBindingMaterial,
 } from "@/lib/privacy/credentials/cache";
-import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/credentials/opaque";
-import { WALLET_CREDENTIAL_PREFIX } from "@/lib/privacy/credentials/wallet";
+import {
+  getWalletCredentialId,
+  WALLET_CREDENTIAL_PREFIX,
+} from "@/lib/privacy/credentials/wallet";
 import { base64ToBytes } from "@/lib/privacy/primitives/symmetric";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
+import {
+  OPAQUE_CREDENTIAL_ID,
+  SECRET_TYPES,
+} from "@/lib/privacy/secrets/catalog";
 import { trpc } from "@/lib/trpc/client";
 
-import { deriveBindingSecret } from "./binding-secret";
+import {
+  deriveBindingSecret,
+  prepareBindingProofInputs,
+} from "./binding-secret";
 import { AuthMode } from "./proof-types";
+import { generateBaseCommitment } from "./prove";
 
 /**
  * Auth mode detection result.
@@ -274,4 +284,83 @@ export async function getBindingContext(
           : "Failed to prepare binding context",
     };
   }
+}
+
+function bindingSecretParams(credential: EnrollmentCredential) {
+  const documentHash = "0x00";
+  switch (credential.type) {
+    case "passkey":
+      return {
+        authMode: AuthMode.PASSKEY,
+        userId: credential.context.userId,
+        documentHash,
+        prfOutput: credential.context.prfOutput,
+      };
+    case "opaque":
+      return {
+        authMode: AuthMode.OPAQUE,
+        userId: credential.context.userId,
+        documentHash,
+        exportKey: credential.context.exportKey,
+      };
+    case "wallet":
+      return {
+        authMode: AuthMode.WALLET,
+        userId: credential.context.userId,
+        documentHash,
+        signatureBytes: credential.context.signatureBytes,
+      };
+    default: {
+      const _exhaustive: never = credential;
+      throw new Error("Unknown credential type");
+    }
+  }
+}
+
+function bindingRegistration(credential: EnrollmentCredential): {
+  credentialId: string;
+  credentialKind: EnrollmentCredential["type"];
+} {
+  switch (credential.type) {
+    case "passkey":
+      return {
+        credentialId: credential.context.credentialId,
+        credentialKind: "passkey",
+      };
+    case "opaque":
+      return { credentialId: OPAQUE_CREDENTIAL_ID, credentialKind: "opaque" };
+    case "wallet":
+      return {
+        credentialId: getWalletCredentialId(credential.context),
+        credentialKind: "wallet",
+      };
+    default: {
+      const _exhaustive: never = credential;
+      throw new Error("Unknown credential type");
+    }
+  }
+}
+
+/**
+ * Register the identity-binding commitment derived from a credential, so
+ * identity binding proofs made with it verify. The session must have just
+ * confirmed the credential.
+ */
+export async function registerCredentialBinding(params: {
+  secretId: string;
+  credential: EnrollmentCredential;
+}): Promise<void> {
+  const secret = await deriveBindingSecret(
+    bindingSecretParams(params.credential)
+  );
+  const inputs = prepareBindingProofInputs(secret);
+  const commitment = await generateBaseCommitment(
+    inputs.bindingSecretField,
+    inputs.userIdHashField
+  );
+  await trpc.credentialBindings.register.mutate({
+    secretId: params.secretId,
+    ...bindingRegistration(params.credential),
+    credentialBindingCommitment: commitment,
+  });
 }

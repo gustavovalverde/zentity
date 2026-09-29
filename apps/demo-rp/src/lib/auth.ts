@@ -115,9 +115,11 @@ async function buildOAuthProfile(tokens: {
       unwrapResponseEnvelope: false,
       userInfoUrl: new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL),
     });
-    if (userInfo) {
-      body = userInfo;
+    if (!userInfo) {
+      console.error("Zentity userinfo request failed");
+      return null;
     }
+    body = userInfo;
   }
 
   // Merge id_token claims (proof/assurance claims only — PII comes from userinfo)
@@ -292,7 +294,11 @@ function makeProviderConfig(
       accessToken?: string | undefined;
       idToken?: string | undefined;
     }) {
-      const { id, profile } = await buildOAuthProfile(tokens);
+      const result = await buildOAuthProfile(tokens);
+      if (!result) {
+        return null;
+      }
+      const { id, profile } = result;
       await syncClaimsToDb(id, oauthProviderId, profile);
       profile.__existingClaims = await readExistingClaims(id);
       return profile as { id: string; emailVerified: boolean };

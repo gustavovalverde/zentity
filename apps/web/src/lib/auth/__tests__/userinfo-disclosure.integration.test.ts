@@ -173,7 +173,7 @@ async function redeemAuthorizationCode(input: {
 }) {
   const identityScopes = ["identity.name"];
   const codeVerifier = `pkce-verifier-${input.clientId}`;
-  const authorizationCode = `auth-code-${input.clientId}`;
+  const authorizationCode = `auth-code-${crypto.randomUUID()}`;
   const now = Date.now();
   const { challenge } = await createPkceChallenge(codeVerifier);
   const oauthQuery = {
@@ -339,6 +339,51 @@ describe("userinfo disclosure binding", () => {
       sub: userId,
       given_name: "Grace",
       family_name: "Hopper",
+    });
+  });
+
+  it("binds a later sign-in without a new step-up to no identity release, and releases a new step-up again", async () => {
+    await createAuthCodeTestClient();
+    await insertSession(userId, authContextId);
+
+    const stepUpToken = await redeemAuthorizationCode({
+      authContextId,
+      clientId: TEST_AUTH_CODE_CLIENT_ID,
+      identity: { given_name: "Grace", family_name: "Hopper" },
+      referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+      userId,
+    });
+    const stepUpUserInfo = await fetchUserInfo(stepUpToken);
+    expect(stepUpUserInfo.status).toBe(200);
+    expect(stepUpUserInfo.body).toMatchObject({
+      given_name: "Grace",
+      family_name: "Hopper",
+    });
+
+    const signInToken = await redeemAuthorizationCode({
+      authContextId,
+      clientId: TEST_AUTH_CODE_CLIENT_ID,
+      referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+      userId,
+    });
+    const signInUserInfo = await fetchUserInfo(signInToken);
+    expect(signInUserInfo.status).toBe(200);
+    expect(signInUserInfo.body.sub).toBe(userId);
+    expect(signInUserInfo.body).not.toHaveProperty("given_name");
+    expect(signInUserInfo.body).not.toHaveProperty("family_name");
+
+    const secondStepUpToken = await redeemAuthorizationCode({
+      authContextId,
+      clientId: TEST_AUTH_CODE_CLIENT_ID,
+      identity: { given_name: "Ada", family_name: "Lovelace" },
+      referenceId: TEST_AUTH_CODE_REFERENCE_ID,
+      userId,
+    });
+    const secondStepUpUserInfo = await fetchUserInfo(secondStepUpToken);
+    expect(secondStepUpUserInfo.status).toBe(200);
+    expect(secondStepUpUserInfo.body).toMatchObject({
+      given_name: "Ada",
+      family_name: "Lovelace",
     });
   });
 

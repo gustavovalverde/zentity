@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@libsql/client";
 import { encode } from "@msgpack/msgpack";
 import { type APIResponse, request } from "@playwright/test";
-import {
-  client as opaqueProtocolClient,
-  ready as opaqueProtocolReady,
-} from "@serenity-kit/opaque";
 
-import { createE2EOpaqueSecret } from "./opaque-secret-seed";
+import {
+  deriveOpaqueExportKey,
+  ensureOpaquePasswordRegistration,
+} from "./helpers/opaque-account";
+import { createE2EVaultSecret } from "./vault-secret-seed";
 
 const currentDir =
   typeof import.meta.dirname === "string"
@@ -35,32 +35,6 @@ const identitySeedVariant: IdentitySeedVariant =
     : "incomplete";
 
 type ApiContext = Awaited<ReturnType<typeof request.newContext>>;
-
-function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.codePointAt(index) ?? 0;
-  }
-  return bytes;
-}
-
-function normalizeBase64(base64: string): string {
-  const normalized = base64.replaceAll("-", "+").replaceAll("_", "/");
-  const padLength = normalized.length % 4;
-  if (padLength === 0) {
-    return normalized;
-  }
-  return `${normalized}${"=".repeat(4 - padLength)}`;
-}
-
-function base64UrlToBytes(base64Url: string): Uint8Array {
-  return base64ToBytes(normalizeBase64(base64Url));
-}
 
 async function postWithRetries(
   api: ApiContext,
@@ -319,123 +293,6 @@ async function clearSeededIdentityState(dbUrl: string, userId: string) {
   );
 }
 
-async function deriveOpaqueExportKey(
-  api: ApiContext,
-  password: string
-): Promise<Uint8Array> {
-  await opaqueProtocolReady;
-
-  const { clientLoginState, startLoginRequest } =
-    opaqueProtocolClient.startLogin({ password });
-
-  const challengeResponse = await api.post(
-    "/api/auth/password/opaque/verify/challenge",
-    {
-      data: { loginRequest: startLoginRequest },
-    }
-  );
-
-  if (!challengeResponse.ok()) {
-    throw new Error(
-      `OPAQUE verify challenge failed: ${await challengeResponse.text()}`
-    );
-  }
-
-  const challengeBody = (await challengeResponse.json()) as {
-    challenge?: string;
-    state?: string;
-  };
-
-  if (!(challengeBody.challenge && challengeBody.state)) {
-    throw new Error("OPAQUE verify challenge response was invalid.");
-  }
-
-  const verifyResult = opaqueProtocolClient.finishLogin({
-    clientLoginState,
-    loginResponse: challengeBody.challenge,
-    password,
-  });
-  if (!verifyResult) {
-    throw new Error("OPAQUE login completion did not produce a client result.");
-  }
-
-  const completeResponse = await api.post(
-    "/api/auth/password/opaque/verify/complete",
-    {
-      data: {
-        loginResult: verifyResult.finishLoginRequest,
-        encryptedServerState: challengeBody.state,
-      },
-    }
-  );
-
-  if (!completeResponse.ok()) {
-    throw new Error(
-      `OPAQUE verify completion failed: ${await completeResponse.text()}`
-    );
-  }
-
-  return base64UrlToBytes(verifyResult.exportKey);
-}
-
-async function ensureOpaquePasswordRegistration(
-  api: ApiContext,
-  password: string
-): Promise<void> {
-  await opaqueProtocolReady;
-
-  const { clientRegistrationState, registrationRequest } =
-    opaqueProtocolClient.startRegistration({ password });
-
-  const challengeResponse = await api.post(
-    "/api/auth/password/opaque/registration/challenge",
-    {
-      data: { registrationRequest },
-    }
-  );
-
-  if (!challengeResponse.ok()) {
-    throw new Error(
-      `OPAQUE registration challenge failed: ${await challengeResponse.text()}`
-    );
-  }
-
-  const challengeBody = (await challengeResponse.json()) as {
-    challenge?: string;
-  };
-
-  if (!challengeBody.challenge) {
-    throw new Error("OPAQUE registration challenge response was invalid.");
-  }
-
-  const registrationResult = opaqueProtocolClient.finishRegistration({
-    clientRegistrationState,
-    registrationResponse: challengeBody.challenge,
-    password,
-  });
-
-  if (!registrationResult) {
-    throw new Error(
-      "OPAQUE registration completion did not produce a client result."
-    );
-  }
-
-  const completeResponse = await api.post(
-    "/api/auth/password/opaque/registration/complete",
-    {
-      data: {
-        registrationRecord: registrationResult.registrationRecord,
-      },
-    }
-  );
-
-  if (!completeResponse.ok()) {
-    throw new Error(
-      `OPAQUE registration completion failed: ${await completeResponse.text()}`
-    );
-  }
-}
-
 function buildProfileSecretPayload(name: string) {
   const parts = name.trim().split(WHITESPACE_REGEX).filter(Boolean);
   const firstName = parts[0] ?? "E2E";
@@ -471,25 +328,26 @@ function buildFheKeySecretPayload(createdAt: string) {
   });
 }
 
-async function seedOpaqueSecret(
+async function seedVaultSecret(
   api: ApiContext,
   dbUrl: string,
   userId: string,
-  password: string,
   params: {
     envelopeFormat: "json" | "msgpack";
     metadata?: Record<string, unknown>;
     plaintext: Uint8Array;
     secretId?: string;
     secretType: "fhe_keys" | "profile";
+    wrapWith:
+      | { type: "opaque"; exportKey: Uint8Array }
+      | { type: "vault"; vaultKey: Uint8Array };
   }
-) {
-  const exportKey = await deriveOpaqueExportKey(api, password);
+): Promise<Uint8Array> {
   const secretId = params.secretId ?? randomUUID();
-  const { envelope, wrapper } = await createE2EOpaqueSecret({
+  const { dek, envelope, wrapper } = await createE2EVaultSecret({
     secretId,
     userId,
-    exportKey,
+    wrapWith: params.wrapWith,
     secretType: params.secretType,
     plaintext: params.plaintext,
     envelopeFormat: params.envelopeFormat,
@@ -567,21 +425,22 @@ async function seedOpaqueSecret(
     );`
   );
 
-  return secretId;
+  return dek;
 }
 
 async function seedProfileSecret(
   api: ApiContext,
   dbUrl: string,
   userId: string,
-  password: string,
+  vaultKey: Uint8Array,
   name: string
 ) {
   const payload = buildProfileSecretPayload(name);
-  await seedOpaqueSecret(api, dbUrl, userId, password, {
+  await seedVaultSecret(api, dbUrl, userId, {
     envelopeFormat: "json",
     plaintext: new TextEncoder().encode(JSON.stringify(payload)),
     secretType: "profile",
+    wrapWith: { type: "vault", vaultKey },
   });
 }
 
@@ -591,13 +450,15 @@ async function seedFheKeySecret(
   userId: string,
   password: string,
   keyId: string
-) {
-  return await seedOpaqueSecret(api, dbUrl, userId, password, {
+): Promise<Uint8Array> {
+  const exportKey = await deriveOpaqueExportKey(api, password);
+  return await seedVaultSecret(api, dbUrl, userId, {
     envelopeFormat: "msgpack",
     metadata: { keyId },
     plaintext: buildFheKeySecretPayload(new Date().toISOString()),
     secretId: keyId,
     secretType: "fhe_keys",
+    wrapWith: { type: "opaque", exportKey },
   });
 }
 
@@ -1091,8 +952,14 @@ async function seedVerifiedWithProfileState(
   await runSql(dbUrl, proofArtifactsSql);
   await runSql(dbUrl, encryptedAttributesSql);
   await runSql(dbUrl, verificationChecksSql);
-  await seedFheKeySecret(api, dbUrl, userId, password, fheKeyId);
-  await seedProfileSecret(api, dbUrl, userId, password, name);
+  const vaultKey = await seedFheKeySecret(
+    api,
+    dbUrl,
+    userId,
+    password,
+    fheKeyId
+  );
+  await seedProfileSecret(api, dbUrl, userId, vaultKey, name);
 }
 
 async function seedIdentityState(params: {

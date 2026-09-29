@@ -293,10 +293,6 @@ describe("useCibaFlow state machine", () => {
         return Promise.resolve(mockResponse(200, { received: false }));
       }
 
-      if (body.action === "token-exchange") {
-        return Promise.resolve(mockResponse(200, {}));
-      }
-
       return Promise.resolve(mockResponse(404, {}));
     });
 

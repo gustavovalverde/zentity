@@ -105,7 +105,7 @@ Raw document images, selfies, plaintext PII, and biometric templates are never s
 
 ## Account Recovery
 
-The server cannot unwrap any data key, so account recovery restores sign-in, not sealed secrets. A user who loses a passkey signs in with an email magic link and registers a new passkey (`/recovery/passkey`); password users reset through `/recovery/password`. The new credential can seal the existing data keys only when another registered credential unwraps them in the browser. When every credential is lost, the sealed profile and FHE keys are unrecoverable and the user re-verifies to generate fresh keys.
+The server cannot unwrap any data key, so account recovery restores sign-in, not sealed secrets. A user who loses a passkey signs in with an email magic link and registers a new passkey (`/recovery/passkey`); password users reset through `/recovery/password` and then reconnect the new password at `/recovery/vault`. In both cases the browser opens the vault with a credential the user still has, or with their recovery key (24 words generated and shown only in the browser), wraps the vault key for the new credential, and retires the lost one. When nothing the user holds can open the vault, the sealed profile and FHE keys are unrecoverable: the user starts over with new keys and re-verifies. Admin impersonation is disabled.
 
 ---
 

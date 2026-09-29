@@ -350,7 +350,7 @@ All API calls from the client use tRPC (`trpc.zk.*`, `trpc.liveness.*`, `trpc.at
 
 **Privacy principle**: Raw PII is never stored. ZK proofs are generated CLIENT-SIDE so private inputs remain in the browser during proving, while OCR runs server-side and is signed. Only cryptographic commitments, FHE ciphertexts, signed claims, and ZK proofs are persisted. Images are processed transiently.
 
-**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, or wallet signature via HKDF). The server cannot decrypt these keys—only the user with their passkey, password, or wallet can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/(architecture)/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
+**User-controlled encryption**: FHE keys are generated client-side and stored server-side as credential-wrapped encrypted secrets (passkey PRF, OPAQUE export key, wallet signature, or a browser-generated recovery key, via HKDF). The server cannot decrypt these keys; only the user, with a passkey, password, wallet, or recovery key, can unwrap them. The server receives only public/evaluation keys for computation. See [Attestation & Privacy Architecture](docs/(architecture)/attestation-privacy-architecture.md) and [RFC-0001](docs/rfcs/0001-passkey-wrapped-fhe-keys.md).
 
 ## Code Conventions
 

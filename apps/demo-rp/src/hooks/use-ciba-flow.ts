@@ -15,7 +15,6 @@ export type CibaState =
 interface CibaFlowState {
   authReqId: string | null;
   error: string | null;
-  exchangedTokens: Record<string, unknown> | null;
   reset: () => void;
   startFlow: (params: {
     acrValues?: string;
@@ -74,10 +73,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
   const [state, setState] = useState<CibaState>("idle");
   const [authReqId, setAuthReqId] = useState<string | null>(null);
   const [tokens, setTokens] = useState<Record<string, unknown> | null>(null);
-  const [exchangedTokens, setExchangedTokens] = useState<Record<
-    string,
-    unknown
-  > | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<Record<string, unknown> | null>(
     null
@@ -106,29 +101,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
     }
   }, []);
 
-  const exchangeToken = useCallback(
-    async (accessToken: string) => {
-      try {
-        const res = await fetch("/api/ciba", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "token-exchange",
-            scenarioId,
-            accessToken,
-          }),
-        });
-        if (res.ok) {
-          const body = (await res.json()) as Record<string, unknown>;
-          setExchangedTokens(body);
-        }
-      } catch {
-        // Non-critical — the CIBA token is still valid
-      }
-    },
-    [scenarioId]
-  );
-
   const reset = useCallback(() => {
     stopPolling();
     terminalRef.current = false;
@@ -136,7 +108,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
     setState("idle");
     setAuthReqId(null);
     setTokens(null);
-    setExchangedTokens(null);
     setUserInfo(null);
     setError(null);
     intervalRef.current = DEFAULT_POLL_INTERVAL;
@@ -161,9 +132,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
         ) {
           setUserInfo(result.tokens.userinfo as Record<string, unknown>);
         }
-        if (typeof result.tokens.access_token === "string") {
-          exchangeToken(result.tokens.access_token);
-        }
       } else if (result.kind === "slow_down") {
         restartPoll();
       } else if (result.kind === "terminal") {
@@ -175,7 +143,7 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
         }
       }
     },
-    [stopPolling, exchangeToken]
+    [stopPolling]
   );
 
   const pollToken = useCallback(
@@ -334,7 +302,6 @@ export function useCibaFlow(scenarioId: RouteScenarioId): CibaFlowState {
     state,
     authReqId,
     tokens,
-    exchangedTokens,
     userInfo,
     error,
     startFlow,

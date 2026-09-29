@@ -91,6 +91,7 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@reown/appkit": "1.8.19",
     "@reown/appkit-adapter-wagmi": "1.8.19",
+    "@scure/bip39": "1.6.0",
     "@serenity-kit/opaque": "^1.1.0",
     "@t3-oss/env-nextjs": "^0.13.10",
     "@tanstack/react-form": "1.28.5",

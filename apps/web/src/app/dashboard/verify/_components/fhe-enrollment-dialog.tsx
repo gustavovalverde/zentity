@@ -1,13 +1,14 @@
 "use client";
 
 import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
-import { Fingerprint, KeyRound, Loader2, Wallet } from "lucide-react";
+import { FileKey, Fingerprint, KeyRound, Loader2, Wallet } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useChainId, useSignTypedData } from "wagmi";
 
 import { Web3Provider } from "@/components/providers/web3-provider";
+import { RecoveryKeySetup } from "@/components/recovery-key-setup";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +47,15 @@ import {
 } from "@/lib/privacy/fhe/key-store";
 import { prewarmTfheWorker } from "@/lib/privacy/fhe/keygen-client";
 import { hexToBytes } from "@/lib/privacy/primitives/symmetric";
-import { SECRET_TYPES } from "@/lib/privacy/secrets/catalog";
+import {
+  type EnrollmentCredential,
+  SECRET_TYPES,
+} from "@/lib/privacy/secrets/catalog";
+import {
+  materialFromEnrollment,
+  unlockVaultKey,
+  type VaultKey,
+} from "@/lib/privacy/secrets/vault";
 import { trpc } from "@/lib/trpc/client";
 
 type EnrollmentMethod = "passkey" | "wallet" | "password" | "create-password";
@@ -240,6 +249,10 @@ export function FheEnrollmentDialog({
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [prfSupported, setPrfSupported] = useState<boolean | null>(null);
+  const [recoveryOffer, setRecoveryOffer] = useState<{
+    vaultKey: VaultKey;
+    creating: boolean;
+  } | null>(null);
 
   const timingRef = useRef<{
     method: string;
@@ -357,13 +370,12 @@ export function FheEnrollmentDialog({
         prfSalt,
       });
 
-      await enrollFheKeys({
-        credential: {
-          type: "passkey",
-          context: { userId, credentialId, prfOutput, prfSalt },
-        },
-        onStage: advanceStage,
-      });
+      const credential: EnrollmentCredential = {
+        type: "passkey",
+        context: { userId, credentialId, prfOutput, prfSalt },
+      };
+      await enrollFheKeys({ credential, onStage: advanceStage });
+      return credential;
     },
     [hasPasskeys, prfSupported, advanceStage]
   );
@@ -393,13 +405,12 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      await enrollFheKeys({
-        credential: {
-          type: "opaque",
-          context: { userId, exportKey: result.data.exportKey },
-        },
-        onStage: advanceStage,
-      });
+      const credential: EnrollmentCredential = {
+        type: "opaque",
+        context: { userId, exportKey: result.data.exportKey },
+      };
+      await enrollFheKeys({ credential, onStage: advanceStage });
+      return credential;
     },
     [password, advanceStage]
   );
@@ -427,13 +438,12 @@ export function FheEnrollmentDialog({
         exportKey: result.data.exportKey,
       });
 
-      await enrollFheKeys({
-        credential: {
-          type: "opaque",
-          context: { userId, exportKey: result.data.exportKey },
-        },
-        onStage: advanceStage,
-      });
+      const credential: EnrollmentCredential = {
+        type: "opaque",
+        context: { userId, exportKey: result.data.exportKey },
+      };
+      await enrollFheKeys({ credential, onStage: advanceStage });
+      return credential;
     },
     [password, advanceStage]
   );
@@ -491,23 +501,32 @@ export function FheEnrollmentDialog({
       const signedAt = Math.floor(Date.now() / 1000);
       const expiresAt = signedAt + KEK_SIGNATURE_VALIDITY_DAYS * 24 * 60 * 60;
 
-      await enrollFheKeys({
-        credential: {
-          type: "wallet",
-          context: {
-            userId,
-            address: walletCtx.address,
-            chainId: walletCtx.chainId,
-            signatureBytes,
-            signedAt,
-            expiresAt,
-          },
+      const credential: EnrollmentCredential = {
+        type: "wallet",
+        context: {
+          userId,
+          address: walletCtx.address,
+          chainId: walletCtx.chainId,
+          signatureBytes,
+          signedAt,
+          expiresAt,
         },
-        onStage: advanceStage,
-      });
+      };
+      await enrollFheKeys({ credential, onStage: advanceStage });
+      return credential;
     },
     [wallet, advanceStage]
   );
+
+  const completeEnrollment = useCallback(() => {
+    setRecoveryOffer(null);
+    if (onComplete) {
+      onComplete();
+    } else {
+      router.refresh();
+      onOpenChange?.(false);
+    }
+  }, [onComplete, onOpenChange, router]);
 
   const handleEnroll = useCallback(
     async (method: EnrollmentMethod, walletContext?: WalletContext) => {
@@ -545,14 +564,15 @@ export function FheEnrollmentDialog({
           return;
         }
 
+        let credential: EnrollmentCredential;
         if (method === "passkey") {
-          await enrollPasskey(userId);
+          credential = await enrollPasskey(userId);
         } else if (method === "password") {
-          await enrollOpaque(userId);
+          credential = await enrollOpaque(userId);
         } else if (method === "create-password") {
-          await enrollNewPassword(userId);
+          credential = await enrollNewPassword(userId);
         } else if (method === "wallet" && walletContext) {
-          await enrollWallet(userId, walletContext);
+          credential = await enrollWallet(userId, walletContext);
         } else {
           throw new Error(
             "No sign-in method available for setup. Please set up a passkey, password, or wallet first."
@@ -562,11 +582,14 @@ export function FheEnrollmentDialog({
         finishTiming("ok");
         setStage("done");
         toast.success("Encryption keys secured.");
-        if (onComplete) {
-          onComplete();
+        const vaultKey = await unlockVaultKey(
+          materialFromEnrollment(credential),
+          { userId }
+        );
+        if (vaultKey) {
+          setRecoveryOffer({ vaultKey, creating: false });
         } else {
-          router.refresh();
-          onOpenChange?.(false);
+          completeEnrollment();
         }
       } catch (err) {
         const message =
@@ -595,6 +618,7 @@ export function FheEnrollmentDialog({
       enrollNewPassword,
       enrollWallet,
       finishTiming,
+      completeEnrollment,
     ]
   );
 
@@ -612,13 +636,18 @@ export function FheEnrollmentDialog({
   const needsPasswordFallback =
     availableMethods.length === 0 && hasPasskeys && prfSupported === false;
 
-  const title = isRunning
+  let title = isRunning
     ? "Setting up encryption keys..."
     : "Set up encryption keys";
-
-  const description = isRunning
+  let description = isRunning
     ? stageLabel
     : "Before verification, we need to generate your personal encryption keys. This is a one-time setup that can take up to a minute depending on your device.";
+  if (recoveryOffer) {
+    title = "Save a recovery key";
+    description = recoveryOffer.creating
+      ? "This is the only time these words are shown."
+      : "Your encryption keys are set up. A recovery key lets you open them and your verified profile if you lose this sign-in method.";
+  }
 
   const titleIcon = isRunning ? (
     <Loader2 className="h-5 w-5 animate-spin" />
@@ -626,7 +655,35 @@ export function FheEnrollmentDialog({
     <KeyRound className="h-5 w-5" />
   );
 
-  const body = (
+  let recoveryBody: React.ReactNode = null;
+  if (recoveryOffer?.creating) {
+    recoveryBody = (
+      <RecoveryKeySetup
+        onCancel={completeEnrollment}
+        onSaved={() => {
+          toast.success("Recovery key saved");
+          completeEnrollment();
+        }}
+        vaultKey={recoveryOffer.vaultKey}
+      />
+    );
+  } else if (recoveryOffer) {
+    recoveryBody = (
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <Button onClick={completeEnrollment} variant="ghost">
+          Not now
+        </Button>
+        <Button
+          onClick={() => setRecoveryOffer({ ...recoveryOffer, creating: true })}
+        >
+          <FileKey />
+          Create recovery key
+        </Button>
+      </div>
+    );
+  }
+
+  const body = recoveryBody ?? (
     <>
       {error && (
         <Alert variant="destructive">

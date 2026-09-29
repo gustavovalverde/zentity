@@ -2,8 +2,10 @@
  * KEK Derivation Module
  *
  * Derives Key Encryption Keys (KEKs) from credential materials using HKDF.
- * Each credential type (passkey PRF, OPAQUE export key, wallet signature)
- * uses domain-separated HKDF info strings to prevent cross-protocol attacks.
+ * Each credential type (passkey PRF, OPAQUE export key, wallet signature,
+ * recovery key) and the vault key itself use domain-separated HKDF info
+ * strings to prevent cross-protocol attacks. Every KEK is bound to the user
+ * through the HKDF salt.
  */
 
 import { toArrayBuffer } from "@/lib/privacy/primitives/symmetric";
@@ -12,12 +14,8 @@ const HKDF_INFO = {
   PASSKEY_KEK: "zentity:kek:passkey",
   OPAQUE_KEK: "zentity:kek:opaque",
   WALLET_KEK: "zentity:kek:wallet",
-} as const;
-
-export const KEK_SOURCE = {
-  PRF: "prf",
-  OPAQUE: "opaque",
-  WALLET: "wallet",
+  RECOVERY_KEY_KEK: "zentity:kek:recovery-key",
+  VAULT_KEK: "zentity:kek:vault",
 } as const;
 
 /**
@@ -27,38 +25,40 @@ export function generatePrfSalt(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(32));
 }
 
-/**
- * Derive a non-extractable AES-256-GCM key from PRF output using HKDF.
- * The userId is used as HKDF salt to bind the KEK to a specific user.
- */
-export async function deriveKekFromPrf(
-  prfOutput: Uint8Array,
-  userId: string,
-  info: string = HKDF_INFO.PASSKEY_KEK,
-  hkdfSalt?: Uint8Array
-): Promise<CryptoKey> {
-  if (!userId) {
+async function deriveAesKek(params: {
+  ikm: Uint8Array;
+  userId: string;
+  info: string;
+  salt?: Uint8Array | undefined;
+  expected?: { length: number; label: string };
+}): Promise<CryptoKey> {
+  if (!params.userId) {
     throw new Error("userId is required for KEK derivation.");
   }
+  if (params.expected && params.ikm.byteLength !== params.expected.length) {
+    throw new Error(
+      `${params.expected.label} must be ${params.expected.length} bytes, got ${params.ikm.byteLength}`
+    );
+  }
+  const salt = params.salt ?? new TextEncoder().encode(params.userId);
+  if (salt.byteLength === 0) {
+    throw new Error("HKDF salt must not be empty.");
+  }
+
   const masterKey = await crypto.subtle.importKey(
     "raw",
-    toArrayBuffer(prfOutput),
+    toArrayBuffer(params.ikm),
     "HKDF",
     false,
     ["deriveKey"]
   );
-
-  const salt = hkdfSalt ?? new TextEncoder().encode(userId);
-  if (salt.byteLength === 0) {
-    throw new Error("HKDF salt must not be empty.");
-  }
 
   return crypto.subtle.deriveKey(
     {
       name: "HKDF",
       salt: toArrayBuffer(salt),
       hash: "SHA-256",
-      info: new TextEncoder().encode(info),
+      info: new TextEncoder().encode(params.info),
     },
     masterKey,
     { name: "AES-GCM", length: 256 },
@@ -68,93 +68,77 @@ export async function deriveKekFromPrf(
 }
 
 /**
- * Derive a non-extractable AES-256-GCM key from OPAQUE export key using HKDF.
- * The export key is 64 bytes of high-entropy material derived from the
- * OPAQUE protocol, providing equivalent security to passkey PRF output.
- * The userId is used as HKDF salt to bind the KEK to a specific user.
+ * Derive a non-extractable AES-256-GCM key from PRF output.
+ * The passkey's PRF salt is the HKDF salt when provided; the userId otherwise.
  */
-export async function deriveKekFromOpaqueExport(
+export function deriveKekFromPrf(
+  prfOutput: Uint8Array,
+  userId: string,
+  info: string = HKDF_INFO.PASSKEY_KEK,
+  hkdfSalt?: Uint8Array
+): Promise<CryptoKey> {
+  return deriveAesKek({ ikm: prfOutput, userId, info, salt: hkdfSalt });
+}
+
+/**
+ * Derive a KEK from the 64-byte OPAQUE export key.
+ */
+export function deriveKekFromOpaqueExport(
   exportKey: Uint8Array,
   userId: string,
   info: string = HKDF_INFO.OPAQUE_KEK
 ): Promise<CryptoKey> {
-  if (!userId) {
-    throw new Error("userId is required for KEK derivation.");
-  }
-  if (exportKey.byteLength !== 64) {
-    throw new Error(
-      `OPAQUE export key must be 64 bytes, got ${exportKey.byteLength}`
-    );
-  }
-
-  const masterKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(exportKey),
-    "HKDF",
-    false,
-    ["deriveKey"]
-  );
-
-  const salt = new TextEncoder().encode(userId);
-
-  return crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      salt,
-      hash: "SHA-256",
-      info: new TextEncoder().encode(info),
-    },
-    masterKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
+  return deriveAesKek({
+    ikm: exportKey,
+    userId,
+    info,
+    expected: { length: 64, label: "OPAQUE export key" },
+  });
 }
 
 /**
- * Derive a non-extractable AES-256-GCM key from wallet EIP-712 signature using HKDF.
- *
- * The signature provides 65 bytes (520 bits) of high-entropy material from ECDSA.
- * We use the userId as salt to ensure different users derive different KEKs even
- * if they somehow produce the same signature (which shouldn't happen, but defense in depth).
- *
- * Security properties:
- * - Deterministic: Same signature + userId always produces the same KEK
- * - Non-extractable: Key cannot be exported from WebCrypto
- * - Purpose-bound: Uses "zentity:kek:wallet" info to prevent cross-protocol attacks
- * - User-bound: userId in salt prevents cross-user key reuse
+ * Derive a KEK from a deterministic 65-byte EIP-712 wallet signature.
  */
-export async function deriveKekFromWalletSignature(
+export function deriveKekFromWalletSignature(
   signatureBytes: Uint8Array,
   userId: string,
   info: string = HKDF_INFO.WALLET_KEK
 ): Promise<CryptoKey> {
-  if (signatureBytes.byteLength !== 65) {
-    throw new Error(
-      `Wallet signature must be 65 bytes, got ${signatureBytes.byteLength}`
-    );
-  }
+  return deriveAesKek({
+    ikm: signatureBytes,
+    userId,
+    info,
+    expected: { length: 65, label: "Wallet signature" },
+  });
+}
 
-  const masterKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(signatureBytes),
-    "HKDF",
-    false,
-    ["deriveKey"]
-  );
+/**
+ * Derive a KEK from the 32-byte recovery key entropy.
+ */
+export function deriveKekFromRecoveryKey(
+  recoveryKey: Uint8Array,
+  userId: string
+): Promise<CryptoKey> {
+  return deriveAesKek({
+    ikm: recoveryKey,
+    userId,
+    info: HKDF_INFO.RECOVERY_KEY_KEK,
+    expected: { length: 32, label: "Recovery key" },
+  });
+}
 
-  const salt = new TextEncoder().encode(userId);
-
-  return crypto.subtle.deriveKey(
-    {
-      name: "HKDF",
-      salt,
-      hash: "SHA-256",
-      info: new TextEncoder().encode(info),
-    },
-    masterKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["encrypt", "decrypt"]
-  );
+/**
+ * Derive the KEK that wraps every non-root vault secret from the vault key
+ * (the DEK of the root secret).
+ */
+export function deriveKekFromVaultKey(
+  vaultKey: Uint8Array,
+  userId: string
+): Promise<CryptoKey> {
+  return deriveAesKek({
+    ikm: vaultKey,
+    userId,
+    info: HKDF_INFO.VAULT_KEK,
+    expected: { length: 32, label: "Vault key" },
+  });
 }

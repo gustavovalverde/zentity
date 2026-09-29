@@ -210,7 +210,7 @@ The controls in this section prevent two categories of attack: duplicate identit
 
 **Threat:** A signed-in user registers an arbitrary `base_commitment` and later uses it to satisfy identity-binding proof checks without proving that the commitment came from the credential that protects their FHE key material.
 
-**Control:** Identity-binding commitments are stored in `credential_binding_commitments`, not on `secret_wrappers`. The only admission path is `credentialBindings.register`, which requires a fresh authentication context for the same credential kind and an existing FHE key wrapper for the same user, secret, credential ID, and KEK source. The ZK verifier reads active credential binding commitments from this table when validating the circuit's public `base_commitment`.
+**Control:** Identity-binding commitments are stored in `credential_binding_commitments`, not on `secret_wrappers`. The only admission path is `credentialBindings.register`, which requires a fresh authentication context for the same credential kind (or, for a passkey, its registration by the same user within the freshness window) and an existing FHE key wrapper for the same user, secret, credential ID, and KEK source. Removing a credential from the vault, or resetting the password, revokes its commitment. The ZK verifier reads active credential binding commitments from this table when validating the circuit's public `base_commitment`.
 
 Secret wrappers remain key-custody records only. They should not grow proof-admission fields.
 

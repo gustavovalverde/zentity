@@ -1,4 +1,4 @@
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, LockKeyhole } from "lucide-react";
 import Link from "next/link";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -60,7 +60,17 @@ export default async function ResetPasswordPage({
         <CardTitle className="text-2xl">Reset Password</CardTitle>
         <CardDescription>Enter your new password below</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
+        <Alert>
+          <LockKeyhole />
+          <AlertDescription>
+            A new password restores sign-in. It can&apos;t open your encryption
+            keys or verified profile on its own. After you sign in, open them
+            with a passkey, your wallet, or your recovery key to connect the new
+            password. Without one of those, you&apos;ll need to start over with
+            new keys and verify your identity again.
+          </AlertDescription>
+        </Alert>
         <ResetPasswordForm token={token} />
         <div className="mt-6 text-center text-muted-foreground text-sm">
           Remember your password?{" "}

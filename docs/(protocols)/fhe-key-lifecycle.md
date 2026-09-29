@@ -108,7 +108,7 @@ This constraint is why OPAQUE users see re-authentication requests when their se
 
 Wallet-derived KEKs are operationally fragile compared to passkeys and passwords. ECDSA permits multiple valid signatures for the same message, and sign-up includes a best-effort stability check (sign twice, compare). If a wallet later emits different signature bytes for the same payload, the derived KEK changes and wallet-only wrappers become unrecoverable.
 
-For this reason, wallet-auth users should set up at least one independent recovery path immediately: add a backup passkey.
+For this reason, wallet-auth users should set up at least one independent recovery path immediately: add a backup passkey or password, or save a recovery key.
 
 ---
 
@@ -169,7 +169,9 @@ The server never accepts client-encrypted values as FHE truth. FHE inputs are de
 
 ### Multi-Credential Support
 
-Users can have multiple credentials wrapping the same DEK: primary passkey plus backup passkey, or passkey plus OPAQUE password. Each credential has its own wrapper entry; the DEK itself is shared.
+The FHE key secret is the vault root, and its DEK is the vault key. Every unlocking credential (passkeys, OPAQUE password, wallet, and an optional recovery key) has its own wrapper of the vault key. Every other vault secret, such as the sealed profile, is wrapped once under a KEK derived from the vault key, so a credential added later opens secrets stored before it and vice versa.
+
+The recovery key is 256 bits of browser-generated entropy shown once as 24 BIP-39 words. Its KEK is HKDF-SHA256 with its own info string; the server stores only its wrapper.
 
 ## Related Documentation
 

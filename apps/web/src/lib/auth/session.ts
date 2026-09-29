@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth/auth-config";
 import { db } from "@/lib/db/connection";
 import { getPrimaryWalletAddress } from "@/lib/db/queries/auth";
 import { encryptedSecrets, secretWrappers } from "@/lib/db/schema/privacy";
+import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 
 type HeadersObject = Awaited<ReturnType<typeof headers>>;
 
@@ -36,7 +37,6 @@ interface DetectedAuth {
   wallet: { address: string; chainId: number } | null;
 }
 
-const OPAQUE_CREDENTIAL_ID = "opaque";
 const WALLET_CREDENTIAL_PREFIX = "wallet";
 
 // Figures out which credential the user enrolled FHE keys under — passkey
