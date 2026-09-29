@@ -17,6 +17,7 @@ import {
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import {
   computePairwiseSub,
   resolveSubForClient,
@@ -65,7 +66,7 @@ async function ensureSigningKey() {
     .values({
       id: testKid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: "EdDSA",
       crv: "Ed25519",
     })
@@ -146,7 +147,7 @@ function mintAccessToken(
     payload.authorization_details = opts.authorizationDetails;
   }
   return new SignJWT(payload)
-    .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
+    .setProtectedHeader({ alg: "EdDSA", typ: "at+jwt", kid: testKid })
     .sign(testKeyPair.privateKey);
 }
 
@@ -1016,6 +1017,46 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(400);
       expect(json.error).toBe("invalid_grant");
+    });
+
+    it("rejects subject tokens whose type does not match subject_token_type", async () => {
+      const idTokenTyped = await new SignJWT({
+        iss: authIssuer,
+        sub: userId,
+        aud: TEST_CLIENT_ID,
+        scope: "openid",
+        jti: crypto.randomUUID(),
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })
+        .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
+        .sign(testKeyPair.privateKey);
+      const logoutTyped = await new SignJWT({
+        iss: authIssuer,
+        sub: userId,
+        aud: TEST_CLIENT_ID,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 120,
+        events: { "http://schemas.openid.net/event/backchannel-logout": {} },
+      })
+        .setProtectedHeader({ alg: "EdDSA", typ: "logout+jwt", kid: testKid })
+        .sign(testKeyPair.privateKey);
+
+      const asAccessToken = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: idTokenTyped,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+      const asIdToken = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: logoutTyped,
+        subject_token_type: ID_TOKEN_TYPE,
+      });
+
+      expect(asAccessToken.json.error).toBe("invalid_grant");
+      expect(asIdToken.json.error).toBe("invalid_grant");
     });
 
     it("rejects unsupported subject_token_type", async () => {

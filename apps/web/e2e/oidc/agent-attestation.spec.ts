@@ -44,7 +44,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       data: {
         client_id: clientId,
-        login_hint: session.email,
+        login_hint: session.userId,
         scope: "openid",
         binding_message: "Agent claims E2E test",
         agent_claims: agentClaims,
@@ -95,7 +95,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       data: {
         client_id: clientId,
-        login_hint: session.email,
+        login_hint: session.userId,
         scope: "openid",
         binding_message: "No agent claims test",
         resource: MCP_RESOURCE,

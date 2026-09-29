@@ -114,6 +114,10 @@ describe("/api/auth/validity", () => {
     const response = await POST(makePostRequest());
 
     expect(response.status).toBe(202);
+    expect(routeMocks.verifyToken).toHaveBeenCalledWith(
+      "validity-token",
+      expect.objectContaining({ typ: "secevent+jwt" })
+    );
     expect(mocks.insert).toHaveBeenCalledOnce();
     expect(mocks.insertValues).toHaveBeenCalledWith(
       expect.objectContaining({

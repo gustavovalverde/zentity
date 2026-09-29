@@ -147,3 +147,15 @@ export async function rejectPendingCibaRequest(
 
   return result.rowsAffected > 0;
 }
+
+export async function rejectPendingCibaRequestsForUser(
+  userId: string
+): Promise<void> {
+  await db
+    .update(cibaRequests)
+    .set({ status: "rejected" })
+    .where(
+      and(eq(cibaRequests.userId, userId), eq(cibaRequests.status, "pending"))
+    )
+    .run();
+}

@@ -139,4 +139,72 @@ describe("PasskeyManagementSection integration", () => {
     });
     expect(vaultMocks.addVaultCredential).not.toHaveBeenCalled();
   });
+
+  it("verifies the user again with a passkey when the session is not fresh", async () => {
+    passkeyMocks.listUserPasskeys.mockResolvedValue({
+      data: [{ id: "pk-1", credentialID: "existing", name: "Laptop" }],
+    });
+    promptMocks.requestVaultKey.mockResolvedValue({
+      status: "unlocked",
+      vaultKey,
+    });
+    passkeyMocks.registerPasskeyWithPrf.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "SESSION_NOT_FRESH", status: 403 },
+      message: "Session is not fresh",
+    });
+    passkeyMocks.signInWithPasskey.mockResolvedValue({ ok: true });
+
+    render(<PasskeyManagementSection access={null} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: ADD_PASSKEY_LABEL })
+    );
+
+    await waitFor(() => {
+      expect(vaultMocks.addVaultCredential).toHaveBeenCalledWith(
+        vaultKey,
+        expect.objectContaining({ credentialId: "cred-1" })
+      );
+    });
+    expect(passkeyMocks.signInWithPasskey).toHaveBeenCalledOnce();
+    expect(passkeyMocks.registerPasskeyWithPrf).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for the password when a stale session has no passkey to step up with", async () => {
+    promptMocks.requestVaultKey.mockResolvedValue({
+      status: "unlocked",
+      vaultKey,
+    });
+    passkeyMocks.registerPasskeyWithPrf.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "SESSION_NOT_FRESH", status: 403 },
+      message: "Session is not fresh",
+    });
+    authClientMocks.getSession.mockResolvedValue({
+      data: { user: { email: "user@example.com" } },
+    });
+    authClientMocks.signIn.opaque.mockResolvedValue({
+      data: { user: { id: "user-1" }, exportKey: new Uint8Array(32).fill(2) },
+    });
+
+    render(<PasskeyManagementSection access={null} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: ADD_PASSKEY_LABEL })
+    );
+    fireEvent.change(await screen.findByPlaceholderText(PASSWORD_PLACEHOLDER), {
+      target: { value: "hunter2" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: VERIFY_ADD_PASSKEY_LABEL })
+    );
+
+    await waitFor(() => {
+      expect(vaultMocks.addVaultCredential).toHaveBeenCalledWith(
+        vaultKey,
+        expect.objectContaining({ credentialId: "cred-1" })
+      );
+    });
+  });
 });

@@ -1,9 +1,22 @@
+import type { AddressInfo } from "node:net";
+
 import crypto from "node:crypto";
+import { once } from "node:events";
+import { createServer } from "node:http";
 
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 
 import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import { attachHumanityCredential } from "@/lib/db/queries/humanity";
@@ -25,6 +38,7 @@ import {
 import {
   jwks as jwksTable,
   oauthClients,
+  oauthConsents,
 } from "@/lib/db/schema/oauth-provider";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
 import {
@@ -38,6 +52,46 @@ import {
   createTestUser,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
+
+const { lookupMock } = vi.hoisted(() => ({ lookupMock: vi.fn() }));
+
+vi.mock("node:dns/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:dns/promises")>();
+  lookupMock.mockImplementation(actual.lookup);
+  return {
+    ...actual,
+    default: { ...actual, lookup: lookupMock },
+    lookup: lookupMock,
+  };
+});
+
+async function startValidityReceiver(): Promise<{
+  close: () => Promise<void>;
+  received: string[];
+  url: string;
+}> {
+  const received: string[] = [];
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk as Buffer);
+    }
+    received.push(Buffer.concat(chunks).toString("utf8"));
+    res.writeHead(202).end();
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const { port } = server.address() as AddressInfo;
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+    received,
+    url: `http://localhost:${port}/api/auth/validity`,
+  };
+}
 
 async function seedSigningKey(): Promise<{
   kid: string;
@@ -57,7 +111,7 @@ async function seedSigningKey(): Promise<{
     .values({
       id: kid,
       publicKey: JSON.stringify(publicJwk),
-      privateKey: JSON.stringify(privateJwk),
+      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
       alg: "EdDSA",
       crv: "Ed25519",
     })
@@ -87,6 +141,13 @@ async function createTestOAuthClient(
       subjectType: args.subjectType ?? "pairwise",
       backchannelLogoutUri: args.backchannelLogoutUri,
     })
+    .run();
+}
+
+async function grantConsent(userId: string, clientId: string) {
+  await db
+    .insert(oauthConsents)
+    .values({ clientId, userId, scopes: JSON.stringify(["openid"]) })
     .run();
 }
 
@@ -225,7 +286,7 @@ describe("identity revocation cascade", () => {
     expect(attestation?.status).toBe("revocation_pending");
   });
 
-  it("processes pending CIBA cancellation and back-channel logout through the delivery worker", async () => {
+  it("cancels pending CIBA requests without sending logout tokens", async () => {
     const fetchSpy = vi.fn<typeof fetch>();
     fetchSpy.mockResolvedValue(new Response(null, { status: 200 }));
     vi.stubGlobal("fetch", fetchSpy);
@@ -237,6 +298,7 @@ describe("identity revocation cascade", () => {
       {},
       { backchannelLogoutUri: "https://rp.example.com/backchannel-logout" }
     );
+    await grantConsent(userId, clientId);
     const { authReqId } = await createTestCibaRequest({
       clientId,
       userId,
@@ -256,21 +318,10 @@ describe("identity revocation cascade", () => {
       .from(identityValidityDeliveries)
       .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
       .all();
-    expect(scheduledRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          target: "ciba_request_cancellation",
-          // The cancellation keys on the stored (hashed) auth_req_id.
-          targetKey: hashCibaAuthReqId(authReqId),
-          status: "pending",
-        }),
-        expect.objectContaining({
-          target: "backchannel_logout",
-          targetKey: clientId,
-          status: "pending",
-        }),
-      ])
-    );
+    expect(scheduledRows.map((row) => row.target)).toEqual([
+      "ciba_request_cancellation",
+    ]);
+    expect(scheduledRows[0]?.targetKey).toBe(hashCibaAuthReqId(authReqId));
 
     await deliverPendingValidityDeliveries({
       eventId: result.eventId as string,
@@ -282,40 +333,23 @@ describe("identity revocation cascade", () => {
       .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
       .get();
     expect(cibaRow?.status).toBe("rejected");
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://rp.example.com/backchannel-logout",
-      expect.objectContaining({ method: "POST" })
-    );
-
-    const deliveredRows = await db
-      .select()
-      .from(identityValidityDeliveries)
-      .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
-      .all();
-    expect(deliveredRows).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          target: "ciba_request_cancellation",
-          status: "delivered",
-        }),
-        expect.objectContaining({
-          target: "backchannel_logout",
-          status: "delivered",
-        }),
-      ])
-    );
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("delivers RP validity notices and exposes the same event through pull recovery", async () => {
-    const fetchSpy = vi.fn<typeof fetch>();
-    fetchSpy.mockResolvedValue(new Response(null, { status: 202 }));
-    vi.stubGlobal("fetch", fetchSpy);
+    const receiver = await startValidityReceiver();
+    onTestFinished(receiver.close);
 
     await seedSigningKey();
     const clientId = "rp-validity-client";
     await createTestOAuthClient(clientId, {
       rp_validity_notice_enabled: true,
-      rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+      rp_validity_notice_uri: receiver.url,
+    });
+    await grantConsent(userId, clientId);
+    await createTestOAuthClient("unauthorized-validity-client", {
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "https://observer.example.com/api/auth/validity",
     });
     await seedVerifiedIdentity(userId);
 
@@ -331,9 +365,13 @@ describe("identity revocation cascade", () => {
       .from(identityValidityDeliveries)
       .where(eq(identityValidityDeliveries.eventId, result.eventId as string))
       .all();
-    const noticeDelivery = scheduledRows.find(
+    const noticeDeliveries = scheduledRows.filter(
       (delivery) => delivery.target === "rp_validity_notice"
     );
+    expect(noticeDeliveries.map((delivery) => delivery.targetKey)).toEqual([
+      clientId,
+    ]);
+    const noticeDelivery = noticeDeliveries[0];
     if (!noticeDelivery) {
       throw new Error(
         "Expected an RP validity notice delivery to be scheduled"
@@ -345,18 +383,9 @@ describe("identity revocation cascade", () => {
       targets: ["rp_validity_notice"],
     });
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "https://rp.example.com/api/auth/validity",
-      expect.objectContaining({
-        method: "POST",
-        headers: {
-          "Content-Type": "application/jwt",
-        },
-      })
-    );
+    expect(receiver.received).toHaveLength(1);
 
-    const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
-    const compactJws = requestInit?.body;
+    const compactJws = receiver.received[0];
     if (typeof compactJws !== "string") {
       throw new Error(
         "Expected RP validity notice delivery to post a compact JWS"
@@ -365,8 +394,11 @@ describe("identity revocation cascade", () => {
 
     expect(compactJws.split(".")).toHaveLength(3);
 
-    const { decodeJwt } = await import("jose");
+    const { decodeJwt, decodeProtectedHeader } = await import("jose");
     const payload = decodeJwt(compactJws);
+
+    expect(decodeProtectedHeader(compactJws).typ).toBe("secevent+jwt");
+    expect(typeof payload.exp).toBe("number");
 
     expect(payload.aud).toBe(clientId);
     expect(payload.jti).toBe(noticeDelivery.id);
@@ -407,6 +439,51 @@ describe("identity revocation cascade", () => {
         }),
       ])
     );
+  });
+
+  it("refuses RP validity notices to a hostname that resolves to loopback", async () => {
+    const actualDns =
+      await vi.importActual<typeof import("node:dns/promises")>(
+        "node:dns/promises"
+      );
+    lookupMock.mockResolvedValue([{ address: "127.0.0.1", family: 4 }]);
+    onTestFinished(() => {
+      lookupMock.mockImplementation(actualDns.lookup);
+    });
+
+    await seedSigningKey();
+    const clientId = "rp-rebinding-client";
+    await createTestOAuthClient(clientId, {
+      rp_validity_notice_enabled: true,
+      rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
+    });
+    await grantConsent(userId, clientId);
+    await seedVerifiedIdentity(userId);
+
+    const result = await revokeIdentity(
+      userId,
+      "admin@zentity.app",
+      "fraud",
+      "admin"
+    );
+
+    await deliverPendingValidityDeliveries({
+      eventId: result.eventId as string,
+      targets: ["rp_validity_notice"],
+    });
+
+    expect(lookupMock).toHaveBeenCalledWith(
+      "rp.example.com",
+      expect.objectContaining({ all: true })
+    );
+
+    const notice = await db
+      .select()
+      .from(identityValidityDeliveries)
+      .where(eq(identityValidityDeliveries.targetKey, clientId))
+      .get();
+    expect(notice?.status).not.toBe("delivered");
+    expect(notice?.lastError).toContain("private or reserved");
   });
 
   it("revoked records filtered from getLatestVerification", async () => {

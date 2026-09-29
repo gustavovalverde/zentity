@@ -190,7 +190,7 @@ The tag is verified with timing-safe comparison on every read. A tampered or sub
 
 **Threat:** An attacker with DB read access extracts JWKS private keys and forges tokens (id_tokens, access tokens, logout tokens).
 
-**Control:** When `KEY_ENCRYPTION_KEY` is set (required in production, min 32 chars), all JWKS private keys are encrypted with AES-256-GCM before storage. The KEK is derived via SHA-256 to normalize any input to 32 bytes. Without the KEK, extracted ciphertext is unusable.
+**Control:** `KEY_ENCRYPTION_KEY` (required, min 32 chars) encrypts every JWKS private key with AES-256-GCM before storage, and a stored key that is not an encrypted envelope is refused, so a plaintext row written to the table is never used for signing. The KEK is derived via SHA-256 to normalize any input to 32 bytes. Without the KEK, extracted ciphertext is unusable.
 
 ### JARM Response Encryption Key
 

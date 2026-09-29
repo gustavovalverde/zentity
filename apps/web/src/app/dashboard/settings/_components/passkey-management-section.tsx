@@ -118,6 +118,7 @@ interface EditState {
 }
 
 const INITIAL_EDIT_STATE: EditState = { id: null, name: "" };
+const SESSION_NOT_FRESH_CODE = "SESSION_NOT_FRESH";
 
 export function PasskeyManagementSection({
   access,
@@ -132,6 +133,7 @@ export function PasskeyManagementSection({
   const [passwordPromptOpen, setPasswordPromptOpen] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [pendingVaultKey, setPendingVaultKey] = useState<VaultKey | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState>(INITIAL_EDIT_STATE);
 
@@ -177,12 +179,30 @@ export function PasskeyManagementSection({
       });
   }, [loadPasskeys]);
 
-  const registerPasskey = async (vaultKey: VaultKey | null) => {
+  const registerPasskey = async (
+    vaultKey: VaultKey | null
+  ): Promise<"registered" | "needs_password"> => {
     const prfSalt = generatePrfSalt();
-    const registration = await registerPasskeyWithPrf({
-      name: `Passkey ${optimisticPasskeys.length + 1}`,
-      prfSalt,
-    });
+    const name = `Passkey ${optimisticPasskeys.length + 1}`;
+    let registration = await registerPasskeyWithPrf({ name, prfSalt });
+
+    if (
+      !registration.ok &&
+      registration.error?.code === SESSION_NOT_FRESH_CODE
+    ) {
+      if (optimisticPasskeys.length === 0) {
+        setPendingVaultKey(vaultKey);
+        setPasswordPromptOpen(true);
+        return "needs_password";
+      }
+      const stepUp = await signInWithPasskey();
+      if (!stepUp.ok) {
+        throw new Error(
+          stepUp.message || "Please verify your identity to add a new passkey."
+        );
+      }
+      registration = await registerPasskeyWithPrf({ name, prfSalt });
+    }
 
     if (!registration.ok) {
       throw new Error(registration.message);
@@ -197,6 +217,7 @@ export function PasskeyManagementSection({
       });
     }
     router.refresh();
+    return "registered";
   };
 
   const handleAddPasskey = async () => {
@@ -230,9 +251,12 @@ export function PasskeyManagementSection({
         }
       }
 
-      await registerPasskey(
+      const outcome = await registerPasskey(
         request.status === "unlocked" ? request.vaultKey : null
       );
+      if (outcome === "needs_password") {
+        return;
+      }
 
       toast.success("Passkey added successfully!");
       await loadPasskeys();
@@ -284,8 +308,9 @@ export function PasskeyManagementSection({
         throw new Error("Password verification failed. Please try again.");
       }
 
-      await registerPasskey(null);
+      await registerPasskey(pendingVaultKey);
 
+      setPendingVaultKey(null);
       setPasswordPromptOpen(false);
       setPasswordValue("");
       toast.success("Passkey added successfully!");
@@ -559,6 +584,7 @@ export function PasskeyManagementSection({
             if (!open) {
               setPasswordValue("");
               setPasswordError(null);
+              setPendingVaultKey(null);
             }
           }}
           open={passwordPromptOpen}

@@ -87,6 +87,9 @@ export const validityNotice = sqliteTable(
 
 export const cibaPings = sqliteTable("ciba_ping", {
   authReqId: text("auth_req_id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id),
   notificationToken: text("notification_token").notNull(),
   received: integer("received", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "timestamp_ms" })

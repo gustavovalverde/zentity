@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
+import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import { requireRpAdmin } from "@/lib/auth/rp-admin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
@@ -9,7 +10,11 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 export const runtime = "nodejs";
 
 export async function GET(request: Request): Promise<Response> {
-  const admin = await requireRpAdmin(request.headers);
+  const sessionResult = await requireBrowserSession(request.headers);
+  if (!sessionResult.ok) {
+    return sessionResult.response;
+  }
+  const admin = await requireRpAdmin(sessionResult.session);
   if (!admin.ok) {
     return admin.response;
   }

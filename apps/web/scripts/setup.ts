@@ -75,6 +75,7 @@ const dedupHmacSecret = randomHex(32);
 const humanityHmacSecret = randomHex(32);
 const claimSigningSecret = randomHex(32);
 const ciphertextHmacSecret = randomHex(32);
+const keyEncryptionKey = randomHex(32);
 
 console.log("  BETTER_AUTH_SECRET       done");
 console.log("  INTERNAL_SERVICE_TOKEN   done");
@@ -85,6 +86,7 @@ console.log("  HUMANITY_HMAC_SECRET     done");
 console.log("  PAIRWISE_SECRET          done");
 console.log("  CLAIM_SIGNING_SECRET     done");
 console.log("  CIPHERTEXT_HMAC_SECRET   done");
+console.log("  KEY_ENCRYPTION_KEY       done");
 
 console.log("  OPAQUE_SERVER_SETUP      generating...");
 const { serverSetup, publicKey } = generateOpaqueSetup();
@@ -116,6 +118,7 @@ const replacements: Record<string, string> = {
   PAIRWISE_SECRET: pairwiseSecret,
   CLAIM_SIGNING_SECRET: claimSigningSecret,
   CIPHERTEXT_HMAC_SECRET: ciphertextHmacSecret,
+  KEY_ENCRYPTION_KEY: keyEncryptionKey,
   VAPID_PUBLIC_KEY: vapidKeys.publicKey,
   NEXT_PUBLIC_VAPID_PUBLIC_KEY: vapidKeys.publicKey,
   VAPID_PRIVATE_KEY: vapidKeys.privateKey,

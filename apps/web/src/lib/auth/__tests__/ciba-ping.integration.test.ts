@@ -93,7 +93,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
       });
 
@@ -132,7 +132,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
       });
 
@@ -161,7 +161,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
         client_notification_uri: TEST_NOTIFICATION_ENDPOINT,
       });
@@ -189,7 +189,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
         client_notification_uri: bodyEndpoint,
       });
@@ -267,7 +267,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
         client_notification_uri: TEST_NOTIFICATION_ENDPOINT,
       });
@@ -335,7 +335,7 @@ describe("CIBA ping mode", () => {
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
       });
 
       expect(status).toBe(400);
@@ -416,7 +416,7 @@ describe("CIBA ping mode", () => {
       const { json: bcJson } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
-        login_hint: `user-${userId}@example.com`,
+        login_hint: userId,
         client_notification_token: notificationToken,
         client_notification_uri: notificationEndpoint,
       });

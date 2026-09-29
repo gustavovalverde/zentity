@@ -8,6 +8,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 
 const nextConfig: NextConfig = {
   agentRules: false,
+  poweredByHeader: false,
   // Turbopack configuration for Buffer polyfill
   // ISSUE: Next.js ships buffer@5.6.0 at "next/dist/compiled/buffer" which LACKS BigInt methods
   // The free variable `Buffer` maps to "node:buffer" which aliases to the compiled buffer
@@ -107,68 +108,6 @@ const nextConfig: NextConfig = {
       },
       { key: "Cross-Origin-Embedder-Policy", value: "credentialless" },
     ];
-
-    // External domains required by @zkpassport/sdk and bb.js/Noir CRS downloads.
-    const zkPassportDomains = [
-      "https://cdn.zkpassport.id",
-      "https://certificates.zkpassport.id",
-      "https://circuits.zkpassport.id",
-      "https://circuits2.zkpassport.id",
-      "https://ipfs.zkpassport.id",
-      "https://crs.aztec.network",
-      "https://crs.aztec-cdn.foundation",
-      "https://crs.aztec-labs.com",
-      "https://*.g.alchemy.com",
-      "https://ethereum-sepolia-rpc.publicnode.com",
-    ].join(" ");
-
-    // Web3 domains. Relayer traffic is proxied through /api/confidential/relayer,
-    // so the relayer host itself does NOT need a connect-src entry. The SDK still
-    // hits cdn.zama.org (the artifact CDN) and S3 (origin behind keyurl manifests)
-    // directly from the Web Worker, plus WalletConnect / Reown / Coinbase.
-    const web3Domains = [
-      "https://cdn.zama.org",
-      "https://*.s3.eu-west-1.amazonaws.com",
-      "https://rpc.walletconnect.org",
-      "https://pulse.walletconnect.org",
-      "https://api.web3modal.org",
-      "https://secure.walletconnect.org",
-      "https://*.walletconnect.com",
-      "https://cca-lite.coinbase.com",
-    ].join(" ");
-
-    // World ID domains: IDKit 4.x uses the Wallet Bridge from the browser.
-    // Proof verification still happens server-side through WORLD_ID_VERIFY_URL.
-    const worldIdDomains = ["https://bridge.worldcoin.org"].join(" ");
-
-    // CSP: strict in production; permissive in dev for HMR/fast-refresh
-    const cspValue =
-      process.env.NODE_ENV === "production"
-        ? [
-            "default-src 'self'",
-            // 'unsafe-inline' required for Next.js hydration scripts; 'wasm-unsafe-eval' for ZK/FHE WASM
-            "script-src 'self' blob: 'unsafe-inline' 'wasm-unsafe-eval'",
-            "style-src 'self' 'unsafe-inline'",
-            "font-src 'self' data: https://fonts.reown.com",
-            // wss: for the WalletConnect/Reown relay (cross-origin WebSocket); data: for
-            // inline WASM (bb.js in ZKPassport SDK); ZKPassport CDN + RPC
-            `connect-src 'self' wss: data: ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
-            // data:/blob: for document scans and selfie processing; react-circle-flags CDN for country flags
-            "img-src 'self' data: blob: https://react-circle-flags.pages.dev",
-            // blob: for WASM thread workers
-            "worker-src 'self' blob:",
-            "frame-ancestors 'none'",
-            "object-src 'none'",
-            "base-uri 'none'",
-          ].join("; ")
-        : [
-            "script-src 'self' blob: 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline'",
-            // http://127.0.0.1:8545 for local Hardhat RPC (127.0.0.1 !== localhost in CSP)
-            `connect-src 'self' ws: wss: data: http://127.0.0.1:8545 ${zkPassportDomains} ${web3Domains} ${worldIdDomains}`,
-            "worker-src 'self' blob:",
-          ].join("; ");
-
-    securityHeaders.push({ key: "Content-Security-Policy", value: cspValue });
 
     if (process.env.NODE_ENV === "production") {
       securityHeaders.push({

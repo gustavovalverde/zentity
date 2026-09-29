@@ -5,7 +5,6 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
   loadOpaqueAccessToken,
   validateOpaqueAccessTokenDpop,
@@ -168,21 +167,19 @@ export async function requireClientCredentials(
     return authError(401, validation.error ?? "Invalid access token");
   }
 
-  if (token.startsWith("eyJ")) {
-    const payload = await verifyAuthIssuedJwt(token);
-    const cnf = payload?.cnf as { jkt?: string } | undefined;
-    if (cnf?.jkt) {
-      if (match?.[1]?.toLowerCase() !== "dpop") {
-        return authError(401, "DPoP proof required");
-      }
-      try {
-        await dpopValidator({
-          request,
-          tokenPayload: payload as Record<string, unknown>,
-        });
-      } catch {
-        return authError(401, "Invalid DPoP proof");
-      }
+  const payload = validation.payload;
+  const cnf = payload?.cnf as { jkt?: string } | undefined;
+  if (cnf?.jkt) {
+    if (match?.[1]?.toLowerCase() !== "dpop") {
+      return authError(401, "DPoP proof required");
+    }
+    try {
+      await dpopValidator({
+        request,
+        tokenPayload: payload as Record<string, unknown>,
+      });
+    } catch {
+      return authError(401, "Invalid DPoP proof");
     }
   }
 

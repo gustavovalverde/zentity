@@ -21,10 +21,10 @@ vi.mock("@/lib/db/connection", () => ({
 }));
 
 vi.mock("@/lib/auth/jwt", () => ({
-  verifyAuthIssuedJwt: vi.fn(),
+  verifyIssuedAccessToken: vi.fn(),
 }));
 
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
 
 import {
   extractAccessToken,
@@ -86,7 +86,7 @@ describe("oauth token validation", () => {
     });
 
     it("returns invalid for invalid token", async () => {
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce(null);
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce(null);
 
       const result = await validateOAuthAccessToken(JWT_TOKEN);
       expect(result.valid).toBe(false);
@@ -94,7 +94,7 @@ describe("oauth token validation", () => {
     });
 
     it("returns invalid for user token (not client credentials)", async () => {
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         sub: "user-123",
         azp: "test-client",
@@ -107,7 +107,7 @@ describe("oauth token validation", () => {
     });
 
     it("returns invalid when client_id is missing", async () => {
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         scope: "agent:introspect",
       });
@@ -119,7 +119,7 @@ describe("oauth token validation", () => {
 
     it("returns invalid when client is disabled", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "test-client",
         scope: "agent:introspect",
@@ -142,7 +142,7 @@ describe("oauth token validation", () => {
 
     it("returns invalid when client not found", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "missing-client",
         scope: "agent:introspect",
@@ -165,7 +165,7 @@ describe("oauth token validation", () => {
 
     it("returns valid with client info for valid client credentials token", async () => {
       const { db } = await import("@/lib/db/connection");
-      vi.mocked(verifyAuthIssuedJwt).mockResolvedValueOnce({
+      vi.mocked(verifyIssuedAccessToken).mockResolvedValueOnce({
         aud: RP_API_AUDIENCE,
         azp: "test-client",
         scope: "agent:introspect agent:session.revoke",
@@ -182,6 +182,10 @@ describe("oauth token validation", () => {
       } as unknown as ReturnType<typeof db.select>);
 
       const result = await validateOAuthAccessToken(JWT_TOKEN);
+      expect(verifyIssuedAccessToken).toHaveBeenCalledWith(
+        JWT_TOKEN,
+        RP_API_AUDIENCE
+      );
       expect(result.valid).toBe(true);
       expect(result.clientId).toBe("test-client");
       expect(result.scopes).toEqual([

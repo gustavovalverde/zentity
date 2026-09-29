@@ -364,7 +364,6 @@ export const IDENTITY_SCOPES: readonly IdentityScope[] = IDENTITY_ENTRIES.map(
 export const OAUTH_SCOPES = ALL_ENTRIES.map(
   (e) => e.scope
 ) as readonly string[];
-export const OAUTH_SCOPE_SET = new Set<string>(OAUTH_SCOPES);
 export const HIDDEN_SCOPES = new Set([
   "openid",
   "profile",

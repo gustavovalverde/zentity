@@ -407,7 +407,7 @@ sequenceDiagram
 On-chain attestation revocation is one delivery target of the canonical validity pipeline, not a separate business flow:
 
 1. A revoke transition updates the current account snapshot and appends one `identity_validity_events` row.
-2. The same transition schedules `blockchain_attestation_revocation` in `identity_validity_deliveries` alongside other downstream targets such as credential-status updates, CIBA cancellation, back-channel logout, and RP validity notice.
+2. The same transition schedules `blockchain_attestation_revocation` in `identity_validity_deliveries` alongside other downstream targets such as credential-status updates, CIBA cancellation, and RP validity notice.
 3. The delivery worker attempts the on-chain revoke outside the snapshot transaction.
 4. If the chain call fails, the delivery stays retryable and the attestation moves to `revocation_pending`.
 5. The same delivery framework handles retries and operator visibility; `admin.retryOnChainRevocation` is an operational convenience, not a second revocation architecture.

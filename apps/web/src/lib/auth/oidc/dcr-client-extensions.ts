@@ -6,6 +6,7 @@ import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 interface DcrClientExtensions {
+  backchannelClientNotificationEndpoint?: string;
   backchannelTokenDeliveryMode?: string;
   enableEndSession?: boolean;
   protectedResource?: string;
@@ -51,6 +52,9 @@ export function readDcrClientExtensions(
   const protectedResource = readTrimmedString(
     body[PROTECTED_RESOURCE_METADATA_FIELD]
   );
+  const backchannelClientNotificationEndpoint = readTrimmedString(
+    body.backchannel_client_notification_endpoint
+  );
   const backchannelTokenDeliveryModeRaw = readTrimmedString(
     body.backchannel_token_delivery_mode
   );
@@ -66,6 +70,10 @@ export function readDcrClientExtensions(
   }
   if (backchannelTokenDeliveryMode) {
     extensions.backchannelTokenDeliveryMode = backchannelTokenDeliveryMode;
+  }
+  if (backchannelClientNotificationEndpoint) {
+    extensions.backchannelClientNotificationEndpoint =
+      backchannelClientNotificationEndpoint;
   }
   if (rpValidityNoticeUri) {
     extensions.rpValidityNoticeUri = rpValidityNoticeUri;
@@ -107,6 +115,10 @@ export async function persistDcrClientExtensions(
   if (extensions.backchannelTokenDeliveryMode) {
     metadata.backchannel_token_delivery_mode =
       extensions.backchannelTokenDeliveryMode;
+  }
+  if (extensions.backchannelClientNotificationEndpoint) {
+    metadata.backchannel_client_notification_endpoint =
+      extensions.backchannelClientNotificationEndpoint;
   }
 
   await db

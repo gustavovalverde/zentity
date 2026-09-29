@@ -64,7 +64,6 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
-import { revokePendingCibaOnLogout } from "@/lib/auth/oidc/backchannel-logout";
 import {
   hashCibaAuthReqId,
   rawAuthReqIdFromApprovalUrl,
@@ -118,7 +117,11 @@ import {
   loadX5cChain,
   validateX509Chain,
 } from "@/lib/auth/oidc/haip/x509-validation";
-import { getJwtSigningKeys, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  createJwtSigningKey,
+  getJwtSigningKeys,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   resolveSubForClientId,
@@ -138,11 +141,18 @@ import {
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
+import {
+  beforeRevokeJwtAccessToken,
+  beforeUserInfoRejectRevokedToken,
+  revokedAccessTokenJti,
+} from "@/lib/auth/oidc/token-revocation";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
+import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
+import { rejectPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
@@ -179,8 +189,9 @@ import {
 } from "@/lib/db/schema/organization";
 import { sendCibaNotification } from "@/lib/email/ciba";
 import { clientIpAddressOptions } from "@/lib/http/rate-limit";
-import { validateSafeUrl } from "@/lib/http/url-safety";
+import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
+import { logError } from "@/lib/logging/error-logger";
 import { logger as rootLogger } from "@/lib/logging/logger";
 import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
@@ -478,6 +489,31 @@ function isValidHttpsUrl(value: string): boolean {
   }
 }
 
+const OUTBOUND_URL_FIELDS = [
+  "rp_validity_notice_uri",
+  "backchannel_client_notification_endpoint",
+] as const;
+
+function assertOutboundUrl(
+  field: string,
+  value: unknown,
+  error: "invalid_client_metadata" | "invalid_request"
+): void {
+  if (value === undefined) {
+    return;
+  }
+  const problem =
+    typeof value === "string"
+      ? validateOutboundUrl(value.trim())
+      : "must be a string";
+  if (problem) {
+    throw new APIError("BAD_REQUEST", {
+      error,
+      error_description: `${field} ${problem}`,
+    });
+  }
+}
+
 async function validateDcrRegistration(
   body: Record<string, unknown> | undefined
 ): Promise<void> {
@@ -516,14 +552,8 @@ async function validateDcrRegistration(
     });
   }
 
-  let rpValidityNoticeUri: string | undefined;
-  if (typeof body.rp_validity_notice_uri === "string") {
-    rpValidityNoticeUri = body.rp_validity_notice_uri.trim();
-  }
-  if (rpValidityNoticeUri && !isDev && !isValidHttpsUrl(rpValidityNoticeUri)) {
-    throw new APIError("BAD_REQUEST", {
-      error_description: "rp_validity_notice_uri must be an HTTPS URL",
-    });
+  for (const field of OUTBOUND_URL_FIELDS) {
+    assertOutboundUrl(field, body[field], "invalid_client_metadata");
   }
 
   const protectedResource =
@@ -588,11 +618,10 @@ async function validateDcrRegistration(
       });
     }
 
-    // SSRF protection: block private IPs, enforce HTTPS in prod
-    const ssrfError = validateSafeUrl(iss, !isDev);
-    if (ssrfError) {
+    const issuerProblem = validateOutboundUrl(iss);
+    if (issuerProblem) {
       throw new APIError("BAD_REQUEST", {
-        error_description: `software_statement issuer URL rejected: ${ssrfError}`,
+        error_description: `software_statement issuer ${issuerProblem}`,
       });
     }
 
@@ -613,6 +642,24 @@ async function validateDcrRegistration(
 // ── Before-hook handlers ──────────────────────────────────
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
+function requestClientId(ctx: {
+  body?: Record<string, unknown>;
+  headers?: Headers;
+}): string | null {
+  if (typeof ctx.body?.client_id === "string") {
+    return ctx.body.client_id;
+  }
+  const authorization = ctx.headers?.get("authorization");
+  if (!authorization?.startsWith("Basic ")) {
+    return null;
+  }
+  const decoded = Buffer.from(authorization.slice(6), "base64").toString(
+    "utf8"
+  );
+  const separator = decoded.indexOf(":");
+  return separator > 0 ? decodeURIComponent(decoded.slice(0, separator)) : null;
+}
 
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
@@ -742,8 +789,14 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   const introspection = await readReturnedResponseBody(
     (ctx.context as { returned?: unknown }).returned
   );
+  if (!introspection?.active) {
+    return;
+  }
+  if (await revokedAccessTokenJti(token)) {
+    return ctx.json({ active: false });
+  }
   const { sub } = decodeJwt(token);
-  if (!introspection?.active || typeof sub !== "string") {
+  if (typeof sub !== "string") {
     return;
   }
   return ctx.json({ ...introspection, sub });
@@ -1568,12 +1621,6 @@ export const auth = betterAuth({
   baseURL: authIssuer,
   trustedOrigins: getTrustedOrigins(),
   advanced: {
-    // Allow service worker notification-click fetches (origin: null) for inline
-    // approve/deny. Session cookie validation still runs via CIBA sessionMiddleware.
-    disableOriginCheck: [
-      "/ciba/authorize",
-      "/ciba/reject",
-    ] as unknown as boolean,
     ipAddress: clientIpAddressOptions,
   },
   rateLimit:
@@ -1702,7 +1749,13 @@ export const auth = betterAuth({
       },
       delete: {
         after: async (session) => {
-          await revokePendingCibaOnLogout(session.userId);
+          await rejectPendingCibaRequestsForUser(session.userId).catch(
+            (error: unknown) =>
+              logError(error, {
+                userId: session.userId,
+                operation: "ciba-logout-rejection",
+              })
+          );
         },
       },
     },
@@ -1732,6 +1785,12 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === "/oauth2/revoke") {
+        return beforeRevokeJwtAccessToken(ctx);
+      }
+      if (ctx.path === "/oauth2/userinfo") {
+        return beforeUserInfoRejectRevokedToken(ctx);
+      }
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
@@ -1743,6 +1802,11 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
+          assertOutboundUrl(
+            "client_notification_uri",
+            ctx.body.client_notification_uri,
+            "invalid_request"
+          );
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body);
         }
@@ -1842,9 +1906,6 @@ export const auth = betterAuth({
     }),
     passkey({
       origin: getTrustedOrigins(),
-      registration: {
-        requireSession: false,
-      },
     }),
     organization({
       creatorRole: "owner",
@@ -1858,14 +1919,14 @@ export const auth = betterAuth({
         // Keep framework defaults aligned with OIDC's RS256 id_token default.
         // Access tokens still use EdDSA via the custom signJwt dispatcher below.
         keyPairConfig: { alg: "RS256" },
-        // Better Auth's OIDC4VCI signer reads JWKS rows directly from the
-        // adapter. In this app those rows are stored as plain JWK JSON, so the
-        // issuer must not attempt Better Auth envelope decryption here.
+        // The adapter encrypts rows with KEY_ENCRYPTION_KEY and hands Better
+        // Auth plain JWK JSON, so Better Auth must not decrypt them again.
         disablePrivateKeyEncryption: true,
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       },
       adapter: {
         getJwks: getJwtSigningKeys,
+        createJwk: createJwtSigningKey,
       },
       jwt: {
         issuer: authIssuer,
@@ -1925,6 +1986,15 @@ export const auth = betterAuth({
         typeof session?.activeOrganizationId === "string"
           ? session.activeOrganizationId
           : undefined,
+      clientPrivileges: ({ action, session, user }) =>
+        canManageOAuthClients({
+          action,
+          organizationId:
+            typeof session?.activeOrganizationId === "string"
+              ? session.activeOrganizationId
+              : null,
+          userId: user?.id,
+        }),
       loginPage: "/sign-in",
       consentPage: "/oauth/consent",
       postLogin: {
@@ -2146,21 +2216,14 @@ export const auth = betterAuth({
       // Agent-Assertion, not a client secret. The plugin defaults to
       // confidential-only, which would reject every agent at bc-authorize.
       requireConfidentialClient: false,
+      // A client names the user only by the subject identifier it received
+      // from Zentity, so an unknown hint reveals nothing the client did not
+      // already hold and no client can prompt arbitrary accounts.
       async resolveUser(loginHint, ctx) {
-        const byId = await ctx.context.internalAdapter.findUserById(loginHint);
-        if (byId) {
-          return byId;
-        }
-        const byEmail =
-          await ctx.context.internalAdapter.findUserByEmail(loginHint);
-        if (byEmail) {
-          return byEmail.user;
-        }
-        const clientId = ctx.body?.client_id;
-        const userId =
-          typeof clientId === "string"
-            ? await resolveUserIdFromSub(loginHint, clientId)
-            : null;
+        const clientId = requestClientId(ctx);
+        const userId = clientId
+          ? await resolveUserIdFromSub(loginHint, clientId)
+          : null;
         return userId
           ? await ctx.context.internalAdapter.findUserById(userId)
           : null;
@@ -2180,9 +2243,10 @@ export const auth = betterAuth({
         } catch {
           return undefined;
         }
-        return (
-          (meta.backchannel_client_notification_endpoint as string) ?? undefined
-        );
+        const endpoint = meta.backchannel_client_notification_endpoint;
+        return typeof endpoint === "string" && !validateOutboundUrl(endpoint)
+          ? endpoint
+          : undefined;
       },
       buildAccessTokenClaims: async (cibaRequest) => {
         // The consumed row the plugin passes here carries only the plugin's
@@ -2343,7 +2407,7 @@ export const auth = betterAuth({
           agentName,
           requiresBiometric,
         });
-        await Promise.allSettled([
+        Promise.allSettled([
           sendWebPush(data.userId, pushPayload),
           sendCibaNotification({
             userId: data.userId,
@@ -2355,7 +2419,7 @@ export const auth = betterAuth({
             registeredAgent,
             approvalUrl: data.approvalUrl,
           }),
-        ]);
+        ]).catch(() => undefined);
       },
     }),
     tokenExchangePlugin(),

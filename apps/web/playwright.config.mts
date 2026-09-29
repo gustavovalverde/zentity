@@ -50,6 +50,8 @@ const webServerEnv = {
   PLAYWRIGHT_TEST_BASE_URL: baseURL,
   BETTER_AUTH_SECRET:
     process.env.BETTER_AUTH_SECRET ?? "test-secret-32-chars-minimum........",
+  KEY_ENCRYPTION_KEY:
+    process.env.KEY_ENCRYPTION_KEY ?? "e2e-key-encryption-key-minimum-32-chars",
   BETTER_AUTH_URL: baseURL,
   NEXT_PUBLIC_APP_URL: baseURL,
   HOSTNAME: baseUrl.hostname,

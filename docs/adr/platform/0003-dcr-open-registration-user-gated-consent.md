@@ -131,20 +131,19 @@ Client ID Metadata Documents (CIMD) follow the same table, with `native` as the 
 
 ### Organization ownership
 
-Organization assignment is retained as an **operational management tool**, not a security boundary:
+Organization assignment is an **operational management tool**:
 
 * Track which organization owns a client (for support, audit, billing)
 * Disable misbehaving clients via the `disabled` flag on `oauth_client`
 * View client metadata and redirect URIs
 
-Unowned DCR clients appear in the admin dashboard for optional organizational assignment.
+Ownership is fixed at registration. A client registered while an organization is active belongs to that organization; a client registered by a signed-in user without an active organization belongs to that user; an anonymous registration has no owner and cannot be managed through the dashboard. No endpoint transfers an existing client to another owner, because nothing in an open registration proves who controls the client. Only organization owners and admins can read, update, rotate, or delete organization clients.
 
 ### What this replaces
 
 * **Deleted:** RP Admin "Provision Demo Clients" flow and `/api/rp-admin/clients/create` endpoint
 * **Deleted:** Pre-seeded SQL scripts for client creation
-* **Retained:** `/api/rp-admin/clients/approve` for assigning unowned clients to organizations
-* **Retained:** `/api/rp-admin/clients/unowned` and `/api/rp-admin/clients/owned` for visibility
+* **Retained:** `/api/rp-admin/clients/owned` for visibility of the active organization's clients
 
 ## Consequences
 
@@ -158,7 +157,7 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 **Negative:**
 
 * Any application can register a client — mitigated by user consent, vault unlock for PII, and the `disabled` flag for abuse
-* Organization ownership becomes optional rather than enforced — acceptable since it was never a security boundary
+* Anonymous registrations stay unowned; an operator who needs dashboard management registers the client while signed in with the organization active
 * DCR clients without `metadata.optionalScopes` get all-or-nothing consent (no granular checkboxes). This is the intended default — RPs should only request scopes they need. Admins can set `optionalScopes` on specific clients if granular user choice is desired.
 
 **Neutral:**
@@ -183,3 +182,4 @@ Unowned DCR clients appear in the admin dashboard for optional organizational as
 ## Revision History
 
 * 2026-09-27: Added client type and redirect URI rules. Loopback-only registrations without `application_type` register as `native`; `localhost` loopback redirects are accepted in every environment.
+* 2026-09-27: Removed client adoption (`/api/rp-admin/clients/approve`, `/api/rp-admin/clients/unowned`, `/api/internal/oauth/clients/attach`). Ownership is fixed at registration, and only organization owners and admins manage organization clients.

@@ -1,91 +1,164 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isSafePathSegments, validateSafeUrl } from "@/lib/http/url-safety";
+import {
+  isPermittedDestination,
+  isSafePathSegments,
+  validateOutboundUrl,
+} from "@/lib/http/url-safety";
 
-describe("validateSafeUrl private-host detection", () => {
+describe("public address classification", () => {
+  const publicHost = new URL("https://rp.example.com/p");
+
   it.each([
-    "https://127.0.0.1/p",
-    "https://127.0.0.2/p",
-    "https://10.0.0.1/p",
-    "https://10.255.255.255/p",
-    "https://172.16.0.1/p",
-    "https://172.31.255.255/p",
-    "https://192.168.1.1/p",
-    "https://0.0.0.0/p",
-    "https://169.254.1.1/p",
-    "https://169.254.169.254/p", // AWS metadata endpoint
-    "https://[::1]/p",
-    "https://[fe80::1]/p",
-    "https://[fc00::1]/p",
-    "https://[fd12::1]/p",
-  ])("rejects %s as private", (url) => {
-    expect(validateSafeUrl(url, false)).toContain("private");
+    "127.0.0.1",
+    "127.255.255.254",
+    "10.0.0.1",
+    "10.255.255.255",
+    "172.16.0.1",
+    "172.31.255.255",
+    "192.168.1.1",
+    "169.254.169.254",
+    "169.254.1.1",
+    "100.64.0.1",
+    "0.0.0.0",
+    "255.255.255.255",
+    "224.0.0.1",
+    "::1",
+    "::",
+    "fe80::1",
+    "fc00::1",
+    "fd12:3456::1",
+    "::ffff:127.0.0.1",
+    "::ffff:10.0.0.1",
+    "::ffff:169.254.169.254",
+    "::ffff:7f00:1",
+    "64:ff9b::a00:1",
+    "2002:7f00:1::",
+  ])("rejects %s", (address) => {
+    expect(isPermittedDestination(publicHost, address)).toBe(false);
   });
 
   it.each([
-    "https://8.8.8.8/p",
-    "https://1.1.1.1/p",
-    "https://203.0.113.1/p",
-    "https://example.com/p",
-    "https://[2001:db8::1]/p",
-  ])("accepts %s as public", (url) => {
-    expect(validateSafeUrl(url, false)).toBeNull();
+    "8.8.8.8",
+    "1.1.1.1",
+    "93.184.215.14",
+    "172.32.0.1",
+    "2606:4700:4700::1111",
+    "::ffff:8.8.8.8",
+  ])("accepts %s", (address) => {
+    expect(isPermittedDestination(publicHost, address)).toBe(true);
   });
 });
 
-describe("validateSafeUrl", () => {
-  it("accepts HTTPS URLs", () => {
-    expect(validateSafeUrl("https://example.com/path", false)).toBeNull();
-    expect(validateSafeUrl("https://example.com/path", true)).toBeNull();
+describe("validateOutboundUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
-  it("rejects HTTP in production", () => {
-    expect(validateSafeUrl("http://example.com/path", true)).toContain("HTTPS");
+  it("accepts public HTTPS URLs", () => {
+    expect(validateOutboundUrl("https://rp.example.com/validity")).toBeNull();
+    expect(validateOutboundUrl("https://8.8.8.8/validity")).toBeNull();
   });
 
-  it("allows http://localhost in dev", () => {
-    expect(validateSafeUrl("http://localhost:3000", false)).toBeNull();
+  it.each([
+    "https://127.0.0.1/p",
+    "https://10.0.0.1/p",
+    "https://172.16.0.1/p",
+    "https://192.168.0.1/p",
+    "https://169.254.169.254/latest/meta-data",
+    "https://[fc00::1]/p",
+    "https://[fe80::1]/p",
+    "https://[::ffff:127.0.0.1]/p",
+    "https://[::ffff:a00:1]/p",
+    "https://2130706433/p",
+    "https://0x7f000001/p",
+    "https://0177.0.0.1/p",
+    "https://017700000001/p",
+    "https://10.1/p",
+    "https://0/p",
+  ])("rejects private or reserved literal %s", (url) => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(validateOutboundUrl(url)).toContain("private or reserved");
   });
 
-  it("rejects http://localhost in production", () => {
-    expect(validateSafeUrl("http://localhost:3000", true)).toContain("HTTPS");
+  it.each([
+    "https://fhe.railway.internal/p",
+    "https://metadata.google.internal/p",
+    "https://printer.local/p",
+    "https://router.home.arpa/p",
+    "https://app.localhost/p",
+    "https://localhost/p",
+    "https://ocr/p",
+    "https://fhe.railway.internal./p",
+  ])("rejects internal hostname %s", (url) => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(validateOutboundUrl(url)).toContain("internal host");
   });
 
-  it("rejects private IPs", () => {
-    expect(validateSafeUrl("https://169.254.169.254/meta", false)).toContain(
-      "private"
-    );
-    expect(validateSafeUrl("https://127.0.0.1/path", false)).toContain(
-      "private"
-    );
-    expect(validateSafeUrl("https://10.0.0.1/path", false)).toContain(
-      "private"
-    );
-    expect(validateSafeUrl("https://192.168.1.1/path", false)).toContain(
-      "private"
-    );
-  });
-
-  it("rejects invalid URLs", () => {
-    expect(validateSafeUrl("not-a-url", false)).toContain("not valid");
+  it("requires HTTPS for public hosts", () => {
+    expect(validateOutboundUrl("http://rp.example.com/p")).toContain("HTTPS");
   });
 
   it("rejects non-HTTP schemes", () => {
-    expect(validateSafeUrl("ftp://example.com", false)).toContain("HTTPS");
+    expect(validateOutboundUrl("ftp://rp.example.com/p")).toContain("HTTPS");
+    expect(validateOutboundUrl("file:///etc/passwd")).toContain("HTTPS");
   });
 
-  it("respects requireHttps=false", () => {
-    expect(
-      validateSafeUrl("http://example.com", true, { requireHttps: false })
-    ).toBeNull();
+  it("rejects embedded credentials", () => {
+    expect(validateOutboundUrl("https://user:pw@rp.example.com/p")).toContain(
+      "credentials"
+    );
   });
 
-  it("respects allowLocalhostInDev=false", () => {
-    expect(
-      validateSafeUrl("http://localhost:3000", false, {
-        allowLocalhostInDev: false,
-      })
-    ).toContain("private");
+  it("rejects unparseable URLs", () => {
+    expect(validateOutboundUrl("not a url")).toContain("not a valid URL");
+  });
+
+  it.each([
+    "http://localhost:3102/validity",
+    "http://127.0.0.1:3102/validity",
+    "http://[::1]:3102/validity",
+  ])("allows loopback %s outside production", (url) => {
+    vi.stubEnv("NODE_ENV", "development");
+    expect(validateOutboundUrl(url)).toBeNull();
+  });
+
+  it.each([
+    "http://localhost:3102/validity",
+    "https://localhost:3102/validity",
+    "http://127.0.0.1:3102/validity",
+  ])("rejects loopback %s in production", (url) => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(validateOutboundUrl(url)).not.toBeNull();
+  });
+});
+
+describe("isPermittedDestination", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("requires every public hostname to resolve publicly", () => {
+    const url = new URL("https://rp.example.com/p");
+    expect(isPermittedDestination(url, "93.184.215.14")).toBe(true);
+    expect(isPermittedDestination(url, "127.0.0.1")).toBe(false);
+    expect(isPermittedDestination(url, "10.0.0.8")).toBe(false);
+    expect(isPermittedDestination(url, "::ffff:169.254.169.254")).toBe(false);
+  });
+
+  it("confines loopback hostnames to loopback addresses outside production", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const url = new URL("http://localhost:3102/p");
+    expect(isPermittedDestination(url, "127.0.0.1")).toBe(true);
+    expect(isPermittedDestination(url, "::1")).toBe(true);
+    expect(isPermittedDestination(url, "10.0.0.8")).toBe(false);
+    expect(isPermittedDestination(url, "93.184.215.14")).toBe(false);
+  });
+
+  it("refuses loopback hostnames in production", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const url = new URL("http://localhost:3102/p");
+    expect(isPermittedDestination(url, "127.0.0.1")).toBe(false);
   });
 });
 

@@ -193,7 +193,6 @@ export default function AetherPage() {
       setPreparationError(null);
       setPrepared(null);
       startFlow({
-        loginHint: userEmail,
         scope: task.scope ?? "openid",
         bindingMessage: itemLine,
         trustTier: task.trustTier,
@@ -246,7 +245,6 @@ export default function AetherPage() {
     const bindingMessage = `Confirm code: ${preparedPayment.confirmation_code} · ${itemLine}`;
 
     startFlow({
-      loginHint: userEmail,
       scope: task.scope ?? "openid",
       bindingMessage,
       trustTier: task.trustTier,

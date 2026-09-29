@@ -34,14 +34,6 @@ interface OwnedClient {
   scopes: string[] | string | null;
 }
 
-interface UnownedClient {
-  clientId: string;
-  createdAt: number;
-  name: string | null;
-  redirectUris: string[] | string;
-  scopes: string[] | string | null;
-}
-
 function normalizeStringArray(value: string[] | string | null): string[] {
   if (!value) {
     return [];
@@ -85,32 +77,18 @@ async function fetchOwnedClients(): Promise<OwnedClient[]> {
   return body.clients ?? [];
 }
 
-async function fetchUnownedClients(): Promise<UnownedClient[]> {
-  const response = await fetch("/api/rp-admin/clients/unowned");
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
-    throw new Error(body?.error || "Failed to fetch clients");
-  }
-  const body = (await response.json()) as { clients: UnownedClient[] };
-  return body.clients ?? [];
-}
-
 function ClientCard({
   clientId,
   name,
   scopes,
   redirectUris,
   disabled,
-  action,
 }: {
   clientId: string;
   name: string | null;
   scopes: string[] | string | null;
   redirectUris: string[] | string;
   disabled?: boolean;
-  action?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
@@ -126,7 +104,6 @@ function ClientCard({
             Disabled
           </span>
         )}
-        {action}
       </div>
       {scopes != null && (
         <div className="text-muted-foreground text-xs">
@@ -175,9 +152,8 @@ function OwnedClientsContent({
     return (
       <Alert>
         <AlertDescription>
-          No clients assigned to this organization yet. Clients register via
-          Dynamic Client Registration (DCR) and appear in &ldquo;Pending
-          Registrations&rdquo; below.
+          No clients belong to this organization yet. Clients registered while
+          this organization is active appear here.
         </AlertDescription>
       </Alert>
     );
@@ -221,12 +197,6 @@ export default function ApplicationsPage() {
   const ownedQuery = useQuery({
     queryKey: ["rp-admin", "clients", "owned"],
     queryFn: fetchOwnedClients,
-    enabled: clientsEnabled,
-  });
-
-  const unownedQuery = useQuery({
-    queryKey: ["rp-admin", "clients", "unowned"],
-    queryFn: fetchUnownedClients,
     enabled: clientsEnabled,
   });
 
@@ -274,37 +244,7 @@ export default function ApplicationsPage() {
     },
   });
 
-  const approveMutation = useMutation({
-    mutationFn: async (clientId: string) => {
-      const response = await fetch("/api/rp-admin/clients/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId, force: false }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error || "Failed to approve client");
-      }
-    },
-    onSuccess: () => {
-      setActionOk("Client assigned to active organization.");
-      queryClient
-        .invalidateQueries({ queryKey: ["rp-admin", "clients"] })
-        .catch(reportRejection);
-    },
-    onError: (err) => {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to approve client"
-      );
-    },
-  });
-
-  const busy =
-    createOrgMutation.isPending ||
-    setActiveMutation.isPending ||
-    approveMutation.isPending;
+  const busy = createOrgMutation.isPending || setActiveMutation.isPending;
 
   const handleCreateOrg = () => {
     setActionError(null);
@@ -322,12 +262,6 @@ export default function ApplicationsPage() {
     setActiveMutation.mutate(organizationId);
   };
 
-  const handleApproveUnowned = (clientId: string) => {
-    setActionError(null);
-    setActionOk(null);
-    approveMutation.mutate(clientId);
-  };
-
   if (sessionPending) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -339,12 +273,11 @@ export default function ApplicationsPage() {
 
   const orgs = orgsQuery.data ?? [];
   const ownedClients = ownedQuery.data ?? [];
-  const unownedClients = unownedQuery.data ?? [];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        description="Manage OAuth clients registered via Dynamic Client Registration. The user controls data access at consent time — organization assignment is for operational management."
+        description="Manage the OAuth clients your organization registered. Users still decide what each client can access at consent time."
         title="Applications"
       />
 
@@ -461,79 +394,6 @@ export default function ApplicationsPage() {
             clients={ownedClients}
             loading={ownedQuery.isLoading}
           />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Pending Registrations</CardTitle>
-          <CardDescription>
-            Clients registered via Dynamic Client Registration that haven't been
-            assigned to an organization yet.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {unownedQuery.error ? (
-            <Alert variant="destructive">
-              <AlertDescription>
-                {unownedQuery.error instanceof Error
-                  ? unownedQuery.error.message
-                  : "Failed to fetch clients"}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-muted-foreground text-sm">
-              {unownedQuery.isLoading
-                ? "Loading…"
-                : `${unownedClients.length} client(s)`}
-            </div>
-            <Button
-              disabled={!activeOrgId || unownedQuery.isLoading || busy}
-              onClick={() => {
-                queryClient
-                  .invalidateQueries({
-                    queryKey: ["rp-admin", "clients", "unowned"],
-                  })
-                  .catch(reportRejection);
-              }}
-              variant="outline"
-            >
-              {unownedQuery.isFetching ? <Spinner /> : "Refresh"}
-            </Button>
-          </div>
-
-          {unownedClients.length === 0 ? (
-            <Alert>
-              <AlertDescription>No pending registrations.</AlertDescription>
-            </Alert>
-          ) : (
-            <div className="space-y-3">
-              {unownedClients.map((c) => (
-                <ClientCard
-                  action={
-                    <Button
-                      disabled={!activeOrgId || busy}
-                      onClick={() => handleApproveUnowned(c.clientId)}
-                      size="sm"
-                    >
-                      {approveMutation.isPending ? (
-                        <Spinner />
-                      ) : (
-                        "Assign to organization"
-                      )}
-                    </Button>
-                  }
-                  clientId={c.clientId}
-                  key={c.clientId}
-                  name={c.name}
-                  redirectUris={c.redirectUris}
-                  scopes={c.scopes}
-                />
-              ))}
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

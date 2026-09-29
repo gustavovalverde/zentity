@@ -5,6 +5,7 @@ import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
+import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { computePairwiseSub } from "@/lib/auth/oidc/pairwise";
 import { db } from "@/lib/db/connection";
 import { jwks, oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -34,7 +35,9 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       .values({
         id: edDsaKid,
         publicKey: JSON.stringify(edDsaPublicJwk),
-        privateKey: JSON.stringify(await exportJWK(edDsa.privateKey)),
+        privateKey: encryptPrivateKey(
+          JSON.stringify(await exportJWK(edDsa.privateKey))
+        ),
         alg: "EdDSA",
         crv: "Ed25519",
       })
@@ -53,7 +56,9 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
       .values({
         id: rsaKid,
         publicKey: JSON.stringify(rsaPublicJwk),
-        privateKey: JSON.stringify(await exportJWK(rsa.privateKey)),
+        privateKey: encryptPrivateKey(
+          JSON.stringify(await exportJWK(rsa.privateKey))
+        ),
         alg: "RS256",
         crv: null,
       })
@@ -230,6 +235,34 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
           .where(eq(oauthClients.clientId, testClientId))
           .run();
       }
+    });
+  });
+
+  describe("token types", () => {
+    function headerTyp(token: string): unknown {
+      return JSON.parse(
+        Buffer.from(token.split(".")[0] ?? "", "base64url").toString("utf-8")
+      ).typ;
+    }
+
+    it("keeps the type the caller asks for", async () => {
+      const logoutToken = await signJwt(
+        { aud: "some-client-id", sub: "user-1", events: {} },
+        { typ: "logout+jwt" }
+      );
+      const accessToken = await signJwt(
+        { scope: "openid", sub: "client-1", client_id: "client-1" },
+        { typ: "at+jwt" }
+      );
+
+      expect(headerTyp(logoutToken)).toBe("logout+jwt");
+      expect(headerTyp(accessToken)).toBe("at+jwt");
+    });
+
+    it("types a JWT as JWT when the caller does not say otherwise", async () => {
+      const token = await signJwt({ aud: "some-client-id", sub: "user-1" });
+
+      expect(headerTyp(token)).toBe("JWT");
     });
   });
 });

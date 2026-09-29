@@ -9,10 +9,6 @@ import type {
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import {
-  listBackchannelLogoutClients,
-  sendBackchannelLogoutToClient,
-} from "@/lib/auth/oidc/backchannel-logout";
-import {
   writeMirrorCompliance,
   writeMirrorRevocation,
 } from "@/lib/blockchain/attestation/mirror-writer";
@@ -50,7 +46,6 @@ type DeliveryExecutor = Pick<typeof db, "insert" | "select" | "update">;
 const MAX_ATTEMPTS_BY_TARGET: Record<ValidityDeliveryTarget, number> = {
   oidc4vci_credential_status: 1,
   ciba_request_cancellation: 1,
-  backchannel_logout: 3,
   blockchain_attestation_revocation: 3,
   mirror_compliance_write: 3,
   mirror_revocation_write: 3,
@@ -60,7 +55,6 @@ const MAX_ATTEMPTS_BY_TARGET: Record<ValidityDeliveryTarget, number> = {
 const RETRY_DELAY_MS_BY_TARGET: Record<ValidityDeliveryTarget, number[]> = {
   oidc4vci_credential_status: [],
   ciba_request_cancellation: [],
-  backchannel_logout: [1000, 3000],
   blockchain_attestation_revocation: [1000, 3000],
   mirror_compliance_write: [1000, 3000],
   mirror_revocation_write: [1000, 3000],
@@ -90,7 +84,6 @@ async function buildRevocationDeliveryTargets(
   const [
     issuedCredentials,
     pendingCibaRequests,
-    backchannelClients,
     rpValidityClients,
     attestations,
   ] = await Promise.all([
@@ -105,8 +98,7 @@ async function buildRevocationDeliveryTargets(
       )
       .all(),
     listPendingCibaRequestIdsByUserId(userId),
-    listBackchannelLogoutClients(),
-    listRpValidityNoticeClients(),
+    listRpValidityNoticeClients(userId),
     executor
       .select({ id: blockchainAttestations.id })
       .from(blockchainAttestations)
@@ -127,10 +119,6 @@ async function buildRevocationDeliveryTargets(
     ...pendingCibaRequests.map((authReqId) => ({
       target: "ciba_request_cancellation" as const,
       targetKey: authReqId,
-    })),
-    ...backchannelClients.map((client) => ({
-      target: "backchannel_logout" as const,
-      targetKey: client.clientId,
     })),
     ...rpValidityClients.map((client) => ({
       target: "rp_validity_notice" as const,
@@ -178,10 +166,10 @@ async function buildMirrorComplianceWriteTargets(
   }));
 }
 
-async function buildRpValidityNoticeTargets(): Promise<
-  DeliveryTargetDescriptor[]
-> {
-  const clients = await listRpValidityNoticeClients();
+async function buildRpValidityNoticeTargets(
+  userId: string
+): Promise<DeliveryTargetDescriptor[]> {
+  const clients = await listRpValidityNoticeClients(userId);
 
   return clients.map((client) => ({
     target: "rp_validity_notice" as const,
@@ -195,7 +183,7 @@ async function buildValidityChangeDeliveryTargets(
   executor: DeliveryExecutor = db
 ): Promise<DeliveryTargetDescriptor[]> {
   const [rpValidityTargets, mirrorComplianceTargets] = await Promise.all([
-    buildRpValidityNoticeTargets(),
+    buildRpValidityNoticeTargets(userId),
     buildMirrorComplianceWriteTargets(userId, sourceNetwork, executor),
   ]);
 
@@ -296,15 +284,6 @@ async function deliverCibaRequestCancellation(
   await rejectPendingCibaRequest(delivery.targetKey);
 }
 
-async function deliverBackchannelLogout(
-  delivery: IdentityValidityDelivery
-): Promise<void> {
-  await sendBackchannelLogoutToClient({
-    clientId: delivery.targetKey,
-    userId: delivery.userId,
-  });
-}
-
 async function deliverBlockchainAttestationRevocation(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
@@ -393,9 +372,6 @@ async function deliverValidityTarget(
       return;
     case "ciba_request_cancellation":
       await deliverCibaRequestCancellation(delivery);
-      return;
-    case "backchannel_logout":
-      await deliverBackchannelLogout(delivery);
       return;
     case "blockchain_attestation_revocation":
       await deliverBlockchainAttestationRevocation(delivery);

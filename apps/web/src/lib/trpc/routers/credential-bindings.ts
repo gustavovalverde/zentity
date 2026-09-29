@@ -28,12 +28,6 @@ function expectedLoginMethod(kind: z.infer<typeof credentialKindSchema>) {
   return kind === "wallet" ? "eip712" : kind;
 }
 
-function parseSqliteTimestamp(value: string): number {
-  return Date.parse(
-    value.includes("T") ? value : `${value.replace(" ", "T")}Z`
-  );
-}
-
 /**
  * When the session last proved possession of the credential: a sign-in with
  * it, or (for passkeys) registering it.
@@ -63,7 +57,7 @@ async function credentialConfirmedAt(params: {
     )
     .limit(1)
     .get();
-  return passkey ? parseSqliteTimestamp(passkey.createdAt) : null;
+  return passkey ? passkey.createdAt.getTime() : null;
 }
 
 function expectedKekSource(kind: z.infer<typeof credentialKindSchema>) {

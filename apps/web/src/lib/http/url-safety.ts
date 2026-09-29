@@ -1,74 +1,89 @@
 /**
  * URL and Request origin safety.
  *
- * Outbound: SSRF protection — private-host detection and safe-URL validation
- * (used by DCR, CIMD, and any fetch-from-user-input path).
+ * Outbound: SSRF protection for URLs the server sends requests to
+ * (client-registered delivery endpoints, software statement issuers).
  *
  * Inbound: Request origin resolution — canonical relying-party origin for
  * proof/challenge audience binding.
  */
 
-const PRIVATE_RANGES = [
-  /^127\./, // loopback
-  /^10\./, // Class A
-  /^172\.(1[6-9]|2\d|3[01])\./, // Class B
-  /^192\.168\./, // Class C
-  /^0\./, // "this" network
-  /^169\.254\./, // link-local
-  /^\[?::1\]?$/, // IPv6 loopback
-  /^\[?fe80:/i, // IPv6 link-local
-  /^\[?fc00:/i, // IPv6 ULA
-  /^\[?fd/i, // IPv6 ULA
-];
+import { classifyHost, isLoopbackHost } from "@better-auth/core/utils/host";
 
-function isPrivateHost(hostname: string): boolean {
-  return PRIVATE_RANGES.some((re) => re.test(hostname));
+const INTERNAL_DNS_SUFFIXES = [".internal", ".local", ".home.arpa", ".lan"];
+const TRAILING_DOTS_REGEX = /\.+$/;
+
+function loopbackTargetsAllowed(): boolean {
+  return process.env.NODE_ENV !== "production";
 }
 
-interface SafeUrlOptions {
-  /** Allow http://localhost in non-production (default: true). */
-  allowLocalhostInDev?: boolean;
-  /** Require HTTPS (default: true). */
-  requireHttps?: boolean;
+function isInternalHostname(hostname: string): boolean {
+  const name = hostname.replace(TRAILING_DOTS_REGEX, "").toLowerCase();
+  return (
+    !name.includes(".") ||
+    INTERNAL_DNS_SUFFIXES.some((suffix) => name.endsWith(suffix))
+  );
 }
 
 /**
- * Validate a URL is safe to fetch: parses URL, enforces HTTPS in prod,
- * blocks private/internal IPs, allows localhost in dev.
+ * True only for publicly routable IP addresses. Every RFC 6890
+ * special-purpose range is rejected, including IPv4-mapped and tunnelled
+ * IPv6 forms that embed a non-public IPv4 address.
+ */
+function isPublicAddress(address: string): boolean {
+  const { kind, literal } = classifyHost(address);
+  return literal !== "fqdn" && kind === "public";
+}
+
+/**
+ * Validate a client-registered URL the server will send requests to.
+ * Requires HTTPS to a public DNS name or public IP literal. Outside
+ * production, loopback hosts are also accepted over HTTP or HTTPS.
  * Returns null on success, error string on failure.
  */
-export function validateSafeUrl(
-  url: string,
-  isProduction: boolean,
-  options?: SafeUrlOptions
-): string | null {
-  const requireHttps = options?.requireHttps ?? true;
-  const allowLocalhostInDev = options?.allowLocalhostInDev ?? true;
-
+export function validateOutboundUrl(url: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return "URL is not valid";
+    return "is not a valid URL";
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return "URL must use HTTPS";
+    return "must use HTTPS";
   }
-
-  if (requireHttps && parsed.protocol === "http:" && isProduction) {
-    return "URL must use HTTPS in production";
+  if (parsed.username || parsed.password) {
+    return "must not contain credentials";
   }
-
-  if (allowLocalhostInDev && !isProduction && parsed.hostname === "localhost") {
+  if (loopbackTargetsAllowed() && isLoopbackHost(parsed.hostname)) {
     return null;
   }
-
-  if (parsed.hostname === "localhost" || isPrivateHost(parsed.hostname)) {
-    return "URL must not resolve to a private address";
+  if (parsed.protocol !== "https:") {
+    return "must use HTTPS";
   }
 
+  const { kind, literal } = classifyHost(parsed.hostname);
+  if (literal !== "fqdn") {
+    return kind === "public"
+      ? null
+      : "must not point to a private or reserved address";
+  }
+  if (kind !== "public" || isInternalHostname(parsed.hostname)) {
+    return "must not point to an internal host";
+  }
   return null;
+}
+
+/**
+ * Whether a resolved address may be connected to for an already validated
+ * URL. Loopback hostnames (outside production) may reach only loopback
+ * addresses; every other hostname may reach only public addresses.
+ */
+export function isPermittedDestination(url: URL, address: string): boolean {
+  if (loopbackTargetsAllowed() && isLoopbackHost(url.hostname)) {
+    return classifyHost(address).kind === "loopback";
+  }
+  return isPublicAddress(address);
 }
 
 const SAFE_PATH_SEGMENT_REGEX = /^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/;

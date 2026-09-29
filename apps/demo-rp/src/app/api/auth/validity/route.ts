@@ -45,6 +45,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const { payload } = await getOidcTokenVerifier().verify(token, {
       audience: clientIds,
+      typ: "secevent+jwt",
     });
 
     const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;

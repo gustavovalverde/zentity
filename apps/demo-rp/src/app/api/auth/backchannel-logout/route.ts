@@ -76,6 +76,7 @@ export async function POST(request: Request): Promise<Response> {
     }
     const { payload } = await getOidcTokenVerifier().verify(logoutToken, {
       audience: clientIds,
+      typ: "logout+jwt",
     });
 
     // Validate BCL event claim (OIDC BCL §2.4)

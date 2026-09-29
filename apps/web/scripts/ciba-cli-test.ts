@@ -6,7 +6,7 @@
  * Exercises the full CIBA + DPoP flow via HTTP against a running Zentity server.
  * Simulates the same path a real MCP client (e.g., Claude CLI) would take.
  *
- * Usage: pnpm exec tsx scripts/ciba-cli-test.ts --email <user-email> [options]
+ * Usage: pnpm exec tsx scripts/ciba-cli-test.ts --login-hint <subject> [options]
  */
 
 import {
@@ -68,7 +68,7 @@ interface Args {
   baseUrl: string;
   bindingMessage?: string | undefined;
   clientId?: string | undefined;
-  email: string;
+  loginHint: string;
   scope: string;
   timeout: number;
 }
@@ -85,8 +85,8 @@ function parseArgs(): Args {
     const arg = argv[i];
     const next = argv[i + 1] ?? "";
     switch (arg) {
-      case "--email":
-        args.email = next;
+      case "--login-hint":
+        args.loginHint = next;
         i++;
         break;
       case "--base-url":
@@ -123,8 +123,8 @@ function parseArgs(): Args {
     }
   }
 
-  if (!args.email) {
-    fail("--email is required");
+  if (!args.loginHint) {
+    fail("--login-hint is required");
     printUsage();
     process.exit(1);
   }
@@ -137,10 +137,12 @@ function printUsage() {
 ${c.bold}CIBA CLI Test Harness${c.reset}
 
 ${c.dim}Usage:${c.reset}
-  pnpm exec tsx scripts/ciba-cli-test.ts --email <user-email> [options]
+  pnpm exec tsx scripts/ciba-cli-test.ts --login-hint <subject> [options]
 
 ${c.dim}Options:${c.reset}
-  --email <email>           User email (login_hint). Required.
+  --login-hint <subject>    Subject identifier this client received for the
+                            user. A client this script registers uses public
+                            subjects, so pass the user id. Required.
   --base-url <url>          Server URL (default: http://localhost:3000)
   --client-id <id>          Skip DCR, use existing client
   --scope <scope>           Scope string (default: openid)
@@ -297,6 +299,8 @@ async function step1Dcr(
       scope: "openid",
       token_endpoint_auth_method: "none",
       grant_types: ["urn:openid:params:grant-type:ciba"],
+      backchannel_token_delivery_mode: "poll",
+      subject_type: "public",
     }),
   });
 
@@ -317,7 +321,7 @@ async function step1Dcr(
 async function step2BcAuthorize(
   base: string,
   clientId: string,
-  email: string,
+  loginHint: string,
   scope: string,
   bindingMessage?: string
 ): Promise<{ authReqId: string; expiresIn: number; interval: number }> {
@@ -329,7 +333,7 @@ async function step2BcAuthorize(
     body: JSON.stringify({
       client_id: clientId,
       scope,
-      login_hint: email,
+      login_hint: loginHint,
       binding_message: bindingMessage ?? `CLI test ${Date.now()}`,
     }),
   });
@@ -340,11 +344,7 @@ async function step2BcAuthorize(
       (res.body.error as string) ??
       JSON.stringify(res.body);
 
-    if (desc.toLowerCase().includes("user")) {
-      fail(`No user with email '${email}'. Sign up first at ${base}/sign-up`);
-    } else {
-      fail(`bc-authorize failed (${res.status}): ${desc}`);
-    }
+    fail(`bc-authorize failed (${res.status}): ${desc}`);
     record("CIBA Authorize", false);
     process.exit(1);
   }
@@ -626,7 +626,7 @@ async function main() {
     `${c.bold}${c.magenta}╚═══════════════════════════════════════╝${c.reset}\n`
   );
   info(`Target: ${args.baseUrl}`);
-  info(`Email:  ${args.email}`);
+  info(`Login hint: ${args.loginHint}`);
   info(`Scope:  ${args.scope}`);
 
   // Step 0
@@ -639,7 +639,7 @@ async function main() {
   const { authReqId, interval } = await step2BcAuthorize(
     args.baseUrl,
     clientId,
-    args.email,
+    args.loginHint,
     args.scope,
     args.bindingMessage
   );

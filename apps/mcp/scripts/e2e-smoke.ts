@@ -20,7 +20,9 @@
  *
  * Environment:
  *   ZENTITY_URL              Zentity base URL (default: http://localhost:3000)
- *   SMOKE_LOGIN_HINT         Email of the approving user (HTTP transport)
+ *   SMOKE_LOGIN_HINT         User id of the approving user (HTTP transport); the
+ *                            smoke client registers with public subjects, so
+ *                            the user id is the subject CIBA accepts
  *   SMOKE_TIMEOUT_MS         How long to wait for each sign-in or approval (default: 300000)
  */
 
@@ -177,13 +179,14 @@ async function requestRemoteToken(mcpUrl: string) {
   const registration = await fetch(`${zentityUrl}/api/auth/oauth2/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      buildLoopbackClientRegistration({
+    body: JSON.stringify({
+      ...buildLoopbackClientRegistration({
         clientName: "zentity-e2e-smoke",
         grantTypes: ["authorization_code", "urn:openid:params:grant-type:ciba"],
         scope: REMOTE_SCOPES,
-      })
-    ),
+      }),
+      subject_type: "public",
+    }),
   });
   assert(
     registration.ok,

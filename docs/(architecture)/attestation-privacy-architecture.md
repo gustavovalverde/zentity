@@ -26,7 +26,7 @@ The persistence model separates snapshot state from history and downstream deliv
 - `identity_bundles` stores the current account snapshot (`validityStatus`, `effectiveVerificationId`, `nullifierSeed`, `verificationExpiresAt`, and related metadata).
 - `identity_verifications` stores credential history for OCR and NFC verification rows, including supersession lineage.
 - `identity_validity_events` records immutable lifecycle transitions such as `verified`, `stale`, `revoked`, and `superseded`.
-- `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, back-channel logout, CIBA cancellation, blockchain revocation delivery, and Base mirror writes.
+- `identity_validity_deliveries` tracks the per-target execution state of downstream effects such as credential-status updates, RP validity notice, CIBA cancellation, blockchain revocation delivery, and Base mirror writes.
 
 ### Regulatory Alignment
 
@@ -82,7 +82,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
 - **FHE ciphertext HMAC binding**: HMAC-SHA256 keyed by `CIPHERTEXT_HMAC_SECRET` (HKDF-derived) over length-prefixed `[userId, attributeType, ciphertext]`, stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
 - **Consent scope HMAC**: HMAC-SHA256 keyed by an HKDF derivation of `BETTER_AUTH_SECRET` over length-prefixed `[context, userId, clientId, referenceId, sortedScopes]`, stored in `scope_hmac`. Detects DB-level scope escalation.
-- **JWKS private key encryption at rest**: AES-256-GCM envelope encryption via `KEY_ENCRYPTION_KEY` (required in production). Prevents token forgery from DB read access. Stored format: `{"v":1,"iv":"...","ct":"..."}`.
+- **JWKS private key encryption at rest**: AES-256-GCM envelope encryption via `KEY_ENCRYPTION_KEY` (required); plaintext rows are refused. Prevents token forgery from DB read access. Stored format: `{"v":1,"iv":"...","ct":"..."}`.
 - **JARM response encryption**: ECDH-ES P-256 key encrypts OID4VP presentation responses. Keys rotate every 90 days with grace period for in-flight decryption.
 
 ---

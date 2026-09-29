@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { getAapClaimsFromPayload } from "@/lib/agents/claims";
 import { observeSessionLifecycle } from "@/lib/agents/session";
 import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
   }
 
   const payload = token.startsWith("eyJ")
-    ? await verifyAuthIssuedJwt(token)
+    ? await verifyIssuedAccessToken(token)
     : null;
   if (token.startsWith("eyJ") && !payload) {
     return NextResponse.json({ active: false });

@@ -107,7 +107,6 @@ describe("useCibaFlow state machine", () => {
     // startFlow triggers authorize fetch, then pollToken fires fetchTokens immediately
     await act(async () => {
       await result.current.startFlow({
-        loginHint: "user@test.com",
         scope: "openid",
       });
     });
@@ -155,7 +154,6 @@ describe("useCibaFlow state machine", () => {
 
     await act(async () => {
       await result.current.startFlow({
-        loginHint: "user@test.com",
         scope: "openid",
       });
     });
@@ -221,7 +219,6 @@ describe("useCibaFlow state machine", () => {
     // Start flow — triggers immediate fetchTokens (deferred, hangs)
     await act(async () => {
       await result.current.startFlow({
-        loginHint: "user@test.com",
         scope: "openid",
       });
     });
@@ -300,7 +297,6 @@ describe("useCibaFlow state machine", () => {
 
     await act(async () => {
       await result.current.startFlow({
-        loginHint: "user@test.com",
         scope: "openid",
       });
     });

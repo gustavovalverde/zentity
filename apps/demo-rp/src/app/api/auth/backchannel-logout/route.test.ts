@@ -111,6 +111,10 @@ describe("POST /api/auth/backchannel-logout", () => {
     const response = await POST(makeRequest());
 
     expect(response.status).toBe(200);
+    expect(routeMocks.verifyToken).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ typ: "logout+jwt" })
+    );
     expect(mocks.deleteFn).toHaveBeenCalledOnce();
     expect(mocks.deleteRun).toHaveBeenCalledOnce();
   });

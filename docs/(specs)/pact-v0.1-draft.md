@@ -457,7 +457,7 @@ This allows daily limits on host policies to be shared across sessions for the s
 
 1. **Cooldown check.** Query the ledger for any execution within `cooldown_sec` of `now`. If found, reject.
 2. **Daily count check.** Count executions in the last 24 hours. If `count >= daily_limit_count`, reject.
-3. **Daily amount check.** Sum `amount` in the last 24 hours. If `sum + request.amount > daily_limit_amount`, reject.
+3. **Daily amount check.** Reject if `request.amount` is not a non-negative decimal, or if any execution in the last 24 hours used a different currency or unit. Otherwise sum `amount` in the last 24 hours; if `sum + request.amount > daily_limit_amount`, reject.
 4. **Record.** Insert a new ledger entry. Return success.
 
 The transaction ensures atomicity; two concurrent requests cannot both pass a limit that only has room for one.

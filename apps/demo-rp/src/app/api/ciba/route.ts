@@ -6,7 +6,7 @@ import {
   fetchUserInfo,
   requestTokenEndpoint,
 } from "@zentity/sdk/rp";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { calculateJwkThumbprint } from "jose";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
@@ -15,7 +15,7 @@ import { prepareAgentAssertionForScenario } from "@/lib/agent-runtime";
 import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { cibaPings } from "@/lib/db/schema";
-import { readDcrClient } from "@/lib/dcr";
+import { readDcrClient, readZentitySubject } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import { ROUTE_SCENARIO_IDS } from "@/scenarios/route-scenario-registry";
 
@@ -34,7 +34,6 @@ const bodySchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("authorize"),
     scenarioId: scenarioIdSchema,
-    loginHint: z.string().min(1),
     scope: z.string().min(1),
     bindingMessage: z.string().optional(),
     authorizationDetails: z.string().optional(),
@@ -58,6 +57,7 @@ interface DcrClient {
 }
 
 async function handleAuthorize(
+  userId: string,
   data: {
     scope: string;
     loginHint: string;
@@ -102,7 +102,7 @@ async function handleAuthorize(
   if (authReqId) {
     await getDb()
       .insert(cibaPings)
-      .values({ authReqId, notificationToken })
+      .values({ authReqId, notificationToken, userId })
       .onConflictDoNothing();
   }
 
@@ -133,12 +133,32 @@ export async function POST(request: Request) {
 
   const data = parsed.data;
 
-  if (data.action === "check-ping") {
-    const row = await getDb().query.cibaPings.findFirst({
-      where: eq(cibaPings.authReqId, data.authReqId),
+  const auth = await getAuth();
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  if (data.action !== "authorize") {
+    const ping = await getDb().query.cibaPings.findFirst({
+      where: and(
+        eq(cibaPings.authReqId, data.authReqId),
+        eq(cibaPings.userId, userId)
+      ),
       columns: { received: true },
     });
-    return NextResponse.json({ received: row?.received ?? false });
+    if (!ping) {
+      return NextResponse.json(
+        { error: "Unknown authorization request" },
+        { status: 404 }
+      );
+    }
+    if (data.action === "check-ping") {
+      return NextResponse.json({ received: ping.received });
+    }
   }
 
   const client = await readDcrClient(data.scenarioId);
@@ -150,12 +170,16 @@ export async function POST(request: Request) {
   }
 
   if (data.action === "authorize") {
-    const auth = await getAuth();
-    const session = await auth.api.getSession({
-      headers: await headers(),
-    });
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const loginHint = await readZentitySubject(data.scenarioId, userId);
+    if (!loginHint) {
+      return NextResponse.json(
+        {
+          error: "subject_unavailable",
+          error_description:
+            "Sign in to this scenario with Zentity before requesting approval.",
+        },
+        { status: 403 }
+      );
     }
 
     const bindingMessage =
@@ -168,7 +192,7 @@ export async function POST(request: Request) {
         bindingMessage,
         scenarioId: data.scenarioId,
         ...(data.trustTier ? { trustTier: data.trustTier } : {}),
-        userId: session.user.id,
+        userId,
       });
     } catch (err) {
       const message =
@@ -180,7 +204,12 @@ export async function POST(request: Request) {
       );
     }
 
-    return handleAuthorize({ ...data, bindingMessage }, client, agentAssertion);
+    return handleAuthorize(
+      userId,
+      { ...data, bindingMessage, loginHint },
+      client,
+      agentAssertion
+    );
   }
 
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;

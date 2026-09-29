@@ -51,7 +51,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       data: {
         client_id: clientId,
-        login_hint: session.email,
+        login_hint: session.userId,
         scope: "openid identity.name identity.dob",
         binding_message: "PII delivery E2E test",
         resource: BASE_URL,
@@ -207,7 +207,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
       data: {
         client_id: clientId,
-        login_hint: session.email,
+        login_hint: session.userId,
         scope: "openid",
         binding_message: "Non-identity E2E test",
         resource: BASE_URL,

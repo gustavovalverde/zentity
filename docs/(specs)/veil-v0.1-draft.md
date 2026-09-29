@@ -26,7 +26,7 @@ The profile composes and constrains the following specifications:
 |---------|---------------|
 | Authorization Framework | OAuth 2.1 (draft-ietf-oauth-v2-1) |
 | Proof Key | PKCE (RFC 7636), mandatory |
-| Pushed Authorization | PAR (RFC 9126), mandatory |
+| Pushed Authorization | PAR (RFC 9126), recommended |
 | Sender Constraining | DPoP (RFC 9449) |
 | Identity Layer | OpenID Connect Core 1.0 |
 | Structured Intent | Rich Authorization Requests (RFC 9396) |
@@ -77,13 +77,13 @@ The following OAuth 2.1 options are mandatory under this profile. Requirements t
 The authorization server MUST:
 
 - Support OAuth 2.1 (draft-ietf-oauth-v2-1) authorization code flow with PKCE
-- Require Pushed Authorization Requests (PAR, RFC 9126) for all authorization requests
 - Support DPoP (RFC 9449) for sender-constrained tokens
 - Issue access tokens signed with EdDSA (Ed25519) for compact signatures
 - Sign id_tokens with RS256
 
 The authorization server SHOULD:
 
+- Require Pushed Authorization Requests (PAR, RFC 9126) for all authorization requests
 - Support Rich Authorization Requests (RFC 9396) for structured intent
 - Support Token Exchange (RFC 8693) for audience rebinding and scope attenuation
 - Support Back-Channel Logout (OIDC BCL) for federated session termination
@@ -337,10 +337,9 @@ Identity scopes MUST NOT be persisted in durable consent records. The full scope
 
 The authorization server MUST support OIDC Back-Channel Logout for federated session termination. On user sign-out:
 
-1. Query all registered clients with a `backchannel_logout_uri`.
-2. For each: build a logout token JWT with the client's pairwise `sub` and `sid` (if `backchannel_logout_session_required`).
-3. POST the logout token to the client's endpoint.
-4. Retry with exponential backoff on transient failures.
+1. Find the clients that hold access or refresh tokens for the ended session and registered a `backchannel_logout_uri`.
+2. For each: build a logout token (`typ: logout+jwt`, short `exp`) with the client's pairwise `sub` and the session's `sid`.
+3. POST the logout token to the client's endpoint once, without retransmission (OIDC BCL §2.5).
 
 ### 10.2 Extension Coordination
 

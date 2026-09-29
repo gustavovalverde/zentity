@@ -4,7 +4,11 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 import { resetDatabase } from "@/test-utils/db-test-utils";
 
-import { getJwtSigningKeys } from "../jwt-signer";
+import {
+  createJwtSigningKey,
+  encryptPrivateKey,
+  getJwtSigningKeys,
+} from "../jwt-signer";
 
 describe("getJwtSigningKeys", () => {
   beforeEach(async () => {
@@ -18,12 +22,14 @@ describe("getJwtSigningKeys", () => {
         {
           id: "rs256-key",
           publicKey: JSON.stringify({ kty: "RSA", e: "AQAB", n: "rsa-n" }),
-          privateKey: JSON.stringify({
-            kty: "RSA",
-            d: "rsa-d",
-            e: "AQAB",
-            n: "rsa-n",
-          }),
+          privateKey: encryptPrivateKey(
+            JSON.stringify({
+              kty: "RSA",
+              d: "rsa-d",
+              e: "AQAB",
+              n: "rsa-n",
+            })
+          ),
           alg: "RS256",
           createdAt: new Date("2026-03-23T15:00:00.000Z"),
         },
@@ -34,12 +40,14 @@ describe("getJwtSigningKeys", () => {
             crv: "Ed25519",
             x: "eddsa-x",
           }),
-          privateKey: JSON.stringify({
-            kty: "OKP",
-            crv: "Ed25519",
-            d: "eddsa-d",
-            x: "eddsa-x",
-          }),
+          privateKey: encryptPrivateKey(
+            JSON.stringify({
+              kty: "OKP",
+              crv: "Ed25519",
+              d: "eddsa-d",
+              x: "eddsa-x",
+            })
+          ),
           alg: "EdDSA",
           crv: "Ed25519",
           createdAt: new Date("2026-03-23T15:01:00.000Z"),
@@ -52,13 +60,15 @@ describe("getJwtSigningKeys", () => {
             x: "ec-x",
             y: "ec-y",
           }),
-          privateKey: JSON.stringify({
-            kty: "EC",
-            crv: "P-256",
-            d: "ec-d",
-            x: "ec-x",
-            y: "ec-y",
-          }),
+          privateKey: encryptPrivateKey(
+            JSON.stringify({
+              kty: "EC",
+              crv: "P-256",
+              d: "ec-d",
+              x: "ec-x",
+              y: "ec-y",
+            })
+          ),
           alg: "ECDH-ES",
           crv: "P-256",
           createdAt: new Date("2026-03-23T15:02:00.000Z"),
@@ -74,5 +84,25 @@ describe("getJwtSigningKeys", () => {
     ]);
     expect(keys.map((key) => key.alg).sort()).toEqual(["EdDSA", "RS256"]);
     expect(keys.find((key) => key.id === "eddsa-key")?.crv).toBe("Ed25519");
+    expect(
+      JSON.parse(keys.find((key) => key.id === "eddsa-key")?.privateKey ?? "")
+    ).toMatchObject({ kty: "OKP", d: "eddsa-d" });
+  });
+
+  it("stores keys created through Better Auth encrypted", async () => {
+    const privateKey = JSON.stringify({ kty: "OKP", crv: "Ed25519", d: "d" });
+
+    const created = await createJwtSigningKey({
+      publicKey: JSON.stringify({ kty: "OKP", crv: "Ed25519", x: "x" }),
+      privateKey,
+      alg: "EdDSA",
+      crv: "Ed25519",
+      createdAt: new Date(),
+    });
+
+    const [row] = await db.select().from(jwks).all();
+    expect(row?.id).toBe(created.id);
+    expect(row?.privateKey).not.toBe(privateKey);
+    expect(created.privateKey).toBe(privateKey);
   });
 });

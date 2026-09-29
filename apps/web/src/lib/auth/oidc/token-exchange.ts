@@ -11,7 +11,6 @@ import {
 } from "@better-auth/oauth-provider";
 import { APIError } from "better-auth";
 import { eq } from "drizzle-orm";
-import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import {
@@ -42,6 +41,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
+import { verifyAuthIssuedJwt, verifyIssuedAccessToken } from "@/lib/auth/jwt";
 import {
   extractDpopThumbprint,
   loadOpaqueAccessToken,
@@ -60,10 +60,7 @@ import {
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import {
-  jwks as jwksTable,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import { logger } from "@/lib/logging/logger";
 
 export const TOKEN_EXCHANGE_GRANT_TYPE =
@@ -84,7 +81,6 @@ const SUPPORTED_OUTPUT_TYPES = new Set([
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
-const jwksUrl = joinAuthIssuerPath(authIssuer, "oauth2/jwks");
 const oidc4vciCredentialAudience = `${authIssuer}/oidc4vci/credential`;
 const rpApiAudience = `${authIssuer}/resource/rp-api`;
 const tokenExchangeAudiences = getProtectedResourceAudiences({
@@ -215,36 +211,17 @@ function canRebindDpopForResourceServer(input: {
   return audienceIncludes(input.subjectAudience, input.clientResourceAudience);
 }
 
-async function buildLocalJwks(kid: string) {
-  const rows = await db.select().from(jwksTable).all();
-  const keys = rows.map((row) => {
-    const pub = JSON.parse(row.publicKey) as Record<string, unknown>;
-    return { ...pub, kid: row.id, ...(row.alg ? { alg: row.alg } : {}) };
-  });
-
-  if (!keys.some((k) => k.kid === kid)) {
-    const res = await fetch(jwksUrl, {
-      headers: { Accept: "application/json" },
-    });
-    if (res.ok) {
-      return createLocalJWKSet(
-        (await res.json()) as { keys: Record<string, unknown>[] }
-      );
-    }
-  }
-
-  return createLocalJWKSet({ keys });
-}
-
 async function verifySubjectToken(
-  token: string
+  token: string,
+  subjectTokenType: string
 ): Promise<Record<string, unknown>> {
-  const header = decodeProtectedHeader(token);
-  if (!header.kid) {
-    throw new Error("Missing kid in JWT header");
+  const payload =
+    subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
+      ? await verifyIssuedAccessToken(token)
+      : await verifyAuthIssuedJwt(token, { typ: "JWT" });
+  if (!payload) {
+    throw new Error("Subject token failed verification");
   }
-  const jwks = await buildLocalJwks(header.kid);
-  const { payload } = await jwtVerify(token, jwks, { issuer: authIssuer });
   return payload as Record<string, unknown>;
 }
 
@@ -419,7 +396,10 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           ...(tokenSnapshot?.claims ?? {}),
         };
       } else {
-        subjectPayload = await verifySubjectToken(subjectToken);
+        subjectPayload = await verifySubjectToken(
+          subjectToken,
+          subjectTokenType
+        );
         const subjectCnf = subjectPayload.cnf as { jkt?: unknown } | undefined;
         subjectDpopJkt =
           subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
@@ -793,22 +773,25 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           sessionId: subjectSessionId,
           userId: rawUserId,
         })
-      : await signJwt({
-          iss: authIssuer,
-          sub: rawUserId,
-          aud: targetAudience,
-          azp: client.clientId,
-          jti,
-          scope: targetScopes.join(" "),
-          iat: now,
-          exp,
-          ...(subjectSessionId ? { sid: subjectSessionId } : {}),
-          ...(subjectSessionId
-            ? {}
-            : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
-          ...exchangeClaims,
-          ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
-        });
+      : await signJwt(
+          {
+            iss: authIssuer,
+            sub: rawUserId,
+            aud: targetAudience,
+            azp: client.clientId,
+            jti,
+            scope: targetScopes.join(" "),
+            iat: now,
+            exp,
+            ...(subjectSessionId ? { sid: subjectSessionId } : {}),
+            ...(subjectSessionId
+              ? {}
+              : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
+            ...exchangeClaims,
+            ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
+          },
+          { typ: "at+jwt" }
+        );
     if (storedSubjectSnapshot) {
       await persistTokenSnapshot({
         tokenJti: jti,

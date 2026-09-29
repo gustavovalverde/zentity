@@ -253,6 +253,7 @@ export const capabilityUsageLedger = sqliteTable(
     }),
     amount: real("amount"),
     currency: text("currency"),
+    unit: text("unit"),
     metadata: text("metadata"),
     executedAt: integer("executed_at", { mode: "timestamp_ms" })
       .notNull()

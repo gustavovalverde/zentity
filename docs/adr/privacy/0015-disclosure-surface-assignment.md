@@ -96,7 +96,8 @@ Pairwise subjects stop relying parties from correlating one user across clients.
 * `id_token`, `userinfo`, introspection, and proof-of-human responses project the client's subject.
 * Access tokens for endpoints Zentity serves (the app origin, the auth issuer, and every resource under it, including `userinfo`) are opaque reference tokens that Zentity resolves server-side. Zentity drops Zentity-hosted `resource` indicators from user token requests so the OAuth provider issues opaque tokens, and token exchange mints opaque tokens for those audiences. Claims such a token would otherwise carry (actor, delegation, token use) stay with the stored token.
 * JWT access tokens exist only for resource servers outside Zentity (the MCP server, an agent wallet) and for the OID4VCI credential endpoint. Their `sub` is the requesting client's subject identifier. Zentity endpoints that receive one, such as token exchange and agent introspection, map it back to the user through the pairwise subject index.
-* A client names the user back to Zentity with the subject it received, for example as a CIBA `login_hint`.
+* Every JWT Zentity signs is explicitly typed (`at+jwt` access tokens, `logout+jwt` logout tokens, `secevent+jwt` validity notices, `JWT` ID tokens), and Zentity endpoints that accept one require the expected type. JWT access tokens are also refused once their `jti` is revoked; opaque access tokens are refused once the stored token is marked revoked.
+* A client names the user back to Zentity with the subject it received, for example as a CIBA `login_hint`. That is the only `login_hint` form CIBA accepts: an email address or a user id the client was not issued resolves to `unknown_user_id`, the same answer as an identifier that matches no account.
 
 Rationale:
 
@@ -182,3 +183,5 @@ What does not change by channel:
 
 * 2026-09-27: Added rule 4. Access tokens audienced to Zentity-served endpoints carry the real user id; pairwise subjects apply to client-facing surfaces and to access tokens for resource servers outside Zentity.
 * 2026-09-27: Rewrote rule 4. No client-readable artifact carries the real user id: access tokens for Zentity-served endpoints are opaque, and JWT access tokens (resource servers outside Zentity and the OID4VCI credential endpoint) carry the requesting client's subject identifier.
+* 2026-09-27: CIBA `login_hint` accepts only the subject identifier the requesting client received; email addresses and unissued user ids are refused like unknown identifiers.
+* 2026-09-27: Zentity-issued JWTs carry an explicit type that verifiers require, and revoked access tokens (JWT and opaque) are refused.

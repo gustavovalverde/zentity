@@ -213,6 +213,8 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
+**`login_hint`**: the subject identifier the client received for the user from Zentity (its pairwise `sub` for a pairwise client, the user id for a public client). Zentity does not accept email addresses. A hint that is not a subject issued to the requesting client gets `unknown_user_id`, whether or not an account exists, so a client cannot probe for accounts or prompt users who never authorized it.
+
 CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. Unverified JWT payloads used to route agent assertions are parsed with duplicate-key rejection before issuer/session selection, so JSON parser ambiguity cannot change which key or session is used for verification. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
 
 The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome).
@@ -594,7 +596,7 @@ Relying parties integrate two different post-authorization signals:
 - **Back-channel logout** ends sessions.
 - **Validity notice** reports that the underlying identity evidence changed.
 
-Push delivery uses a compact JWS POSTed to the registered `rp_validity_notice_uri`. Pull recovery uses `GET /api/auth/oauth2/validity` with the RP's DPoP-bound access token. The issuer resolves the caller's pairwise subject from the authenticated token and returns the latest immutable validity event plus the current snapshot status.
+Push delivery uses a compact JWS (`typ: secevent+jwt`, five-minute `exp`, `aud` set to the client) POSTed to the registered `rp_validity_notice_uri`, and only to clients the user authorized through a consent or a token grant. Pull recovery uses `GET /api/auth/oauth2/validity` with the RP's DPoP-bound access token. The issuer resolves the caller's pairwise subject from the authenticated token and returns the latest immutable validity event plus the current snapshot status.
 
 This matters because revocation, freshness, and re-verification are not the same thing. A user can be `stale` without being `revoked`, and a newer credential can supersede an older one without ending the session immediately. The validity transport gives RPs one explicit way to learn about those claim-level changes without overloading session semantics.
 
@@ -726,11 +728,11 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 **`sid` claim:** Injected into id_tokens for clients with a registered `backchannel_logout_uri` or with `enable_end_session` (granted to clients that register `post_logout_redirect_uris`). This allows the RP to correlate the logout token with a specific session.
 
-**Logout token format:** OIDC BCL §2.4 compliant JWT containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, and standard JWT claims.
+**Logout token format:** OIDC BCL §2.4 JWT with `typ: logout+jwt`, containing `sub`, `sid`, `events: { "http://schemas.openid.net/event/backchannel-logout": {} }`, `iat`, a two-minute `exp`, and `jti`.
 
-**Delivery:** The OAuth provider sends logout tokens to registered RPs itself whenever a session ends (sign-out or session deletion). The user's sign-out completes regardless of delivery success.
+**Delivery:** The OAuth provider sends logout tokens itself whenever a session ends (sign-out or session deletion), and only to clients that hold access or refresh tokens for that session. Identity revocation does not send logout tokens; relying parties learn about it from validity notices. The user's sign-out completes regardless of delivery success.
 
-**CIBA revocation:** `revokePendingCibaOnLogout()` sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
+**CIBA revocation:** ending a session sets all pending CIBA requests for the user to `rejected`. This prevents agents from polling for tokens after the user has logged out.
 
 **Discovery fields:** `backchannel_logout_supported: true`, `backchannel_logout_session_supported: true`, `end_session_endpoint`.
 
