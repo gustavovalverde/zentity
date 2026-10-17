@@ -25,7 +25,7 @@
   "dependencies": {
     "@better-auth/core": "1.7.6",
     "@better-auth/mcp": "1.7.6",
-    "@hono/node-server": "^2.0.2",
+    "@hono/node-server": "^2.0.10",
     "@modelcontextprotocol/server": "2.1.0",
     "@zentity/sdk": "workspace:*",
     "better-auth": "1.7.6",
