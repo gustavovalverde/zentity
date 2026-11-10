@@ -15,11 +15,7 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { auth } from "../auth-config";
-import {
-  callAuthApi,
-  enrichDiscoveryMetadata,
-  unwrapMetadata,
-} from "../oidc/well-known";
+import { callAuthApi, unwrapMetadata } from "../oidc/well-known";
 
 async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
   const allKeys = await db.select().from(jwks);
@@ -32,17 +28,15 @@ async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
 }
 
 describe("HAIP — discovery metadata", () => {
-  async function getEnrichedOpenIdConfig(): Promise<Record<string, unknown>> {
+  async function getOpenIdConfig(): Promise<Record<string, unknown>> {
     const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    const parsed =
-      raw instanceof Response
-        ? ((await raw.json()) as Record<string, unknown>)
-        : (raw as Record<string, unknown>);
-    return enrichDiscoveryMetadata(parsed);
+    return raw instanceof Response
+      ? ((await raw.json()) as Record<string, unknown>)
+      : (raw as Record<string, unknown>);
   }
 
   it("OpenID config includes pushed_authorization_request_endpoint", async () => {
-    const metadata = await getEnrichedOpenIdConfig();
+    const metadata = await getOpenIdConfig();
 
     expect(metadata.pushed_authorization_request_endpoint).toContain(
       "oauth2/par"
@@ -50,13 +44,13 @@ describe("HAIP — discovery metadata", () => {
   });
 
   it("OpenID config does not require PAR", async () => {
-    const metadata = await getEnrichedOpenIdConfig();
+    const metadata = await getOpenIdConfig();
 
     expect(metadata.require_pushed_authorization_requests).toBe(false);
   });
 
   it("OpenID config includes DPoP signing algorithm support", async () => {
-    const metadata = await getEnrichedOpenIdConfig();
+    const metadata = await getOpenIdConfig();
 
     const algs = metadata.dpop_signing_alg_values_supported;
     expect(Array.isArray(algs)).toBe(true);

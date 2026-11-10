@@ -1,23 +1,33 @@
 import { describe, expect, it } from "vitest";
 
+import { GET as getAuthorizationServerMetadata } from "@/app/.well-known/oauth-authorization-server/[[...issuer]]/route";
+import { GET as getOpenIdConfiguration } from "@/app/.well-known/openid-configuration/[[...issuer]]/route";
 import { GET as getCredentialIssuerMetadata } from "@/app/.well-known/openid-credential-issuer/[[...issuer]]/route";
 import { auth } from "@/lib/auth/auth-config";
 import {
   IDENTITY_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
-import {
-  buildWellKnownResponse,
-  callAuthApi,
-  enrichDiscoveryMetadata,
-  unwrapMetadata,
-} from "@/lib/auth/oidc/well-known";
 
-function parseOpenIdConfig(metadata: unknown) {
-  if (metadata instanceof Response) {
-    return metadata.json() as Promise<Record<string, unknown>>;
+type DiscoveryKind = "openid-configuration" | "oauth-authorization-server";
+
+const routes = {
+  "openid-configuration": getOpenIdConfiguration,
+  "oauth-authorization-server": getAuthorizationServerMetadata,
+};
+
+async function servedDocument(
+  kind: DiscoveryKind,
+  issuer?: string[]
+): Promise<Record<string, unknown>> {
+  const response = await routes[kind](
+    new Request(`http://localhost:3000/.well-known/${kind}`),
+    { params: Promise.resolve(issuer ? { issuer } : {}) }
+  );
+  if (response.status !== 200) {
+    throw new Error(`${kind} returned HTTP ${response.status}`);
   }
-  return metadata as Record<string, unknown>;
+  return (await response.json()) as Record<string, unknown>;
 }
 
 describe("oidc well-known metadata", () => {
@@ -41,214 +51,144 @@ describe("oidc well-known metadata", () => {
   });
 
   it("keeps OpenID config issuer aligned with auth base path", async () => {
-    const config = parseOpenIdConfig(
-      unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"))
-    );
-    const resolved = config instanceof Promise ? await config : config;
+    const config = await servedDocument("openid-configuration");
 
-    expect(resolved.issuer).toBe("http://localhost:3000/api/auth");
-    expect(resolved.token_endpoint).toBe(
+    expect(config.issuer).toBe("http://localhost:3000/api/auth");
+    expect(config.token_endpoint).toBe(
       "http://localhost:3000/api/auth/oauth2/token"
     );
   });
 
   it("points jwks_uri to the combined JWKS endpoint", async () => {
-    const config = parseOpenIdConfig(
-      unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"))
-    );
-    const resolved = config instanceof Promise ? await config : config;
+    const config = await servedDocument("openid-configuration");
 
-    expect(resolved.jwks_uri).toContain("/oauth2/jwks");
+    expect(config.jwks_uri).toBe("http://localhost:3000/api/auth/oauth2/jwks");
+  });
+
+  it.each(["openid-configuration", "oauth-authorization-server"] as const)(
+    "serves the provider's own %s document at the root",
+    async (kind) => {
+      const provided = await auth.handler(
+        new Request(`http://localhost:3000/api/auth/.well-known/${kind}`)
+      );
+
+      expect(await servedDocument(kind, ["api", "auth"])).toEqual(
+        await provided.json()
+      );
+      expect(provided.headers.get("Cache-Control")).toBe(
+        "public, max-age=15, stale-while-revalidate=15, stale-if-error=86400"
+      );
+    }
+  );
+
+  it("rejects a discovery path for another issuer", async () => {
+    const response = await getOpenIdConfiguration(
+      new Request("http://localhost:3000/.well-known/openid-configuration/x"),
+      { params: Promise.resolve({ issuer: ["x"] }) }
+    );
+
+    expect(response.status).toBe(404);
   });
 });
 
 describe("oidc discovery — signing algorithm advertisement", () => {
-  it("enriched metadata includes RS256 as required by OIDC Discovery 1.0", () => {
-    const enriched = enrichDiscoveryMetadata({ issuer: "https://example.com" });
-
-    const response = buildWellKnownResponse(enriched);
-    expect(response.status).toBe(200);
-  });
-
   it("advertises only the ID token algorithm the provider signs with", async () => {
-    const metadata = unwrapMetadata(
-      await callAuthApi(auth.api, "getOpenIdConfig")
-    );
-    const resolved = await parseOpenIdConfig(metadata);
+    const config = await servedDocument("openid-configuration");
 
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    expect(enriched.id_token_signing_alg_values_supported).toEqual(["RS256"]);
+    expect(config.id_token_signing_alg_values_supported).toEqual(["RS256"]);
   });
 });
 
-describe("oidc discovery — HAIP metadata fields", () => {
-  it("enrichDiscoveryMetadata preserves HAIP fields from extension metadata", () => {
-    // HAIP fields are now contributed by the haip plugin extension.
-    // enrichDiscoveryMetadata should not overwrite or remove them.
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
-      pushed_authorization_request_endpoint:
-        "https://example.com/api/auth/oauth2/par",
-      require_pushed_authorization_requests: false,
-      dpop_signing_alg_values_supported: ["ES256"],
-      authorization_details_types_supported: ["openid_credential"],
+describe.each(["openid-configuration", "oauth-authorization-server"] as const)(
+  "oidc discovery — %s",
+  (kind) => {
+    it("includes HAIP fields", async () => {
+      const metadata = await servedDocument(kind);
+
+      expect(metadata.pushed_authorization_request_endpoint).toContain(
+        "oauth2/par"
+      );
+      expect(metadata.require_pushed_authorization_requests).toBe(false);
+      expect(metadata.dpop_signing_alg_values_supported).toContain("ES256");
     });
 
-    expect(enriched.pushed_authorization_request_endpoint).toBe(
-      "https://example.com/api/auth/oauth2/par"
-    );
-    expect(enriched.require_pushed_authorization_requests).toBe(false);
-    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
-    expect(enriched.authorization_details_types_supported).toContain(
-      "openid_credential"
-    );
-  });
+    it("includes CIBA fields and grant type", async () => {
+      const metadata = await servedDocument(kind);
 
-  it("OpenID config enrichment includes HAIP fields", async () => {
-    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    expect(enriched.pushed_authorization_request_endpoint).toContain(
-      "oauth2/par"
-    );
-    expect(enriched.require_pushed_authorization_requests).toBe(false);
-    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
-  });
-
-  it("OAuth AS config enrichment includes HAIP fields", async () => {
-    const raw = unwrapMetadata(
-      await callAuthApi(auth.api, "getOAuthServerConfig")
-    );
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    expect(enriched.pushed_authorization_request_endpoint).toContain(
-      "oauth2/par"
-    );
-    expect(enriched.dpop_signing_alg_values_supported).toContain("ES256");
-  });
-});
-
-describe("oidc discovery — CIBA metadata fields", () => {
-  it("enriched metadata preserves CIBA fields from extension metadata", () => {
-    // CIBA fields are now contributed by the ciba plugin extension.
-    // enrichDiscoveryMetadata should not overwrite or remove them.
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
-      backchannel_authentication_endpoint:
-        "https://example.com/api/auth/oauth2/bc-authorize",
-      backchannel_token_delivery_modes_supported: ["poll", "ping"],
-      backchannel_user_code_parameter_supported: false,
+      expect(metadata.backchannel_authentication_endpoint).toBe(
+        "http://localhost:3000/api/auth/oauth2/bc-authorize"
+      );
+      expect(metadata.backchannel_token_delivery_modes_supported).toEqual([
+        "poll",
+        "ping",
+      ]);
+      expect(metadata.backchannel_user_code_parameter_supported).toBe(false);
+      expect(metadata.grant_types_supported).toContain(
+        "urn:openid:params:grant-type:ciba"
+      );
     });
 
-    expect(enriched.backchannel_authentication_endpoint).toBe(
-      "https://example.com/api/auth/oauth2/bc-authorize"
-    );
-    expect(enriched.backchannel_token_delivery_modes_supported).toEqual([
-      "poll",
-      "ping",
-    ]);
-    expect(enriched.backchannel_user_code_parameter_supported).toBe(false);
-  });
+    it("includes MCP capability flags", async () => {
+      const metadata = await servedDocument(kind);
 
-  it("OpenID config includes CIBA grant type in grant_types_supported", async () => {
-    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    const grantTypes = enriched.grant_types_supported as string[];
-    expect(grantTypes).toContain("urn:openid:params:grant-type:ciba");
-  });
-});
-
-describe("oidc discovery — MCP compatibility metadata", () => {
-  it("enrichDiscoveryMetadata advertises CIMD support", () => {
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
+      expect(metadata.client_id_metadata_document_supported).toBe(true);
+      expect(metadata.resource_indicators_supported).toBe(true);
     });
 
-    expect(enriched.client_id_metadata_document_supported).toBe(true);
-  });
+    it("lists every authorization_details type the server accepts", async () => {
+      const metadata = await servedDocument(kind);
 
-  it("enrichDiscoveryMetadata advertises resource indicator support", () => {
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
+      expect(metadata.authorization_details_types_supported).toEqual([
+        "openid_credential",
+        "payment_authorization",
+      ]);
     });
 
-    expect(enriched.resource_indicators_supported).toBe(true);
-  });
+    it("includes Zentity's endpoints", async () => {
+      const metadata = await servedDocument(kind);
 
-  it("OpenID config includes MCP capability flags", async () => {
-    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    expect(enriched.client_id_metadata_document_supported).toBe(true);
-    expect(enriched.resource_indicators_supported).toBe(true);
-  });
-
-  it("OAuth AS config includes MCP capability flags", async () => {
-    const raw = unwrapMetadata(
-      await callAuthApi(auth.api, "getOAuthServerConfig")
-    );
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
-
-    expect(enriched.client_id_metadata_document_supported).toBe(true);
-    expect(enriched.resource_indicators_supported).toBe(true);
-  });
-});
+      expect(metadata).toMatchObject({
+        authorization_challenge_endpoint:
+          "http://localhost:3000/api/oauth2/authorize-challenge",
+        poh_endpoint: "http://localhost:3000/api/auth/oauth2/proof-of-human",
+        poh_issuer_uri:
+          "http://localhost:3000/api/auth/.well-known/proof-of-human",
+        validity_endpoint: "http://localhost:3000/api/auth/oauth2/validity",
+      });
+    });
+  }
+);
 
 describe("oidc discovery — assurance & grant type completeness", () => {
-  it("acr_values_supported contains all 4 tier URIs", () => {
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
-    });
-    const acr = enriched.acr_values_supported as string[];
+  it("acr_values_supported contains all 4 tier URIs", async () => {
+    const config = await servedDocument("openid-configuration");
 
-    expect(acr).toContain("urn:zentity:assurance:tier-0");
-    expect(acr).toContain("urn:zentity:assurance:tier-1");
-    expect(acr).toContain("urn:zentity:assurance:tier-2");
-    expect(acr).toContain("urn:zentity:assurance:tier-3");
-    expect(acr).toHaveLength(4);
+    expect(config.acr_values_supported).toEqual([
+      "urn:zentity:assurance:tier-0",
+      "urn:zentity:assurance:tier-1",
+      "urn:zentity:assurance:tier-2",
+      "urn:zentity:assurance:tier-3",
+    ]);
   });
 
-  it("claims_supported includes assurance claims", () => {
-    const enriched = enrichDiscoveryMetadata({
-      issuer: "https://example.com/api/auth",
-    });
-    const claims = enriched.claims_supported as string[];
+  it("claims_supported includes assurance claims", async () => {
+    const config = await servedDocument("openid-configuration");
 
-    expect(claims).toContain("acr");
-    expect(claims).toContain("amr");
-    expect(claims).toContain("auth_time");
-    expect(claims).toContain("acr_eidas");
-    expect(claims).toContain("at_hash");
+    expect(config.claims_supported).toEqual(
+      expect.arrayContaining([
+        "acr",
+        "amr",
+        "auth_time",
+        "acr_eidas",
+        "at_hash",
+      ])
+    );
   });
 
   it("grant_types_supported includes token-exchange", async () => {
-    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    const resolved = await parseOpenIdConfig(raw);
-    const enriched = enrichDiscoveryMetadata(
-      resolved as Record<string, unknown>
-    );
+    const config = await servedDocument("openid-configuration");
 
-    const grantTypes = enriched.grant_types_supported as string[];
-    expect(grantTypes).toContain(
+    expect(config.grant_types_supported).toContain(
       "urn:ietf:params:oauth:grant-type:token-exchange"
     );
   });

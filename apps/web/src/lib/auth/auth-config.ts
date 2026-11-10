@@ -156,7 +156,11 @@ import {
   beforeUserInfoRejectRevokedToken,
   revokedAccessTokenJti,
 } from "@/lib/auth/oidc/token-revocation";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
+import {
+  discoveryMetadataExtension,
+  getAuthIssuer,
+  joinAuthIssuerPath,
+} from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
@@ -390,11 +394,21 @@ const oidcStandardClaims = [
   "picture",
   "updated_at",
 ];
+// ID token claims that the authentication context and Zentity's claim
+// contributors add; the provider advertises only the names listed here.
+const ID_TOKEN_ASSURANCE_CLAIMS = [
+  "acr",
+  "amr",
+  "auth_time",
+  "acr_eidas",
+  "at_hash",
+];
 const advertisedClaims = Array.from(
   new Set([
     ...oidcStandardClaims,
     ...PROOF_DISCLOSURE_KEYS,
     ...identityClaimKeys,
+    ...ID_TOKEN_ASSURANCE_CLAIMS,
   ])
 );
 const isOidcE2e = env.E2E_OIDC_ONLY === true;
@@ -2132,7 +2146,9 @@ export const auth = betterAuth({
           ? { auth_session: authSession }
           : {};
       },
-      extensions: [clientMetadataExtension],
+      // Registered ahead of every plugin's extension, so Zentity's discovery
+      // fields win the provider's first-wins merge.
+      extensions: [discoveryMetadataExtension, clientMetadataExtension],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,
