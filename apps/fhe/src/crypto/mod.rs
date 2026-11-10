@@ -15,4 +15,4 @@ pub use dob::*;
 pub use keys::*;
 pub use liveness::*;
 
-pub(crate) use tfhe_codec::{decode_tfhe_binary, encode_tfhe_binary};
+pub use tfhe_codec::{decode_tfhe_binary, encode_tfhe_binary, MAX_TFHE_SERIALIZED_BYTES};

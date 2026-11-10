@@ -25,8 +25,8 @@ pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
             .register_key(public_key.clone(), server_key)
             .expect("Failed to register FHE keys for tests");
 
-        let public_key_bytes = bincode::serialize(&public_key).unwrap();
-        let client_key_bytes = bincode::serialize(&client_key).unwrap();
+        let public_key_bytes = super::encode_tfhe_binary(&public_key).unwrap();
+        let client_key_bytes = super::encode_tfhe_binary(&client_key).unwrap();
 
         TestKeyMaterial {
             client_key_bytes,
@@ -35,8 +35,9 @@ pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
         }
     });
 
-    let client_key: ClientKey = bincode::deserialize(&material.client_key_bytes).unwrap();
-    let public_key: CompressedPublicKey = bincode::deserialize(&material.public_key_bytes).unwrap();
+    let client_key: ClientKey = super::decode_tfhe_binary(&material.client_key_bytes).unwrap();
+    let public_key: CompressedPublicKey =
+        super::decode_tfhe_binary(&material.public_key_bytes).unwrap();
 
     (client_key, public_key, material.key_id.clone())
 }

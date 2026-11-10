@@ -14,15 +14,15 @@ use crate::transport;
 
 const MIN_KEY_BYTES: usize = 16;
 const MAX_PUBLIC_KEY_BYTES: usize = 16 * 1024 * 1024; // 16 MB
-const MAX_SERVER_KEY_BYTES: usize = 48 * 1024 * 1024; // 48 MB
+const MAX_SERVER_KEY_BYTES: usize = 80 * 1024 * 1024; // 80 MB; tfhe 1.8 compressed server keys are ~60 MB
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterKeyRequest {
-    /// Compressed server key (bincode serialized)
+    /// Compressed server key (tfhe safe_serialize format)
     #[serde(with = "serde_bytes")]
     server_key: Vec<u8>,
-    /// Compressed public key (bincode serialized)
+    /// Compressed public key (tfhe safe_serialize format)
     #[serde(with = "serde_bytes")]
     public_key: Vec<u8>,
 }

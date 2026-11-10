@@ -180,9 +180,9 @@ impl KeyStore {
     ) -> Result<u128, FheError> {
         let start = Instant::now();
         let public_bytes = tracing::info_span!("fhe.serialize_public_key", key_id = %key_id)
-            .in_scope(|| bincode::serialize(public_key))?;
+            .in_scope(|| super::encode_tfhe_binary(public_key))?;
         let server_bytes = tracing::info_span!("fhe.serialize_server_key", key_id = %key_id)
-            .in_scope(|| bincode::serialize(server_key))?;
+            .in_scope(|| super::encode_tfhe_binary(server_key))?;
 
         let write_txn = self.db.begin_write().map_err(|error| {
             FheError::Internal(format!(
@@ -252,7 +252,7 @@ impl KeyStore {
             }
         }?;
         let bytes = value.value();
-        match bincode::deserialize(bytes) {
+        match super::decode_tfhe_binary(bytes) {
             Ok(key) => Some(key),
             Err(error) => {
                 warn!(key_id = %key_id, error = %error, "Failed to deserialize public key");
@@ -284,7 +284,7 @@ impl KeyStore {
             }
         }?;
         let bytes = value.value();
-        match bincode::deserialize(bytes) {
+        match super::decode_tfhe_binary(bytes) {
             Ok(key) => Some(key),
             Err(error) => {
                 warn!(key_id = %key_id, error = %error, "Failed to deserialize server key");
@@ -297,7 +297,7 @@ impl KeyStore {
     ///
     /// Stores compressed keys immediately and persists them to disk.
     /// Validation is deferred to first use (`get_server_key`) where
-    /// decompression is wrapped in `catch_unwind`. Bincode deserialization
+    /// decompression is wrapped in `catch_unwind`. Deserialization
     /// in the HTTP handler already rejects malformed bytes with 400.
     pub fn register_key(
         &self,
@@ -495,4 +495,34 @@ pub fn get_public_key_for_encryption(
     key_store
         .get_public_key(key_id)
         .ok_or_else(|| crate::error::FheError::KeyNotFound(key_id.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tfhe::{ClientKey, ConfigBuilder};
+
+    #[test]
+    fn register_key_defers_server_key_decompression() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = KeyStore::new_for_tests(dir.path().to_path_buf());
+        let client_key = ClientKey::generate(ConfigBuilder::default().build());
+
+        let key_id = store
+            .register_key(
+                CompressedPublicKey::new(&client_key),
+                CompressedServerKey::new(&client_key),
+            )
+            .expect("register key");
+
+        assert!(store
+            .server_keys_compressed
+            .read()
+            .unwrap()
+            .contains_key(&key_id));
+        assert!(!store.server_keys.read().unwrap().contains_key(&key_id));
+
+        assert!(store.get_server_key(&key_id).is_some());
+        assert!(store.server_keys.read().unwrap().contains_key(&key_id));
+    }
 }

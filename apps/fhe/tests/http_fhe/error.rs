@@ -104,9 +104,9 @@ async fn error_format_invalid_input() {
     );
 }
 
-/// Bincode error returns 400 with correct format.
+/// Undecodable key payload returns 400 with correct format.
 #[tokio::test]
-async fn error_format_bincode_error() {
+async fn error_format_undecodable_key() {
     let app = http::test_app();
 
     let body = http::fixtures::register_key_request(
@@ -299,7 +299,7 @@ async fn status_codes_mapping() {
         );
     }
 
-    // Bincode -> 400
+    // Undecodable payload -> 400
     {
         let app = http::test_app();
 
@@ -323,7 +323,7 @@ async fn status_codes_mapping() {
         assert_eq!(
             response.status(),
             StatusCode::BAD_REQUEST,
-            "Bincode should map to 400"
+            "Undecodable payload should map to 400"
         );
     }
 }

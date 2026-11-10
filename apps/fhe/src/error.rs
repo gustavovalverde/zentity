@@ -16,9 +16,6 @@ pub enum FheError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 
-    #[error("Bincode error: {0}")]
-    Bincode(#[from] bincode::Error),
-
     #[error("Msgpack decode error: {0}")]
     MsgpackDecode(#[from] rmp_serde::decode::Error),
 
@@ -41,7 +38,6 @@ impl IntoResponse for FheError {
         let (status, message) = match &self {
             FheError::KeyNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
             FheError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
-            FheError::Bincode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::MsgpackDecode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::MsgpackEncode(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
             FheError::Io(_) => (StatusCode::BAD_REQUEST, self.to_string()),
