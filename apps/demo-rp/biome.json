@@ -7,6 +7,35 @@
   "linter": {
     "domains": {
       "next": "recommended"
+    },
+    "rules": {
+      "correctness": {
+        "noUnsafeOptionalChaining": "off"
+      },
+      "style": {
+        "useConsistentMethodSignatures": "off",
+        "useConsistentArrowReturn": "off",
+        "useNamedCaptureGroup": "off",
+        "noIncrementDecrement": "off",
+        "useDestructuring": "off",
+        "useUnicodeRegex": "off",
+        "useImportsFirst": "off",
+        "useErrorCause": "off",
+        "noSubstr": "off"
+      },
+      "suspicious": {
+        "noUnnecessaryConditions": "off",
+        "noJsxLeakedDollar": "off",
+        "noLeakedRender": "off",
+        "noEqualsToNull": "off",
+        "noShadow": "off"
+      },
+      "nursery": {
+        "useTailwindSortedClasses": "off"
+      },
+      "performance": {
+        "noJsxPropsBind": "off"
+      }
     }
   },
   "files": {
@@ -17,6 +46,7 @@
       "*.ts",
       "*.mts",
       "!!node_modules",
+      "!!public",
       "!!.next",
       "!!.data",
       "!!playwright-report",
@@ -47,9 +77,7 @@
             "noNestedTernary": "off"
           },
           "suspicious": {
-            "noArrayIndexKey": "off"
-          },
-          "nursery": {
+            "noArrayIndexKey": "off",
             "noShadow": "off"
           }
         }
@@ -83,5 +111,13 @@
       }
     }
   ],
-  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json"
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "useSortedPackageJson": "off",
+        "useSortedKeys": "off"
+      }
+    }
+  }
 }

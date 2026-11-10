@@ -54,28 +54,28 @@ describe("magic-link verification", () => {
     await resetDatabase();
   });
 
-  it.each([
-    "opaque",
-    "eip712",
-  ])("keeps the %s credential of a user with an unverified email", async (providerId) => {
-    const email = `${providerId}-${crypto.randomUUID()}@example.com`;
-    const userId = await createTestUser({ email, emailVerified: false });
-    await seedAccount(userId, providerId);
-    const token = await seedMagicLink(email);
+  it.each(["opaque", "eip712"])(
+    "keeps the %s credential of a user with an unverified email",
+    async (providerId) => {
+      const email = `${providerId}-${crypto.randomUUID()}@example.com`;
+      const userId = await createTestUser({ email, emailVerified: false });
+      await seedAccount(userId, providerId);
+      const token = await seedMagicLink(email);
 
-    const response = await verifyMagicLink(token);
+      const response = await verifyMagicLink(token);
 
-    expect(response.status).toBe(302);
-    const location = new URL(response.headers.get("location") ?? "");
-    expect(location.pathname).toBe("/sign-in");
-    expect(location.searchParams.get("error")).toBe("email_unverified");
-    const remaining = await db
-      .select({ providerId: accounts.providerId })
-      .from(accounts)
-      .where(eq(accounts.userId, userId))
-      .all();
-    expect(remaining).toEqual([{ providerId }]);
-  });
+      expect(response.status).toBe(302);
+      const location = new URL(response.headers.get("location") ?? "");
+      expect(location.pathname).toBe("/sign-in");
+      expect(location.searchParams.get("error")).toBe("email_unverified");
+      const remaining = await db
+        .select({ providerId: accounts.providerId })
+        .from(accounts)
+        .where(eq(accounts.userId, userId))
+        .all();
+      expect(remaining).toEqual([{ providerId }]);
+    }
+  );
 
   it("signs in a user whose email is verified", async () => {
     const email = `verified-${crypto.randomUUID()}@example.com`;

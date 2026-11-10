@@ -283,14 +283,12 @@ describe("evaluateSessionGrants", () => {
       );
     }
 
-    it.each([
-      "-50",
-      "5abc",
-      "1e3",
-      "",
-    ])("does not auto-approve the malformed amount %j", async (value) => {
-      expect((await evaluate(paymentIn(value, "base"))).approved).toBe(false);
-    });
+    it.each(["-50", "5abc", "1e3", ""])(
+      "does not auto-approve the malformed amount %j",
+      async (value) => {
+        expect((await evaluate(paymentIn(value, "base"))).approved).toBe(false);
+      }
+    );
 
     it("counts spends in the same currency and unit against the limit", async () => {
       expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(true);
@@ -302,12 +300,17 @@ describe("evaluateSessionGrants", () => {
     it.each([
       ["another unit", "1", "display", "ZEC"],
       ["another currency", "1", "base", "USD"],
-    ])("does not auto-approve a spend in %s once the day has spending", async (_label, value, unit, currency) => {
-      expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(true);
-      expect((await evaluate(paymentIn(value, unit, currency))).approved).toBe(
-        false
-      );
-    });
+    ])(
+      "does not auto-approve a spend in %s once the day has spending",
+      async (_label, value, unit, currency) => {
+        expect((await evaluate(paymentIn("100000", "base"))).approved).toBe(
+          true
+        );
+        expect(
+          (await evaluate(paymentIn(value, unit, currency))).approved
+        ).toBe(false);
+      }
+    );
   });
 
   it("falls through to manual when a payment recipient is not allowlisted", async () => {
