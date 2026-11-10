@@ -17,13 +17,8 @@ const algSchema = z.enum(["RS256", "EdDSA"]);
 
 export const adminRouter = router({
   rotateSigningKey: adminProcedure
-    .input(
-      z.object({
-        alg: algSchema,
-        overlapHours: z.number().int().min(1).max(720).default(24),
-      })
-    )
-    .mutation(({ input }) => rotateSigningKey(input.alg, input.overlapHours)),
+    .input(z.object({ alg: algSchema }))
+    .mutation(({ input }) => rotateSigningKey(input.alg)),
 
   cleanupExpiredKeys: adminProcedure.mutation(async () => {
     const deleted = await cleanupExpiredKeys();

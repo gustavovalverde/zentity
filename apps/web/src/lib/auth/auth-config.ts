@@ -133,11 +133,7 @@ import {
   normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
-import {
-  createJwtSigningKey,
-  getJwtSigningKeys,
-  signJwt,
-} from "@/lib/auth/oidc/jwt-signer";
+import { signingKeyOptions, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   adoptZentityPairwiseSector,
@@ -2115,21 +2111,17 @@ export const auth = betterAuth({
       emailDomainName: "wallet.zentity.app",
     }),
     jwt({
+      ...signingKeyOptions,
       jwks: {
-        // Keep framework defaults aligned with OIDC's RS256 id_token default.
-        // Access tokens still use EdDSA via the custom signJwt dispatcher below.
-        keyPairConfig: { alg: "RS256" },
-        // The adapter encrypts rows with KEY_ENCRYPTION_KEY and hands Better
-        // Auth plain JWK JSON, so Better Auth must not decrypt them again.
-        disablePrivateKeyEncryption: true,
+        ...signingKeyOptions.jwks,
+        // The plugin requires a remote JWKS URL alongside jwt.sign; Zentity
+        // publishes the plugin's keys there itself.
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
-      },
-      adapter: {
-        getJwks: getJwtSigningKeys,
-        createJwk: createJwtSigningKey,
       },
       jwt: {
         issuer: authIssuer,
+        // signJwt signs with the plugin's keys and adds what the provider
+        // cannot: EdDSA and pairwise subjects for every access token.
         sign: signJwt,
       },
     }),

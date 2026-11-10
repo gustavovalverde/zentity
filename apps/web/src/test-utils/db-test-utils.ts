@@ -116,12 +116,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(passkeys).run();
     await tx.delete(users).run();
   });
-
-  // Clear in-memory caches that reference DB-persisted keys
-  const signingKeyCache = (globalThis as Record<symbol, unknown>)[
-    Symbol.for("zentity.jwt-signer-key-cache")
-  ] as Map<unknown, unknown> | undefined;
-  signingKeyCache?.clear();
 }
 
 export async function createTestUser(
