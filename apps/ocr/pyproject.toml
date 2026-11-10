@@ -19,7 +19,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi==0.61b0",
     "opentelemetry-instrumentation-httpx==0.61b0",
     "opentelemetry-instrumentation-requests==0.61b0",
-    "opentelemetry-sdk==1.40.0",
+    "opentelemetry-sdk==1.45.2",
     "httpx==0.28.1",
     "pillow==12.3.0",
     "pydantic==2.12.5",
