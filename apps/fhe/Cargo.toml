@@ -14,37 +14,43 @@ path = "src/main.rs"
 
 [dependencies]
 # FHE library
-tfhe = { version = "~1.4", features = ["integer"] }
+# Keep the minor in lockstep with the web client's tfhe/node-tfhe (apps/web/package.json).
+# Keys and ciphertexts cross the wire as plain bincode, and tfhe 1.6+ cannot read keys
+# serialized by 1.5.x (and 1.8 default keys grow to ~60 MB), so 1.6+ requires migrating the
+# web client and FHE_BODY_LIMIT_MB together.
+tfhe = { version = "~1.5", features = ["integer"] }
 
 # Web framework
-axum = "~0.8.8"
-tokio = { version = "~1.48", features = ["full"] }
+axum = "0.8"
+tokio = { version = "1.54", features = ["full"] }
 tower = { version = "0.5", features = ["limit", "timeout", "util"] }
-tower-http = { version = "~0.6.8", features = ["trace"] }
+tower-http = { version = "0.7", features = ["trace"] }
 
 # Serialization
-serde = { version = "~1.0", features = ["derive"] }
-serde_json = "~1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_bytes = "0.11"
+# Stay on 1.x: tfhe-rs pins =1.3.3 and serializes keys and ciphertexts with it.
+# bincode 3.0.0 is a compile_error! tombstone and 2.x is not wire-compatible.
 bincode = "1.3.3"
 rmp-serde = "1.3"
 flate2 = "1.1"
 
 # Utilities
-uuid = { version = "~1.19", features = ["v4", "serde"] }
-tracing = "~0.1.44"
-tracing-subscriber = { version = "~0.3.23", features = ["env-filter"] }
-thiserror = "~2.0"
-once_cell = "~1.21"
-redb = "3.1.1"
-opentelemetry = "0.31.0"
-opentelemetry-otlp = { version = "0.31.0", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
-opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
-tracing-opentelemetry = "0.32.1"
-opentelemetry-semantic-conventions = "0.31.0"
+uuid = { version = "1.29", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "2"
+once_cell = "1.21"
+redb = "4.5"
+opentelemetry = "0.33"
+opentelemetry-otlp = { version = "0.33", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio"] }
+tracing-opentelemetry = "0.34"
+opentelemetry-semantic-conventions = "0.33"
 
 [build-dependencies]
-chrono = "~0.4"
+chrono = "0.4"
 
 [dev-dependencies]
 http-body-util = "0.1"

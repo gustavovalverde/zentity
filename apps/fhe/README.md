@@ -39,6 +39,10 @@ All POST endpoints accept **MessagePack** payloads (`application/msgpack`), opti
 
 Public and server keys are persisted in **ReDB** at `$FHE_KEYS_DIR/keystore.redb` (default: `/var/lib/zentity/fhe/keystore.redb`). This enables restart recovery and horizontal scaling without re-registering keys.
 
+## TFHE version
+
+Keys and ciphertexts cross the wire as plain bincode, so the `tfhe` minor version must match the browser client (`tfhe` and `node-tfhe` in `apps/web/package.json`). The service stays on the 1.5 line: tfhe 1.6 and later cannot read keys serialized by 1.5. Move the web client and this service to a newer line together.
+
 ## Run locally
 
 ```bash
