@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClearValueType, EncryptResult, Handle } from "@zama-fhe/sdk";
+import type { ClearValue, EncryptedValue, EncryptResult } from "@zama-fhe/sdk";
 import type { EncryptedHandle } from "./encrypted-values";
 
 import {
@@ -43,16 +43,19 @@ export function buildEncryptedIdentityAttributes(
 ): EncryptedIdentityAttributes {
   return {
     birthYearOffset: buildEncryptedHandle(
-      encryptedInput.handles[0],
+      encryptedInput.encryptedValues[0],
       "birth-year offset"
     ),
-    countryCode: buildEncryptedHandle(encryptedInput.handles[1], "country"),
+    countryCode: buildEncryptedHandle(
+      encryptedInput.encryptedValues[1],
+      "country"
+    ),
     complianceLevel: buildEncryptedHandle(
-      encryptedInput.handles[2],
+      encryptedInput.encryptedValues[2],
       "compliance level"
     ),
     isBlacklisted: buildEncryptedHandle(
-      encryptedInput.handles[3],
+      encryptedInput.encryptedValues[3],
       "blacklist status"
     ),
     inputProof: buildInputProof(encryptedInput.inputProof),
@@ -85,19 +88,22 @@ export function resolveIdentityAttributeHandles(input: {
 export function buildIdentityAttributeDecryptHandles(input: {
   attributeHandles: IdentityAttributeHandles;
   registryAddress: `0x${string}`;
-}): Array<{ contractAddress: `0x${string}`; handle: Handle }> {
+}): Array<{ contractAddress: `0x${string}`; encryptedValue: EncryptedValue }> {
   const { attributeHandles, registryAddress } = input;
   return [
     attributeHandles.birthYearOffset,
     attributeHandles.countryCode,
     attributeHandles.complianceLevel,
     attributeHandles.isBlacklisted,
-  ].map((handle) => ({ handle, contractAddress: registryAddress }));
+  ].map((encryptedValue) => ({
+    encryptedValue,
+    contractAddress: registryAddress,
+  }));
 }
 
 export function deriveDecryptedIdentityAttributes(input: {
   attributeHandles: IdentityAttributeHandles;
-  clearValues: Record<Handle, ClearValueType>;
+  clearValues: Record<EncryptedValue, ClearValue>;
 }): DecryptedIdentityAttributes {
   const { attributeHandles, clearValues } = input;
   return {

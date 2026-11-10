@@ -14,7 +14,10 @@ export function buildEncryptedTokenAmount(
   encryptedInput: EncryptResult
 ): EncryptedTokenAmount {
   return {
-    amount: buildEncryptedHandle(encryptedInput.handles[0], "token amount"),
+    amount: buildEncryptedHandle(
+      encryptedInput.encryptedValues[0],
+      "token amount"
+    ),
     inputProof: buildInputProof(encryptedInput.inputProof),
   };
 }

@@ -167,7 +167,7 @@ export const env = createEnv({
     CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY: z.string().optional(),
     CONFIDENTIAL_CHAIN_COMPLIANCE_RULES: z.string().optional(),
     CONFIDENTIAL_CHAIN_COMPLIANT_ERC20: z.string().optional(),
-    CONFIDENTIAL_RELAYER_URL: serviceUrl("https://relayer.testnet.zama.org/v2"),
+    CONFIDENTIAL_RELAYER_URL: serviceUrl("https://relayer.testnet.zama.org"),
     CONFIDENTIAL_RELAYER_API_KEY: z.string().optional(),
     LOCAL_REGISTRAR_PRIVATE_KEY: z.string().optional(),
     LOCAL_RPC_URL: z.string().default("http://127.0.0.1:8545"),

@@ -2,7 +2,6 @@
 
 import type {
   EncryptResult,
-  RelayerSDKStatus,
   ZamaSDKEvent,
   ZamaSDKEventType,
 } from "@zama-fhe/sdk";
@@ -11,13 +10,13 @@ import type { EIP1193Provider } from "viem";
 
 import { useAppKitAccount } from "@reown/appkit/react";
 import {
+  cleartext,
   IndexedDBStorage,
   MemoryStorage,
-  RelayerWeb,
   ZamaSDK,
 } from "@zama-fhe/sdk";
-import { RelayerCleartext } from "@zama-fhe/sdk/cleartext";
-import { ViemSigner } from "@zama-fhe/sdk/viem";
+import { createConfig } from "@zama-fhe/sdk/viem";
+import { web } from "@zama-fhe/sdk/web";
 import {
   createContext,
   useCallback,
@@ -32,7 +31,6 @@ import { useChainId, usePublicClient, useWalletClient } from "wagmi";
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 
 import {
-  buildConfidentialRelayerTransports,
   getConfidentialClientNetwork,
   HARDHAT_CONFIDENTIAL_CHAIN_ID,
 } from "./client-networks";
@@ -51,12 +49,16 @@ import {
 } from "./token-amount";
 
 export const CONFIDENTIAL_SESSION_TTL_SECONDS = 86_400;
-const CONFIDENTIAL_KEYPAIR_TTL_SECONDS = 30 * 86_400;
-const CONFIDENTIAL_ARTIFACT_CACHE_TTL_SECONDS = 86_400;
+const CONFIDENTIAL_PERMIT_TTL_DAYS = CONFIDENTIAL_SESSION_TTL_SECONDS / 86_400;
+const CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS = 30 * 86_400;
 const confidentialLogger =
   process.env.NODE_ENV === "development" ? console : undefined;
 
-type ConfidentialChainStatus = RelayerSDKStatus | "not_connected";
+type ConfidentialChainStatus =
+  | "error"
+  | "initializing"
+  | "not_connected"
+  | "ready";
 
 interface ConfidentialChainContextValue {
   decryptIdentityAttributes: (input: {
@@ -128,7 +130,7 @@ async function runMeasuredEncrypt<T>(
     const encryptedInput = await encrypt();
     recordClientMetric({
       name: "client.confidential.encrypt.proof.bytes",
-      value: encryptedInput.inputProof.byteLength,
+      value: (encryptedInput.inputProof.length - 2) / 2,
     });
     return build(encryptedInput);
   } catch (encryptError) {
@@ -180,64 +182,75 @@ export function ConfidentialChainProvider({
       return;
     }
 
-    let relayer: RelayerCleartext | RelayerWeb;
+    const { chain } = activeNetwork;
+    const nextSdk = new ZamaSDK(
+      createConfig({
+        chains: [chain],
+        publicClient,
+        walletClient,
+        ethereum: getBrowserEthereumProvider(),
+        relayers: {
+          [chain.id]: activeNetwork.mode === "cleartext" ? cleartext() : web(),
+        },
+        storage: new IndexedDBStorage(
+          "ZentityConfidentialCredentials",
+          1,
+          "credentials"
+        ),
+        permitStorage: new MemoryStorage(),
+        transportKeyPairTTL: CONFIDENTIAL_TRANSPORT_KEY_PAIR_TTL_SECONDS,
+        permitTTL: CONFIDENTIAL_PERMIT_TTL_DAYS,
+        onEvent: recordSdkEvent,
+        logger: confidentialLogger,
+      })
+    );
+
+    let cancelled = false;
+    const recordInitialization = (result: "ok" | "error") => {
+      recordClientMetric({
+        name: "client.confidential.init.duration",
+        value: performance.now() - initializationStartedAt,
+        attributes: {
+          result,
+          chain_id: String(activeChainId),
+          trigger: initializationTrigger,
+        },
+      });
+    };
+
     if (activeNetwork.mode === "cleartext") {
-      relayer = new RelayerCleartext(activeNetwork.cleartextConfig);
       setStatus("ready");
       setError(null);
     } else {
-      const webRelayer = new RelayerWeb({
-        getChainId: async () => activeNetwork.chainId,
-        transports: buildConfidentialRelayerTransports(),
-        logger: confidentialLogger,
-        fheArtifactStorage: new IndexedDBStorage(
-          "ZentityConfidentialArtifacts",
-          1,
-          "artifacts"
-        ),
-        fheArtifactCacheTTL: CONFIDENTIAL_ARTIFACT_CACHE_TTL_SECONDS,
-        onStatusChange: (nextStatus, nextError) => {
-          setStatus(nextStatus);
-          setError(nextError ?? null);
-          if (nextStatus === "ready" || nextStatus === "error") {
-            recordClientMetric({
-              name: "client.confidential.init.duration",
-              value: performance.now() - initializationStartedAt,
-              attributes: {
-                result: nextStatus === "ready" ? "ok" : "error",
-                chain_id: String(activeChainId),
-                trigger: initializationTrigger,
-              },
-            });
+      // The SDK loads its FHE runtime lazily; fetching the network encryption
+      // key up front surfaces relayer or WASM failures before the user acts.
+      setStatus("initializing");
+      setError(null);
+      nextSdk.relayer
+        .fetchFheEncryptionKeyBytes()
+        .then(() => {
+          if (!cancelled) {
+            setStatus("ready");
+            recordInitialization("ok");
           }
-        },
-      });
-      relayer = webRelayer;
-      setStatus(webRelayer.status);
-      setError(webRelayer.initError ?? null);
+        })
+        .catch((initError: unknown) => {
+          if (!cancelled) {
+            setStatus("error");
+            setError(
+              initError instanceof Error
+                ? initError
+                : new Error(String(initError))
+            );
+            recordInitialization("error");
+          }
+        });
     }
-    const signer = new ViemSigner({
-      publicClient,
-      walletClient,
-      ethereum: getBrowserEthereumProvider(),
-    });
-    const nextSdk = new ZamaSDK({
-      relayer,
-      signer,
-      storage: new IndexedDBStorage(
-        "ZentityConfidentialCredentials",
-        1,
-        "credentials"
-      ),
-      sessionStorage: new MemoryStorage(),
-      keypairTTL: CONFIDENTIAL_KEYPAIR_TTL_SECONDS,
-      sessionTTL: CONFIDENTIAL_SESSION_TTL_SECONDS,
-      onEvent: recordSdkEvent,
-    });
 
     setSdk(nextSdk);
 
     return () => {
+      cancelled = true;
       nextSdk.terminate();
     };
   }, [
@@ -260,7 +273,7 @@ export function ConfidentialChainProvider({
       assertConfidentialSdk(sdk);
       return await runMeasuredEncrypt(
         () =>
-          sdk.relayer.encrypt({
+          sdk.encrypt({
             contractAddress: registryAddress,
             userAddress,
             values: [
@@ -295,7 +308,7 @@ export function ConfidentialChainProvider({
       assertConfidentialSdk(sdk);
       return await runMeasuredEncrypt(
         () =>
-          sdk.relayer.encrypt({
+          sdk.encrypt({
             contractAddress,
             userAddress,
             values: [{ type: "euint64", value: amount }],
@@ -312,7 +325,7 @@ export function ConfidentialChainProvider({
     async ({ attributeHandles, registryAddress }) => {
       assertConfidentialSdk(sdk);
       try {
-        const clearValues = await sdk.userDecrypt(
+        const clearValues = await sdk.decryption.decryptValues(
           buildIdentityAttributeDecryptHandles({
             attributeHandles,
             registryAddress,

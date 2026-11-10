@@ -19,13 +19,8 @@ const HANDLES = {
 describe("buildEncryptedIdentityAttributes", () => {
   it("maps encrypt handles to attributes in registry order", () => {
     const encryptResult: EncryptResult = {
-      handles: [
-        Uint8Array.of(1),
-        Uint8Array.of(2),
-        Uint8Array.of(3),
-        Uint8Array.of(4),
-      ],
-      inputProof: Uint8Array.of(0xab, 0xcd),
+      encryptedValues: ["0x01", "0x02", "0x03", "0x04"],
+      inputProof: "0xabcd",
     };
 
     expect(buildEncryptedIdentityAttributes(encryptResult)).toEqual({
@@ -38,10 +33,10 @@ describe("buildEncryptedIdentityAttributes", () => {
   });
 
   it("throws naming the attribute whose handle is absent", () => {
-    const encryptResult = {
-      handles: [Uint8Array.of(1), Uint8Array.of(2)],
-      inputProof: Uint8Array.of(1),
-    } as EncryptResult;
+    const encryptResult: EncryptResult = {
+      encryptedValues: ["0x01", "0x02"],
+      inputProof: "0x01",
+    };
 
     expect(() => buildEncryptedIdentityAttributes(encryptResult)).toThrow(
       "compliance level"
@@ -83,10 +78,10 @@ describe("buildIdentityAttributeDecryptHandles", () => {
         registryAddress,
       })
     ).toEqual([
-      { handle: "0x01", contractAddress: registryAddress },
-      { handle: "0x02", contractAddress: registryAddress },
-      { handle: "0x03", contractAddress: registryAddress },
-      { handle: "0x04", contractAddress: registryAddress },
+      { encryptedValue: "0x01", contractAddress: registryAddress },
+      { encryptedValue: "0x02", contractAddress: registryAddress },
+      { encryptedValue: "0x03", contractAddress: registryAddress },
+      { encryptedValue: "0x04", contractAddress: registryAddress },
     ]);
   });
 });
