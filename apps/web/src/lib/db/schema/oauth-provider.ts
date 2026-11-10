@@ -48,11 +48,17 @@ export const oauthClients = sqliteTable(
     responseTypes: text("response_types"),
     requirePKCE: integer("require_pkce", { mode: "boolean" }),
     subjectType: text("subject_type"),
+    sectorIdentifier: text("sector_identifier"),
     referenceId: text("reference_id"),
     metadata: text("metadata"),
     backchannelLogoutUri: text("backchannel_logout_uri"),
     backchannelLogoutSessionRequired: integer(
       "backchannel_logout_session_required",
+      { mode: "boolean" }
+    ),
+    frontchannelLogoutUri: text("frontchannel_logout_uri"),
+    frontchannelLogoutSessionRequired: integer(
+      "frontchannel_logout_session_required",
       { mode: "boolean" }
     ),
     dpopBoundAccessTokens: integer("dpop_bound_access_tokens", {
@@ -101,6 +107,8 @@ export const oauthRefreshTokens = sqliteTable(
     requestedUserInfoClaims: text("requested_user_info_claims"),
     confirmation: text("confirmation"),
     authTime: integer("auth_time", { mode: "timestamp_ms" }),
+    acr: text("acr"),
+    amr: text("amr"),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(unixepoch() * 1000)`
@@ -410,12 +418,12 @@ export const haipVpSessions = sqliteTable(
     id: text("id").primaryKey().default(defaultId),
     sessionId: text("session_id").notNull().unique(),
     nonce: text("nonce").notNull().unique(),
-    state: text("state").notNull(),
+    state: text("state").notNull().unique(),
     dcqlQuery: text("dcql_query").notNull(),
     responseUri: text("response_uri").notNull(),
-    clientId: text("client_id"),
-    clientIdScheme: text("client_id_scheme"),
+    clientId: text("client_id").notNull(),
     responseMode: text("response_mode").notNull().default("direct_post"),
+    requestObject: text("request_object").notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()

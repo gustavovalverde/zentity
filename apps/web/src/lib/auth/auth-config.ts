@@ -178,9 +178,9 @@ import {
   oauthResources,
 } from "@/lib/db/schema/oauth-provider";
 import {
-  oidc4idaVerifiedClaims,
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
+  oidc4vciStatusLists,
 } from "@/lib/db/schema/oidc-credentials";
 import {
   invitations,
@@ -215,9 +215,9 @@ const betterAuthSchema = {
   member: members,
   invitation: invitations,
   jwks,
-  oidc4idaVerifiedClaim: oidc4idaVerifiedClaims,
   oidc4vciOffer: oidc4vciOffers,
   oidc4vciIssuedCredential: oidc4vciIssuedCredentials,
+  oidc4vciStatusList: oidc4vciStatusLists,
   haipPushedRequest: haipPushedRequests,
   haipVpSession: haipVpSessions,
   cibaRequest: cibaRequests,
