@@ -5,7 +5,9 @@
 # Apps not deployed to Vercel (Rust/Python services or local-only)
 /apps/fhe
 /apps/ocr
-/apps/mcp
+/apps/mcp/*
+# The landing build generates its MCP tool manifest from these sources.
+!/apps/mcp/src
 
 # demo-rp depends on @better-auth tarballs in apps/web/vendor/ and on
 # @zentity/sdk in packages/sdk/, so apps/web and packages/ must remain
