@@ -1,4 +1,4 @@
-import { p256 } from "@noble/curves/p256";
+import { p256 } from "@noble/curves/nist.js";
 import {
   base64url,
   exportJWK,
@@ -172,10 +172,10 @@ export async function deriveDpopKeyPairFromSeed(
     )
   );
   // Reduce to a valid private scalar in [1, n-1]; guard the ~2^-256 zero case.
-  const reduced = bytesToBigInt(stretched) % p256.CURVE.n;
+  const reduced = bytesToBigInt(stretched) % p256.Point.Fn.ORDER;
   const scalar = reduced === 0n ? 1n : reduced;
   const privateScalar = bigIntToBytes(scalar, P256_SCALAR_BYTES);
-  const { x, y } = p256.Point.fromPrivateKey(privateScalar).toAffine();
+  const { x, y } = p256.Point.BASE.multiply(scalar).toAffine();
   const xB64 = base64url.encode(bigIntToBytes(x, P256_SCALAR_BYTES));
   const yB64 = base64url.encode(bigIntToBytes(y, P256_SCALAR_BYTES));
   return {
