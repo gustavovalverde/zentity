@@ -36,7 +36,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.7",
-    "@modelcontextprotocol/client": "2.1.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "^25.5.0",
     "typescript": "^5.9.3",
     "ultracite": "7.3.2",
