@@ -234,6 +234,50 @@ describe("pairwise subject resolution (integration)", () => {
     });
   });
 
+  describe("pairwise sector of registered clients", () => {
+    it("keeps the first redirect host as the sector of a loopback client", async () => {
+      const { auth } = await import("@/lib/auth/auth-config");
+      const redirectUri = "http://127.0.0.1:8765/callback";
+      const response = await auth.handler(
+        new Request("http://localhost:3000/api/auth/oauth2/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_name: "Loopback Agent",
+            redirect_uris: [redirectUri],
+            token_endpoint_auth_method: "none",
+            grant_types: ["authorization_code"],
+            response_types: ["code"],
+          }),
+        })
+      );
+      expect(response.status).toBeLessThan(300);
+      const { client_id: clientId } = (await response.json()) as {
+        client_id: string;
+      };
+
+      const row = await db
+        .select({
+          sectorIdentifier: oauthClients.sectorIdentifier,
+          subjectType: oauthClients.subjectType,
+        })
+        .from(oauthClients)
+        .where(eq(oauthClients.clientId, clientId))
+        .get();
+      // The provider would store "client/<clientId>"; without a stored sector it
+      // derives the same first-redirect-host sector Zentity resolves.
+      expect(row).toEqual({ sectorIdentifier: null, subjectType: "pairwise" });
+      expect(
+        await resolveSubForClient(userId, {
+          subjectType: "pairwise",
+          redirectUris: [redirectUri],
+        })
+      ).toBe(
+        await makeSignature(`127.0.0.1:8765.${userId}`, env.PAIRWISE_SECRET)
+      );
+    });
+  });
+
   describe("end-session pairwise resolution", () => {
     it("session lookup uses raw userId after pairwise resolution", async () => {
       await createTestClient();
