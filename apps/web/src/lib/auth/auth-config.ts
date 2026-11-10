@@ -676,6 +676,12 @@ async function beforeDcrRegister(ctx: HookCtx) {
 // unverified. For OPAQUE and wallet users that row is the only credential.
 const EMAIL_PROOF_PROTECTED_PROVIDERS = ["opaque", "eip712"];
 
+// The magic-link plugin stores a token under this identifier (with its
+// default plain token storage).
+function magicLinkIdentifier(token: string): string {
+  return `magic-link:${token}`;
+}
+
 async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
   const token =
     typeof ctx.query?.token === "string" ? ctx.query.token : undefined;
@@ -686,7 +692,7 @@ async function beforeMagicLinkProtectCredentials(ctx: HookCtx) {
   const verification = await db
     .select({ value: verifications.value })
     .from(verifications)
-    .where(eq(verifications.identifier, token))
+    .where(eq(verifications.identifier, magicLinkIdentifier(token)))
     .limit(1)
     .get();
   if (!verification) {
