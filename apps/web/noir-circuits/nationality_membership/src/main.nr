@@ -15,27 +15,27 @@
 // Output:
 //   - Returns true if the nationality is a member of the group
 
-use nodash::poseidon2;
+use poseidon::poseidon2::Poseidon2;
 
 // Merkle tree depth (supports up to 2^8 = 256 countries)
 global TREE_DEPTH: u32 = 8;
 
 fn main(
-    nationality_code: Field,                    // Private: actual nationality code
-    document_hash: Field,                       // Private: document commitment
-    path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
-    path_indices: [bool; TREE_DEPTH],           // Private: path directions
-    merkle_root: pub Field,                     // Public: identifies the country group
-    nonce: pub Field,                           // Public: challenge nonce (replay resistance)
-    claim_hash: pub Field                       // Public: claim hash binding to OCR data
+    nationality_code: Field, // Private: actual nationality code
+    document_hash: Field, // Private: document commitment
+    path_elements: [Field; TREE_DEPTH], // Private: Merkle path siblings
+    path_indices: [bool; TREE_DEPTH], // Private: path directions
+    merkle_root: pub Field, // Public: identifies the country group
+    nonce: pub Field, // Public: challenge nonce (replay resistance)
+    claim_hash: pub Field, // Public: claim hash binding to OCR data
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
     // Bind proof to signed OCR claim
-    let computed_hash = poseidon2([nationality_code, document_hash]);
+    let computed_hash = Poseidon2::hash([nationality_code, document_hash], 2);
     assert(computed_hash == claim_hash, "Claim hash mismatch");
     // Hash the nationality code to get the leaf
-    let leaf = poseidon2([nationality_code]);
+    let leaf = Poseidon2::hash([nationality_code], 1);
 
     // Compute the root by traversing up the tree
     let mut current = leaf;
@@ -51,7 +51,7 @@ fn main(
         };
 
         // Hash the pair to get parent
-        current = poseidon2([left, right]);
+        current = Poseidon2::hash([left, right], 2);
     }
 
     // Check if computed root matches expected root
@@ -62,7 +62,7 @@ fn main(
 fn test_poseidon_hash() {
     // Test that poseidon2 hashing works as expected
     // Germany: 'D'*65536 + 'E'*256 + 'U' = 68*65536 + 69*256 + 85 = 4474197
-    let hash = poseidon2([4474197]);
+    let hash = Poseidon2::hash([4474197], 1);
     assert(hash != 0);
 }
 
@@ -76,7 +76,7 @@ fn test_merkle_path_computation() {
     let nationality_code: Field = 4474197;
 
     // Compute the leaf hash
-    let leaf = poseidon2([nationality_code]);
+    let leaf = Poseidon2::hash([nationality_code], 1);
 
     // For testing, we'll create a path that leads to a known root
     // In production, these would come from the actual Merkle tree
@@ -86,12 +86,20 @@ fn test_merkle_path_computation() {
     // Compute what the root would be with this path
     let mut expected_root = leaf;
     for i in 0..TREE_DEPTH {
-        expected_root = poseidon2([expected_root, path_elements[i]]);
+        expected_root = Poseidon2::hash([expected_root, path_elements[i]], 2);
     }
 
     // Now verify the circuit works (nonce can be any value)
     let doc_hash = 999;
-    let claim_hash = poseidon2([nationality_code, doc_hash]);
-    let result = main(nationality_code, doc_hash, path_elements, path_indices, expected_root, 12345, claim_hash);
+    let claim_hash = Poseidon2::hash([nationality_code, doc_hash], 2);
+    let result = main(
+        nationality_code,
+        doc_hash,
+        path_elements,
+        path_indices,
+        expected_root,
+        12345,
+        claim_hash,
+    );
     assert(result == true);
 }
