@@ -39,7 +39,7 @@ export const PROOF_DISCLOSURE_KEYS = [
   "attestation_expires_at",
   "chip_verified",
   "chip_verification_method",
-] as const;
+] as const satisfies readonly (keyof VerificationClaims)[];
 
 interface VerificationClaims extends Record<string, unknown> {
   age_verification: boolean;
@@ -59,6 +59,23 @@ interface VerificationClaims extends Record<string, unknown> {
   verification_time?: string | undefined;
   verified: boolean;
 }
+
+/** Claim names `verified_claims.claims` can carry (OIDC4IDA §5). */
+export const VERIFIED_CLAIM_NAMES = [
+  "verification_level",
+  "verified",
+  "humanity_proven",
+  "document_verified",
+  "liveness_verified",
+  "age_verification",
+  "face_match_verified",
+  "nationality_verified",
+  "nationality_group",
+  "identity_bound",
+  "sybil_resistant",
+  "chip_verified",
+  "chip_verification_method",
+] as const;
 
 function mapComplianceToClaims(
   compliance: ComplianceResult

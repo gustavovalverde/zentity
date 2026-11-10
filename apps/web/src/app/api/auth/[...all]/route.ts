@@ -1,10 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth-config";
-import {
-  addWwwAuthenticate,
-  unwrapBetterAuthEnvelope,
-} from "@/lib/auth/oidc/haip/oauth-response";
+import { addWwwAuthenticate } from "@/lib/auth/oidc/haip/oauth-response";
 import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-dcr";
 import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import {
@@ -14,24 +11,11 @@ import {
 
 const { GET: authGET, POST: authPOST } = toNextJsHandler(auth);
 
-const UNWRAP_PATHS = ["/oidc4vci/credential", "/oauth2/userinfo"];
-
 async function ensureOidc4vciWalletClientIfNeeded(request: Request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith("/oidc4vci/credential-offer")) {
     await ensureWalletClientExists();
   }
-}
-
-function unwrapIfNeeded(request: Request, response: Response) {
-  const url = new URL(request.url);
-  const shouldUnwrap = UNWRAP_PATHS.some((suffix) =>
-    url.pathname.endsWith(suffix)
-  );
-  if (!shouldUnwrap) {
-    return response;
-  }
-  return unwrapBetterAuthEnvelope(response);
 }
 
 export async function GET(request: Request) {
@@ -41,7 +25,7 @@ export async function GET(request: Request) {
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
 
   const response = await authGET(canonicalRequest);
-  return addWwwAuthenticate(await unwrapIfNeeded(canonicalRequest, response));
+  return addWwwAuthenticate(response);
 }
 
 export async function POST(request: Request) {
@@ -50,5 +34,5 @@ export async function POST(request: Request) {
   attachRequestContextToSpan(requestContext);
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
   const response = await authPOST(canonicalRequest);
-  return addWwwAuthenticate(await unwrapIfNeeded(canonicalRequest, response));
+  return addWwwAuthenticate(response);
 }

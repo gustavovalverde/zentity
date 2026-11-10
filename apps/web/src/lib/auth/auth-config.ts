@@ -26,7 +26,6 @@ import {
   oauthProvider,
   type Scope,
 } from "@better-auth/oauth-provider";
-import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
@@ -93,7 +92,6 @@ import {
   readDcrClientExtensions,
 } from "@/lib/auth/oidc/dcr-client-extensions";
 import {
-  buildOidcVerifiedClaims,
   buildProofClaims,
   computeConsentHmac,
   filterClaimsByRequest,
@@ -106,6 +104,7 @@ import {
   finalizeOauthDisclosureFromVerification,
   hasReleaseContext,
   loadReleaseContext,
+  RELEASE_BINDING_CLAIM,
   type ReleaseContext,
   releaseIdFor,
   touchReleaseContext,
@@ -126,6 +125,7 @@ import {
   OAUTH_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
+import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -1036,11 +1036,6 @@ async function pendingCibaAuthContextId(
     ? pending.authContextId
     : undefined;
 }
-
-// Binds an access token to its release context so userinfo can resolve the
-// staged identity payload: JWT access tokens carry it, opaque tokens recover it
-// on the introspection re-derive.
-const RELEASE_BINDING_CLAIM = "zentity_release_binding";
 
 async function buildIdTokenDisclosureClaims(input: {
   authContextId?: string | null;
@@ -2323,10 +2318,7 @@ export const auth = betterAuth({
     // provider enforces each discovered client's registered grants.
     cimd(cimdOptions),
     exactDisclosureClaimsPlugin(),
-    oidc4ida({
-      getVerifiedClaims: async ({ user }: { user: { id: string } }) =>
-        buildOidcVerifiedClaims(user.id),
-    }) as BetterAuthPlugin,
+    verifiedClaimsPlugin(),
     oidc4vci({
       defaultWalletClientId: "zentity-wallet",
       credentialIssuer: authIssuer,

@@ -39,22 +39,17 @@ describe("POST /api/auth/oauth2/token", () => {
     vi.clearAllMocks();
   });
 
-  it("unwraps the Better Auth token response and persists the opaque DPoP binding", async () => {
+  it("passes the Better Auth token response through and persists the opaque DPoP binding", async () => {
     mocks.authPost.mockResolvedValue(
       new Response(
         JSON.stringify({
-          response: {
-            access_token: "opaque-token-1",
-            expires_in: 3600,
-            token_type: "DPoP",
-          },
+          access_token: "opaque-token-1",
+          expires_in: 3600,
+          token_type: "DPoP",
         }),
         {
           status: 200,
-          headers: {
-            "content-type": "application/json",
-            "dpop-nonce": "nonce-1",
-          },
+          headers: { "content-type": "application/json" },
         }
       )
     );
@@ -75,7 +70,6 @@ describe("POST /api/auth/oauth2/token", () => {
       token_type: "DPoP",
     });
     expect(response.headers.get("content-type")).toBe("application/json");
-    expect(response.headers.get("dpop-nonce")).toBe("nonce-1");
     expect(mocks.persistOpaqueAccessTokenDpopBinding).toHaveBeenCalledWith(
       "opaque-token-1",
       request
