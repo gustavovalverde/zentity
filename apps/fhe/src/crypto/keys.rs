@@ -496,3 +496,33 @@ pub fn get_public_key_for_encryption(
         .get_public_key(key_id)
         .ok_or_else(|| crate::error::FheError::KeyNotFound(key_id.to_string()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tfhe::{ClientKey, ConfigBuilder};
+
+    #[test]
+    fn register_key_defers_server_key_decompression() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = KeyStore::new_for_tests(dir.path().to_path_buf());
+        let client_key = ClientKey::generate(ConfigBuilder::default().build());
+
+        let key_id = store
+            .register_key(
+                CompressedPublicKey::new(&client_key),
+                CompressedServerKey::new(&client_key),
+            )
+            .expect("register key");
+
+        assert!(store
+            .server_keys_compressed
+            .read()
+            .unwrap()
+            .contains_key(&key_id));
+        assert!(!store.server_keys.read().unwrap().contains_key(&key_id));
+
+        assert!(store.get_server_key(&key_id).is_some());
+        assert!(store.server_keys.read().unwrap().contains_key(&key_id));
+    }
+}

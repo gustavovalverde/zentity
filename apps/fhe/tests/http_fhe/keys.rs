@@ -355,41 +355,6 @@ async fn register_key_rejects_get() {
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
-// ============================================================================
-// Performance Tests
-// ============================================================================
-
-/// Registration completes in under 2 seconds (validation is deferred).
-#[tokio::test]
-async fn register_key_completes_under_2_seconds() {
-    let app = http::test_app();
-
-    let server_key = common::get_server_key_bytes();
-    let public_key = common::get_public_key_bytes();
-    let body = http::fixtures::register_key_request(&server_key, &public_key);
-
-    let start = std::time::Instant::now();
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/keys/register")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let elapsed = start.elapsed();
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(
-        elapsed.as_secs() < 2,
-        "Registration took {:?}, expected < 2s (validation should be deferred)",
-        elapsed
-    );
-}
-
 /// Keys registered via HTTP can be used for encryption end-to-end.
 #[tokio::test]
 async fn register_then_encrypt_batch_succeeds() {
