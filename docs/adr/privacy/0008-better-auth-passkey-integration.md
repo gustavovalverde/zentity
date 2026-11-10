@@ -45,7 +45,7 @@ Zentity uses Better Auth’s passkey plugin for WebAuthn registration and authen
 
 ### Implementation Notes: Better Auth Packages
 
-Zentity uses the published Better Auth packages without local patches. Passkey-only accounts enable TOTP and backup codes through the upstream `twoFactor({ allowPasswordless: true })` option, and Zentity's own backup-code page offers the codes as a download. See [Better Auth patches](../platform/0002-better-auth-patches.md) for the history of the patches that this replaced.
+Zentity uses the published Better Auth packages without local patches. Passkey-only accounts enable TOTP and backup codes through the upstream `twoFactor({ allowPasswordless: true })` option, and Zentity's own backup-code page offers the codes as a download. See [Unpatched Better Auth](../platform/0002-better-auth-patches.md) for the decision and the history of the patches it replaced.
 
 ## Alternatives Considered
 
