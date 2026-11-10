@@ -121,6 +121,7 @@ export const trpc = createTRPCProxyClient<AppRouter>({
  * React Query-integrated tRPC client for use in components.
  * Provides useQuery, useMutation hooks with caching and suspense support.
  */
+// oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
 export const trpcReact = createTRPCReact<AppRouter>();
 
 /**

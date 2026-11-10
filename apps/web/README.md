@@ -61,7 +61,7 @@ INTERNAL_SERVICE_TOKEN=dev-internal-token
 # Blockchain delivery targets
 CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY=... # Zama Confidential Sepolia attestation writes
 NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com
-CONFIDENTIAL_RELAYER_URL=https://relayer.testnet.zama.org/v2
+CONFIDENTIAL_RELAYER_URL=https://relayer.testnet.zama.org
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY=... # Base mirror writes
 BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR=...

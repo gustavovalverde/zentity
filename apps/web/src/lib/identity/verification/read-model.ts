@@ -50,7 +50,7 @@ export interface ProofSummary {
   verified: boolean;
 }
 
-export interface GroupedIdentityCredential {
+interface GroupedIdentityCredential {
   credentialId: string;
   isEffective: boolean;
   method: "ocr" | "nfc_chip";
@@ -60,7 +60,7 @@ export interface GroupedIdentityCredential {
   verifiedAt: string | null;
 }
 
-export interface HumanityCredentialSummary {
+interface HumanityCredentialSummary {
   attachedAt: string;
   expiresAt: string | null;
   provider: string;

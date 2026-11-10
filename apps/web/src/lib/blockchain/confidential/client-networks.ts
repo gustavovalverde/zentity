@@ -1,45 +1,28 @@
-import { HardhatConfig, SepoliaConfig } from "@zama-fhe/sdk";
-import { hardhatCleartextConfig } from "@zama-fhe/sdk/cleartext";
+import { type FheChain, hardhat, sepolia } from "@zama-fhe/sdk/chains";
 
 import { env } from "@/env";
 
 const CONFIDENTIAL_RELAYER_PROXY_PATH = "/api/confidential/relayer";
 
-export const HARDHAT_CONFIDENTIAL_CHAIN_ID = HardhatConfig.chainId;
-export const SEPOLIA_CONFIDENTIAL_CHAIN_ID = SepoliaConfig.chainId;
-
-type ConfidentialRelayerTransport = Omit<
-  typeof SepoliaConfig,
-  "network" | "relayerUrl"
-> & {
-  network: string;
-  relayerUrl: string;
-};
-
-type ConfidentialCleartextConfig = Omit<
-  typeof hardhatCleartextConfig,
-  "network"
-> & {
-  network: string;
-};
+export const HARDHAT_CONFIDENTIAL_CHAIN_ID = hardhat.id;
+export const SEPOLIA_CONFIDENTIAL_CHAIN_ID = sepolia.id;
 
 type ConfidentialClientNetwork =
   | {
+      chain: FheChain;
       chainId: number;
-      cleartextConfig: ConfidentialCleartextConfig;
       id: "hardhat";
       mode: "cleartext";
       name: string;
       rpcUrl: string;
     }
   | {
+      chain: FheChain;
       chainId: number;
       id: "confidential_sepolia";
       mode: "relayer";
       name: string;
-      relayerUrl: string;
       rpcUrl: string;
-      transport: ConfidentialRelayerTransport;
     };
 
 interface ConfidentialClientNetworkInput {
@@ -63,25 +46,21 @@ export function buildConfidentialClientNetworks({
   relayerProxyUrl,
 }: ConfidentialClientNetworkInput): ConfidentialClientNetworks {
   return {
-    [SepoliaConfig.chainId]: {
-      chainId: SepoliaConfig.chainId,
-      id: "confidential_sepolia",
-      mode: "relayer",
-      name: "Zama Confidential Sepolia",
-      relayerUrl: relayerProxyUrl,
-      rpcUrl: confidentialChainRpcUrl,
-      transport: {
-        ...SepoliaConfig,
+    [sepolia.id]: {
+      chain: {
+        ...sepolia,
         network: confidentialChainRpcUrl,
         relayerUrl: relayerProxyUrl,
       },
+      chainId: sepolia.id,
+      id: "confidential_sepolia",
+      mode: "relayer",
+      name: "Zama Confidential Sepolia",
+      rpcUrl: confidentialChainRpcUrl,
     },
-    [HardhatConfig.chainId]: {
-      chainId: HardhatConfig.chainId,
-      cleartextConfig: {
-        ...hardhatCleartextConfig,
-        network: localRpcUrl,
-      },
+    [hardhat.id]: {
+      chain: { ...hardhat, network: localRpcUrl },
+      chainId: hardhat.id,
       id: "hardhat",
       mode: "cleartext",
       name: "Local (Hardhat)",
@@ -103,14 +82,4 @@ export function getConfidentialClientNetwork(
   networks: ConfidentialClientNetworks = getConfidentialClientNetworks()
 ): ConfidentialClientNetwork | null {
   return networks[chainId] ?? null;
-}
-
-export function buildConfidentialRelayerTransports(
-  networks: ConfidentialClientNetworks = getConfidentialClientNetworks()
-): Record<number, ConfidentialRelayerTransport> {
-  return Object.fromEntries(
-    Object.values(networks)
-      .filter((network) => network.mode === "relayer")
-      .map((network) => [network.chainId, network.transport])
-  );
 }

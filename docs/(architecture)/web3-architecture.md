@@ -333,7 +333,7 @@ graph TD
 | State | Meaning |
 |---|---|
 | `not_connected` | No wallet connected or SDK not initialized |
-| `initializing` | SDK and relayer artifacts are initializing |
+| `initializing` | The SDK is fetching the network FHE encryption key through the relayer (Sepolia only; Hardhat runs in cleartext mode and starts `ready`) |
 | `ready` | SDK is usable for encryption/decryption |
 | `error` | Initialization failed |
 
@@ -350,10 +350,10 @@ sequenceDiagram
 
   User->>C: Enter value
   C->>H: encryptTokenAmount() / encryptIdentityAttributesForAttestation()
-  H->>SDK: relayer.encrypt(contractAddress, userAddress, values)
-  SDK-->>H: handles + inputProof
+  H->>SDK: encrypt(contractAddress, userAddress, values)
+  SDK-->>H: encryptedValues + inputProof
   H-->>C: encrypted inputs
-  C->>S: submit(handles, inputProof)
+  C->>S: submit(encryptedValues, inputProof)
 ```
 
 ## Decryption Flow
@@ -372,7 +372,7 @@ sequenceDiagram
   C->>H: decrypt()
   H->>W: Request signature (EIP-712)
   W-->>H: Signature
-  H->>G: userDecrypt(handles, signature)
+  H->>G: decryption.decryptValues(encryptedValues, signature)
   G->>K: Verify + re-encrypt to user
   K-->>G: Re-encrypted ciphertext
   G-->>H: Encrypted response

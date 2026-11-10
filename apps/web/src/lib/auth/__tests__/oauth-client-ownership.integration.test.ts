@@ -159,22 +159,26 @@ describe("OAuth client ownership", () => {
     expect(await readClient("org-client")).toEqual(before);
   });
 
-  it.each([
-    "user-client",
-    "anonymous-client",
-  ])("does not let an organization owner update or rotate %s", async (clientId) => {
-    const before = await readClient(clientId);
+  it.each(["user-client", "anonymous-client"])(
+    "does not let an organization owner update or rotate %s",
+    async (clientId) => {
+      const before = await readClient(clientId);
 
-    const update = await postAuth("/oauth2/update-client", ownerCookie, {
-      client_id: clientId,
-      update: { redirect_uris: ["https://attacker.example.com/callback"] },
-    });
-    const rotate = await postAuth("/oauth2/client/rotate-secret", ownerCookie, {
-      client_id: clientId,
-    });
+      const update = await postAuth("/oauth2/update-client", ownerCookie, {
+        client_id: clientId,
+        update: { redirect_uris: ["https://attacker.example.com/callback"] },
+      });
+      const rotate = await postAuth(
+        "/oauth2/client/rotate-secret",
+        ownerCookie,
+        {
+          client_id: clientId,
+        }
+      );
 
-    expect(update.status).toBe(401);
-    expect(rotate.status).toBe(401);
-    expect(await readClient(clientId)).toEqual(before);
-  });
+      expect(update.status).toBe(401);
+      expect(rotate.status).toBe(401);
+      expect(await readClient(clientId)).toEqual(before);
+    }
+  );
 });

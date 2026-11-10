@@ -106,7 +106,7 @@ export interface WalletIdentitySubject {
 /**
  * Credential type identifier.
  */
-export type CredentialType = "wallet";
+type CredentialType = "wallet";
 
 /**
  * Full BBS+ credential with signature.

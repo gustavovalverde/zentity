@@ -52,6 +52,9 @@ export function Mermaid({ chart }: { chart: string }) {
         securityLevel: "loose",
         fontFamily: "inherit",
         theme: theme === "dark" ? "dark" : "default",
+        // mermaid 12 defaults to a new layout and look; keep the existing diagrams' rendering.
+        layout: "dagre",
+        look: "classic",
       });
       const { svg: rendered } = await mermaid.render(
         `mermaid-${id.replace(/:/g, "")}`,

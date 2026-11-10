@@ -34,7 +34,7 @@ const log = rootLogger.child({ component: "disclosure-context" });
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
-export type ReleaseFlowType = "oauth" | "ciba";
+type ReleaseFlowType = "oauth" | "ciba";
 
 interface PendingOauthDisclosure {
   approvedIdentityScopes: string[];

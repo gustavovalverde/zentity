@@ -37,6 +37,7 @@ if (globalThis.window !== undefined && projectId) {
     defaultNetwork,
     metadata,
     enableInjected: env.NEXT_PUBLIC_APPKIT_ENABLE_INJECTED,
+    // oxlint-disable-next-line typescript/no-deprecated -- AppKit deprecates this flag without a replacement; it still toggles the WalletConnect QR option
     enableWalletConnect: env.NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT,
     enableEIP6963: env.NEXT_PUBLIC_APPKIT_ENABLE_EIP6963,
     enableCoinbase: env.NEXT_PUBLIC_APPKIT_ENABLE_COINBASE,

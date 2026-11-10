@@ -51,7 +51,7 @@ describe("collectCanonicalMcpTools", () => {
 
     expect(output).toContain('export const MCP_TOOL_MANIFEST = [');
     expect(output).toContain('name: "example_tool"');
-    expect(output).toContain('description: "Example description"');
+    expect(output).toContain('description:\n      "Example description"');
   });
 
   it("keeps the generated landing manifest in sync with the canonical MCP tool registrations", () => {

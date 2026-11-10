@@ -13,7 +13,9 @@
           "level": "on",
           "options": {
             "groups": [
-              { "type": true },
+              {
+                "type": true
+              },
               ":BLANK_LINE:",
               ":NODE:",
               ":BLANK_LINE:",
@@ -24,7 +26,9 @@
               ":PATH:"
             ]
           }
-        }
+        },
+        "useSortedPackageJson": "off",
+        "useSortedKeys": "off"
       }
     }
   },
@@ -35,15 +39,56 @@
     "rules": {
       "complexity": {
         "noExcessiveCognitiveComplexity": "off",
-        "noVoid": "error"
+        "noVoid": "error",
+        "noUselessUndefined": "off",
+        "useOptionalChain": "off",
+        "noUselessReturn": "off",
+        "useMathMinMax": "off",
+        "noDivRegex": "off"
       },
       "correctness": {
         "useImportExtensions": "off",
         "noUnresolvedImports": "off",
-        "useJsonImportAttributes": "error"
+        "useJsonImportAttributes": "error",
+        "noUnsafeOptionalChaining": "off"
       },
       "suspicious": {
-        "noImportCycles": "error"
+        "noImportCycles": "error",
+        "noUnnecessaryConditions": "off",
+        "useArraySortCompare": "off",
+        "noConditionalExpect": "off",
+        "noJsxLeakedDollar": "off",
+        "noNestedPromises": "off",
+        "noLeakedRender": "off",
+        "noEqualsToNull": "off",
+        "noLoopFunc": "off",
+        "useExpect": "off",
+        "noShadow": "off"
+      },
+      "style": {
+        "useConsistentMethodSignatures": "off",
+        "useConsistentArrowReturn": "off",
+        "useThisInClassMethods": "off",
+        "useNamedCaptureGroup": "off",
+        "noIncrementDecrement": "off",
+        "useTestHooksInOrder": "off",
+        "useConsistentTestIt": "off",
+        "useDestructuring": "off",
+        "useUnicodeRegex": "off",
+        "useImportsFirst": "off",
+        "useErrorCause": "off",
+        "noSubstr": "off"
+      },
+      "nursery": {
+        "useTailwindSortedClasses": "off"
+      },
+      "performance": {
+        "noJsxPropsBind": "off",
+        "noAwaitInLoops": "off"
+      },
+      "a11y": {
+        "noLabelWithoutControl": "off",
+        "noAmbiguousAnchorText": "off"
       }
     }
   },
@@ -99,7 +144,7 @@
           "style": {
             "useImportType": "off"
           },
-          "nursery": {
+          "suspicious": {
             "noShadow": "off"
           }
         }

@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR ${REPO_HOME}
 
 # Copy package files first for dependency caching
-COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 COPY --link apps/web/package.json ./apps/web/package.json
 COPY --link apps/web/.npmrc ./apps/web/.npmrc
 COPY --link apps/web/vendor ./apps/web/vendor

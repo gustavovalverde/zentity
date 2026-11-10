@@ -18,7 +18,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR ${REPO_HOME}
 
-COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --link package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 COPY --link apps/demo-rp/package.json ./apps/demo-rp/package.json
 COPY --link apps/web/vendor ./apps/web/vendor
 COPY --link packages/sdk/package.json ./packages/sdk/package.json

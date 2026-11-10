@@ -173,7 +173,7 @@ export async function initTelemetry(): Promise<void> {
   sdk = new NodeSDK({
     resource,
     ...(traceExporter === undefined ? {} : { traceExporter }),
-    ...(metricReader === undefined ? {} : { metricReader }),
+    ...(metricReader === undefined ? {} : { metricReaders: [metricReader] }),
     instrumentations: tracingEnabled()
       ? [
           getNodeAutoInstrumentations({

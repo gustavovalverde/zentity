@@ -659,20 +659,23 @@ describe("proof router replay and context binding", () => {
     ["nationality_membership", 4],
     ["face_match", 4],
     ["identity_binding", 6],
-  ] as const)("storeProof rejects %s when public signals are below minimum", async (circuitType, minPublicInputs) => {
-    const caller = await createCaller(authedUserSession);
+  ] as const)(
+    "storeProof rejects %s when public signals are below minimum",
+    async (circuitType, minPublicInputs) => {
+      const caller = await createCaller(authedUserSession);
 
-    await expect(
-      caller.storeProof({
-        circuitType,
-        proof: "cHJvdG9wcm90b2RvY3Rvcg==",
-        publicSignals: Array.from({ length: minPublicInputs - 1 }, () => "1"),
-        generationTimeMs: 10,
-        proofSessionId,
-        verificationId: "ver-1",
-      })
-    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
-  });
+      await expect(
+        caller.storeProof({
+          circuitType,
+          proof: "cHJvdG9wcm90b2RvY3Rvcg==",
+          publicSignals: Array.from({ length: minPublicInputs - 1 }, () => "1"),
+          generationTimeMs: 10,
+          proofSessionId,
+          verificationId: "ver-1",
+        })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+  );
 
   it("reconciles the identity bundle before reading verification status after proof storage", async () => {
     mockConsumeChallenge.mockResolvedValue({

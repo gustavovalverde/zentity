@@ -11,5 +11,30 @@
       "!!dist",
       "!!.data"
     ]
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "useConsistentMethodSignatures": "off",
+        "noIncrementDecrement": "off",
+        "useDestructuring": "off",
+        "useUnicodeRegex": "off",
+        "useImportsFirst": "off"
+      },
+      "performance": {
+        "noAwaitInLoops": "off"
+      },
+      "suspicious": {
+        "noEqualsToNull": "off"
+      }
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "useSortedPackageJson": "off",
+        "useSortedKeys": "off"
+      }
+    }
   }
 }

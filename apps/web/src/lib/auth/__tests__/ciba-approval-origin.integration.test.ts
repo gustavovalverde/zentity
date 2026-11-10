@@ -81,23 +81,23 @@ describe("CIBA approval origin", () => {
     context.skipOriginCheck = testDefaultSkip;
   });
 
-  it.each([
-    "/ciba/authorize",
-    "/ciba/reject",
-  ] as const)("refuses %s from another site that carries the user's cookie", async (path) => {
-    const { authReqId } = await createTestCibaRequest({
-      clientId: CLIENT_ID,
-      userId,
-    });
+  it.each(["/ciba/authorize", "/ciba/reject"] as const)(
+    "refuses %s from another site that carries the user's cookie",
+    async (path) => {
+      const { authReqId } = await createTestCibaRequest({
+        clientId: CLIENT_ID,
+        userId,
+      });
 
-    const response = await postWithSession(path, authReqId, sessionToken, {
-      origin: "https://sibling.example.com",
-      "sec-fetch-site": "cross-site",
-    });
+      const response = await postWithSession(path, authReqId, sessionToken, {
+        origin: "https://sibling.example.com",
+        "sec-fetch-site": "cross-site",
+      });
 
-    expect(response.status).toBe(403);
-    expect(await requestStatus(authReqId)).toBe("pending");
-  });
+      expect(response.status).toBe(403);
+      expect(await requestStatus(authReqId)).toBe("pending");
+    }
+  );
 
   it("accepts the push service worker's same-origin request", async () => {
     const { authReqId } = await createTestCibaRequest({

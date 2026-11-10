@@ -82,6 +82,7 @@ export function FheStatusPoller() {
   }, [profileQuery.data, router]);
 
   const profileQueryState = queryClient.getQueryState(
+    // oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
     getQueryKey(trpcReact.assurance.profile, undefined, "query")
   );
   const profileDataUpdateCount = profileQueryState?.dataUpdateCount ?? 0;

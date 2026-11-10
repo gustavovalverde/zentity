@@ -63,14 +63,15 @@ const dbClient = createClient({
   ...(env.TURSO_AUTH_TOKEN === undefined
     ? {}
     : { authToken: env.TURSO_AUTH_TOKEN }),
+  // Local SQLite: wait up to 5s for a lock instead of failing with
+  // SQLITE_BUSY. The client pools connections, so a busy_timeout PRAGMA would
+  // reach only one of them; this option applies to each. Turso ignores it.
+  timeout: 5000,
 });
 
-// Configure SQLite for better concurrent access (defense in depth)
-// - busy_timeout: wait up to 5s for locks instead of failing immediately
-// - WAL mode: allows concurrent readers during writes
-// Errors ignored: PRAGMAs may fail on Turso (not local SQLite) but that's fine
+// WAL lets readers proceed during a write. The mode persists in the database
+// file, so one connection setting it is enough. Turso rejects the PRAGMA.
 if (!isBuildTime()) {
-  dbClient.execute("PRAGMA busy_timeout = 5000;").catch(() => undefined);
   dbClient.execute("PRAGMA journal_mode = WAL;").catch(() => undefined);
 }
 

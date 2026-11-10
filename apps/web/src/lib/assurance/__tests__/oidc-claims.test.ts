@@ -43,17 +43,17 @@ describe("buildOidcAssuranceClaims", () => {
     [1, "http://eidas.europa.eu/LoA/low"],
     [2, "http://eidas.europa.eu/LoA/substantial"],
     [3, "http://eidas.europa.eu/LoA/high"],
-  ] as [
-    AccountTier,
-    string,
-  ][])("maps tier %d to %s for acr_eidas", (tier, expectedUri) => {
-    expect(
-      buildOidcAssuranceClaims(
-        { tier },
-        { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
-      ).acr_eidas
-    ).toBe(expectedUri);
-  });
+  ] as [AccountTier, string][])(
+    "maps tier %d to %s for acr_eidas",
+    (tier, expectedUri) => {
+      expect(
+        buildOidcAssuranceClaims(
+          { tier },
+          { amr: ["pwd"], authenticatedAt: 1_700_000_000 }
+        ).acr_eidas
+      ).toBe(expectedUri);
+    }
+  );
 
   it("omits amr when the auth method cannot be normalized", () => {
     expect(

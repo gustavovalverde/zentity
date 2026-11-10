@@ -5,7 +5,7 @@ import {
   parsePaymentAuthorization,
 } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
-import webpush from "web-push";
+import { sendNotification, WebPushError } from "web-push";
 
 import { env } from "@/env";
 import { formatPaymentAmount } from "@/lib/agents/labels";
@@ -223,9 +223,9 @@ interface PushTransport {
 
 const defaultTransport: PushTransport = {
   sendNotification: (sub, payload, options) =>
-    webpush.sendNotification(sub, payload, options),
+    sendNotification(sub, payload, options),
   isGoneError: (error) =>
-    error instanceof webpush.WebPushError &&
+    error instanceof WebPushError &&
     (error.statusCode === 410 || error.statusCode === 404),
 };
 

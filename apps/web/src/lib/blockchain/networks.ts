@@ -20,9 +20,9 @@ import {
 
 import { env } from "@/env";
 
-export type NetworkType = "confidential";
+type NetworkType = "confidential";
 
-export type NetworkFeature = "encrypted" | "basic";
+type NetworkFeature = "encrypted" | "basic";
 
 type ContractName = "IdentityRegistry" | "ComplianceRules" | "CompliantERC20";
 
