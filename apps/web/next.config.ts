@@ -24,6 +24,9 @@ const nextConfig: NextConfig = {
       // fails to resolve even though the runtime catches the miss. Alias to an
       // empty stub so the bundle builds; tempoWallet is never referenced here.
       accounts: "./src/lib/turbopack-stubs/accounts.ts",
+      // @coinbase/cdp-sdk (via @base-org/account) lazily imports the optional
+      // @x402/svm peer for Solana x402 signing, which this app never calls.
+      "@x402/svm/exact/client": "./src/lib/turbopack-stubs/x402-svm.ts",
     },
   },
 

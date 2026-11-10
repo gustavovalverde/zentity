@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const landingRoot = resolve(__dirname, "..");
-const mcpToolsRoot = resolve(landingRoot, "../mcp/src/tools");
-const mcpToolsIndexPath = resolve(mcpToolsRoot, "index.ts");
+const mcpSourceRoot = resolve(landingRoot, "../mcp/src");
+const mcpServerPath = resolve(mcpSourceRoot, "server.ts");
 export const generatedMcpToolManifestPath = resolve(
   landingRoot,
   "app/lib/mcp-tool-manifest.generated.ts",
@@ -18,7 +18,7 @@ function normalizeWhitespace(value) {
 function extractImportPathByRegisterFunction(indexSource) {
   const importPathByRegisterFunction = new Map();
   const importPattern =
-    /import\s+\{\s*(\w+)\s*\}\s+from\s+"(\.\/[^"]+)\.js";/g;
+    /import\s+\{\s*(register\w+Tool)\s*\}\s+from\s+"(\.\/[^"]+)\.js";/g;
 
   for (const match of indexSource.matchAll(importPattern)) {
     const registerFunction = match[1];
@@ -26,7 +26,7 @@ function extractImportPathByRegisterFunction(indexSource) {
     if (registerFunction && relativeImportPath) {
       importPathByRegisterFunction.set(
         registerFunction,
-        resolve(mcpToolsRoot, `${relativeImportPath}.ts`),
+        resolve(mcpSourceRoot, `${relativeImportPath}.ts`),
       );
     }
   }
@@ -36,7 +36,7 @@ function extractImportPathByRegisterFunction(indexSource) {
 
 function extractRegisterFunctionOrder(indexSource) {
   const registerFunctionOrder = [];
-  const registerCallPattern = /^\s+(\w+)\(server\);$/gm;
+  const registerCallPattern = /^\s+(register\w+Tool)\(server\);$/gm;
 
   for (const match of indexSource.matchAll(registerCallPattern)) {
     const registerFunction = match[1];
@@ -63,7 +63,7 @@ function extractToolMetadata(toolSource, toolPath) {
 }
 
 export function collectCanonicalMcpTools() {
-  const indexSource = readFileSync(mcpToolsIndexPath, "utf8");
+  const indexSource = readFileSync(mcpServerPath, "utf8");
   const importPathByRegisterFunction =
     extractImportPathByRegisterFunction(indexSource);
   const registerFunctionOrder = extractRegisterFunctionOrder(indexSource);
