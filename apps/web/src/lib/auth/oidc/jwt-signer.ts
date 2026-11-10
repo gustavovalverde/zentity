@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { Jwk } from "better-auth/plugins";
+import type { JWKOptions, Jwk, JwtOptions } from "better-auth/plugins/jwt";
+import type { JWK } from "jose";
 
 import {
   createCipheriv,
@@ -9,13 +10,14 @@ import {
   randomBytes,
 } from "node:crypto";
 
-import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
-import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
+import { generateExportedKeyPair } from "better-auth/plugins/jwt";
+import { and, desc, eq, gt, inArray, isNull, lt, ne, or } from "drizzle-orm";
+import { importJWK, SignJWT } from "jose";
 
 import { env } from "@/env";
 import { invalidateLocalKeySet } from "@/lib/auth/jwt";
 import { db } from "@/lib/db/connection";
-import { type Jwk as JwkRow, jwks } from "@/lib/db/schema/oauth-provider";
+import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { resolveSubForClientId } from "./pairwise";
 
@@ -94,165 +96,226 @@ function isEncryptedEnvelope(value: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Standard signing key management (RS256 / EdDSA)
+// Signing keys (RS256 / EdDSA) on the Better Auth JWT plugin's key store
 // ---------------------------------------------------------------------------
 
-type StandardAlg = "RS256" | "EdDSA";
+type SigningAlg = "RS256" | "EdDSA";
 
-interface CachedSigningKey {
-  kid: string;
-  privateKey: CryptoKey;
-}
+const SIGNING_KEY_CONFIGS = {
+  RS256: { alg: "RS256", modulusLength: 2048 },
+  EdDSA: { alg: "EdDSA", crv: "Ed25519" },
+} as const satisfies Record<SigningAlg, JWKOptions>;
 
-const keyCache = new Map<StandardAlg, CachedSigningKey>();
+const SIGNING_ALGS = Object.keys(SIGNING_KEY_CONFIGS) as SigningAlg[];
 
-// Expose cache for test-environment reset (Symbol avoids polluting the public API)
-if (process.env.NODE_ENV === "test") {
-  const sym = Symbol.for("zentity.jwt-signer-key-cache");
-  (globalThis as Record<symbol, unknown>)[sym] = keyCache;
-}
-
-const KEY_GEN_OPTIONS: Record<
-  StandardAlg,
-  { alg: string; opts: Record<string, unknown>; crv: string | null }
-> = {
-  RS256: {
-    alg: "RS256",
-    opts: { modulusLength: 2048, extractable: true },
-    crv: null,
-  },
-  EdDSA: {
-    alg: "EdDSA",
-    opts: { crv: "Ed25519", extractable: true },
-    crv: "Ed25519",
-  },
-};
+const DAY_SECONDS = 86_400;
+const KEY_ROTATION_INTERVAL_SECONDS = 90 * DAY_SECONDS;
+// A retired key stays published for as long as the longest-lived token it
+// signed: SD-JWT VCs, which the oidc4vci plugin issues for one year.
+const KEY_GRACE_PERIOD_SECONDS = 365 * DAY_SECONDS;
 
 /**
- * Get the active signing key for an algorithm, or create one if none exists.
- *
- * Selection priority:
- * 1. Active key (expiresAt IS NULL) — the current signing key
- * 2. Overlap key (expiresAt > now()) — graceful mid-rotation fallback
- * 3. No key found — generate and persist a new one
+ * The JWT plugin's key policy, which Zentity's signer applies as well. RS256
+ * is the primary key because the OAuth provider computes `at_hash` for
+ * `keyPairConfig.alg`. The EdDSA access-token key stays out of
+ * `keyPairConfigs`, which the provider advertises as ID token algorithms.
+ * Rows carry the `KEY_ENCRYPTION_KEY` envelope, so the adapter decrypts them
+ * and the plugin must not decrypt again.
  */
-export async function getOrCreateSigningKey(
-  alg: StandardAlg
-): Promise<CachedSigningKey> {
-  const cached = keyCache.get(alg);
-  if (cached) {
-    return cached;
-  }
+export const signingKeyOptions = {
+  jwks: {
+    keyPairConfig: SIGNING_KEY_CONFIGS.RS256,
+    disablePrivateKeyEncryption: true,
+    rotationInterval: KEY_ROTATION_INTERVAL_SECONDS,
+    gracePeriod: KEY_GRACE_PERIOD_SECONDS,
+  },
+  adapter: {
+    getJwks: getJwtSigningKeys,
+    createJwk: createJwtSigningKey,
+  },
+} satisfies JwtOptions;
 
-  const now = new Date();
+function isSigningAlg(alg: string | null | undefined): alg is SigningAlg {
+  return alg === "RS256" || alg === "EdDSA";
+}
 
-  const row = await db
+/**
+ * The plugin adapter's view of the key table: signing keys only (the JARM
+ * encryption key shares the table), with private keys decrypted.
+ */
+export async function getJwtSigningKeys(): Promise<Jwk[]> {
+  const rows = await db
     .select()
+    .from(jwks)
+    .where(inArray(jwks.alg, SIGNING_ALGS));
+
+  return rows.flatMap((row) => {
+    if (!isSigningAlg(row.alg)) {
+      return [];
+    }
+    return [
+      {
+        id: row.id,
+        publicKey: row.publicKey,
+        privateKey: decryptPrivateKey(row.privateKey),
+        createdAt: row.createdAt,
+        alg: row.alg,
+        ...(row.crv === "Ed25519" ? { crv: row.crv } : {}),
+        ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
+      },
+    ];
+  });
+}
+
+/** The plugin adapter's key creation path; the row is stored encrypted. */
+export async function createJwtSigningKey(key: Omit<Jwk, "id">): Promise<Jwk> {
+  const id = crypto.randomUUID();
+  await db
+    .insert(jwks)
+    .values({
+      id,
+      publicKey: key.publicKey,
+      privateKey: encryptPrivateKey(key.privateKey),
+      alg: key.alg ?? null,
+      crv: key.crv ?? null,
+      createdAt: key.createdAt,
+      expiresAt: key.expiresAt ?? null,
+    })
+    .run();
+  invalidateLocalKeySet();
+  return { ...key, id };
+}
+
+/**
+ * Mints a key the way the plugin's `createJwk` does: generated from the
+ * algorithm's key pair config, stored through the adapter, and expiring after
+ * the rotation interval.
+ */
+async function mintSigningKey(alg: SigningAlg): Promise<Jwk> {
+  const { publicWebKey, privateWebKey } = await generateExportedKeyPair({
+    jwks: { keyPairConfig: SIGNING_KEY_CONFIGS[alg] },
+  });
+  const createdAt = new Date();
+  return await createJwtSigningKey({
+    alg,
+    ...(alg === "EdDSA" ? { crv: "Ed25519" } : {}),
+    publicKey: JSON.stringify(publicWebKey),
+    privateKey: JSON.stringify(privateWebKey),
+    createdAt,
+    expiresAt: new Date(
+      createdAt.getTime() + signingKeyOptions.jwks.rotationInterval * 1000
+    ),
+  });
+}
+
+/**
+ * Selects the key the plugin's `resolveSigningKey` would: the newest
+ * unexpired key for the algorithm, minted on first use and again once it
+ * expires. That function needs a Better Auth endpoint context, and Zentity
+ * also signs from cron deliveries that run outside any request.
+ */
+async function getSigningKey(
+  alg: SigningAlg
+): Promise<{ kid: string; privateKey: CryptoKey | Uint8Array }> {
+  const row = await db
+    .select({ id: jwks.id, privateKey: jwks.privateKey })
     .from(jwks)
     .where(
       and(
         eq(jwks.alg, alg),
+        or(isNull(jwks.expiresAt), gt(jwks.expiresAt, new Date()))
+      )
+    )
+    .orderBy(desc(jwks.createdAt))
+    .limit(1)
+    .get();
+
+  const key = row
+    ? { id: row.id, privateKey: decryptPrivateKey(row.privateKey) }
+    : await mintSigningKey(alg);
+  return {
+    kid: key.id,
+    privateKey: await importJWK(JSON.parse(key.privateKey), alg),
+  };
+}
+
+/**
+ * Rotate a signing key now instead of waiting for `rotationInterval`: mint a
+ * fresh key, then retire every other live key for the algorithm. Retired keys
+ * stay published for the grace period.
+ */
+export async function rotateSigningKey(
+  alg: SigningAlg
+): Promise<{ newKid: string; retiredKids: string[] }> {
+  const newKey = await mintSigningKey(alg);
+
+  const now = new Date();
+  const retired = await db
+    .update(jwks)
+    .set({ expiresAt: now })
+    .where(
+      and(
+        eq(jwks.alg, alg),
+        ne(jwks.id, newKey.id),
         or(isNull(jwks.expiresAt), gt(jwks.expiresAt, now))
       )
     )
-    .orderBy(jwks.expiresAt, desc(jwks.createdAt))
-    .limit(1)
-    .get();
-
-  if (!row) {
-    return createSigningKey(alg);
-  }
-
-  const privateJwk = JSON.parse(decryptPrivateKey(row.privateKey)) as Record<
-    string,
-    unknown
-  >;
-  const privateKey = await importJWK(privateJwk, alg);
-
-  if (!(privateKey instanceof CryptoKey)) {
-    throw new Error(`Failed to import ${alg} private key as CryptoKey`);
-  }
-
-  const result = { kid: row.id, privateKey };
-  keyCache.set(alg, result);
-  return result;
-}
-
-async function createSigningKey(alg: StandardAlg): Promise<CachedSigningKey> {
-  const config = KEY_GEN_OPTIONS[alg];
-  const keyPair = await generateKeyPair(config.alg, config.opts);
-  const publicJwk = await exportJWK(keyPair.publicKey);
-  const privateJwk = await exportJWK(keyPair.privateKey);
-  const kid = crypto.randomUUID();
-
-  await db
-    .insert(jwks)
-    .values({
-      id: kid,
-      publicKey: JSON.stringify(publicJwk),
-      privateKey: encryptPrivateKey(JSON.stringify(privateJwk)),
-      alg,
-      crv: config.crv,
-    })
-    .run();
+    .returning({ id: jwks.id });
 
   invalidateLocalKeySet();
-  const result = { kid, privateKey: keyPair.privateKey };
-  keyCache.set(alg, result);
-  return result;
+  return { newKid: newKey.id, retiredKids: retired.map((row) => row.id) };
 }
 
-const DEFAULT_OVERLAP_HOURS = 24;
-
-/**
- * Rotate a signing key: mark the current active key with an expiry window
- * and generate a fresh key. During overlap, both keys appear in JWKS so
- * existing tokens remain verifiable.
- */
-export async function rotateSigningKey(
-  alg: StandardAlg,
-  overlapHours = DEFAULT_OVERLAP_HOURS
-): Promise<{ oldKid: string | null; newKid: string }> {
-  await cleanupExpiredKeys();
-
-  const activeKey = await db
-    .select({ id: jwks.id })
-    .from(jwks)
-    .where(and(eq(jwks.alg, alg), isNull(jwks.expiresAt)))
-    .limit(1)
-    .get();
-
-  let oldKid: string | null = null;
-
-  if (activeKey) {
-    const expiresAt = new Date(Date.now() + overlapHours * 3_600_000);
-    await db
-      .update(jwks)
-      .set({ expiresAt })
-      .where(eq(jwks.id, activeKey.id))
-      .run();
-    oldKid = activeKey.id;
-  }
-
-  keyCache.delete(alg);
-
-  const newKey = await createSigningKey(alg);
-  return { oldKid, newKid: newKey.kid };
+function publicationCutoff(): Date {
+  return new Date(Date.now() - signingKeyOptions.jwks.gracePeriod * 1000);
 }
 
+/** Deletes keys that expired longer ago than the grace period. */
 export async function cleanupExpiredKeys(): Promise<number> {
-  const now = new Date();
-  const result = await db.delete(jwks).where(lt(jwks.expiresAt, now)).run();
+  const result = await db
+    .delete(jwks)
+    .where(lt(jwks.expiresAt, publicationCutoff()))
+    .run();
   invalidateLocalKeySet();
   return result.rowsAffected;
 }
 
+/**
+ * The public JWKS: live signing keys plus retired ones still inside the grace
+ * period, matching what the JWT plugin's own JWKS endpoint would publish.
+ */
+export async function getPublishedJwks(): Promise<{ keys: JWK[] }> {
+  const rows = await db
+    .select({
+      alg: jwks.alg,
+      crv: jwks.crv,
+      id: jwks.id,
+      publicKey: jwks.publicKey,
+    })
+    .from(jwks)
+    .where(
+      and(
+        inArray(jwks.alg, SIGNING_ALGS),
+        or(isNull(jwks.expiresAt), gt(jwks.expiresAt, publicationCutoff()))
+      )
+    );
+
+  return {
+    keys: rows.map((row) => ({
+      ...(JSON.parse(row.publicKey) as JWK),
+      kid: row.id,
+      ...(row.alg ? { alg: row.alg } : {}),
+      ...(row.crv ? { crv: row.crv } : {}),
+    })),
+  };
+}
+
 async function signWithAlg(
   payload: Record<string, unknown>,
-  alg: StandardAlg,
+  alg: SigningAlg,
   typ = "JWT"
 ): Promise<string> {
-  const { kid, privateKey } = await getOrCreateSigningKey(alg);
+  const { kid, privateKey } = await getSigningKey(alg);
 
   return new SignJWT(payload)
     .setProtectedHeader({ alg, typ, kid })
@@ -303,92 +366,4 @@ export async function signJwt(
     );
   }
   return signWithAlg(payload, "RS256", header?.typ);
-}
-
-// ---------------------------------------------------------------------------
-// Better-auth JWT adapter (JWKS view filtered to standard algs)
-// ---------------------------------------------------------------------------
-
-const STANDARD_JWT_SIGNING_ALGS = new Set(["RS256", "ES256", "EdDSA"] as const);
-
-type StandardJwtSigningAlg = "RS256" | "ES256" | "EdDSA";
-
-// Curve names the JWT plugin's `Jwk` adapter type accepts (better-auth 1.7).
-type JwkCurve = "Ed25519" | "P-256" | "P-521";
-
-interface JwtSigningKey {
-  alg?: StandardJwtSigningAlg;
-  createdAt: Date;
-  crv?: JwkCurve;
-  expiresAt?: Date;
-  id: string;
-  privateKey: string;
-  publicKey: string;
-}
-
-function asJwkCurve(crv: string | null | undefined): JwkCurve | undefined {
-  return crv === "Ed25519" || crv === "P-256" || crv === "P-521"
-    ? crv
-    : undefined;
-}
-
-function isStandardJwtSigningAlg(
-  alg: string | null | undefined
-): alg is StandardJwtSigningAlg {
-  return (
-    typeof alg === "string" &&
-    STANDARD_JWT_SIGNING_ALGS.has(alg as StandardJwtSigningAlg)
-  );
-}
-
-/**
- * Better-auth's OIDC4VCI/JWT internals use this adapter to enumerate signing
- * keys. Filtered to exclude the JARM encryption key stored in the same table.
- */
-export async function getJwtSigningKeys(): Promise<JwtSigningKey[]> {
-  const rows = await db.select().from(jwks);
-  const signingRows = rows.filter(
-    (
-      row
-    ): row is JwkRow & {
-      alg: StandardJwtSigningAlg;
-      crv: string | null;
-      expiresAt: Date | null;
-    } => isStandardJwtSigningAlg(row.alg)
-  );
-
-  return signingRows.map((row) => {
-    const crv = asJwkCurve(row.crv);
-    return {
-      id: row.id,
-      publicKey: row.publicKey,
-      privateKey: decryptPrivateKey(row.privateKey),
-      createdAt: row.createdAt,
-      alg: row.alg,
-      ...(crv ? { crv } : {}),
-      ...(row.expiresAt ? { expiresAt: row.expiresAt } : {}),
-    };
-  });
-}
-
-/**
- * Better Auth's key creation path (used when OIDC4VCI finds no signing key).
- * The row is encrypted like every other key; the caller gets the plain key.
- */
-export async function createJwtSigningKey(key: Omit<Jwk, "id">): Promise<Jwk> {
-  const id = crypto.randomUUID();
-  await db
-    .insert(jwks)
-    .values({
-      id,
-      publicKey: key.publicKey,
-      privateKey: encryptPrivateKey(key.privateKey),
-      alg: key.alg ?? null,
-      crv: key.crv ?? null,
-      createdAt: key.createdAt,
-      expiresAt: key.expiresAt ?? null,
-    })
-    .run();
-  invalidateLocalKeySet();
-  return { ...key, id };
 }

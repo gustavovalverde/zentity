@@ -87,10 +87,7 @@ import {
   persistBackchannelExtras,
   setPendingCibaToken,
 } from "@/lib/auth/oidc/ciba";
-import {
-  persistDcrClientExtensions,
-  readDcrClientExtensions,
-} from "@/lib/auth/oidc/dcr-client-extensions";
+import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
 import {
   buildProofClaims,
   computeConsentHmac,
@@ -133,11 +130,7 @@ import {
   normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
-import {
-  createJwtSigningKey,
-  getJwtSigningKeys,
-  signJwt,
-} from "@/lib/auth/oidc/jwt-signer";
+import { signingKeyOptions, signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   adoptZentityPairwiseSector,
@@ -163,7 +156,11 @@ import {
   beforeUserInfoRejectRevokedToken,
   revokedAccessTokenJti,
 } from "@/lib/auth/oidc/token-revocation";
-import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
+import {
+  discoveryMetadataExtension,
+  getAuthIssuer,
+  joinAuthIssuerPath,
+} from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
 import { getTrustedOrigins } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
@@ -397,11 +394,21 @@ const oidcStandardClaims = [
   "picture",
   "updated_at",
 ];
+// ID token claims that the authentication context and Zentity's claim
+// contributors add; the provider advertises only the names listed here.
+const ID_TOKEN_ASSURANCE_CLAIMS = [
+  "acr",
+  "amr",
+  "auth_time",
+  "acr_eidas",
+  "at_hash",
+];
 const advertisedClaims = Array.from(
   new Set([
     ...oidcStandardClaims,
     ...PROOF_DISCLOSURE_KEYS,
     ...identityClaimKeys,
+    ...ID_TOKEN_ASSURANCE_CLAIMS,
   ])
 );
 const isOidcE2e = env.E2E_OIDC_ONLY === true;
@@ -451,7 +458,6 @@ const oidc4vciDeferredIssuance = isOidcE2e
 
 const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
-const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev = process.env.NODE_ENV !== "production";
 
 const x5cChain = loadX5cChain();
@@ -478,31 +484,6 @@ function isValidHttpsUrl(value: string): boolean {
     return url.protocol === "https:";
   } catch {
     return false;
-  }
-}
-
-const OUTBOUND_URL_FIELDS = [
-  "rp_validity_notice_uri",
-  "backchannel_client_notification_endpoint",
-] as const;
-
-function assertOutboundUrl(
-  field: string,
-  value: unknown,
-  error: "invalid_client_metadata" | "invalid_request"
-): void {
-  if (value === undefined) {
-    return;
-  }
-  const problem =
-    typeof value === "string"
-      ? validateOutboundUrl(value.trim())
-      : "must be a string";
-  if (problem) {
-    throw new APIError("BAD_REQUEST", {
-      error,
-      error_description: `${field} ${problem}`,
-    });
   }
 }
 
@@ -542,23 +523,6 @@ async function validateDcrRegistration(
     throw new APIError("BAD_REQUEST", {
       error_description: "client_uri must be an HTTPS URL",
     });
-  }
-
-  for (const field of OUTBOUND_URL_FIELDS) {
-    assertOutboundUrl(field, body[field], "invalid_client_metadata");
-  }
-
-  const protectedResource =
-    typeof body[PROTECTED_RESOURCE_METADATA_FIELD] === "string"
-      ? body[PROTECTED_RESOURCE_METADATA_FIELD]
-      : undefined;
-  if (protectedResource) {
-    const result = validateResourceUri(protectedResource);
-    if (!result.valid) {
-      throw new APIError("BAD_REQUEST", {
-        error_description: `${PROTECTED_RESOURCE_METADATA_FIELD}: ${result.error}`,
-      });
-    }
   }
 
   // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
@@ -936,23 +900,26 @@ async function afterClientCreatedUseZentitySector(ctx: HookCtx) {
   }
 }
 
-async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
-  const extensions = readDcrClientExtensions(
-    ctx.body as Record<string, unknown> | undefined
+// The provider never enables RP-initiated logout during dynamic registration;
+// a client that registers post-logout redirects is asking for it.
+async function afterDcrRegisterEnableEndSession(ctx: HookCtx) {
+  const postLogoutRedirectUris = ctx.body?.post_logout_redirect_uris;
+  if (
+    !(Array.isArray(postLogoutRedirectUris) && postLogoutRedirectUris.length)
+  ) {
+    return;
+  }
+
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
   );
-  if (!extensions) {
-    return;
-  }
-
-  const returned = (ctx.context as { returned?: unknown }).returned;
-  const responseBody = await readReturnedResponseBody(returned);
-  if (!responseBody) {
-    return;
-  }
-
-  const clientId = responseBody.client_id;
+  const clientId = responseBody?.client_id;
   if (typeof clientId === "string") {
-    await persistDcrClientExtensions(clientId, extensions);
+    await db
+      .update(oauthClients)
+      .set({ enableEndSession: true })
+      .where(eq(oauthClients.clientId, clientId))
+      .run();
   }
 }
 
@@ -2058,7 +2025,7 @@ export const auth = betterAuth({
         await afterClientCreatedUseZentitySector(ctx);
       }
       if (ctx.path === "/oauth2/register") {
-        await afterDcrRegisterPersistExtensions(ctx);
+        await afterDcrRegisterEnableEndSession(ctx);
         return;
       }
       if (ctx.path === "/oauth2/consent") {
@@ -2115,21 +2082,17 @@ export const auth = betterAuth({
       emailDomainName: "wallet.zentity.app",
     }),
     jwt({
+      ...signingKeyOptions,
       jwks: {
-        // Keep framework defaults aligned with OIDC's RS256 id_token default.
-        // Access tokens still use EdDSA via the custom signJwt dispatcher below.
-        keyPairConfig: { alg: "RS256" },
-        // The adapter encrypts rows with KEY_ENCRYPTION_KEY and hands Better
-        // Auth plain JWK JSON, so Better Auth must not decrypt them again.
-        disablePrivateKeyEncryption: true,
+        ...signingKeyOptions.jwks,
+        // The plugin requires a remote JWKS URL alongside jwt.sign; Zentity
+        // publishes the plugin's keys there itself.
         remoteUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
-      },
-      adapter: {
-        getJwks: getJwtSigningKeys,
-        createJwk: createJwtSigningKey,
       },
       jwt: {
         issuer: authIssuer,
+        // signJwt signs with the plugin's keys and adds what the provider
+        // cannot: EdDSA and pairwise subjects for every access token.
         sign: signJwt,
       },
     }),
@@ -2183,6 +2146,9 @@ export const auth = betterAuth({
           ? { auth_session: authSession }
           : {};
       },
+      // Registered ahead of every plugin's extension, so Zentity's discovery
+      // fields win the provider's first-wins merge.
+      extensions: [discoveryMetadataExtension, clientMetadataExtension],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,

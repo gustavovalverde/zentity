@@ -2,10 +2,7 @@ import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
-import {
-  callAuthApi,
-  enrichDiscoveryMetadata,
-} from "@/lib/auth/oidc/well-known";
+import { callAuthApi } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
@@ -65,8 +62,10 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
 
   describe("AS discovery metadata", () => {
     it("includes CIMD and resource indicator support", async () => {
-      const rawMeta = await callAuthApi(auth.api, "getOpenIdConfig");
-      const meta = enrichDiscoveryMetadata(rawMeta as Record<string, unknown>);
+      const meta = (await callAuthApi(auth.api, "getOpenIdConfig")) as Record<
+        string,
+        unknown
+      >;
       expect(meta.client_id_metadata_document_supported).toBe(true);
       expect(meta.resource_indicators_supported).toBe(true);
     });

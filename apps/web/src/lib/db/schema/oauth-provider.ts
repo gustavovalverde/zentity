@@ -68,12 +68,6 @@ export const oauthClients = sqliteTable(
       .default(false),
     metadataUrl: text("metadata_url"),
     metadataFetchedAt: integer("metadata_fetched_at", { mode: "timestamp_ms" }),
-    rpValidityNoticeUri: text("rp_validity_notice_uri"),
-    rpValidityNoticeEnabled: integer("rp_validity_notice_enabled", {
-      mode: "boolean",
-    })
-      .notNull()
-      .default(false),
     trustLevel: integer("trust_level").notNull().default(0),
     firstParty: integer("first_party", { mode: "boolean" })
       .notNull()

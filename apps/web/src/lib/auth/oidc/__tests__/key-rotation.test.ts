@@ -1,22 +1,20 @@
 import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { decodeProtectedHeader } from "jose";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import {
   cleanupExpiredKeys,
-  getOrCreateSigningKey,
+  getPublishedJwks,
   rotateSigningKey,
+  signJwt,
 } from "../jwt-signer";
 
-vi.mock("../jwt-signer", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../jwt-signer")>()),
-  encryptPrivateKey: (v: string) => v,
-  decryptPrivateKey: (v: string) => v,
-}));
+const DAY_MS = 86_400_000;
 
 async function createAdminCaller() {
   const { adminRouter } = await import("@/lib/trpc/routers/admin");
@@ -84,145 +82,168 @@ async function createUserCaller() {
   });
 }
 
-function clearKeyCache() {
-  const sym = Symbol.for("zentity.jwt-signer-key-cache");
-  const cache = (globalThis as Record<symbol, unknown>)[sym] as
-    | Map<string, unknown>
-    | undefined;
-  cache?.clear();
+async function signedKid(alg: "RS256" | "EdDSA"): Promise<string> {
+  // Access tokens (payloads with scope) are EdDSA; every other JWT is RS256.
+  const token = await signJwt(alg === "EdDSA" ? { scope: "openid" } : {});
+  const { kid } = decodeProtectedHeader(token);
+  if (!kid) {
+    throw new Error("signed JWT has no kid");
+  }
+  return kid;
+}
+
+async function expireKey(id: string, expiresAt: Date) {
+  await db.update(jwks).set({ expiresAt }).where(eq(jwks.id, id)).run();
+}
+
+async function getKeyRow(id: string) {
+  return await db.select().from(jwks).where(eq(jwks.id, id)).get();
 }
 
 describe("JWKS signing key rotation", () => {
   beforeEach(async () => {
-    clearKeyCache();
     await db.delete(jwks).run();
   });
 
   // Prevent stale keys from leaking to subsequent test files
   afterAll(async () => {
     await db.delete(jwks).run();
-    clearKeyCache();
+  });
+
+  it("mints a key per algorithm on first use with a scheduled rotation", async () => {
+    const before = Date.now();
+    const edDsaKid = await signedKid("EdDSA");
+    const rsaKid = await signedKid("RS256");
+
+    const edDsa = await getKeyRow(edDsaKid);
+    const rsa = await getKeyRow(rsaKid);
+    expect(edDsa?.alg).toBe("EdDSA");
+    expect(edDsa?.crv).toBe("Ed25519");
+    expect(rsa?.alg).toBe("RS256");
+    expect(edDsa?.expiresAt?.getTime()).toBeGreaterThanOrEqual(
+      before + 90 * DAY_MS
+    );
+    expect(edDsa?.privateKey.startsWith('{"v":')).toBe(true);
+  });
+
+  it("mints a replacement once the active key reaches its rotation time", async () => {
+    const original = await signedKid("EdDSA");
+    await expireKey(original, new Date(Date.now() - 1000));
+
+    const replacement = await signedKid("EdDSA");
+
+    expect(replacement).not.toBe(original);
+    expect(await signedKid("EdDSA")).toBe(replacement);
   });
 
   describe("rotateSigningKey", () => {
-    it("creates a new key and retires the old one", async () => {
-      const original = await getOrCreateSigningKey("EdDSA");
+    it("signs with the new key and retires the old one", async () => {
+      const original = await signedKid("EdDSA");
 
-      const { oldKid, newKid } = await rotateSigningKey("EdDSA");
+      const { newKid, retiredKids } = await rotateSigningKey("EdDSA");
 
-      expect(oldKid).toBe(original.kid);
-      expect(newKid).not.toBe(original.kid);
-
-      // Old key should have expiresAt set
-      const oldRow = await db
-        .select()
-        .from(jwks)
-        .where(eq(jwks.id, original.kid))
-        .get();
-      expect(oldRow?.expiresAt).toBeTruthy();
-
-      // New key should be active (no expiresAt)
-      const newRow = await db
-        .select()
-        .from(jwks)
-        .where(eq(jwks.id, newKid))
-        .get();
-      expect(newRow?.expiresAt).toBeNull();
+      expect(retiredKids).toEqual([original]);
+      expect(newKid).not.toBe(original);
+      expect(await signedKid("EdDSA")).toBe(newKid);
+      const oldRow = await getKeyRow(original);
+      expect(oldRow?.expiresAt?.getTime()).toBeLessThanOrEqual(Date.now());
     });
 
-    it("returns null oldKid when no key exists for algorithm", async () => {
-      const { oldKid, newKid } = await rotateSigningKey("RS256");
+    it("mints a key when none exists for the algorithm", async () => {
+      const { newKid, retiredKids } = await rotateSigningKey("RS256");
 
-      expect(oldKid).toBeNull();
-      expect(newKid).toBeTruthy();
+      expect(retiredKids).toEqual([]);
+      expect(await signedKid("RS256")).toBe(newKid);
     });
 
-    it("getOrCreateSigningKey returns the new key after rotation", async () => {
-      await getOrCreateSigningKey("EdDSA");
-      const { newKid } = await rotateSigningKey("EdDSA");
+    it("leaves the other algorithm's key in place", async () => {
+      const rsaKid = await signedKid("RS256");
 
-      const current = await getOrCreateSigningKey("EdDSA");
+      await rotateSigningKey("EdDSA");
 
-      expect(current.kid).toBe(newKid);
+      expect(await signedKid("RS256")).toBe(rsaKid);
     });
   });
 
-  describe("JWKS endpoint serves both keys during overlap", () => {
-    it("both old and new keys present in JWKS", async () => {
-      const original = await getOrCreateSigningKey("EdDSA");
+  describe("published JWKS", () => {
+    it("keeps a retired key published during the grace period", async () => {
+      const original = await signedKid("EdDSA");
+      const { newKid } = await rotateSigningKey("EdDSA");
+
+      const kids = (await getPublishedJwks()).keys.map((key) => key.kid);
+
+      expect(kids).toEqual(expect.arrayContaining([original, newKid]));
+    });
+
+    it("leaves out the JARM encryption key", async () => {
+      await signedKid("RS256");
+      await db
+        .insert(jwks)
+        .values({
+          id: "jarm-key",
+          publicKey: JSON.stringify({
+            kty: "EC",
+            crv: "P-256",
+            x: "x",
+            y: "y",
+          }),
+          privateKey: "{}",
+          alg: "ECDH-ES",
+          crv: "P-256",
+        })
+        .run();
+
+      const kids = (await getPublishedJwks()).keys.map((key) => key.kid);
+
+      expect(kids).not.toContain("jarm-key");
+    });
+
+    it("drops a key that expired longer ago than the grace period", async () => {
+      const original = await signedKid("EdDSA");
       await rotateSigningKey("EdDSA");
+      await expireKey(original, new Date(Date.now() - 366 * DAY_MS));
 
-      const allKeys = await db.select().from(jwks).where(eq(jwks.alg, "EdDSA"));
+      const kids = (await getPublishedJwks()).keys.map((key) => key.kid);
 
-      expect(allKeys).toHaveLength(2);
-      const kids = allKeys.map((k) => k.id);
-      expect(kids).toContain(original.kid);
+      expect(kids).not.toContain(original);
     });
   });
 
   describe("cleanupExpiredKeys", () => {
-    it("removes keys past their overlap window", async () => {
-      await getOrCreateSigningKey("EdDSA");
-      await rotateSigningKey("EdDSA", 0);
-
-      // Set expiresAt to the past for the old key
-      const oldKey = await db
-        .select()
-        .from(jwks)
-        .where(eq(jwks.alg, "EdDSA"))
-        .all();
-      const expiredKey = oldKey.find((k) => k.expiresAt !== null);
-      if (expiredKey) {
-        await db
-          .update(jwks)
-          .set({ expiresAt: new Date(Date.now() - 1000) })
-          .where(eq(jwks.id, expiredKey.id))
-          .run();
-      }
+    it("removes only keys past the grace period", async () => {
+      const stale = await signedKid("EdDSA");
+      await rotateSigningKey("EdDSA");
+      const retired = await signedKid("EdDSA");
+      const { newKid } = await rotateSigningKey("EdDSA");
+      await expireKey(stale, new Date(Date.now() - 366 * DAY_MS));
 
       const deleted = await cleanupExpiredKeys();
+
       expect(deleted).toBe(1);
-
-      const remaining = await db
-        .select()
-        .from(jwks)
-        .where(eq(jwks.alg, "EdDSA"));
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0]?.expiresAt).toBeNull();
-    });
-
-    it("does not delete active keys", async () => {
-      await getOrCreateSigningKey("EdDSA");
-
-      const deleted = await cleanupExpiredKeys();
-      expect(deleted).toBe(0);
-
-      const keys = await db.select().from(jwks).where(eq(jwks.alg, "EdDSA"));
-      expect(keys).toHaveLength(1);
+      const remaining = await db.select({ id: jwks.id }).from(jwks);
+      expect(remaining.map((row) => row.id).sort()).toEqual(
+        [retired, newKid].sort()
+      );
     });
   });
 
   describe("admin tRPC procedure", () => {
     it("allows admin to rotate a key", async () => {
-      await getOrCreateSigningKey("EdDSA");
+      const original = await signedKid("EdDSA");
 
       const caller = await createAdminCaller();
-      const result = await caller.rotateSigningKey({
-        alg: "EdDSA",
-        overlapHours: 24,
-      });
+      const result = await caller.rotateSigningKey({ alg: "EdDSA" });
 
-      expect(result.oldKid).toBeTruthy();
-      expect(result.newKid).toBeTruthy();
-      expect(result.oldKid).not.toBe(result.newKid);
+      expect(result.retiredKids).toEqual([original]);
+      expect(result.newKid).not.toBe(original);
     });
 
     it("rejects non-admin with FORBIDDEN", async () => {
       const caller = await createUserCaller();
 
-      await expect(
-        caller.rotateSigningKey({ alg: "EdDSA", overlapHours: 24 })
-      ).rejects.toThrow(expect.objectContaining({ code: "FORBIDDEN" }));
+      await expect(caller.rotateSigningKey({ alg: "EdDSA" })).rejects.toThrow(
+        expect.objectContaining({ code: "FORBIDDEN" })
+      );
     });
   });
 });

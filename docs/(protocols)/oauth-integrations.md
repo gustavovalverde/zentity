@@ -336,7 +336,9 @@ Access tokens are opaque by design; they prevent `sub` leakage for pairwise clie
 | ES256 | DPoP proofs | Client-side only |
 | EdDSA | Access token JWTs (internal) | Compact 64-byte signatures |
 
-ID tokens are always RS256: the OAuth provider computes `at_hash` for its configured algorithm, so `id_token_signed_response_alg` is not honored. Keys are generated on first use and persisted in the database (standard OIDC provider pattern).
+ID tokens are always RS256: the OAuth provider computes `at_hash` for its configured algorithm, so `id_token_signed_response_alg` is not honored.
+
+Signing keys are managed by the Better Auth `jwt` plugin. Each algorithm's key is generated on first use, signs for 90 days, and is then replaced on the next signature. A replaced key stays in the JWKS for 365 days, the lifetime of an SD-JWT VC, so every token and credential it signed remains verifiable. Administrators can rotate a key early with the `admin.rotateSigningKey` tRPC mutation and delete keys past the grace period with `admin.cleanupExpiredKeys`.
 
 ### Client registration
 

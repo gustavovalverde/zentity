@@ -1,18 +1,14 @@
 /**
- * Shared utilities for OIDC .well-known route handlers.
- *
- * These routes serve metadata at standard discovery endpoints:
+ * Discovery for the OAuth provider and shared utilities for the .well-known
+ * route handlers, which serve:
  * - /.well-known/openid-configuration
  * - /.well-known/oauth-authorization-server
  * - /.well-known/openid-credential-issuer
- *
- * HAIP and CIBA metadata (PAR, DPoP, backchannel auth) are now contributed
- * by their respective plugins via the Plugin Extension Protocol.
- * This function only adds Zentity-specific fields not covered by extensions.
  */
 
+import type { OAuthProviderExtension } from "@better-auth/oauth-provider";
+
 import { env } from "@/env";
-import { ACR_VALUES_SUPPORTED } from "@/lib/assurance/oidc-claims";
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
 const LEADING_SLASHES_REGEX = /^\/+/;
@@ -44,63 +40,32 @@ export const joinAuthIssuerPath = (issuer: string, path: string): string => {
 };
 
 /**
- * Enrich raw discovery metadata with signing algorithms and HAIP fields.
- * Used by both openid-configuration and oauth-authorization-server route handlers.
+ * Discovery fields Zentity adds to the provider's openid-configuration and
+ * oauth-authorization-server documents. The provider merges extension fields
+ * first-wins and never lets one replace its own. This extension is registered
+ * ahead of every plugin's, so its `authorization_details_types_supported`
+ * replaces HAIP's and must list every type the authorization server accepts.
  */
-export function enrichDiscoveryMetadata(
-  metadata: Record<string, unknown>
-): Record<string, unknown> {
-  const issuer = metadata.issuer as string | undefined;
-  return {
-    ...metadata,
-    subject_types_supported: ["public", "pairwise"],
-    // Zentity-specific endpoint metadata not covered by plugin extensions
-    ...(issuer
-      ? {
-          jwks_uri: `${issuer}/oauth2/jwks`,
-          authorization_challenge_endpoint: new URL(
-            "/api/oauth2/authorize-challenge",
-            issuer
-          ).toString(),
-        }
-      : {}),
-    // OIDC Back-Channel Logout 1.0 (not in upstream plugins)
-    backchannel_logout_supported: true,
-    backchannel_logout_session_supported: true,
-    ...(issuer ? { end_session_endpoint: `${issuer}/oauth2/end-session` } : {}),
-    // Assurance metadata
-    acr_values_supported: [...ACR_VALUES_SUPPORTED],
-    claims_parameter_supported: true,
-    claims_supported: [
-      ...((metadata.claims_supported as string[]) ?? []),
-      "acr",
-      "amr",
-      "auth_time",
-      "acr_eidas",
-      "at_hash",
-    ],
-    // MCP authorization compatibility (RFC 9728, CIMD)
-    client_id_metadata_document_supported: true,
-    resource_indicators_supported: true,
-    // RFC 9396 Rich Authorization Requests. Proposal-0003 D-1 adds
-    // payment_authorization; other types (openid_credential, etc.) are
-    // contributed by upstream plugin metadata and preserved via the spread.
+export const discoveryMetadataExtension: OAuthProviderExtension = {
+  metadata: ({ document }) => ({
+    authorization_challenge_endpoint: new URL(
+      "/api/oauth2/authorize-challenge",
+      document.issuer
+    ).toString(),
+    // openid_credential (OID4VCI, via HAIP) and payment_authorization
+    // (RFC 9396 payment approvals).
     authorization_details_types_supported: [
-      ...((metadata.authorization_details_types_supported as
-        | string[]
-        | undefined) ?? []),
+      "openid_credential",
       "payment_authorization",
     ],
+    // MCP authorization (RFC 8707 resource indicators)
+    resource_indicators_supported: true,
     // Proof-of-Human (PRD-22)
-    ...(issuer
-      ? {
-          poh_endpoint: `${issuer}/oauth2/proof-of-human`,
-          validity_endpoint: `${issuer}/oauth2/validity`,
-          poh_issuer_uri: `${issuer}/.well-known/proof-of-human`,
-        }
-      : {}),
-  };
-}
+    poh_endpoint: `${document.issuer}/oauth2/proof-of-human`,
+    validity_endpoint: `${document.issuer}/oauth2/validity`,
+    poh_issuer_uri: `${document.issuer}/.well-known/proof-of-human`,
+  }),
+};
 
 function normalizePath(value: string): string {
   return value

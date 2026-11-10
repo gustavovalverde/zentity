@@ -4,6 +4,7 @@ import type { IdentityValidityEvent } from "@/lib/db/schema/identity";
 
 import { and, eq, inArray } from "drizzle-orm";
 
+import { RP_VALIDITY_NOTICE_URI_FIELD } from "@/lib/auth/oidc/client-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import {
   resolveSubForClient,
@@ -79,9 +80,9 @@ async function listAuthorizedClientIds(userId: string): Promise<string[]> {
 }
 
 /**
- * Clients that asked for validity notices and that this user authorized
- * through a consent or a token grant. Other registered clients never learn
- * about the user.
+ * Clients that registered an `rp_validity_notice_uri` and that this user
+ * authorized through a consent or a token grant. Other registered clients
+ * never learn about the user.
  */
 export async function listRpValidityNoticeClients(
   userId: string
@@ -96,8 +97,6 @@ export async function listRpValidityNoticeClients(
       clientId: oauthClients.clientId,
       metadata: oauthClients.metadata,
       redirectUris: oauthClients.redirectUris,
-      rpValidityNoticeEnabled: oauthClients.rpValidityNoticeEnabled,
-      rpValidityNoticeUri: oauthClients.rpValidityNoticeUri,
       subjectType: oauthClients.subjectType,
     })
     .from(oauthClients)
@@ -110,16 +109,10 @@ export async function listRpValidityNoticeClients(
     .all();
 
   return rows.flatMap((row) => {
-    const metadata = parseClientMetadata(row.metadata);
-    const enabled =
-      row.rpValidityNoticeEnabled ||
-      metadata.rp_validity_notice_enabled === true ||
-      metadata.rpValidityNoticeEnabled === true;
-    const uri =
-      nonEmptyString(row.rpValidityNoticeUri) ??
-      nonEmptyString(metadata.rp_validity_notice_uri) ??
-      nonEmptyString(metadata.rpValidityNoticeUri);
-    return enabled && uri
+    const uri = nonEmptyString(
+      parseClientMetadata(row.metadata)[RP_VALIDITY_NOTICE_URI_FIELD]
+    );
+    return uri
       ? [
           {
             clientId: row.clientId,
