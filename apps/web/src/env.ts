@@ -33,6 +33,40 @@ const booleanStringWithDefault = (defaultValue: "true" | "false") =>
     .default(defaultValue)
     .transform(booleanTransform);
 
+/**
+ * A wallet or key-attestation provider Zentity trusts (HAIP §4.4), identified
+ * by key material: an inline JWK Set, a JWKS URL, or X.509 trust anchors.
+ */
+const TrustedIssuerSchema = z
+  .object({
+    issuer: z.string().min(1).optional(),
+    jwks: z
+      .object({ keys: z.array(z.record(z.string(), z.unknown())).min(1) })
+      .optional(),
+    jwksUri: z.url().optional(),
+    trustAnchors: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict()
+  .refine((entry) => entry.jwks || entry.jwksUri || entry.trustAnchors, {
+    message: "each trusted issuer needs jwks, jwksUri, or trustAnchors",
+  });
+
+/** A JSON array of trusted issuers, for example `[{"issuer":"…","jwksUri":"…"}]`. */
+const trustedIssuersJson = z
+  .string()
+  .transform((raw, ctx) => {
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      ctx.addIssue({
+        code: "custom",
+        message: "must be a JSON array of trusted issuers",
+      });
+      return z.NEVER;
+    }
+  })
+  .pipe(z.array(TrustedIssuerSchema).min(1));
+
 const serviceUrl = (fallback: string) =>
   z
     .string()
@@ -130,8 +164,7 @@ export const env = createEnv({
     PAIRWISE_SECRET: z.string().min(32),
     TRUSTED_ORIGINS: z.string().optional(),
     OIDC4VP_JWKS_URL: z.string().optional(),
-    DPOP_NONCE_TTL_SECONDS: z.coerce.number().default(30),
-    TRUSTED_WALLET_ISSUERS: z.string().optional(),
+    TRUSTED_WALLET_ISSUERS: trustedIssuersJson.optional(),
     TRUSTED_AGENT_ATTESTERS: z.string().optional(),
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS: z.string().optional(),
     MCP_PUBLIC_URL: z
@@ -303,7 +336,6 @@ export const env = createEnv({
     PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
     TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
     OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
-    DPOP_NONCE_TTL_SECONDS: process.env.DPOP_NONCE_TTL_SECONDS,
     TRUSTED_WALLET_ISSUERS: process.env.TRUSTED_WALLET_ISSUERS,
     TRUSTED_AGENT_ATTESTERS: process.env.TRUSTED_AGENT_ATTESTERS,
     TRUSTED_SOFTWARE_STATEMENT_ISSUERS:

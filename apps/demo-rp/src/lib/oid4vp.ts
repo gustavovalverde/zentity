@@ -72,7 +72,6 @@ export async function createVpSession(
   const requestParams: Record<string, unknown> = {
     response_type: "vp_token",
     response_mode: "direct_post.jwt",
-    client_id_scheme: "x509_hash",
     client_id: clientId,
     dcql_query: scenario.dcqlQuery,
     nonce,

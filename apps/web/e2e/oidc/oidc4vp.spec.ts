@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import { type APIRequestContext, expect, test } from "@playwright/test";
 
 import {
@@ -9,9 +11,11 @@ import {
   createWalletClient,
   exchangePreAuthorizedCode,
   extractIssuedCredential,
+  fetchCNonce,
   issueCredential,
   oidcConfig,
   originHeaders,
+  seedVpSession,
 } from "./oidc-helpers";
 
 async function issueCredentialForPresentation(request: APIRequestContext) {
@@ -31,12 +35,11 @@ async function issueCredentialForPresentation(request: APIRequestContext) {
     dpopBinding,
   });
   expect(tokenRes.status()).toBe(200);
-  const tokens = (await tokenRes.json()) as {
-    access_token: string;
-    c_nonce: string;
-  };
+  const tokens = (await tokenRes.json()) as { access_token: string };
 
-  const { proofJwt, holderKeyPair } = await createProofJwt(tokens.c_nonce);
+  const { proofJwt, holderKeyPair } = await createProofJwt(
+    await fetchCNonce(request)
+  );
   const credentialRes = await issueCredential(request, {
     accessToken: tokens.access_token,
     credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
@@ -77,7 +80,7 @@ test.describe("OIDC4VP verifier", () => {
       }
     );
 
-    expect(verifyRes.status()).toBe(200);
+    expect(verifyRes.status(), await verifyRes.text()).toBe(200);
     const body = (await verifyRes.json()) as {
       verified?: boolean;
       presentations?: Array<{
@@ -96,18 +99,38 @@ test.describe("OIDC4VP verifier", () => {
   test("verifies a direct_post presentation response", async ({ request }) => {
     const { credential, holderKeyPair } =
       await issueCredentialForPresentation(request);
-    const nonce = "test-nonce-response";
+    // The response is checked against the stored request its state names, so
+    // the KB-JWT is bound to that request's nonce and verifier client_id.
+    const clientId = "x509_hash:e2e-verifier";
+    const nonce = `vp-nonce-${crypto.randomUUID()}`;
+    const state = `vp-state-${crypto.randomUUID()}`;
+    await seedVpSession({
+      clientId,
+      nonce,
+      state,
+      dcqlQuery: {
+        credentials: [
+          {
+            id: "identity",
+            format: "dc+sd-jwt",
+            meta: { vct_values: [oidcConfig.identityVct] },
+          },
+        ],
+      },
+    });
     const kbJwt = await createKbJwt({
       credential,
       nonce,
-      aud: oidcConfig.issuer,
+      aud: clientId,
       holderKeyPair,
     });
 
     const form = new URLSearchParams();
-    form.set("vp_token", `${credential}${kbJwt}`);
-    form.set("nonce", nonce);
-    form.set("state", "state-123");
+    form.set(
+      "vp_token",
+      JSON.stringify({ identity: [`${credential}${kbJwt}`] })
+    );
+    form.set("state", state);
 
     const responseRes = await request.post(
       `${oidcConfig.authBaseUrl}/oidc4vp/response`,
@@ -120,15 +143,36 @@ test.describe("OIDC4VP verifier", () => {
       }
     );
 
-    expect(responseRes.status()).toBe(200);
+    expect(responseRes.status(), await responseRes.text()).toBe(200);
     const body = (await responseRes.json()) as {
       verified?: boolean;
       state?: string;
       presentations?: Array<{ issuer?: string }>;
     };
     expect(body.verified).toBe(true);
-    expect(body.state).toBe("state-123");
+    expect(body.state).toBe(state);
     expect(body.presentations?.[0]?.issuer).toBe(oidcConfig.issuer);
+  });
+
+  test("rejects a direct_post response for an unknown state", async ({
+    request,
+  }) => {
+    const form = new URLSearchParams();
+    form.set("vp_token", JSON.stringify({ identity: ["not-a-presentation"] }));
+    form.set("state", `vp-state-${crypto.randomUUID()}`);
+
+    const responseRes = await request.post(
+      `${oidcConfig.authBaseUrl}/oidc4vp/response`,
+      {
+        data: form.toString(),
+        headers: {
+          Origin: oidcConfig.baseUrl,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
+
+    expect(responseRes.status()).toBe(400);
   });
 
   test("rejects a tampered presentation", async ({ request }) => {

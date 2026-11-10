@@ -9,12 +9,14 @@ import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
-  createDpopAccessTokenValidator,
+  createDcqlMatcher,
   createJarmHandler,
   createKeyAttestationValidator,
   createParResolver,
+  createVpSessionResolver,
   createX5cHeaders,
   haip,
+  type TrustedIssuer,
 } from "@better-auth/haip";
 import {
   extendOAuthProvider,
@@ -28,6 +30,7 @@ import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
+import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
 import { decodeJwtPayloadStrict } from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
 import {
@@ -123,17 +126,12 @@ import {
   OAUTH_SCOPES,
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
-import { getDpopNonceStore } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
   normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
-import { createTrustedDcqlMatcher } from "@/lib/auth/oidc/haip/trusted-dcql-matcher";
-import {
-  loadX5cChain,
-  validateX509Chain,
-} from "@/lib/auth/oidc/haip/x509-validation";
+import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
 import {
   createJwtSigningKey,
   getJwtSigningKeys,
@@ -451,45 +449,18 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const x5cChain = loadX5cChain();
 
-// DPoP nonce store for server-managed nonce validation (RFC 9449 §4.1)
-const nonceStore = getDpopNonceStore(env.DPOP_NONCE_TTL_SECONDS);
-
-function extractDpopNonce(proofJwt: string): string | undefined {
-  const b64 = proofJwt.split(".")[1];
-  if (!b64) {
-    return undefined;
-  }
-  const { nonce } = JSON.parse(
-    Buffer.from(b64, "base64url").toString("utf8")
-  ) as { nonce?: string };
-  return typeof nonce === "string" ? nonce : undefined;
+// The @openid4vc libraries behind oidc4vci and oidc4vp reject http:// URLs.
+// Development and e2e serve the issuer and verifier over http.
+if (isDev) {
+  setOpenid4vcConfig({ allowInsecureUrls: true });
 }
 
-// Native DPoP (oauth-provider 1.7) owns the token endpoint's sender-constraint
-// binding. The credential endpoint (oidc4vci) still validates DPoP through this
-// HAIP validator, wrapped here to enforce server-managed nonces (RFC 9449 §8).
-const baseDpopValidator = createDpopAccessTokenValidator({ requireDpop: true });
-const dpopAccessTokenValidator: typeof baseDpopValidator = async (input) => {
-  await baseDpopValidator(input);
-
-  const proof = input.request.headers.get("DPoP");
-  if (proof) {
-    const nonce = extractDpopNonce(proof);
-    if (nonce && !nonceStore.validate(nonce)) {
-      throw new APIError("BAD_REQUEST", {
-        message: "use_dpop_nonce: Invalid or expired DPoP nonce",
-      });
-    }
-  }
-};
-
-// HAIP wallet attestation trust anchors (HAIP §4.4.1.6). Passed to the haip
-// plugin, which now owns the wallet-attestation client-authentication strategy.
-const trustedWalletIssuers = env.TRUSTED_WALLET_ISSUERS
-  ? env.TRUSTED_WALLET_ISSUERS.split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-  : null;
+// HAIP §4.4: wallet providers whose client attestations and key attestations
+// Zentity accepts. Without any, wallets authenticate as public clients and
+// prove keys with `jwt` proofs only.
+const trustedWalletIssuers = env.TRUSTED_WALLET_ISSUERS as
+  | TrustedIssuer[]
+  | undefined;
 
 function isValidHttpsUrl(value: string): boolean {
   try {
@@ -951,38 +922,6 @@ async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
   const clientId = responseBody.client_id;
   if (typeof clientId === "string") {
     await persistDcrClientExtensions(clientId, extensions);
-  }
-}
-
-async function beforeVpResponse(ctx: HookCtx) {
-  const state =
-    typeof ctx.body?.state === "string" ? ctx.body.state : undefined;
-  if (!state) {
-    return;
-  }
-  const vpSession = await db
-    .select({
-      clientId: haipVpSessions.clientId,
-      clientIdScheme: haipVpSessions.clientIdScheme,
-    })
-    .from(haipVpSessions)
-    .where(eq(haipVpSessions.state, state))
-    .limit(1)
-    .get();
-
-  if (vpSession?.clientIdScheme === "x509_hash" && vpSession.clientId) {
-    const chain = loadX5cChain();
-    if (!chain) {
-      throw new APIError("FORBIDDEN", {
-        message: "x5c certificate chain not available",
-      });
-    }
-    const result = validateX509Chain(vpSession.clientId, chain);
-    if (!result.valid) {
-      throw new APIError("FORBIDDEN", {
-        message: result.error ?? "x509 chain validation failed",
-      });
-    }
   }
 }
 
@@ -2031,9 +1970,6 @@ export const auth = betterAuth({
       if (ctx.path === "/magic-link/verify") {
         return beforeMagicLinkProtectCredentials(ctx);
       }
-      if (ctx.path === "/oidc4vp/response") {
-        return beforeVpResponse(ctx);
-      }
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
           pinPaymentRequest(ctx.body);
@@ -2399,10 +2335,17 @@ export const auth = betterAuth({
       accessTokenJwksUrl: joinAuthIssuerPath(authIssuer, "oauth2/jwks"),
       authorizationServer: authIssuer,
       credentialConfigurations: oidc4vciCredentialConfigurations,
-      accessTokenValidator: dpopAccessTokenValidator,
-      proofValidators: {
-        attestation: createKeyAttestationValidator(),
-      },
+      // The credential endpoints require DPoP-bound tokens and ES256 proofs
+      // through the haip plugin's defaults.
+      ...(trustedWalletIssuers
+        ? {
+            proofValidators: {
+              attestation: createKeyAttestationValidator({
+                trustedIssuers: trustedWalletIssuers,
+              }),
+            },
+          }
+        : {}),
       ...(x5cChain
         ? { resolveCredentialHeaders: createX5cHeaders(x5cChain) }
         : {}),
@@ -2415,7 +2358,9 @@ export const auth = betterAuth({
     oidc4vp({
       expectedAudience: authIssuer,
       allowedIssuers: [authIssuer],
-      presentationMatcher: createTrustedDcqlMatcher(),
+      // Responses are checked against the VP session their `state` names.
+      resolveAuthorizationRequest: createVpSessionResolver(),
+      presentationMatcher: createDcqlMatcher(),
       responseModeHandlers: {
         "direct_post.jwt": createJarmHandler({
           decryptionKey: getJarmDecryptionKey,

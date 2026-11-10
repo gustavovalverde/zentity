@@ -11,6 +11,7 @@ import {
   createWalletClient,
   exchangePreAuthorizedCode,
   extractIssuedCredential,
+  fetchCNonce,
   fetchIssuerJwks,
   findIssuedCredentialRecord,
   issueCredential,
@@ -72,7 +73,6 @@ test.describe("OIDC4VCI issuer", () => {
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
       access_token: string;
-      c_nonce: string;
       authorization_details?: Array<{
         credential_identifiers?: string[];
       }>;
@@ -80,7 +80,9 @@ test.describe("OIDC4VCI issuer", () => {
 
     const credentialIdentifier =
       tokens.authorization_details?.[0]?.credential_identifiers?.[0];
-    const { proofJwt, holderJwk } = await createProofJwt(tokens.c_nonce);
+    const { proofJwt, holderJwk } = await createProofJwt(
+      await fetchCNonce(request)
+    );
 
     const credentialRes = await issueCredential(request, {
       accessToken: tokens.access_token,
@@ -108,13 +110,11 @@ test.describe("OIDC4VCI issuer", () => {
     });
   });
 
-  test("issues credential with Draft 11 format-based request (walt.id compat)", async ({
+  test("rejects Draft 11 format-based credential requests", async ({
     request,
   }) => {
-    // This test verifies backwards compatibility with OIDC4VCI Draft 11 implementations
-    // like walt.id that use format + vct instead of credential_configuration_id.
-    // Draft 11 requires: format (REQUIRED) + format-specific params (vct for SD-JWT)
-    // OIDC4VCI 1.0 requires: credential_identifier OR credential_configuration_id
+    // OID4VCI 1.0 identifies the credential by credential_identifier or
+    // credential_configuration_id; a Draft 11 format + vct request is refused.
     const { cookieHeader, userId } = await createIssuerSession(request);
     const clientId = await createWalletClient(request, cookieHeader);
     const dpopBinding = await createDpopBinding();
@@ -131,17 +131,9 @@ test.describe("OIDC4VCI issuer", () => {
       dpopBinding,
     });
     expect(tokenRes.status()).toBe(200);
-    const tokens = (await tokenRes.json()) as {
-      access_token: string;
-      c_nonce: string;
-    };
+    const tokens = (await tokenRes.json()) as { access_token: string };
 
-    const { proofJwt, holderJwk } = await createProofJwt(tokens.c_nonce);
-
-    // Issue credential using Draft 11 format-based request (how walt.id does it)
-    // - format: "dc+sd-jwt" (the credential format)
-    // - vct: the verifiable credential type identifier
-    // - NO credential_configuration_id or credential_identifier
+    const { proofJwt } = await createProofJwt(await fetchCNonce(request));
     const credentialRes = await issueCredential(request, {
       accessToken: tokens.access_token,
       format: "dc+sd-jwt",
@@ -149,23 +141,9 @@ test.describe("OIDC4VCI issuer", () => {
       proofJwt,
       dpopBinding,
     });
-    expect(credentialRes.status()).toBe(200);
-
-    const credentialBody = (await credentialRes.json()) as Parameters<
-      typeof extractIssuedCredential
-    >[0];
-    const credential = extractIssuedCredential(credentialBody);
-    expect(credential).toBeTruthy();
-
-    // Verify the credential is valid and properly bound
-    const jwks = await fetchIssuerJwks(request);
-    await verifyIssuedCredential({
-      credential: credential ?? "",
-      userId,
-      holderJwk,
-      jwks,
-      expectedVct: oidcConfig.identityVct,
-    });
+    expect(credentialRes.status()).toBe(400);
+    const errorBody = (await credentialRes.json()) as { error?: string };
+    expect(errorBody.error).toBe("invalid_credential_request");
   });
 
   test("rejects reuse of a c_nonce", async ({ request }) => {
@@ -187,10 +165,9 @@ test.describe("OIDC4VCI issuer", () => {
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
       access_token: string;
-      c_nonce: string;
     };
 
-    const { proofJwt } = await createProofJwt(tokens.c_nonce);
+    const { proofJwt } = await createProofJwt(await fetchCNonce(request));
 
     const first = await issueCredential(request, {
       accessToken: tokens.access_token,
@@ -220,7 +197,7 @@ test.describe("OIDC4VCI issuer", () => {
       clientId,
       dpopBinding,
     });
-    expect(tokenRes.status()).toBe(401);
+    expect(tokenRes.status()).toBe(400);
     const body = (await tokenRes.json()) as { error?: string };
     expect(body.error).toBe("invalid_grant");
   });
@@ -246,10 +223,9 @@ test.describe("OIDC4VCI issuer", () => {
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
       access_token: string;
-      c_nonce: string;
     };
 
-    const { proofJwt } = await createProofJwt(tokens.c_nonce);
+    const { proofJwt } = await createProofJwt(await fetchCNonce(request));
     const credentialRes = await issueCredential(request, {
       accessToken: tokens.access_token,
       credentialConfigurationId: oidcConfig.identityCredentialConfigurationId,
@@ -309,10 +285,9 @@ test.describe("OIDC4VCI issuer", () => {
     expect(tokenRes.status()).toBe(200);
     const tokens = (await tokenRes.json()) as {
       access_token: string;
-      c_nonce: string;
     };
 
-    const { proofJwt } = await createProofJwt(tokens.c_nonce);
+    const { proofJwt } = await createProofJwt(await fetchCNonce(request));
     const deferredRes = await issueCredential(request, {
       accessToken: tokens.access_token,
       credentialConfigurationId: oidcConfig.deferredCredentialConfigurationId,

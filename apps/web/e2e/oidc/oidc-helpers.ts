@@ -416,6 +416,23 @@ export async function exchangePreAuthorizedCode(
   return res;
 }
 
+/** A fresh `c_nonce` from the OID4VCI Nonce Endpoint (§7). */
+export async function fetchCNonce(request: APIRequestContext): Promise<string> {
+  const res = await request.post(`${AUTH_BASE_URL}/oidc4vci/nonce`, {
+    headers: { Origin: BASE_URL },
+  });
+  if (!res.ok()) {
+    throw new Error(
+      `Nonce request failed (${res.status()}): ${await res.text()}`
+    );
+  }
+  const body = (await res.json()) as { c_nonce?: string };
+  if (!body.c_nonce) {
+    throw new Error("Nonce endpoint returned no c_nonce");
+  }
+  return body.c_nonce;
+}
+
 export async function createProofJwt(cNonce: string) {
   const holder = await generateKeyPair("EdDSA");
   const holderJwk = await exportJWK(holder.publicKey);
@@ -505,14 +522,13 @@ export async function issueCredential(
 }
 
 export interface IssuedCredentialBody {
-  credential?: string;
   credentials?: Array<{ credential?: string }>;
 }
 
 export function extractIssuedCredential(
   body: IssuedCredentialBody
 ): string | undefined {
-  return body.credential ?? body.credentials?.[0]?.credential;
+  return body.credentials?.[0]?.credential;
 }
 
 export async function fetchIssuerJwks(request: APIRequestContext) {
@@ -542,9 +558,14 @@ export async function verifyIssuedCredential(input: {
   expect(payload.sub).toBe(input.userId);
   expect(payload.vct).toBe(input.expectedVct);
 
-  const expectedJkt = await calculateJwkThumbprint(input.holderJwk);
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  expect(cnf?.jkt).toBe(expectedJkt);
+  // SD-JWT VC holder binding carries the key itself (`cnf.jwk`).
+  const cnf = payload.cnf as { jwk?: JWK } | undefined;
+  if (!cnf?.jwk) {
+    throw new Error("Credential missing cnf.jwk holder binding");
+  }
+  expect(await calculateJwkThumbprint(cnf.jwk)).toBe(
+    await calculateJwkThumbprint(input.holderJwk)
+  );
   return payload;
 }
 
@@ -592,6 +613,46 @@ export async function findIssuedCredentialRecord(credential: string) {
       throw new Error("Issued credential record not found");
     }
     return row;
+  } finally {
+    client.close();
+  }
+}
+
+// --- OID4VP Helpers ---
+
+const VP_SESSION_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Stores the authorization request a `direct_post` response answers, as
+ * Zentity's verifier would when it creates one. The response endpoint looks
+ * it up by `state` and checks the nonce, DCQL query, and audience against it.
+ */
+export async function seedVpSession(input: {
+  clientId: string;
+  dcqlQuery: Record<string, unknown>;
+  nonce: string;
+  state: string;
+}): Promise<void> {
+  const client = openE2eDatabase();
+  try {
+    await client.execute({
+      sql: `INSERT INTO haip_vp_session
+        (id, session_id, nonce, state, dcql_query, response_uri, client_id,
+         response_mode, request_object, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'direct_post', ?, ?, ?)`,
+      args: [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        input.nonce,
+        input.state,
+        JSON.stringify(input.dcqlQuery),
+        `${AUTH_BASE_URL}/oidc4vp/response`,
+        input.clientId,
+        "e2e-request-object",
+        Date.now() + VP_SESSION_TTL_MS,
+        Date.now(),
+      ],
+    });
   } finally {
     client.close();
   }
