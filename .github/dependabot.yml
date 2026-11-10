@@ -1,8 +1,12 @@
 version: 2
 updates:
-  # JavaScript/TypeScript - Web (pnpm)
+  # JavaScript/TypeScript (pnpm workspace)
+  # One pnpm workspace with a single root pnpm-lock.yaml. Running from the
+  # root lets Dependabot resolve every workspace package (apps/web,
+  # apps/landing, apps/mcp, apps/demo-rp, packages/sdk) through
+  # pnpm-workspace.yaml and regenerate the root lockfile in the same PR.
   - package-ecosystem: npm
-    directory: "/apps/web"
+    directory: "/"
     schedule:
       interval: weekly
       day: monday
@@ -14,32 +18,31 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
-      - "web"
+    # Vendored better-auth plugin tarballs (file:vendor/*.tgz in apps/web)
+    # are rebuilt by hand, not published to the registry.
+    ignore:
+      - dependency-name: "@better-auth/ciba"
+      - dependency-name: "@better-auth/haip"
+      - dependency-name: "@better-auth/oidc4ida"
+      - dependency-name: "@better-auth/oidc4vci"
+      - dependency-name: "@better-auth/oidc4vp"
+    # A dependency joins the first group that matches it, so better-auth
+    # comes first and moves as one unit.
     groups:
+      better-auth:
+        patterns:
+          - "better-auth"
+          - "@better-auth/*"
       dev-dependencies:
         dependency-type: development
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
       prod-dependencies:
         dependency-type: production
-
-  # JavaScript/TypeScript - Landing (pnpm)
-  - package-ecosystem: npm
-    directory: "/apps/landing"
-    schedule:
-      interval: weekly
-      day: monday
-      timezone: America/New_York
-    open-pull-requests-limit: 5
-    cooldown:
-      default-days: 7
-    labels:
-      - "dependencies"
-      - "javascript"
-      - "landing"
-    groups:
-      dev-dependencies:
-        dependency-type: development
-      prod-dependencies:
-        dependency-type: production
+        exclude-patterns:
+          - "better-auth"
+          - "@better-auth/*"
 
   # Python (pip)
   - package-ecosystem: pip
