@@ -25,30 +25,18 @@ Chosen option: **Patch published Better Auth packages using Bun patchedDependenc
 
 We apply small, targeted patches to the published packages and commit the patch files into the repo. This allows us to ship the required behavior now while preserving a clear upgrade path when upstream adopts the changes.
 
-### Patched Packages
+### Current State
 
-1) **@better-auth/passkey**
-   * Enables pre-auth registration and returns WebAuthn response extensions for PRF output.
-   * Required for passkey-first sign-up and key custody.
+Zentity no longer patches any Better Auth package, and `pnpm-workspace.yaml` has no `patchedDependencies` entries.
 
-2) **better-auth**
-   * Adds `allowPasswordless` support for two-factor backup code generation so passkey-only users can enable TOTP + backup codes.
-
-3) **@daveyplate/better-auth-ui**
-   * Changes backup codes UI to download-only (no inline list) to reduce shoulder-surfing risk.
-
-### Patch Locations
-
-* `apps/web/patches/@better-auth%2Fpasskey@1.5.0-beta.2.patch`
-* `apps/web/patches/better-auth@1.5.0-beta.2.patch`
-* `apps/web/patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch`
-* `apps/web/package.json` -> `patchedDependencies`
+* **@better-auth/passkey** and **better-auth** run unpatched. Passwordless two-factor enrollment uses the upstream `twoFactor({ allowPasswordless: true })` option.
+* **@daveyplate/better-auth-ui** runs unpatched. Zentity renders its own two-factor settings card and backup-code page (`/two-factor/backup-codes`), which offers the codes as a `.txt` download. Zentity does not render the library's two-factor or security settings cards, so the library's backup-code dialog never appears.
 
 ### Expected Consequences
 
 * Passkey-only accounts can enable TOTP and backup codes without a password.
-* Backup codes are still available but not displayed inline by default.
-* Ongoing maintenance required to update/remove patches when upstream changes.
+* Backup-code presentation is owned by Zentity's UI, not by a patched third-party component.
+* Better Auth and Better Auth UI upgrades no longer require regenerating patches.
 
 ## Alternatives Considered
 
@@ -59,8 +47,8 @@ We apply small, targeted patches to the published packages and commit the patch 
 ## More Information
 
 * `docs/adr/privacy/0008-better-auth-passkey-integration.md`
-* Bun patch workflow: `bun patch` / `bun patch --commit`
 
 ## Revision History
 
 * 2026-09-25: Guardian recovery removed; two-factor devices no longer act as recovery guardians.
+* 2026-11-10: Removed the last patch (`@daveyplate/better-auth-ui`) and upgraded the package to 3.4.0; no Better Auth package is patched.
