@@ -14,12 +14,12 @@ export default async function ApprovePage({
   params,
   searchParams,
 }: {
-  params: Promise<{ authReqId: string }>;
+  params: Promise<{ requestId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { authReqId } = await params;
+  const { requestId } = await params;
   const callbackPath = buildStandaloneApprovalPath(
-    authReqId,
+    requestId,
     await searchParams
   );
   const session = await getFreshSession(await headers());
@@ -31,7 +31,7 @@ export default async function ApprovePage({
   const [detected, assurance, approval] = await Promise.all([
     detectAuthMode(session.user.id),
     getAccountAssurance(session.user.id),
-    resolveCibaApprovalData(authReqId, session.user.id),
+    resolveCibaApprovalData(requestId, session.user.id),
   ]);
 
   if (!approval) {
@@ -49,9 +49,9 @@ export default async function ApprovePage({
       <AgentApprovalView
         agentIdentity={approval.agentIdentity}
         authMode={detected.authMode}
-        authReqId={authReqId}
         initialRequest={approval.request}
         registeredAgent={approval.registeredAgent}
+        requestId={requestId}
         userTier={assurance.tier}
         wallet={detected.wallet}
       />

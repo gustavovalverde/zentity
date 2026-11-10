@@ -35,13 +35,13 @@ function sanitizeBindingMessage(
 
 interface CibaNotificationData {
   agentName?: string | undefined;
-  /** Approval-page URL the CIBA plugin built, with `auth_req_id` attached. */
+  /** Zentity approval page for this request. */
   approvalUrl: string;
   authorizationDetails?: unknown;
-  /** Raw `auth_req_id` bearer credential (the value the approval page consumes). */
-  authReqId: string;
   bindingMessage?: string | undefined;
   clientName?: string | undefined;
+  /** The CIBA request id the approval page and decision route take. */
+  requestId: string;
   requiresBiometric?: boolean | undefined;
   scope: string;
 }
@@ -55,7 +55,7 @@ interface PaymentAuthorizationProjection {
 
 type CibaPushData = {
   approvalUrl: string;
-  authReqId: string;
+  requestId: string;
   kind?: "payment_authorization";
   payment?: PaymentAuthorizationProjection;
   requiresBiometric: boolean;
@@ -184,7 +184,7 @@ export function buildCibaPushPayload(
     title,
     body,
     data: {
-      authReqId: data.authReqId,
+      requestId: data.requestId,
       approvalUrl,
       requiresBiometric: data.requiresBiometric ?? false,
       requiresVaultUnlock,

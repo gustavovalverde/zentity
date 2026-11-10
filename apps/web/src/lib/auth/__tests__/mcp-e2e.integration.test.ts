@@ -127,7 +127,7 @@ describe("MCP End-to-End: Discovery → CIMD → Resource-Bound Tokens", () => {
         clientId: CIMD_CLIENT_ID,
         userId,
         status: "approved",
-        resource: BASE,
+        resources: JSON.stringify([BASE]),
       });
 
       const { status, json } = await postTokenWithDpop({

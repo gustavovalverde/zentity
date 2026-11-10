@@ -5,6 +5,14 @@ import { agentHosts, agentSessions } from "./agent";
 import { authenticationContexts, defaultId, users } from "./auth";
 import { oauthClients } from "./oauth-provider";
 
+/**
+ * A CIBA backchannel authentication request. The columns from `authReqId`
+ * through `createdAt` are the `@better-auth/ciba` model; the rest are Zentity
+ * extensions the plugin never reads: the RAR and `acr_values` the client sent
+ * (the plugin does not model them), the verified agent session and attestation,
+ * the capability grant that approved it, and the approving authentication
+ * context.
+ */
 export const cibaRequests = sqliteTable(
   "ciba_request",
   {
@@ -18,14 +26,26 @@ export const cibaRequests = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     scope: text("scope").notNull(),
     bindingMessage: text("binding_message"),
+    resources: text("resources"),
+    status: text("status", {
+      enum: ["pending", "approved", "denied"],
+    }).notNull(),
+    clientNotificationEndpoint: text("client_notification_endpoint"),
+    encryptedClientNotificationToken: text(
+      "encrypted_client_notification_token"
+    ),
+    encryptedAuthReqId: text("encrypted_auth_req_id"),
+    referenceId: text("reference_id"),
+    authTime: integer("auth_time", { mode: "timestamp_ms" }),
+    acr: text("acr"),
+    amr: text("amr"),
+    lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
     authorizationDetails: text("authorization_details"),
     acrValues: text("acr_values"),
-    resource: text("resource"),
-    status: text("status").notNull(),
-    deliveryMode: text("delivery_mode").notNull().default("poll"),
-    clientNotificationToken: text("client_notification_token"),
-    clientNotificationEndpoint: text("client_notification_endpoint"),
-    pollingInterval: integer("polling_interval").notNull().default(5),
     agentSessionId: text("agent_session_id").references(
       () => agentSessions.id,
       {
@@ -56,12 +76,6 @@ export const cibaRequests = sqliteTable(
       () => authenticationContexts.id,
       { onDelete: "set null" }
     ),
-    approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
-    lastPolledAt: integer("last_polled_at", { mode: "timestamp_ms" }),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    createdAt: integer("created_at", { mode: "timestamp_ms" })
-      .notNull()
-      .default(sql`(unixepoch() * 1000)`),
   },
   (table) => [
     index("ciba_request_client_id_idx").on(table.clientId),

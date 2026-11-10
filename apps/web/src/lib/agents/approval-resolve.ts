@@ -2,7 +2,6 @@ import type { AuthorizationDetail } from "./capability";
 
 import { and, eq } from "drizzle-orm";
 
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -25,12 +24,12 @@ export interface RegisteredAgentInfo {
 
 export interface CibaRequestDetails {
   acr_values?: string;
-  auth_req_id: string;
   authorization_details?: AuthorizationDetail[];
   binding_message?: string;
   client_id?: string;
   client_name?: string;
   expires_at: string;
+  request_id: string;
   scope: string;
   status: string;
 }
@@ -46,13 +45,9 @@ interface CibaApprovalData {
  * Returns null when the request doesn't exist or doesn't belong to the user.
  */
 export async function resolveCibaApprovalData(
-  authReqId: string,
+  requestId: string,
   userId: string
 ): Promise<CibaApprovalData | null> {
-  // `authReqId` is the raw bearer credential from the approval URL; the plugin
-  // persists only its hash, so look the request up by the hash but return the
-  // raw value so the page can drive the plugin's authorize/reject endpoints.
-  const authReqIdHash = hashCibaAuthReqId(authReqId);
   const row = await db
     .select({
       acrValues: cibaRequests.acrValues,
@@ -70,12 +65,7 @@ export async function resolveCibaApprovalData(
     })
     .from(cibaRequests)
     .leftJoin(oauthClients, eq(cibaRequests.clientId, oauthClients.clientId))
-    .where(
-      and(
-        eq(cibaRequests.authReqId, authReqIdHash),
-        eq(cibaRequests.userId, userId)
-      )
-    )
+    .where(and(eq(cibaRequests.id, requestId), eq(cibaRequests.userId, userId)))
     .limit(1)
     .get();
 
@@ -130,7 +120,7 @@ export async function resolveCibaApprovalData(
   }
 
   const request: CibaRequestDetails = {
-    auth_req_id: authReqId,
+    request_id: requestId,
     expires_at: row.expiresAt.toISOString(),
     scope: row.scope,
     status: row.status,
@@ -151,11 +141,11 @@ interface ApprovalPageSearchParams {
 }
 
 export function buildStandaloneApprovalPath(
-  authReqId: string,
+  requestId: string,
   searchParams: ApprovalPageSearchParams = {}
 ): string {
   const url = new URL(
-    `/approve/${encodeURIComponent(authReqId)}`,
+    `/approve/${encodeURIComponent(requestId)}`,
     "http://localhost"
   );
 

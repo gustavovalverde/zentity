@@ -34,6 +34,13 @@ const log = rootLogger.child({ component: "disclosure-context" });
 
 const ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
+/**
+ * Access-token claim that binds a token to its release context, so UserInfo
+ * can resolve what the authorization approved: JWT access tokens carry it,
+ * and opaque tokens recover it when introspection re-derives their claims.
+ */
+export const RELEASE_BINDING_CLAIM = "zentity_release_binding";
+
 type ReleaseFlowType = "oauth" | "ciba";
 
 interface PendingOauthDisclosure {

@@ -3,14 +3,14 @@ import crypto from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
-import { rejectPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
+import { denyPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
+  hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 
@@ -29,13 +29,13 @@ async function createClient() {
 
 let userId: string;
 
-describe("rejectPendingCibaRequestsForUser", () => {
+describe("denyPendingCibaRequestsForUser", () => {
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
   });
 
-  it("rejects the user's pending CIBA requests", async () => {
+  it("denies the user's pending CIBA requests", async () => {
     const authReqId = crypto.randomUUID();
     await createClient();
     await db
@@ -50,14 +50,14 @@ describe("rejectPendingCibaRequestsForUser", () => {
       })
       .run();
 
-    await rejectPendingCibaRequestsForUser(userId);
+    await denyPendingCibaRequestsForUser(userId);
 
     const row = await db
       .select({ status: cibaRequests.status })
       .from(cibaRequests)
       .where(eq(cibaRequests.authReqId, authReqId))
       .get();
-    expect(row?.status).toBe("rejected");
+    expect(row?.status).toBe("denied");
   });
 
   it("leaves requests that are no longer pending alone", async () => {
@@ -68,7 +68,7 @@ describe("rejectPendingCibaRequestsForUser", () => {
       status: "approved",
     });
 
-    await rejectPendingCibaRequestsForUser(userId);
+    await denyPendingCibaRequestsForUser(userId);
 
     const row = await db
       .select({ status: cibaRequests.status })

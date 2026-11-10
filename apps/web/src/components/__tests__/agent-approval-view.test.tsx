@@ -53,6 +53,15 @@ vi.mock("@/components/vault-unlock", () => ({
 
 import { AgentApprovalView } from "../agent-approval-view";
 
+const DECISION_URL = "/api/auth/ciba/decision";
+
+function decisionBody(decision: "approved" | "denied") {
+  return expect.objectContaining({
+    method: "POST",
+    body: JSON.stringify({ request_id: "req-1", decision }),
+  });
+}
+
 describe("AgentApprovalView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,7 +80,7 @@ describe("AgentApprovalView", () => {
           );
         }
 
-        if (url === "/api/auth/ciba/authorize") {
+        if (url === DECISION_URL) {
           return Promise.resolve(new Response(null, { status: 200 }));
         }
 
@@ -84,14 +93,14 @@ describe("AgentApprovalView", () => {
     render(
       <AgentApprovalView
         authMode="passkey"
-        authReqId="req-1"
         initialRequest={{
-          auth_req_id: "req-1",
+          request_id: "req-1",
           client_name: "Zentity",
           expires_at: new Date(Date.now() + 60_000).toISOString(),
           scope: "openid identity.name identity.address identity.dob",
           status: "pending",
         }}
+        requestId="req-1"
         wallet={null}
       />
     );
@@ -112,16 +121,14 @@ describe("AgentApprovalView", () => {
     });
 
     expect(fetch).not.toHaveBeenCalledWith(
-      "/api/auth/ciba/reject",
-      expect.anything()
+      DECISION_URL,
+      decisionBody("denied")
     );
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
-        "/api/auth/ciba/authorize",
-        expect.objectContaining({
-          method: "POST",
-        })
+        DECISION_URL,
+        decisionBody("approved")
       );
     });
 

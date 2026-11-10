@@ -3,7 +3,7 @@ import "server-only";
 import { decodeBase64UrlJsonStrict } from "@zentity/sdk/protocol";
 import { createJwksTokenVerifier } from "@zentity/sdk/rp";
 import type { JWK } from "jose";
-import { calculateJwkThumbprint, importJWK, jwtVerify } from "jose";
+import { importJWK, jwtVerify } from "jose";
 
 import { env } from "@/lib/env";
 
@@ -50,39 +50,16 @@ function decodeDisclosures(
   return claims;
 }
 
-function resolveHolderJwk(
-  cnf: { jwk?: JWK; jkt?: string },
-  kbJwt: string
-): JWK | null {
-  if (cnf.jwk) {
-    return cnf.jwk;
-  }
-  const headerB64 = kbJwt.split(".")[0];
-  if (!headerB64) {
-    return null;
-  }
-  const header = decodeBase64UrlJsonStrict(headerB64) as { jwk?: JWK };
-  return header.jwk ?? null;
-}
-
 async function verifyKbJwt(
   kbJwt: string,
   issuerPayload: Record<string, unknown>,
   expectedNonce: string,
   expectedAudience: string
 ): Promise<boolean> {
-  const cnf = issuerPayload.cnf as { jwk?: JWK; jkt?: string } | undefined;
-  if (!cnf?.jkt) {
-    return false;
-  }
-
-  const holderJwk = await resolveHolderJwk(cnf, kbJwt);
+  // The issuer binds the credential to the holder key it carries as cnf.jwk
+  // (SD-JWT VC); the KB-JWT must verify against that key.
+  const holderJwk = (issuerPayload.cnf as { jwk?: JWK } | undefined)?.jwk;
   if (!holderJwk) {
-    return false;
-  }
-
-  const thumbprint = await calculateJwkThumbprint(holderJwk);
-  if (thumbprint !== cnf.jkt) {
     return false;
   }
 

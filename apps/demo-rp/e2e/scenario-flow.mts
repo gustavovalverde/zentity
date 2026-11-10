@@ -12,6 +12,7 @@ import {
 import {
   createCredentialOffer,
   createIssuerSession,
+  findCibaRequestId,
 } from "../../web/e2e/oidc/oidc-helpers";
 
 const currentDir =
@@ -134,7 +135,7 @@ export async function waitForAetherAuthorization(page: Page) {
     }
   );
 
-  expect(authorizeResponse.ok()).toBeTruthy();
+  expect(authorizeResponse.ok(), await authorizeResponse.text()).toBeTruthy();
   const body = (await authorizeResponse.json()) as { auth_req_id?: string };
   if (!body.auth_req_id) {
     throw new Error("CIBA authorize response did not include auth_req_id");
@@ -153,8 +154,11 @@ export async function approveCibaRequest(authReqId: string) {
   });
 
   try {
-    const response = await approvalRequest.post("/api/auth/ciba/authorize", {
-      data: { auth_req_id: authReqId },
+    const response = await approvalRequest.post("/api/auth/ciba/decision", {
+      data: {
+        request_id: await findCibaRequestId(authReqId),
+        decision: "approved",
+      },
     });
     expect(response.ok()).toBeTruthy();
   } finally {

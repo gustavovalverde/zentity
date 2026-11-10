@@ -1,22 +1,18 @@
 import type { Session } from "./auth-config";
 
-import { createDpopAccessTokenValidator } from "@better-auth/haip";
+import { getDpopJktFromPayload } from "@better-auth/core/oauth2";
 import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
+import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
-  loadOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
-import {
-  extractAccessToken,
-  type OAuthTokenValidationResult,
-  validateOAuthAccessToken,
-} from "@/lib/auth/oidc/oauth-request";
+  tokenScopes,
+  verifyResourceRequest,
+} from "@/lib/auth/oidc/resource-principal";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
-const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
-const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
+const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
 
 interface UserAccessPrincipal {
   clientId: string;
@@ -53,10 +49,14 @@ interface ClientCredentialsSuccess {
   principal: ClientCredentialsPrincipal;
 }
 
-function authError(status: number, error: string): AuthFailure {
+function authError(
+  status: number,
+  error: string,
+  headers?: HeadersInit
+): AuthFailure {
   return {
     ok: false,
-    response: NextResponse.json({ error }, { status }),
+    response: NextResponse.json({ error }, { status, headers }),
   };
 }
 
@@ -67,52 +67,8 @@ function hasRequiredScopes(
   return requiredScopes.every((scope) => scopes.includes(scope));
 }
 
-async function resolveBootstrapPrincipal(
-  request: Request
-): Promise<UserAccessPrincipal | null> {
-  const match = request.headers.get("authorization")?.match(AUTH_HEADER_RE);
-  const scheme = match?.[1];
-  const token = match?.[2];
-  if (!(scheme && token) || scheme.toLowerCase() !== "dpop") {
-    return null;
-  }
-
-  const accessToken = await loadOpaqueAccessToken(token);
-  if (
-    !(accessToken?.userId && accessToken.dpopJkt) ||
-    accessToken.expiresAt < new Date() ||
-    accessToken.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
-  ) {
-    return null;
-  }
-
-  if (!(await validateOpaqueAccessTokenDpop(request, accessToken.dpopJkt))) {
-    return null;
-  }
-
-  return {
-    kind: "user_access_token",
-    userId: accessToken.userId,
-    clientId: accessToken.clientId,
-    scopes: accessToken.scopes,
-    token,
-  };
-}
-
-function asClientCredentialsPrincipal(
-  token: string,
-  validation: OAuthTokenValidationResult
-): ClientCredentialsPrincipal | null {
-  if (!(validation.valid && validation.clientId)) {
-    return null;
-  }
-
-  return {
-    kind: "client_credentials",
-    clientId: validation.clientId,
-    scopes: validation.scopes ?? [],
-    token,
-  };
+function audienceIncludes(aud: unknown, audience: string): boolean {
+  return Array.isArray(aud) ? aud.includes(audience) : aud === audience;
 }
 
 export async function requireBrowserSession(
@@ -132,56 +88,90 @@ export async function requireBrowserSession(
   return { ok: true, session };
 }
 
+/**
+ * Requires a DPoP-bound bootstrap token: an opaque token that token exchange
+ * minted for agent registration, marked by its stored `zentity_token_use`.
+ */
 export async function requireBootstrapAccessToken(
   request: Request,
   requiredScopes: string[] = []
 ): Promise<UserTokenSuccess | AuthFailure> {
-  const principal = await resolveBootstrapPrincipal(request);
-  if (!principal) {
+  const verified = await verifyResourceRequest(request);
+  if (
+    !verified.ok ||
+    verified.format !== "opaque" ||
+    !getDpopJktFromPayload(verified.payload)
+  ) {
+    return authError(401, "Bootstrap access token required");
+  }
+  const { payload, token } = verified;
+  const extensions = await loadOpaqueAccessTokenExtensions(token);
+  const userId = typeof payload.sub === "string" ? payload.sub : undefined;
+  const clientId =
+    typeof payload.client_id === "string" ? payload.client_id : undefined;
+  if (
+    !(userId && clientId) ||
+    extensions?.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
+  ) {
     return authError(401, "Bootstrap access token required");
   }
 
-  if (!hasRequiredScopes(principal.scopes, requiredScopes)) {
+  const scopes = tokenScopes(payload);
+  if (!hasRequiredScopes(scopes, requiredScopes)) {
     return authError(403, "Missing required scope");
   }
 
-  return { ok: true, principal };
+  return {
+    ok: true,
+    principal: { kind: "user_access_token", userId, clientId, scopes, token },
+  };
 }
 
+/**
+ * Requires a client_credentials JWT access token for the RP API: its subject
+ * is the client itself and its audience the RP API resource.
+ */
 export async function requireClientCredentials(
   request: Request,
   requiredScopes: string[] = []
 ): Promise<ClientCredentialsSuccess | AuthFailure> {
-  const authHeader = request.headers.get("authorization");
-  const match = authHeader?.match(AUTH_HEADER_RE);
-  const token = extractAccessToken(request.headers);
-  if (!token) {
-    return authError(401, "Client credentials token required");
+  const verified = await verifyResourceRequest(request);
+  if (!verified.ok) {
+    const body = verified.error.body as
+      | { error_description?: string }
+      | undefined;
+    return authError(
+      verified.error.statusCode,
+      body?.error_description ?? "Invalid access token",
+      verified.error.headers
+    );
+  }
+  const { payload, token } = verified;
+  if (verified.format !== "jwt") {
+    return authError(401, "Opaque client credentials tokens are not supported");
+  }
+  if (!audienceIncludes(payload.aud, RP_API_AUDIENCE)) {
+    return authError(401, "Invalid access token");
   }
 
-  const validation = await validateOAuthAccessToken(token, {
-    requiredScopes,
-  });
-  const principal = asClientCredentialsPrincipal(token, validation);
-  if (!principal) {
-    return authError(401, validation.error ?? "Invalid access token");
+  const clientId =
+    typeof payload.client_id === "string" ? payload.client_id : undefined;
+  if (!clientId) {
+    return authError(401, "Missing client_id");
+  }
+  // A client_credentials token's subject is the client itself; a distinct
+  // subject means a user token.
+  if (payload.sub && payload.sub !== clientId) {
+    return authError(401, "Not a client credentials token");
   }
 
-  const payload = validation.payload;
-  const cnf = payload?.cnf as { jkt?: string } | undefined;
-  if (cnf?.jkt) {
-    if (match?.[1]?.toLowerCase() !== "dpop") {
-      return authError(401, "DPoP proof required");
-    }
-    try {
-      await dpopValidator({
-        request,
-        tokenPayload: payload as Record<string, unknown>,
-      });
-    } catch {
-      return authError(401, "Invalid DPoP proof");
-    }
+  const scopes = tokenScopes(payload);
+  if (!hasRequiredScopes(scopes, requiredScopes)) {
+    return authError(401, "Missing required scope");
   }
 
-  return { ok: true, principal };
+  return {
+    ok: true,
+    principal: { kind: "client_credentials", clientId, scopes, token },
+  };
 }

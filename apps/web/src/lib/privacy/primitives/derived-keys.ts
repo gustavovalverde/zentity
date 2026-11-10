@@ -49,6 +49,14 @@ export function getConsentHmacKey(): string {
   ).toString("hex");
 }
 
+export function getConsentReferenceKey(): string {
+  return deriveKey(
+    env.BETTER_AUTH_SECRET,
+    "zentity:consent-reference:v1",
+    32
+  ).toString("hex");
+}
+
 export function getIdentityIntentKey(): string {
   return deriveKey(
     env.BETTER_AUTH_SECRET,

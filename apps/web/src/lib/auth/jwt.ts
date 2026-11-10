@@ -56,7 +56,6 @@ export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
 
 const authIssuer = getAuthIssuer();
 const LOCAL_KEY_SET_TTL_MS = 5 * 60 * 1000;
-const ACCESS_TOKEN_TYP = "at+jwt";
 
 type LocalKeySet = ReturnType<typeof createLocalJWKSet>;
 
@@ -124,18 +123,4 @@ export async function isTokenRevoked(jti: string): Promise<boolean> {
     .limit(1)
     .get();
   return Boolean(row);
-}
-
-export async function verifyIssuedAccessToken(
-  token: string,
-  audience?: string | string[]
-): Promise<JWTPayload | null> {
-  const payload = await verifyAuthIssuedJwt(token, {
-    typ: ACCESS_TOKEN_TYP,
-    ...(audience ? { audience } : {}),
-  });
-  if (!(payload && typeof payload.jti === "string")) {
-    return null;
-  }
-  return (await isTokenRevoked(payload.jti)) ? null : payload;
 }

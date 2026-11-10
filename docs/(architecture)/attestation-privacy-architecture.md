@@ -77,10 +77,11 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
 - OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
-- **DPoP nonces**: server-issued single-use tokens prevent DPoP proof replay (RFC 9449).
+- **DPoP replay protection**: every DPoP proof is verified before its key is trusted, and its `jti` is reserved in the database for the proof's lifetime, so a replayed proof is rejected (RFC 9449). Zentity issues no DPoP nonces.
 - **KB-JWT freshness**: verifiers enforce max age on Key Binding JWT timestamps.
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
 - **FHE ciphertext HMAC binding**: HMAC-SHA256 keyed by `CIPHERTEXT_HMAC_SECRET` (HKDF-derived) over length-prefixed `[userId, attributeType, ciphertext]`, stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.
+- **Consent reference HMAC**: the consent `reference_id` that access tokens and introspection carry is HMAC-SHA256, keyed by an HKDF derivation of `BETTER_AUTH_SECRET`, over the client id, session id, and sorted scopes. It is stable within one session's consent but cannot be linked across relying parties or checked offline against a known user id.
 - **Consent scope HMAC**: HMAC-SHA256 keyed by an HKDF derivation of `BETTER_AUTH_SECRET` over length-prefixed `[context, userId, clientId, referenceId, sortedScopes]`, stored in `scope_hmac`. Detects DB-level scope escalation.
 - **JWKS private key encryption at rest**: AES-256-GCM envelope encryption via `KEY_ENCRYPTION_KEY` (required); plaintext rows are refused. Prevents token forgery from DB read access. Stored format: `{"v":1,"iv":"...","ct":"..."}`.
 - **JARM response encryption**: ECDH-ES P-256 key encrypts OID4VP presentation responses. Keys rotate every 90 days with grace period for in-flight decryption.
@@ -362,7 +363,7 @@ Zentity issues SD-JWT verifiable credentials containing **derived claims only**:
 
 SD-JWT format allows users to reveal only specific claims during presentation. The holder controls which disclosure keys are included.
 
-Verifiers validate KB-JWT holder binding: issuer signature → disclosure decode → `cnf.jkt` thumbprint match → KB-JWT signature → audience/nonce/freshness check. See [SSI Architecture](ssi-architecture.md) for the full credential model.
+Verifiers validate KB-JWT holder binding: issuer signature → disclosure decode → holder key from `cnf.jwk` → KB-JWT signature → audience/nonce/freshness check. See [SSI Architecture](ssi-architecture.md) for the full credential model.
 
 ---
 

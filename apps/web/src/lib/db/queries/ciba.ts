@@ -35,10 +35,10 @@ function fetchCibaRequest(
 }
 
 /**
- * Resolves a request's stored authReqId hash from its primary id. A first-party
- * approval UI references a request it owns by id (it never holds the raw token,
- * since only the hash is stored), then keys all CIBA-scoped lookups on the hash
- * the same way the raw-token path does. Returns undefined when no row matches.
+ * Resolves a request's stored auth_req_id hash from its id. The approval UI
+ * names a request by id (the raw auth_req_id only ever reaches the client),
+ * and every CIBA-scoped store is keyed by the hash. Returns undefined when no
+ * row matches.
  */
 export async function fetchCibaAuthReqIdHashById(
   id: string
@@ -57,10 +57,7 @@ function validateOwnership(
 ): { error: Response } | { row: CibaRequestRow } {
   if (!row) {
     return {
-      error: NextResponse.json(
-        { error: "Unknown auth_req_id" },
-        { status: 404 }
-      ),
+      error: NextResponse.json({ error: "Unknown request" }, { status: 404 }),
     };
   }
   if (row.userId !== userId) {
@@ -131,12 +128,12 @@ export async function listPendingCibaRequestIdsByUserId(
   return rows.map((row) => row.authReqId);
 }
 
-export async function rejectPendingCibaRequest(
+export async function denyPendingCibaRequest(
   authReqId: string
 ): Promise<boolean> {
   const result = await db
     .update(cibaRequests)
-    .set({ status: "rejected" })
+    .set({ status: "denied" })
     .where(
       and(
         eq(cibaRequests.authReqId, authReqId),
@@ -148,12 +145,12 @@ export async function rejectPendingCibaRequest(
   return result.rowsAffected > 0;
 }
 
-export async function rejectPendingCibaRequestsForUser(
+export async function denyPendingCibaRequestsForUser(
   userId: string
 ): Promise<void> {
   await db
     .update(cibaRequests)
-    .set({ status: "rejected" })
+    .set({ status: "denied" })
     .where(
       and(eq(cibaRequests.userId, userId), eq(cibaRequests.status, "pending"))
     )

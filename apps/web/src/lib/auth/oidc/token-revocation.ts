@@ -26,8 +26,10 @@ import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
  * the wallet runtime's delta poller (`/api/auth/oauth2/revoked`) all consult
  * that table.
  *
- * Per RFC 7009 §2.2 an unknown, invalid, expired, or foreign token still
- * answers 200 so the caller learns nothing about its validity.
+ * Per RFC 7009 §2.2 an unknown, invalid, or expired token still answers 200 so
+ * the caller learns nothing about its validity. A token issued to another
+ * client is refused with 400 for a confidential client and answers 200 for a
+ * public one, as the provider does for the tokens it revokes itself (§2.1).
  */
 
 const ACCESS_TOKEN_TYP = "at+jwt";
@@ -46,7 +48,7 @@ function revocationAccepted(): Response {
 
 async function authenticateRevokingClient(
   ctx: GenericEndpointContext
-): Promise<string> {
+): Promise<{ clientId: string; isPublic: boolean }> {
   const options = ctx.context.getPlugin("oauth-provider")
     ?.options as OAuthOptions<Scope[]>;
   try {
@@ -54,7 +56,10 @@ async function authenticateRevokingClient(
       ctx,
       options
     ).authenticateClient({ requireCredentials: false });
-    return client.clientId;
+    return {
+      clientId: client.clientId,
+      isPublic: client.tokenEndpointAuthMethod === "none",
+    };
   } catch (error) {
     if (error instanceof APIError && error.body?.error === "invalid_request") {
       throw new APIError("UNAUTHORIZED", {
@@ -83,14 +88,21 @@ export async function beforeRevokeJwtAccessToken(
     return;
   }
 
-  const clientId = await authenticateRevokingClient(ctx);
+  const { clientId, isPublic } = await authenticateRevokingClient(ctx);
   const payload = await verifyAuthIssuedJwt(token, { typ: ACCESS_TOKEN_TYP });
   if (!payload || typeof payload.jti !== "string") {
     return revocationAccepted();
   }
   const issuedTo = payload.azp ?? payload.client_id;
   if (issuedTo !== clientId) {
-    return revocationAccepted();
+    if (isPublic) {
+      return revocationAccepted();
+    }
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description:
+        "client is not authorized to revoke the presented token",
+    });
   }
 
   const act = payload.act as { sub?: unknown } | undefined;

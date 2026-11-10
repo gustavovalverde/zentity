@@ -21,36 +21,3 @@ export function addWwwAuthenticate(response: Response): Response {
     headers,
   });
 }
-
-export async function unwrapBetterAuthEnvelope(
-  response: Response
-): Promise<Response> {
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    return response;
-  }
-
-  const text = await response.clone().text();
-  if (!text) {
-    return response;
-  }
-
-  let payload: { response?: unknown };
-  try {
-    payload = JSON.parse(text) as { response?: unknown };
-  } catch {
-    return response;
-  }
-
-  if (!(payload && typeof payload === "object" && "response" in payload)) {
-    return response;
-  }
-
-  const headers = new Headers(response.headers);
-  headers.set("content-type", "application/json");
-  return new Response(JSON.stringify(payload.response), {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}

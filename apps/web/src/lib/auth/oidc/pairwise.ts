@@ -13,6 +13,24 @@ import {
   upsertPairwiseSubjectIndex,
 } from "./pairwise-subject-index";
 
+/**
+ * Zentity's pairwise sector is the host of a client's first redirect URI, the
+ * same for every client. The provider instead stores a sector at
+ * registration, `client/<clientId>` for a client without https redirect URIs,
+ * which would give loopback and custom-scheme clients (the MCP server, agents)
+ * an ID token `sub` that differs from the one Zentity resolves for CIBA login
+ * hints and token exchange. Clearing the stored sector makes the provider fall
+ * back to the first redirect host too, and keeps it from re-deriving one when
+ * the redirect URIs change.
+ */
+export async function adoptZentityPairwiseSector(clientId: string) {
+  await db
+    .update(oauthClients)
+    .set({ sectorIdentifier: null })
+    .where(eq(oauthClients.clientId, clientId))
+    .run();
+}
+
 export function getPairwiseSector(redirectUris: string[]): string {
   const first = redirectUris[0];
   if (!first) {

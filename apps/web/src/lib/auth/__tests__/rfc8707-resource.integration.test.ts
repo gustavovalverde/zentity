@@ -218,7 +218,7 @@ describe("RFC 8707: Resource Indicator Enforcement", () => {
         clientId: TEST_CLIENT_ID,
         userId,
         status: "approved",
-        resource: VALID_RESOURCE,
+        resources: JSON.stringify([VALID_RESOURCE]),
       });
 
       const { status, json } = await postTokenWithDpop({

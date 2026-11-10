@@ -31,10 +31,11 @@ export function computeCertHash(pem: string): string {
 }
 
 /**
- * Returns the `x509_hash#<hash>` client_id for a PEM certificate.
+ * Returns the `x509_hash:<hash>` Client Identifier for a PEM certificate
+ * (OpenID4VP 1.0 §5.9.3).
  */
 export function getVerifierClientId(leafPem: string): string {
-  return `x509_hash#${computeCertHash(leafPem)}`;
+  return `x509_hash:${computeCertHash(leafPem)}`;
 }
 
 /**

@@ -1,50 +1,47 @@
 import "server-only";
 
-// ---------------------------------------------------------------------------
-// DPoP nonce store (RFC 9449 §8)
-// ---------------------------------------------------------------------------
+import {
+  createDpopReplayStore,
+  type DpopReplayReservations,
+  isDpopProofError,
+  verifyDpopProof,
+} from "@better-auth/core/oauth2";
+import { HAIP_DPOP_SIGNING_ALGORITHMS } from "@better-auth/haip";
 
-const SWEEP_INTERVAL_MS = 60_000;
+export type DpopProofCheck =
+  | { jkt: string | undefined; ok: true }
+  | { error: string; ok: false };
 
-class DpopNonceStore {
-  private readonly nonces = new Map<string, number>();
-  private readonly ttlMs: number;
-
-  constructor(ttlSeconds?: number) {
-    this.ttlMs = (ttlSeconds ?? 30) * 1000;
-    setInterval(() => this.sweep(), SWEEP_INTERVAL_MS).unref();
+/**
+ * Verifies the DPoP proof (RFC 9449 §4.3) on a request to a Zentity endpoint
+ * that binds a key outside the token endpoint, such as the first-party
+ * authorization challenge: signature, `typ`, ES256, `htm` and `htu` for this
+ * request, the `iat` window, and a `jti` reserved in the database so the proof
+ * cannot be replayed. Only a verified proof yields a key thumbprint; a request
+ * without a proof yields none.
+ */
+export async function verifyRequestDpopProof(input: {
+  method: string;
+  proofJwt: string | null | undefined;
+  reservations: DpopReplayReservations;
+  url: string;
+}): Promise<DpopProofCheck> {
+  if (!input.proofJwt) {
+    return { ok: true, jkt: undefined };
   }
-
-  issue(): string {
-    const nonce = crypto.randomUUID();
-    this.nonces.set(nonce, Date.now() + this.ttlMs);
-    return nonce;
-  }
-
-  validate(nonce: string): boolean {
-    const expiresAt = this.nonces.get(nonce);
-    if (expiresAt === undefined) {
-      return false;
+  try {
+    const proof = await verifyDpopProof({
+      proofJwt: input.proofJwt,
+      method: input.method,
+      url: input.url,
+      signingAlgorithms: HAIP_DPOP_SIGNING_ALGORITHMS,
+      replayStore: createDpopReplayStore(input.reservations),
+    });
+    return { ok: true, jkt: proof.jkt };
+  } catch (error) {
+    if (isDpopProofError(error)) {
+      return { ok: false, error: error.message };
     }
-    this.nonces.delete(nonce);
-    return Date.now() < expiresAt;
+    throw error;
   }
-
-  private sweep() {
-    const now = Date.now();
-    for (const [nonce, expiresAt] of this.nonces) {
-      if (now >= expiresAt) {
-        this.nonces.delete(nonce);
-      }
-    }
-  }
-}
-
-let instance: DpopNonceStore | undefined;
-
-export function getDpopNonceStore(ttlSeconds?: number): DpopNonceStore {
-  if (!instance) {
-    instance = new DpopNonceStore(ttlSeconds);
-  }
-  return instance;
 }

@@ -66,7 +66,6 @@ export default async function AgentsPage({
         approvalMethod: cibaRequests.approvalMethod,
         attestationProvider: cibaRequests.attestationProvider,
         attestationTier: cibaRequests.attestationTier,
-        authReqId: cibaRequests.authReqId,
         authorizationDetails: cibaRequests.authorizationDetails,
         bindingMessage: cibaRequests.bindingMessage,
         clientId: cibaRequests.clientId,

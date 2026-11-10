@@ -5,6 +5,8 @@ import {
   createDpopBinding,
   createDpopProof,
   createIssuerSession,
+  decideCibaRequest,
+  findCibaRequestId,
   registerCibaClient,
 } from "./oidc-helpers";
 
@@ -49,25 +51,26 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // 3. Initiate CIBA backchannel auth with identity scopes
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
-      data: {
+      form: {
         client_id: clientId,
         login_hint: session.userId,
         scope: "openid identity.name identity.dob",
         binding_message: "PII delivery E2E test",
         resource: BASE_URL,
       },
-      headers: ORIGIN_HEADERS,
+      headers: { Origin: BASE_URL },
     });
     expect(bcRes.ok()).toBeTruthy();
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
     expect(auth_req_id).toBeTruthy();
+    const requestId = await findCibaRequestId(auth_req_id);
 
     // 4. Get intent token for PII staging
     const intentRes = await request.post(
       `${BASE_URL}/api/ciba/identity/intent`,
       {
         data: {
-          auth_req_id,
+          request_id: requestId,
           scopes: ["identity.name", "identity.dob"],
         },
         headers: { Cookie: session.cookieHeader, ...ORIGIN_HEADERS },
@@ -81,7 +84,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     // 5. Stage identity claims (simulates vault unlock + PII submission)
     const stageRes = await request.post(`${BASE_URL}/api/ciba/identity/stage`, {
       data: {
-        auth_req_id,
+        request_id: requestId,
         scopes: ["identity.name", "identity.dob"],
         identity: {
           given_name: "Ada",
@@ -98,9 +101,9 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     expect(stageBody.staged).toBe(true);
 
     // 6. Approve the CIBA request
-    const approveRes = await request.post(`${AUTH_BASE_URL}/ciba/authorize`, {
-      data: { auth_req_id },
-      headers: { Cookie: session.cookieHeader, ...ORIGIN_HEADERS },
+    const approveRes = await decideCibaRequest(request, {
+      authReqId: auth_req_id,
+      cookieHeader: session.cookieHeader,
     });
     expect(approveRes.ok()).toBeTruthy();
 
@@ -205,22 +208,22 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // CIBA with openid-only scope (no identity scopes)
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
-      data: {
+      form: {
         client_id: clientId,
         login_hint: session.userId,
         scope: "openid",
         binding_message: "Non-identity E2E test",
         resource: BASE_URL,
       },
-      headers: ORIGIN_HEADERS,
+      headers: { Origin: BASE_URL },
     });
     expect(bcRes.ok()).toBeTruthy();
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
 
     // Approve without staging PII
-    const approveRes = await request.post(`${AUTH_BASE_URL}/ciba/authorize`, {
-      data: { auth_req_id },
-      headers: { Cookie: session.cookieHeader, ...ORIGIN_HEADERS },
+    const approveRes = await decideCibaRequest(request, {
+      authReqId: auth_req_id,
+      cookieHeader: session.cookieHeader,
     });
     expect(approveRes.ok()).toBeTruthy();
 

@@ -32,6 +32,9 @@ const demoRpPort =
   demoRpUrl.port || (demoRpUrl.protocol === "https:" ? "443" : "80");
 const issuerDbPath = join(webRoot, "e2e", ".data", "e2e.db");
 const issuerDbUrl = `file:${issuerDbPath}`;
+// Shared web E2E helpers read the issuer database from the test process.
+process.env.E2E_DATABASE_PATH ??= issuerDbPath;
+process.env.E2E_TURSO_DATABASE_URL ??= issuerDbUrl;
 const demoRpDbPath = join(currentDir, ".data", "e2e.db");
 const demoRpDbUrl = `file:${demoRpDbPath}`;
 

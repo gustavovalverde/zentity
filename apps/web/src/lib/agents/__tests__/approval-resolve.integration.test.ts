@@ -3,12 +3,15 @@ import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 
 const TEST_CLIENT_ID = "resolve-approval-client";
 
@@ -78,11 +81,11 @@ async function insertCibaRequest(
     model: string | null;
     runtime: string | null;
     scope: string;
-    status: string;
+    status: "approved" | "denied" | "pending";
   }> = {}
 ) {
   const authReqId = overrides.authReqId ?? crypto.randomUUID();
-  await db
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       // Plugin stores the hash at rest; callers send the raw value.
@@ -100,8 +103,11 @@ async function insertCibaRequest(
       authorizationDetails: overrides.authorizationDetails ?? null,
       acrValues: overrides.acrValues ?? null,
     })
-    .run();
-  return authReqId;
+    .returning({ id: cibaRequests.id });
+  if (!row) {
+    throw new Error("Expected CIBA request fixture to be created");
+  }
+  return row.id;
 }
 
 describe("resolveCibaApprovalData", () => {
@@ -113,30 +119,30 @@ describe("resolveCibaApprovalData", () => {
     await createOAuthClient(TEST_CLIENT_ID);
   });
 
-  it("returns null for non-existent authReqId", async () => {
+  it("returns null for a non-existent request", async () => {
     const result = await resolveCibaApprovalData("nonexistent", userId);
     expect(result).toBeNull();
   });
 
-  it("returns null when authReqId belongs to a different user", async () => {
-    const authReqId = await insertCibaRequest(userId);
+  it("returns null when the request belongs to a different user", async () => {
+    const requestId = await insertCibaRequest(userId);
     const otherUserId = await createTestUser({ email: "other@example.com" });
-    const result = await resolveCibaApprovalData(authReqId, otherUserId);
+    const result = await resolveCibaApprovalData(requestId, otherUserId);
     expect(result).toBeNull();
   });
 
   it("returns correct shape for a basic request without agent", async () => {
-    const authReqId = await insertCibaRequest(userId, {
+    const requestId = await insertCibaRequest(userId, {
       scope: "openid proof:age",
       bindingMessage: "Approve purchase",
     });
 
-    const result = await resolveCibaApprovalData(authReqId, userId);
+    const result = await resolveCibaApprovalData(requestId, userId);
     expect(result).not.toBeNull();
     expect(result?.agentIdentity).toBeNull();
     expect(result?.registeredAgent).toBeNull();
     expect(result?.request).toMatchObject({
-      auth_req_id: authReqId,
+      request_id: requestId,
       scope: "openid proof:age",
       status: "pending",
       binding_message: "Approve purchase",
@@ -147,13 +153,13 @@ describe("resolveCibaApprovalData", () => {
   });
 
   it("returns agent identity when displayName is set", async () => {
-    const authReqId = await insertCibaRequest(userId, {
+    const requestId = await insertCibaRequest(userId, {
       displayName: "Claude Agent",
       model: "claude-opus-4-6",
       runtime: "mcp-node",
     });
 
-    const result = await resolveCibaApprovalData(authReqId, userId);
+    const result = await resolveCibaApprovalData(requestId, userId);
     expect(result?.agentIdentity).toEqual({
       name: "Claude Agent",
       model: "claude-opus-4-6",
@@ -163,12 +169,12 @@ describe("resolveCibaApprovalData", () => {
 
   it("returns registered agent info when agentSessionId is set", async () => {
     const sessionId = await createAgentSession(userId);
-    const authReqId = await insertCibaRequest(userId, {
+    const requestId = await insertCibaRequest(userId, {
       agentSessionId: sessionId,
       displayName: "Claude Agent",
     });
 
-    const result = await resolveCibaApprovalData(authReqId, userId);
+    const result = await resolveCibaApprovalData(requestId, userId);
     expect(result?.registeredAgent).toMatchObject({
       hostName: "Claude Code Host",
       attestationTier: "attested",
@@ -185,18 +191,18 @@ describe("resolveCibaApprovalData", () => {
         amount: { value: "9.99", currency: "USD" },
       },
     ];
-    const authReqId = await insertCibaRequest(userId, {
+    const requestId = await insertCibaRequest(userId, {
       authorizationDetails: JSON.stringify(details),
     });
 
-    const result = await resolveCibaApprovalData(authReqId, userId);
+    const result = await resolveCibaApprovalData(requestId, userId);
     expect(result?.request.authorization_details).toEqual(details);
   });
 
   it("omits optional fields when null in DB", async () => {
-    const authReqId = await insertCibaRequest(userId);
+    const requestId = await insertCibaRequest(userId);
 
-    const result = await resolveCibaApprovalData(authReqId, userId);
+    const result = await resolveCibaApprovalData(requestId, userId);
     expect(result?.request).not.toHaveProperty("binding_message");
     expect(result?.request).not.toHaveProperty("acr_values");
     expect(result?.request).not.toHaveProperty("authorization_details");

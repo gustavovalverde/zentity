@@ -16,7 +16,6 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import {
   computePairwiseSub,
@@ -31,7 +30,11 @@ import {
   jwks as jwksTable,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  findStoredOpaqueAccessToken,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
   createTestDpopKeyPair,
@@ -50,15 +53,21 @@ const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
 const JWT_SHAPE = /^eyJ[^.]*\.[^.]*\.[^.]*$/;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
+let hasTestKeyPair = false;
 let testKid: string;
 let defaultAuthContextId: string;
 
+// One key for the whole file: the provider caches the JWKS and refetches it
+// for an unknown kid at most every 30 seconds, as for real key rotation.
 async function ensureSigningKey() {
-  testKeyPair = await generateKeyPair("EdDSA", {
-    crv: "Ed25519",
-    extractable: true,
-  });
-  testKid = crypto.randomUUID();
+  if (!hasTestKeyPair) {
+    testKeyPair = await generateKeyPair("EdDSA", {
+      crv: "Ed25519",
+      extractable: true,
+    });
+    testKid = crypto.randomUUID();
+    hasTestKeyPair = true;
+  }
   const publicJwk = await exportJWK(testKeyPair.publicKey);
   const privateJwk = await exportJWK(testKeyPair.privateKey);
   await db
@@ -70,6 +79,7 @@ async function ensureSigningKey() {
       alg: "EdDSA",
       crv: "Ed25519",
     })
+    .onConflictDoNothing()
     .run();
 }
 
@@ -157,7 +167,7 @@ async function exchangedClaims(
   if (token.startsWith("eyJ")) {
     return decodeJwt(token);
   }
-  const row = await loadOpaqueAccessToken(token);
+  const row = await findStoredOpaqueAccessToken(token);
   if (!row) {
     throw new Error("Exchanged opaque token is not stored");
   }
@@ -307,6 +317,8 @@ describe("Token Exchange (RFC 8693)", () => {
       await createTestClient(resourceServerClientId, {
         zentity_protected_resource: APP_AUDIENCE,
       });
+      // The subject token's issuing client must exist for it to be active.
+      await createTestClient("upstream-client");
 
       const callerKeyPair = await createTestDpopKeyPair();
       const resourceServerKeyPair = await createTestDpopKeyPair();
@@ -342,11 +354,13 @@ describe("Token Exchange (RFC 8693)", () => {
       await createTestClient(resourceServerClientId, {
         zentity_protected_resource: APP_AUDIENCE,
       });
+      await createTestClient("upstream-client");
 
       const callerKeyPair = await createTestDpopKeyPair();
       const resourceServerKeyPair = await createTestDpopKeyPair();
+      // A resource Zentity serves, but not the one this resource server protects.
       const subjectToken = await mintAccessToken(userId, {
-        aud: "https://other-resource.example.com",
+        aud: MCP_AUDIENCE,
         azp: "upstream-client",
         dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
         scope: "openid identity.name",
@@ -433,7 +447,9 @@ describe("Token Exchange (RFC 8693)", () => {
 
         expect(status).toBe(200);
         expect(json.access_token).not.toMatch(JWT_SHAPE);
-        const row = await loadOpaqueAccessToken(json.access_token as string);
+        const row = await findStoredOpaqueAccessToken(
+          json.access_token as string
+        );
         expect(row?.userId).toBe(userId);
       }
     });

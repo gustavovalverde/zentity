@@ -97,7 +97,7 @@ function resolveTerminalState(message: string): PageState | null {
   if (lower.includes("already approved")) {
     return "approved";
   }
-  if (lower.includes("already rejected")) {
+  if (lower.includes("already denied")) {
     return "rejected";
   }
   if (lower.includes("expired")) {
@@ -234,7 +234,7 @@ function deriveInitialState(req?: CibaRequestDetails): {
   if (req.status === "approved") {
     return { pageState: "approved", secondsLeft: 0 };
   }
-  if (req.status === "rejected") {
+  if (req.status === "denied") {
     return { pageState: "rejected", secondsLeft: 0 };
   }
   const expiresMs = new Date(req.expires_at).getTime() - Date.now();
@@ -244,10 +244,15 @@ function deriveInitialState(req?: CibaRequestDetails): {
   return { pageState: "ready", secondsLeft: Math.ceil(expiresMs / 1000) };
 }
 
+const CIBA_DECISION_PATH = "/api/auth/ciba/decision";
+
+function cibaRequestPath(requestId: string): string {
+  return `/api/auth/ciba/request?request_id=${encodeURIComponent(requestId)}`;
+}
+
 export function AgentApprovalView({
   agentIdentity,
   authMode,
-  authReqId,
   initialRequest,
   interactionCopy,
   onClose,
@@ -258,12 +263,11 @@ export function AgentApprovalView({
 }: Readonly<{
   agentIdentity?: AgentIdentitySummary | null;
   authMode: AuthMode;
-  authReqId: string | null;
   initialRequest?: CibaRequestDetails;
   interactionCopy?: InteractionCopy | null;
   onClose?: () => void;
   registeredAgent?: RegisteredAgentInfo | null;
-  requestId?: string | null;
+  requestId: string;
   userTier?: 0 | 1 | 2 | 3;
   wallet: { address: string; chainId: number } | null;
 }>) {
@@ -293,13 +297,7 @@ export function AgentApprovalView({
       return;
     }
 
-    if (!authReqId) {
-      setError("Missing auth_req_id parameter");
-      setState("error");
-      return;
-    }
-
-    fetch(`/api/auth/ciba/request?auth_req_id=${encodeURIComponent(authReqId)}`)
+    fetch(cibaRequestPath(requestId))
       .then(async (res) => {
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as {
@@ -317,7 +315,7 @@ export function AgentApprovalView({
 
         if (data.status === "approved") {
           setState("approved");
-        } else if (data.status === "rejected") {
+        } else if (data.status === "denied") {
           setState("rejected");
         } else {
           const expiresMs = new Date(data.expires_at).getTime() - Date.now();
@@ -333,11 +331,11 @@ export function AgentApprovalView({
         setError(err.message);
         setState("error");
       });
-  }, [authReqId, hasInitialRequest]);
+  }, [requestId, hasInitialRequest]);
 
   // Real-time status updates via service worker push messages
   useEffect(() => {
-    if (!authReqId || typeof navigator === "undefined") {
+    if (typeof navigator === "undefined") {
       return;
     }
     const sw = navigator.serviceWorker;
@@ -345,13 +343,12 @@ export function AgentApprovalView({
       return;
     }
 
-    const reqId = authReqId;
     function onMessage(event: MessageEvent) {
       if (
         event.data?.type === "ciba:status-changed" &&
-        event.data?.authReqId === reqId
+        event.data?.requestId === requestId
       ) {
-        fetch(`/api/auth/ciba/request?auth_req_id=${encodeURIComponent(reqId)}`)
+        fetch(cibaRequestPath(requestId))
           .then(async (res) => {
             if (!res.ok) {
               return;
@@ -360,7 +357,7 @@ export function AgentApprovalView({
             setDetails(data);
             if (data.status === "approved") {
               setState("approved");
-            } else if (data.status === "rejected") {
+            } else if (data.status === "denied") {
               setState("rejected");
             }
           })
@@ -370,7 +367,7 @@ export function AgentApprovalView({
 
     sw.addEventListener("message", onMessage);
     return () => sw.removeEventListener("message", onMessage);
-  }, [authReqId]);
+  }, [requestId]);
 
   useEffect(() => {
     if (state !== "ready" || timeLeft <= 0) {
@@ -409,30 +406,19 @@ export function AgentApprovalView({
 
   const scopeKey = useMemo(() => buildScopeKey(scopes), [scopes]);
 
-  // A dashboard listing references the request by id and never holds the raw
-  // token; the standalone approval link carries the raw auth_req_id. Every
-  // CIBA-scoped call (intent, stage, approve, reject, unstage) uses this.
-  const cibaRef = useMemo(() => {
-    const ref: Record<string, string> = {};
-    if (requestId) {
-      ref.request_id = requestId;
-    } else if (authReqId) {
-      ref.auth_req_id = authReqId;
-    }
-    return ref;
-  }, [requestId, authReqId]);
+  // Every CIBA-scoped call (intent, stage, unstage) names the request by id.
+  const cibaRef = useMemo(() => ({ request_id: requestId }), [requestId]);
 
   const vaultActive = hasIdentityScopes && state === "ready";
 
-  const fetchIntentToken = useCallback(() => {
-    if (!(authReqId || requestId)) {
-      throw new Error("Missing auth request reference.");
-    }
-    return fetchIntentFromEndpoint("/api/ciba/identity/intent", {
-      ...cibaRef,
-      scopes,
-    });
-  }, [authReqId, requestId, cibaRef, scopes]);
+  const fetchIntentToken = useCallback(
+    () =>
+      fetchIntentFromEndpoint("/api/ciba/identity/intent", {
+        ...cibaRef,
+        scopes,
+      }),
+    [cibaRef, scopes]
+  );
 
   const hasProofScopes = useMemo(() => scopes.some(isProofScope), [scopes]);
 
@@ -524,10 +510,6 @@ export function AgentApprovalView({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: profileRef is a stable React ref — .current is intentionally read without dependency tracking
   const stageIdentityAndApprove = useCallback(async (): Promise<void> => {
-    if (!(authReqId || requestId)) {
-      return;
-    }
-
     const profile = profileRef.current;
     if (!profile) {
       throw new Error("Unlock your vault to approve this request.");
@@ -569,22 +551,10 @@ export function AgentApprovalView({
     }
 
     clearIntent();
-  }, [
-    authReqId,
-    requestId,
-    cibaRef,
-    identityIntent,
-    hasValidIdentityIntent,
-    scopes,
-    clearIntent,
-  ]);
+  }, [cibaRef, identityIntent, hasValidIdentityIntent, scopes, clearIntent]);
 
   const handleAction = useCallback(
     async (action: "authorize" | "reject") => {
-      if (!(authReqId || requestId)) {
-        return;
-      }
-
       setState(action === "authorize" ? "approving" : "rejecting");
       setError(null);
 
@@ -603,10 +573,13 @@ export function AgentApprovalView({
           didStage = true;
         }
 
-        const res = await fetch(`/api/auth/ciba/${action}`, {
+        const res = await fetch(CIBA_DECISION_PATH, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(cibaRef),
+          body: JSON.stringify({
+            request_id: requestId,
+            decision: action === "authorize" ? "approved" : "denied",
+          }),
         });
 
         if (!res.ok) {
@@ -640,7 +613,6 @@ export function AgentApprovalView({
       }
     },
     [
-      authReqId,
       requestId,
       cibaRef,
       hasIdentityScopes,

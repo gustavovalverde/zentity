@@ -28,12 +28,12 @@ interface CibaRequest {
   approvalMethod: string | null;
   attestationTier: string | null;
   authorizationDetails: string | null;
-  authReqId: string;
   bindingMessage: string | null;
   clientName: string | null;
   createdAt: Date;
   displayName: string | null;
   expiresAt: Date;
+  id: string;
   model: string | null;
   runtime: string | null;
   scope: string;
@@ -42,7 +42,7 @@ interface CibaRequest {
 
 interface RequestsTabProps {
   readonly mailpitUrl: string | null;
-  readonly onSelect: (authReqId: string) => void;
+  readonly onSelect: (requestId: string) => void;
   readonly requests: CibaRequest[];
 }
 
@@ -52,7 +52,7 @@ function statusVariant(
   switch (status) {
     case "approved":
       return "success";
-    case "rejected":
+    case "denied":
       return "destructive";
     case "pending":
       return "secondary";
@@ -157,11 +157,11 @@ export function RequestsTab({
             const scopeText = formatScopeDescription(req.scope);
 
             return (
-              <li key={req.authReqId}>
+              <li key={req.id}>
                 <Item asChild variant="outline">
                   <button
                     className="w-full text-left"
-                    onClick={() => onSelect(req.authReqId)}
+                    onClick={() => onSelect(req.id)}
                     type="button"
                   >
                     <ItemMedia variant="icon">

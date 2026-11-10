@@ -359,9 +359,9 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.id_token).toEqual(expect.any(String));
 
       const claims = decodeJwt(json.id_token as string);
-      // acr is AS-owned ("0"); the tier rides in the namespaced claim.
-      expect(claims.acr).toBe("0");
-      expect(claims.amr).toBeUndefined();
+      // The code records the tier as acr and the OPAQUE login's amr.
+      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.amr).toEqual(["pwd"]);
       expect(claims.acr_eidas).toBeUndefined();
       const assurance = claims.zentity_assurance as Record<string, unknown>;
       expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
@@ -581,6 +581,79 @@ describe("Authorization Challenge Endpoint", () => {
       expect(round2.status).toBe(400);
       expect(round2.json.error).toBe("invalid_session");
       expect(round2.json.error_description).toBe("DPoP key mismatch");
+    });
+
+    const initialRequest = {
+      client_id: TEST_CLIENT_ID,
+      response_type: "code",
+      scope: "openid",
+      code_challenge: CODE_CHALLENGE,
+      code_challenge_method: "S256",
+      identifier: TEST_EMAIL,
+    };
+
+    it("refuses a DPoP header whose signature does not verify", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      // The header names the victim's key; the attacker signs with another.
+      const victim = await createTestDpopKeyPair();
+      const attacker = await createTestDpopKeyPair();
+      const genuine = await buildDpopProof(attacker, "POST", CHALLENGE_URL);
+      const [, payload, signature] = genuine.split(".");
+      const header = Buffer.from(
+        JSON.stringify({ alg: "ES256", typ: "dpop+jwt", jwk: victim.jwk })
+      ).toString("base64url");
+
+      const { status, json } = await callChallenge(initialRequest, {
+        DPoP: `${header}.${payload}.${signature}`,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+      expect(json.auth_session).toBeUndefined();
+    });
+
+    it("refuses an unsigned DPoP header", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const keyPair = await createTestDpopKeyPair();
+      const encode = (value: unknown) =>
+        Buffer.from(JSON.stringify(value)).toString("base64url");
+      const unsigned = `${encode({ alg: "none", typ: "dpop+jwt", jwk: keyPair.jwk })}.${encode(
+        {
+          htm: "POST",
+          htu: CHALLENGE_URL,
+          jti: crypto.randomUUID(),
+          iat: Math.floor(Date.now() / 1000),
+        }
+      )}.`;
+
+      const { status, json } = await callChallenge(initialRequest, {
+        DPoP: unsigned,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("refuses a replayed DPoP proof on the next round", async () => {
+      await createUserWithOpaque(TEST_EMAIL);
+      const keyPair = await createTestDpopKeyPair();
+      const proof = await buildDpopProof(keyPair, "POST", CHALLENGE_URL);
+
+      const round1 = await callChallenge(initialRequest, { DPoP: proof });
+      expect(round1.status).toBe(401);
+
+      const { startLoginRequest } = client.startLogin({
+        password: TEST_PASSWORD,
+      });
+      const round2 = await callChallenge(
+        {
+          auth_session: round1.json.auth_session as string,
+          opaque_login_request: startLoginRequest,
+        },
+        { DPoP: proof }
+      );
+      expect(round2.status).toBe(400);
+      expect(round2.json.error).toBe("invalid_dpop_proof");
     });
   });
 

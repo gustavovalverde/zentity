@@ -165,7 +165,7 @@ function formatAgentHtml(agent: AgentIdentity): string {
 
 export async function sendCibaNotification(params: {
   userId: string;
-  authReqId: string;
+  requestId: string;
   clientName?: string | undefined;
   scope: string;
   bindingMessage?: string | undefined;

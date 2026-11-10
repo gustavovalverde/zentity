@@ -16,8 +16,8 @@ async function seedMagicLink(email: string): Promise<string> {
     .insert(verifications)
     .values({
       id: crypto.randomUUID(),
-      identifier: token,
-      value: JSON.stringify({ email }),
+      identifier: `magic-link:${token}`,
+      value: JSON.stringify({ type: "magic-link", email }),
       expiresAt: new Date(Date.now() + 300_000),
       createdAt: new Date(),
       updatedAt: new Date(),

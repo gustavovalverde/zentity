@@ -13,6 +13,7 @@ import {
 describe("getJwtSigningKeys", () => {
   beforeEach(async () => {
     await resetDatabase();
+    await db.delete(jwks).run();
   });
 
   it("filters encryption keys out of the Better Auth adapter view", async () => {

@@ -41,8 +41,7 @@
 #
 # ── Optional ─────────────────────────────────────────────────────────────
 #   TRUSTED_ORIGINS=<comma-separated>      # additional CORS origins
-#   DPOP_NONCE_TTL_SECONDS=30
-#   TRUSTED_WALLET_ISSUERS=<comma-separated>
+#   TRUSTED_WALLET_ISSUERS=<JSON array>   # [{"issuer":"…","jwksUri":"…"}]
 #   VAPID_SUBJECT=mailto:notifications@zentity.xyz
 #   ZENTITY_ADMIN_API_KEY=<secret>         # protects admin tRPC routes
 #

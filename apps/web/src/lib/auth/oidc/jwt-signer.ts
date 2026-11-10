@@ -287,6 +287,24 @@ async function projectAccessTokenSubject(
 }
 
 /**
+ * The oidc4vci plugin calls a custom signer without the `typ` it requires, so
+ * its two token kinds are typed from their payload: a Token Status List
+ * (`statuslist+jwt`, which presentation verifiers enforce) and an SD-JWT VC
+ * (`dc+sd-jwt`). A `typ` the caller passes always wins.
+ */
+function credentialTokenType(
+  payload: Record<string, unknown>
+): string | undefined {
+  if (payload.status_list && typeof payload.status_list === "object") {
+    return "statuslist+jwt";
+  }
+  if (typeof payload.vct === "string") {
+    return "dc+sd-jwt";
+  }
+  return undefined;
+}
+
+/**
  * Access tokens (payload has `scope`) are EdDSA for compact size. Every other
  * JWT, including ID tokens, is RS256: the OAuth provider computes `at_hash`
  * for the JWT plugin's configured algorithm and rejects a mismatched signer.
@@ -302,7 +320,11 @@ export async function signJwt(
       header?.typ
     );
   }
-  return signWithAlg(payload, "RS256", header?.typ);
+  return signWithAlg(
+    payload,
+    "RS256",
+    header?.typ ?? credentialTokenType(payload)
+  );
 }
 
 // ---------------------------------------------------------------------------

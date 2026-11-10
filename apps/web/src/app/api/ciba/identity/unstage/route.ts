@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import {
   clearReleaseContext,
   releaseIdFor,
@@ -12,14 +11,9 @@ import {
   validateCibaRequestOwnership,
 } from "@/lib/db/queries/ciba";
 
-const UnstageSchema = z
-  .object({
-    auth_req_id: z.string().min(1).optional(),
-    request_id: z.string().min(1).optional(),
-  })
-  .refine((b) => Boolean(b.auth_req_id) !== Boolean(b.request_id), {
-    message: "Provide exactly one of auth_req_id or request_id",
-  });
+const UnstageSchema = z.object({
+  request_id: z.string().min(1),
+});
 
 export function POST(request: Request): Promise<Response> {
   return handleIdentityUnstage(
@@ -30,12 +24,9 @@ export function POST(request: Request): Promise<Response> {
         return NextResponse.json({ error: "Invalid request" }, { status: 400 });
       }
 
-      const { auth_req_id, request_id } = parsed.data;
-      // A dashboard listing owns the request by id but never holds the raw
-      // token; both paths resolve to the stored hash that keys CIBA lookups.
-      const authReqIdHash = request_id
-        ? await fetchCibaAuthReqIdHashById(request_id)
-        : hashCibaAuthReqId(auth_req_id as string);
+      const { request_id } = parsed.data;
+      // CIBA-scoped stores are keyed by the stored auth_req_id hash.
+      const authReqIdHash = await fetchCibaAuthReqIdHashById(request_id);
       if (!authReqIdHash) {
         return NextResponse.json({ error: "Unknown request" }, { status: 404 });
       }

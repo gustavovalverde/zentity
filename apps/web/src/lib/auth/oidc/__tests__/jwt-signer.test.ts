@@ -264,5 +264,28 @@ describe("jwt-signer multi-algorithm dispatcher", () => {
 
       expect(headerTyp(token)).toBe("JWT");
     });
+
+    it("types credential tokens the oidc4vci plugin signs without a type", async () => {
+      const statusList = await signJwt({
+        sub: "http://localhost:3000/api/auth/oidc4vci/status-list",
+        status_list: { bits: 1, lst: "eNrbuRgAAhcBXQ" },
+      });
+      const credential = await signJwt({
+        vct: "urn:credential:identity-verification:v1",
+        _sd_alg: "sha-256",
+      });
+
+      expect(headerTyp(statusList)).toBe("statuslist+jwt");
+      expect(headerTyp(credential)).toBe("dc+sd-jwt");
+    });
+
+    it("keeps the caller's type for a credential-shaped payload", async () => {
+      const token = await signJwt(
+        { vct: "urn:credential:identity-verification:v1" },
+        { typ: "JWT" }
+      );
+
+      expect(headerTyp(token)).toBe("JWT");
+    });
   });
 });

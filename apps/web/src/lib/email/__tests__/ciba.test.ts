@@ -38,7 +38,7 @@ vi.mock("@/lib/db/schema/auth", async (importOriginal) => ({
 
 const DEFAULT_PARAMS = {
   userId: "user-1",
-  authReqId: "req-1",
+  requestId: "req-1",
   scope: "openid",
   approvalUrl: "https://zentity.xyz/approve/req-1",
 };

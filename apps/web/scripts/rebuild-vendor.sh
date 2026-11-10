@@ -1,34 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Rebuild better-auth vendor tgz files from the combined feature branch.
+# Rebuild the vendored Better Auth plugin tarballs from the fork branch.
 #
 # Usage:
 #   ./scripts/rebuild-vendor.sh [path-to-better-auth-repo]
 #
 # Defaults to ../../../better-auth (sibling checkout convention).
 # The script:
-#   1. Checks out feat/zentity-combined
+#   1. Checks out feat/zentity-plugins-v1.8
 #   2. Installs dependencies
-#   3. Builds all required packages
+#   3. Builds the vendored plugins
 #   4. Packs each into a .tgz
 #   5. Copies them into apps/web/vendor/
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENDOR_DIR="$SCRIPT_DIR/../vendor"
 BA_REPO="${1:-$(cd "$SCRIPT_DIR" && cd ../../../.. && pwd)/better-auth}"
+BRANCH="feat/zentity-plugins-v1.8"
 
 PACKAGES=(
-  packages/better-auth
-  packages/ciba
-  packages/core
   packages/haip
-  packages/oauth-provider
-  packages/oidc4ida
   packages/oidc4vci
   packages/oidc4vp
-  packages/passkey
-  packages/telemetry
 )
 
 if [ ! -d "$BA_REPO/packages/better-auth" ]; then
@@ -43,8 +37,8 @@ echo "==> Using better-auth repo at: $BA_REPO"
 ORIGINAL_BRANCH="$(cd "$BA_REPO" && git rev-parse --abbrev-ref HEAD)"
 
 cd "$BA_REPO"
-echo "==> Checking out feat/zentity-combined..."
-git checkout feat/zentity-combined
+echo "==> Checking out $BRANCH..."
+git checkout "$BRANCH"
 
 echo "==> Installing dependencies..."
 pnpm install --frozen-lockfile
@@ -80,4 +74,4 @@ echo "Done. Updated vendor files:"
 ls -lh "$VENDOR_DIR"/*.tgz
 echo ""
 echo "Remember to update version references in package.json if versions changed,"
-echo "then run: pnpm install"
+echo "record the commit and sha256 values in vendor/README.md, then run: pnpm install"

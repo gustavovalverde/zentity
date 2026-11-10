@@ -15,7 +15,25 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// DPoP proofs sign the URL the client calls (RFC 9449 §4.2), and Zentity
+// checks them against its own endpoint URLs, so the harness must serve the
+// issuer's origin. Reserve a port and point the app URL at it before the auth
+// config loads.
+const AUTH_HARNESS_PORT = await vi.hoisted(async () => {
+  const { createServer } = await import("node:net");
+  const port = await new Promise<number>((resolvePort, reject) => {
+    const probe = createServer();
+    probe.on("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port: free } = probe.address() as { port: number };
+      probe.close(() => resolvePort(free));
+    });
+  });
+  process.env.NEXT_PUBLIC_APP_URL = `http://127.0.0.1:${port}`;
+  return port;
+});
 
 import { auth } from "@/lib/auth/auth-config";
 import {
@@ -168,7 +186,7 @@ async function startAuthHarness(): Promise<{
     );
   });
 
-  server.listen(0, "127.0.0.1");
+  server.listen(AUTH_HARNESS_PORT, "127.0.0.1");
   await once(server, "listening");
   const address = server.address() as AddressInfo;
 
@@ -382,7 +400,7 @@ describe("remote MCP HTTP auth integration", () => {
       clientId: REMOTE_CLIENT_ID,
       userId,
       status: "approved",
-      resource: MCP_PUBLIC_URL,
+      resources: JSON.stringify([MCP_PUBLIC_URL]),
     });
 
     const resourceKeyPair = await createDpopKeyPair();

@@ -15,7 +15,6 @@ import {
   vi,
 } from "vitest";
 
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
 import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
@@ -50,6 +49,7 @@ import { getComplianceStatus } from "@/lib/identity/verification/read-model";
 import {
   createTestCibaRequest,
   createTestUser,
+  hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 
@@ -332,7 +332,7 @@ describe("identity revocation cascade", () => {
       .from(cibaRequests)
       .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
       .get();
-    expect(cibaRow?.status).toBe("rejected");
+    expect(cibaRow?.status).toBe("denied");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

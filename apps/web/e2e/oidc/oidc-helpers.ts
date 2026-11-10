@@ -29,7 +29,7 @@ export interface DpopBinding {
   jkt: string;
 }
 
-// Minimal schema for E2E credential lookup (Playwright can't resolve @/ imports)
+// Minimal schema for E2E database lookups (Playwright can't resolve @/ imports)
 const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
   id: text("id").primaryKey(),
   credential: text("credential").notNull(),
@@ -37,6 +37,11 @@ const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
   statusListId: text("status_list_id").notNull(),
   statusListIndex: integer("status_list_index").notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp" }),
+});
+
+const cibaRequests = sqliteTable("ciba_request", {
+  id: text("id").primaryKey(),
+  authReqId: text("auth_req_id").notNull(),
 });
 
 const RAW_BASE_URL =
@@ -411,6 +416,23 @@ export async function exchangePreAuthorizedCode(
   return res;
 }
 
+/** A fresh `c_nonce` from the OID4VCI Nonce Endpoint (§7). */
+export async function fetchCNonce(request: APIRequestContext): Promise<string> {
+  const res = await request.post(`${AUTH_BASE_URL}/oidc4vci/nonce`, {
+    headers: { Origin: BASE_URL },
+  });
+  if (!res.ok()) {
+    throw new Error(
+      `Nonce request failed (${res.status()}): ${await res.text()}`
+    );
+  }
+  const body = (await res.json()) as { c_nonce?: string };
+  if (!body.c_nonce) {
+    throw new Error("Nonce endpoint returned no c_nonce");
+  }
+  return body.c_nonce;
+}
+
 export async function createProofJwt(cNonce: string) {
   const holder = await generateKeyPair("EdDSA");
   const holderJwk = await exportJWK(holder.publicKey);
@@ -500,14 +522,13 @@ export async function issueCredential(
 }
 
 export interface IssuedCredentialBody {
-  credential?: string;
   credentials?: Array<{ credential?: string }>;
 }
 
 export function extractIssuedCredential(
   body: IssuedCredentialBody
 ): string | undefined {
-  return body.credential ?? body.credentials?.[0]?.credential;
+  return body.credentials?.[0]?.credential;
 }
 
 export async function fetchIssuerJwks(request: APIRequestContext) {
@@ -537,20 +558,25 @@ export async function verifyIssuedCredential(input: {
   expect(payload.sub).toBe(input.userId);
   expect(payload.vct).toBe(input.expectedVct);
 
-  const expectedJkt = await calculateJwkThumbprint(input.holderJwk);
-  const cnf = payload.cnf as { jkt?: string } | undefined;
-  expect(cnf?.jkt).toBe(expectedJkt);
+  // SD-JWT VC holder binding carries the key itself (`cnf.jwk`).
+  const cnf = payload.cnf as { jwk?: JWK } | undefined;
+  if (!cnf?.jwk) {
+    throw new Error("Credential missing cnf.jwk holder binding");
+  }
+  expect(await calculateJwkThumbprint(cnf.jwk)).toBe(
+    await calculateJwkThumbprint(input.holderJwk)
+  );
   return payload;
 }
 
-export async function findIssuedCredentialRecord(credential: string) {
+function openE2eDatabase() {
   const dbUrl =
     process.env.E2E_TURSO_DATABASE_URL ||
     process.env.TURSO_DATABASE_URL ||
     process.env.E2E_DATABASE_PATH;
 
   if (!dbUrl) {
-    throw new Error("Missing database URL for E2E credential lookup");
+    throw new Error("Missing database URL for E2E database lookups");
   }
 
   const url =
@@ -558,12 +584,16 @@ export async function findIssuedCredentialRecord(credential: string) {
       ? dbUrl
       : `file:${dbUrl}`;
 
-  const client = createClient({
+  return createClient({
     url,
     ...(process.env.TURSO_AUTH_TOKEN === undefined
       ? {}
       : { authToken: process.env.TURSO_AUTH_TOKEN }),
   });
+}
+
+export async function findIssuedCredentialRecord(credential: string) {
+  const client = openE2eDatabase();
   const db = drizzle(client, { schema: { oidc4vciIssuedCredentials } });
 
   try {
@@ -586,6 +616,94 @@ export async function findIssuedCredentialRecord(credential: string) {
   } finally {
     client.close();
   }
+}
+
+// --- OID4VP Helpers ---
+
+const VP_SESSION_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Stores the authorization request a `direct_post` response answers, as
+ * Zentity's verifier would when it creates one. The response endpoint looks
+ * it up by `state` and checks the nonce, DCQL query, and audience against it.
+ */
+export async function seedVpSession(input: {
+  clientId: string;
+  dcqlQuery: Record<string, unknown>;
+  nonce: string;
+  state: string;
+}): Promise<void> {
+  const client = openE2eDatabase();
+  try {
+    await client.execute({
+      sql: `INSERT INTO haip_vp_session
+        (id, session_id, nonce, state, dcql_query, response_uri, client_id,
+         response_mode, request_object, expires_at, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'direct_post', ?, ?, ?)`,
+      args: [
+        crypto.randomUUID(),
+        crypto.randomUUID(),
+        input.nonce,
+        input.state,
+        JSON.stringify(input.dcqlQuery),
+        `${AUTH_BASE_URL}/oidc4vp/response`,
+        input.clientId,
+        "e2e-request-object",
+        Date.now() + VP_SESSION_TTL_MS,
+        Date.now(),
+      ],
+    });
+  } finally {
+    client.close();
+  }
+}
+
+// --- CIBA Helpers ---
+
+/**
+ * The request id the approval page and `/ciba/decision` take. The provider
+ * stores only a SHA-256 hash of the `auth_req_id` the client receives.
+ */
+export async function findCibaRequestId(authReqId: string): Promise<string> {
+  const authReqIdHash = crypto
+    .createHash("sha256")
+    .update(authReqId)
+    .digest("base64url");
+  const client = openE2eDatabase();
+  const db = drizzle(client, { schema: { cibaRequests } });
+
+  try {
+    const rows = await db
+      .select({ id: cibaRequests.id })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, authReqIdHash))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw new Error("CIBA request not found");
+    }
+    return row.id;
+  } finally {
+    client.close();
+  }
+}
+
+/** Records the signed-in user's decision on a CIBA request. */
+export async function decideCibaRequest(
+  request: APIRequestContext,
+  input: {
+    authReqId: string;
+    cookieHeader: string;
+    decision?: "approved" | "denied";
+  }
+): Promise<APIResponse> {
+  return await request.post(`${AUTH_BASE_URL}/ciba/decision`, {
+    data: {
+      request_id: await findCibaRequestId(input.authReqId),
+      decision: input.decision ?? "approved",
+    },
+    headers: { Cookie: input.cookieHeader, ...ORIGIN_HEADERS },
+  });
 }
 
 // --- HAIP Helpers: DPoP and PAR ---

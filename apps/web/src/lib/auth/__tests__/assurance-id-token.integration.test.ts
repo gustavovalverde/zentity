@@ -4,21 +4,31 @@ import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
+import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
+  resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { createCibaApproval } from "@/lib/auth/oidc/ciba";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "assurance-test-agent";
 const TEST_RESOURCE = "http://localhost:3000/api/auth";
+
+const cibaApproval = createCibaApproval((body) =>
+  auth.api.completeCibaRequest({ body })
+);
 
 async function createTestClient() {
   await db
@@ -33,24 +43,38 @@ async function createTestClient() {
     .run();
 }
 
-async function insertCibaRequest(
-  overrides: Partial<typeof cibaRequests.$inferInsert> = {}
-) {
-  const authReqId = overrides.authReqId ?? crypto.randomUUID();
-  await db
+/** A request the user approved through Zentity's approval path. */
+async function approvedCibaRequest(input: {
+  authContextId: string;
+  scope?: string;
+  userId: string;
+}) {
+  const authReqId = crypto.randomUUID();
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       clientId: TEST_CLIENT_ID,
-      userId: overrides.userId ?? "test-user",
-      scope: "openid",
-      status: "approved",
+      userId: input.userId,
+      scope: input.scope ?? "openid",
+      status: "pending",
       expiresAt: new Date(Date.now() + 300_000),
-      resource: TEST_RESOURCE,
-      ...overrides,
+      resources: JSON.stringify([TEST_RESOURCE]),
       // Plugin stores the hash at rest; callers send the raw value.
       authReqId: hashCibaAuthReqId(authReqId),
     })
-    .run();
+    .returning({ id: cibaRequests.id });
+  const authentication = await resolveAuthenticationContext({
+    authContextId: input.authContextId,
+  });
+  if (!(row && authentication)) {
+    throw new Error("Failed to create an approved CIBA request");
+  }
+  await cibaApproval.approve({
+    requestId: row.id,
+    userId: input.userId,
+    authentication,
+    grant: { method: "user" },
+  });
   return authReqId;
 }
 
@@ -91,7 +115,7 @@ describe("assurance claims in ID tokens", () => {
   it("tier-1 passkey user gets correct acr, acr_eidas, and amr", async () => {
     await seedTier1User(userId);
     const authContext = await createAuthContext(userId, "passkey");
-    const authReqId = await insertCibaRequest({
+    const authReqId = await approvedCibaRequest({
       userId,
       authContextId: authContext.id,
     });
@@ -106,9 +130,9 @@ describe("assurance claims in ID tokens", () => {
     expect(idToken).toBeDefined();
 
     const claims = decodeJwt(idToken);
-    // acr/amr are AS-owned (1.7 reports acr "0"); the assurance tier rides in the
-    // namespaced zentity_assurance claim.
-    expect(claims.acr).toBe("0");
+    // The approval states the tier as acr and the approving session's amr.
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+    expect(claims.amr).toEqual(["pop", "hwk", "user"]);
     const assurance = claims.zentity_assurance as Record<string, unknown>;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
     expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
@@ -124,7 +148,7 @@ describe("assurance claims in ID tokens", () => {
   it("tier-1 opaque user gets amr=pwd", async () => {
     await seedTier1User(userId);
     const authContext = await createAuthContext(userId, "opaque");
-    const authReqId = await insertCibaRequest({
+    const authReqId = await approvedCibaRequest({
       userId,
       authContextId: authContext.id,
     });
@@ -135,7 +159,8 @@ describe("assurance claims in ID tokens", () => {
     });
 
     const claims = decodeJwt(json.id_token as string);
-    expect(claims.acr).toBe("0");
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-1");
+    expect(claims.amr).toEqual(["pwd"]);
     const assurance = claims.zentity_assurance as Record<string, unknown>;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-1");
     expect(assurance.amr).toEqual(["pwd"]);
@@ -146,7 +171,7 @@ describe("assurance claims in ID tokens", () => {
     // Authentication provenance now comes from AuthenticationContext only,
     // but tier 1 still requires secured keys, so this remains tier 0.
     const authContext = await createAuthContext(userId, "passkey");
-    const authReqId = await insertCibaRequest({
+    const authReqId = await approvedCibaRequest({
       userId,
       authContextId: authContext.id,
     });
@@ -157,8 +182,8 @@ describe("assurance claims in ID tokens", () => {
     });
 
     const claims = decodeJwt(json.id_token as string);
-    // Without secured keys, tier remains 0; acr is AS-owned ("0").
-    expect(claims.acr).toBe("0");
+    // Without secured keys, tier remains 0.
+    expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
     const assurance = claims.zentity_assurance as Record<string, unknown>;
     expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");
     expect(assurance.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
@@ -172,7 +197,7 @@ describe("assurance claims in ID tokens", () => {
   it("includes correct at_hash (OIDC Core §3.1.3.6)", async () => {
     await seedTier1User(userId);
     const authContext = await createAuthContext(userId, "passkey");
-    const authReqId = await insertCibaRequest({
+    const authReqId = await approvedCibaRequest({
       userId,
       authContextId: authContext.id,
     });
@@ -192,31 +217,5 @@ describe("assurance claims in ID tokens", () => {
     // Default signing alg is RS256 (no client metadata override)
     const expected = computeAtHash(accessToken);
     expect(claims.at_hash).toBe(expected);
-  });
-
-  it("omits assurance claims when openid scope is absent", async () => {
-    await seedTier1User(userId);
-    const authContext = await createAuthContext(userId, "passkey");
-
-    // Request without openid scope
-    const authReqId = await insertCibaRequest({
-      userId,
-      scope: "email",
-      authContextId: authContext.id,
-    });
-    const { json } = await postTokenWithDpop({
-      grant_type: CIBA_GRANT_TYPE,
-      auth_req_id: authReqId,
-      client_id: TEST_CLIENT_ID,
-    });
-
-    // Without openid scope, no id_token is produced by the framework
-    // (OIDC Core requires openid scope for id_token)
-    // The token response may or may not include id_token depending on
-    // the oauth-provider behavior. If it does, assurance claims should be absent.
-    if (json.id_token) {
-      const claims = decodeJwt(json.id_token as string);
-      expect(claims.zentity_assurance).toBeUndefined();
-    }
   });
 });

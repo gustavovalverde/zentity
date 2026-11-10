@@ -103,10 +103,22 @@ export async function POST(request: Request) {
       );
     }
 
-    const tokenData = (tokenBody ?? {}) as {
-      access_token: string;
-      c_nonce: string;
+    const tokenData = (tokenBody ?? {}) as { access_token: string };
+
+    // The proof must carry a fresh c_nonce from the Nonce Endpoint
+    // (OID4VCI 1.0 §7).
+    const nonceRes = await fetch(`${offer.credential_issuer}/oidc4vci/nonce`, {
+      method: "POST",
+    });
+    const { c_nonce: cNonce } = (await nonceRes.json().catch(() => ({}))) as {
+      c_nonce?: string;
     };
+    if (!(nonceRes.ok && cNonce)) {
+      return NextResponse.json(
+        { error: `Nonce request failed: ${nonceRes.status}` },
+        { status: 502 }
+      );
+    }
 
     // 2. Generate holder key pair (EdDSA / Ed25519)
     const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
@@ -124,7 +136,7 @@ export async function POST(request: Request) {
 
     // 3. Create proof JWT
     const proofJwt = await createProofJwt(
-      tokenData.c_nonce,
+      cNonce,
       offer.credential_issuer,
       holderPublicJwk,
       keyPair.privateKey
@@ -179,12 +191,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const credential =
-      typeof credRaw.credential === "string"
-        ? credRaw.credential
-        : (
-            credRaw.credentials as Array<{ credential?: string }> | undefined
-          )?.[0]?.credential;
+    const credential = (
+      credRaw.credentials as Array<{ credential?: string }> | undefined
+    )?.[0]?.credential;
     if (!credential) {
       return NextResponse.json(
         { error: "No credential in issuer response" },

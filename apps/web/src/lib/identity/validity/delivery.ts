@@ -19,8 +19,8 @@ import {
 import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import {
+  denyPendingCibaRequest,
   listPendingCibaRequestIdsByUserId,
-  rejectPendingCibaRequest,
 } from "@/lib/db/queries/ciba";
 import {
   createIdentityValidityDeliveries,
@@ -281,7 +281,7 @@ async function deliverOidc4vciCredentialStatus(
 async function deliverCibaRequestCancellation(
   delivery: IdentityValidityDelivery
 ): Promise<void> {
-  await rejectPendingCibaRequest(delivery.targetKey);
+  await denyPendingCibaRequest(delivery.targetKey);
 }
 
 async function deliverBlockchainAttestationRevocation(

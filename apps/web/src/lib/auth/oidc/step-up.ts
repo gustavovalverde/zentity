@@ -3,7 +3,8 @@
  *
  * - Pure helpers: parse and evaluate acr_values
  * - Authorize endpoint hook: enforceAuthorizeAcr (PAR + direct query paths)
- * - CIBA enforcement: approval-time and token-exchange safety net
+ * - CIBA enforcement: token-exchange safety net (approval-time checks run in
+ *   the CIBA approval decision, `oidc/ciba.ts`)
  *
  * For first-party clients (FPA), the CIBA token exchange safety net returns
  * HTTP 403 + auth_session so the client can re-authenticate via the
@@ -16,12 +17,10 @@ import { randomBytes } from "node:crypto";
 
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { verifyRequestDpopProof } from "@/lib/auth/oidc/haip/dpop";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
-import { cibaRequests } from "@/lib/db/schema/ciba";
 import {
   authChallengeSessions,
   haipPushedRequests,
@@ -263,70 +262,40 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
 // CIBA enforcement
 // ---------------------------------------------------------------------------
 
-async function extractDpopJkt(
-  headers: Headers | undefined
-): Promise<string | undefined> {
-  const proof = headers?.get("DPoP");
-  if (!proof) {
-    return undefined;
-  }
-  try {
-    const header = decodeProtectedHeader(proof);
-    if (header.jwk) {
-      return await calculateJwkThumbprint(
-        header.jwk as Record<string, unknown>
-      );
-    }
-  } catch {
-    // DPoP proof parsing failed
-  }
-  return undefined;
-}
-
 /**
- * Check acr_values before approving a CIBA request.
- * Called from the before hook on /ciba/authorize.
+ * The token request's verified DPoP key, which binds the step-up auth_session.
+ * The provider never verifies this proof, because the poll is refused first.
  */
-export async function enforceCibaApprovalAcr(
-  // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
-  ctx: any,
-  // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
-  db: LibSQLDatabase<any>
-) {
-  const authReqId =
-    typeof ctx.body?.auth_req_id === "string"
-      ? ctx.body.auth_req_id
-      : undefined;
-  if (!authReqId) {
-    return;
-  }
-
-  const record = await db
-    .select({ acrValues: cibaRequests.acrValues, userId: cibaRequests.userId })
-    .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
-    .limit(1)
-    .get();
-
-  if (!record?.acrValues) {
-    return;
-  }
-
-  const assurance = await getAccountAssurance(record.userId, {
-    isAuthenticated: true,
+// biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
+async function verifiedTokenRequestJkt(ctx: any): Promise<string | undefined> {
+  const check = await verifyRequestDpopProof({
+    proofJwt: ctx.headers?.get("DPoP"),
+    method: "POST",
+    url: `${ctx.context.baseURL}/oauth2/token`,
+    reservations: ctx.context.internalAdapter,
   });
-  const satisfied = findSatisfiedAcr(record.acrValues, assurance.tier);
-
-  if (!satisfied) {
-    throw new APIError("FORBIDDEN", {
-      message: `Your assurance level (tier-${assurance.tier}) does not meet the required level: ${record.acrValues}`,
+  if (!check.ok) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_dpop_proof",
+      error_description: check.error,
     });
   }
+  return check.jkt;
+}
+
+/** The CIBA request fields the token-time step-up check reads. */
+export interface CibaStepUpRecord {
+  acrValues: string | null;
+  resources: string | null;
+  scope: string;
+  status: string;
+  userId: string;
 }
 
 /**
- * Safety net: re-check acr_values at CIBA token exchange time.
- * Called from the before hook on /oauth2/token when grant_type is CIBA.
+ * Safety net: re-check acr_values at CIBA token exchange time, against the
+ * request the /oauth2/token before-hook loaded. The user's tier can drop
+ * between approval and the poll.
  *
  * For first-party clients: returns 403 + auth_session (FPA step-up path).
  * For other clients: returns 400 interaction_required (standard behavior).
@@ -335,30 +304,10 @@ export async function enforceCibaTokenAcr(
   // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
   ctx: any,
   // biome-ignore lint/suspicious/noExplicitAny: drizzle schema generic
-  db: LibSQLDatabase<any>
+  db: LibSQLDatabase<any>,
+  record: CibaStepUpRecord
 ) {
-  const authReqId =
-    typeof ctx.body?.auth_req_id === "string"
-      ? ctx.body.auth_req_id
-      : undefined;
-  if (!authReqId) {
-    return;
-  }
-
-  const record = await db
-    .select({
-      acrValues: cibaRequests.acrValues,
-      userId: cibaRequests.userId,
-      status: cibaRequests.status,
-      scope: cibaRequests.scope,
-      resource: cibaRequests.resource,
-    })
-    .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
-    .limit(1)
-    .get();
-
-  if (!record?.acrValues || record.status !== "approved") {
+  if (!record.acrValues || record.status !== "approved") {
     return;
   }
 
@@ -380,14 +329,14 @@ export async function enforceCibaTokenAcr(
 
       if (client?.firstParty) {
         const authSession = randomBytes(32).toString("base64url");
-        const dpopJkt = await extractDpopJkt(ctx.headers);
+        const dpopJkt = await verifiedTokenRequestJkt(ctx);
 
         await db.insert(authChallengeSessions).values({
           authSession,
           clientId,
           userId: record.userId,
           scope: record.scope,
-          resource: record.resource ?? null,
+          resource: parseStoredStringArray(record.resources)[0] ?? null,
           acrValues: record.acrValues,
           dpopJkt: dpopJkt ?? null,
           state: "pending",

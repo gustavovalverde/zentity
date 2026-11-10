@@ -312,7 +312,7 @@ Zentity issues portable verifiable credentials following OpenID standards:
 
 - **OIDC4VCI**: Pre-authorized code flow with DPoP-bound tokens, immediate and deferred issuance, status list revocation.
 - **OIDC4VP**: DCQL presentation queries with `x509_hash` client_id, JARM encrypted responses, AKI-based trust filtering.
-- **SD-JWT VC**: Selective disclosure with KB-JWT holder binding (`cnf.jkt` thumbprint, signature, freshness).
+- **SD-JWT VC**: Selective disclosure with KB-JWT holder binding (holder key from `cnf.jwk`, signature, freshness).
 
 External wallets can receive and hold credentials; third-party verifiers can request presentations without Zentity involvement.
 

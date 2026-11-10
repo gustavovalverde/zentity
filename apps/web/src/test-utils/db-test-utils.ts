@@ -2,8 +2,11 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 
 import crypto from "node:crypto";
 
+import { getConfirmationJkt } from "@better-auth/core/oauth2";
+import { eq } from "drizzle-orm";
+
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -32,7 +35,6 @@ import {
   authChallengeSessions,
   haipPushedRequests,
   haipVpSessions,
-  jwks,
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
@@ -40,9 +42,9 @@ import {
   pairwiseSubjects,
 } from "@/lib/db/schema/oauth-provider";
 import {
-  oidc4idaVerifiedClaims,
   oidc4vciIssuedCredentials,
   oidc4vciOffers,
+  oidc4vciStatusLists,
 } from "@/lib/db/schema/oidc-credentials";
 import {
   credentialBindingCommitments,
@@ -66,6 +68,9 @@ interface CreateUserInput {
   updatedAt?: Date;
 }
 
+// Signing keys survive a reset, as they do across a deployment's requests: the
+// OAuth provider caches the JWKS and refetches it for an unknown kid at most
+// every 30 seconds, so a fresh key per test would leave tokens unverifiable.
 export async function resetDatabase(): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(attestationEvidence).run();
@@ -86,10 +91,9 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(identityValiditySourceCursors).run();
     await tx.delete(identityVerifications).run();
     await tx.delete(identityBundles).run();
-    await tx.delete(jwks).run();
     await tx.delete(oidc4vciIssuedCredentials).run();
     await tx.delete(oidc4vciOffers).run();
-    await tx.delete(oidc4idaVerifiedClaims).run();
+    await tx.delete(oidc4vciStatusLists).run();
     await tx.delete(zkChallenges).run();
     await tx.delete(revokedTokens).run();
     await tx.delete(usedIntentJtis).run();
@@ -206,17 +210,32 @@ type CibaRequestOverrides = Partial<NewCibaRequest> & {
 interface TestCibaRequestResult {
   authContextId: string | null;
   authReqId: string;
+  /** The stored auth_req_id hash that keys CIBA-scoped stores. */
+  authReqIdHash: string;
+  requestId: string;
+}
+
+/**
+ * The stored form of a raw `auth_req_id`: the OAuth provider's default token
+ * hash (SHA-256, base64url without padding).
+ */
+export function hashCibaAuthReqId(rawAuthReqId: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(new TextEncoder().encode(rawAuthReqId))
+    .digest("base64url");
 }
 
 /**
  * Creates a CIBA request for testing. When status is "approved" and no
- * authContextId is provided, one is auto-created — mirroring the production
- * invariant that every approved CIBA request always has an auth context.
+ * authContextId is provided, one is auto-created, and the request references
+ * its own hash, mirroring what a Zentity approval records.
  */
 export async function createTestCibaRequest(
   input: CibaRequestOverrides
 ): Promise<TestCibaRequestResult> {
   const authReqId = input.authReqId ?? crypto.randomUUID();
+  const authReqIdHash = hashCibaAuthReqId(authReqId);
   const status = input.status ?? "pending";
 
   let authContextId: string | null = input.authContextId ?? null;
@@ -225,19 +244,69 @@ export async function createTestCibaRequest(
     authContextId = await createTestAuthContext(input.userId);
   }
 
-  await db
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       scope: "openid",
       expiresAt: new Date(Date.now() + 300_000),
+      ...(status === "approved" ? { referenceId: authReqIdHash } : {}),
       ...input,
-      // The 1.7 CIBA plugin stores the hash of auth_req_id at rest and the token
+      // The CIBA plugin stores the hash of auth_req_id at rest and the token
       // endpoint hashes the raw value for lookup; callers receive the raw value.
-      authReqId: hashCibaAuthReqId(authReqId),
+      authReqId: authReqIdHash,
       status,
       authContextId,
     })
-    .run();
+    .returning({ id: cibaRequests.id });
+  if (!row) {
+    throw new Error("Failed to create test CIBA request");
+  }
 
-  return { authReqId, authContextId };
+  return { authReqId, authReqIdHash, authContextId, requestId: row.id };
+}
+
+// ---------------------------------------------------------------------------
+// OAuth token storage helpers
+// ---------------------------------------------------------------------------
+
+function parseJson(raw: string | null): unknown {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads an opaque access token's stored row by its presented value, for
+ * assertions about what was issued. It validates nothing.
+ */
+export async function findStoredOpaqueAccessToken(token: string) {
+  const row = await db
+    .select()
+    .from(oauthAccessTokens)
+    .where(
+      eq(
+        oauthAccessTokens.token,
+        crypto.createHash("sha256").update(token).digest("base64url")
+      )
+    )
+    .limit(1)
+    .get();
+  if (!row) {
+    return null;
+  }
+  const exchangeClaims = parseJson(row.exchangeClaims);
+  return {
+    ...row,
+    dpopJkt: getConfirmationJkt(parseJson(row.confirmation)) ?? null,
+    exchangeClaims:
+      exchangeClaims && typeof exchangeClaims === "object"
+        ? (exchangeClaims as Record<string, unknown>)
+        : {},
+    scopes: parseStoredStringArray(row.scopes),
+  };
 }

@@ -10,11 +10,14 @@ vi.mock("@/lib/auth/auth-config", () => ({
   auth: { api: { getSession: authMocks.getSession } },
 }));
 
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 
 import { POST as intentRoute } from "../intent/route";
 import { POST as stageRoute } from "../stage/route";
@@ -42,7 +45,7 @@ async function insertCibaRequest(
   overrides: Partial<typeof cibaRequests.$inferInsert> = {}
 ) {
   const authReqId = overrides.authReqId ?? crypto.randomUUID();
-  await db
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       clientId: TEST_CLIENT_ID,
@@ -54,8 +57,12 @@ async function insertCibaRequest(
       // Plugin stores the hash at rest; callers send the raw value.
       authReqId: hashCibaAuthReqId(authReqId),
     })
-    .run();
-  return authReqId;
+    .returning({ id: cibaRequests.id });
+  if (!row) {
+    throw new Error("Expected CIBA request fixture to be created");
+  }
+  // The approval page names a request by id.
+  return row.id;
 }
 
 function makeRequest(url: string, body: unknown): Request {
@@ -66,7 +73,7 @@ function makeRequest(url: string, body: unknown): Request {
   });
 }
 
-describe("CIBA intent token authReqId binding", () => {
+describe("CIBA intent token request binding", () => {
   let userId: string;
 
   beforeEach(async () => {
@@ -76,14 +83,14 @@ describe("CIBA intent token authReqId binding", () => {
     await createTestClient();
   });
 
-  it("intent token carries authReqId and stage verifies it", async () => {
-    const authReqId = await insertCibaRequest({ userId });
+  it("intent token carries the request binding and stage verifies it", async () => {
+    const requestId = await insertCibaRequest({ userId });
     mockSession(userId);
 
     // Issue intent
     const intentRes = await intentRoute(
       makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: authReqId,
+        request_id: requestId,
         scopes: ["identity.name"],
       })
     );
@@ -92,10 +99,10 @@ describe("CIBA intent token authReqId binding", () => {
       intent_token: string;
     };
 
-    // Stage with matching authReqId succeeds
+    // Stage with the matching request succeeds
     const stageRes = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: authReqId,
+        request_id: requestId,
         scopes: ["identity.name"],
         identity: { given_name: "Ada", family_name: "Lovelace" },
         intent_token,
@@ -106,7 +113,7 @@ describe("CIBA intent token authReqId binding", () => {
     expect(stageBody.staged).toBe(true);
   });
 
-  it("rejects intent token issued for a different auth_req_id", async () => {
+  it("rejects intent token issued for a different request", async () => {
     const reqA = await insertCibaRequest({ userId });
     const reqB = await insertCibaRequest({ userId });
     mockSession(userId);
@@ -114,7 +121,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Issue intent bound to request A
     const intentRes = await intentRoute(
       makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: reqA,
+        request_id: reqA,
         scopes: ["identity.name"],
       })
     );
@@ -126,7 +133,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Try to stage against request B — should fail
     const stageRes = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: reqB,
+        request_id: reqB,
         scopes: ["identity.name"],
         identity: { given_name: "Ada" },
         intent_token,
@@ -137,7 +144,7 @@ describe("CIBA intent token authReqId binding", () => {
     expect(body.error).toContain("different auth_req_id");
   });
 
-  it("same client and scopes require distinct intent tokens per auth_req_id", async () => {
+  it("same client and scopes require distinct intent tokens per request", async () => {
     const reqA = await insertCibaRequest({ userId });
     const reqB = await insertCibaRequest({ userId });
     mockSession(userId);
@@ -145,7 +152,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Get intent for A
     const intentA = await intentRoute(
       makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: reqA,
+        request_id: reqA,
         scopes: ["identity.name"],
       })
     );
@@ -155,7 +162,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Get intent for B
     const intentB = await intentRoute(
       makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: reqB,
+        request_id: reqB,
         scopes: ["identity.name"],
       })
     );
@@ -165,7 +172,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Token A works for A
     const stageA = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: reqA,
+        request_id: reqA,
         scopes: ["identity.name"],
         identity: { given_name: "Alice" },
         intent_token: tokenA,
@@ -176,7 +183,7 @@ describe("CIBA intent token authReqId binding", () => {
     // Token A fails for B (already used)
     const stageAforB = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: reqB,
+        request_id: reqB,
         scopes: ["identity.name"],
         identity: { given_name: "Bob" },
         intent_token: tokenA,
@@ -188,7 +195,7 @@ describe("CIBA intent token authReqId binding", () => {
     // for the same user+client when flow tags differ (ciba:reqA vs ciba:reqB)
     const stageB = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: reqB,
+        request_id: reqB,
         scopes: ["identity.name"],
         identity: { given_name: "Bob" },
         intent_token: tokenB,
@@ -200,7 +207,7 @@ describe("CIBA intent token authReqId binding", () => {
   });
 
   it("stages partial identity data when only some requested fields exist", async () => {
-    const authReqId = await insertCibaRequest({
+    const requestId = await insertCibaRequest({
       userId,
       scope: "openid identity.name identity.address identity.dob",
     });
@@ -208,7 +215,7 @@ describe("CIBA intent token authReqId binding", () => {
 
     const intentRes = await intentRoute(
       makeRequest("http://localhost/api/ciba/identity/intent", {
-        auth_req_id: authReqId,
+        request_id: requestId,
         scopes: ["identity.name", "identity.address", "identity.dob"],
       })
     );
@@ -219,7 +226,7 @@ describe("CIBA intent token authReqId binding", () => {
 
     const stageRes = await stageRoute(
       makeRequest("http://localhost/api/ciba/identity/stage", {
-        auth_req_id: authReqId,
+        request_id: requestId,
         scopes: ["identity.name", "identity.address", "identity.dob"],
         identity: {
           given_name: "Ada",

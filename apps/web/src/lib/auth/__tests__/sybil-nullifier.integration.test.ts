@@ -68,7 +68,7 @@ async function issueSybilToken(clientId: string, userId: string) {
   const { authReqId } = await createTestCibaRequest({
     clientId,
     userId,
-    resource: VALID_RESOURCE,
+    resources: JSON.stringify([VALID_RESOURCE]),
     scope: "openid proof:sybil",
     status: "approved",
   });
@@ -100,7 +100,7 @@ async function issueHumanityRpUniqueToken(clientId: string, userId: string) {
   const { authReqId } = await createTestCibaRequest({
     clientId,
     userId,
-    resource: VALID_RESOURCE,
+    resources: JSON.stringify([VALID_RESOURCE]),
     scope: "openid proof:humanity:rp_unique",
     status: "approved",
   });
