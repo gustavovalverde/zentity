@@ -34,7 +34,6 @@ describe("POST /api/auth/oauth2/register", () => {
           post_logout_redirect_uris: [`${RP_ORIGIN}/bank`],
           redirect_uris: [`${RP_ORIGIN}/callback`],
           response_types: ["code"],
-          rp_validity_notice_enabled: true,
           rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
           scope: "openid email offline_access",
           token_endpoint_auth_method: "none",
@@ -57,11 +56,8 @@ describe("POST /api/auth/oauth2/register", () => {
       backchannelLogoutUri: `${RP_ORIGIN}/api/auth/backchannel-logout`,
       clientId: payload.client_id,
       enableEndSession: true,
-      rpValidityNoticeEnabled: true,
-      rpValidityNoticeUri: `${RP_ORIGIN}/api/auth/validity`,
     });
-    expect(JSON.parse(client?.metadata ?? "{}")).toMatchObject({
-      rp_validity_notice_enabled: true,
+    expect(JSON.parse(client?.metadata ?? "{}")).toEqual({
       rp_validity_notice_uri: `${RP_ORIGIN}/api/auth/validity`,
       zentity_protected_resource: "http://localhost:3300",
     });
@@ -179,6 +175,29 @@ describe("POST /api/auth/oauth2/register", () => {
 
     expect(status).toBe(400);
     expect(client).toBeUndefined();
+  });
+
+  it("rejects a zentity_protected_resource that is not an absolute http URI", async () => {
+    const { status, payload, client } = await register({
+      client_name: "Agent",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      zentity_protected_resource: "urn:example:resource",
+    });
+
+    expect(status).toBe(400);
+    expect(payload.error).toBe("invalid_client_metadata");
+    expect(client).toBeUndefined();
+  });
+
+  it("ignores registration fields no extension declares", async () => {
+    const { status, client } = await register({
+      client_name: "Demo RP",
+      redirect_uris: [`${RP_ORIGIN}/callback`],
+      rp_validity_notice_enabled: true,
+    });
+
+    expect(status).toBe(201);
+    expect(client?.metadata).toBeNull();
   });
 
   it("rejects an internal backchannel_client_notification_endpoint", async () => {

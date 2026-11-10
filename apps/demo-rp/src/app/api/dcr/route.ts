@@ -100,7 +100,6 @@ async function registerScenarioClient(
           }
         : {}),
       rp_validity_notice_uri: `${env.NEXT_PUBLIC_APP_URL}/api/auth/validity`,
-      rp_validity_notice_enabled: true,
       // CIBA clients must advertise a token delivery mode; the provider rejects
       // bc-authorize otherwise. The demo agent polls the token endpoint.
       ...(grantTypes.includes(CIBA_GRANT_TYPE)

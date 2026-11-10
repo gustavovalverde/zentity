@@ -47,6 +47,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { PROTECTED_RESOURCE_METADATA_FIELD } from "@/lib/auth/oidc/client-metadata";
 import {
   loadOpaqueAccessTokenExtensions,
   mintOpaqueAccessToken,
@@ -98,7 +99,6 @@ const tokenExchangeUserinfoAudience = joinAuthIssuerPath(
   authIssuer,
   "oauth2/userinfo"
 );
-const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const TRAILING_SLASHES = /\/+$/;
 
 function isLoopbackHostname(hostname: string): boolean {

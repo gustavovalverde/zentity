@@ -87,10 +87,7 @@ import {
   persistBackchannelExtras,
   setPendingCibaToken,
 } from "@/lib/auth/oidc/ciba";
-import {
-  persistDcrClientExtensions,
-  readDcrClientExtensions,
-} from "@/lib/auth/oidc/dcr-client-extensions";
+import { clientMetadataExtension } from "@/lib/auth/oidc/client-metadata";
 import {
   buildProofClaims,
   computeConsentHmac,
@@ -447,7 +444,6 @@ const oidc4vciDeferredIssuance = isOidcE2e
 
 const DCR_CLIENT_NAME_MAX = 100;
 const HTML_TAG_RE = /<[^>]+>/;
-const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev = process.env.NODE_ENV !== "production";
 
 const x5cChain = loadX5cChain();
@@ -474,31 +470,6 @@ function isValidHttpsUrl(value: string): boolean {
     return url.protocol === "https:";
   } catch {
     return false;
-  }
-}
-
-const OUTBOUND_URL_FIELDS = [
-  "rp_validity_notice_uri",
-  "backchannel_client_notification_endpoint",
-] as const;
-
-function assertOutboundUrl(
-  field: string,
-  value: unknown,
-  error: "invalid_client_metadata" | "invalid_request"
-): void {
-  if (value === undefined) {
-    return;
-  }
-  const problem =
-    typeof value === "string"
-      ? validateOutboundUrl(value.trim())
-      : "must be a string";
-  if (problem) {
-    throw new APIError("BAD_REQUEST", {
-      error,
-      error_description: `${field} ${problem}`,
-    });
   }
 }
 
@@ -538,23 +509,6 @@ async function validateDcrRegistration(
     throw new APIError("BAD_REQUEST", {
       error_description: "client_uri must be an HTTPS URL",
     });
-  }
-
-  for (const field of OUTBOUND_URL_FIELDS) {
-    assertOutboundUrl(field, body[field], "invalid_client_metadata");
-  }
-
-  const protectedResource =
-    typeof body[PROTECTED_RESOURCE_METADATA_FIELD] === "string"
-      ? body[PROTECTED_RESOURCE_METADATA_FIELD]
-      : undefined;
-  if (protectedResource) {
-    const result = validateResourceUri(protectedResource);
-    if (!result.valid) {
-      throw new APIError("BAD_REQUEST", {
-        error_description: `${PROTECTED_RESOURCE_METADATA_FIELD}: ${result.error}`,
-      });
-    }
   }
 
   // RFC 7591 §2.3: software_statement — verify JWT signature against publisher's JWKS
@@ -932,23 +886,26 @@ async function afterClientCreatedUseZentitySector(ctx: HookCtx) {
   }
 }
 
-async function afterDcrRegisterPersistExtensions(ctx: HookCtx) {
-  const extensions = readDcrClientExtensions(
-    ctx.body as Record<string, unknown> | undefined
+// The provider never enables RP-initiated logout during dynamic registration;
+// a client that registers post-logout redirects is asking for it.
+async function afterDcrRegisterEnableEndSession(ctx: HookCtx) {
+  const postLogoutRedirectUris = ctx.body?.post_logout_redirect_uris;
+  if (
+    !(Array.isArray(postLogoutRedirectUris) && postLogoutRedirectUris.length)
+  ) {
+    return;
+  }
+
+  const responseBody = await readReturnedResponseBody(
+    (ctx.context as { returned?: unknown }).returned
   );
-  if (!extensions) {
-    return;
-  }
-
-  const returned = (ctx.context as { returned?: unknown }).returned;
-  const responseBody = await readReturnedResponseBody(returned);
-  if (!responseBody) {
-    return;
-  }
-
-  const clientId = responseBody.client_id;
+  const clientId = responseBody?.client_id;
   if (typeof clientId === "string") {
-    await persistDcrClientExtensions(clientId, extensions);
+    await db
+      .update(oauthClients)
+      .set({ enableEndSession: true })
+      .where(eq(oauthClients.clientId, clientId))
+      .run();
   }
 }
 
@@ -2054,7 +2011,7 @@ export const auth = betterAuth({
         await afterClientCreatedUseZentitySector(ctx);
       }
       if (ctx.path === "/oauth2/register") {
-        await afterDcrRegisterPersistExtensions(ctx);
+        await afterDcrRegisterEnableEndSession(ctx);
         return;
       }
       if (ctx.path === "/oauth2/consent") {
@@ -2175,6 +2132,7 @@ export const auth = betterAuth({
           ? { auth_session: authSession }
           : {};
       },
+      extensions: [clientMetadataExtension],
       // Enable RFC 7591 Dynamic Client Registration for OIDC4VCI wallets
       // Wallets can self-register via POST /api/auth/oauth/register
       allowDynamicClientRegistration: true,

@@ -343,12 +343,10 @@ describe("identity revocation cascade", () => {
     await seedSigningKey();
     const clientId = "rp-validity-client";
     await createTestOAuthClient(clientId, {
-      rp_validity_notice_enabled: true,
       rp_validity_notice_uri: receiver.url,
     });
     await grantConsent(userId, clientId);
     await createTestOAuthClient("unauthorized-validity-client", {
-      rp_validity_notice_enabled: true,
       rp_validity_notice_uri: "https://observer.example.com/api/auth/validity",
     });
     await seedVerifiedIdentity(userId);
@@ -454,7 +452,6 @@ describe("identity revocation cascade", () => {
     await seedSigningKey();
     const clientId = "rp-rebinding-client";
     await createTestOAuthClient(clientId, {
-      rp_validity_notice_enabled: true,
       rp_validity_notice_uri: "https://rp.example.com/api/auth/validity",
     });
     await grantConsent(userId, clientId);
