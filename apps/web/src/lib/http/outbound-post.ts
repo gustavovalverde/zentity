@@ -22,7 +22,7 @@ async function resolveDestination(url: URL): Promise<VettedAddresses> {
   const family = isIP(hostname);
   const addresses =
     family === 0
-      ? await lookup(hostname, { all: true, verbatim: true })
+      ? await lookup(hostname, { all: true, order: "verbatim" })
       : [{ address: hostname, family }];
 
   const [first, ...rest] = addresses;

@@ -35,6 +35,7 @@ const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const FHE_POLL_INITIAL_MS = 2000;
 const FHE_POLL_MAX_MS = 8000;
 const FHE_POLL_MAX_ATTEMPTS = 20;
+// oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
 const statusQueryKey = getQueryKey(
   trpcReact.passportChip.status,
   undefined,
@@ -86,7 +87,6 @@ export function ZkPassportFlow({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [proofsGenerated, setProofsGenerated] = useState(0);
   const [proofsTotal, setProofsTotal] = useState(0);
-  const proofsRef = useRef<ProofResult[]>([]);
   const errorsRef = useRef<string[]>([]);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>(null);
   const startedRef = useRef(false);
@@ -375,7 +375,6 @@ export function ZkPassportFlow({
     setErrorMessage(null);
     setProofsGenerated(0);
     setProofsTotal(0);
-    proofsRef.current = [];
     errorsRef.current = [];
     disclosedRef.current = null;
     vaultSkippedRef.current = false;
@@ -436,33 +435,28 @@ export function ZkPassportFlow({
       });
 
       request.onProofGenerated((proof: ProofResult) => {
-        proofsRef.current.push(proof);
         setProofsGenerated((prev) => prev + 1);
         if (proof.total) {
           setProofsTotal(proof.total);
         }
       });
 
-      request.onResult(
-        (response: {
-          verified: boolean;
-          result: QueryResult;
-          queryResultErrors?: unknown;
-          uniqueIdentifier?: string;
-          uniqueIdentifierType?: number;
-        }) => {
+      // The proofs are unverified here; passportChip.submitResult verifies
+      // them server-side before anything is recorded.
+      request.onSuccess(
+        (response: { proofs: ProofResult[]; result: QueryResult }) => {
           if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
           }
 
-          if (proofsRef.current.length === 0 || !response.verified) {
+          if (response.proofs.length === 0) {
             const detail =
               errorsRef.current.length > 0
                 ? `Mobile app errors: ${errorsRef.current.join("; ")}`
-                : "Verification failed. The proofs could not be verified.";
+                : "Verification failed. The app returned no proofs.";
             setErrorMessage(detail);
             setStage("error");
-            return;
+            return false;
           }
 
           setStage("verifying");
@@ -470,9 +464,10 @@ export function ZkPassportFlow({
           submitResult.mutate({
             verificationSessionId: verificationSession.verificationSessionId,
             requestId: request.requestId,
-            proofs: proofsRef.current as Record<string, unknown>[],
+            proofs: response.proofs as unknown as Record<string, unknown>[],
             result: response.result as unknown as Record<string, unknown>,
           });
+          return true;
         }
       );
 
@@ -484,7 +479,7 @@ export function ZkPassportFlow({
         setStage("error");
       });
 
-      // Non-fatal: collect errors and let onResult report the full picture.
+      // Non-fatal: collect errors and let onSuccess report the full picture.
       request.onError((error: string) => {
         console.warn("[zkpassport-bridge] onError (non-fatal)", error);
         errorsRef.current.push(error);
