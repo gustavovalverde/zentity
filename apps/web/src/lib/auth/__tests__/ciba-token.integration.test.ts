@@ -9,13 +9,13 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestUser,
+  findStoredOpaqueAccessToken,
   hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
@@ -105,9 +105,13 @@ async function insertCibaRequest(
         overrides.authContextId ??
         (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
+      // A Zentity approval makes the request reference its own hash.
+      ...(status === "approved"
+        ? { referenceId: hashCibaAuthReqId(authReqId) }
+        : {}),
       ...overrides,
-      // The 1.7 CIBA plugin stores the hash of auth_req_id at rest; callers get
-      // the raw value to send to the token endpoint, which hashes for lookup.
+      // The CIBA plugin stores the hash of auth_req_id at rest; callers get the
+      // raw value to send to the token endpoint, which hashes for lookup.
       authReqId: hashCibaAuthReqId(authReqId),
     })
     .run();
@@ -139,7 +143,7 @@ async function inspectCibaAccessToken(
     return { kind: "jwt" as const, payload };
   }
 
-  const record = await loadOpaqueAccessToken(accessToken);
+  const record = await findStoredOpaqueAccessToken(accessToken);
   if (!record) {
     throw new Error("Expected opaque access token record to exist");
   }
@@ -192,8 +196,8 @@ describe("CIBA token endpoint", () => {
     expect(json.error).toBe("authorization_pending");
   });
 
-  it("returns access_denied for a rejected request", async () => {
-    const authReqId = await insertCibaRequest({ userId, status: "rejected" });
+  it("returns access_denied for a denied request", async () => {
+    const authReqId = await insertCibaRequest({ userId, status: "denied" });
 
     const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
@@ -231,7 +235,7 @@ describe("CIBA token endpoint", () => {
       client_id: TEST_CLIENT_ID,
     });
 
-    expect(status).toBe(200);
+    expect({ status, json }).toMatchObject({ status: 200 });
     expect(typeof json.access_token).toBe("string");
     expect(json.token_type).toBe("DPoP");
     expect(json.expires_in).toBeDefined();

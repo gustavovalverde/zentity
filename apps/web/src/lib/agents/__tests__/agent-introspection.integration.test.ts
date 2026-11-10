@@ -206,7 +206,7 @@ async function introspect(
   const { POST } = await import("@/app/api/auth/agent/introspect/route");
   const introspectUrl = "http://localhost:3000/api/auth/agent/introspect";
   const dpopProof = caller
-    ? await buildDpopProof(caller.keyPair, "POST", introspectUrl)
+    ? await buildDpopProof(caller.keyPair, "POST", introspectUrl, caller.token)
     : null;
 
   const formBody = token ? `token=${encodeURIComponent(token)}` : "";

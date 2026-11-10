@@ -1,96 +1,122 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import crypto from "node:crypto";
 
-vi.mock("server-only", () => ({}));
+import { calculateJwkThumbprint } from "jose";
+import { beforeEach, describe, expect, it } from "vitest";
 
-const { mockLoadOpaqueAccessToken, mockValidateOpaqueAccessTokenDpop } =
-  vi.hoisted(() => ({
-    mockLoadOpaqueAccessToken: vi.fn(),
-    mockValidateOpaqueAccessTokenDpop: vi.fn(),
-  }));
-
-vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
-  loadOpaqueAccessToken: mockLoadOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop: mockValidateOpaqueAccessTokenDpop,
-}));
-
-vi.mock("../auth-config", () => ({
-  auth: {
-    api: {
-      getSession: vi.fn(),
-    },
-  },
-}));
+import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { db } from "@/lib/db/connection";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
+import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  buildDpopProof,
+  createTestDpopKeyPair,
+  type DpopKeyPair,
+} from "@/test-utils/dpop-test-utils";
 
 import { requireBootstrapAccessToken } from "../resource-auth";
 
-function bootstrapRequest(scheme = "DPoP") {
-  return new Request("http://localhost/api/auth/agent/host/register", {
+const CLIENT_ID = "pairwise-client";
+const REGISTER_URL = "http://localhost:3000/api/auth/agent/host/register";
+const SCOPES = ["agent:host.register", "agent:session.register"];
+
+async function bootstrapRequest(
+  token: string,
+  keyPair: DpopKeyPair,
+  scheme = "DPoP"
+) {
+  return new Request(REGISTER_URL, {
+    method: "POST",
     headers: {
-      Authorization: `${scheme} opaque-bootstrap-token`,
-      DPoP: "proof",
+      Authorization: `${scheme} ${token}`,
+      DPoP: await buildDpopProof(keyPair, "POST", REGISTER_URL, token),
     },
   });
 }
 
-function storedToken(overrides: Record<string, unknown> = {}) {
-  return {
-    authContextId: null,
-    clientId: "pairwise-client",
-    dpopJkt: "thumbprint",
-    exchangeClaims: { zentity_token_use: "agent_bootstrap" },
-    expiresAt: new Date(Date.now() + 60_000),
-    referenceId: "jti-1",
-    scopes: ["agent:host.register", "agent:session.register"],
-    sessionId: null,
-    userId: "raw-user-id",
-    ...overrides,
-  };
-}
-
 describe("requireBootstrapAccessToken", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidateOpaqueAccessTokenDpop.mockResolvedValue(true);
+  let userId: string;
+  let keyPair: DpopKeyPair;
+
+  beforeEach(async () => {
+    await resetDatabase();
+    userId = await createTestUser();
+    keyPair = await createTestDpopKeyPair();
+    await db
+      .insert(oauthClients)
+      .values({
+        clientId: CLIENT_ID,
+        redirectUris: JSON.stringify(["http://127.0.0.1/callback"]),
+        tokenEndpointAuthMethod: "none",
+      })
+      .run();
   });
 
-  it("resolves a DPoP-bound opaque bootstrap token to its user", async () => {
-    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken());
+  async function mintBootstrapToken(
+    overrides: Partial<Parameters<typeof mintOpaqueAccessToken>[0]> = {}
+  ) {
+    return mintOpaqueAccessToken({
+      clientId: CLIENT_ID,
+      dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
+      exchangeClaims: { zentity_token_use: "agent_bootstrap" },
+      expiresAt: new Date(Date.now() + 60_000),
+      referenceId: crypto.randomUUID(),
+      scopes: SCOPES,
+      userId,
+      ...overrides,
+    });
+  }
 
-    const result = await requireBootstrapAccessToken(bootstrapRequest(), [
-      "agent:host.register",
-    ]);
+  it("resolves a DPoP-bound opaque bootstrap token to its user", async () => {
+    const token = await mintBootstrapToken();
+
+    const result = await requireBootstrapAccessToken(
+      await bootstrapRequest(token, keyPair),
+      ["agent:host.register"]
+    );
 
     expect(result).toEqual({
       ok: true,
       principal: {
         kind: "user_access_token",
-        userId: "raw-user-id",
-        clientId: "pairwise-client",
-        scopes: ["agent:host.register", "agent:session.register"],
-        token: "opaque-bootstrap-token",
+        userId,
+        clientId: CLIENT_ID,
+        scopes: SCOPES,
+        token,
       },
     });
   });
 
   it.each([
     ["without the bootstrap token use claim", { exchangeClaims: {} }],
-    ["without a DPoP binding", { dpopJkt: null }],
+    ["without a DPoP binding", { dpopJkt: undefined }],
     ["after expiry", { expiresAt: new Date(Date.now() - 1000) }],
   ])("rejects tokens %s", async (_label, overrides) => {
-    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken(overrides));
+    const token = await mintBootstrapToken(overrides);
 
-    const result = await requireBootstrapAccessToken(bootstrapRequest(), [
-      "agent:host.register",
-    ]);
+    const result = await requireBootstrapAccessToken(
+      await bootstrapRequest(token, keyPair),
+      ["agent:host.register"]
+    );
 
     expect(result.ok).toBe(false);
   });
 
   it("rejects bootstrap tokens presented as Bearer", async () => {
-    mockLoadOpaqueAccessToken.mockResolvedValueOnce(storedToken());
+    const token = await mintBootstrapToken();
 
     const result = await requireBootstrapAccessToken(
-      bootstrapRequest("Bearer"),
+      await bootstrapRequest(token, keyPair, "Bearer"),
+      ["agent:host.register"]
+    );
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a proof from a key the token is not bound to", async () => {
+    const token = await mintBootstrapToken();
+
+    const result = await requireBootstrapAccessToken(
+      await bootstrapRequest(token, await createTestDpopKeyPair()),
       ["agent:host.register"]
     );
 

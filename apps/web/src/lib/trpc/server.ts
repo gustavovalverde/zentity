@@ -20,10 +20,8 @@ import { getSecurityPosture } from "@/lib/assurance/posture";
 import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import {
-  loadOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
+import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { verifyResourceRequest } from "@/lib/auth/oidc/resource-principal";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -52,8 +50,6 @@ interface TrpcContext {
   spanId?: string;
   traceId?: string;
 }
-
-const AUTH_HEADER_RE = /^(DPoP|Bearer)\s+(.+)$/i;
 
 interface ResolvedAuthSession {
   authContext: AuthenticationState | null;
@@ -107,53 +103,33 @@ async function loadPersistedSession(
 
 /**
  * Resolve a user from an OAuth access token (DPoP or Bearer). User access
- * tokens for Zentity's own endpoints are opaque; the DPoP proof is validated
- * when the token is DPoP-bound.
+ * tokens for Zentity's own endpoints are opaque; a DPoP-bound token needs a
+ * valid proof.
  */
 async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader) {
+  if (!req.headers.get("authorization")) {
     return { session: null, authContext: null };
   }
 
-  const match = authHeader.match(AUTH_HEADER_RE);
-  if (!(match?.[1] && match[2])) {
+  const verified = await verifyResourceRequest(req);
+  const userId =
+    verified.ok && typeof verified.payload.sub === "string"
+      ? verified.payload.sub
+      : undefined;
+  if (!(verified.ok && verified.format === "opaque" && userId)) {
     return { session: null, authContext: null };
   }
 
-  return await resolveOpaqueSession(req, match[2], match[1]);
-}
-
-async function resolveOpaqueSession(
-  req: Request,
-  token: string,
-  scheme: string
-): Promise<ResolvedAuthSession> {
-  const accessToken = await loadOpaqueAccessToken(token);
-  if (!accessToken?.userId || accessToken.expiresAt < new Date()) {
-    return { session: null, authContext: null };
-  }
-
-  if (accessToken.dpopJkt) {
-    if (scheme.toLowerCase() !== "dpop") {
-      return { session: null, authContext: null };
-    }
-    const validDpop = await validateOpaqueAccessTokenDpop(
-      req,
-      accessToken.dpopJkt
-    );
-    if (!validDpop) {
-      return { session: null, authContext: null };
-    }
-  }
-
+  const sessionId =
+    typeof verified.payload.sid === "string" ? verified.payload.sid : null;
+  const extensions = await loadOpaqueAccessTokenExtensions(verified.token);
   const authContext = await resolveAuthenticationContext({
-    authContextId: accessToken.authContextId,
-    sessionId: accessToken.sessionId,
+    authContextId: extensions?.authContextId ?? null,
+    sessionId,
   });
 
-  if (accessToken.sessionId) {
-    const session = await loadPersistedSession(accessToken.sessionId);
+  if (sessionId) {
+    const session = await loadPersistedSession(sessionId);
     if (!(session && authContext)) {
       return { session: null, authContext: null };
     }
@@ -166,7 +142,7 @@ async function resolveOpaqueSession(
 
   return {
     authContext,
-    session: await buildSessionFromUserId(accessToken.userId, {
+    session: await buildSessionFromUserId(userId, {
       authContextId: authContext.id,
     }),
   };

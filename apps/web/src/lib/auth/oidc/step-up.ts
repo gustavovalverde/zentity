@@ -17,9 +17,9 @@ import { randomBytes } from "node:crypto";
 
 import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
+import { verifyRequestDpopProof } from "@/lib/auth/oidc/haip/dpop";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
   authChallengeSessions,
@@ -262,24 +262,25 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
 // CIBA enforcement
 // ---------------------------------------------------------------------------
 
-async function extractDpopJkt(
-  headers: Headers | undefined
-): Promise<string | undefined> {
-  const proof = headers?.get("DPoP");
-  if (!proof) {
-    return undefined;
+/**
+ * The token request's verified DPoP key, which binds the step-up auth_session.
+ * The provider never verifies this proof, because the poll is refused first.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
+async function verifiedTokenRequestJkt(ctx: any): Promise<string | undefined> {
+  const check = await verifyRequestDpopProof({
+    proofJwt: ctx.headers?.get("DPoP"),
+    method: "POST",
+    url: `${ctx.context.baseURL}/oauth2/token`,
+    reservations: ctx.context.internalAdapter,
+  });
+  if (!check.ok) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_dpop_proof",
+      error_description: check.error,
+    });
   }
-  try {
-    const header = decodeProtectedHeader(proof);
-    if (header.jwk) {
-      return await calculateJwkThumbprint(
-        header.jwk as Record<string, unknown>
-      );
-    }
-  } catch {
-    // DPoP proof parsing failed
-  }
-  return undefined;
+  return check.jkt;
 }
 
 /** The CIBA request fields the token-time step-up check reads. */
@@ -328,7 +329,7 @@ export async function enforceCibaTokenAcr(
 
       if (client?.firstParty) {
         const authSession = randomBytes(32).toString("base64url");
-        const dpopJkt = await extractDpopJkt(ctx.headers);
+        const dpopJkt = await verifiedTokenRequestJkt(ctx);
 
         await db.insert(authChallengeSessions).values({
           authSession,

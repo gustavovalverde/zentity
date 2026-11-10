@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["vitest.global-setup.ts", "vitest.setup.mts"],
+  "entry": [
+    "vitest.global-setup.ts",
+    "vitest.setup.mts",
+    "vitest.integration.setup.mts"
+  ],
   "ignoreIssues": {
     "src/components/ui/**": ["exports", "types"],
     "src/components/vault-unlock.tsx": ["exports", "types"],

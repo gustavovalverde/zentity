@@ -2,50 +2,27 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 
-import { createDpopAccessTokenValidator } from "@better-auth/haip";
 import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 
-const dpopValidator = createDpopAccessTokenValidator({ requireDpop: false });
+/**
+ * Zentity's opaque access tokens live in the OAuth provider's token store, so
+ * the provider validates, introspects, and revokes them like natively issued
+ * ones. Zentity keeps two extension columns the provider never reads: the
+ * claims a token exchange would otherwise put in a JWT, and the
+ * authentication context of a token issued without a session.
+ */
 
-interface OpaqueAccessTokenRecord {
+interface OpaqueAccessTokenExtensions {
   authContextId: string | null;
-  clientId: string;
-  dpopJkt: string | null;
   exchangeClaims: Record<string, unknown>;
-  expiresAt: Date;
-  referenceId: string | null;
-  scopes: string[];
-  sessionId: string | null;
-  userId: string | null;
 }
 
+// The provider's default `storeTokens: "hashed"` storage key.
 function hashOpaqueAccessToken(token: string): string {
   return createHash("sha256").update(token).digest("base64url");
-}
-
-export async function extractDpopThumbprint(
-  request: Request | undefined
-): Promise<string | undefined> {
-  const proof = request?.headers?.get("DPoP");
-  if (!proof) {
-    return undefined;
-  }
-  try {
-    const header = decodeProtectedHeader(proof);
-    if (header.jwk) {
-      return await calculateJwkThumbprint(
-        header.jwk as Record<string, unknown>
-      );
-    }
-  } catch {
-    // Leave validation failures to the DPoP validator.
-  }
-  return undefined;
 }
 
 function parseExchangeClaims(raw: string | null): Record<string, unknown> {
@@ -62,53 +39,28 @@ function parseExchangeClaims(raw: string | null): Record<string, unknown> {
   }
 }
 
-function jktFromConfirmation(confirmation: string | null): string | null {
-  if (!confirmation) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(confirmation) as { jkt?: unknown };
-    return typeof parsed.jkt === "string" ? parsed.jkt : null;
-  } catch {
-    return null;
-  }
-}
-
-export async function loadOpaqueAccessToken(
+/**
+ * Reads the Zentity extension columns of an opaque access token. Validate the
+ * token with the provider first; this read checks nothing.
+ */
+export async function loadOpaqueAccessTokenExtensions(
   token: string
-): Promise<OpaqueAccessTokenRecord | null> {
+): Promise<OpaqueAccessTokenExtensions | null> {
   const row = await db
     .select({
       authContextId: oauthAccessTokens.authContextId,
-      clientId: oauthAccessTokens.clientId,
-      confirmation: oauthAccessTokens.confirmation,
       exchangeClaims: oauthAccessTokens.exchangeClaims,
-      expiresAt: oauthAccessTokens.expiresAt,
-      referenceId: oauthAccessTokens.referenceId,
-      revoked: oauthAccessTokens.revoked,
-      sessionId: oauthAccessTokens.sessionId,
-      scopes: oauthAccessTokens.scopes,
-      userId: oauthAccessTokens.userId,
     })
     .from(oauthAccessTokens)
     .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
     .limit(1)
     .get();
-
-  if (!row || row.revoked) {
+  if (!row) {
     return null;
   }
-
   return {
     authContextId: row.authContextId,
-    clientId: row.clientId,
-    dpopJkt: jktFromConfirmation(row.confirmation),
     exchangeClaims: parseExchangeClaims(row.exchangeClaims),
-    expiresAt: row.expiresAt,
-    referenceId: row.referenceId,
-    sessionId: row.sessionId,
-    scopes: parseStoredStringArray(row.scopes),
-    userId: row.userId,
   };
 }
 
@@ -148,39 +100,4 @@ export async function mintOpaqueAccessToken(input: {
     })
     .run();
   return token;
-}
-
-export async function persistOpaqueAccessTokenDpopBinding(
-  token: string,
-  request: Request | undefined
-): Promise<void> {
-  if (token.startsWith("eyJ")) {
-    return;
-  }
-
-  const dpopJkt = await extractDpopThumbprint(request);
-  if (!dpopJkt) {
-    return;
-  }
-
-  await db
-    .update(oauthAccessTokens)
-    .set({ confirmation: JSON.stringify({ jkt: dpopJkt }) })
-    .where(eq(oauthAccessTokens.token, hashOpaqueAccessToken(token)))
-    .run();
-}
-
-export async function validateOpaqueAccessTokenDpop(
-  request: Request,
-  dpopJkt: string
-): Promise<boolean> {
-  try {
-    await dpopValidator({
-      request,
-      tokenPayload: { cnf: { jkt: dpopJkt } },
-    });
-    return true;
-  } catch {
-    return false;
-  }
 }

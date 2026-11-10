@@ -36,7 +36,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     globalSetup: ["./vitest.global-setup.ts"],
-    setupFiles: ["./vitest.setup.mts"],
+    setupFiles: ["./vitest.setup.mts", "./vitest.integration.setup.mts"],
 
     include: ["src/**/*.integration.test.ts", "src/**/*.integration.test.tsx"],
     exclude: ["node_modules", ".next"],

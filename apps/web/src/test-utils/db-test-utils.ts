@@ -2,7 +2,11 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 
 import crypto from "node:crypto";
 
+import { getConfirmationJkt } from "@better-auth/core/oauth2";
+import { eq } from "drizzle-orm";
+
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -31,7 +35,6 @@ import {
   authChallengeSessions,
   haipPushedRequests,
   haipVpSessions,
-  jwks,
   oauthAccessTokens,
   oauthClients,
   oauthConsents,
@@ -65,6 +68,9 @@ interface CreateUserInput {
   updatedAt?: Date;
 }
 
+// Signing keys survive a reset, as they do across a deployment's requests: the
+// OAuth provider caches the JWKS and refetches it for an unknown kid at most
+// every 30 seconds, so a fresh key per test would leave tokens unverifiable.
 export async function resetDatabase(): Promise<void> {
   await db.transaction(async (tx) => {
     await tx.delete(attestationEvidence).run();
@@ -85,7 +91,6 @@ export async function resetDatabase(): Promise<void> {
     await tx.delete(identityValiditySourceCursors).run();
     await tx.delete(identityVerifications).run();
     await tx.delete(identityBundles).run();
-    await tx.delete(jwks).run();
     await tx.delete(oidc4vciIssuedCredentials).run();
     await tx.delete(oidc4vciOffers).run();
     await tx.delete(oidc4vciStatusLists).run();
@@ -258,4 +263,50 @@ export async function createTestCibaRequest(
   }
 
   return { authReqId, authReqIdHash, authContextId, requestId: row.id };
+}
+
+// ---------------------------------------------------------------------------
+// OAuth token storage helpers
+// ---------------------------------------------------------------------------
+
+function parseJson(raw: string | null): unknown {
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reads an opaque access token's stored row by its presented value, for
+ * assertions about what was issued. It validates nothing.
+ */
+export async function findStoredOpaqueAccessToken(token: string) {
+  const row = await db
+    .select()
+    .from(oauthAccessTokens)
+    .where(
+      eq(
+        oauthAccessTokens.token,
+        crypto.createHash("sha256").update(token).digest("base64url")
+      )
+    )
+    .limit(1)
+    .get();
+  if (!row) {
+    return null;
+  }
+  const exchangeClaims = parseJson(row.exchangeClaims);
+  return {
+    ...row,
+    dpopJkt: getConfirmationJkt(parseJson(row.confirmation)) ?? null,
+    exchangeClaims:
+      exchangeClaims && typeof exchangeClaims === "object"
+        ? (exchangeClaims as Record<string, unknown>)
+        : {},
+    scopes: parseStoredStringArray(row.scopes),
+  };
 }

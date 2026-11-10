@@ -149,6 +149,7 @@ import {
   PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
   pinPaymentRequest,
 } from "@/lib/auth/oidc/payment-mint";
+import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
   enforceAuthorizeAcr,
   enforceCibaTokenAcr,
@@ -2415,6 +2416,7 @@ export const auth = betterAuth({
     }),
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),
+    resourceAccessTokenPlugin(),
     // Must stay last: forwards Set-Cookie from every prior plugin's after-hook.
     nextCookies(),
   ],

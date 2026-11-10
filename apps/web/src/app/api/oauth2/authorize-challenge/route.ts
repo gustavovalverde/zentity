@@ -3,7 +3,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { ready, server } from "@serenity-kit/opaque";
 import { generateRandomString } from "better-auth/crypto";
 import { and, eq, lt } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeProtectedHeader } from "jose";
 import { NextResponse } from "next/server";
 import { getAddress } from "viem";
 import { z } from "zod";
@@ -21,6 +20,7 @@ import {
   nonceIdentifier,
   verifyEip712Signature,
 } from "@/lib/auth/eip712/typed-data";
+import { verifyRequestDpopProof } from "@/lib/auth/oidc/haip/dpop";
 import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
@@ -30,6 +30,7 @@ import {
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
 } from "@/lib/auth/opaque/validation";
+import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
@@ -108,22 +109,25 @@ function errorJson(
   );
 }
 
-async function extractDpopJkt(request: Request): Promise<string | undefined> {
-  const proof = request.headers.get("DPoP");
-  if (!proof) {
-    return undefined;
+/**
+ * The thumbprint of the request's verified DPoP proof, which binds the
+ * auth_session and the code it yields. A forged, stale, replayed, or
+ * mis-targeted proof is refused rather than read for its key.
+ */
+async function verifyDpopJkt(
+  request: Request
+): Promise<{ jkt: string | undefined } | Response> {
+  const context = await auth.$context;
+  const check = await verifyRequestDpopProof({
+    proofJwt: request.headers.get("DPoP"),
+    method: request.method,
+    url: canonicalizeRequestOrigin(request).url,
+    reservations: context.internalAdapter,
+  });
+  if (!check.ok) {
+    return errorJson(400, "invalid_dpop_proof", check.error);
   }
-  try {
-    const header = decodeProtectedHeader(proof);
-    if (header.jwk) {
-      return await calculateJwkThumbprint(
-        header.jwk as Record<string, unknown>
-      );
-    }
-  } catch {
-    // DPoP proof parsing failed
-  }
-  return undefined;
+  return { jkt: check.jkt };
 }
 
 function hashCode(code: string): string {
@@ -161,8 +165,11 @@ async function checkDpopContinuity(
   request: Request,
   session: AuthChallengeSession
 ): Promise<Response | null> {
-  const dpopJkt = await extractDpopJkt(request);
-  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
+  const dpop = await verifyDpopJkt(request);
+  if (dpop instanceof Response) {
+    return dpop;
+  }
+  if (session.dpopJkt && dpop.jkt !== session.dpopJkt) {
     return errorJson(400, "invalid_session", "DPoP key mismatch");
   }
   return null;
@@ -323,8 +330,12 @@ async function handleInitialRequest(
     });
   }
 
-  // Extract DPoP thumbprint (bound to all subsequent requests)
-  const dpopJkt = await extractDpopJkt(request);
+  // The verified DPoP key binds every later round of this auth_session.
+  const dpop = await verifyDpopJkt(request);
+  if (dpop instanceof Response) {
+    return dpop;
+  }
+  const dpopJkt = dpop.jkt;
 
   // Resolve user — by wallet address or email
   const identifier = params.identifier.trim();

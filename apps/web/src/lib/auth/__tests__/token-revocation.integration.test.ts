@@ -5,11 +5,7 @@ import { decodeJwt, SignJWT } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
-import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
-import {
-  loadOpaqueAccessToken,
-  mintOpaqueAccessToken,
-} from "@/lib/auth/oidc/haip/opaque-access-token";
+import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { verifications } from "@/lib/db/schema/auth";
 import {
@@ -254,19 +250,19 @@ describe("RFC 7009 token revocation", () => {
     expect(await refreshStatus(tokens, OWNER.id)).toBe(200);
   });
 
-  it("does not let another client revoke a token it was not issued", async () => {
+  it("refuses a confidential client revoking a token it was not issued", async () => {
     const tokens = await issueTokens(userId, sessionId, OWNER.id);
 
     for (const token of [tokens.accessToken, tokens.refreshToken]) {
       const result = await revoke({ token, ...credentialsFor(OTHER.id) });
-      expect(result.status).toBe(200);
+      expect(result.status).toBe(400);
     }
 
     expect(await revokedJtis()).toEqual([]);
     expect(await userInfoStatus(tokens.accessToken, tokens.dpopKeyPair)).toBe(
       200
     );
-    expect(await verifyIssuedAccessToken(tokens.accessToken)).not.toBeNull();
+    expect(await introspectionActive(tokens.accessToken)).toBe(true);
     expect(await refreshStatus(tokens, OWNER.id)).toBe(200);
   });
 
@@ -285,7 +281,7 @@ describe("RFC 7009 token revocation", () => {
 
     expect(result.status).toBe(200);
     expect(await revokedJtis()).toEqual([]);
-    expect(await verifyIssuedAccessToken(tokens.accessToken)).not.toBeNull();
+    expect(await introspectionActive(tokens.accessToken)).toBe(true);
   });
 
   it("revokes the owner's JWT access token", async () => {
@@ -305,7 +301,6 @@ describe("RFC 7009 token revocation", () => {
       401
     );
     expect(await introspectionActive(tokens.accessToken)).toBe(false);
-    expect(await verifyIssuedAccessToken(tokens.accessToken)).toBeNull();
   });
 
   it("revokes the owner's refresh token", async () => {
@@ -339,12 +334,12 @@ describe("RFC 7009 token revocation", () => {
     });
 
     const denied = await revoke({ token, ...credentialsFor(OTHER.id) });
-    expect(denied.status).toBe(200);
-    expect(await loadOpaqueAccessToken(token)).not.toBeNull();
+    expect(denied.status).toBe(400);
+    expect(await introspectionActive(token)).toBe(true);
 
     const result = await revoke({ token, ...credentialsFor(OWNER.id) });
     expect(result.status).toBe(200);
-    expect(await loadOpaqueAccessToken(token)).toBeNull();
+    expect(await introspectionActive(token)).toBe(false);
   });
 
   it("lets a public client revoke its own token with its client_id", async () => {

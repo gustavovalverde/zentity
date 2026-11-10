@@ -6,14 +6,17 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
 import {
   oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  findStoredOpaqueAccessToken,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import {
   createTestDpopKeyPair,
   type DpopKeyPair,
@@ -149,7 +152,7 @@ describe("agent bootstrap token exchange", () => {
     expect(json.scope).toBe(BOOTSTRAP_SCOPE);
 
     const bootstrapToken = json.access_token as string;
-    const stored = await loadOpaqueAccessToken(bootstrapToken);
+    const stored = await findStoredOpaqueAccessToken(bootstrapToken);
     expect(stored?.exchangeClaims.zentity_token_use).toBe(
       AGENT_BOOTSTRAP_TOKEN_USE
     );

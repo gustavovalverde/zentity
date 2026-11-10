@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   attachRequestContextToSpan: vi.fn(),
   authPost: vi.fn(),
-  persistOpaqueAccessTokenDpopBinding: vi.fn(),
   resolveRequestContext: vi.fn(() => ({ requestId: "req-1" })),
 }));
 
@@ -15,11 +14,6 @@ vi.mock("better-auth/next-js", () => ({
 
 vi.mock("@/lib/auth/auth-config", () => ({
   auth: {},
-}));
-
-vi.mock("@/lib/auth/oidc/haip/opaque-access-token", () => ({
-  persistOpaqueAccessTokenDpopBinding:
-    mocks.persistOpaqueAccessTokenDpopBinding,
 }));
 
 vi.mock("@/lib/auth/oidc/haip/resource-metadata", () => ({
@@ -39,7 +33,7 @@ describe("POST /api/auth/oauth2/token", () => {
     vi.clearAllMocks();
   });
 
-  it("passes the Better Auth token response through and persists the opaque DPoP binding", async () => {
+  it("passes the Better Auth token response through", async () => {
     mocks.authPost.mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -70,10 +64,6 @@ describe("POST /api/auth/oauth2/token", () => {
       token_type: "DPoP",
     });
     expect(response.headers.get("content-type")).toBe("application/json");
-    expect(mocks.persistOpaqueAccessTokenDpopBinding).toHaveBeenCalledWith(
-      "opaque-token-1",
-      request
-    );
   });
 
   it("returns unauthorized responses with the protected-resource metadata header", async () => {
@@ -96,6 +86,5 @@ describe("POST /api/auth/oauth2/token", () => {
     expect(response.headers.get("WWW-Authenticate")).toBe(
       'Bearer resource_metadata="http://localhost:3000/api/auth/.well-known/oauth-authorization-server"'
     );
-    expect(mocks.persistOpaqueAccessTokenDpopBinding).not.toHaveBeenCalled();
   });
 });

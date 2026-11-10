@@ -1,9 +1,14 @@
 import "server-only";
 
 import type { AuthContext } from "@better-auth/core";
+import type { JWTPayload } from "jose";
 
 import crypto from "node:crypto";
 
+import {
+  getConfirmationJkt,
+  getDpopJktFromPayload,
+} from "@better-auth/core/oauth2";
 import {
   extendOAuthProvider,
   type OAuthExtensionGrantHandler,
@@ -41,12 +46,10 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { verifyAuthIssuedJwt, verifyIssuedAccessToken } from "@/lib/auth/jwt";
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import {
-  extractDpopThumbprint,
-  loadOpaqueAccessToken,
+  loadOpaqueAccessTokenExtensions,
   mintOpaqueAccessToken,
-  validateOpaqueAccessTokenDpop,
 } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
   getProtectedResourceAudiences,
@@ -57,6 +60,7 @@ import {
   resolveSubForClient,
   resolveUserIdFromSub,
 } from "@/lib/auth/oidc/pairwise";
+import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
@@ -211,45 +215,20 @@ function canRebindDpopForResourceServer(input: {
   return audienceIncludes(input.subjectAudience, input.clientResourceAudience);
 }
 
-async function verifySubjectToken(
-  token: string,
-  subjectTokenType: string
-): Promise<Record<string, unknown>> {
-  const payload =
-    subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
-      ? await verifyIssuedAccessToken(token)
-      : await verifyAuthIssuedJwt(token, { typ: "JWT" });
-  if (!payload) {
-    throw new Error("Subject token failed verification");
+/**
+ * Validates an access-token subject with the provider (signature or stored
+ * record, expiry, revocation, client, and bound session), plus Zentity's
+ * `typ` and revoked-`jti` checks for JWTs.
+ */
+async function verifyAccessTokenSubject(
+  provider: OAuthExtensionGrantHandlerInput["provider"],
+  token: string
+): Promise<JWTPayload> {
+  const payload = await provider.requireActiveAccessToken(token);
+  if (!(await isZentityAccessToken(token, payload))) {
+    throw new Error("Subject token is not a Zentity access token");
   }
-  return payload as Record<string, unknown>;
-}
-
-async function resolveRequestDpopJkt(
-  request: Request | undefined
-): Promise<string | undefined> {
-  const proof = request?.headers?.get("DPoP");
-  if (!(request && proof)) {
-    return undefined;
-  }
-
-  const dpopJkt = await extractDpopThumbprint(request);
-  if (!dpopJkt) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
-      error_description: "Invalid DPoP proof",
-    });
-  }
-
-  const validDpop = await validateOpaqueAccessTokenDpop(request, dpopJkt);
-  if (!validDpop) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_request",
-      error_description: "Invalid DPoP proof",
-    });
-  }
-
-  return dpopJkt;
+  return payload;
 }
 
 function resolveTargetAudience(resource: unknown, audience: unknown): string {
@@ -354,58 +333,73 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       requireCredentials: false,
     });
     const client = authenticated.client;
-    const requestDpopJkt = await resolveRequestDpopJkt(ctx.request);
+    // The provider verifies the request's DPoP proof against the token
+    // endpoint (method, URL, age, single-use jti) before its key is trusted.
+    const requestDpopJkt = getConfirmationJkt(
+      await provider.resolveConfirmation({
+        client,
+        scopes: [],
+        ...(authenticated.confirmation
+          ? { confirmation: authenticated.confirmation }
+          : {}),
+      })
+    );
 
     // Verify the subject token JWT (must be issued by this AS)
     let subjectPayload: Record<string, unknown>;
     let subjectDpopJkt: string | undefined;
     let opaqueSubjectUserId: string | undefined;
     try {
-      if (
-        subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
-        !subjectToken.startsWith("eyJ")
-      ) {
-        const opaqueSubject = await loadOpaqueAccessToken(subjectToken);
-        if (!opaqueSubject?.userId || opaqueSubject.expiresAt < new Date()) {
-          throw new Error("Opaque subject token not found");
+      if (subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN) {
+        const verified = await verifyAccessTokenSubject(provider, subjectToken);
+        subjectDpopJkt = getDpopJktFromPayload(verified);
+        if (subjectToken.split(".").length === 3) {
+          subjectPayload = verified as Record<string, unknown>;
+        } else {
+          const subjectUserId =
+            typeof verified.sub === "string" ? verified.sub : undefined;
+          const subjectClientId =
+            typeof verified.client_id === "string"
+              ? verified.client_id
+              : undefined;
+          if (!(subjectUserId && subjectClientId)) {
+            throw new Error("Opaque subject token has no user");
+          }
+          opaqueSubjectUserId = subjectUserId;
+          const referenceId =
+            typeof verified.reference_id === "string"
+              ? verified.reference_id
+              : undefined;
+          const [extensions, tokenSnapshot] = await Promise.all([
+            loadOpaqueAccessTokenExtensions(subjectToken),
+            referenceId
+              ? resolveTokenSnapshotForTokenJti(referenceId, subjectClientId)
+              : null,
+          ]);
+
+          subjectPayload = {
+            sub: subjectUserId,
+            azp: subjectClientId,
+            client_id: subjectClientId,
+            scope: verified.scope,
+            exp: verified.exp,
+            ...(typeof verified.sid === "string" ? { sid: verified.sid } : {}),
+            ...(extensions?.authContextId
+              ? { [AUTHENTICATION_CONTEXT_CLAIM]: extensions.authContextId }
+              : {}),
+            ...(referenceId ? { jti: referenceId } : {}),
+            ...(extensions?.exchangeClaims ?? {}),
+            ...(tokenSnapshot?.claims ?? {}),
+          };
         }
-        subjectDpopJkt = opaqueSubject.dpopJkt ?? undefined;
-        opaqueSubjectUserId = opaqueSubject.userId;
-
-        const tokenSnapshot = opaqueSubject.referenceId
-          ? await resolveTokenSnapshotForTokenJti(
-              opaqueSubject.referenceId,
-              opaqueSubject.clientId
-            )
-          : null;
-
-        subjectPayload = {
-          sub: opaqueSubject.userId,
-          azp: opaqueSubject.clientId,
-          client_id: opaqueSubject.clientId,
-          scope: opaqueSubject.scopes.join(" "),
-          exp: Math.floor(opaqueSubject.expiresAt.getTime() / 1000),
-          ...(opaqueSubject.sessionId ? { sid: opaqueSubject.sessionId } : {}),
-          ...(opaqueSubject.authContextId
-            ? { [AUTHENTICATION_CONTEXT_CLAIM]: opaqueSubject.authContextId }
-            : {}),
-          ...(opaqueSubject.referenceId
-            ? { jti: opaqueSubject.referenceId }
-            : {}),
-          ...opaqueSubject.exchangeClaims,
-          ...(tokenSnapshot?.claims ?? {}),
-        };
       } else {
-        subjectPayload = await verifySubjectToken(
-          subjectToken,
-          subjectTokenType
-        );
-        const subjectCnf = subjectPayload.cnf as { jkt?: unknown } | undefined;
-        subjectDpopJkt =
-          subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
-          typeof subjectCnf?.jkt === "string"
-            ? subjectCnf.jkt
-            : undefined;
+        const payload = await verifyAuthIssuedJwt(subjectToken, {
+          typ: "JWT",
+        });
+        if (!payload) {
+          throw new Error("Subject token failed verification");
+        }
+        subjectPayload = payload as Record<string, unknown>;
       }
     } catch (cause) {
       logger.warn(

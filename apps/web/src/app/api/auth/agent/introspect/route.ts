@@ -1,23 +1,18 @@
-import { createHash } from "node:crypto";
-
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { getAapClaimsFromPayload } from "@/lib/agents/claims";
 import { observeSessionLifecycle } from "@/lib/agents/session";
 import { resolveTokenSnapshotForTokenJti } from "@/lib/agents/token-snapshot";
-import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
 import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
+import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
 import { requireClientCredentials } from "@/lib/auth/resource-auth";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import {
-  oauthAccessTokens,
-  oauthClients,
-} from "@/lib/db/schema/oauth-provider";
+import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 export const runtime = "nodejs";
 
@@ -48,22 +43,6 @@ async function extractToken(request: Request): Promise<string | null> {
   }
 
   return null;
-}
-
-function findAccessToken(token: string) {
-  const tokenHash = createHash("sha256").update(token).digest("base64url");
-  return db
-    .select({
-      clientId: oauthAccessTokens.clientId,
-      expiresAt: oauthAccessTokens.expiresAt,
-      referenceId: oauthAccessTokens.referenceId,
-      scopes: oauthAccessTokens.scopes,
-      userId: oauthAccessTokens.userId,
-    })
-    .from(oauthAccessTokens)
-    .where(eq(oauthAccessTokens.token, tokenHash))
-    .limit(1)
-    .get();
 }
 
 async function findClient(clientId: string) {
@@ -97,24 +76,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ active: false });
   }
 
-  const payload = token.startsWith("eyJ")
-    ? await verifyIssuedAccessToken(token)
-    : null;
-  if (token.startsWith("eyJ") && !payload) {
+  const presented = await introspectZentityAccessToken(token);
+  const { payload } = presented;
+  if (payload.active !== true) {
     return NextResponse.json({ active: false });
   }
-
-  const opaqueToken = token.startsWith("eyJ")
-    ? null
-    : await findAccessToken(token);
-  if (opaqueToken && opaqueToken.expiresAt < new Date()) {
-    return NextResponse.json({ active: false });
-  }
+  const isJwt = presented.format === "jwt";
 
   const tokenClientId =
-    (payload?.client_id as string | undefined) ??
-    (payload?.azp as string | undefined) ??
-    opaqueToken?.clientId;
+    typeof payload.client_id === "string" ? payload.client_id : undefined;
   if (!tokenClientId) {
     return NextResponse.json({ active: false });
   }
@@ -124,16 +94,18 @@ export async function POST(request: Request) {
     findClient(authResult.principal.clientId),
   ]);
 
-  let tokenScopes: string | undefined;
-  if (typeof payload?.scope === "string") {
-    tokenScopes = payload.scope;
-  } else if (typeof opaqueToken?.scopes === "string") {
-    tokenScopes = parseStoredStringArray(opaqueToken.scopes).join(" ");
-  }
+  const tokenScopes =
+    typeof payload.scope === "string" ? payload.scope : undefined;
 
-  let rawUserId = opaqueToken?.userId ?? null;
-  if (!rawUserId && typeof payload?.sub === "string" && tokenClient) {
-    rawUserId = await resolveUserIdFromSubForClient(payload.sub, tokenClient);
+  // A JWT carries the subject its client knows the user by; introspection of
+  // an opaque token reports the user id itself.
+  let rawUserId: string | null = null;
+  if (typeof payload.sub === "string") {
+    if (!isJwt) {
+      rawUserId = payload.sub;
+    } else if (tokenClient) {
+      rawUserId = await resolveUserIdFromSubForClient(payload.sub, tokenClient);
+    }
   }
 
   let projectedSub: string | undefined;
@@ -146,14 +118,10 @@ export async function POST(request: Request) {
   let tokenSnapshot: Awaited<
     ReturnType<typeof resolveTokenSnapshotForTokenJti>
   > = null;
-  if (typeof payload?.jti === "string") {
+  const snapshotKey = isJwt ? payload.jti : payload.reference_id;
+  if (typeof snapshotKey === "string") {
     tokenSnapshot = await resolveTokenSnapshotForTokenJti(
-      payload.jti,
-      authResult.principal.clientId
-    );
-  } else if (opaqueToken?.referenceId) {
-    tokenSnapshot = await resolveTokenSnapshotForTokenJti(
-      opaqueToken.referenceId,
+      snapshotKey,
       authResult.principal.clientId
     );
   }
@@ -161,10 +129,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ active: false });
   }
 
-  const embeddedAccessTokenClaims =
-    payload && typeof payload === "object"
-      ? getAapClaimsFromPayload(payload as Record<string, unknown>)
-      : {};
+  const embeddedAccessTokenClaims = isJwt
+    ? getAapClaimsFromPayload(payload as Record<string, unknown>)
+    : {};
   const responseAccessTokenClaims =
     Object.keys(embeddedAccessTokenClaims).length > 0
       ? embeddedAccessTokenClaims
@@ -192,7 +159,7 @@ export async function POST(request: Request) {
     client_id: tokenClientId,
     ...(tokenScopes ? { scope: tokenScopes } : {}),
     ...(projectedSub ? { sub: projectedSub } : {}),
-    ...(payload?.aud ? { aud: payload.aud } : {}),
+    ...(isJwt && payload.aud ? { aud: payload.aud } : {}),
     ...responseAccessTokenClaims,
     zentity: {
       attestation: tokenSnapshot.attestation,

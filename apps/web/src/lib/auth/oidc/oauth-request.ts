@@ -1,8 +1,8 @@
 import "server-only";
 
 /**
- * OAuth Request: signed query verification, request key derivation, resource
- * URI validation (RFC 8707), and access-token validation for RP endpoints.
+ * OAuth Request: signed query verification, request key derivation, and
+ * resource URI validation (RFC 8707).
  *
  * Everything server-side that parses or validates an inbound OAuth/OIDC
  * request payload. Client-side post-auth redirect continuation lives in
@@ -12,14 +12,9 @@ import "server-only";
 import { createHmac } from "node:crypto";
 
 import { verifyOAuthQueryParams } from "@better-auth/oauth-provider";
-import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint, type JWTPayload } from "jose";
+import { calculateJwkThumbprint } from "jose";
 
 import { env } from "@/env";
-import { verifyIssuedAccessToken } from "@/lib/auth/jwt";
-import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
-import { db } from "@/lib/db/connection";
-import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 // ---------------------------------------------------------------------------
 // Signed OAuth query verification
@@ -172,108 +167,6 @@ export function validateResourceUri(
   }
 
   return { valid: true };
-}
-
-// ---------------------------------------------------------------------------
-// OAuth access-token validation (for RP-facing API endpoints)
-// ---------------------------------------------------------------------------
-
-export interface OAuthTokenValidationResult {
-  clientId?: string;
-  error?: string;
-  payload?: JWTPayload;
-  scopes?: string[];
-  valid: boolean;
-}
-
-const authIssuer = getAuthIssuer();
-const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
-
-export function extractAccessToken(headers: Headers): string | null {
-  const authHeader = headers.get("Authorization");
-  if (!authHeader) {
-    return null;
-  }
-  if (authHeader.startsWith("Bearer ")) {
-    return authHeader.slice(7);
-  }
-  if (authHeader.startsWith("DPoP ")) {
-    return authHeader.slice(5);
-  }
-  return null;
-}
-
-/**
- * Validate an OAuth access token from a client_credentials grant (RP auth,
- * not user auth).
- */
-export async function validateOAuthAccessToken(
-  token: string,
-  options?: { requiredScopes?: string[] }
-): Promise<OAuthTokenValidationResult> {
-  try {
-    if (!token.startsWith("eyJ")) {
-      return {
-        valid: false,
-        error: "Opaque client credentials tokens are not supported",
-      };
-    }
-
-    const payload = await verifyIssuedAccessToken(token, RP_API_AUDIENCE);
-    if (!payload) {
-      return { valid: false, error: "Invalid access token" };
-    }
-
-    const clientId =
-      (payload.client_id as string | undefined) ??
-      (payload.azp as string | undefined);
-    if (!clientId) {
-      return { valid: false, error: "Missing client_id" };
-    }
-
-    // A client_credentials token's subject is the client itself (oauth-provider
-    // 1.7 sets sub = client_id when there is no user). A token whose subject is a
-    // distinct user is a user token, not client credentials.
-    if (payload.sub && payload.sub !== clientId) {
-      return { valid: false, error: "Not a client credentials token" };
-    }
-
-    const scopes =
-      typeof payload.scope === "string"
-        ? payload.scope.split(" ").filter(Boolean)
-        : [];
-
-    if (
-      options?.requiredScopes &&
-      !options.requiredScopes.every((scope) => scopes.includes(scope))
-    ) {
-      return { valid: false, error: "Missing required scope" };
-    }
-
-    const client = await db
-      .select({ disabled: oauthClients.disabled })
-      .from(oauthClients)
-      .where(eq(oauthClients.clientId, clientId))
-      .limit(1)
-      .get();
-
-    if (!client) {
-      return { valid: false, error: "Client not found" };
-    }
-
-    if (client.disabled) {
-      return { valid: false, error: "Client disabled" };
-    }
-
-    return {
-      valid: true,
-      clientId,
-      payload,
-      scopes,
-    };
-  } catch {
-    return { valid: false, error: "Invalid access token" };
-  }
 }
 
 export function computeJwkThumbprint(rawJwk: string): Promise<string> {
