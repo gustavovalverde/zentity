@@ -18,23 +18,6 @@ async function ensureOidc4vciWalletClientIfNeeded(request: Request) {
   }
 }
 
-/**
- * OID4VCI 1.0 §7.1 has wallets request a `c_nonce` with an empty POST and no
- * Content-Type. Better Auth refuses a POST body without a JSON media type, and
- * the plugin's nonce endpoint does not opt out, so the request reaches it
- * without a body. The endpoint reads none.
- */
-function withoutNonceRequestBody(request: Request): Request {
-  if (!new URL(request.url).pathname.endsWith("/oidc4vci/nonce")) {
-    return request;
-  }
-  return new Request(request.url, {
-    method: request.method,
-    headers: request.headers,
-    signal: request.signal,
-  });
-}
-
 export async function GET(request: Request) {
   const canonicalRequest = canonicalizeRequestOrigin(request);
   const requestContext = resolveRequestContext(canonicalRequest.headers);
@@ -50,6 +33,6 @@ export async function POST(request: Request) {
   const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
-  const response = await authPOST(withoutNonceRequestBody(canonicalRequest));
+  const response = await authPOST(canonicalRequest);
   return addWwwAuthenticate(response);
 }
