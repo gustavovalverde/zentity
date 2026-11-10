@@ -8,7 +8,8 @@ vi.doMock("@/lib/identity/verification/read-model", () => ({
   getVerificationReadModel: mockGetVerificationReadModel,
 }));
 
-const { buildOidcVerifiedClaims, buildProofClaims } = await import("../claims");
+const { buildOidcVerifiedClaims, buildProofClaims, computeConsentReferenceId } =
+  await import("../claims");
 
 function makeModel(overrides: Record<string, unknown> = {}) {
   return {
@@ -230,5 +231,40 @@ describe("oidc claim mapping", () => {
 
     const verifiedClaims = await buildOidcVerifiedClaims("user-2");
     expect(verifiedClaims).toBeNull();
+  });
+});
+
+describe("consent reference", () => {
+  const secret = "consent-reference-test-key";
+  const base = {
+    clientId: "client-a",
+    scopes: ["openid", "proof:age"],
+    sessionId: "session-1",
+  };
+
+  it("is deterministic and ignores scope order", () => {
+    expect(computeConsentReferenceId(secret, base)).toBe(
+      computeConsentReferenceId(secret, {
+        ...base,
+        scopes: ["proof:age", "openid"],
+      })
+    );
+  });
+
+  it("differs per client, session, and scope set", () => {
+    const reference = computeConsentReferenceId(secret, base);
+    for (const changed of [
+      { ...base, clientId: "client-b" },
+      { ...base, sessionId: "session-2" },
+      { ...base, scopes: ["openid"] },
+    ]) {
+      expect(computeConsentReferenceId(secret, changed)).not.toBe(reference);
+    }
+  });
+
+  it("cannot be recomputed without the key", () => {
+    expect(computeConsentReferenceId(secret, base)).not.toBe(
+      computeConsentReferenceId("another-key", base)
+    );
   });
 });

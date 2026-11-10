@@ -8,6 +8,7 @@
  *   Core `claims` request parameter to selectively disclose per endpoint.
  * - computeConsentHmac: HMAC-SHA256 over a consent record to detect scope
  *   tampering between record creation and disclosure.
+ * - computeConsentReferenceId: the keyed reference a consent is stored under.
  */
 
 import type { ComplianceResult } from "@/lib/identity/verification/compliance";
@@ -251,6 +252,30 @@ export function filterClaimsByRequest(
 // ---------------------------------------------------------------------------
 
 const CONSENT_HMAC_CONTEXT = "zentity-consent-scope";
+
+const CONSENT_REFERENCE_CONTEXT = "zentity-consent-reference";
+
+/**
+ * The reference a consent is stored under, which the provider also copies into
+ * JWT access tokens and introspection as `reference_id`. It binds the consent
+ * to one client, one session, and one scope set, so consent is asked again in
+ * each session. Keyed and per client, so it neither correlates a session
+ * across clients nor can be recomputed from a known user or session id.
+ * Deterministic: the consent and authorize endpoints must derive the same
+ * value.
+ */
+export function computeConsentReferenceId(
+  secret: string,
+  input: { clientId: string; scopes: readonly string[]; sessionId: string }
+): string {
+  const aad = encodeAad([
+    CONSENT_REFERENCE_CONTEXT,
+    input.clientId,
+    input.sessionId,
+    [...input.scopes].sort().join(" "),
+  ]);
+  return createHmac("sha256", secret).update(aad).digest("base64url");
+}
 
 /**
  * HMAC-SHA256 over consent record fields. Length-prefixed via encodeAad to

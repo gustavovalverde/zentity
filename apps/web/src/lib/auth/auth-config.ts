@@ -94,6 +94,7 @@ import {
 import {
   buildProofClaims,
   computeConsentHmac,
+  computeConsentReferenceId,
   filterClaimsByRequest,
   PROOF_DISCLOSURE_KEYS,
 } from "@/lib/auth/oidc/disclosure/claims";
@@ -208,7 +209,10 @@ import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { resolveRpUniqueHumanityClaim } from "@/lib/identity/humanity/nullifier";
 import { logError } from "@/lib/logging/error-logger";
 import { logger as rootLogger } from "@/lib/logging/logger";
-import { getConsentHmacKey } from "@/lib/privacy/primitives/derived-keys";
+import {
+  getConsentHmacKey,
+  getConsentReferenceKey,
+} from "@/lib/privacy/primitives/derived-keys";
 import { OPAQUE_CREDENTIAL_ID } from "@/lib/privacy/secrets/catalog";
 
 const betterAuthSchema = {
@@ -2172,15 +2176,12 @@ export const auth = betterAuth({
       consentPage: "/oauth/consent",
       postLogin: {
         page: "/oauth/consent",
-        consentReferenceId: ({ user, session, scopes }) => {
-          // Must be deterministic: the consent handler and the authorize
-          // endpoint it re-invokes both call this callback and must get
-          // the same value so the consent can be found on the second call.
-          const sorted = [...scopes].sort().join(" ");
-          return createHash("sha256")
-            .update(`${user.id}:${session.id}:${sorted}`)
-            .digest("base64url");
-        },
+        consentReferenceId: ({ query, session, scopes }) =>
+          computeConsentReferenceId(getConsentReferenceKey(), {
+            clientId: query.get("client_id") ?? "",
+            scopes,
+            sessionId: session.id,
+          }),
         shouldRedirect: () => false,
       },
       advertisedMetadata: {
