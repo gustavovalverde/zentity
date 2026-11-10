@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
+  "engines": {
+    "node": "26.x"
+  },
   "scripts": {
     "dev": "react-router dev",
     "build": "node scripts/sync-docs.js && node scripts/sync-mcp-tool-manifest.js && react-router build && node scripts/fix-vite-manifest.js",
