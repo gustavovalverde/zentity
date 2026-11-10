@@ -144,6 +144,7 @@ export async function POST(request: Request) {
       runtime: display.runtime,
       model: display.model,
       version: display.version,
+      authContextId: principal.authContextId,
       lastActiveAt: new Date(),
     })
     .returning({

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -67,7 +68,13 @@ describe("requireBootstrapAccessToken", () => {
   }
 
   it("resolves a DPoP-bound opaque bootstrap token to its user", async () => {
-    const token = await mintBootstrapToken();
+    const { id: authContextId } = await createAuthenticationContext({
+      authenticatedAt: new Date(),
+      loginMethod: "passkey",
+      sourceKind: "token_exchange",
+      userId,
+    });
+    const token = await mintBootstrapToken({ authContextId });
 
     const result = await requireBootstrapAccessToken(
       await bootstrapRequest(token, keyPair),
@@ -78,6 +85,7 @@ describe("requireBootstrapAccessToken", () => {
       ok: true,
       principal: {
         kind: "user_access_token",
+        authContextId,
         userId,
         clientId: CLIENT_ID,
         scopes: SCOPES,

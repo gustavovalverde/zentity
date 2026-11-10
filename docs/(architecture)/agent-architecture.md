@@ -72,6 +72,7 @@ An agent session is the runtime identity for one live process. Each session gets
 - `runtime`
 - `model`
 - `version`
+- `auth_context_id`, the user's authentication that registered the session
 - `idle_ttl_sec`
 - `max_lifetime_sec`
 - `last_seen_at`
@@ -97,7 +98,7 @@ Registration happens in two steps because the two identities prove different thi
 3. The MCP ensures its durable host exists by calling `POST /api/auth/agent/host/register` with the bootstrap token.
 4. The MCP signs a short-lived host JWT proving possession of the host private key.
 5. The MCP starts a fresh process keypair and calls `POST /api/auth/agent/register` with the bootstrap token.
-6. Zentity creates a new `agent_session`, seeds default grants from host policy, and records any requested extra capabilities as pending grants.
+6. Zentity creates a new `agent_session`, seeds default grants from host policy, and records any requested extra capabilities as pending grants. The session also records the authentication context of the login token that the bootstrap token was exchanged from.
 
 ```mermaid
 sequenceDiagram
@@ -274,6 +275,8 @@ The approval router produces three practical outcomes:
 | Silent approval | Matching active grant and non-biometric capability | None |
 | Push approval | No matching grant, identity scope present, or manual approval required | Push notification and approval page |
 | Biometric approval | Capability strength is `biometric` | Always push and explicit approval |
+
+A silent approval is recorded for the user who owns the host, with `approval_method` set to `capability_grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
 
 ### Runtime proof enters here
 

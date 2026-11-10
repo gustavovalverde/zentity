@@ -1593,36 +1593,39 @@ interface RegisteredAgentNotice {
 
 /**
  * Tries to approve a request from a verified agent session's capability
- * grants. Returns whether it was approved; an approval the grants or the
- * request's `acr_values` do not allow falls back to asking the user.
+ * grants, on behalf of the user who owns the agent. The approval carries the
+ * authentication with which the user registered the agent session, since no
+ * one authenticates for it. Returns whether it was approved; an approval the
+ * grants or the request's `acr_values` do not allow falls back to asking the
+ * user.
  */
 async function approveFromCapabilityGrant(input: {
-  agentSessionId: string;
+  agent: { authContextId: string | null; sessionId: string };
   authorizationDetails: ReturnType<typeof normalizeAuthorizationDetails>;
   requestId: string;
   scope: string;
   userId: string;
-}): Promise<{ approved: boolean; requiresBiometric: boolean }> {
+}): Promise<boolean> {
+  // Resolved before evaluation, which consumes usage limits.
+  const authentication = await resolveAuthenticationContext({
+    authContextId: input.agent.authContextId,
+  });
+  if (!authentication) {
+    return false;
+  }
   const grantResult = await evaluateSessionGrants(
-    input.agentSessionId,
+    input.agent.sessionId,
     input.scope,
     input.authorizationDetails
   );
-  const requiresBiometric = grantResult.approvalStrength === "biometric";
   if (!grantResult.approved) {
-    return { approved: false, requiresBiometric };
-  }
-  const authentication = await getAuthenticationStateBySessionId(
-    input.agentSessionId
-  );
-  if (!authentication) {
-    return { approved: false, requiresBiometric };
+    return false;
   }
   const capabilityName =
     grantResult.capabilityName ??
     deriveCapabilityName(input.authorizationDetails, input.scope);
   if (!capabilityName) {
-    return { approved: false, requiresBiometric };
+    return false;
   }
   try {
     await cibaApproval.approve({
@@ -1638,10 +1641,10 @@ async function approveFromCapabilityGrant(input: {
         strength: grantResult.approvalStrength ?? null,
       },
     });
-    return { approved: true, requiresBiometric };
+    return true;
   } catch (error) {
     if (isAPIError(error)) {
-      return { approved: false, requiresBiometric };
+      return false;
     }
     throw error;
   }
@@ -1675,7 +1678,10 @@ async function notifyCibaRequest(
 
   let agentName: string | undefined;
   let registeredAgent: RegisteredAgentNotice | undefined;
-  let verifiedSessionId: string | undefined;
+  let verifiedAgent:
+    | { authContextId: string | null; sessionId: string }
+    | undefined;
+  let requiresBiometric = false;
   const assertionHeader =
     ctx.headers?.get("Agent-Assertion") ??
     ctx.request?.headers.get("Agent-Assertion");
@@ -1687,15 +1693,19 @@ async function notifyCibaRequest(
       scope,
     });
     if (boundAssertion) {
-      verifiedSessionId = boundAssertion.sessionId;
+      verifiedAgent = {
+        authContextId: boundAssertion.authContextId,
+        sessionId: boundAssertion.sessionId,
+      };
       agentName = boundAssertion.agentName;
       registeredAgent = boundAssertion.registeredAgent;
+      requiresBiometric = boundAssertion.approvalStrength === "biometric";
     }
   }
 
   // Self-declared agent_claims are never trusted for token claims.
   // Keep agent metadata sourced only from a verified Agent-Assertion / AAP snapshot.
-  if (!verifiedSessionId) {
+  if (!verifiedAgent) {
     await db
       .update(cibaRequests)
       .set({ agentClaims: null })
@@ -1703,19 +1713,17 @@ async function notifyCibaRequest(
       .run();
   }
 
-  let requiresBiometric = false;
-  if (verifiedSessionId) {
-    const result = await approveFromCapabilityGrant({
-      agentSessionId: verifiedSessionId,
+  if (
+    verifiedAgent &&
+    (await approveFromCapabilityGrant({
+      agent: verifiedAgent,
       authorizationDetails: authDetails,
       requestId,
       scope,
       userId: user.id,
-    });
-    if (result.approved) {
-      return;
-    }
-    requiresBiometric = result.requiresBiometric;
+    }))
+  ) {
+    return;
   }
 
   const approvalUrl = cibaApprovalUrl(appUrl, requestId);
