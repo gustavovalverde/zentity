@@ -548,8 +548,8 @@ importers:
         specifier: 0.4.6
         version: 0.4.6(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       node-tfhe:
-        specifier: 1.5.4
-        version: 1.5.4
+        specifier: 1.8.2
+        version: 1.8.2
       pino:
         specifier: 10.4.0
         version: 10.4.0
@@ -581,8 +581,8 @@ importers:
         specifier: 3.7.0
         version: 3.7.0
       tfhe:
-        specifier: 1.5.4
-        version: 1.5.4
+        specifier: 1.8.2
+        version: 1.8.2
       viem:
         specifier: 2.57.17
         version: 2.57.17(typescript@7.0.2)(zod@4.6.7)
@@ -10337,8 +10337,8 @@ packages:
     resolution: {integrity: sha512-6li2QanLsAXpIH2R6j77MzRyvOyrvdTqlKtO4CgBdHGNvN99ZZfyxszHc5o5+IZBWD5u6Hzwg83JoGXmqZNG9Q==}
     engines: {node: '>=18'}
 
-  node-tfhe@1.5.4:
-    resolution: {integrity: sha512-azTefAcK7G/uLP+uDFN8v5XBPFlY8Cu8NZ5ZMw4rgvWB6DNbtOcoUhDoJKrhPvOD2jt1HrzQQsLfao6kNHQybA==}
+  node-tfhe@1.8.2:
+    resolution: {integrity: sha512-jvGvhFaOSeoV9jQi2pQsf7GsFezPMiulXUDeTdsOVCEwF+FfW2TRHMadnfXllJaHwzqIaPFuctzFHMexrfFlFg==}
 
   nopt@5.0.0:
     resolution: {integrity: sha512-Tbj67rffqceeLpcRXrT7vKAN8CwfPeIBgM7E6iBkmKLV7bEMwpGgYLGv0jACUsECaa/vuxP0IjEont6umdMgtQ==}
@@ -11688,8 +11688,8 @@ packages:
   text-table@0.2.0:
     resolution: {integrity: sha512-N+8UisAXDGk8PFXP4HAzVR9nbfmVJ3zYLAWiTIoqC5v5isinhr+r5uaO8+7r3BMfuNIufIsA7RdpVgacC2cSpw==}
 
-  tfhe@1.5.4:
-    resolution: {integrity: sha512-hN1RWB95BsCjIxVMWHAVhFyM45+qsufHCpPhTYOwoTlsHNh9KwrRZsc4aNts+BOc8EEf/GT7DajA+STR4xRhTg==}
+  tfhe@1.8.2:
+    resolution: {integrity: sha512-4uuJDE6OIu43E3HGbSl55erbWZ0ATiWNNyB3Z9RRzZt/DpEbgIZctrxnTGOomKj57NSOuAPt5aM8McojJgi+mw==}
 
   thenify-all@1.6.0:
     resolution: {integrity: sha512-RNxQH/qI8/t3thXJDwcstUO4zeqo64+Uy/+sNVRBx4Xn2OX+OZ9oP+iJnNFqplFra2ZUVeKCSa2oVWi3T4uVmA==}
@@ -24128,7 +24128,7 @@ snapshots:
 
   node-releases@2.0.63: {}
 
-  node-tfhe@1.5.4: {}
+  node-tfhe@1.8.2: {}
 
   nopt@5.0.0:
     dependencies:
@@ -25826,7 +25826,7 @@ snapshots:
 
   text-table@0.2.0: {}
 
-  tfhe@1.5.4: {}
+  tfhe@1.8.2: {}
 
   thenify-all@1.6.0:
     dependencies:

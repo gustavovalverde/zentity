@@ -87,6 +87,7 @@ interface FheVerifyAgeResponse {
 }
 
 const CRS_PATH = process.env.BB_CRS_PATH || "/tmp/.bb-crs";
+const TFHE_SERIALIZED_SIZE_LIMIT = 256n * 1024n * 1024n;
 
 const FHE_SERVICE_URL = (
   process.env.FHE_SERVICE_URL || "http://localhost:5001"
@@ -473,8 +474,8 @@ async function benchmarkFhe(runs: number): Promise<FheBenchmarkRow[]> {
   const clientKey = tfhe.TfheClientKey.generate(config);
   const publicKey = tfhe.TfheCompressedPublicKey.new(clientKey);
   const serverKey = tfhe.TfheCompressedServerKey.new(clientKey);
-  const publicKeyBytes = publicKey.serialize();
-  const serverKeyBytes = serverKey.serialize();
+  const publicKeyBytes = publicKey.safe_serialize(TFHE_SERIALIZED_SIZE_LIMIT);
+  const serverKeyBytes = serverKey.safe_serialize(TFHE_SERIALIZED_SIZE_LIMIT);
 
   const registerLatencies: number[] = [];
   let keyId = "";

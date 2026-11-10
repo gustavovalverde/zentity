@@ -37,15 +37,15 @@ interface WorkerError {
 }
 
 interface TfheClientKey {
-  serialize(): Uint8Array;
+  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
 }
 
 interface TfheCompressedPublicKey {
-  serialize(): Uint8Array;
+  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
 }
 
 interface TfheCompressedServerKey {
-  serialize(): Uint8Array;
+  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
 }
 
 interface TfheConfigBuilder {
@@ -72,6 +72,12 @@ interface TfheModuleStatic {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TfheModule = TfheModuleStatic;
+
+/**
+ * Upper bound for one versioned key blob. The FHE service reads these with
+ * tfhe-rs `safe_deserialize`; the compressed server key is about 60 MB.
+ */
+const TFHE_SERIALIZED_SIZE_LIMIT = 256n * 1024n * 1024n;
 
 let tfheInitPromise: Promise<TfheModule> | null = null;
 
@@ -164,9 +170,9 @@ async function handleWorkerMessage(
     const serverKey = tfhe.TfheCompressedServerKey.new(clientKey);
 
     const storedKeys = {
-      clientKey: clientKey.serialize(),
-      publicKey: publicKey.serialize(),
-      serverKey: serverKey.serialize(),
+      clientKey: clientKey.safe_serialize(TFHE_SERIALIZED_SIZE_LIMIT),
+      publicKey: publicKey.safe_serialize(TFHE_SERIALIZED_SIZE_LIMIT),
+      serverKey: serverKey.safe_serialize(TFHE_SERIALIZED_SIZE_LIMIT),
       createdAt: new Date().toISOString(),
     };
 
