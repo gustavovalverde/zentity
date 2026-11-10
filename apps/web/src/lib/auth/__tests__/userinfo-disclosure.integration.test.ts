@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import {
   stageFinalCibaDisclosure,
   stagePendingOauthDisclosure,
@@ -16,7 +15,11 @@ import { db } from "@/lib/db/connection";
 import { sessions, verifications } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
   type DpopKeyPair,
@@ -84,6 +87,8 @@ async function insertApprovedCibaRequest(
       userId,
       scope,
       status: "approved",
+      // A Zentity approval makes the request reference its own hash.
+      referenceId: hashCibaAuthReqId(authReqId),
       authContextId,
       expiresAt: new Date(Date.now() + 300_000),
     })

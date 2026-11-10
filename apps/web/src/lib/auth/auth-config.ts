@@ -1,9 +1,10 @@
-import type { AuthContext } from "@better-auth/core";
-import type { AapAccessTokenClaims, LoginMethod } from "@zentity/sdk/protocol";
+import type { CibaNotification } from "@better-auth/ciba";
+import type { AuthContext, GenericEndpointContext } from "@better-auth/core";
+import type { LoginMethod } from "@zentity/sdk/protocol";
 
 import { createHash } from "node:crypto";
 
-import { ciba, deliverPing } from "@better-auth/ciba";
+import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
@@ -17,8 +18,11 @@ import {
 } from "@better-auth/haip";
 import {
   extendOAuthProvider,
+  getOAuthProviderApi,
   type OAuthClaimExtensionInput,
+  type OAuthOptions,
   oauthProvider,
+  type Scope,
 } from "@better-auth/oauth-provider";
 import { oidc4ida } from "@better-auth/oidc4ida";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
@@ -26,7 +30,11 @@ import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { decodeJwtPayloadStrict } from "@zentity/sdk/protocol";
 import { APIError, type BetterAuthPlugin, betterAuth } from "better-auth";
-import { createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
+import {
+  createAuthMiddleware,
+  getSessionFromCtx,
+  isAPIError,
+} from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import {
   admin,
@@ -53,9 +61,12 @@ import {
 import {
   buildCibaAgentContribution,
   persistTokenSnapshot,
-  type StoredTokenSnapshot,
 } from "@/lib/agents/token-snapshot";
-import { buildNamespacedAssuranceClaim } from "@/lib/assurance/oidc-claims";
+import {
+  ACR_VALUES_SUPPORTED,
+  buildNamespacedAssuranceClaim,
+  computeAcr,
+} from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
@@ -65,9 +76,15 @@ import {
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
 import {
-  hashCibaAuthReqId,
-  rawAuthReqIdFromApprovalUrl,
-} from "@/lib/auth/oidc/ciba-auth-req";
+  captureBackchannelExtras,
+  cibaApprovalPlugin,
+  cibaApprovalUrl,
+  createCibaApproval,
+  getPendingCibaToken,
+  parseStoredAuthorizationDetails,
+  persistBackchannelExtras,
+  setPendingCibaToken,
+} from "@/lib/auth/oidc/ciba";
 import {
   persistDcrClientExtensions,
   readDcrClientExtensions,
@@ -136,7 +153,6 @@ import {
 } from "@/lib/auth/oidc/payment-mint";
 import {
   enforceAuthorizeAcr,
-  enforceCibaApprovalAcr,
   enforceCibaTokenAcr,
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
@@ -152,7 +168,7 @@ import { getTrustedOrigins } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { rejectPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
+import { denyPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
@@ -429,8 +445,6 @@ const oidc4vciDeferredIssuance = isOidcE2e
   : undefined;
 
 const DCR_CLIENT_NAME_MAX = 100;
-// Best-effort ping retries when auto-approving a registered agent's CIBA request.
-const CIBA_PING_MAX_RETRIES = 3;
 const HTML_TAG_RE = /<[^>]+>/;
 const PROTECTED_RESOURCE_METADATA_FIELD = "zentity_protected_resource";
 const isDev = process.env.NODE_ENV !== "production";
@@ -643,31 +657,13 @@ async function validateDcrRegistration(
 
 type HookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
 
-function requestClientId(ctx: {
-  body?: Record<string, unknown>;
-  headers?: Headers;
-}): string | null {
-  if (typeof ctx.body?.client_id === "string") {
-    return ctx.body.client_id;
-  }
-  const authorization = ctx.headers?.get("authorization");
-  if (!authorization?.startsWith("Basic ")) {
-    return null;
-  }
-  const decoded = Buffer.from(authorization.slice(6), "base64").toString(
-    "utf8"
-  );
-  const separator = decoded.indexOf(":");
-  return separator > 0 ? decodeURIComponent(decoded.slice(0, separator)) : null;
-}
-
 const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const ACCESS_TOKEN_SCHEME_RE = /^(Bearer|DPoP)\s+/i;
 
 const USER_TOKEN_GRANT_TYPES = new Set<unknown>([
   "authorization_code",
   "refresh_token",
-  "urn:openid:params:grant-type:ciba",
+  CIBA_GRANT_TYPE,
 ]);
 
 const LOOPBACK_REDIRECT_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -814,39 +810,78 @@ function accessTokenJti(token: string): string | undefined {
   }
 }
 
+function oauthProviderOptions(ctx: HookCtx): OAuthOptions<Scope[]> {
+  const plugin = ctx.context.getPlugin("oauth-provider") as {
+    options: OAuthOptions<Scope[]>;
+  } | null;
+  if (!plugin) {
+    throw new APIError("INTERNAL_SERVER_ERROR", {
+      message: "oauth-provider plugin is required",
+    });
+  }
+  return plugin.options;
+}
+
 /**
- * Pre-loads the agent context for a CIBA poll/token request before the plugin
- * consumes (deletes) the ciba_request row. The better-auth adapter returns only
- * the plugin's declared columns to the grant handler, and the row is gone by the
- * time the claim contributors run, so the agent columns (session, attestation,
- * approved capability) and approval-time auth context are read here via Drizzle
- * while the row still exists, then stashed for the claim hook and after-hook.
+ * Loads what a CIBA token poll needs from the request row before the plugin
+ * consumes (deletes) it: the step-up re-check, the staged identity release,
+ * the canonical payment RAR, the verified agent context, and the approval-time
+ * authentication context. The result is stashed for the claim contributors,
+ * the token response, and the after-hook of the same request. A refusal here
+ * leaves the approved request in place for another poll.
  */
-async function beforeCibaTokenLoadAgent(ctx: HookCtx) {
-  const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
-  if (!rawAuthReqId) {
+async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
+  const rawAuthReqId = ctx.body?.auth_req_id;
+  if (typeof rawAuthReqId !== "string" || !rawAuthReqId) {
     return;
   }
-  const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
+  const provider = getOAuthProviderApi(
+    ctx as unknown as GenericEndpointContext,
+    oauthProviderOptions(ctx),
+    CIBA_GRANT_TYPE
+  );
+  const authReqIdHash = await provider.hashToken(rawAuthReqId, "auth_req_id");
   const row = await db
     .select()
     .from(cibaRequests)
     .where(eq(cibaRequests.authReqId, authReqIdHash))
     .limit(1)
     .get();
-  if (!row) {
+  if (row?.status !== "approved") {
     return;
   }
-  const audienceClientId =
-    (ctx.body?.client_id as string | undefined) ?? row.clientId;
+  await enforceCibaTokenAcr(ctx, db, row);
+
+  const releaseId = releaseIdFor(authReqIdHash, row.clientId);
+  const releaseContext = await loadReleaseContext(releaseId);
+  if (
+    releaseContext?.expectsIdentityPayload &&
+    !hasIdentityPayload(finalReleaseIdentityKey(releaseId))
+  ) {
+    throw invalidGrantDisclosureError("identity_payload_missing");
+  }
+  if (releaseContext) {
+    await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
+  }
+
+  // Re-mint the RAR server-side from the persisted (canonical) form (D-1). A
+  // corrupt stored RAR throws, failing the poll rather than minting a token
+  // without it.
+  const paymentClaims = buildPaymentAuthorizationClaims(
+    row.authorizationDetails
+  );
   const contribution = await buildCibaAgentContribution(
     row as unknown as Record<string, unknown>,
-    audienceClientId
+    row.clientId
   );
-  pendingCibaToken.set(authReqIdHash, {
+  await setPendingCibaToken({
+    agentClaims: contribution?.claims ?? null,
     authContextId: row.authContextId ?? "",
+    authReqIdHash,
+    authorizationDetails:
+      paymentClaims?.authorization_details ??
+      parseStoredAuthorizationDetails(row.authorizationDetails),
     snapshot: contribution?.snapshot ?? null,
-    claims: contribution?.claims ?? null,
   });
 }
 
@@ -854,22 +889,17 @@ async function beforeCibaTokenLoadAgent(ctx: HookCtx) {
  * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
  * authentication context onto the issued access/refresh records (Zentity
  * extension columns the upstream issuance does not set) and persists the agent
- * snapshot keyed by the minted token's identity. The request carries the raw
- * auth_req_id; the plugin stores its hash, so the token records and stash are
- * keyed on the hash. The snapshot is keyed by the JWT's jti (the AS owns it) or,
- * for opaque tokens, by the referenceId (the same hash) introspection looks up.
+ * snapshot keyed by the minted token's identity. Every CIBA token references
+ * the stored auth_req_id hash, set as the request's `referenceId` at approval.
+ * The snapshot is keyed by the JWT's jti (the AS owns it) or, for opaque
+ * tokens, by that referenceId, which introspection looks up.
  */
 async function afterCibaTokenPersist(ctx: HookCtx) {
-  const rawAuthReqId = ctx.body?.auth_req_id as string | undefined;
-  if (!rawAuthReqId) {
-    return;
-  }
-  const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
-  const pending = pendingCibaToken.get(authReqIdHash);
-  pendingCibaToken.delete(authReqIdHash);
+  const pending = await getPendingCibaToken();
   if (!pending) {
     return;
   }
+  const { authReqIdHash } = pending;
 
   if (pending.authContextId) {
     await Promise.all([
@@ -1056,20 +1086,17 @@ async function findAuthorizationCodeRecord(
   return null;
 }
 
-// The CIBA request row is consumed (deleted) before the token claims run, so
-// buildAccessTokenClaims stashes its approval-time authentication context and
-// agent snapshot here (keyed by the hashed auth_req_id) while the row still
-// exists. The claim contributors read the auth context within the same issuance;
-// the /oauth2/token after-hook then drains it onto the persisted token records
-// and writes the agent snapshot keyed by the minted token's jti. CIBA is
-// decoupled, so the id_token must reflect the captured approval-time context,
-// not the user's latest one.
-interface PendingCibaToken {
-  authContextId: string; // "" when the approved request carried no auth context
-  claims: AapAccessTokenClaims | null; // embedded agent AAP claims, if any
-  snapshot: StoredTokenSnapshot | null; // set only for verified agent sessions
+async function pendingCibaAuthContextId(
+  referenceId: string | undefined
+): Promise<string | undefined> {
+  if (!referenceId) {
+    return undefined;
+  }
+  const pending = await getPendingCibaToken();
+  return pending?.authReqIdHash === referenceId
+    ? pending.authContextId
+    : undefined;
 }
-const pendingCibaToken = new Map<string, PendingCibaToken>();
 
 // Binds an access token to its release context so userinfo can resolve the
 // staged identity payload: JWT access tokens carry it, opaque tokens recover it
@@ -1085,9 +1112,7 @@ async function buildIdTokenDisclosureClaims(input: {
   user: { id: string };
 }): Promise<Record<string, unknown>> {
   const scopeList = toScopeList(input.scopes);
-  const cibaAuthContextId = input.referenceId
-    ? pendingCibaToken.get(input.referenceId)?.authContextId
-    : undefined;
+  const cibaAuthContextId = await pendingCibaAuthContextId(input.referenceId);
   const auth = await resolveAuthenticationContext({
     authContextId: input.authContextId ?? (cibaAuthContextId || null),
     sessionId: input.sessionId ?? null,
@@ -1171,13 +1196,10 @@ async function buildAccessTokenDisclosureClaims(
   const scopeList = toScopeList(info.scopes);
   const claims: Record<string, unknown> = {};
   // Non-empty when this is a CIBA-issued token whose approval captured an
-  // authentication context. Agent AAP claims are not added here: the AS strips
-  // reserved claims and re-derives this contributor on opaque introspection, so
-  // the embedded agent claims come from the grant handler's per-issuance claims
-  // (JWT) and the durable snapshot keyed by the token jti (opaque introspection).
-  const cibaAuthContextId = referenceId
-    ? pendingCibaToken.get(referenceId)?.authContextId
-    : undefined;
+  // authentication context. Agent AAP and payment claims are added by the
+  // CIBA-only contributor below; at opaque introspection they come from the
+  // durable snapshot keyed by the token reference instead.
+  const cibaAuthContextId = await pendingCibaAuthContextId(referenceId);
 
   // Per-RP sybil nullifier
   if (scopeList.includes("proof:sybil") && clientId) {
@@ -1237,6 +1259,38 @@ async function buildAccessTokenDisclosureClaims(
   return claims;
 }
 
+/**
+ * Claims a CIBA token carries. The client that started the backchannel request
+ * acts for the user, so a CIBA-capable client's tokens name it as `act.sub`,
+ * here and at opaque introspection. A token from the CIBA grant also carries
+ * the verified agent's AAP claims, whose `act` names the agent instead, and the
+ * RFC 9396 authorization details, payment ones re-minted in canonical form.
+ */
+async function buildCibaAccessTokenClaims(
+  info: OAuthClaimExtensionInput
+): Promise<Record<string, unknown>> {
+  const isCibaClient = info.client.grantTypes?.includes(CIBA_GRANT_TYPE);
+  if (
+    !isCibaClient ||
+    (info.grantType !== undefined && info.grantType !== CIBA_GRANT_TYPE)
+  ) {
+    return {};
+  }
+  const actor = { act: { sub: info.client.clientId } };
+  const pending =
+    info.grantType === CIBA_GRANT_TYPE ? await getPendingCibaToken() : null;
+  if (!pending || pending.authReqIdHash !== info.referenceId) {
+    return actor;
+  }
+  return {
+    ...actor,
+    ...(pending.agentClaims ?? {}),
+    ...(pending.authorizationDetails
+      ? { authorization_details: pending.authorizationDetails }
+      : {}),
+  };
+}
+
 function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
   return {
     id: "exact-disclosure-claims",
@@ -1267,8 +1321,10 @@ function exactDisclosureClaimsPlugin(): BetterAuthPlugin {
               user: { id: info.user.id },
             });
           },
-          accessToken: (info: OAuthClaimExtensionInput) =>
-            buildAccessTokenDisclosureClaims(info),
+          accessToken: async (info: OAuthClaimExtensionInput) => ({
+            ...(await buildAccessTokenDisclosureClaims(info)),
+            ...(await buildCibaAccessTokenClaims(info)),
+          }),
         },
       });
     },
@@ -1556,31 +1612,209 @@ async function afterPersistAuthenticationContext(ctx: HookCtx) {
   expireSessionDataCookie(ctx);
 }
 
-async function afterCibaAuthorizePersistAuthContext(ctx: HookCtx) {
-  const authReqId =
-    typeof ctx.body?.auth_req_id === "string"
-      ? ctx.body.auth_req_id
-      : undefined;
-  if (!authReqId) {
+// Decisions go through the CIBA plugin's own server endpoint on this instance.
+const cibaApproval = createCibaApproval((body) =>
+  auth.api.completeCibaRequest({ body })
+);
+
+interface RegisteredAgentNotice {
+  attestationProvider?: string | null;
+  attestationTier?: string | null;
+  model?: string | null;
+  name: string;
+  runtime?: string | null;
+  version?: string | null;
+}
+
+/**
+ * Tries to approve a request from a verified agent session's capability
+ * grants. Returns whether it was approved; an approval the grants or the
+ * request's `acr_values` do not allow falls back to asking the user.
+ */
+async function approveFromCapabilityGrant(input: {
+  agentSessionId: string;
+  authorizationDetails: ReturnType<typeof normalizeAuthorizationDetails>;
+  requestId: string;
+  scope: string;
+  userId: string;
+}): Promise<{ approved: boolean; requiresBiometric: boolean }> {
+  const grantResult = await evaluateSessionGrants(
+    input.agentSessionId,
+    input.scope,
+    input.authorizationDetails
+  );
+  const requiresBiometric = grantResult.approvalStrength === "biometric";
+  if (!grantResult.approved) {
+    return { approved: false, requiresBiometric };
+  }
+  const authentication = await getAuthenticationStateBySessionId(
+    input.agentSessionId
+  );
+  if (!authentication) {
+    return { approved: false, requiresBiometric };
+  }
+  const capabilityName =
+    grantResult.capabilityName ??
+    deriveCapabilityName(input.authorizationDetails, input.scope);
+  if (!capabilityName) {
+    return { approved: false, requiresBiometric };
+  }
+  try {
+    await cibaApproval.approve({
+      requestId: input.requestId,
+      userId: input.userId,
+      authentication,
+      grant: {
+        method: "capability_grant",
+        capabilityName,
+        constraints: grantResult.constraintsJson ?? null,
+        grantId: grantResult.grantId ?? null,
+        hostPolicyId: grantResult.hostPolicyId ?? null,
+        strength: grantResult.approvalStrength ?? null,
+      },
+    });
+    return { approved: true, requiresBiometric };
+  } catch (error) {
+    if (isAPIError(error)) {
+      return { approved: false, requiresBiometric };
+    }
+    throw error;
+  }
+}
+
+/**
+ * CIBA `sendNotification`: persists the request's RAR and `acr_values`, binds
+ * a verified Agent-Assertion, auto-approves from capability grants when they
+ * allow it, and otherwise notifies the user by web push and email with a link
+ * to Zentity's approval page.
+ */
+async function notifyCibaRequest(
+  notification: CibaNotification,
+  ctx: GenericEndpointContext
+): Promise<void> {
+  const { requestId, user } = notification;
+  const scope = notification.scopes.join(" ");
+  const extras = await persistBackchannelExtras(requestId);
+  const authDetails = normalizeAuthorizationDetails(
+    extras.authorizationDetails
+  );
+  const stored = await db
+    .select({ authReqId: cibaRequests.authReqId })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.id, requestId))
+    .limit(1)
+    .get();
+  if (!stored) {
     return;
   }
 
-  const sessionId = (ctx.context as { session?: { session?: { id?: string } } })
-    .session?.session?.id;
-  if (!sessionId) {
-    return;
+  let agentName: string | undefined;
+  let registeredAgent: RegisteredAgentNotice | undefined;
+  let verifiedSessionId: string | undefined;
+  const assertionHeader =
+    ctx.headers?.get("Agent-Assertion") ??
+    ctx.request?.headers.get("Agent-Assertion");
+  if (assertionHeader) {
+    const boundAssertion = await bindAgentAssertionToCibaRequest({
+      assertionJwt: assertionHeader,
+      authReqId: stored.authReqId,
+      authorizationDetails: authDetails,
+      scope,
+    });
+    if (boundAssertion) {
+      verifiedSessionId = boundAssertion.sessionId;
+      agentName = boundAssertion.agentName;
+      registeredAgent = boundAssertion.registeredAgent;
+    }
   }
 
-  const auth = await getAuthenticationStateBySessionId(sessionId);
-  if (!auth) {
-    return;
+  // Self-declared agent_claims are never trusted for token claims.
+  // Keep agent metadata sourced only from a verified Agent-Assertion / AAP snapshot.
+  if (!verifiedSessionId) {
+    await db
+      .update(cibaRequests)
+      .set({ agentClaims: null })
+      .where(eq(cibaRequests.id, requestId))
+      .run();
   }
 
-  await db
-    .update(cibaRequests)
-    .set({ authContextId: auth.id })
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
-    .run();
+  let requiresBiometric = false;
+  if (verifiedSessionId) {
+    const result = await approveFromCapabilityGrant({
+      agentSessionId: verifiedSessionId,
+      authorizationDetails: authDetails,
+      requestId,
+      scope,
+      userId: user.id,
+    });
+    if (result.approved) {
+      return;
+    }
+    requiresBiometric = result.requiresBiometric;
+  }
+
+  const approvalUrl = cibaApprovalUrl(appUrl, requestId);
+  const pushPayload = buildCibaPushPayload({
+    approvalUrl,
+    requestId,
+    scope,
+    agentName,
+    authorizationDetails: authDetails,
+    bindingMessage: notification.bindingMessage,
+    clientName: notification.clientName,
+    requiresBiometric,
+  });
+  await Promise.allSettled([
+    sendWebPush(user.id, pushPayload),
+    sendCibaNotification({
+      userId: user.id,
+      requestId,
+      clientName: notification.clientName,
+      scope,
+      bindingMessage: notification.bindingMessage,
+      authorizationDetails: authDetails,
+      registeredAgent,
+      approvalUrl,
+    }),
+  ]);
+}
+
+// The CIBA plugin also lets a user approve on the provider's consent page via
+// `/oauth2/authorize?ciba_request_id=…`. Zentity approves only on its own page,
+// which runs the step-up and identity-release checks, so that entry point
+// redirects there and the consent and continue endpoints refuse it.
+const CIBA_INTERACTION_PARAMETER = "ciba_request_id";
+
+function cibaInteractionRequestId(ctx: HookCtx): string | undefined {
+  const fromQuery = ctx.query?.[CIBA_INTERACTION_PARAMETER];
+  if (typeof fromQuery === "string" && fromQuery) {
+    return fromQuery;
+  }
+  const oauthQuery = ctx.body?.oauth_query ?? ctx.query?.oauth_query;
+  if (typeof oauthQuery === "string") {
+    return (
+      new URLSearchParams(oauthQuery).get(CIBA_INTERACTION_PARAMETER) ??
+      undefined
+    );
+  }
+  return undefined;
+}
+
+function redirectCibaInteraction(ctx: HookCtx) {
+  const requestId = cibaInteractionRequestId(ctx);
+  if (requestId) {
+    throw ctx.redirect(cibaApprovalUrl(appUrl, requestId));
+  }
+}
+
+function rejectCibaInteraction(ctx: HookCtx) {
+  if (cibaInteractionRequestId(ctx)) {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description:
+        "Backchannel requests are approved on Zentity's approval page",
+    });
+  }
 }
 
 const socialProviders = {
@@ -1749,7 +1983,7 @@ export const auth = betterAuth({
       },
       delete: {
         after: async (session) => {
-          await rejectPendingCibaRequestsForUser(session.userId).catch(
+          await denyPendingCibaRequestsForUser(session.userId).catch(
             (error: unknown) =>
               logError(error, {
                 userId: session.userId,
@@ -1802,20 +2036,15 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/bc-authorize") {
         if (ctx.body) {
-          assertOutboundUrl(
-            "client_notification_uri",
-            ctx.body.client_notification_uri,
-            "invalid_request"
-          );
           pinPaymentRequest(ctx.body);
           normalizeUserTokenResources(ctx.body);
+          await captureBackchannelExtras(ctx.body);
         }
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        if (ctx.body?.grant_type === "urn:openid:params:grant-type:ciba") {
-          await enforceCibaTokenAcr(ctx, db);
-          await beforeCibaTokenLoadAgent(ctx);
+        if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
+          await beforeCibaTokenLoadRequest(ctx);
         }
         beforeTokenValidateResource(ctx);
         if (USER_TOKEN_GRANT_TYPES.has(ctx.body?.grant_type)) {
@@ -1825,7 +2054,11 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/consent") {
+        rejectCibaInteraction(ctx);
         return beforeConsentStripIdentityScopes(ctx);
+      }
+      if (ctx.path === "/oauth2/continue") {
+        return rejectCibaInteraction(ctx);
       }
       if (ctx.path === "/oauth2/par") {
         if (!ctx.body?.resource) {
@@ -1840,15 +2073,13 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/authorize") {
+        redirectCibaInteraction(ctx);
         await enforceAuthorizeAcr(ctx, db);
         await beforeAuthorizeVerifyConsentHmac(ctx);
         if (ctx.query) {
           normalizeUserTokenResources(ctx.query);
         }
         return;
-      }
-      if (ctx.path === "/ciba/authorize") {
-        return enforceCibaApprovalAcr(ctx, db);
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
@@ -1867,10 +2098,6 @@ export const auth = betterAuth({
       }
       if (ctx.path === "/oauth2/token") {
         await afterCibaTokenPersist(ctx);
-        return;
-      }
-      if (ctx.path === "/ciba/authorize") {
-        await afterCibaAuthorizePersistAuthContext(ctx);
         return;
       }
       if (ctx.path === "/oauth2/introspect") {
@@ -1963,10 +2190,18 @@ export const auth = betterAuth({
         walletAudience: env.WALLET_AUDIENCE,
       }),
       enforcePerClientResources: false,
-      // First-party-app step-up: when the authorization code was issued from a
-      // DPoP-bound auth_session (authorize-challenge route), echo it back so the
-      // FPA client can re-authenticate on a later acr step-up failure.
-      customTokenResponseFields: ({ grantType, verificationValue }) => {
+      customTokenResponseFields: async ({ grantType, verificationValue }) => {
+        // RFC 9396 §7: a CIBA token response reports the authorization details
+        // the token carries.
+        if (grantType === CIBA_GRANT_TYPE) {
+          const pending = await getPendingCibaToken();
+          return pending?.authorizationDetails
+            ? { authorization_details: pending.authorizationDetails }
+            : {};
+        }
+        // First-party-app step-up: when the authorization code was issued from
+        // a DPoP-bound auth_session (authorize-challenge route), echo it back
+        // so the FPA client can re-authenticate on a later acr step-up failure.
         const authSession = (
           verificationValue as Record<string, unknown> | undefined
         )?.authSession;
@@ -2013,12 +2248,25 @@ export const auth = betterAuth({
       advertisedMetadata: {
         claims_supported: advertisedClaims,
       },
-      // id_token `acr`/`amr`/`auth_time` are AS-owned in 1.7 (the provider
-      // reports acr: "0" until it supports requestable ACR classes). The
-      // assurance tier rides in the namespaced zentity_assurance claim instead,
-      // emitted by the exact-disclosure-claims id-token contributor.
+      // The ID token `acr` is the user's assurance tier and `amr` the methods
+      // of the approving session. Unmet `acr_values` are rejected before this
+      // runs (enforceAuthorizeAcr). CIBA approvals state the same values to
+      // completeCibaRequest.
+      authenticationContext: {
+        acrValuesSupported: [...ACR_VALUES_SUPPORTED],
+        resolve: async ({ user, session }) => {
+          const [assurance, authentication] = await Promise.all([
+            getAccountAssurance(user.id, { isAuthenticated: true }),
+            getAuthenticationStateBySessionId(session.id),
+          ]);
+          return {
+            acr: computeAcr(assurance.tier),
+            ...(authentication?.amr.length ? { amr: authentication.amr } : {}),
+          };
+        },
+      },
       // Access-token disclosure claims (sybil/humanity/CIBA snapshot/auth
-      // context) moved to the exact-disclosure-claims extension's
+      // context) come from the exact-disclosure-claims extension's
       // `claims.accessToken` contributor, which receives the resolved `client`
       // and is re-derived at opaque-token introspection.
       customUserInfoClaims: async (info) => {
@@ -2207,221 +2455,28 @@ export const auth = betterAuth({
         : {}),
     }),
     ciba({
-      approvalPage: "/approve",
+      // Zentity sends users to its own approval page, never the provider's
+      // consent page (see redirectCibaInteraction), so this is a fallback.
+      resultPage: "/dashboard/agents",
       deliveryModes: ["poll", "ping"],
-      requestExpiry: 300,
-      pollingInterval: 5,
+      expiresIn: 300,
+      interval: 5,
       // Agents register via DCR as public clients (token_endpoint_auth_method:
       // "none"); backchannel trust comes from user approval and the signed
-      // Agent-Assertion, not a client secret. The plugin defaults to
-      // confidential-only, which would reject every agent at bc-authorize.
-      requireConfidentialClient: false,
+      // Agent-Assertion, and their tokens are DPoP-bound.
+      allowPublicClients: true,
       // A client names the user only by the subject identifier it received
       // from Zentity, so an unknown hint reveals nothing the client did not
       // already hold and no client can prompt arbitrary accounts.
-      async resolveUser(loginHint, ctx) {
-        const clientId = requestClientId(ctx);
-        const userId = clientId
-          ? await resolveUserIdFromSub(loginHint, clientId)
-          : null;
+      async resolveUser({ loginHint, client }, ctx) {
+        const userId = await resolveUserIdFromSub(loginHint, client.clientId);
         return userId
           ? await ctx.context.internalAdapter.findUserById(userId)
           : null;
       },
-      async resolveClientNotificationEndpoint(clientId) {
-        const client = await db
-          .select({ metadata: oauthClients.metadata })
-          .from(oauthClients)
-          .where(eq(oauthClients.clientId, clientId))
-          .get();
-        if (!client?.metadata) {
-          return undefined;
-        }
-        let meta: Record<string, unknown>;
-        try {
-          meta = JSON.parse(client.metadata) as Record<string, unknown>;
-        } catch {
-          return undefined;
-        }
-        const endpoint = meta.backchannel_client_notification_endpoint;
-        return typeof endpoint === "string" && !validateOutboundUrl(endpoint)
-          ? endpoint
-          : undefined;
-      },
-      buildAccessTokenClaims: async (cibaRequest) => {
-        // The consumed row the plugin passes here carries only the plugin's
-        // declared columns, so the agent AAP claims were resolved in the
-        // /oauth2/token before-hook (while the full row still existed) and
-        // stashed; embed them here. The after-hook drains the rest of the stash.
-        const pending = pendingCibaToken.get(cibaRequest.authReqId);
-
-        const releaseId = releaseIdFor(
-          cibaRequest.authReqId,
-          cibaRequest.clientId
-        );
-        const releaseContext = await loadReleaseContext(releaseId);
-        if (
-          releaseContext?.expectsIdentityPayload &&
-          !hasIdentityPayload(finalReleaseIdentityKey(releaseId))
-        ) {
-          throw invalidGrantDisclosureError("identity_payload_missing");
-        }
-        if (releaseContext) {
-          await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
-        }
-
-        // Re-mint the RAR server-side from the persisted (canonical) form and
-        // emit it as authorization_details (D-1). A corrupt stored RAR throws,
-        // failing the mint loudly rather than minting a token without it. Keep it
-        // last so AAP claims can't clobber it.
-        const paymentClaims = buildPaymentAuthorizationClaims(
-          (cibaRequest as { authorizationDetails?: string | null })
-            .authorizationDetails
-        );
-
-        return {
-          ...(pending?.claims ?? {}),
-          ...(paymentClaims ?? {}),
-        };
-      },
-      sendNotification: async (data, request) => {
-        // The 1.7 plugin no longer hands the raw auth_req_id directly; it lives
-        // in the approvalUrl it built. The raw value is what the approval page
-        // and ping delivery consume; its hash keys the persisted ciba_request.
-        const rawAuthReqId = rawAuthReqIdFromApprovalUrl(data.approvalUrl);
-        if (!rawAuthReqId) {
-          throw new Error("CIBA approvalUrl is missing auth_req_id");
-        }
-        const authReqIdHash = hashCibaAuthReqId(rawAuthReqId);
-
-        let agentName: string | undefined;
-        let registeredAgent:
-          | {
-              attestationProvider?: string | null;
-              attestationTier?: string | null;
-              model?: string | null;
-              name: string;
-              runtime?: string | null;
-              version?: string | null;
-            }
-          | undefined;
-        let verifiedSessionId: string | undefined;
-        const authDetails = normalizeAuthorizationDetails(
-          data.authorizationDetails
-        );
-        const assertionHeader = request?.headers.get("Agent-Assertion");
-        if (assertionHeader) {
-          const boundAssertion = await bindAgentAssertionToCibaRequest({
-            assertionJwt: assertionHeader,
-            authReqId: authReqIdHash,
-            authorizationDetails: authDetails,
-            scope: data.scope,
-          });
-          if (boundAssertion) {
-            verifiedSessionId = boundAssertion.sessionId;
-            agentName = boundAssertion.agentName;
-            registeredAgent = boundAssertion.registeredAgent;
-          }
-        }
-
-        // Self-declared agent_claims are never trusted for token claims.
-        // Keep agent metadata sourced only from a verified Agent-Assertion / AAP snapshot.
-        if (!verifiedSessionId) {
-          await db
-            .update(cibaRequests)
-            .set({ agentClaims: null })
-            .where(eq(cibaRequests.authReqId, authReqIdHash))
-            .run();
-        }
-
-        // Capability grant evaluation for registered agents
-        let requiresBiometric = false;
-        if (verifiedSessionId) {
-          const grantResult = await evaluateSessionGrants(
-            verifiedSessionId,
-            data.scope,
-            authDetails
-          );
-          const approvalAuth = grantResult.approved
-            ? await getAuthenticationStateBySessionId(verifiedSessionId)
-            : null;
-          if (grantResult.approvalStrength === "biometric") {
-            requiresBiometric = true;
-          }
-          if (grantResult.approved && approvalAuth) {
-            const updated = await db
-              .update(cibaRequests)
-              .set({
-                status: "approved",
-                authContextId: approvalAuth.id,
-                approvalMethod: "capability_grant",
-                approvedCapabilityName:
-                  grantResult.capabilityName ??
-                  deriveCapabilityName(authDetails, data.scope),
-                approvedConstraints: grantResult.constraintsJson,
-                approvedGrantId: grantResult.grantId,
-                approvedHostPolicyId: grantResult.hostPolicyId,
-                approvalStrength: grantResult.approvalStrength,
-              })
-              .where(
-                and(
-                  eq(cibaRequests.authReqId, authReqIdHash),
-                  eq(cibaRequests.status, "pending")
-                )
-              )
-              .returning({ id: cibaRequests.id });
-
-            if (updated.length > 0) {
-              const cibaRow = await db
-                .select({
-                  deliveryMode: cibaRequests.deliveryMode,
-                  clientNotificationEndpoint:
-                    cibaRequests.clientNotificationEndpoint,
-                  clientNotificationToken: cibaRequests.clientNotificationToken,
-                })
-                .from(cibaRequests)
-                .where(eq(cibaRequests.authReqId, authReqIdHash))
-                .limit(1)
-                .get();
-
-              if (
-                cibaRow?.deliveryMode === "ping" &&
-                cibaRow.clientNotificationEndpoint &&
-                cibaRow.clientNotificationToken
-              ) {
-                deliverPing(
-                  cibaRow.clientNotificationEndpoint,
-                  cibaRow.clientNotificationToken,
-                  rawAuthReqId,
-                  CIBA_PING_MAX_RETRIES
-                ).catch(() => undefined);
-              }
-              return;
-            }
-          }
-        }
-
-        const pushPayload = buildCibaPushPayload({
-          ...data,
-          authReqId: rawAuthReqId,
-          agentName,
-          requiresBiometric,
-        });
-        Promise.allSettled([
-          sendWebPush(data.userId, pushPayload),
-          sendCibaNotification({
-            userId: data.userId,
-            authReqId: rawAuthReqId,
-            clientName: data.clientName,
-            scope: data.scope,
-            bindingMessage: data.bindingMessage,
-            authorizationDetails: data.authorizationDetails,
-            registeredAgent,
-            approvalUrl: data.approvalUrl,
-          }),
-        ]).catch(() => undefined);
-      },
+      sendNotification: notifyCibaRequest,
     }),
+    cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),
     // Must stay last: forwards Set-Cookie from every prior plugin's after-hook.
     nextCookies(),

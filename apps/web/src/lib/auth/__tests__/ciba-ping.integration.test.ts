@@ -1,11 +1,8 @@
-import { createServer } from "node:http";
-
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { env } from "@/env";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -13,6 +10,7 @@ import {
   createTestCibaRequest,
   createTestSession,
   createTestUser,
+  hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
@@ -20,14 +18,13 @@ import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 import { auth } from "../auth-config";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
-const BC_AUTHORIZE_URL = "http://localhost:3000/api/auth/oauth2/bc-authorize";
+const AUTH_URL = "http://localhost:3000/api/auth";
 const TEST_CLIENT_ID = "ping-test-agent";
-const TEST_NOTIFICATION_ENDPOINT = "http://localhost:9999/ciba/callback";
+// Ping endpoints must be public https URLs; the client registers one.
+const TEST_NOTIFICATION_ENDPOINT = "https://rp.example.com/ciba/callback";
 const TEST_NOTIFICATION_TOKEN = "ciba-ping-bearer-token-abc123";
 
-async function createTestClient(
-  overrides: Partial<typeof oauthClients.$inferInsert> = {}
-) {
+async function createTestClient(metadata: Record<string, unknown>) {
   await db
     .insert(oauthClients)
     .values({
@@ -36,35 +33,39 @@ async function createTestClient(
       redirectUris: JSON.stringify(["http://localhost/callback"]),
       grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
       tokenEndpointAuthMethod: "none",
-      ...overrides,
+      metadata: JSON.stringify(metadata),
     })
     .run();
 }
+
+const PING_METADATA = {
+  backchannel_token_delivery_mode: "ping",
+  backchannel_client_notification_endpoint: TEST_NOTIFICATION_ENDPOINT,
+};
 
 async function postBcAuthorize(
   body: Record<string, string>
 ): Promise<{ status: number; json: Record<string, unknown> }> {
   const response = await auth.handler(
-    new Request(BC_AUTHORIZE_URL, {
+    new Request(`${AUTH_URL}/oauth2/bc-authorize`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams(body),
     })
   );
   const text = await response.text();
-  let json: Record<string, unknown> = {};
-  if (text) {
-    try {
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      json =
-        parsed && typeof parsed === "object" && "response" in parsed
-          ? (parsed.response as Record<string, unknown>)
-          : parsed;
-    } catch {
-      json = { raw: text };
-    }
-  }
-  return { status: response.status, json };
+  return {
+    status: response.status,
+    json: text ? (JSON.parse(text) as Record<string, unknown>) : {},
+  };
+}
+
+function findRequest(rawAuthReqId: string) {
+  return db
+    .select()
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(rawAuthReqId)))
+    .get();
 }
 
 describe("CIBA ping mode", () => {
@@ -73,22 +74,15 @@ describe("CIBA ping mode", () => {
   beforeEach(async () => {
     await resetDatabase();
     userId = await createTestUser();
-    await createTestClient();
   });
 
-  describe("resolveClientNotificationEndpoint", () => {
-    it("resolves notification endpoint from client metadata", async () => {
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({
-            backchannel_token_delivery_mode: "ping",
-            backchannel_client_notification_endpoint:
-              TEST_NOTIFICATION_ENDPOINT,
-          }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe("bc-authorize", () => {
+    it("records the registered notification endpoint and encrypted ping credentials", async () => {
+      await createTestClient(PING_METADATA);
 
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
@@ -98,36 +92,20 @@ describe("CIBA ping mode", () => {
       });
 
       expect(status).toBe(200);
-      expect(json.auth_req_id).toBeDefined();
-
-      // Verify the created request is in ping mode
-      const request = await db
-        .select()
-        .from(cibaRequests)
-        .where(
-          eq(
-            cibaRequests.authReqId,
-            hashCibaAuthReqId(json.auth_req_id as string)
-          )
-        )
-        .get();
-      expect(request?.deliveryMode).toBe("ping");
+      const request = await findRequest(json.auth_req_id as string);
       expect(request?.clientNotificationEndpoint).toBe(
         TEST_NOTIFICATION_ENDPOINT
       );
-      expect(request?.clientNotificationToken).toBe(TEST_NOTIFICATION_TOKEN);
+      // The token and auth_req_id are kept only in encrypted form.
+      expect(request?.encryptedClientNotificationToken).toBeTruthy();
+      expect(request?.encryptedClientNotificationToken).not.toContain(
+        TEST_NOTIFICATION_TOKEN
+      );
+      expect(request?.encryptedAuthReqId).toBeTruthy();
     });
 
-    it("issues poll delivery for a poll-registered client", async () => {
-      // Delivery mode is a registered client property; a poll client needs no
-      // notification endpoint and a stray notification token is ignored.
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({ backchannel_token_delivery_mode: "poll" }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
+    it("keeps no ping state for a poll-registered client", async () => {
+      await createTestClient({ backchannel_token_delivery_mode: "poll" });
 
       const { status, json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
@@ -137,25 +115,34 @@ describe("CIBA ping mode", () => {
       });
 
       expect(status).toBe(200);
-
-      const request = await db
-        .select()
-        .from(cibaRequests)
-        .where(
-          eq(
-            cibaRequests.authReqId,
-            hashCibaAuthReqId(json.auth_req_id as string)
-          )
-        )
-        .get();
-      expect(request?.deliveryMode).toBe("poll");
+      const request = await findRequest(json.auth_req_id as string);
+      expect(request?.clientNotificationEndpoint).toBeNull();
+      expect(request?.encryptedClientNotificationToken).toBeNull();
     });
 
-    it("does not crash bc-authorize when client metadata is malformed JSON", async () => {
+    it("rejects a ping request that omits the notification token", async () => {
+      await createTestClient(PING_METADATA);
+
+      const { status, json } = await postBcAuthorize({
+        client_id: TEST_CLIENT_ID,
+        scope: "openid",
+        login_hint: userId,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
+    });
+
+    it("refuses a client whose stored metadata is malformed", async () => {
       await db
-        .update(oauthClients)
-        .set({ metadata: "{not valid json" })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
+        .insert(oauthClients)
+        .values({
+          clientId: TEST_CLIENT_ID,
+          redirectUris: JSON.stringify(["http://localhost/callback"]),
+          grantTypes: JSON.stringify([CIBA_GRANT_TYPE]),
+          tokenEndpointAuthMethod: "none",
+          metadata: "{not valid json",
+        })
         .run();
 
       const { status, json } = await postBcAuthorize({
@@ -163,62 +150,21 @@ describe("CIBA ping mode", () => {
         scope: "openid",
         login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
-        client_notification_uri: TEST_NOTIFICATION_ENDPOINT,
       });
 
-      // Malformed stored metadata must fail as a normal client error, never
-      // an unhandled exception surfacing as a 500.
+      // Malformed stored metadata fails as a client error, never a 500.
       expect(status).toBeLessThan(500);
       expect(json.error).toBeDefined();
     });
-
-    it("prefers client_notification_uri from request body over metadata", async () => {
-      const bodyEndpoint = "http://localhost:8888/ciba/callback";
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({
-            backchannel_token_delivery_mode: "ping",
-            backchannel_client_notification_endpoint:
-              TEST_NOTIFICATION_ENDPOINT,
-          }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
-
-      const { status, json } = await postBcAuthorize({
-        client_id: TEST_CLIENT_ID,
-        scope: "openid",
-        login_hint: userId,
-        client_notification_token: TEST_NOTIFICATION_TOKEN,
-        client_notification_uri: bodyEndpoint,
-      });
-
-      expect(status).toBe(200);
-
-      const request = await db
-        .select()
-        .from(cibaRequests)
-        .where(
-          eq(
-            cibaRequests.authReqId,
-            hashCibaAuthReqId(json.auth_req_id as string)
-          )
-        )
-        .get();
-      expect(request?.deliveryMode).toBe("ping");
-      expect(request?.clientNotificationEndpoint).toBe(bodyEndpoint);
-    });
   });
 
-  describe("ping-mode token retrieval", () => {
-    it("allows polling for tokens on ping-mode requests (unlike push)", async () => {
+  describe("token polling", () => {
+    it("lets a ping-mode client poll for its tokens", async () => {
+      await createTestClient(PING_METADATA);
       const { authReqId } = await createTestCibaRequest({
         clientId: TEST_CLIENT_ID,
         userId,
         status: "approved",
-        deliveryMode: "ping",
-        clientNotificationToken: TEST_NOTIFICATION_TOKEN,
         clientNotificationEndpoint: TEST_NOTIFICATION_ENDPOINT,
       });
 
@@ -233,14 +179,12 @@ describe("CIBA ping mode", () => {
       expect(json.token_type).toBe("DPoP");
     });
 
-    it("returns authorization_pending for pending ping-mode requests", async () => {
+    it("returns authorization_pending before the user decides", async () => {
+      await createTestClient(PING_METADATA);
       const { authReqId } = await createTestCibaRequest({
         clientId: TEST_CLIENT_ID,
         userId,
         status: "pending",
-        deliveryMode: "ping",
-        clientNotificationToken: TEST_NOTIFICATION_TOKEN,
-        clientNotificationEndpoint: TEST_NOTIFICATION_ENDPOINT,
       });
 
       const { status, json } = await postTokenWithDpop({
@@ -254,203 +198,55 @@ describe("CIBA ping mode", () => {
     });
   });
 
-  describe("bc-authorize ping-mode request creation", () => {
-    it("stores notification token and endpoint for ping-mode requests", async () => {
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({ backchannel_token_delivery_mode: "ping" }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
+  describe("ping callback", () => {
+    it("pings the registered endpoint once the user approves", async () => {
+      await createTestClient(PING_METADATA);
+      const pings: { authorization: string | null; body: unknown }[] = [];
+      const realFetch = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (url === TEST_NOTIFICATION_ENDPOINT) {
+          pings.push({
+            authorization: new Headers(init?.headers).get("authorization"),
+            body: JSON.parse(String(init?.body)),
+          });
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        return realFetch(input, init);
+      });
 
-      const { status, json } = await postBcAuthorize({
+      const { json } = await postBcAuthorize({
         client_id: TEST_CLIENT_ID,
         scope: "openid",
         login_hint: userId,
         client_notification_token: TEST_NOTIFICATION_TOKEN,
-        client_notification_uri: TEST_NOTIFICATION_ENDPOINT,
       });
+      const authReqId = json.auth_req_id as string;
+      const request = await findRequest(authReqId);
 
-      expect(status).toBe(200);
-      expect(json.auth_req_id).toBeDefined();
-
-      const request = await db
-        .select()
-        .from(cibaRequests)
-        .where(
-          eq(
-            cibaRequests.authReqId,
-            hashCibaAuthReqId(json.auth_req_id as string)
-          )
-        )
-        .get();
-
-      expect(request?.deliveryMode).toBe("ping");
-      expect(request?.clientNotificationToken).toBe(TEST_NOTIFICATION_TOKEN);
-      expect(request?.clientNotificationEndpoint).toBe(
-        TEST_NOTIFICATION_ENDPOINT
-      );
-    });
-  });
-
-  describe("poll-mode regression", () => {
-    it("poll-mode requests still work without notification fields", async () => {
-      const { authReqId } = await createTestCibaRequest({
-        clientId: TEST_CLIENT_ID,
-        userId,
-        status: "approved",
-        deliveryMode: "poll",
-        clientNotificationToken: null,
-        clientNotificationEndpoint: null,
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id: authReqId,
-        client_id: TEST_CLIENT_ID,
-      });
-
-      expect(status).toBe(200);
-      expect(json.access_token).toBeDefined();
-    });
-  });
-
-  describe("missing client_notification_token", () => {
-    it("rejects a ping request that omits the notification token", async () => {
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({
-            backchannel_token_delivery_mode: "ping",
-            backchannel_client_notification_endpoint:
-              TEST_NOTIFICATION_ENDPOINT,
-          }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
-
-      // A ping-registered client must supply client_notification_token; there is
-      // no per-request fallback to poll once a delivery mode is registered.
-      const { status, json } = await postBcAuthorize({
-        client_id: TEST_CLIENT_ID,
-        scope: "openid",
-        login_hint: userId,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_request");
-    });
-  });
-
-  describe("ping callback delivery", () => {
-    let mockServer: ReturnType<typeof createServer>;
-
-    afterEach(() => {
-      mockServer?.close();
-    });
-
-    function startMockServer(): Promise<{
-      port: number;
-      waitForCallback: () => Promise<{
-        authHeader: string | undefined;
-        body: Record<string, unknown>;
-      }>;
-    }> {
-      return new Promise((resolve) => {
-        let callbackResolve: (value: {
-          authHeader: string | undefined;
-          body: Record<string, unknown>;
-        }) => void;
-        const callbackPromise = new Promise<{
-          authHeader: string | undefined;
-          body: Record<string, unknown>;
-        }>((res) => {
-          callbackResolve = res;
-        });
-
-        mockServer = createServer((req, res) => {
-          let data = "";
-          req.on("data", (chunk) => {
-            data += chunk;
-          });
-          req.on("end", () => {
-            callbackResolve({
-              authHeader: req.headers.authorization,
-              body: JSON.parse(data) as Record<string, unknown>,
-            });
-            res.writeHead(204);
-            res.end();
-          });
-        });
-
-        mockServer.listen(0, () => {
-          const addr = mockServer.address();
-          const port =
-            typeof addr === "object" && addr !== null ? addr.port : 0;
-          resolve({ port, waitForCallback: () => callbackPromise });
-        });
-      });
-    }
-
-    async function createSignedSessionCookie(uid: string): Promise<string> {
-      const { token } = await createTestSession(uid);
-      const signature = await makeSignature(token, env.BETTER_AUTH_SECRET);
-      return `${token}.${signature}`;
-    }
-
-    it("delivers ping callback to notification endpoint after approval", async () => {
-      const { port, waitForCallback } = await startMockServer();
-      const notificationEndpoint = `http://localhost:${port}/ciba/callback`;
-      const notificationToken = "test-ping-bearer-token";
-
-      await db
-        .update(oauthClients)
-        .set({
-          metadata: JSON.stringify({ backchannel_token_delivery_mode: "ping" }),
-        })
-        .where(eq(oauthClients.clientId, TEST_CLIENT_ID))
-        .run();
-
-      // Create a bc-authorize request with ping mode
-      const { json: bcJson } = await postBcAuthorize({
-        client_id: TEST_CLIENT_ID,
-        scope: "openid",
-        login_hint: userId,
-        client_notification_token: notificationToken,
-        client_notification_uri: notificationEndpoint,
-      });
-
-      const authReqId = bcJson.auth_req_id as string;
-
-      // Create a session so we can call the approve endpoint
-      const sessionToken = await createSignedSessionCookie(userId);
-
-      // Approve the CIBA request through the plugin
-      const approveUrl = "http://localhost:3000/api/auth/ciba/authorize";
-      const approveRes = await auth.handler(
-        new Request(approveUrl, {
+      const { token } = await createTestSession(userId);
+      const signed = `${token}.${await makeSignature(token, env.BETTER_AUTH_SECRET)}`;
+      const decision = await auth.handler(
+        new Request(`${AUTH_URL}/ciba/decision`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Cookie: `better-auth.session_token=${sessionToken}`,
+            cookie: `better-auth.session_token=${signed}`,
           },
-          body: JSON.stringify({ auth_req_id: authReqId }),
+          body: JSON.stringify({
+            request_id: request?.id,
+            decision: "approved",
+          }),
         })
       );
 
-      expect(approveRes.status).toBe(200);
-
-      // Wait for the ping callback (with a timeout)
-      const callback = await Promise.race([
-        waitForCallback(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Ping callback timeout")), 5000)
-        ),
+      expect(decision.status).toBe(200);
+      expect(pings).toEqual([
+        {
+          authorization: `Bearer ${TEST_NOTIFICATION_TOKEN}`,
+          body: { auth_req_id: authReqId },
+        },
       ]);
-
-      expect(callback.authHeader).toBe(`Bearer ${notificationToken}`);
-      expect(callback.body.auth_req_id).toBe(authReqId);
     });
   });
 });

@@ -26,7 +26,7 @@ const ACR_URIS = {
 
 export const ACR_VALUES_SUPPORTED = Object.values(ACR_URIS);
 
-function computeAcr(tier: AccountTier): string {
+export function computeAcr(tier: AccountTier): string {
   return ACR_URIS[tier];
 }
 
@@ -57,9 +57,9 @@ export function buildOidcAssuranceClaims(
 
 /**
  * Namespaced id-token assurance claim. The OAuth provider owns the standard
- * `acr`/`amr`/`auth_time` id-token claims and reports `acr: "0"` until it
- * supports requestable ACR classes, so the assurance tier and its
- * authentication methods ride here instead. `auth_time` stays AS-owned.
+ * `acr`/`amr`/`auth_time` id-token claims, which it fills from the
+ * authentication context Zentity resolves at approval; this claim adds the
+ * eIDAS level of assurance that has no standard claim.
  */
 const ASSURANCE_CLAIM = "zentity_assurance";
 

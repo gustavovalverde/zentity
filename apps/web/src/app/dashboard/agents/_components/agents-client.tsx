@@ -34,7 +34,6 @@ interface CibaRequestRow {
   attestationProvider: string | null;
   attestationTier: string | null;
   authorizationDetails: string | null;
-  authReqId: string;
   bindingMessage: string | null;
   clientId: string;
   clientName: string | null;
@@ -90,8 +89,8 @@ function deriveRequestDetails(row: CibaRequestRow): CibaRequestDetails {
   }
 
   return {
-    auth_req_id: row.authReqId,
     expires_at: row.expiresAt.toISOString(),
+    request_id: row.id,
     scope: row.scope,
     status: row.status,
     ...(row.acrValues ? { acr_values: row.acrValues } : {}),
@@ -122,16 +121,16 @@ export function AgentsClient({
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
-  const [selectedAuthReqId, setSelectedAuthReqId] = useState<string | null>(
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
     null
   );
 
-  const selectedRequest = selectedAuthReqId
-    ? requests.find((r) => r.authReqId === selectedAuthReqId)
+  const selectedRequest = selectedRequestId
+    ? requests.find((r) => r.id === selectedRequestId)
     : undefined;
 
   const handleSheetClose = useCallback(() => {
-    setSelectedAuthReqId(null);
+    setSelectedRequestId(null);
     router.refresh();
   }, [router]);
 
@@ -158,7 +157,7 @@ export function AgentsClient({
         <TabsContent className="mt-6 space-y-6" value="requests">
           <RequestsTab
             mailpitUrl={mailpitUrl}
-            onSelect={setSelectedAuthReqId}
+            onSelect={setSelectedRequestId}
             requests={requests}
           />
         </TabsContent>
@@ -174,7 +173,7 @@ export function AgentsClient({
             handleSheetClose();
           }
         }}
-        open={selectedAuthReqId != null}
+        open={selectedRequestId != null}
       >
         <SheetContent className="overflow-y-auto sm:max-w-md">
           <SheetHeader className="sr-only">
@@ -185,7 +184,6 @@ export function AgentsClient({
               <AgentApprovalView
                 agentIdentity={deriveAgentIdentity(selectedRequest)}
                 authMode={authMode}
-                authReqId={selectedAuthReqId}
                 initialRequest={deriveRequestDetails(selectedRequest)}
                 onClose={handleSheetClose}
                 registeredAgent={deriveRegisteredAgent(selectedRequest)}

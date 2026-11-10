@@ -267,7 +267,6 @@ describe("pairwise subject resolution (integration)", () => {
           userId,
           scope: "openid",
           status: "pending",
-          deliveryMode: "poll",
           expiresAt: new Date(Date.now() + 300_000),
         })
         .run();

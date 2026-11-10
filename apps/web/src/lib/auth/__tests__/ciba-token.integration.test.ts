@@ -9,13 +9,16 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   createAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { loadOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
@@ -245,7 +248,7 @@ describe("CIBA token endpoint", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      resource: TEST_RESOURCE,
+      resources: JSON.stringify([TEST_RESOURCE]),
       scope: "openid offline_access",
     });
 
@@ -329,7 +332,7 @@ describe("CIBA token endpoint", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      resource: TEST_RESOURCE,
+      resources: JSON.stringify([TEST_RESOURCE]),
       hostId,
       agentSessionId: sessionId,
       displayName: "Test Agent",
@@ -413,7 +416,7 @@ describe("CIBA token endpoint", () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
-      resource: TEST_RESOURCE,
+      resources: JSON.stringify([TEST_RESOURCE]),
     });
 
     const { json } = await postTokenWithDpop({

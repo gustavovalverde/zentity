@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { env } from "@/env";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -19,30 +18,30 @@ import { auth } from "../auth-config";
 const CLIENT_ID = "ciba-origin-client";
 const AUTH_BASE = "http://localhost:3000/api/auth";
 
-function postWithSession(
-  path: "/ciba/authorize" | "/ciba/reject",
-  authReqId: string,
+function postDecision(
+  decision: "approved" | "denied",
+  requestId: string,
   sessionToken: string,
   headers: Record<string, string>
 ) {
   return auth.handler(
-    new Request(`${AUTH_BASE}${path}`, {
+    new Request(`${AUTH_BASE}/ciba/decision`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         cookie: `better-auth.session_token=${sessionToken}`,
         ...headers,
       },
-      body: JSON.stringify({ auth_req_id: authReqId }),
+      body: JSON.stringify({ request_id: requestId, decision }),
     })
   );
 }
 
-async function requestStatus(authReqId: string) {
+async function requestStatus(requestId: string) {
   const row = await db
     .select({ status: cibaRequests.status })
     .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+    .where(eq(cibaRequests.id, requestId))
     .get();
   return row?.status;
 }
@@ -81,38 +80,36 @@ describe("CIBA approval origin", () => {
     context.skipOriginCheck = testDefaultSkip;
   });
 
-  it.each(["/ciba/authorize", "/ciba/reject"] as const)(
-    "refuses %s from another site that carries the user's cookie",
-    async (path) => {
-      const { authReqId } = await createTestCibaRequest({
+  it.each(["approved", "denied"] as const)(
+    "refuses a %s decision from another site that carries the user's cookie",
+    async (decision) => {
+      const { requestId } = await createTestCibaRequest({
         clientId: CLIENT_ID,
         userId,
       });
 
-      const response = await postWithSession(path, authReqId, sessionToken, {
+      const response = await postDecision(decision, requestId, sessionToken, {
         origin: "https://sibling.example.com",
         "sec-fetch-site": "cross-site",
       });
 
       expect(response.status).toBe(403);
-      expect(await requestStatus(authReqId)).toBe("pending");
+      expect(await requestStatus(requestId)).toBe("pending");
     }
   );
 
   it("accepts the push service worker's same-origin request", async () => {
-    const { authReqId } = await createTestCibaRequest({
+    const { requestId } = await createTestCibaRequest({
       clientId: CLIENT_ID,
       userId,
     });
 
-    const response = await postWithSession(
-      "/ciba/reject",
-      authReqId,
-      sessionToken,
-      { origin: "null", "sec-fetch-site": "same-origin" }
-    );
+    const response = await postDecision("denied", requestId, sessionToken, {
+      origin: "null",
+      "sec-fetch-site": "same-origin",
+    });
 
     expect(response.status).toBe(200);
-    expect(await requestStatus(authReqId)).toBe("rejected");
+    expect(await requestStatus(requestId)).toBe("denied");
   });
 });

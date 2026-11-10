@@ -5,7 +5,6 @@ import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resolveAgentSubForClient } from "@/lib/agents/actor-subject";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
@@ -13,6 +12,7 @@ import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
   createTestCibaRequest,
   createTestUser,
+  hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
@@ -148,7 +148,7 @@ async function issueAgentToken(
     userId,
     scope: "openid",
     status: "approved",
-    resource: TEST_RESOURCE,
+    resources: JSON.stringify([TEST_RESOURCE]),
     hostId,
     agentSessionId: sessionId,
     displayName: "Test Agent",

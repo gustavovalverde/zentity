@@ -8,12 +8,15 @@ vi.hoisted(() => {
 
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { PAYMENT_AUTHORIZATION_SCOPE } from "@/lib/auth/oidc/payment-mint";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
@@ -85,7 +88,12 @@ describe("payment_authorization token", () => {
     });
     await db
       .update(cibaRequests)
-      .set({ status: "approved", authContextId: approval.id })
+      .set({
+        status: "approved",
+        authContextId: approval.id,
+        // A Zentity approval makes the request reference its own hash.
+        referenceId: hashCibaAuthReqId(authReqId),
+      })
       .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
       .run();
 

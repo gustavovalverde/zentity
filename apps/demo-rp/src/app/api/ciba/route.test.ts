@@ -128,10 +128,9 @@ describe("POST /api/ciba", () => {
     });
 
     expect(response.status).toBe(200);
-    const sent = JSON.parse(
-      (mocks.fetch.mock.calls[0]?.[1] as RequestInit).body as string
-    ) as Record<string, unknown>;
-    expect(sent.login_hint).toBe("pairwise-sub");
+    const sent = (mocks.fetch.mock.calls[0]?.[1] as RequestInit)
+      .body as URLSearchParams;
+    expect(sent.get("login_hint")).toBe("pairwise-sub");
     expect(mocks.readZentitySubject).toHaveBeenCalledWith(
       "aether",
       "demo-user"

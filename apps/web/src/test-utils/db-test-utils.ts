@@ -3,7 +3,6 @@ import type { NewCibaRequest } from "@/lib/db/schema/ciba";
 import crypto from "node:crypto";
 
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { agentTokenSnapshots } from "@/lib/db/schema/agent";
 import {
@@ -206,17 +205,32 @@ type CibaRequestOverrides = Partial<NewCibaRequest> & {
 interface TestCibaRequestResult {
   authContextId: string | null;
   authReqId: string;
+  /** The stored auth_req_id hash that keys CIBA-scoped stores. */
+  authReqIdHash: string;
+  requestId: string;
+}
+
+/**
+ * The stored form of a raw `auth_req_id`: the OAuth provider's default token
+ * hash (SHA-256, base64url without padding).
+ */
+export function hashCibaAuthReqId(rawAuthReqId: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(new TextEncoder().encode(rawAuthReqId))
+    .digest("base64url");
 }
 
 /**
  * Creates a CIBA request for testing. When status is "approved" and no
- * authContextId is provided, one is auto-created — mirroring the production
- * invariant that every approved CIBA request always has an auth context.
+ * authContextId is provided, one is auto-created, and the request references
+ * its own hash, mirroring what a Zentity approval records.
  */
 export async function createTestCibaRequest(
   input: CibaRequestOverrides
 ): Promise<TestCibaRequestResult> {
   const authReqId = input.authReqId ?? crypto.randomUUID();
+  const authReqIdHash = hashCibaAuthReqId(authReqId);
   const status = input.status ?? "pending";
 
   let authContextId: string | null = input.authContextId ?? null;
@@ -225,19 +239,23 @@ export async function createTestCibaRequest(
     authContextId = await createTestAuthContext(input.userId);
   }
 
-  await db
+  const [row] = await db
     .insert(cibaRequests)
     .values({
       scope: "openid",
       expiresAt: new Date(Date.now() + 300_000),
+      ...(status === "approved" ? { referenceId: authReqIdHash } : {}),
       ...input,
-      // The 1.7 CIBA plugin stores the hash of auth_req_id at rest and the token
+      // The CIBA plugin stores the hash of auth_req_id at rest and the token
       // endpoint hashes the raw value for lookup; callers receive the raw value.
-      authReqId: hashCibaAuthReqId(authReqId),
+      authReqId: authReqIdHash,
       status,
       authContextId,
     })
-    .run();
+    .returning({ id: cibaRequests.id });
+  if (!row) {
+    throw new Error("Failed to create test CIBA request");
+  }
 
-  return { authReqId, authContextId };
+  return { authReqId, authReqIdHash, authContextId, requestId: row.id };
 }

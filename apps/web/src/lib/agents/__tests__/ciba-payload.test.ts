@@ -7,7 +7,7 @@ const APPROVAL_URL = "https://app.zentity.xyz/approve?auth_req_id=req-1";
 describe("buildCibaPushPayload", () => {
   it("sets requiresVaultUnlock to true for identity-scoped requests", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid identity.name identity.dob",
     });
@@ -17,7 +17,7 @@ describe("buildCibaPushPayload", () => {
 
   it("sets requiresVaultUnlock to false for non-identity requests", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-2",
+      requestId: "req-2",
       approvalUrl: APPROVAL_URL,
       scope: "openid proof:identity",
     });
@@ -34,7 +34,7 @@ describe("buildCibaPushPayload", () => {
       "identity.nationality",
     ]) {
       const payload = buildCibaPushPayload({
-        authReqId: "req-x",
+        requestId: "req-x",
         approvalUrl: APPROVAL_URL,
         scope: `openid ${scope}`,
       });
@@ -44,7 +44,7 @@ describe("buildCibaPushPayload", () => {
 
   it("passes the plugin-built approvalUrl through to the payload", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "abc-123",
+      requestId: "abc-123",
       approvalUrl: "https://app.zentity.xyz/approve?auth_req_id=abc-123",
       scope: "openid",
     });
@@ -54,19 +54,19 @@ describe("buildCibaPushPayload", () => {
     );
   });
 
-  it("carries the raw authReqId in the payload data", () => {
+  it("carries the request id in the payload data", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req/with spaces",
+      requestId: "req/with spaces",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
     });
 
-    expect(payload.data.authReqId).toBe("req/with spaces");
+    expect(payload.data.requestId).toBe("req/with spaces");
   });
 
   it("uses client name in body when provided", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
       clientName: "Aether AI",
@@ -77,7 +77,7 @@ describe("buildCibaPushPayload", () => {
 
   it("falls back to 'An application' when clientName is absent", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
     });
@@ -87,7 +87,7 @@ describe("buildCibaPushPayload", () => {
 
   it("defaults title to 'An application is requesting access' when no agentName", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
     });
@@ -97,7 +97,7 @@ describe("buildCibaPushPayload", () => {
 
   it("uses agentName in title when provided", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
       agentName: "Claude Code",
@@ -108,7 +108,7 @@ describe("buildCibaPushPayload", () => {
 
   it("formats payment amounts in the asset's display unit", () => {
     const payload = buildCibaPushPayload({
-      authReqId: "req-1",
+      requestId: "req-1",
       approvalUrl: APPROVAL_URL,
       scope: "openid",
       clientName: "Aether AI",

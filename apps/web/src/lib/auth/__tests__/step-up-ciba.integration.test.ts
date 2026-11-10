@@ -1,22 +1,28 @@
 import crypto from "node:crypto";
 
+import { makeSignature } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
-import { hashCibaAuthReqId } from "@/lib/auth/oidc/ciba-auth-req";
 import { db } from "@/lib/db/connection";
 import { sessions } from "@/lib/db/schema/auth";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { identityBundles } from "@/lib/db/schema/identity";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
-import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+import {
+  createTestUser,
+  hashCibaAuthReqId,
+  resetDatabase,
+} from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TEST_CLIENT_ID = "step-up-ciba-test";
 const FPA_CLIENT_ID = "step-up-ciba-fpa-test";
-const APPROVE_URL = "http://localhost:3000/api/auth/ciba/authorize";
+const DECISION_URL = "http://localhost:3000/api/auth/ciba/decision";
 let defaultAuthContextId: string | null = null;
 
 async function createTestClient() {
@@ -62,6 +68,10 @@ async function insertCibaRequest(
         overrides.authContextId ??
         (status === "approved" ? defaultAuthContextId : undefined),
       expiresAt: new Date(Date.now() + 300_000),
+      // A Zentity approval makes the request reference its own hash.
+      ...(status === "approved"
+        ? { referenceId: hashCibaAuthReqId(authReqId) }
+        : {}),
       ...overrides,
       // Plugin stores the hash at rest; callers send the raw value.
       authReqId: hashCibaAuthReqId(authReqId),
@@ -84,7 +94,7 @@ async function insertSession(userId: string, authContextId: string) {
       updatedAt: new Date(),
     })
     .run();
-  return token;
+  return `${token}.${await makeSignature(token, env.BETTER_AUTH_SECRET)}`;
 }
 
 async function seedTier1User(userId: string) {
@@ -99,15 +109,20 @@ async function seedTier1User(userId: string) {
     .run();
 }
 
-function approveRequest(authReqId: string, sessionToken: string) {
+async function approveRequest(authReqId: string, sessionToken: string) {
+  const row = await db
+    .select({ id: cibaRequests.id })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
+    .get();
   return auth.handler(
-    new Request(APPROVE_URL, {
+    new Request(DECISION_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         cookie: `better-auth.session_token=${sessionToken}`,
       },
-      body: JSON.stringify({ auth_req_id: authReqId }),
+      body: JSON.stringify({ request_id: row?.id, decision: "approved" }),
     })
   );
 }
@@ -142,9 +157,9 @@ describe("CIBA step-up: acr_values at approval time", () => {
     const response = await approveRequest(authReqId, sessionToken);
 
     expect(response.status).toBe(403);
-    const body = (await response.json()) as { message?: string };
-    expect(body.message).toContain("tier-1");
-    expect(body.message).toContain("urn:zentity:assurance:tier-2");
+    const body = (await response.json()) as { error_description?: string };
+    expect(body.error_description).toContain("tier-1");
+    expect(body.error_description).toContain("urn:zentity:assurance:tier-2");
   });
 
   it("tier-0 user cannot approve CIBA request requiring tier-1", async () => {
@@ -156,8 +171,8 @@ describe("CIBA step-up: acr_values at approval time", () => {
     const response = await approveRequest(authReqId, sessionToken);
 
     expect(response.status).toBe(403);
-    const body = (await response.json()) as { message?: string };
-    expect(body.message).toContain("tier-0");
+    const body = (await response.json()) as { error_description?: string };
+    expect(body.error_description).toContain("tier-0");
   });
 
   it("tier-1 user can approve CIBA request requiring tier-1", async () => {
@@ -169,8 +184,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
 
     const response = await approveRequest(authReqId, sessionToken);
 
-    // Should succeed (200) or proceed to the plugin handler
-    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("higher tier satisfies lower requirement", async () => {
@@ -182,7 +196,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
 
     const response = await approveRequest(authReqId, sessionToken);
 
-    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("no acr_values passes without enforcement", async () => {
@@ -190,8 +204,7 @@ describe("CIBA step-up: acr_values at approval time", () => {
 
     const response = await approveRequest(authReqId, sessionToken);
 
-    // Should pass through to the plugin handler (not blocked by our hook)
-    expect(response.status).not.toBe(403);
+    expect(response.status).toBe(200);
   });
 
   it("preference order: first satisfiable ACR wins", async () => {
@@ -203,8 +216,8 @@ describe("CIBA step-up: acr_values at approval time", () => {
 
     const response = await approveRequest(authReqId, sessionToken);
 
-    // tier-1 satisfies the second value, should not be rejected
-    expect(response.status).not.toBe(403);
+    // tier-1 satisfies the second value, so the approval succeeds
+    expect(response.status).toBe(200);
   });
 });
 

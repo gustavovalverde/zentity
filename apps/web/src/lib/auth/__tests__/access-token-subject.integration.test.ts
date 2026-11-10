@@ -33,12 +33,12 @@ const MCP_RESOURCE = env.MCP_PUBLIC_URL;
 const RESOURCE_SERVER_ID = "mcp-resource-server";
 const RESOURCE_SERVER_SECRET = "resource-server-secret";
 
-async function postJson(path: string, body: Record<string, unknown>) {
+async function postForm(path: string, body: Record<string, string>) {
   const response = await auth.handler(
     new Request(`${AUTH_URL}${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(body),
     })
   );
   const text = await response.text();
@@ -55,7 +55,7 @@ async function mintMcpAccessToken(userId: string): Promise<string> {
     clientId: CLIENT_ID,
     userId,
     status: "approved",
-    resource: MCP_RESOURCE,
+    resources: JSON.stringify([MCP_RESOURCE]),
   });
   const { status, json } = await postTokenWithDpop({
     grant_type: CIBA_GRANT_TYPE,
@@ -98,7 +98,7 @@ describe("access token subjects", () => {
       [BASE, null],
       [MCP_RESOURCE, MCP_RESOURCE],
     ] as const) {
-      const { status, json } = await postJson("/oauth2/bc-authorize", {
+      const { status, json } = await postForm("/oauth2/bc-authorize", {
         client_id: CLIENT_ID,
         scope: "openid",
         login_hint: pairwiseSub as string,
@@ -107,18 +107,21 @@ describe("access token subjects", () => {
       expect({ status, json }).toMatchObject({ status: 200 });
 
       const rows = await db
-        .select({ resource: cibaRequests.resource })
+        .select({ resources: cibaRequests.resources })
         .from(cibaRequests)
         .where(eq(cibaRequests.clientId, CLIENT_ID))
         .all();
-      expect(rows.at(-1)?.resource).toBe(stored);
+      const resources = rows.at(-1)?.resources;
+      expect(resources ? JSON.parse(resources) : null).toEqual(
+        stored ? [stored] : null
+      );
     }
   });
 
   it("accepts the client's pairwise subject as a CIBA login hint", async () => {
-    const pairwiseSub = await resolveSubForClientId(userId, CLIENT_ID);
+    const pairwiseSub = (await resolveSubForClientId(userId, CLIENT_ID)) ?? "";
 
-    const { status, json } = await postJson("/oauth2/bc-authorize", {
+    const { status, json } = await postForm("/oauth2/bc-authorize", {
       client_id: CLIENT_ID,
       scope: "openid",
       login_hint: pairwiseSub,
@@ -134,7 +137,7 @@ describe("access token subjects", () => {
   });
 
   it("rejects another client's pairwise subject as a CIBA login hint", async () => {
-    const { status } = await postJson("/oauth2/bc-authorize", {
+    const { status } = await postForm("/oauth2/bc-authorize", {
       client_id: CLIENT_ID,
       scope: "openid",
       login_hint: await computePairwiseSub(

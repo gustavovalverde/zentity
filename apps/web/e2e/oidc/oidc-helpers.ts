@@ -29,7 +29,7 @@ export interface DpopBinding {
   jkt: string;
 }
 
-// Minimal schema for E2E credential lookup (Playwright can't resolve @/ imports)
+// Minimal schema for E2E database lookups (Playwright can't resolve @/ imports)
 const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
   id: text("id").primaryKey(),
   credential: text("credential").notNull(),
@@ -37,6 +37,11 @@ const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
   statusListId: text("status_list_id").notNull(),
   statusListIndex: integer("status_list_index").notNull(),
   revokedAt: integer("revoked_at", { mode: "timestamp" }),
+});
+
+const cibaRequests = sqliteTable("ciba_request", {
+  id: text("id").primaryKey(),
+  authReqId: text("auth_req_id").notNull(),
 });
 
 const RAW_BASE_URL =
@@ -543,14 +548,14 @@ export async function verifyIssuedCredential(input: {
   return payload;
 }
 
-export async function findIssuedCredentialRecord(credential: string) {
+function openE2eDatabase() {
   const dbUrl =
     process.env.E2E_TURSO_DATABASE_URL ||
     process.env.TURSO_DATABASE_URL ||
     process.env.E2E_DATABASE_PATH;
 
   if (!dbUrl) {
-    throw new Error("Missing database URL for E2E credential lookup");
+    throw new Error("Missing database URL for E2E database lookups");
   }
 
   const url =
@@ -558,12 +563,16 @@ export async function findIssuedCredentialRecord(credential: string) {
       ? dbUrl
       : `file:${dbUrl}`;
 
-  const client = createClient({
+  return createClient({
     url,
     ...(process.env.TURSO_AUTH_TOKEN === undefined
       ? {}
       : { authToken: process.env.TURSO_AUTH_TOKEN }),
   });
+}
+
+export async function findIssuedCredentialRecord(credential: string) {
+  const client = openE2eDatabase();
   const db = drizzle(client, { schema: { oidc4vciIssuedCredentials } });
 
   try {
@@ -586,6 +595,54 @@ export async function findIssuedCredentialRecord(credential: string) {
   } finally {
     client.close();
   }
+}
+
+// --- CIBA Helpers ---
+
+/**
+ * The request id the approval page and `/ciba/decision` take. The provider
+ * stores only a SHA-256 hash of the `auth_req_id` the client receives.
+ */
+export async function findCibaRequestId(authReqId: string): Promise<string> {
+  const authReqIdHash = crypto
+    .createHash("sha256")
+    .update(authReqId)
+    .digest("base64url");
+  const client = openE2eDatabase();
+  const db = drizzle(client, { schema: { cibaRequests } });
+
+  try {
+    const rows = await db
+      .select({ id: cibaRequests.id })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, authReqIdHash))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      throw new Error("CIBA request not found");
+    }
+    return row.id;
+  } finally {
+    client.close();
+  }
+}
+
+/** Records the signed-in user's decision on a CIBA request. */
+export async function decideCibaRequest(
+  request: APIRequestContext,
+  input: {
+    authReqId: string;
+    cookieHeader: string;
+    decision?: "approved" | "denied";
+  }
+): Promise<APIResponse> {
+  return await request.post(`${AUTH_BASE_URL}/ciba/decision`, {
+    data: {
+      request_id: await findCibaRequestId(input.authReqId),
+      decision: input.decision ?? "approved",
+    },
+    headers: { Cookie: input.cookieHeader, ...ORIGIN_HEADERS },
+  });
 }
 
 // --- HAIP Helpers: DPoP and PAR ---

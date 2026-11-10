@@ -359,9 +359,9 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.id_token).toEqual(expect.any(String));
 
       const claims = decodeJwt(json.id_token as string);
-      // acr is AS-owned ("0"); the tier rides in the namespaced claim.
-      expect(claims.acr).toBe("0");
-      expect(claims.amr).toBeUndefined();
+      // The code records the tier as acr and the OPAQUE login's amr.
+      expect(claims.acr).toBe("urn:zentity:assurance:tier-0");
+      expect(claims.amr).toEqual(["pwd"]);
       expect(claims.acr_eidas).toBeUndefined();
       const assurance = claims.zentity_assurance as Record<string, unknown>;
       expect(assurance.acr).toBe("urn:zentity:assurance:tier-0");

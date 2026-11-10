@@ -9,6 +9,7 @@ import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
+import { computeAcr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { auth } from "@/lib/auth/auth-config";
 import {
@@ -982,6 +983,13 @@ async function issueAuthorizationCode(
     });
   }
 
+  // The ID token asserts the same acr and amr the browser flow's
+  // authenticationContext would.
+  const [assurance, authentication] = await Promise.all([
+    getAccountAssurance(userId, { isAuthenticated: true }),
+    getAuthenticationStateBySessionId(sessionId),
+  ]);
+
   await db.insert(verifications).values({
     id: randomBytes(16).toString("hex"),
     identifier: codeHash,
@@ -1004,6 +1012,8 @@ async function issueAuthorizationCode(
       sessionId,
       authContextId,
       authTime: authTimeMs,
+      acr: computeAcr(assurance.tier),
+      ...(authentication?.amr.length ? { amr: authentication.amr } : {}),
       authSession,
     }),
     expiresAt: new Date((iat + CODE_LIFETIME_S) * 1000),

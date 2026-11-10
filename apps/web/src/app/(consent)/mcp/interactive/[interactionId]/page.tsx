@@ -1,10 +1,51 @@
+import type { GenericEndpointContext } from "@better-auth/core";
+
+import {
+  getOAuthProviderApi,
+  type OAuthOptions,
+  type Scope,
+} from "@better-auth/oauth-provider";
+import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AgentApprovalView } from "@/components/agent-approval-view";
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { getAccountAssurance } from "@/lib/assurance/posture";
+import { auth } from "@/lib/auth/auth-config";
 import { detectAuthMode, getFreshSession } from "@/lib/auth/session";
+import { db } from "@/lib/db/connection";
+import { cibaRequests } from "@/lib/db/schema/ciba";
+
+/**
+ * The MCP server only learns the raw `auth_req_id` bc-authorize returns, so
+ * its interaction link names the request that way. It is hashed with the
+ * provider's token storage to find the request.
+ */
+async function findCibaRequestIdByAuthReqId(
+  rawAuthReqId: string
+): Promise<string | undefined> {
+  const context = await auth.$context;
+  const plugin = context.getPlugin("oauth-provider") as {
+    options: OAuthOptions<Scope[]>;
+  } | null;
+  if (!plugin) {
+    return undefined;
+  }
+  // hashToken reads only the provider options, so the auth context suffices.
+  const provider = getOAuthProviderApi(
+    { context } as unknown as GenericEndpointContext,
+    plugin.options
+  );
+  const authReqIdHash = await provider.hashToken(rawAuthReqId, "auth_req_id");
+  const row = await db
+    .select({ id: cibaRequests.id })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.authReqId, authReqIdHash))
+    .limit(1)
+    .get();
+  return row?.id;
+}
 
 interface InteractionCopy {
   deniedDescription?: string;
@@ -103,13 +144,14 @@ export default async function McpInteractivePage({
     );
   }
 
+  const requestId = await findCibaRequestIdByAuthReqId(authReqId);
   const [detected, assurance, approval] = await Promise.all([
     detectAuthMode(session.user.id),
     getAccountAssurance(session.user.id),
-    resolveCibaApprovalData(authReqId, session.user.id),
+    requestId ? resolveCibaApprovalData(requestId, session.user.id) : null,
   ]);
 
-  if (!approval) {
+  if (!(approval && requestId)) {
     return (
       <div className="w-full max-w-md">
         <div className="rounded-lg border p-6 text-center">
@@ -124,10 +166,10 @@ export default async function McpInteractivePage({
       <AgentApprovalView
         agentIdentity={approval.agentIdentity}
         authMode={detected.authMode}
-        authReqId={authReqId}
         initialRequest={approval.request}
         interactionCopy={buildInteractionCopy({ tool, fields })}
         registeredAgent={approval.registeredAgent}
+        requestId={requestId}
         userTier={assurance.tier}
         wallet={detected.wallet}
       />

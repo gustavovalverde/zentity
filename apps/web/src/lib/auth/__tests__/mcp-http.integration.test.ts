@@ -382,7 +382,7 @@ describe("remote MCP HTTP auth integration", () => {
       clientId: REMOTE_CLIENT_ID,
       userId,
       status: "approved",
-      resource: MCP_PUBLIC_URL,
+      resources: JSON.stringify([MCP_PUBLIC_URL]),
     });
 
     const resourceKeyPair = await createDpopKeyPair();

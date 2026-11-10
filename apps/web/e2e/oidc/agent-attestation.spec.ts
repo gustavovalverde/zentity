@@ -4,6 +4,7 @@ import { decodeJwt } from "jose";
 import {
   createDpopProof,
   createIssuerSession,
+  decideCibaRequest,
   registerCibaClient,
 } from "./oidc-helpers";
 
@@ -11,10 +12,6 @@ const RAW_BASE_URL =
   process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3000";
 const BASE_URL = RAW_BASE_URL.replace(/\/+$/, "");
 const AUTH_BASE_URL = `${BASE_URL}/api/auth`;
-const ORIGIN_HEADERS = {
-  Origin: BASE_URL,
-  "Content-Type": "application/json",
-};
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const TOKEN_URL = `${AUTH_BASE_URL}/oauth2/token`;
 // Zentity-audienced access tokens are opaque; an outside resource server gets a readable JWT.
@@ -42,7 +39,7 @@ test.describe("Registered agent assertion in CIBA flow", () => {
 
     // Self-declared agent_claims are no longer part of the trusted protocol flow.
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
-      data: {
+      form: {
         client_id: clientId,
         login_hint: session.userId,
         scope: "openid",
@@ -50,16 +47,15 @@ test.describe("Registered agent assertion in CIBA flow", () => {
         agent_claims: agentClaims,
         resource: MCP_RESOURCE,
       },
-      headers: ORIGIN_HEADERS,
+      headers: { Origin: BASE_URL },
     });
     expect(bcRes.ok()).toBeTruthy();
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
     expect(auth_req_id).toBeTruthy();
 
-    // Approve
-    const approveRes = await request.post(`${AUTH_BASE_URL}/ciba/authorize`, {
-      data: { auth_req_id },
-      headers: { Cookie: session.cookieHeader, ...ORIGIN_HEADERS },
+    const approveRes = await decideCibaRequest(request, {
+      authReqId: auth_req_id,
+      cookieHeader: session.cookieHeader,
     });
     expect(approveRes.ok()).toBeTruthy();
 
@@ -93,22 +89,23 @@ test.describe("Registered agent assertion in CIBA flow", () => {
 
     // CIBA without agent claims
     const bcRes = await request.post(`${AUTH_BASE_URL}/oauth2/bc-authorize`, {
-      data: {
+      form: {
         client_id: clientId,
         login_hint: session.userId,
         scope: "openid",
         binding_message: "No agent claims test",
         resource: MCP_RESOURCE,
       },
-      headers: ORIGIN_HEADERS,
+      headers: { Origin: BASE_URL },
     });
     expect(bcRes.ok()).toBeTruthy();
     const { auth_req_id } = (await bcRes.json()) as { auth_req_id: string };
 
-    await request.post(`${AUTH_BASE_URL}/ciba/authorize`, {
-      data: { auth_req_id },
-      headers: { Cookie: session.cookieHeader, ...ORIGIN_HEADERS },
+    const approveRes = await decideCibaRequest(request, {
+      authReqId: auth_req_id,
+      cookieHeader: session.cookieHeader,
     });
+    expect(approveRes.ok()).toBeTruthy();
 
     const dpop = await createDpopProof({ method: "POST", url: TOKEN_URL });
     const tokenRes = await request.post(TOKEN_URL, {

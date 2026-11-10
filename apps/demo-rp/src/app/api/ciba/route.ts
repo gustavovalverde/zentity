@@ -69,28 +69,38 @@ async function handleAuthorize(
   agentAssertion: string | null
 ) {
   const notificationToken = crypto.randomUUID();
-  const callbackUrl = `${env.NEXT_PUBLIC_APP_URL}/api/ciba/callback`;
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    // CIBA §7.1: the backchannel authentication request is form-encoded.
+    "Content-Type": "application/x-www-form-urlencoded",
     ...(agentAssertion ? { "Agent-Assertion": agentAssertion } : {}),
   };
+
+  const form = new URLSearchParams({
+    client_id: client.clientId,
+    scope: data.scope,
+    login_hint: data.loginHint,
+    resource: env.ZENTITY_URL,
+    // Sent back only to clients registered for ping delivery.
+    client_notification_token: notificationToken,
+  });
+  if (client.clientSecret) {
+    form.set("client_secret", client.clientSecret);
+  }
+  if (data.bindingMessage) {
+    form.set("binding_message", data.bindingMessage);
+  }
+  if (data.authorizationDetails) {
+    form.set("authorization_details", data.authorizationDetails);
+  }
+  if (data.acrValues) {
+    form.set("acr_values", data.acrValues);
+  }
 
   const res = await fetch(`${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      client_id: client.clientId,
-      ...(client.clientSecret ? { client_secret: client.clientSecret } : {}),
-      scope: data.scope,
-      login_hint: data.loginHint,
-      binding_message: data.bindingMessage,
-      authorization_details: data.authorizationDetails,
-      ...(data.acrValues ? { acr_values: data.acrValues } : {}),
-      resource: env.ZENTITY_URL,
-      client_notification_token: notificationToken,
-      client_notification_uri: callbackUrl,
-    }),
+    body: form,
   });
 
   const body = (await res.json()) as Record<string, unknown>;
