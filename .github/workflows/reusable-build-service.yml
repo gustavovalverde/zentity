@@ -158,14 +158,3 @@ jobs:
           IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
         run: |
           cosign sign --yes "${IMAGE_REF}"
-
-      # Docker Scout vulnerability scanning on release PRs
-      - name: Docker Scout
-        if: github.event_name == 'pull_request' && contains(github.event.pull_request.title, 'Release')
-        uses: docker/scout-action@e7e2a72bf1485d10a58f30696b6c513b261ce4fa # v1.29.0
-        with:
-          command: cves,recommendations
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
-          only-severities: critical,high
-          only-fixed: true
-          sarif-file: sarif-${{ inputs.service_name }}.sarif
