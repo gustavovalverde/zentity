@@ -5,6 +5,7 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
+import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
   tokenScopes,
@@ -15,6 +16,8 @@ import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
 
 interface UserAccessPrincipal {
+  /** The user's authentication the token was issued from, when recorded. */
+  authContextId: string | null;
   clientId: string;
   kind: "user_access_token";
   scopes: string[];
@@ -121,9 +124,21 @@ export async function requireBootstrapAccessToken(
     return authError(403, "Missing required scope");
   }
 
+  const authentication = await resolveAuthenticationContext({
+    authContextId: extensions.authContextId,
+    sessionId: typeof payload.sid === "string" ? payload.sid : null,
+  });
+
   return {
     ok: true,
-    principal: { kind: "user_access_token", userId, clientId, scopes, token },
+    principal: {
+      kind: "user_access_token",
+      authContextId: authentication?.id ?? null,
+      userId,
+      clientId,
+      scopes,
+      token,
+    },
   };
 }
 

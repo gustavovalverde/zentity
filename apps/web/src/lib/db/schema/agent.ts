@@ -8,7 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { defaultId, users } from "./auth";
+import { authenticationContexts, defaultId, users } from "./auth";
 import { oauthClients } from "./oauth-provider";
 
 export const agentHosts = sqliteTable(
@@ -58,6 +58,12 @@ export const agentSessions = sqliteTable(
     runtime: text("runtime"),
     model: text("model"),
     version: text("version"),
+    // The user's authentication that registered this session. Approvals the
+    // session's capability grants make on the user's behalf carry it.
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     idleTtlSec: integer("idle_ttl_sec").notNull().default(1800),
     maxLifetimeSec: integer("max_lifetime_sec").notNull().default(86_400),
     lastActiveAt: integer("last_seen_at", { mode: "timestamp_ms" })

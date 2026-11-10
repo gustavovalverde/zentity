@@ -245,6 +245,8 @@ async function verifyAgentAssertion(
 interface BoundAgentAssertion {
   agentName: string;
   approvalStrength?: string | undefined;
+  /** The user's authentication that registered the agent session. */
+  authContextId: string | null;
   capabilityName: string | null;
   registeredAgent: {
     attestationProvider?: string | null;
@@ -295,6 +297,7 @@ export async function bindAgentAssertionToCibaRequest(
 
   const session = await db
     .select({
+      authContextId: agentSessions.authContextId,
       displayName: agentSessions.displayName,
       hostId: agentSessions.hostId,
       id: agentSessions.id,
@@ -395,6 +398,7 @@ export async function bindAgentAssertionToCibaRequest(
   return {
     sessionId: session.id,
     agentName: session.displayName,
+    authContextId: session.authContextId,
     capabilityName,
     approvalStrength,
     registeredAgent: {
