@@ -76,7 +76,7 @@ This approach uses standard OAuth 2.0 mechanics:
 
 Zentity also supports two additional disclosure paths alongside scopes:
 
-* **OIDC4IDA** (OpenID for Identity Assurance) — The `@better-auth/oidc4ida` plugin returns `verified_claims` in id_token and userinfo when an RP includes the `claims` parameter in the authorize request (per OIDC4IDA Section 7). The `verified_claims` structure wraps verification evidence and attested claims under the `zentity` trust framework. If the `claims` parameter is absent, the plugin does not inject `verified_claims` — scope-based disclosure (this ADR) handles those requests instead.
+* **OIDC4IDA** (OpenID for Identity Assurance): Zentity's OIDC4IDA provider extension returns `verified_claims` in id_token and userinfo when an RP includes the `claims` parameter in the authorize request (per OIDC4IDA Section 6). The `verified_claims` structure wraps verification evidence and attested claims under the `zentity` trust framework. If the `claims` parameter is absent, the extension does not add `verified_claims`, and scope-based disclosure (this ADR) handles those requests instead.
 * **SD-JWT VC** (OIDC4VCI) — Holder-controlled selective disclosure at credential presentation time.
 
 ### Expected Consequences
@@ -89,7 +89,7 @@ Zentity also supports two additional disclosure paths alongside scopes:
 
 ## Alternatives Considered
 
-* **OIDC `claims` parameter only (Section 5.5)**: Using `claims` as the sole disclosure mechanism via `{"userinfo": {"given_name": {"essential": true}}}`. Rejected as the primary path because most OAuth libraries don't implement it, while all support scopes. However, the `claims` parameter is used by the OIDC4IDA plugin as a complementary path for RPs that specifically need `verified_claims` with evidence metadata.
+* **OIDC `claims` parameter only (Section 5.5)**: Using `claims` as the sole disclosure mechanism via `{"userinfo": {"given_name": {"essential": true}}}`. Rejected as the primary path because most OAuth libraries don't implement it, while all support scopes. However, the `claims` parameter is used by the OIDC4IDA extension as a complementary path for RPs that specifically need `verified_claims` with evidence metadata.
 * **Server-side scope enforcement only**: RP pre-defines granular scopes (`proof:age`), no user choice at consent. Rejected because this is access control, not selective disclosure — the user has no agency.
 * **Single `proof:identity` scope with all-or-nothing consent**: The previous approach. Rejected because it violates minimal disclosure.
 * **Merge proof:* and identity.* into one family**: Would lose the clear separation between non-PII verification status and actual personal data, which serve fundamentally different use cases.
@@ -97,7 +97,7 @@ Zentity also supports two additional disclosure paths alongside scopes:
 ## More Information
 
 * Proof scope implementation: `apps/web/src/lib/auth/oidc/proof-scopes.ts` (scope mapping and filtering)
-* OIDC4IDA implementation: `oidc4ida({ getVerifiedClaims })` in `apps/web/src/lib/auth/auth.ts`
+* OIDC4IDA implementation: `verifiedClaimsPlugin()` in `apps/web/src/lib/auth/oidc/disclosure/verified-claims.ts`, an `extendOAuthProvider` claims contributor
 * Consent UI: `apps/web/src/app/oauth/consent/consent-client.tsx`
 * Userinfo hook: `customUserInfoClaims` in `apps/web/src/lib/auth/auth.ts`
 * Previous ADR: [Consent-Based Disclosure](0004-consent-based-disclosure.md)

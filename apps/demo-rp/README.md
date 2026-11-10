@@ -44,7 +44,7 @@ cd apps/web && pnpm dev  # port 3000
 cd apps/demo-rp && pnpm exec tsx scripts/generate-dev-certs.ts
 ```
 
-This creates x509 certificates in `.data/certs/` for the OID4VP `x509_hash` client_id scheme.
+This creates x509 certificates in `.data/certs/` for the OID4VP `x509_hash:` Client Identifier prefix.
 
 ### 3. Initialize Database
 
@@ -169,10 +169,11 @@ Common failure states are visible in the protocol trace:
 
 The VeriPass wallet can receive credentials from Zentity via the `/api/veripass/issue` endpoint:
 
-1. Pre-authorized code grant — wallet exchanges code for DPoP-bound access token
-2. Holder key generation — ephemeral Ed25519 keypair created client-side
-3. Proof JWT — signed with holder key, bound to DPoP nonce
-4. Credential storage — SD-JWT VC stored in `localStorage` (not DB, not session)
+1. Pre-authorized code grant: wallet exchanges code for DPoP-bound access token
+2. Nonce: wallet requests a fresh `c_nonce` from Zentity's `POST /api/auth/oidc4vci/nonce`
+3. Holder key generation: ephemeral Ed25519 keypair created client-side
+4. Proof JWT: signed with holder key, carries the `c_nonce`
+5. Credential storage: SD-JWT VC stored in `localStorage` (not DB, not session)
 
 ### Limitations
 
@@ -221,15 +222,15 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 
 1. User selects a verifier scenario
 2. A DCQL query is built from the scenario's required claims
-3. A VP session is created with a JAR JWT signed using x5c chain (`x509_hash` client_id scheme)
+3. A VP session is created with a JAR JWT signed using x5c chain (`client_id` is `x509_hash:<leaf certificate thumbprint>`)
 4. The wallet selects disclosures matching the query and creates a VP token
 5. The verifier receives the `direct_post.jwt` response (JARM with ECDH-ES P-256 encryption)
-6. KB-JWT is verified: holder binding via JWK thumbprint against `cnf.jkt`, audience + nonce + freshness (300s)
+6. KB-JWT is verified against the holder key in the credential's `cnf.jwk`, with audience + nonce + freshness (300s)
 7. Disclosed claims are extracted and displayed
 
 ### KB-JWT Verification
 
-`verifyVpToken()` in `src/lib/verify.ts` performs the full SD-JWT verification chain: issuer signature against Zentity JWKS, disclosure decode, `cnf.jkt` thumbprint match, KB-JWT signature, and audience/nonce/freshness enforcement.
+`verifyVpToken()` in `src/lib/verify.ts` performs the full SD-JWT verification chain: issuer signature against Zentity JWKS, disclosure decode, holder key from `cnf.jwk`, KB-JWT signature, and audience/nonce/freshness enforcement.
 
 ## How Step-Up Works
 

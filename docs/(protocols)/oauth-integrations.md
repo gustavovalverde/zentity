@@ -57,11 +57,10 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/auth/ciba/verify?auth_req_id=...` | Fetch pending request details (for approval page) |
+| `GET /api/auth/ciba/request?request_id=...` | Fetch a pending request addressed to the signed-in user (for the approval page) |
 | `POST /api/ciba/identity/intent` | Acquire intent token for PII staging (binds user + CIBA request + scopes) |
 | `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (ephemeral, 10-min TTL) |
-| `POST /api/auth/ciba/authorize` | Approve a pending CIBA request |
-| `POST /api/auth/ciba/reject` | Deny a pending CIBA request |
+| `POST /api/auth/ciba/decision` | Approve or deny a pending CIBA request: `{ request_id, decision: "approved" \| "denied" }` |
 | `POST /api/ciba/push/subscribe` | Register browser push subscription for CIBA notifications |
 | `POST /api/ciba/push/unsubscribe` | Remove push subscription |
 
@@ -183,7 +182,7 @@ sequenceDiagram
   AS-->>Agent: { token_endpoint, backchannel_authentication_endpoint, dpop_signing_alg_values_supported }
 
   Note over Agent,AS: Client Registration
-  Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], token_endpoint_auth_method: "none" }
+  Agent->>AS: POST /oauth2/register { grant_types: ["ciba"], backchannel_token_delivery_mode: "poll", token_endpoint_auth_method: "none" }
   AS-->>Agent: { client_id }
 
   Note over Agent: Registered agent runtimes pre-establish a durable host and fresh agent session
@@ -192,19 +191,15 @@ sequenceDiagram
   AS->>Notify: Push notification + email with approval link
   AS-->>Agent: { auth_req_id, expires_in: 300, interval: 5 }
 
-  Note over Agent,AS: DPoP Nonce Acquisition
-  Agent->>Agent: Generate ephemeral ES256 keypair
-  Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof
-  AS-->>Agent: 400 { error: "use_dpop_nonce" } + DPoP-Nonce header
-
   Note over Agent,AS: Token Polling
+  Agent->>Agent: Generate ephemeral ES256 keypair
   loop Every interval seconds
-    Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof (with nonce)
-    AS-->>Agent: 400 { error: "authorization_pending" } + new DPoP-Nonce
+    Agent->>AS: POST /oauth2/token { grant_type=ciba, auth_req_id } + DPoP proof
+    AS-->>Agent: 400 { error: "authorization_pending" }
   end
 
   User->>AS: Approve via dashboard / push notification
-  Agent->>AS: POST /oauth2/token + DPoP proof (with latest nonce)
+  Agent->>AS: POST /oauth2/token + DPoP proof
   AS-->>Agent: 200 { access_token, id_token, token_type: "DPoP", act: { sub: pairwise_agent_session_sub } }
 
   Note over Agent,RS: Use tokens
@@ -213,11 +208,15 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
+**Registration**: a CIBA client must register `backchannel_token_delivery_mode` as `poll` or `ping`. Registration without a supported delivery mode fails with `invalid_client_metadata`.
+
+**Request encoding**: `POST /oauth2/bc-authorize` accepts only `application/x-www-form-urlencoded` bodies (CIBA Core §7.1). Send `authorization_details` as a JSON-encoded string parameter. A value that is not valid JSON gets `invalid_request`. `binding_message` must be plain text of at most 64 characters, or the request gets `invalid_binding_message`. `truncateBindingMessage` from `@zentity/sdk/protocol` shortens a longer message; shorten it before you show it to the user or hash it into an `Agent-Assertion`.
+
 **`login_hint`**: the subject identifier the client received for the user from Zentity (its pairwise `sub` for a pairwise client, the user id for a public client). Zentity does not accept email addresses. A hint that is not a subject issued to the requesting client gets `unknown_user_id`, whether or not an account exists, so a client cannot probe for accounts or prompt users who never authorized it.
 
 CIBA requests support `authorization_details` (RFC 9396) for structured action metadata such as purchase amounts and merchant info. Registered agent runtimes do not send self-declared `agent_claims`. They send an `Agent-Assertion` header signed by the live session key. When that assertion verifies, the server snapshots the registered session metadata onto `ciba_request` and later emits an AAP-profiled delegated token with `agent`, `task`, `capabilities`, `oversight`, and `audit` claims alongside the standard pairwise `act.sub` actor identifier. Unverified JWT payloads used to route agent assertions are parsed with duplicate-key rejection before issuer/session selection, so JSON parser ambiguity cannot change which key or session is used for verification. See [Agent Architecture](<../(architecture)/agent-architecture.md>) for the host registration and session lifecycle model.
 
-The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[authReqId]` (no dashboard chrome).
+The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[requestId]` (no dashboard chrome). The request id in that link is not the `auth_req_id`. The client's `auth_req_id` is stored only as a hash and never appears in a URL.
 
 **`requiresVaultUnlock`**: When a CIBA request includes identity scopes, the push notification shows only a "Deny" inline action (vault unlock requires a full browser context). All clicks route the user to the approval page where they can unlock their vault and approve.
 
@@ -225,9 +224,9 @@ The user is notified through three channels: web push notifications with inline 
 
 CIBA also supports **ping mode** for clients that can receive callbacks instead of polling:
 
-1. The client registers a `backchannel_client_notification_endpoint` via DCR
+1. The client registers `backchannel_token_delivery_mode: "ping"` and a `backchannel_client_notification_endpoint` via DCR. The endpoint must be a public `https` URL.
 2. The client includes a `client_notification_token` in the `POST /oauth2/bc-authorize` request
-3. When the user approves, the AS sends a POST to the client's notification endpoint with `{ "auth_req_id": "..." }`
+3. When the user approves, the AS sends a POST to the registered notification endpoint with `{ "auth_req_id": "..." }`. Zentity never sends a ping to a URL supplied in the request itself.
 4. The client then exchanges the `auth_req_id` at the token endpoint (with DPoP proof) to obtain tokens
 
 Ping mode eliminates polling overhead and reduces latency between approval and token acquisition.
@@ -283,25 +282,20 @@ All token requests require Demonstrating Proof-of-Possession. DPoP binds access 
 **How it works:**
 
 1. The client generates an ephemeral ES256 keypair (once per session)
-2. Each request to the token endpoint includes a `DPoP` header: a JWT signed by the client's private key containing the HTTP method (`htm`), URL (`htu`), and a server-issued nonce
+2. Each request to the token endpoint includes a `DPoP` header: a JWT signed by the client's private key containing the HTTP method (`htm`), the request URL without query or fragment (`htu`), a unique `jti`, and the issue time (`iat`)
 3. The server binds the access token to the client's public key via `cnf.jkt` (JWK thumbprint)
 4. When using the access token at a resource endpoint, the client includes a DPoP proof with an `ath` claim (SHA-256 hash of the access token)
 
-**Nonce protocol:**
+**Proof checks**: the token endpoint, userinfo, Zentity's protected resources, and the first-party Authorization Challenge Endpoint verify each proof the same way:
 
-```mermaid
-sequenceDiagram
-  participant Client
-  participant Server
+- The signature verifies with the embedded ES256 key, and `typ` is `dpop+jwt`.
+- `htm` and `htu` match the request.
+- `iat` falls inside the proof lifetime window.
+- The `jti` has not been seen before. Zentity reserves each `jti` in the database for the proof's lifetime, so a replayed proof is rejected on every server instance.
 
-  Client->>Server: POST /oauth2/token + DPoP proof (no nonce)
-  Server-->>Client: 400 { error: "use_dpop_nonce" } + DPoP-Nonce: nonce_1
+A resource endpoint also requires the proof key to match the token's `cnf.jkt` and `ath` to match the presented token. A DPoP-bound token presented with the `Bearer` scheme is rejected.
 
-  Client->>Server: POST /oauth2/token + DPoP proof (nonce=nonce_1)
-  Server-->>Client: 200 { access_token, token_type: "DPoP" } + DPoP-Nonce: nonce_2
-
-  Note over Client,Server: The nonce rotates on every response.<br/>Always use the latest DPoP-Nonce header value.
-```
+Zentity does not issue DPoP nonces (RFC 9449 §8), so clients never receive `use_dpop_nonce`. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
 
 **DPoP proof structure:**
 
@@ -317,7 +311,6 @@ sequenceDiagram
     "htu": "https://app.zentity.xyz/api/auth/oauth2/token",
     "jti": "unique-per-request",
     "iat": 1741654800,
-    "nonce": "server-provided-nonce",
     "ath": "base64url(SHA-256(access_token))"
   }
 }
@@ -620,9 +613,12 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 2. Server creates credential offer with pre-authorized code
 3. Wallet scans QR or follows deep link
 4. Wallet exchanges code for DPoP-bound access token
-5. Wallet requests credential with holder binding proof
+5. Wallet requests a fresh `c_nonce` from `POST /api/auth/oidc4vci/nonce`. The token response carries no `c_nonce`.
+6. Wallet requests the credential by `credential_configuration_id` or `credential_identifier`, with a holder key proof in `proofs.jwt` bound to that nonce
 
-**Deferred issuance**: When verification is pending, the issuer returns a `transaction_id`. The wallet polls `POST /api/auth/oidc4vci/deferred-credential` until ready.
+The credential endpoint answers `{ "credentials": [{ "credential": "<SD-JWT VC>" }] }`. The SD-JWT VC carries the holder's public key as `cnf.jwk`. Draft-era requests that send `format` or a singular `proof` are rejected with `invalid_credential_request`.
+
+**Deferred issuance**: When verification is pending, the issuer answers 202 with a `transaction_id` and a polling `interval`. The wallet polls `POST /api/auth/oidc4vci/credential/deferred` until ready.
 
 Credentials contain only derived claims (e.g., `verified`, `verification_level`, `age_verified`), never raw PII.
 
@@ -632,13 +628,13 @@ Credentials contain only derived claims (e.g., `verified`, `verification_level`,
 
 Zentity can act as a verifier requesting presentations from wallets using DCQL (Digital Credentials Query Language).
 
-**Request**: `POST /api/auth/oidc4vp/verify` returns a `request_uri`
+**Verification**: `POST /api/auth/oidc4vp/verify` verifies a `vp_token` against a `nonce` the caller issued, optionally matching it to a `dcql_query`.
 
-**Response**: `response_mode: direct_post.jwt`, where the wallet posts a JARM-encrypted response (ECDH-ES, P-256) to `/api/auth/oidc4vp/response`
+**Response**: the wallet posts a `direct_post` response, or a JARM-encrypted `direct_post.jwt` response (ECDH-ES, P-256), to `/api/auth/oidc4vp/response`. The response's `state` must name a stored VP session. The expected nonce, DCQL query, and KB-JWT audience come from that session, not from the wallet's response.
 
-**Client identification**: `client_id_scheme: x509_hash`, where the `client_id` is the SHA-256 thumbprint of the leaf certificate in the x5c chain.
+**Client identification**: the `x509_hash:` Client Identifier prefix (OpenID4VP 1.0), where the identifier is the SHA-256 thumbprint of the leaf certificate in the x5c chain. Requests carry no separate `client_id_scheme`.
 
-**KB-JWT verification** order: issuer signature → strict disclosure decode → `cnf.jkt` match → KB-JWT signature → nonce/audience/freshness. Strict decode rejects malformed disclosures, duplicate disclosed claim names, and duplicate JSON member names before holder keys are imported.
+**KB-JWT verification** order: issuer signature → strict disclosure decode → holder key from `cnf.jwk` → KB-JWT signature → nonce/audience/freshness. Strict decode rejects malformed disclosures, duplicate disclosed claim names, and duplicate JSON member names before holder keys are imported.
 
 See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete model.
 
@@ -740,9 +736,9 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 | Feature | Standard | Status |
 | --- | --- | --- |
-| DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer fallback |
+| DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer only for tokens that are not DPoP-bound |
 | PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply) |
-| Wallet attestation | HAIP | Supported (`TRUSTED_WALLET_ISSUERS` config) |
+| Wallet attestation | HAIP | Supported when `TRUSTED_WALLET_ISSUERS` lists trusted attestation issuers |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
 | x5c certificate chain | RFC 5280 | Full chain validation: SHA-256 thumbprint match + validity period (leaf + CA) + CA signature via `X509Certificate.checkIssued()` |
 | Step-up authentication | RFC 9470 / FPA draft | `acr_values` enforcement at authorize, CIBA approval, and token exchange |

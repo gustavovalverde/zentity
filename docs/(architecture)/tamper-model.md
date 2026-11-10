@@ -41,8 +41,8 @@ Every control in this document derives from these principles:
 4. Use server-signed claims when a trusted measurement is required (e.g., liveness score).
 5. Persist an evidence pack (`policy_hash` + `proof_set_hash`) for auditability.
 6. Sign verifiable credentials with issuer keys; validate holder binding on presentation.
-7. Issue and validate server-managed DPoP nonces (RFC 9449 §4.1) with single-use semantics and configurable TTL.
-8. Cryptographically verify KB-JWT holder binding in SD-JWT VP tokens: resolve the holder key from `cnf.jwk` or KB-JWT header, verify the JWK thumbprint against `cnf.jkt`, then signature-verify the KB-JWT before accepting disclosed claims.
+7. Verify every DPoP proof (RFC 9449 §4.3) before trusting its key, and reject a replayed proof by its `jti`.
+8. Cryptographically verify KB-JWT holder binding in SD-JWT VP tokens: take the holder key from the credential's `cnf.jwk`, then signature-verify the KB-JWT with it before accepting disclosed claims.
 
 ## Structural Overview
 
@@ -138,8 +138,9 @@ Every control in this section addresses the same class of attack: a hostile brow
 ### OID4VP Response Integrity
 
 - VP responses use `response_mode: direct_post.jwt`, where the wallet encrypts the response JWE to an ephemeral ECDH-ES P-256 key, preventing interception in transit.
-- The `client_id_scheme: x509_hash` is enforced through full x5c chain validation: the leaf certificate's SHA-256 thumbprint must match `client_id`, certificate validity periods are checked, and the leaf must be signed by the CA.
-- KB-JWT signature verification is two-phase: first the issuer signature is verified against the Zentity JWKS, then the KB-JWT is verified against the holder public key resolved from `cnf.jkt`.
+- The `x509_hash:` Client Identifier is enforced through full x5c chain validation: the leaf certificate's SHA-256 thumbprint must match the identifier in `client_id`, certificate validity periods are checked, and the leaf must be signed by the CA.
+- A response is checked against the stored VP session its `state` names. The nonce, DCQL query, and expected KB-JWT audience come from that session, so a wallet cannot substitute its own.
+- KB-JWT signature verification is two-phase: first the issuer signature is verified against the Zentity JWKS, then the KB-JWT is verified against the holder public key the credential carries as `cnf.jwk`.
 
 ### ZKPassport NFC Trust Boundary
 
@@ -248,8 +249,10 @@ The controls in this section prevent session-level attacks: token replay, creden
 ### DPoP Token Binding
 
 - DPoP access tokens are bound to an ephemeral ES256 keypair; all credential endpoint requests require a valid DPoP proof.
-- The server-managed nonce store enforces single-use semantics with configurable TTL and periodic sweep.
-- Nonces are validated and deleted atomically; a replayed nonce is rejected even within the TTL window.
+- Every endpoint that accepts a DPoP proof verifies its signature, `htm`, `htu`, and `iat` window before using its key. This includes the token endpoint, userinfo, Zentity's protected resources, the first-party Authorization Challenge Endpoint, and the step-up `auth_session` a CIBA token poll opens for a first-party client. An unverified `DPoP` header never supplies a key thumbprint.
+- Each proof's `jti` is reserved in the database for the proof's lifetime. A replayed proof is rejected on every server instance.
+- Resource requests also require the proof key to match the token's `cnf.jkt` and the proof's `ath` to match the presented token.
+- Zentity does not issue DPoP nonces (RFC 9449 §8), so a proof's freshness rests on the `iat` window and `jti` reservation. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
 
 ### OPAQUE Password Integrity
 
@@ -277,15 +280,16 @@ The controls in this section prevent attacks on the backchannel authorization fl
 
 **Controls:**
 
-- The `auth_req_id` is generated with cryptographic entropy.
+- The `auth_req_id` is generated with cryptographic entropy and stored only as a SHA-256 hash. Approval links and the decision endpoint address the request by a separate request id, so the `auth_req_id` never appears in a URL, email, or push payload.
+- **Approval path**: approvals and denials go through `POST /api/auth/ciba/decision`. It requires a session read from the database, not the cookie cache, passes Better Auth's origin check, and enforces any `acr_values` before the decision is recorded.
 - **Release handle triple binding**: the release handle is sealed with AES-GCM and bound to `(userId, authReqId, clientId)`. A handle from one request cannot be used for another.
 - **Ephemeral TTL**: Release handles expire after 5 minutes, matching the CIBA request lifetime.
-- **CAS-based status transitions**: `approved → claiming → redeemed` using compare-and-swap updates. Only one token exchange can succeed per request; concurrent polling attempts that race the transition fail atomically.
-- **Expired/rejected requests**: Polling against an expired or rejected request returns an error (`expired_token` or `access_denied`), not a pending status.
+- **Single-use redemption**: the token grant consumes the approved request in one atomic operation before issuing tokens. Only one poll can succeed per request; a concurrent poll that loses the race gets `invalid_grant`.
+- **Expired/denied requests**: Polling against an expired or denied request returns an error (`expired_token` or `access_denied`), not a pending status.
 
 ### Session Logout Race Prevention
 
-When a user terminates their session, pending CIBA requests are revoked server-side (status set to `rejected`). This prevents a race condition where an agent polls for a CIBA token after the user has logged out; without this control, an agent could obtain tokens for a session that no longer exists.
+When a user terminates their session, pending CIBA requests are revoked server-side (status set to `denied`). This prevents a race condition where an agent polls for a CIBA token after the user has logged out; without this control, an agent could obtain tokens for a session that no longer exists.
 
 ### Push Notification Safety
 

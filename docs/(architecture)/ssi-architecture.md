@@ -102,6 +102,7 @@ sequenceDiagram
 |----------|---------|
 | `/.well-known/openid-credential-issuer` | Issuer metadata |
 | `/.well-known/oauth-authorization-server` | Authorization server metadata |
+| `/api/auth/oidc4vci/nonce` | Nonce endpoint: issues the `c_nonce` a holder proof must carry |
 | `/api/auth/oidc4vci/credential` | Credential endpoint |
 
 ### Pre-authorized code flow
@@ -110,8 +111,9 @@ sequenceDiagram
 2. Server creates credential offer with pre-authorized code.
 3. Wallet scans QR or follows deep link.
 4. Wallet exchanges code for access token.
-5. Wallet requests credential with holder binding proof.
-6. Server validates proof, generates SD-JWT VC.
+5. Wallet requests a fresh `c_nonce` from the nonce endpoint.
+6. Wallet requests credential with a holder binding proof (`proofs.jwt`) that carries the nonce.
+7. Server validates proof, generates SD-JWT VC, and returns it as `{ "credentials": [{ "credential": "..." }] }`.
 
 ### Credential type
 
@@ -131,12 +133,12 @@ sequenceDiagram
 
 | Endpoint | Purpose |
 |----------|---------|
-| `/api/auth/oidc4vp/verify` | Create presentation request |
-| `/api/auth/oidc4vp/response` | Submit presentation |
+| `/api/auth/oidc4vp/verify` | Verify a presentation against a nonce the caller issued |
+| `/api/auth/oidc4vp/response` | Receive a wallet's `direct_post` or `direct_post.jwt` response to a stored VP session |
 
 ### Flow
 
-1. Verifier creates presentation request with required claims (PEX format).
+1. Verifier creates presentation request with required claims (DCQL query).
 2. Wallet displays request to user.
 3. User selects which claims to reveal (selective disclosure).
 4. Wallet creates presentation with holder binding proof.
@@ -183,7 +185,7 @@ Credentials are cryptographically bound to the holder's key to prevent theft and
 
 ### Mechanism
 
-- **JWK Thumbprint Confirmation (`cnf.jkt`)**: Credential includes thumbprint of holder's public key.
+- **JWK Confirmation (`cnf.jwk`)**: Credential carries the holder's public key, as SD-JWT VC requires.
 - **Proof JWT**: Holder signs a proof demonstrating possession of private key.
 - **EdDSA (Ed25519)**: Efficient, secure binding signatures.
 
@@ -258,7 +260,7 @@ For binary eligibility checks, ZK proofs reveal nothing beyond the answer:
 
 | Threat | Mitigation |
 |--------|------------|
-| Credential theft | Holder binding (`cnf.jkt`) prevents use without private key |
+| Credential theft | Holder binding (`cnf.jwk`) prevents use without private key |
 | Issuer impersonation | Issuer keys in JWKS; verifiers validate signatures |
 | Replay attacks | Nonce in presentation; holder binding proof |
 | Correlation | Pairwise identifiers; selective disclosure |
