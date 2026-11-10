@@ -23,8 +23,18 @@ allowBuilds:
 patchedDependencies:
   '@daveyplate/better-auth-ui': apps/web/vendor/@daveyplate__better-auth-ui.patch
 
+auditConfig:
+  ignoreGhsas:
+    # @sd-jwt/* has no stable patched 0.19.x release; the vulnerable copy is pinned by @better-auth/oidc4vci and oidc4vp.
+    - GHSA-f9j6-8p6x-r9j6
+    # zod 3.x has no patched release (the fix is 4.6.6); the 3.x copies come from @reown/appkit dependencies.
+    - GHSA-mrhx-c7xc-m3w5
+
 overrides:
   'tar@<7.5.22': 7.5.22
+  'adm-zip@<0.6.1': 0.6.1
+  'undici@>=7.0.0 <7.30.1': 7.30.1
+  'node-forge@<1.4.1': 1.4.1
   'axios@<1.20.0': 1.20.0
   'ws@>=8.0.0 <8.22.0': 8.22.0
   'fast-xml-parser@<5.8.0': 5.8.0
