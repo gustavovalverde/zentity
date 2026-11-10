@@ -14,6 +14,7 @@ import {
   type McpServer,
   type ServerContext,
 } from "@modelcontextprotocol/server";
+import { truncateBindingMessage } from "@zentity/sdk/protocol";
 
 export interface AgentInfo {
   model: string;
@@ -66,11 +67,12 @@ export function detectAgent(clientInfo: Implementation | undefined): AgentInfo {
 }
 
 /** Prefix a binding message with the agent's display name. */
+/** The agent-named binding message, cut to the length CIBA accepts. */
 export function prefixBindingMessage(
   agentName: string,
   message: string
 ): string {
-  return `${agentName}: ${message}`;
+  return truncateBindingMessage(`${agentName}: ${message}`);
 }
 
 function envelopeValue<T>(ctx: ServerContext, key: string): T | undefined {

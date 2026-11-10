@@ -11,6 +11,10 @@ export type {
 	VerificationDetails,
 } from "./assurance";
 export { TIER_NAMES } from "./assurance";
+export {
+	BINDING_MESSAGE_MAX_LENGTH,
+	truncateBindingMessage,
+} from "./binding-message";
 export type {
 	AapAccessTokenClaims,
 	AccessTokenActClaim,

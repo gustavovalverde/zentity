@@ -6,6 +6,7 @@ import {
   requestCibaApproval,
 } from "./ciba";
 import { createDiscoveryResolver } from "./fpa/discovery";
+import { truncateBindingMessage } from "./protocol/binding-message";
 import type { AccessTokenClaims, CapabilityClaim } from "./protocol/index";
 import type { DpopClient } from "./rp/dpop-client";
 import {
@@ -242,7 +243,9 @@ export function createAgent(config: AgentConfig): Agent {
       audience: options.audience,
       bindingMessage:
         options.bindingMessage ??
-        `Authorize proof of human for ${options.audience}`,
+        truncateBindingMessage(
+          `Authorize proof of human for ${options.audience}`
+        ),
       scope: options.scope ?? POH_SCOPE,
       resource:
         options.resource ??

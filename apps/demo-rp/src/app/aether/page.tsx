@@ -8,6 +8,7 @@ import {
   ShieldKeyIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { truncateBindingMessage } from "@zentity/sdk/protocol";
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
@@ -194,7 +195,7 @@ export default function AetherPage() {
       setPrepared(null);
       startFlow({
         scope: task.scope ?? "openid",
-        bindingMessage: itemLine,
+        bindingMessage: truncateBindingMessage(itemLine),
         trustTier: task.trustTier,
         ...acr,
       });
@@ -240,9 +241,12 @@ export default function AetherPage() {
       },
     };
 
-    // Single line, no control characters: the CIBA backchannel rejects
-    // newlines and other control chars in binding_message.
-    const bindingMessage = `Confirm code: ${preparedPayment.confirmation_code} · ${itemLine}`;
+    // Single line, no control characters, at most 64 characters: the CIBA
+    // backchannel rejects anything else in binding_message. The code comes
+    // first so it survives truncation.
+    const bindingMessage = truncateBindingMessage(
+      `Confirm code: ${preparedPayment.confirmation_code} · ${itemLine}`
+    );
 
     startFlow({
       scope: task.scope ?? "openid",
