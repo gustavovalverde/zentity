@@ -21,15 +21,17 @@ fn get_test_keypair() -> (CompressedPublicKey, CompressedServerKey) {
         let (client_key, _) = generate_keys(config);
         let public_key = CompressedPublicKey::new(&client_key);
         let server_key = CompressedServerKey::new(&client_key);
-        let public_bytes = bincode::serialize(&public_key).expect("Failed to serialize public key");
-        let server_bytes = bincode::serialize(&server_key).expect("Failed to serialize server key");
+        let public_bytes = fhe_service::crypto::encode_tfhe_binary(&public_key)
+            .expect("Failed to serialize public key");
+        let server_bytes = fhe_service::crypto::encode_tfhe_binary(&server_key)
+            .expect("Failed to serialize server key");
         (public_bytes, server_bytes)
     });
 
-    let public_key: CompressedPublicKey =
-        bincode::deserialize(public_bytes).expect("Failed to deserialize cached public key");
-    let server_key: CompressedServerKey =
-        bincode::deserialize(server_bytes).expect("Failed to deserialize cached server key");
+    let public_key: CompressedPublicKey = fhe_service::crypto::decode_tfhe_binary(public_bytes)
+        .expect("Failed to deserialize cached public key");
+    let server_key: CompressedServerKey = fhe_service::crypto::decode_tfhe_binary(server_bytes)
+        .expect("Failed to deserialize cached server key");
     (public_key, server_key)
 }
 

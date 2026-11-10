@@ -41,7 +41,7 @@ Public and server keys are persisted in **ReDB** at `$FHE_KEYS_DIR/keystore.redb
 
 ## TFHE version
 
-Keys and ciphertexts cross the wire as plain bincode, so the `tfhe` minor version must match the browser client (`tfhe` and `node-tfhe` in `apps/web/package.json`). The service stays on the 1.5 line: tfhe 1.6 and later cannot read keys serialized by 1.5. Move the web client and this service to a newer line together.
+Keys and ciphertexts cross the wire in tfhe's versioned `safe_serialization` format, which the browser client writes with `safe_serialize` and this service reads with `safe_deserialize`. Keep the `tfhe` version here in step with `tfhe` and `node-tfhe` in `apps/web/package.json`. Key stores written in the earlier plain-bincode format cannot be read: delete `keystore.redb` (and re-register keys) after upgrading.
 
 ## Run locally
 
@@ -55,6 +55,6 @@ The service listens on `http://localhost:5001` by default.
 
 - `PORT` - service port (default: `5001`)
 - `FHE_KEYS_DIR` - ReDB directory for persisted keys
-- `FHE_BODY_LIMIT_MB` - max request body size (default: `64`)
+- `FHE_BODY_LIMIT_MB` - max request body size (default: `96`; must exceed the largest registered server key, about 60 MB with tfhe 1.8)
 - `INTERNAL_SERVICE_TOKEN` - enable internal auth for non-public routes
 - `INTERNAL_SERVICE_TOKEN_REQUIRED` - force auth even outside production

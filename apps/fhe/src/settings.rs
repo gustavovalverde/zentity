@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
 const DEFAULT_PORT: u16 = 5001;
-const DEFAULT_BODY_LIMIT_MB: usize = 64;
+const DEFAULT_BODY_LIMIT_MB: usize = 96;
 const DEFAULT_CONCURRENCY_LIMIT: usize = 4;
 const DEFAULT_REQUEST_TIMEOUT_MS: u64 = 60_000;
 // HTTP integration tests execute many TFHE-heavy operations concurrently.

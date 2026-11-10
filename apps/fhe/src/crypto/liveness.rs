@@ -57,7 +57,7 @@ pub fn encrypt_liveness_score(
     let encrypted = FheUint16::try_encrypt(scaled_score, public_key)
         .map_err(|error| FheError::Tfhe(error.to_string()))?;
 
-    // Serialize to bytes using bincode
+    // Serialize to bytes (tfhe versioned format)
     encode_tfhe_binary(&encrypted)
 }
 

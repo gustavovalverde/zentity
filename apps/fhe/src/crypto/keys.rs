@@ -180,9 +180,9 @@ impl KeyStore {
     ) -> Result<u128, FheError> {
         let start = Instant::now();
         let public_bytes = tracing::info_span!("fhe.serialize_public_key", key_id = %key_id)
-            .in_scope(|| bincode::serialize(public_key))?;
+            .in_scope(|| super::encode_tfhe_binary(public_key))?;
         let server_bytes = tracing::info_span!("fhe.serialize_server_key", key_id = %key_id)
-            .in_scope(|| bincode::serialize(server_key))?;
+            .in_scope(|| super::encode_tfhe_binary(server_key))?;
 
         let write_txn = self.db.begin_write().map_err(|error| {
             FheError::Internal(format!(
@@ -252,7 +252,7 @@ impl KeyStore {
             }
         }?;
         let bytes = value.value();
-        match bincode::deserialize(bytes) {
+        match super::decode_tfhe_binary(bytes) {
             Ok(key) => Some(key),
             Err(error) => {
                 warn!(key_id = %key_id, error = %error, "Failed to deserialize public key");
@@ -284,7 +284,7 @@ impl KeyStore {
             }
         }?;
         let bytes = value.value();
-        match bincode::deserialize(bytes) {
+        match super::decode_tfhe_binary(bytes) {
             Ok(key) => Some(key),
             Err(error) => {
                 warn!(key_id = %key_id, error = %error, "Failed to deserialize server key");
@@ -297,7 +297,7 @@ impl KeyStore {
     ///
     /// Stores compressed keys immediately and persists them to disk.
     /// Validation is deferred to first use (`get_server_key`) where
-    /// decompression is wrapped in `catch_unwind`. Bincode deserialization
+    /// decompression is wrapped in `catch_unwind`. Deserialization
     /// in the HTTP handler already rejects malformed bytes with 400.
     pub fn register_key(
         &self,

@@ -571,7 +571,8 @@ async fn liveness_roundtrip_passes_threshold() {
     let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
     let passes_ciphertext = body.passes_ciphertext;
 
-    let passes_encrypted: FheBool = bincode::deserialize(&passes_ciphertext).unwrap();
+    let passes_encrypted: FheBool =
+        fhe_service::crypto::decode_tfhe_binary(&passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(passes, "Score 0.9 should pass threshold 0.8");
@@ -622,7 +623,8 @@ async fn liveness_roundtrip_fails_threshold() {
 
     let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
 
-    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
+    let passes_encrypted: FheBool =
+        fhe_service::crypto::decode_tfhe_binary(&body.passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(!passes, "Score 0.7 should fail threshold 0.8");
@@ -673,7 +675,8 @@ async fn liveness_roundtrip_exact_threshold() {
 
     let body: VerifyLivenessThresholdResponse = http::parse_msgpack_body(verify_response).await;
 
-    let passes_encrypted: FheBool = bincode::deserialize(&body.passes_ciphertext).unwrap();
+    let passes_encrypted: FheBool =
+        fhe_service::crypto::decode_tfhe_binary(&body.passes_ciphertext).unwrap();
     let passes: bool = passes_encrypted.decrypt(&client_key);
 
     assert!(passes, "Score 0.8 should pass threshold 0.8 (>=)");

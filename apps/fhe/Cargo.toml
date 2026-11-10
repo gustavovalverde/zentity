@@ -14,11 +14,9 @@ path = "src/main.rs"
 
 [dependencies]
 # FHE library
-# Keep the minor in lockstep with the web client's tfhe/node-tfhe (apps/web/package.json).
-# Keys and ciphertexts cross the wire as plain bincode, and tfhe 1.6+ cannot read keys
-# serialized by 1.5.x (and 1.8 default keys grow to ~60 MB), so 1.6+ requires migrating the
-# web client and FHE_BODY_LIMIT_MB together.
-tfhe = { version = "~1.5", features = ["integer"] }
+# Keys and ciphertexts cross the wire in tfhe's versioned `safe_serialization` format. Keep
+# this in step with the browser client's tfhe/node-tfhe (apps/web/package.json).
+tfhe = { version = "1.8", features = ["integer"] }
 
 # Web framework
 axum = "0.8"
@@ -30,9 +28,6 @@ tower-http = { version = "0.7", features = ["trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_bytes = "0.11"
-# Stay on 1.x: tfhe-rs pins =1.3.3 and serializes keys and ciphertexts with it.
-# bincode 3.0.0 is a compile_error! tombstone and 2.x is not wire-compatible.
-bincode = "1.3.3"
 rmp-serde = "1.3"
 flate2 = "1.1"
 

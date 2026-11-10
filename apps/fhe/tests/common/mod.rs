@@ -44,9 +44,9 @@ fn init_test_keys() -> &'static TestKeyMaterial {
         let public_key = CompressedPublicKey::new(&client_key);
         let server_key = CompressedServerKey::new(&client_key);
 
-        let public_key_bytes = bincode::serialize(&public_key).unwrap();
-        let client_key_bytes = bincode::serialize(&client_key).unwrap();
-        let server_key_bytes = bincode::serialize(&server_key).unwrap();
+        let public_key_bytes = fhe_service::crypto::encode_tfhe_binary(&public_key).unwrap();
+        let client_key_bytes = fhe_service::crypto::encode_tfhe_binary(&client_key).unwrap();
+        let server_key_bytes = fhe_service::crypto::encode_tfhe_binary(&server_key).unwrap();
 
         TestKeyMaterial {
             client_key_bytes,
@@ -77,15 +77,17 @@ pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
     let material = init_test_keys();
 
     // Deserialize client key
-    let client_key: ClientKey = bincode::deserialize(&material.client_key_bytes).unwrap();
+    let client_key: ClientKey =
+        fhe_service::crypto::decode_tfhe_binary(&material.client_key_bytes).unwrap();
 
-    let public_key: CompressedPublicKey = bincode::deserialize(&material.public_key_bytes).unwrap();
+    let public_key: CompressedPublicKey =
+        fhe_service::crypto::decode_tfhe_binary(&material.public_key_bytes).unwrap();
 
     // Register server + public key once and cache the key_id
     let key_id = REGISTERED_KEY_ID
         .get_or_init(|| {
             let server_key: CompressedServerKey =
-                bincode::deserialize(&material.server_key_bytes).unwrap();
+                fhe_service::crypto::decode_tfhe_binary(&material.server_key_bytes).unwrap();
             fhe_service::crypto::get_key_store()
                 .register_key(public_key.clone(), server_key)
                 .expect("Failed to register test keys")
@@ -104,7 +106,7 @@ pub fn get_test_keys() -> (ClientKey, CompressedPublicKey, String) {
 /// First call generates keys (~5-10s), subsequent calls return cached value.
 pub fn get_public_key() -> CompressedPublicKey {
     let material = init_test_keys();
-    bincode::deserialize(&material.public_key_bytes).unwrap()
+    fhe_service::crypto::decode_tfhe_binary(&material.public_key_bytes).unwrap()
 }
 
 /// Get the serialized server key for registration tests.

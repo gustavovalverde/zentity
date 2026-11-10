@@ -119,9 +119,9 @@ async fn register_key_invalid_bytes() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
-/// Invalid bincode content returns 400.
+/// Invalid key content returns 400.
 #[tokio::test]
-async fn register_key_invalid_bincode() {
+async fn register_key_invalid_content() {
     let app = http::test_app();
 
     let body =
