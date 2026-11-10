@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 /**
  * Mint Form Component
  *
@@ -28,7 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
 const TOKEN_DECIMALS = 18;
@@ -46,28 +47,37 @@ export function MintForm({
 }: Readonly<MintFormProps>) {
   const [amount, setAmount] = useState("");
   const [amountError, setAmountError] = useState<string | null>(null);
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   // Query token info for remaining supply
-  const { data: tokenInfo } = trpcReact.compliantToken.info.useQuery(
-    { networkId },
-    { staleTime: 30_000 } // Refresh every 30s
+  const { data: tokenInfo } = useQuery(
+    trpc.compliantToken.info.queryOptions(
+      { networkId },
+      { staleTime: 30_000 } // Refresh every 30s
+    )
   );
 
-  const mintMutation = trpcReact.compliantToken.mint.useMutation({
-    onSuccess: () => {
-      // Refresh token info and history
-      utils.compliantToken.info
-        .invalidate({ networkId })
-        .catch(reportRejection);
-      utils.compliantToken.history
-        .invalidate({
-          networkId,
-          walletAddress,
-        })
-        .catch(reportRejection);
-    },
-  });
+  const mintMutation = useMutation(
+    trpc.compliantToken.mint.mutationOptions({
+      onSuccess: () => {
+        // Refresh token info and history
+        queryClient
+          .invalidateQueries(
+            trpc.compliantToken.info.queryFilter({ networkId })
+          )
+          .catch(reportRejection);
+        queryClient
+          .invalidateQueries(
+            trpc.compliantToken.history.queryFilter({
+              networkId,
+              walletAddress,
+            })
+          )
+          .catch(reportRejection);
+      },
+    })
+  );
 
   const remainingTokens = tokenInfo?.remainingTokens ?? 18.4;
   const isSupplyExhausted = remainingTokens <= 0;

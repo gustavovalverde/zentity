@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { getTrpcClientConfig, trpcReact } from "@/lib/trpc/client";
+import { TRPCProvider, trpc } from "@/lib/trpc/client";
 
 interface TrpcProviderProps {
   children: ReactNode;
@@ -24,13 +24,11 @@ export function TrpcProvider({ children }: Readonly<TrpcProviderProps>) {
       })
   );
 
-  const [trpcClient] = useState(() =>
-    trpcReact.createClient(getTrpcClientConfig())
-  );
-
   return (
-    <trpcReact.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    </trpcReact.Provider>
+    <QueryClientProvider client={queryClient}>
+      <TRPCProvider queryClient={queryClient} trpcClient={trpc}>
+        {children}
+      </TRPCProvider>
+    </QueryClientProvider>
   );
 }

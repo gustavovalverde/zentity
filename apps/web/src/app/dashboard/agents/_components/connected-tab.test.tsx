@@ -21,25 +21,46 @@ const trpcMocks = vi.hoisted(() => ({
   useMutationRevoke: vi.fn(),
   useMutationGrant: vi.fn(),
   useQuery: vi.fn(),
-  useUtils: vi.fn(),
 }));
 
-vi.mock("@/lib/trpc/client", () => ({
-  trpcReact: {
+const LIST_HOSTS_KEY = [["agent", "listHosts"], { type: "query" }];
+
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const queryClient = { invalidateQueries: trpcMocks.invalidate };
+  return {
+    ...(await importOriginal<typeof import("@tanstack/react-query")>()),
+    useMutation: (options: { mutationKey: [[string, string]] }) => {
+      const mutationHooks: Record<string, (opts: unknown) => unknown> = {
+        revokeSession: trpcMocks.useMutationRevoke,
+        updateGrant: trpcMocks.useMutationGrant,
+      };
+      return mutationHooks[options.mutationKey[0][1]]?.(options);
+    },
+    useQuery: trpcMocks.useQuery,
+    useQueryClient: () => queryClient,
+  };
+});
+
+vi.mock("@/lib/trpc/client", () => {
+  const mutationOptions =
+    (path: [string, string]) =>
+    <T extends object>(options: T) => ({ ...options, mutationKey: [path] });
+  const trpc = {
     agent: {
       listHosts: {
-        useQuery: trpcMocks.useQuery,
+        queryFilter: () => ({ queryKey: LIST_HOSTS_KEY }),
+        queryOptions: () => ({ queryKey: LIST_HOSTS_KEY }),
       },
       revokeSession: {
-        useMutation: trpcMocks.useMutationRevoke,
+        mutationOptions: mutationOptions(["agent", "revokeSession"]),
       },
       updateGrant: {
-        useMutation: trpcMocks.useMutationGrant,
+        mutationOptions: mutationOptions(["agent", "updateGrant"]),
       },
     },
-    useUtils: trpcMocks.useUtils,
-  },
-}));
+  };
+  return { useTRPC: () => trpc };
+});
 
 import { ConnectedTab } from "./connected-tab";
 
@@ -50,11 +71,6 @@ function setupMocks() {
   });
 
   trpcMocks.invalidate.mockResolvedValue(undefined);
-  trpcMocks.useUtils.mockReturnValue({
-    agent: {
-      listHosts: { invalidate: trpcMocks.invalidate },
-    },
-  });
 
   trpcMocks.useMutationRevoke.mockImplementation(
     (options?: { onSuccess?: () => Promise<void> | void }) => {
@@ -275,7 +291,9 @@ describe("ConnectedTab", () => {
       expect(trpcMocks.mutateAsyncRevoke).toHaveBeenCalledWith({
         sessionId: "session-1",
       });
-      expect(trpcMocks.invalidate).toHaveBeenCalled();
+      expect(trpcMocks.invalidate).toHaveBeenCalledWith({
+        queryKey: LIST_HOSTS_KEY,
+      });
     });
 
     expect(fetchSpy).not.toHaveBeenCalled();

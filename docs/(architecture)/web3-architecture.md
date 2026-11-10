@@ -311,9 +311,9 @@ flowchart TD
 
 ```mermaid
 graph TD
-  A["Web3Provider"] --> B["trpcReact.Provider\n(tRPC client)"]
-  B --> C["WagmiProvider\n(wallet state)"]
-  C --> D["QueryClientProvider\n(React Query)"]
+  A["QueryClientProvider\n(TanStack Query)"] --> B["TRPCProvider\n(tRPC client)"]
+  B --> C["Web3Provider"]
+  C --> D["WagmiProvider\n(wallet state)"]
   D --> E["ConfidentialChainProvider\n(Zama SDK)"]
   E --> F["Application Components"]
 ```
@@ -322,10 +322,10 @@ graph TD
 
 | Provider | Purpose |
 |---|---|
-| `Web3Provider` | Root wrapper; initializes AppKit and shared clients |
-| `trpcReact.Provider` | Type-safe API client |
+| `QueryClientProvider` | Shared cache for tRPC + Wagmi, mounted by `TrpcProvider` |
+| `TRPCProvider` | Type-safe API client; components read it with `useTRPC()` |
+| `Web3Provider` | Initializes AppKit and the wallet config |
 | `WagmiProvider` | Wallet connection state + hooks |
-| `QueryClientProvider` | Shared cache for tRPC + Wagmi |
 | `ConfidentialChainProvider` | Manages Zama SDK lifecycle, encryption, decryption, and relayer access |
 
 ## SDK Lifecycle States

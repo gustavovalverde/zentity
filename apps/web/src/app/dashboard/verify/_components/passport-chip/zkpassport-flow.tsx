@@ -3,8 +3,7 @@
 import type { ProofResult, QueryResult } from "@zkpassport/sdk";
 import type { FlowStage } from "./status-display";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { getQueryKey } from "@trpc/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -25,7 +24,7 @@ import {
   acquirePasskeyMaterial,
   detectAuthMode,
 } from "@/lib/privacy/zk/binding-context";
-import { trpc, trpcReact } from "@/lib/trpc/client";
+import { trpc as trpcClient, useTRPC } from "@/lib/trpc/client";
 
 import { BindingAuthDialog } from "../binding-auth-dialog";
 import { QrDisplay } from "./qr-display";
@@ -35,12 +34,6 @@ const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const FHE_POLL_INITIAL_MS = 2000;
 const FHE_POLL_MAX_MS = 8000;
 const FHE_POLL_MAX_ATTEMPTS = 20;
-// oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
-const statusQueryKey = getQueryKey(
-  trpcReact.passportChip.status,
-  undefined,
-  "query"
-);
 
 interface DisclosedData {
   dateOfBirth: string | null;
@@ -81,6 +74,7 @@ export function ZkPassportFlow({
 }: Readonly<ZkPassportFlowProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const trpc = useTRPC();
   const { data: session } = useSession();
   const [stage, setStage] = useState<FlowStage>("connecting");
   const [url, setUrl] = useState<string | null>(null);
@@ -103,10 +97,10 @@ export function ZkPassportFlow({
 
   const enterFinalizing = useCallback(() => {
     queryClient
-      .resetQueries({ queryKey: statusQueryKey })
+      .resetQueries(trpc.passportChip.status.queryFilter())
       .catch(reportRejection);
     setStage("finalizing");
-  }, [queryClient]);
+  }, [queryClient, trpc]);
 
   const requestVaultRetry = useCallback(
     (disclosed: DisclosedData, message: string) => {
@@ -298,37 +292,43 @@ export function ZkPassportFlow({
     enterFinalizing();
   }, [enterFinalizing, setBindingAuthOpen]);
 
-  const submitResult = trpcReact.passportChip.submitResult.useMutation({
-    onSuccess: (data) => {
-      storeVault(data.disclosed)
-        .then((stored) => {
-          // A successful vault write can move straight into finalizing.
-          // Pending states keep the user in the vault flow until they retry or skip.
-          if (stored === "stored") {
-            enterFinalizing();
-          }
-        })
-        .catch(reportRejection);
-    },
-    onError: (error: { message: string }) => {
-      setErrorMessage(error.message);
-      setStage("error");
-    },
-  });
+  const submitResult = useMutation(
+    trpc.passportChip.submitResult.mutationOptions({
+      onSuccess: (data) => {
+        storeVault(data.disclosed)
+          .then((stored) => {
+            // A successful vault write can move straight into finalizing.
+            // Pending states keep the user in the vault flow until they retry or skip.
+            if (stored === "stored") {
+              enterFinalizing();
+            }
+          })
+          .catch(reportRejection);
+      },
+      onError: (error: { message: string }) => {
+        setErrorMessage(error.message);
+        setStage("error");
+      },
+    })
+  );
 
-  const fheStatusQuery = trpcReact.passportChip.status.useQuery(undefined, {
-    enabled: stage === "finalizing",
-    refetchInterval: (query) => {
-      const attempts =
-        query.state.dataUpdateCount + query.state.errorUpdateCount;
-      if (attempts >= FHE_POLL_MAX_ATTEMPTS) {
-        return false;
-      }
-      return Math.min(FHE_POLL_INITIAL_MS * 1.5 ** attempts, FHE_POLL_MAX_MS);
-    },
-    refetchIntervalInBackground: true,
-  });
-  const fheStatusQueryState = queryClient.getQueryState(statusQueryKey);
+  const fheStatusQuery = useQuery(
+    trpc.passportChip.status.queryOptions(undefined, {
+      enabled: stage === "finalizing",
+      refetchInterval: (query) => {
+        const attempts =
+          query.state.dataUpdateCount + query.state.errorUpdateCount;
+        if (attempts >= FHE_POLL_MAX_ATTEMPTS) {
+          return false;
+        }
+        return Math.min(FHE_POLL_INITIAL_MS * 1.5 ** attempts, FHE_POLL_MAX_MS);
+      },
+      refetchIntervalInBackground: true,
+    })
+  );
+  const fheStatusQueryState = queryClient.getQueryState(
+    trpc.passportChip.status.queryKey()
+  );
   const fhePollAttempts =
     (fheStatusQueryState?.dataUpdateCount ?? 0) +
     (fheStatusQueryState?.errorUpdateCount ?? 0);
@@ -382,7 +382,7 @@ export function ZkPassportFlow({
 
     try {
       const verificationSession =
-        await trpc.passportChip.createSession.mutate();
+        await trpcClient.passportChip.createSession.mutate();
       const { ZKPassport } = await import("@zkpassport/sdk");
       const zkpassport = new ZKPassport(
         typeof window === "undefined" ? undefined : window.location.hostname

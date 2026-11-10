@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 /**
  * Token Status Component
  *
@@ -16,7 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 function formatTokenSupply(value: bigint | string, decimals: number): string {
   const [whole, fraction] = formatUnits(BigInt(value), decimals).split(".");
@@ -33,14 +34,17 @@ export function TokenStatus({
   networkId,
   walletAddress,
 }: Readonly<TokenStatusProps>) {
-  const { data: tokenInfo, isLoading: tokenLoading } =
-    trpcReact.compliantToken.info.useQuery({ networkId });
+  const trpc = useTRPC();
+  const { data: tokenInfo, isLoading: tokenLoading } = useQuery(
+    trpc.compliantToken.info.queryOptions({ networkId })
+  );
 
-  const { data: attestationStatus } =
-    trpcReact.compliantToken.isAttested.useQuery({
+  const { data: attestationStatus } = useQuery(
+    trpc.compliantToken.isAttested.queryOptions({
       networkId,
       address: walletAddress,
-    });
+    })
+  );
 
   if (tokenLoading) {
     return (

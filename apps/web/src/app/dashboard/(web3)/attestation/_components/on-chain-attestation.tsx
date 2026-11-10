@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppKitAccount, useDisconnect } from "@reown/appkit/react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 /**
  * On-Chain Attestation Component
  *
@@ -73,7 +74,7 @@ import { useConfidentialChain } from "@/lib/blockchain/confidential/chain";
 import { getConfidentialGasOverride } from "@/lib/blockchain/confidential/gas-overrides";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { cn } from "@/lib/cn";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 import { ComplianceAccessCard } from "./compliance-access-card";
 
@@ -110,29 +111,35 @@ export function OnChainAttestation({
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
   const [clientError, setClientError] = useState<string | null>(null);
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
 
   // Fetch available networks with attestation status
   const {
     data: networksData,
     isLoading: networksLoading,
     refetch: refetchNetworks,
-  } = trpcReact.attestation.networks.useQuery(undefined, {
-    enabled: isVerified,
-  });
+  } = useQuery(
+    trpc.attestation.networks.queryOptions(undefined, {
+      enabled: isVerified,
+    })
+  );
 
   const networks = networksData?.networks;
 
   // Permit-based attestation mutations
-  const createPermitMutation = trpcReact.attestation.createPermit.useMutation({
-    onSuccess: () => {
-      refetchNetworks().catch(reportRejection);
-    },
-  });
-  const recordSubmissionMutation =
-    trpcReact.attestation.recordSubmission.useMutation({
+  const createPermitMutation = useMutation(
+    trpc.attestation.createPermit.mutationOptions({
+      onSuccess: () => {
+        refetchNetworks().catch(reportRejection);
+      },
+    })
+  );
+  const recordSubmissionMutation = useMutation(
+    trpc.attestation.recordSubmission.mutationOptions({
       onSuccess: () => refetchNetworks(),
-    });
+    })
+  );
 
   // Compute selected network early so confidential-chain hooks get reactive values.
   const selectedNetworkData = useMemo(
@@ -158,11 +165,13 @@ export function OnChainAttestation({
     createPermitMutation.isPending || recordSubmissionMutation.isPending;
 
   // Refresh attestation status mutation
-  const refreshMutation = trpcReact.attestation.refresh.useMutation({
-    onSuccess: () => {
-      refetchNetworks().catch(reportRejection);
-    },
-  });
+  const refreshMutation = useMutation(
+    trpc.attestation.refresh.mutationOptions({
+      onSuccess: () => {
+        refetchNetworks().catch(reportRejection);
+      },
+    })
+  );
 
   // Poll blockchain status for pending submissions
   // The refresh mutation checks the actual blockchain and updates the DB
@@ -202,8 +211,8 @@ export function OnChainAttestation({
   const attestationCheckAddress =
     confirmedAttestedWalletAddress ?? address ?? "";
 
-  const { data: onChainStatus, isLoading: isCheckingOnChain } =
-    trpcReact.compliantToken.isAttested.useQuery(
+  const { data: onChainStatus, isLoading: isCheckingOnChain } = useQuery(
+    trpc.compliantToken.isAttested.queryOptions(
       {
         networkId: selectedNetworkData?.id ?? "",
         address: attestationCheckAddress,
@@ -216,7 +225,8 @@ export function OnChainAttestation({
         ),
         staleTime: 30_000,
       }
-    );
+    )
+  );
 
   const { needsReAttestation, showComplianceCard } =
     resolveOnChainAttestationViewState({
@@ -227,8 +237,8 @@ export function OnChainAttestation({
       showComplianceAccess,
     });
 
-  const { data: complianceAccess } =
-    trpcReact.compliantToken.complianceAccess.useQuery(
+  const { data: complianceAccess } = useQuery(
+    trpc.compliantToken.complianceAccess.queryOptions(
       {
         networkId: selectedNetworkData?.id ?? "",
         walletAddress: address ?? "",
@@ -238,7 +248,8 @@ export function OnChainAttestation({
           showComplianceCard && selectedNetworkData?.id && address
         ),
       }
-    );
+    )
+  );
 
   const complianceGranted = Boolean(complianceAccess?.granted);
   const complianceTxHash = complianceAccess?.granted
@@ -477,11 +488,13 @@ export function OnChainAttestation({
               }
               invalidateComplianceAccess={() => {
                 if (selectedNetworkData?.id && address) {
-                  utils.compliantToken.complianceAccess
-                    .invalidate({
-                      networkId: selectedNetworkData.id,
-                      walletAddress: address,
-                    })
+                  queryClient
+                    .invalidateQueries(
+                      trpc.compliantToken.complianceAccess.queryFilter({
+                        networkId: selectedNetworkData.id,
+                        walletAddress: address,
+                      })
+                    )
                     .catch(reportRejection);
                 }
               }}

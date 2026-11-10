@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 /**
  * Transaction History Component
  *
@@ -31,7 +32,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 interface TxHistoryProps {
   explorerUrl: string | null;
@@ -189,11 +190,14 @@ export function TxHistory({
   walletAddress,
   onMintClick,
 }: Readonly<TxHistoryProps>) {
-  const { data, isLoading, error } = trpcReact.compliantToken.history.useQuery({
-    networkId,
-    walletAddress,
-    limit: 10,
-  });
+  const trpc = useTRPC();
+  const { data, isLoading, error } = useQuery(
+    trpc.compliantToken.history.queryOptions({
+      networkId,
+      walletAddress,
+      limit: 10,
+    })
+  );
 
   const getTypeIcon = (type: string) => {
     switch (type) {

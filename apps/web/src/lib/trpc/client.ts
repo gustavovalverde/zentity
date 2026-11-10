@@ -9,10 +9,11 @@
  * const proof = await trpc.zk.verifyProof.mutate({ proof, publicInputs });
  * ```
  *
- * @example React hooks (for components with useQuery/useMutation):
+ * @example React components (TanStack Query options):
  * ```ts
- * const { data } = trpcReact.attestation.networks.useQuery();
- * const mutation = trpcReact.attestation.createPermit.useMutation();
+ * const trpc = useTRPC();
+ * const { data } = useQuery(trpc.attestation.networks.queryOptions());
+ * const mutation = useMutation(trpc.attestation.createPermit.mutationOptions());
  * ```
  */
 "use client";
@@ -20,8 +21,8 @@
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/lib/trpc/routers/app";
 
-import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
-import { createTRPCReact } from "@trpc/react-query";
+import { createTRPCClient, httpBatchLink, loggerLink } from "@trpc/client";
+import { createTRPCContext } from "@trpc/tanstack-react-query";
 
 import { getFlowId } from "@/lib/observability/flow-id";
 
@@ -57,9 +58,6 @@ function createTimeoutSignal(original: AbortSignal | null | undefined) {
   };
 }
 
-/**
- * Common links configuration for both clients.
- */
 const links = [
   // Logs requests in dev mode or errors in production for debugging.
   loggerLink({
@@ -109,29 +107,21 @@ const links = [
 ];
 
 /**
- * Type-safe tRPC client for browser use (vanilla - no React Query).
- * Use this for event handlers, utilities, and non-component code.
+ * Type-safe tRPC client for browser use.
+ * Call it directly from event handlers, utilities, and non-component code.
+ * TrpcProvider hands the same instance to the TanStack Query integration.
  * Automatically includes credentials for session cookies.
  */
-export const trpc = createTRPCProxyClient<AppRouter>({
+export const trpc = createTRPCClient<AppRouter>({
   links,
 });
 
 /**
- * React Query-integrated tRPC client for use in components.
- * Provides useQuery, useMutation hooks with caching and suspense support.
+ * TanStack Query integration for components: `useTRPC()` returns
+ * `queryOptions`, `mutationOptions`, `queryKey`, and `queryFilter` factories
+ * for TanStack's own hooks and QueryClient methods.
  */
-// oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
-export const trpcReact = createTRPCReact<AppRouter>();
-
-/**
- * Get the tRPC client configuration for the TRPCProvider.
- */
-export function getTrpcClientConfig() {
-  return {
-    links,
-  };
-}
+export const { TRPCProvider, useTRPC } = createTRPCContext<AppRouter>();
 
 /**
  * Inferred response type for any router procedure.
