@@ -166,7 +166,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
       - name: Run security audit
-        run: pnpm audit --audit-level moderate || echo "Some vulnerabilities found - review required"
+        run: pnpm audit --audit-level high
         working-directory: apps/web
 
   # ============================================
