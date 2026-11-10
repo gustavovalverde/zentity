@@ -58,7 +58,7 @@ cd apps/demo-rp && pnpm run db:setup  # creates .data/ + runs db:push
 cd apps/demo-rp && pnpm dev  # port 3102
 ```
 
-**Prerequisites:** Node.js 24+, pnpm 10+, `openssl` (for certificate generation)
+**Prerequisites:** Node.js 26+, pnpm 10+, `openssl` (for certificate generation)
 
 ### 5. Try It Out
 

@@ -13,7 +13,7 @@ ARG REPO_HOME=/workspace/zentity
 ARG APP_HOME=/workspace/zentity/apps/web
 
 # --- Stage 1: Dependencies ---
-FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS deps
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG SOURCE_DATE_EPOCH
@@ -24,8 +24,8 @@ ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-# Enable pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Node 25+ no longer bundles corepack; it activates the pnpm version pinned in packageManager.
+RUN npm install --global corepack@0.36.0 && corepack enable
 
 # Build tools for tfjs-node native compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -101,7 +101,7 @@ ENV NODE_OPTIONS="--max-old-space-size=6144"
 RUN pnpm --filter @zentity/sdk build && pnpm --filter frontend build
 
 # --- Stage 3: Runtime ---
-FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS runner
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS runner
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG GIT_SHA

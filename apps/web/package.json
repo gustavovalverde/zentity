@@ -4,7 +4,7 @@
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": "24.x",
+    "node": "26.x",
     "pnpm": ">=10"
   },
   "scripts": {
@@ -160,7 +160,7 @@
     "@synthetixio/synpress-cache": "0.0.14",
     "@tailwindcss/postcss": "4.3.5",
     "@testing-library/react": "16.3.3",
-    "@types/node": "25.9.9",
+    "@types/node": "26.6.6",
     "@types/qrcode": "^1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
