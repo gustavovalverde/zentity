@@ -8,9 +8,9 @@ This directory holds packages and patches that are not published to a public reg
 
 | Tarball | Source commit | SHA-256 |
 | --- | --- | --- |
-| `better-auth-haip-1.8.0-beta.7.tgz` | `b12432bfa2e6377acb8fbcf2ca9c5d1bc7023650` | `7011035c46ed8f8d48896d640f85aaf35bb503dead74bc46beebead6801a548e` |
-| `better-auth-oidc4vci-1.8.0-beta.7.tgz` | `b12432bfa2e6377acb8fbcf2ca9c5d1bc7023650` | `9013de73563831af382fe311d28a2c59003102fcc675cda75b1f1ee6ba82535e` |
-| `better-auth-oidc4vp-1.8.0-beta.7.tgz` | `b12432bfa2e6377acb8fbcf2ca9c5d1bc7023650` | `5bf6b3a61b3a955495876fa86cdf9a68830e23a1143d83dfff9c87500caa179a` |
+| `better-auth-haip-1.8.0-beta.7.tgz` | `72f9e27ad0bfd39329059cdd7e1e9c02f8a26e97` | `8e1884b9e99e08dbb6ba45a280c8aefaffd5b5664f4cb2dc2d80b5c842e3e0ef` |
+| `better-auth-oidc4vci-1.8.0-beta.7.tgz` | `72f9e27ad0bfd39329059cdd7e1e9c02f8a26e97` | `0b14cd1e08cb619a42e47e1f3d2bdd4f2ce6e5231119f3058d2bd159b3e5d98d` |
+| `better-auth-oidc4vp-1.8.0-beta.7.tgz` | `72f9e27ad0bfd39329059cdd7e1e9c02f8a26e97` | `5bf6b3a61b3a955495876fa86cdf9a68830e23a1143d83dfff9c87500caa179a` |
 
 CIBA comes from the published `@better-auth/ciba` package. OpenID Connect for Identity Assurance (`verified_claims`) is implemented in Zentity itself as an OAuth provider claims extension, so it has no tarball.
 
