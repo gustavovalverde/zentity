@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("web-push", () => ({ default: {} }));
+vi.mock("web-push", () => ({
+  sendNotification: vi.fn(),
+  WebPushError: class WebPushError extends Error {},
+}));
 
 const mockDbSelect = vi.fn();
 const mockDbDelete = vi.fn();
