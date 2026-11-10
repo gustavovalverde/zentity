@@ -329,8 +329,8 @@ importers:
   apps/web:
     dependencies:
       '@aztec/bb.js':
-        specifier: 4.0.4
-        version: 4.0.4
+        specifier: 5.3.0
+        version: 5.3.0
       '@better-auth/ciba':
         specifier: file:vendor/better-auth-ciba-1.7.6.tgz
         version: file:apps/web/vendor/better-auth-ciba-1.7.6.tgz(bce1865deda94b4a2ca4e00ea5e2ed88)
@@ -377,14 +377,14 @@ importers:
         specifier: 3.1.3
         version: 3.1.3
       '@noir-lang/acvm_js':
-        specifier: 1.0.0-beta.19
-        version: 1.0.0-beta.19
+        specifier: 1.0.0
+        version: 1.0.0
       '@noir-lang/noir_js':
-        specifier: 1.0.0-beta.19
-        version: 1.0.0-beta.19
+        specifier: 1.0.0
+        version: 1.0.0
       '@noir-lang/noirc_abi':
-        specifier: 1.0.0-beta.19
-        version: 1.0.0-beta.19
+        specifier: 1.0.0
+        version: 1.0.0
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
@@ -777,12 +777,12 @@ packages:
     resolution: {integrity: sha512-w+rlVHbSbb1neDeJGMDSbNZCxuD6TeSrN/1lbnVgqhKcVfqdDXdTt2b6RUToCsk7Q2Dmx4oqU5tfBcFY//LQtg==}
     hasBin: true
 
-  '@aztec/bb.js@4.0.4':
-    resolution: {integrity: sha512-p+YKb3xGMhknJ1EgKhgmAB+5nz6W0c4/MtKM2KHCd2VuxoWXyvyeTNYvtAdY6wkWNeVx7N37DV+yWgPBEOdeyw==}
-    hasBin: true
-
   '@aztec/bb.js@5.0.0':
     resolution: {integrity: sha512-O4HDjzrjXMvM44+VbgDG1GaDUztWGEVujbBmwZAEVJh6BHpmJfMxBB2/69h1oi4kX2adgaowlJNFhpzcz1MHSA==}
+    hasBin: true
+
+  '@aztec/bb.js@5.3.0':
+    resolution: {integrity: sha512-k8ri7p7MleDm6ZX2+NkzDKAiaLFBrDtTa2K0HsWWpTYr2YRPVh3ZIJhXtyknx/YMLT1EhOd//sEgyUCTeRUP5g==}
     hasBin: true
 
   '@babel/code-frame@7.29.7':
@@ -3170,26 +3170,26 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@noir-lang/acvm_js@1.0.0-beta.19':
-    resolution: {integrity: sha512-J4i5SkZ8SYMAfl3yNyneI3DorEfE5zsgsHljm0aY6mV4x+LcbqxzM6hdsSbXqboZ1ZUXXmmHjE9WqFMkJC94eQ==}
+  '@noir-lang/acvm_js@1.0.0':
+    resolution: {integrity: sha512-PmDnDgnq+oKWbUpDbLFXy+c+QRzznUH+mzoojZ4KKVgkQ/AmQZdE1d9JLgsmRnPQfvMifCIKvKpSkBXqO2b91A==}
 
   '@noir-lang/acvm_js@1.0.0-beta.22':
     resolution: {integrity: sha512-2xXfSKrnskUNmPiG/Kj6yvWi1E6wJBl/1ZsmzVaHEEyJsUBf15xaSRBZR7X1361whUR2vqyG80ck2huLZPb5bA==}
 
-  '@noir-lang/noir_js@1.0.0-beta.19':
-    resolution: {integrity: sha512-KtuO37XuBn+7PHReLGCyLVxKGBk+hSvUQs0r/rtNFTYty/KmSq/NwEXkwiA7aQTNUykrzTJGFbIForQWjIJT4g==}
+  '@noir-lang/noir_js@1.0.0':
+    resolution: {integrity: sha512-LJKStl4X9MfPc0eAbGHV/AUy5zefil5n0+OVznpd4T9znwNbpAG6KsrcETyREzFEE5vehesCzR0IBOIAIngEaQ==}
 
   '@noir-lang/noir_js@1.0.0-beta.22':
     resolution: {integrity: sha512-Ts+QI2fN2PsrVjx38CszFSR0TyWpip9TgJ6HM17DIK05Jku4TSKtHMIjrE6lRii4Y+JV0rn70v+TrunJmt/X4w==}
 
-  '@noir-lang/noirc_abi@1.0.0-beta.19':
-    resolution: {integrity: sha512-rCEVNmXwfxC70VVJqOjvgP9mga+HVOIYzmsTQV9JeNG/BiWbxdHPJ+K0gT7EoCpz7VOVwfgWjFepxfbQk++GSw==}
+  '@noir-lang/noirc_abi@1.0.0':
+    resolution: {integrity: sha512-psK2i0oq1c1QhqgBIl77gJND0X8a5egj6Lloa85FhTt+R+M2QtiOle3jCwg64HSddCjKZe8OwlCDeqaa630RIg==}
 
   '@noir-lang/noirc_abi@1.0.0-beta.22':
     resolution: {integrity: sha512-vpZtWb946eb4ZxERxY32I4Fv62SAAjhAyJpb2YzWYvnDVTyFVIvr/MSVunrM1osUP35nnRPRGuXVTWy4sBQkIg==}
 
-  '@noir-lang/types@1.0.0-beta.19':
-    resolution: {integrity: sha512-px/gpC8tvOvCPY6TbVYqMDqDadA75I2woOZ3b5vbyjxqaE4UtsKtcdsWQ9titSCslkYCe1WYRGiFE/LPyRgOpQ==}
+  '@noir-lang/types@1.0.0':
+    resolution: {integrity: sha512-+yq5igydWbkrprufpxjsdjFjrc7Led0lDshew2HcXW3NFtXmEhggtHNGOMh502iBFE1KOu6l+t91OG9FAMMWqA==}
 
   '@noir-lang/types@1.0.0-beta.22':
     resolution: {integrity: sha512-PXD8cmvMT4wybDe1pUPwv2Uz1FYh9B/hdXrY5eOMf1elNVxomj2tHDDYoKI/zNDrJ1JzTL0xhbAX1vBTMMFvBw==}
@@ -10642,6 +10642,9 @@ packages:
   pako@2.2.0:
     resolution: {integrity: sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==}
 
+  pako@3.0.3:
+    resolution: {integrity: sha512-tmrebBBYI5FOw8QICGwJNqE8fotC8R+gwcxOvoFNv+GKehOI6Lc6YBolNcQNnC4v96l1wt7rh102ifD4kVeZAQ==}
+
   parent-module@1.0.1:
     resolution: {integrity: sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==}
     engines: {node: '>=6'}
@@ -12818,7 +12821,7 @@ snapshots:
       proper-lockfile: 4.1.2
       tslib: 2.9.1
 
-  '@aztec/bb.js@4.0.4':
+  '@aztec/bb.js@5.0.0':
     dependencies:
       comlink: 4.4.2
       commander: 12.1.0
@@ -12827,7 +12830,7 @@ snapshots:
       pako: 2.2.0
       tslib: 2.9.1
 
-  '@aztec/bb.js@5.0.0':
+  '@aztec/bb.js@5.3.0':
     dependencies:
       comlink: 4.4.2
       commander: 12.1.0
@@ -15366,16 +15369,16 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.3
 
-  '@noir-lang/acvm_js@1.0.0-beta.19': {}
+  '@noir-lang/acvm_js@1.0.0': {}
 
   '@noir-lang/acvm_js@1.0.0-beta.22': {}
 
-  '@noir-lang/noir_js@1.0.0-beta.19':
+  '@noir-lang/noir_js@1.0.0':
     dependencies:
-      '@noir-lang/acvm_js': 1.0.0-beta.19
-      '@noir-lang/noirc_abi': 1.0.0-beta.19
-      '@noir-lang/types': 1.0.0-beta.19
-      pako: 2.2.0
+      '@noir-lang/acvm_js': 1.0.0
+      '@noir-lang/noirc_abi': 1.0.0
+      '@noir-lang/types': 1.0.0
+      pako: 3.0.3
 
   '@noir-lang/noir_js@1.0.0-beta.22':
     dependencies:
@@ -15384,15 +15387,15 @@ snapshots:
       '@noir-lang/types': 1.0.0-beta.22
       pako: 2.2.0
 
-  '@noir-lang/noirc_abi@1.0.0-beta.19':
+  '@noir-lang/noirc_abi@1.0.0':
     dependencies:
-      '@noir-lang/types': 1.0.0-beta.19
+      '@noir-lang/types': 1.0.0
 
   '@noir-lang/noirc_abi@1.0.0-beta.22':
     dependencies:
       '@noir-lang/types': 1.0.0-beta.22
 
-  '@noir-lang/types@1.0.0-beta.19': {}
+  '@noir-lang/types@1.0.0': {}
 
   '@noir-lang/types@1.0.0-beta.22': {}
 
@@ -25001,6 +25004,8 @@ snapshots:
   pako@1.0.11: {}
 
   pako@2.2.0: {}
+
+  pako@3.0.3: {}
 
   parent-module@1.0.1:
     dependencies:

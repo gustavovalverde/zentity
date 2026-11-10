@@ -10,7 +10,7 @@
 //   - nationality_code: Weighted-sum encoding from @zkpassport/utils (e.g., 4474197 for Germany)
 //   - document_hash: Commitment to the document (kept private)
 //   - path_elements: The sibling hashes along the Merkle path
-//   - path_indices: The direction at each level (0=left, 1=right)
+//   - path_indices: The direction at each level (false=left, true=right)
 //
 // Output:
 //   - Returns true if the nationality is a member of the group
@@ -24,7 +24,7 @@ fn main(
     nationality_code: Field,                    // Private: actual nationality code
     document_hash: Field,                       // Private: document commitment
     path_elements: [Field; TREE_DEPTH],         // Private: Merkle path siblings
-    path_indices: [u1; TREE_DEPTH],             // Private: path directions
+    path_indices: [bool; TREE_DEPTH],           // Private: path directions
     merkle_root: pub Field,                     // Public: identifies the country group
     nonce: pub Field,                           // Public: challenge nonce (replay resistance)
     claim_hash: pub Field                       // Public: claim hash binding to OCR data
@@ -43,8 +43,8 @@ fn main(
     for i in 0..TREE_DEPTH {
         let sibling = path_elements[i];
 
-        // Order the pair based on path index (0=current is left, 1=current is right)
-        let (left, right) = if path_indices[i] == 0 {
+        // Order the pair based on path index (false=current is left, true=current is right)
+        let (left, right) = if !path_indices[i] {
             (current, sibling)
         } else {
             (sibling, current)
@@ -81,7 +81,7 @@ fn test_merkle_path_computation() {
     // For testing, we'll create a path that leads to a known root
     // In production, these would come from the actual Merkle tree
     let path_elements: [Field; TREE_DEPTH] = [0; TREE_DEPTH];
-    let path_indices: [u1; TREE_DEPTH] = [0; TREE_DEPTH];
+    let path_indices: [bool; TREE_DEPTH] = [false; TREE_DEPTH];
 
     // Compute what the root would be with this path
     let mut expected_root = leaf;
