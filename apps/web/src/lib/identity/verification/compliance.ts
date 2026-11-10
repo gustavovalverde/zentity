@@ -48,7 +48,7 @@ export interface ComplianceChecks {
   sybilResistant: boolean;
 }
 
-export interface IdentityAxis {
+interface IdentityAxis {
   /** Which verification path produced the evidence, or null if absent. */
   method: VerificationMethod;
   /** Discrete evidence-strength tier, mappable to uint8 for on-chain. */
@@ -57,12 +57,12 @@ export interface IdentityAxis {
   verified: boolean;
 }
 
-export interface HumanityAxis {
+interface HumanityAxis {
   /** True iff the user has at least one active humanity credential. */
   proven: boolean;
 }
 
-export interface PolicyAxis {
+interface PolicyAxis {
   /** Birth-year offset (0-255) for confidential-chain age encoding. */
   birthYearOffset: number | null;
   /** The seven canonical compliance checks. */

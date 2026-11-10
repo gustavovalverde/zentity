@@ -13,7 +13,7 @@ const DOC_TYPES: ZkPassportDocType[] = [
 ];
 
 /** Support levels per document type for a single country. */
-export interface CountrySupport {
+interface CountrySupport {
   id_card: number;
   passport: number;
   residence_permit: number;

@@ -42,7 +42,7 @@ rsync -a \
   apps/web "$STAGE_DIR/apps/"
 
 rsync -a --exclude='node_modules' --exclude='dist' packages "$STAGE_DIR/"
-cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$STAGE_DIR/"
+cp package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs "$STAGE_DIR/"
 
 # Place railway.toml at the upload root so [deploy] settings (healthcheck,
 # restart policy) get applied. apps/web/railway.toml is only read when the

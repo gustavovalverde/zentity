@@ -38,7 +38,7 @@ export interface WorkerInitMessage {
 /**
  * Empty payload for health check requests
  */
-export type HealthCheckPayload = Record<string, never>;
+type HealthCheckPayload = Record<string, never>;
 
 export interface WorkerRequest {
   id: string;

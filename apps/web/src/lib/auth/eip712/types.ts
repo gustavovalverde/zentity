@@ -9,7 +9,7 @@ export interface Eip712TypedData {
   types: Record<string, Array<{ name: string; type: string }>>;
 }
 
-export interface BuildTypedDataParams {
+interface BuildTypedDataParams {
   address: string;
   chainId: number;
   nonce: string;

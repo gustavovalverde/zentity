@@ -44,7 +44,7 @@ type RecoveryType =
   | "rotate_device"
   | "none";
 
-export interface RecoveryAction {
+interface RecoveryAction {
   /** Number of automatic retries before showing error UI */
   autoRetryCount?: number;
   /** User-facing recovery instruction */
