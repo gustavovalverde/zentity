@@ -30,6 +30,10 @@
 /apps/web/Dockerfile
 /apps/web/railway.toml
 
+# The Vercel CLI skips .pnpmfile.cjs by default, but the lockfile records
+# its checksum, so a frozen install fails without it.
+!.pnpmfile.cjs
+
 # Common
 /fixtures
 node_modules
