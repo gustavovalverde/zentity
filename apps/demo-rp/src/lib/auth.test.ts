@@ -124,6 +124,7 @@ describe("getAuth provider userinfo", () => {
       })),
       query: {
         account: { findFirst: vi.fn().mockResolvedValue(null) },
+        oauthDpopKey: { findFirst: vi.fn().mockResolvedValue(undefined) },
         user: { findFirst: vi.fn().mockResolvedValue(null) },
       },
       update: vi.fn(() => ({

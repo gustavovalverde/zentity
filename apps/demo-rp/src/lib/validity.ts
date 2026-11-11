@@ -1,11 +1,12 @@
 import "server-only";
 
-import { createDpopClientFromKeyPair } from "@zentity/sdk/rp";
+import type { DpopClient } from "@zentity/sdk/rp";
 import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/lib/db/connection";
 import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { getOAuthDpopClient } from "@/lib/oauth-dpop-client";
 import {
   describeOAuthErrorResponse,
   parseOAuthJsonResponse,
@@ -15,7 +16,7 @@ import {
   type RouteScenarioId,
 } from "@/scenarios/route-scenario-registry";
 
-import { account, oauthDpopKey, validityNotice } from "./db/schema";
+import { account, validityNotice } from "./db/schema";
 
 const VALIDITY_PATH = "/api/auth/oauth2/validity";
 
@@ -88,23 +89,6 @@ async function readScenarioSessionAccount(args: {
   );
 }
 
-async function readStoredDpopKey(accessToken: string): Promise<{
-  privateJwk: string;
-  publicJwk: string;
-} | null> {
-  return (
-    (await getDb()
-      .select({
-        privateJwk: oauthDpopKey.privateJwk,
-        publicJwk: oauthDpopKey.publicJwk,
-      })
-      .from(oauthDpopKey)
-      .where(eq(oauthDpopKey.accessToken, accessToken))
-      .limit(1)
-      .get()) ?? null
-  );
-}
-
 async function readLatestValidityNotice(args: {
   clientId: string;
   subject: string;
@@ -138,14 +122,10 @@ async function readLatestValidityNotice(args: {
 
 async function fetchRemoteValidityState(args: {
   accessToken: string;
-  keyPair: {
-    privateJwk: Record<string, unknown>;
-    publicJwk: Record<string, unknown>;
-  };
+  dpop: DpopClient;
 }): Promise<RemoteValidityState> {
   const validityUrl = new URL(VALIDITY_PATH, env.ZENTITY_URL).toString();
-  const dpop = await createDpopClientFromKeyPair(args.keyPair);
-  const response = await dpop.fetch(validityUrl, {
+  const response = await args.dpop.fetch(validityUrl, {
     accessToken: args.accessToken,
   });
   if (!response.ok) {
@@ -187,11 +167,11 @@ export async function getScenarioValidityState(args: {
   const subject = sessionAccount?.subject ?? null;
   const accessToken = sessionAccount?.accessToken ?? null;
 
-  const [latestNotice, storedKey] = await Promise.all([
+  const [latestNotice, dpop] = await Promise.all([
     clientId && subject
       ? readLatestValidityNotice({ clientId, subject })
       : Promise.resolve(null),
-    accessToken ? readStoredDpopKey(accessToken) : Promise.resolve(null),
+    accessToken ? getOAuthDpopClient(accessToken) : Promise.resolve(null),
   ]);
 
   if (!(clientId && accessToken)) {
@@ -205,7 +185,7 @@ export async function getScenarioValidityState(args: {
     };
   }
 
-  if (!storedKey) {
+  if (!dpop) {
     return {
       clientId,
       latestNotice,
@@ -217,13 +197,7 @@ export async function getScenarioValidityState(args: {
   }
 
   try {
-    const snapshot = await fetchRemoteValidityState({
-      accessToken,
-      keyPair: {
-        privateJwk: JSON.parse(storedKey.privateJwk) as Record<string, unknown>,
-        publicJwk: JSON.parse(storedKey.publicJwk) as Record<string, unknown>,
-      },
-    });
+    const snapshot = await fetchRemoteValidityState({ accessToken, dpop });
 
     return {
       clientId,

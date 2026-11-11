@@ -1,7 +1,6 @@
 import "server-only";
 
 import {
-  createDpopClientFromKeyPair,
   type ProofOfHumanClaims,
   requestProofOfHumanToken,
 } from "@zentity/sdk/rp";
@@ -13,6 +12,7 @@ import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db/connection";
 import { account, oauthDpopKey } from "@/lib/db/schema";
 import { env } from "@/lib/env";
+import { getOAuthDpopClient } from "@/lib/oauth-dpop-client";
 import { getOAuthProviderId } from "@/scenarios/route-scenario-registry";
 
 const X402_OAUTH_PROVIDER_ID = getOAuthProviderId("x402");
@@ -74,24 +74,10 @@ export async function acquirePohToken(): Promise<PohResult | PohError> {
     }
   }
 
-  const dpopRow = await getDb()
-    .select({
-      publicJwk: oauthDpopKey.publicJwk,
-      privateJwk: oauthDpopKey.privateJwk,
-    })
-    .from(oauthDpopKey)
-    .where(eq(oauthDpopKey.accessToken, acct.accessToken))
-    .limit(1)
-    .get();
-
-  if (!dpopRow) {
+  const dpop = await getOAuthDpopClient(acct.accessToken);
+  if (!dpop) {
     return { error: "dpop_keys_missing", status: 500 };
   }
-
-  const dpop = await createDpopClientFromKeyPair({
-    publicJwk: JSON.parse(dpopRow.publicJwk),
-    privateJwk: JSON.parse(dpopRow.privateJwk),
-  });
 
   const result = await requestProofOfHumanToken({
     accessToken: acct.accessToken,
