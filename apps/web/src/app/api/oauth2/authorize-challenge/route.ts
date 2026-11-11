@@ -430,6 +430,7 @@ async function handleInitialRequest(
           code_challenge: params.code_challenge,
           code_challenge_method: params.code_challenge_method,
           ...(params.resource && { resource: params.resource }),
+          ...(dpopJkt && { dpop_jkt: dpopJkt }),
         }),
         expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
       });
@@ -862,6 +863,7 @@ async function handleStepUpReEntry(
           code_challenge_method:
             codeChallengeMethod ?? session.codeChallengeMethod ?? "S256",
           ...(session.resource && { resource: session.resource }),
+          ...(session.dpopJkt && { dpop_jkt: session.dpopJkt }),
         }),
         expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
       });
