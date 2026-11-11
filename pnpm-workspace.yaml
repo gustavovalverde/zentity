@@ -20,9 +20,6 @@ allowBuilds:
   unrs-resolver: false
   utf-8-validate: false
 
-patchedDependencies:
-  '@daveyplate/better-auth-ui': apps/web/vendor/@daveyplate__better-auth-ui.patch
-
 auditConfig:
   ignoreGhsas:
     # @sd-jwt/* has no stable patched 0.19.x release; the vulnerable copy is pinned by @better-auth/oidc4vci and oidc4vp.

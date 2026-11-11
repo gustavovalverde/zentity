@@ -6,61 +6,49 @@ domains: [platform, security, privacy, web3]
 builds-on: "[Better Auth Passkey Integration + Anonymous Sign-Up](../privacy/0008-better-auth-passkey-integration.md)"
 ---
 
-# Better Auth patches for passkey-first recovery and 2FA UX
+# Unpatched Better Auth for passkey-first recovery and 2FA UX
 
 ## Context and Problem Statement
 
-Zentity relies on Better Auth for passkey-first authentication, but current upstream packages do not fully support: (1) passkey-first PRF extraction during pre-auth registration, (2) passwordless two-factor enablement for passkey-only accounts, and (3) safe backup code UX that avoids rendering codes inline on shared screens. These gaps block our recovery requirements and introduce privacy/UX risks.
+Zentity relies on Better Auth for passkey-first authentication. Recovery requires three behaviors that earlier Better Auth packages lacked: (1) PRF extraction during pre-auth passkey registration, (2) passwordless two-factor enablement for passkey-only accounts, and (3) a backup-code flow that makes users save the codes before they continue. Zentity first shipped these as patches to the published packages. Upstream now covers (1) and (2), and Zentity owns the UI for (3).
 
 ## Priorities & Constraints
 
 * Passkey-first accounts must be able to enable and use authenticator-based recovery without adding a password.
 * PRF output must be available during registration without a second prompt.
-* Backup codes should be downloadable but not displayed inline by default.
+* Users must download their backup codes before they can leave the backup-code step.
 * Changes must be reproducible in CI/Docker builds.
 
 ## Decision Outcome
 
-Chosen option: **Patch published Better Auth packages using Bun patchedDependencies.**
+Chosen option: **Use published Better Auth packages unpatched, with upstream options for server behavior and Zentity-owned UI for two-factor setup.**
 
-We apply small, targeted patches to the published packages and commit the patch files into the repo. This allows us to ship the required behavior now while preserving a clear upgrade path when upstream adopts the changes.
+Zentity does not patch any Better Auth package, and `pnpm-workspace.yaml` has no `patchedDependencies` entries. When upstream lacks a behavior, Zentity adds it in its own code or proposes it upstream instead of carrying a patch.
 
-### Patched Packages
+### Current State
 
-1) **@better-auth/passkey**
-   * Enables pre-auth registration and returns WebAuthn response extensions for PRF output.
-   * Required for passkey-first sign-up and key custody.
-
-2) **better-auth**
-   * Adds `allowPasswordless` support for two-factor backup code generation so passkey-only users can enable TOTP + backup codes.
-
-3) **@daveyplate/better-auth-ui**
-   * Changes backup codes UI to download-only (no inline list) to reduce shoulder-surfing risk.
-
-### Patch Locations
-
-* `apps/web/patches/@better-auth%2Fpasskey@1.5.0-beta.2.patch`
-* `apps/web/patches/better-auth@1.5.0-beta.2.patch`
-* `apps/web/patches/@daveyplate%2Fbetter-auth-ui@3.3.12.patch`
-* `apps/web/package.json` -> `patchedDependencies`
+* **@better-auth/passkey** and **better-auth** run unpatched. Passwordless two-factor enrollment uses the upstream `twoFactor({ allowPasswordless: true })` option.
+* **@daveyplate/better-auth-ui** runs unpatched. Zentity renders its own two-factor settings card and backup-code page (`/two-factor/backup-codes`). That page shows the codes once, offers them as a `.txt` download, and keeps Continue disabled until the user downloads them. Zentity does not render the library's two-factor or security settings cards, so the library's backup-code dialog never appears.
 
 ### Expected Consequences
 
 * Passkey-only accounts can enable TOTP and backup codes without a password.
-* Backup codes are still available but not displayed inline by default.
-* Ongoing maintenance required to update/remove patches when upstream changes.
+* Backup-code presentation is owned by Zentity's UI, not by a patched third-party component.
+* Backup codes appear on screen once during setup, so users should complete that step on a private screen.
+* Better Auth and Better Auth UI upgrades no longer require regenerating patches.
 
 ## Alternatives Considered
 
+* **Patch published packages with `patchedDependencies`**: The original approach. It shipped the behavior before upstream did, but every upgrade required regenerating the patches, and the Better Auth UI patch alone was 1.2 MB of rebuilt `dist/` files.
 * **Fork and vendor Better Auth**: Higher maintenance burden and divergence risk.
 * **Custom 2FA implementation**: Duplicates audited logic and adds security risk.
-* **Wait for upstream**: Blocks recovery UX and passkey-first sign-up requirements.
+* **Wait for upstream**: Blocked recovery UX and passkey-first sign-up requirements while the patches were needed.
 
 ## More Information
 
 * `docs/adr/privacy/0008-better-auth-passkey-integration.md`
-* Bun patch workflow: `bun patch` / `bun patch --commit`
 
 ## Revision History
 
 * 2026-09-25: Guardian recovery removed; two-factor devices no longer act as recovery guardians.
+* 2026-11-10: Removed the last patch (`@daveyplate/better-auth-ui`) and upgraded the package to 3.4.0. The decision is now to use unpatched packages, and the backup-code constraint now requires a download before continuing instead of hiding the codes.

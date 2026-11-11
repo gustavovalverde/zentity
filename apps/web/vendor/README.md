@@ -1,6 +1,6 @@
-# Vendored Tarballs and Patches
+# Vendored Tarballs
 
-This directory holds packages and patches that are not published to a public registry. Each `file:vendor/*.tgz` reference in `apps/web/package.json` resolves here, and each patch is registered under `patchedDependencies` in `pnpm-workspace.yaml`, which keeps every install reproducible from a clean checkout.
+This directory holds packages that are not published to a public registry. Each `file:vendor/*.tgz` reference in `apps/web/package.json` resolves here, which keeps every install reproducible from a clean checkout.
 
 ## Better Auth plugins
 
