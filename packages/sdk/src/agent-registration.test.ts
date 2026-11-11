@@ -1,6 +1,12 @@
-import { exportJWK, generateKeyPair, importJWK, jwtVerify } from "jose";
+import {
+  decodeJwt,
+  exportJWK,
+  generateKeyPair,
+  importJWK,
+  jwtVerify,
+} from "jose";
 import { describe, expect, it, vi } from "vitest";
-import type { DpopClient } from "./rp/dpop-client";
+import { createDpopClient } from "./rp/dpop-client";
 import {
   AgentRegistrationError,
   buildHostKeyNamespace,
@@ -9,26 +15,6 @@ import {
   signAgentAssertion,
   type HostKeyMaterial,
 } from "./agent-registration";
-
-function createDpopClient(): Pick<DpopClient, "proofFor" | "withNonceRetry"> {
-  return {
-    proofFor: vi.fn(async (_method, _url, _accessToken, nonce) =>
-      nonce ? `dpop-${nonce}` : "dpop-initial"
-    ),
-    withNonceRetry: vi.fn(async (attempt) => {
-      const initial = await attempt();
-      if (
-        initial.response.status !== 400 &&
-        initial.response.status !== 401
-      ) {
-        return initial;
-      }
-
-      const nonce = initial.response.headers.get("DPoP-Nonce");
-      return nonce ? attempt(nonce) : initial;
-    }),
-  };
-}
 
 async function createHostKey(): Promise<HostKeyMaterial> {
   const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
@@ -60,14 +46,17 @@ describe("agent registration", () => {
   });
 
   it("registers hosts with DPoP nonce retry and client attestation headers", async () => {
-    const dpopClient = createDpopClient();
+    const dpopClient = await createDpopClient();
     const hostKey = await createHostKey();
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "use_dpop_nonce" }), {
+        new Response(null, {
           status: 401,
-          headers: { "DPoP-Nonce": "nonce-1" },
+          headers: {
+            "DPoP-Nonce": "nonce-1",
+            "WWW-Authenticate": 'DPoP error="use_dpop_nonce"',
+          },
         })
       )
       .mockResolvedValueOnce(
@@ -99,19 +88,20 @@ describe("agent registration", () => {
       created: true,
       attestationTier: "self-declared",
     });
-    expect(dpopClient.proofFor).toHaveBeenLastCalledWith(
-      "POST",
-      "https://issuer.example/api/auth/agent/host/register",
-      "bootstrap-token",
-      "nonce-1"
-    );
     expect(fetchFn).toHaveBeenCalledTimes(2);
     const retryInit = fetchFn.mock.calls[1]?.[1] as RequestInit;
-    expect(retryInit.headers).toMatchObject({
-      Authorization: "DPoP bootstrap-token",
-      DPoP: "dpop-nonce-1",
-      "OAuth-Client-Attestation": "client-attestation",
-      "OAuth-Client-Attestation-PoP": "client-attestation-pop",
+    const retryHeaders = new Headers(retryInit.headers);
+    expect(retryHeaders.get("Authorization")).toBe("DPoP bootstrap-token");
+    expect(retryHeaders.get("OAuth-Client-Attestation")).toBe(
+      "client-attestation"
+    );
+    expect(retryHeaders.get("OAuth-Client-Attestation-PoP")).toBe(
+      "client-attestation-pop"
+    );
+    expect(decodeJwt(retryHeaders.get("DPoP") ?? "")).toMatchObject({
+      htm: "POST",
+      htu: "https://issuer.example/api/auth/agent/host/register",
+      nonce: "nonce-1",
     });
     expect(JSON.parse(String(retryInit.body))).toMatchObject({
       name: "Test Host",
@@ -123,7 +113,7 @@ describe("agent registration", () => {
     await expect(
       registerHost({
         accessToken: "bootstrap-token",
-        dpopClient: createDpopClient(),
+        dpopClient: await createDpopClient(),
         endpoint: "https://issuer.example/register",
         fetch: vi.fn<typeof fetch>().mockResolvedValueOnce(
           new Response("Missing required scope", { status: 403 })
@@ -139,7 +129,7 @@ describe("agent registration", () => {
   });
 
   it("registers sessions with a host attestation JWT and ephemeral did:key", async () => {
-    const dpopClient = createDpopClient();
+    const dpopClient = await createDpopClient();
     const hostKey = await createHostKey();
     const fetchFn = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(

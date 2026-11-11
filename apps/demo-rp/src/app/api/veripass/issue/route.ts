@@ -146,42 +146,15 @@ export async function POST(request: Request) {
     const configId =
       offer.credential_configuration_ids[0] || "identity_verification";
 
-    const { response: credRes, result: credRaw } = await dpop.withNonceRetry(
-      async (nonce) => {
-        const dpopProof = await dpop.proofFor(
-          "POST",
-          credentialUrl,
-          tokenData.access_token,
-          nonce
-        );
-        const response = await fetch(credentialUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `DPoP ${tokenData.access_token}`,
-            DPoP: dpopProof,
-          },
-          body: JSON.stringify({
-            credential_configuration_id: configId,
-            proofs: { jwt: [proofJwt] },
-          }),
-        });
-        if (
-          !response.ok &&
-          response.status !== 400 &&
-          response.status !== 401
-        ) {
-          const text = await response.text();
-          throw new Error(
-            `Credential request failed: ${response.status} ${text}`
-          );
-        }
-        const result = response.ok
-          ? ((await response.json()) as Record<string, unknown>)
-          : {};
-        return { response, result };
-      }
-    );
+    const credRes = await dpop.fetch(credentialUrl, {
+      method: "POST",
+      accessToken: tokenData.access_token,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credential_configuration_id: configId,
+        proofs: { jwt: [proofJwt] },
+      }),
+    });
 
     if (!credRes.ok) {
       const text = await credRes.text().catch(() => "");
@@ -191,6 +164,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const credRaw = (await credRes.json()) as Record<string, unknown>;
     const credential = (
       credRaw.credentials as Array<{ credential?: string }> | undefined
     )?.[0]?.credential;

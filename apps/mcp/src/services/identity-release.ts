@@ -14,7 +14,7 @@ export interface IdentityClaims {
  */
 export function redeemRelease(
   cibaAccessToken: string,
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">
+  dpopClient: Pick<DpopClient, "fetch">
 ): Promise<IdentityClaims | null> {
   const userinfoUrl = `${config.zentityUrl}/api/auth/oauth2/userinfo`;
   return redeemViaDpop(userinfoUrl, cibaAccessToken, dpopClient);
@@ -23,19 +23,10 @@ export function redeemRelease(
 async function redeemViaDpop(
   userinfoUrl: string,
   cibaAccessToken: string,
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">
+  dpopClient: Pick<DpopClient, "fetch">
 ): Promise<IdentityClaims | null> {
-  const { response } = await dpopClient.withNonceRetry(async (nonce) => {
-    const proof = await dpopClient.proofFor(
-      "GET",
-      userinfoUrl,
-      cibaAccessToken,
-      nonce
-    );
-    const attemptResponse = await fetch(userinfoUrl, {
-      headers: { Authorization: `DPoP ${cibaAccessToken}`, DPoP: proof },
-    });
-    return { response: attemptResponse, result: null };
+  const response = await dpopClient.fetch(userinfoUrl, {
+    accessToken: cibaAccessToken,
   });
 
   return parseUserinfoResponse(response);

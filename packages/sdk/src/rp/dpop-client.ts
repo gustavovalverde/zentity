@@ -7,6 +7,7 @@ import {
   type JWK,
   SignJWT,
 } from "jose";
+import { normalizeDpopHtu } from "./dpop-htu";
 
 const P256_SCALAR_BYTES = 32;
 // HKDF parameters for the zpay payment-channel DPoP key. They are wire
@@ -21,18 +22,47 @@ export interface DpopKeyPair {
   publicJwk: JWK;
 }
 
+export interface DpopRequestInit extends RequestInit {
+  /**
+   * Access token to present. The proof binds it through `ath`, and the
+   * request carries `Authorization: DPoP <accessToken>`.
+   */
+  accessToken?: string;
+  /** Transport to send the request with. Defaults to the global `fetch`. */
+  fetch?: typeof globalThis.fetch;
+}
+
 export interface DpopClient {
   keyPair: DpopKeyPair;
+  /**
+   * Sends `init` to `url` with a DPoP proof and handles server nonces
+   * (RFC 9449 §8 and §9).
+   *
+   * The client remembers the latest `DPoP-Nonce` each origin returned, on
+   * success or error, and puts it in the first proof. When the server
+   * answers `use_dpop_nonce` (a 400 JSON error from an authorization server,
+   * or a 401 `WWW-Authenticate` error from a resource server), the request
+   * is retried once with the new nonce. Every other response, including
+   * errors that carry a `DPoP-Nonce`, is returned as is. The retry resends
+   * `init.body`, so pass a replayable body such as a string or
+   * `URLSearchParams`, not a stream.
+   */
+  fetch(url: string | URL, init?: DpopRequestInit): Promise<Response>;
+  /**
+   * Signs one DPoP proof without sending a request. `htu` is the URL
+   * without its query, and a URL with a fragment is rejected.
+   */
   proofFor(
     method: string,
     url: string | URL,
     accessToken?: string,
     nonce?: string
   ): Promise<string>;
-  withNonceRetry<T>(
-    attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-  ): Promise<{ response: Response; result: T }>;
 }
+
+const DPOP_NONCE_HEADER = "DPoP-Nonce";
+const USE_DPOP_NONCE = "use_dpop_nonce";
+const WWW_AUTHENTICATE_USE_DPOP_NONCE_RE = /\berror\s*=\s*"?use_dpop_nonce"?/i;
 
 function toUrlString(url: string | URL): string {
   return url instanceof URL ? url.toString() : url;
@@ -46,50 +76,81 @@ async function hashAccessToken(token: string): Promise<string> {
   return base64url.encode(new Uint8Array(digest));
 }
 
+async function isNonceChallenge(response: Response): Promise<boolean> {
+  if (response.status === 401) {
+    const challenge = response.headers.get("WWW-Authenticate") ?? "";
+    return WWW_AUTHENTICATE_USE_DPOP_NONCE_RE.test(challenge);
+  }
+  if (response.status !== 400) {
+    return false;
+  }
+  try {
+    const body = (await response.clone().json()) as { error?: unknown };
+    return body?.error === USE_DPOP_NONCE;
+  } catch {
+    return false;
+  }
+}
+
 async function createClient(keyPair: DpopKeyPair): Promise<DpopClient> {
   const privateKey = await importJWK(keyPair.privateJwk, "ES256");
+  const noncesByOrigin = new Map<string, string>();
+
+  async function proofFor(
+    method: string,
+    url: string | URL,
+    accessToken?: string,
+    nonce?: string
+  ): Promise<string> {
+    return new SignJWT({
+      htm: method,
+      htu: normalizeDpopHtu(url),
+      jti: crypto.randomUUID(),
+      ...(accessToken ? { ath: await hashAccessToken(accessToken) } : {}),
+      ...(nonce ? { nonce } : {}),
+    })
+      .setIssuedAt()
+      .setProtectedHeader({
+        alg: "ES256",
+        jwk: keyPair.publicJwk,
+        typ: "dpop+jwt",
+      })
+      .sign(privateKey);
+  }
 
   return {
     keyPair,
-    async proofFor(
-      method: string,
-      url: string | URL,
-      accessToken?: string,
-      nonce?: string
-    ): Promise<string> {
-      const builder = new SignJWT({
-        htm: method,
-        htu: toUrlString(url),
-        jti: crypto.randomUUID(),
-        ...(accessToken ? { ath: await hashAccessToken(accessToken) } : {}),
-        ...(nonce ? { nonce } : {}),
-      })
-        .setIssuedAt()
-        .setProtectedHeader({
-          alg: "ES256",
-          jwk: keyPair.publicJwk,
-          typ: "dpop+jwt",
+    proofFor,
+    async fetch(url, init = {}) {
+      const { accessToken, fetch: transport = globalThis.fetch, ...request } =
+        init;
+      const target = toUrlString(url);
+      const origin = new URL(target).origin;
+      const method = (request.method ?? "GET").toUpperCase();
+
+      const send = async (nonce: string | undefined) => {
+        const headers = new Headers(request.headers);
+        headers.set("DPoP", await proofFor(method, target, accessToken, nonce));
+        if (accessToken) {
+          headers.set("Authorization", `DPoP ${accessToken}`);
+        }
+        const response = await transport(target, {
+          ...request,
+          method,
+          headers,
         });
+        const nextNonce = response.headers.get(DPOP_NONCE_HEADER);
+        if (nextNonce) {
+          noncesByOrigin.set(origin, nextNonce);
+        }
+        return { response, nextNonce };
+      };
 
-      return builder.sign(privateKey);
-    },
-    async withNonceRetry<T>(
-      attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-    ): Promise<{ response: Response; result: T }> {
-      const initial = await attempt();
-      if (
-        initial.response.status !== 400 &&
-        initial.response.status !== 401
-      ) {
-        return initial;
+      const first = await send(noncesByOrigin.get(origin));
+      if (first.nextNonce && (await isNonceChallenge(first.response))) {
+        return (await send(first.nextNonce)).response;
       }
-
-      const nonce = initial.response.headers.get("DPoP-Nonce");
-      if (!nonce) {
-        return initial;
-      }
-
-      return attempt(nonce);
+      return first.response;
     },
   };
 }

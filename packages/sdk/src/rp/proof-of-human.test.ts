@@ -9,6 +9,7 @@ vi.mock("./token-verifier", () => ({
   createJwksTokenVerifier: verifierMocks.createJwksTokenVerifier,
 }));
 
+import type { DpopRequestInit } from "./dpop-client";
 import {
   createProofOfHumanTokenVerifier,
   requestProofOfHumanToken,
@@ -121,38 +122,23 @@ describe("requestProofOfHumanToken", () => {
       cnf: { jkt: "thumbprint-1" },
       poh: verifiedDocumentaryFullPoh,
     });
-    const proofFor = vi.fn(async () => "dpop-proof");
-    const withNonceRetry = async <T,>(
-      attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-    ) => attempt("nonce-1");
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ token }), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      })
+    const dpopFetch = vi.fn(
+      async (_url: string | URL, _init?: DpopRequestInit) =>
+        new Response(JSON.stringify({ token }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        })
     );
 
     const result = await requestProofOfHumanToken({
       accessToken: "access-token",
-      dpopClient: { proofFor, withNonceRetry },
+      dpopClient: { fetch: dpopFetch },
       proofOfHumanUrl: "https://issuer.example/proof-of-human",
     });
 
-    expect(proofFor).toHaveBeenCalledWith(
-      "POST",
+    expect(dpopFetch).toHaveBeenCalledWith(
       "https://issuer.example/proof-of-human",
-      "access-token",
-      "nonce-1"
-    );
-    expect(fetch).toHaveBeenCalledWith(
-      "https://issuer.example/proof-of-human",
-      {
-        method: "POST",
-        headers: {
-          Authorization: "DPoP access-token",
-          DPoP: "dpop-proof",
-        },
-      }
+      { method: "POST", accessToken: "access-token" }
     );
     expect(result).toEqual({
       ok: true,
@@ -163,26 +149,23 @@ describe("requestProofOfHumanToken", () => {
   });
 
   it("returns issuer errors when the proof-of-human request fails", async () => {
-    const proofFor = vi.fn(async () => "dpop-proof");
-    const withNonceRetry = async <T,>(
-      attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-    ) => attempt();
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          error: "access_denied",
-          error_description: "Token expired",
-        }),
-        {
-          headers: { "content-type": "application/json" },
-          status: 401,
-        }
-      )
+    const dpopFetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: "access_denied",
+            error_description: "Token expired",
+          }),
+          {
+            headers: { "content-type": "application/json" },
+            status: 401,
+          }
+        )
     );
 
     const result = await requestProofOfHumanToken({
       accessToken: "access-token",
-      dpopClient: { proofFor, withNonceRetry },
+      dpopClient: { fetch: dpopFetch },
       proofOfHumanUrl: "https://issuer.example/proof-of-human",
     });
 

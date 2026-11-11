@@ -53,6 +53,38 @@ const agent = createAgent({
 - `@zentity/sdk/node`: Node/Bun installed-client helpers and file storage
 - `@zentity/sdk/testing`: fixture keys, PoH token mocks, mock issuer
 
+## DPoP Requests
+
+Send DPoP-bound requests through `DpopClient.fetch`. The client signs a proof for each attempt and handles server nonces (RFC 9449 §8 and §9).
+
+```ts
+import { createDpopClient } from "@zentity/sdk/rp";
+
+const dpopClient = await createDpopClient();
+
+const tokenResponse = await dpopClient.fetch(tokenEndpoint, {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({ grant_type: "client_credentials" }),
+});
+
+const userInfo = await dpopClient.fetch(userInfoEndpoint, { accessToken });
+```
+
+The client handles nonces as follows:
+
+- It remembers the latest `DPoP-Nonce` header from each origin, on success and error responses, and puts that nonce in the next proof for the origin.
+- It retries a request once when the server answers `use_dpop_nonce`. An authorization server sends this error in a 400 JSON body. A resource server sends it in a 401 `WWW-Authenticate` header.
+- It returns every other response unchanged, including errors such as `invalid_grant` that carry a `DPoP-Nonce` header.
+
+With `accessToken` set, the proof carries the token hash (`ath`) and the request carries `Authorization: DPoP <accessToken>`.
+
+The retry sends the request body again. Pass a body that can be read twice, such as a string or `URLSearchParams`, not a stream.
+
+Proofs use the request URL without its query as `htu`. A URL with a fragment is rejected.
+
+Each client keeps its own nonces. When a server requires nonces, a new client needs one extra round trip to learn the nonce. Reuse one client per key instead of creating one per request.
+
 ## x402 Selection
 
 `createX402Fetch()` selects the first advertised `PAYMENT-REQUIRED.accepts`

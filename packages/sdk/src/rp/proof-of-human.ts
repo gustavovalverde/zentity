@@ -72,7 +72,7 @@ export interface ProofOfHumanTokenVerifier {
 
 export interface RequestProofOfHumanTokenOptions {
   accessToken: string;
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">;
+  dpopClient: Pick<DpopClient, "fetch">;
   fetch?: typeof globalThis.fetch;
   proofOfHumanUrl: string | URL;
 }
@@ -194,36 +194,12 @@ async function parseJsonBody(
 export async function requestProofOfHumanToken(
   options: RequestProofOfHumanTokenOptions
 ): Promise<ProofOfHumanTokenRequestResult> {
-  const proofOfHumanUrl =
-    options.proofOfHumanUrl instanceof URL
-      ? options.proofOfHumanUrl.toString()
-      : options.proofOfHumanUrl;
-
-  const { response, result } = await options.dpopClient.withNonceRetry(
-    async (nonce) => {
-      const proof = await options.dpopClient.proofFor(
-        "POST",
-        proofOfHumanUrl,
-        options.accessToken,
-        nonce
-      );
-      const response = await (options.fetch ?? fetch)(proofOfHumanUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `DPoP ${options.accessToken}`,
-          DPoP: proof,
-        },
-      });
-      const needsNonceRetry =
-        (response.status === 400 || response.status === 401) &&
-        Boolean(response.headers.get("DPoP-Nonce"));
-
-      return {
-        response,
-        result: needsNonceRetry ? {} : await parseJsonBody(response),
-      };
-    }
-  );
+  const response = await options.dpopClient.fetch(options.proofOfHumanUrl, {
+    method: "POST",
+    accessToken: options.accessToken,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+  const result = await parseJsonBody(response);
 
   if (!response.ok) {
     return {

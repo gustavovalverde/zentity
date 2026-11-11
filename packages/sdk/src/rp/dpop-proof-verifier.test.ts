@@ -52,4 +52,30 @@ describe("verifyDpopProof", () => {
 			name: "DpopProofVerificationError",
 		} satisfies Partial<DpopProofVerificationError>);
 	});
+
+	it("compares htu without the query string", async () => {
+		const client = await createDpopClient();
+		const proof = await client.proofFor(
+			"GET",
+			"https://rp.example/mcp?session=1",
+			"access-token",
+		);
+
+		await expect(
+			verifyDpopProof({
+				accessToken: "access-token",
+				method: "GET",
+				proof,
+				url: "https://rp.example/mcp?session=2",
+			}),
+		).resolves.toMatchObject({ payload: { htu: "https://rp.example/mcp" } });
+		await expect(
+			verifyDpopProof({
+				accessToken: "access-token",
+				method: "GET",
+				proof,
+				url: "https://rp.example/other",
+			}),
+		).rejects.toMatchObject({ code: "url_mismatch" });
+	});
 });

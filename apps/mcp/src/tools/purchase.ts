@@ -359,7 +359,7 @@ async function fetchX402Purchase(
           cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
           tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
           clientId: input.oauth.clientId,
-          dpopSigner: input.oauth.dpopClient,
+          dpopClient: input.oauth.dpopClient,
           loginHint: input.oauth.accountSub,
           scope: buildX402PurchaseScope(),
           bindingMessage: input.bindingMessage,
@@ -487,7 +487,7 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
       cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: input.oauth.clientId,
-      dpopSigner: input.oauth.dpopClient,
+      dpopClient: input.oauth.dpopClient,
       loginHint: input.oauth.accountSub,
       scope: buildPurchaseScope(
         Boolean(input.params.requires_age_verification)

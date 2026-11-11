@@ -50,23 +50,12 @@ async function pushAuthorizationRequest(
     body.set("resource", options.resource);
   }
 
-  const { response } = await options.dpopClient.withNonceRetry(
-    async (nonce) => {
-      const proof = await options.dpopClient.proofFor(
-        "POST",
-        options.parEndpoint as string,
-        undefined,
-        nonce
-      );
-      const response = await fetch(options.parEndpoint as string, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          DPoP: proof,
-        },
-        body,
-      });
-      return { response, result: undefined };
+  const response = await options.dpopClient.fetch(
+    options.parEndpoint as string,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
     }
   );
 

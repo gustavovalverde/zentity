@@ -13,7 +13,7 @@ const mockOAuthContext = {
   clientId: "test-client",
   dpopClient: {
     proofFor: vi.fn().mockResolvedValue("mock-proof"),
-    withNonceRetry: vi.fn(),
+    fetch: vi.fn(),
   },
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },

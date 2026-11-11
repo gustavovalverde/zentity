@@ -117,26 +117,184 @@ describe("dpop client", () => {
     expect(proof).toContain("\"typ\":\"dpop+jwt\"");
   });
 
-  it("retries once when a DPoP nonce challenge is returned", async () => {
+  it("normalizes htu to the origin and path", async () => {
     const client = await createDpopClient();
-    const attempt = vi
-      .fn<(nonce?: string) => Promise<{ response: Response; result: string }>>()
-      .mockResolvedValueOnce({
-        response: new Response("", {
-          headers: { "DPoP-Nonce": "next-nonce" },
-          status: 401,
-        }),
-        result: "first",
-      })
-      .mockResolvedValueOnce({
-        response: new Response("", { status: 200 }),
-        result: "second",
+
+    const proof = await client.proofFor(
+      "POST",
+      "https://issuer.example/oauth2/token?client_id=abc"
+    );
+
+    expect(proof).toContain("\"htu\":\"https://issuer.example/oauth2/token\"");
+    await expect(
+      client.proofFor("POST", "https://issuer.example/oauth2/token#frag")
+    ).rejects.toThrow("fragment");
+  });
+
+  describe("fetch", () => {
+    const TOKEN_URL = "https://issuer.example/oauth2/token";
+
+    function sent(transport: ReturnType<typeof vi.fn>, call: number) {
+      const init = transport.mock.calls[call]?.[1] as RequestInit;
+      const headers = new Headers(init.headers);
+      const proof = JSON.parse(headers.get("DPoP") ?? "{}") as {
+        claims: Record<string, unknown>;
+      };
+      return { headers, claims: proof.claims, init };
+    }
+
+    function jsonError(
+      status: number,
+      error: string,
+      headers: Record<string, string> = {}
+    ): Response {
+      return new Response(JSON.stringify({ error }), { status, headers });
+    }
+
+    it("retries a use_dpop_nonce token error once with the new nonce", async () => {
+      const client = await createDpopClient();
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+        )
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+      const response = await client.fetch(TOKEN_URL, {
+        method: "post",
+        body: new URLSearchParams({ grant_type: "client_credentials" }),
+        fetch: transport,
       });
 
-    const result = await client.withNonceRetry(attempt);
+      expect(response.status).toBe(200);
+      expect(transport).toHaveBeenCalledTimes(2);
+      expect(sent(transport, 0).claims.nonce).toBeUndefined();
+      expect(sent(transport, 1).claims).toMatchObject({
+        htm: "POST",
+        htu: TOKEN_URL,
+        nonce: "nonce-1",
+      });
+      expect(String(sent(transport, 1).init.body)).toBe(
+        "grant_type=client_credentials"
+      );
+    });
 
-    expect(attempt).toHaveBeenNthCalledWith(1);
-    expect(attempt).toHaveBeenNthCalledWith(2, "next-nonce");
-    expect(result.result).toBe("second");
+    it("does not retry an invalid_grant error that carries a DPoP-Nonce", async () => {
+      const client = await createDpopClient();
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          jsonError(400, "invalid_grant", { "DPoP-Nonce": "nonce-1" })
+        )
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+      const response = await client.fetch(TOKEN_URL, {
+        method: "POST",
+        fetch: transport,
+      });
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "invalid_grant",
+      });
+      expect(transport).toHaveBeenCalledTimes(1);
+
+      await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+      expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+    });
+
+    it("retries at most once when the server keeps asking for a nonce", async () => {
+      const client = await createDpopClient();
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-1" })
+        )
+        .mockResolvedValueOnce(
+          jsonError(400, "use_dpop_nonce", { "DPoP-Nonce": "nonce-2" })
+        );
+
+      const response = await client.fetch(TOKEN_URL, {
+        method: "POST",
+        fetch: transport,
+      });
+
+      expect(response.status).toBe(400);
+      expect(transport).toHaveBeenCalledTimes(2);
+    });
+
+    it("sends the nonce cached from an earlier success on the first attempt", async () => {
+      const client = await createDpopClient();
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response("{}", {
+            status: 200,
+            headers: { "DPoP-Nonce": "nonce-1" },
+          })
+        )
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+      await client.fetch(TOKEN_URL, { method: "POST", fetch: transport });
+      await client.fetch("https://issuer.example/oauth2/userinfo", {
+        accessToken: "access-token",
+        fetch: transport,
+      });
+      await client.fetch("https://other.example/resource", {
+        fetch: transport,
+      });
+
+      const userinfo = sent(transport, 1);
+      expect(userinfo.claims).toMatchObject({
+        htm: "GET",
+        nonce: "nonce-1",
+        ath: expect.any(String),
+      });
+      expect(userinfo.headers.get("Authorization")).toBe("DPoP access-token");
+      expect(sent(transport, 2).claims.nonce).toBeUndefined();
+      expect(transport).toHaveBeenCalledTimes(3);
+    });
+
+    it("retries a resource-server 401 only for a use_dpop_nonce challenge", async () => {
+      const client = await createDpopClient();
+      const resourceUrl = "https://issuer.example/api/resource";
+      const transport = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 401,
+            headers: {
+              "DPoP-Nonce": "nonce-1",
+              "WWW-Authenticate":
+                'DPoP error="use_dpop_nonce", error_description="Resource server requires nonce in DPoP proof"',
+            },
+          })
+        )
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 401,
+            headers: {
+              "DPoP-Nonce": "nonce-2",
+              "WWW-Authenticate": 'DPoP error="invalid_token"',
+            },
+          })
+        );
+
+      const first = await client.fetch(resourceUrl, {
+        accessToken: "access-token",
+        fetch: transport,
+      });
+      const second = await client.fetch(resourceUrl, {
+        accessToken: "access-token",
+        fetch: transport,
+      });
+
+      expect(first.status).toBe(200);
+      expect(sent(transport, 1).claims.nonce).toBe("nonce-1");
+      expect(second.status).toBe(401);
+      expect(transport).toHaveBeenCalledTimes(3);
+    });
   });
 });
