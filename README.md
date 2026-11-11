@@ -229,7 +229,7 @@ flowchart LR
 - Credential-sealed profile secret for user-controlled PII (client decrypt only)
 - Credential-wrapped FHE key storage (multi-device support; explicit user unlock required)
 - OAuth 2.1 provider flow (authorize, consent, token exchange)
-- HAIP compliance: DPoP with server-managed nonce store, PAR (required), wallet attestation, pairwise subject identifiers
+- HAIP compliance: DPoP with proof replay protection, PAR (optional), wallet attestation, pairwise subject identifiers
 - OIDC4VCI credential issuance (SD-JWT VC, DPoP-bound tokens, deferred issuance, status list revocation)
 - OIDC4VP credential presentation (DCQL queries, JARM encrypted responses, x509_hash client_id, KB-JWT holder binding)
 - VeriPass demo verifier (4 OID4VP scenarios: border control, background check, age-restricted venue, financial KYC)

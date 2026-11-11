@@ -211,7 +211,7 @@ The vault is a server-stored encrypted blob (`encrypted_secrets` + `secret_wrapp
 5. **User-controlled erasure**: deleting the passkey-sealed profile breaks access to PII and salts.
 6. **No biometric storage**: liveness and face match scores are stored as signed claims, not raw biometrics.
 7. **DPoP token binding**: access tokens bound to client's ephemeral key pair, preventing replay of stolen tokens.
-8. **PAR prevents parameter leakage**: authorization parameters submitted server-side, not in browser URLs.
+8. **PAR prevents parameter leakage**: clients that push their authorization requests keep the parameters out of browser URLs. PAR is optional, so clients that send parameters directly to the authorize endpoint expose them in the URL.
 9. **JARM encrypted VP responses**: presentation responses encrypted to verifier's key, visible only to intended recipient.
 10. **Pairwise subject identifiers**: DCR clients default to `subject_type: "pairwise"`, preventing cross-RP user correlation.
 11. **Transient OAuth linkage (ARCOM)**: consent records deleted after code issuance for pairwise proof-only flows; access token DB records deleted after JWT issuance; session IP/UA metadata scrubbed.
