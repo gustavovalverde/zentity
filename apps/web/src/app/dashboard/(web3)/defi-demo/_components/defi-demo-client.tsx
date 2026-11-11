@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppKitAccount } from "@reown/appkit/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 /**
  * DeFi Demo Client Component
  *
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { reportRejection } from "@/lib/async-handler";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 import { ComplianceAccessCard } from "../../attestation/_components/compliance-access-card";
 import { MintForm } from "./mint-form";
@@ -55,9 +56,11 @@ export function DefiDemoClient({
   }, []);
 
   // Fetch available networks with CompliantERC20
-  const { data: networks, isLoading: networksLoading } =
-    trpcReact.compliantToken.networks.useQuery();
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { data: networks, isLoading: networksLoading } = useQuery(
+    trpc.compliantToken.networks.queryOptions()
+  );
 
   // Auto-select first network if none selected
   useEffect(() => {
@@ -76,8 +79,8 @@ export function DefiDemoClient({
       selectedNetworkData?.identityRegistry
   );
 
-  const { data: complianceAccess } =
-    trpcReact.compliantToken.complianceAccess.useQuery(
+  const { data: complianceAccess } = useQuery(
+    trpc.compliantToken.complianceAccess.queryOptions(
       {
         networkId: activeNetworkId ?? "",
         walletAddress: address ?? "",
@@ -85,7 +88,8 @@ export function DefiDemoClient({
       {
         enabled: Boolean(requiresAccessGrant && activeNetworkId && address),
       }
-    );
+    )
+  );
 
   const hasComplianceAccess = Boolean(complianceAccess?.granted);
   const complianceTxHash = complianceAccess?.granted
@@ -97,11 +101,12 @@ export function DefiDemoClient({
 
   const handleAccessGranted = () => {
     if (activeNetworkId && address) {
-      utils.compliantToken.complianceAccess.setData(
-        {
-          networkId: activeNetworkId,
-          walletAddress: address,
-        },
+      const complianceAccessInput = {
+        networkId: activeNetworkId,
+        walletAddress: address,
+      };
+      queryClient.setQueryData(
+        trpc.compliantToken.complianceAccess.queryKey(complianceAccessInput),
         {
           granted: true,
           txHash: null,
@@ -109,11 +114,12 @@ export function DefiDemoClient({
           explorerUrl: null,
         }
       );
-      utils.compliantToken.complianceAccess
-        .invalidate({
-          networkId: activeNetworkId,
-          walletAddress: address,
-        })
+      queryClient
+        .invalidateQueries(
+          trpc.compliantToken.complianceAccess.queryFilter(
+            complianceAccessInput
+          )
+        )
         .catch(reportRejection);
     }
   };

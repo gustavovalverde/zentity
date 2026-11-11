@@ -11,6 +11,7 @@
 import type { LucideIcon } from "lucide-react";
 
 import { useAppKitAccount } from "@reown/appkit/react";
+import { useQuery } from "@tanstack/react-query";
 import { identityRegistryAbi } from "@zentity/contracts";
 import {
   CalendarDays,
@@ -54,7 +55,7 @@ import {
 } from "@/lib/blockchain/confidential/identity-attributes";
 import { cn } from "@/lib/cn";
 import { getCountryName } from "@/lib/privacy/zk/country";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 const CONFIDENTIAL_SESSION_TTL_HOURS = Math.round(
   CONFIDENTIAL_SESSION_TTL_SECONDS / 3600
@@ -149,8 +150,10 @@ export function ViewIdentityData() {
     useState<DecryptionResultState | null>(null);
 
   // Fetch attestation status to find confirmed attestation and contract address
-  const { data: networksData, isLoading: networksLoading } =
-    trpcReact.attestation.networks.useQuery();
+  const trpc = useTRPC();
+  const { data: networksData, isLoading: networksLoading } = useQuery(
+    trpc.attestation.networks.queryOptions()
+  );
 
   // Find first network with confirmed attestation
   const confirmedNetwork = useMemo(() => {

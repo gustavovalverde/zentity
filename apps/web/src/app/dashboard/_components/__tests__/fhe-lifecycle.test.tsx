@@ -41,8 +41,8 @@ const navigationMocks = vi.hoisted(() => ({
 
 const queryMocks = vi.hoisted(() => ({
   dataUpdateCount: 0,
-  getQueryKeyMock: vi.fn(() => ["assurance", "profile"]),
   getQueryStateMock: vi.fn(),
+  profileQueryKey: [["assurance", "profile"], { type: "query" }],
   queryOptions: undefined as CapturedQueryOptions | undefined,
   queryResult: {
     data: undefined,
@@ -60,32 +60,32 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({
+vi.mock("@tanstack/react-query", () => {
+  const queryClient = {
     getQueryState: queryMocks.getQueryStateMock,
-  }),
-}));
+    resetQueries: queryMocks.resetMock,
+  };
+  return {
+    useQuery: queryMocks.useQueryMock,
+    useQueryClient: () => queryClient,
+  };
+});
 
-vi.mock("@trpc/react-query", () => ({
-  getQueryKey: queryMocks.getQueryKeyMock,
-}));
-
-vi.mock("@/lib/trpc/client", () => ({
-  trpcReact: {
+vi.mock("@/lib/trpc/client", () => {
+  const trpc = {
     assurance: {
       profile: {
-        useQuery: queryMocks.useQueryMock,
+        queryFilter: () => ({ queryKey: queryMocks.profileQueryKey }),
+        queryKey: () => queryMocks.profileQueryKey,
+        queryOptions: (_input: undefined, options: CapturedQueryOptions) => ({
+          ...options,
+          queryKey: queryMocks.profileQueryKey,
+        }),
       },
     },
-    useUtils: () => ({
-      assurance: {
-        profile: {
-          reset: queryMocks.resetMock,
-        },
-      },
-    }),
-  },
-}));
+  };
+  return { useTRPC: () => trpc };
+});
 
 import { FheStatusPoller } from "../fhe-lifecycle";
 
@@ -120,7 +120,6 @@ describe("FheStatusPoller", () => {
     navigationMocks.replaceMock.mockReset();
     navigationMocks.refreshMock.mockReset();
     queryMocks.dataUpdateCount = 0;
-    queryMocks.getQueryKeyMock.mockClear();
     queryMocks.getQueryStateMock.mockReset();
     queryMocks.getQueryStateMock.mockImplementation(() => ({
       dataUpdateCount: queryMocks.dataUpdateCount,
@@ -134,7 +133,7 @@ describe("FheStatusPoller", () => {
     queryMocks.resetMock.mockReset();
     queryMocks.resetMock.mockResolvedValue(undefined);
     queryMocks.useQueryMock.mockReset();
-    queryMocks.useQueryMock.mockImplementation((_input, options) => {
+    queryMocks.useQueryMock.mockImplementation((options) => {
       queryMocks.queryOptions = options;
       return queryMocks.queryResult;
     });
@@ -251,6 +250,9 @@ describe("FheStatusPoller", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(queryMocks.resetMock).toHaveBeenCalledTimes(1);
+    expect(queryMocks.resetMock).toHaveBeenCalledWith({
+      queryKey: queryMocks.profileQueryKey,
+    });
     expect(navigationMocks.refreshMock).toHaveBeenCalledTimes(1);
   });
 });

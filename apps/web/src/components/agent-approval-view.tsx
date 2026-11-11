@@ -7,6 +7,7 @@ import type {
 } from "@/lib/agents/approval-resolve";
 import type { AuthMode } from "@/lib/auth/session";
 
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, BadgeCheck, Bot } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,7 +42,7 @@ import {
   PROOF_SCOPE_DESCRIPTIONS,
   type ProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 type PageState =
   | "loading"
@@ -156,11 +157,13 @@ function formatExpiresAt(
 }
 
 function PaymentAuthorizationCard({ detail }: Readonly<{ detail: unknown }>) {
-  const { data, error, isPending } =
-    trpcReact.agent.previewPaymentAuthorization.useQuery(
+  const trpc = useTRPC();
+  const { data, error, isPending } = useQuery(
+    trpc.agent.previewPaymentAuthorization.queryOptions(
       { authorizationDetails: [detail] },
       { retry: false, staleTime: 60_000 }
-    );
+    )
+  );
 
   if (isPending) {
     return (

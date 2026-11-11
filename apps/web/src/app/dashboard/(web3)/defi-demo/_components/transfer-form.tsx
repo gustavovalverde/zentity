@@ -24,6 +24,7 @@ const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
 const TOKEN_DECIMALS = 18;
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { parseUnits } from "viem";
 import { useBalance, useChainId } from "wagmi";
@@ -47,7 +48,7 @@ import { Input } from "@/components/ui/input";
 import { useConfidentialTransfer } from "@/lib/blockchain/confidential/token-transfer";
 import { getUserFriendlyError } from "@/lib/blockchain/tx-errors";
 import { useDevFaucet } from "@/lib/blockchain/wagmi";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 interface TransferFormProps {
   accessGranted?: boolean;
@@ -69,7 +70,8 @@ export function TransferForm({
   const [amountError, setAmountError] = useState<string | null>(null);
   const { address } = useAppKitAccount();
   const walletAddress = address as `0x${string}` | undefined;
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const chainId = useChainId();
   const {
     data: balance,
@@ -86,11 +88,12 @@ export function TransferForm({
     useConfidentialTransfer({ contractAddress });
 
   // Check if recipient is attested
-  const { data: recipientStatus, refetch: checkRecipient } =
-    trpcReact.compliantToken.isAttested.useQuery(
+  const { data: recipientStatus, refetch: checkRecipient } = useQuery(
+    trpc.compliantToken.isAttested.queryOptions(
       { networkId, address: recipient },
       { enabled: false } // Manual trigger
-    );
+    )
+  );
 
   // Check recipient when address changes
   useEffect(() => {
@@ -170,16 +173,18 @@ export function TransferForm({
   useEffect(() => {
     // Refresh history
     if (isConfirmed && address) {
-      utils.compliantToken.history
-        .invalidate({
-          networkId,
-          walletAddress: address,
-        })
+      queryClient
+        .invalidateQueries(
+          trpc.compliantToken.history.queryFilter({
+            networkId,
+            walletAddress: address,
+          })
+        )
         .catch(() => {
           // History refresh failure is non-critical
         });
     }
-  }, [isConfirmed, address, networkId, utils]);
+  }, [isConfirmed, address, networkId, queryClient, trpc]);
 
   const handleReset = () => {
     reset();

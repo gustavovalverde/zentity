@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot,
   ChevronDown,
@@ -58,7 +59,7 @@ import {
   formatUsageSummary,
 } from "@/lib/agents/labels";
 import { asyncHandler } from "@/lib/async-handler";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 function statusVariant(
   status: string
@@ -188,21 +189,28 @@ function collectHostGrants(
 }
 
 export function ConnectedTab() {
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const { data: hosts, isLoading } = trpcReact.agent.listHosts.useQuery();
+  const { data: hosts, isLoading } = useQuery(
+    trpc.agent.listHosts.queryOptions()
+  );
 
-  const revokeSession = trpcReact.agent.revokeSession.useMutation({
-    onSuccess: async () => {
-      await utils.agent.listHosts.invalidate();
-    },
-  });
+  const revokeSession = useMutation(
+    trpc.agent.revokeSession.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries(trpc.agent.listHosts.queryFilter());
+      },
+    })
+  );
 
-  const updateGrant = trpcReact.agent.updateGrant.useMutation({
-    onSuccess: async () => {
-      await utils.agent.listHosts.invalidate();
-    },
-  });
+  const updateGrant = useMutation(
+    trpc.agent.updateGrant.mutationOptions({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries(trpc.agent.listHosts.queryFilter());
+      },
+    })
+  );
 
   const handleRevokeSession = useCallback(
     async (sessionId: string) => {

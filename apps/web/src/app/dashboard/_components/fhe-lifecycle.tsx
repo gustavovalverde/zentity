@@ -1,7 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { getQueryKey } from "@trpc/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useRef } from "react";
@@ -10,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { reportRejection } from "@/lib/async-handler";
 import { startBackgroundKeygen } from "@/lib/privacy/fhe/background-keygen";
-import { type RouterOutputs, trpcReact } from "@/lib/trpc/client";
+import { type RouterOutputs, useTRPC } from "@/lib/trpc/client";
 
 // Mounts a side effect that kicks off FHE key generation in the background
 // on dashboard load when the user has not yet enrolled. Renders nothing.
@@ -36,30 +35,34 @@ function hasTerminalAssurance(status: RouterOutputs["assurance"]["profile"]) {
 // back to the dashboard. Used on verify landing after proofs are stored.
 export function FheStatusPoller() {
   const router = useRouter();
-  const utils = trpcReact.useUtils();
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const handledTerminalRef = useRef(false);
-  const profileQuery = trpcReact.assurance.profile.useQuery(undefined, {
-    refetchInterval: (query) => {
-      if (query.state.status === "error") {
-        return false;
-      }
-      const status = query.state.data;
-      if (status && hasTerminalAssurance(status)) {
-        return false;
-      }
-      if (query.state.dataUpdateCount >= MAX_POLL_ATTEMPTS) {
-        return false;
-      }
-      return Math.min(2000 * 1.5 ** query.state.dataUpdateCount, 8000);
-    },
-    refetchIntervalInBackground: true,
-    retry: false,
-  });
+  const profileQuery = useQuery(
+    trpc.assurance.profile.queryOptions(undefined, {
+      refetchInterval: (query) => {
+        if (query.state.status === "error") {
+          return false;
+        }
+        const status = query.state.data;
+        if (status && hasTerminalAssurance(status)) {
+          return false;
+        }
+        if (query.state.dataUpdateCount >= MAX_POLL_ATTEMPTS) {
+          return false;
+        }
+        return Math.min(2000 * 1.5 ** query.state.dataUpdateCount, 8000);
+      },
+      refetchIntervalInBackground: true,
+      retry: false,
+    })
+  );
 
   useEffect(() => {
-    utils.assurance.profile.reset().catch(reportRejection);
-  }, [utils]);
+    queryClient
+      .resetQueries(trpc.assurance.profile.queryFilter())
+      .catch(reportRejection);
+  }, [queryClient, trpc]);
 
   useEffect(() => {
     const status = profileQuery.data;
@@ -82,8 +85,7 @@ export function FheStatusPoller() {
   }, [profileQuery.data, router]);
 
   const profileQueryState = queryClient.getQueryState(
-    // oxlint-disable-next-line typescript/no-deprecated -- @trpc/react-query still works; moving to @trpc/tanstack-react-query is a separate migration
-    getQueryKey(trpcReact.assurance.profile, undefined, "query")
+    trpc.assurance.profile.queryKey()
   );
   const profileDataUpdateCount = profileQueryState?.dataUpdateCount ?? 0;
   const isTerminal = Boolean(
@@ -103,7 +105,9 @@ export function FheStatusPoller() {
 
   const handleRetry = () => {
     handledTerminalRef.current = false;
-    utils.assurance.profile.reset().catch(reportRejection);
+    queryClient
+      .resetQueries(trpc.assurance.profile.queryFilter())
+      .catch(reportRejection);
     router.refresh();
   };
 

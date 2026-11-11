@@ -1,5 +1,6 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle,
@@ -45,7 +46,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 const CLAIM_LABELS: Record<string, string> = {
   verified: "Identity",
@@ -79,8 +80,11 @@ export function CredentialsSection() {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
 
-  const statusQuery = trpcReact.credentials.status.useQuery();
-  const createOfferMutation = trpcReact.credentials.createOffer.useMutation();
+  const trpc = useTRPC();
+  const statusQuery = useQuery(trpc.credentials.status.queryOptions());
+  const createOfferMutation = useMutation(
+    trpc.credentials.createOffer.mutationOptions()
+  );
 
   // Generate QR code when offer is created
   useEffect(() => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Calendar, CheckCircle2, User, XCircle } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 
@@ -24,7 +25,7 @@ import {
 import { Redacted } from "@/components/ui/redacted";
 import { Spinner } from "@/components/ui/spinner";
 import { getStoredProfile } from "@/lib/privacy/secrets/profile";
-import { trpcReact } from "@/lib/trpc/client";
+import { useTRPC } from "@/lib/trpc/client";
 
 /**
  * Verification status badge.
@@ -134,12 +135,12 @@ function getValidityBadgeVariant(
 }
 
 export function UserDataSection() {
-  // Use trpcReact hook for automatic data fetching, caching, and state management
+  const trpc = useTRPC();
   const {
     data,
     isLoading: loading,
     error: queryError,
-  } = trpcReact.account.getData.useQuery();
+  } = useQuery(trpc.account.getData.queryOptions());
   const error = queryError?.message ?? null;
 
   const [profileName, setProfileName] = useState<string | null>(null);
