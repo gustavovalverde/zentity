@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { db } from "@/lib/db/connection";
 import {
@@ -70,6 +71,32 @@ describe("tRPC context", () => {
       .where(eq(oauthAccessTokens.clientId, "opaque-client"))
       .run();
 
-    expect((await contextFor()).session).toBeNull();
+    const revoked = await contextFor();
+    expect(revoked.session).toBeNull();
+    expect(revoked.tokenChallenge?.get("WWW-Authenticate")).toBe(
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+    );
+  });
+
+  it("sends the token challenge with an unauthorized tRPC response", async () => {
+    const response = await trpcGet(
+      new Request("http://localhost:3000/api/trpc/assurance.profile", {
+        headers: { authorization: "Bearer unknown-opaque-token" },
+      })
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+    );
+  });
+
+  it("sends no challenge to a caller that presented no token", async () => {
+    const response = await trpcGet(
+      new Request("http://localhost:3000/api/trpc/assurance.profile")
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBeNull();
   });
 });

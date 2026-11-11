@@ -21,7 +21,10 @@ import { canAccessFeature, getBlockedReason } from "@/lib/assurance/tier";
 import { auth, type Session } from "@/lib/auth/auth-config";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { verifyResourceRequest } from "@/lib/auth/oidc/resource-principal";
+import {
+  invalidAccessToken,
+  verifyResourceRequest,
+} from "@/lib/auth/oidc/resource-principal";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -48,12 +51,23 @@ interface TrpcContext {
   session: Session | null;
   span?: Span;
   spanId?: string;
+  /** The `WWW-Authenticate` challenge for a refused OAuth access token. */
+  tokenChallenge?: Headers | null;
   traceId?: string;
 }
 
 interface ResolvedAuthSession {
   authContext: AuthenticationState | null;
+  challenge: Headers | null;
   session: Session | null;
+}
+
+function refusedOAuthSession(description: string): ResolvedAuthSession {
+  return {
+    authContext: null,
+    challenge: new Headers(invalidAccessToken(description).headers),
+    session: null,
+  };
 }
 
 async function loadPersistedSession(
@@ -108,16 +122,21 @@ async function loadPersistedSession(
  */
 async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (!req.headers.get("authorization")) {
-    return { session: null, authContext: null };
+    return { session: null, authContext: null, challenge: null };
   }
 
   const verified = await verifyResourceRequest(req);
+  if (!verified.ok) {
+    return {
+      session: null,
+      authContext: null,
+      challenge: new Headers(verified.error.headers),
+    };
+  }
   const userId =
-    verified.ok && typeof verified.payload.sub === "string"
-      ? verified.payload.sub
-      : undefined;
-  if (!(verified.ok && verified.format === "opaque" && userId)) {
-    return { session: null, authContext: null };
+    typeof verified.payload.sub === "string" ? verified.payload.sub : undefined;
+  if (!(verified.format === "opaque" && userId)) {
+    return refusedOAuthSession("access token is not valid for this resource");
   }
 
   const sessionId =
@@ -131,17 +150,18 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (sessionId) {
     const session = await loadPersistedSession(sessionId);
     if (!(session && authContext)) {
-      return { session: null, authContext: null };
+      return refusedOAuthSession("access token session has ended");
     }
-    return { session, authContext };
+    return { session, authContext, challenge: null };
   }
 
   if (!authContext) {
-    return { session: null, authContext: null };
+    return refusedOAuthSession("access token session has ended");
   }
 
   return {
     authContext,
+    challenge: null,
     session: await buildSessionFromUserId(userId, {
       authContextId: authContext.id,
     }),
@@ -199,6 +219,7 @@ export async function createTrpcContext(args: {
   const requestContext = resolveRequestContext(args.req.headers);
   let session: Session | null = null;
   let authContext: AuthenticationState | null = null;
+  let tokenChallenge: Headers | null = null;
   try {
     session = await auth.api.getSession({ headers: args.req.headers });
     if (session?.session?.id) {
@@ -221,6 +242,7 @@ export async function createTrpcContext(args: {
       const resolved = await resolveOAuthSession(args.req);
       session = resolved.session;
       authContext = resolved.authContext;
+      tokenChallenge = resolved.challenge;
     } catch (error) {
       logError(error, {
         requestId: requestContext.requestId,
@@ -232,12 +254,28 @@ export async function createTrpcContext(args: {
   return {
     req: args.req,
     session: session ?? null,
+    tokenChallenge,
     authContext,
     requestId: requestContext.requestId,
     flowId: requestContext.flowId,
     flowIdSource: requestContext.flowIdSource,
     resHeaders: args.resHeaders ?? new Headers(),
   };
+}
+
+/**
+ * Sends the access-token challenge with an unauthorized response, so an OAuth
+ * client learns why its token was refused (RFC 6750, RFC 9449).
+ */
+export function trpcResponseMeta(opts: {
+  ctx?: TrpcContext | undefined;
+  errors: TRPCError[];
+}): { headers?: Headers } {
+  const challenge = opts.ctx?.tokenChallenge;
+  if (challenge && opts.errors.some((error) => error.code === "UNAUTHORIZED")) {
+    return { headers: challenge };
+  }
+  return {};
 }
 
 const trpc = initTRPC.context<TrpcContext>().create({

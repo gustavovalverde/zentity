@@ -8,6 +8,7 @@ import {
 } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { GET as getValidity } from "@/app/api/auth/oauth2/validity/route";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
@@ -35,6 +36,9 @@ const CLIENT_ID = "resource-test-client";
 const RP_API_AUDIENCE = `${authIssuer}/resource/rp-api`;
 const VALIDITY_URL = `${authIssuer}/oauth2/validity`;
 const RESOURCE_URL = "http://localhost:3000/api/trpc/assurance.profile";
+const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
+const RESOURCE_METADATA_URL =
+  "http://localhost:3000/.well-known/oauth-protected-resource";
 
 let signingKey: Awaited<ReturnType<typeof generateKeyPair>>;
 let signingKid: string;
@@ -257,11 +261,11 @@ describe("protected resource access tokens", () => {
     it("resolves the user behind a DPoP-bound opaque token", async () => {
       const keyPair = await createTestDpopKeyPair();
       const token = await mintUserToken(keyPair);
-      const principal = await resolveProtectedResourcePrincipal(
+      const result = await resolveProtectedResourcePrincipal(
         await resourceRequest(token, { dpop: keyPair })
       );
-      expect(principal?.userId).toBe(userId);
-      expect(principal?.clientId).toBe(CLIENT_ID);
+      expect(result.ok && result.principal.userId).toBe(userId);
+      expect(result.ok && result.principal.clientId).toBe(CLIENT_ID);
     });
 
     it("refuses a JWT audienced to another resource", async () => {
@@ -270,11 +274,10 @@ describe("protected resource access tokens", () => {
         sub: userId,
         cnf: { jkt: await jkt(keyPair) },
       });
-      expect(
-        await resolveProtectedResourcePrincipal(
-          await resourceRequest(jwt, { dpop: keyPair })
-        )
-      ).toBeNull();
+      const result = await resolveProtectedResourcePrincipal(
+        await resourceRequest(jwt, { dpop: keyPair })
+      );
+      expect(result.ok).toBe(false);
     });
 
     it("rejects a wrong htu and a replayed jti at the validity endpoint", async () => {
@@ -303,6 +306,82 @@ describe("protected resource access tokens", () => {
     });
   });
 
+  describe("resource challenges", () => {
+    async function mintUserToken(keyPair: DpopKeyPair, scopes: string[]) {
+      return mintOpaqueAccessToken({
+        clientId: CLIENT_ID,
+        dpopJkt: await jkt(keyPair),
+        exchangeClaims: {},
+        expiresAt: new Date(Date.now() + 3_600_000),
+        referenceId: crypto.randomUUID(),
+        scopes,
+        userId,
+      });
+    }
+
+    it("points a request without a token at the resource metadata", async () => {
+      const response = await getValidity(new Request(VALIDITY_URL));
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("WWW-Authenticate")).toBe(
+        `Bearer resource_metadata="${RESOURCE_METADATA_URL}"`
+      );
+    });
+
+    it("answers a bad DPoP proof with a DPoP challenge", async () => {
+      const keyPair = await createTestDpopKeyPair();
+      const token = await mintUserToken(keyPair, ["openid", "poh"]);
+
+      const response = await getValidity(
+        await resourceRequest(token, {
+          dpop: keyPair,
+          url: VALIDITY_URL,
+          proofUrl: USERINFO_URL,
+        })
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("WWW-Authenticate")).toBe(
+        'DPoP error="invalid_dpop_proof", error_description="DPoP proof htu does not match the request URL", algs="ES256"'
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        error: "invalid_dpop_proof",
+      });
+    });
+
+    it("names the missing scope in a 403 challenge", async () => {
+      const keyPair = await createTestDpopKeyPair();
+      const token = await mintUserToken(keyPair, ["openid"]);
+
+      const response = await getValidity(
+        await resourceRequest(token, { dpop: keyPair, url: VALIDITY_URL })
+      );
+
+      expect(response.status).toBe(403);
+      const challenge = response.headers.get("WWW-Authenticate");
+      expect(challenge?.startsWith('Bearer error="insufficient_scope"')).toBe(
+        true
+      );
+      expect(challenge).toContain('scope="poh"');
+      expect(challenge).toContain(
+        `resource_metadata="${RESOURCE_METADATA_URL}"`
+      );
+    });
+
+    it("keeps the provider's own UserInfo challenge", async () => {
+      const response = await authRouteGet(
+        new Request(USERINFO_URL, {
+          headers: { authorization: "Bearer unknown-opaque-token" },
+        })
+      );
+
+      expect(response.status).toBe(401);
+      const challenge = response.headers.get("WWW-Authenticate");
+      expect(challenge?.startsWith('Bearer error="invalid_token"')).toBe(true);
+      expect(challenge).not.toContain("resource_metadata");
+    });
+  });
+
   describe("RP API client credentials", () => {
     it("accepts a client_credentials token for the RP API", async () => {
       const result = await requireClientCredentials(
@@ -325,6 +404,10 @@ describe("protected resource access tokens", () => {
         ["agent:introspect"]
       );
       expect(result.ok).toBe(false);
+      expect(!result.ok && result.response.status).toBe(403);
+      expect(
+        !result.ok && result.response.headers.get("WWW-Authenticate")
+      ).toContain('scope="agent:introspect"');
     });
 
     it("refuses opaque tokens", async () => {

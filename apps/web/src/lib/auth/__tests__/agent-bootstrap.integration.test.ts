@@ -224,8 +224,12 @@ describe("agent bootstrap token exchange", () => {
     );
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
-      error: "Bootstrap access token required",
+    expect(
+      response.headers.get("WWW-Authenticate")?.startsWith("Bearer ")
+    ).toBe(true);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "invalid_token",
+      error_description: "bootstrap access token required",
     });
   });
 

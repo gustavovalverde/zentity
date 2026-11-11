@@ -1,3 +1,5 @@
+import { HAIP_DPOP_SIGNING_ALGORITHMS } from "@better-auth/haip";
+
 import { env } from "@/env";
 import {
   IDENTITY_SCOPES,
@@ -31,7 +33,8 @@ export function GET() {
       "identity_verification",
       "poh",
     ],
-    bearer_methods_supported: ["header", "dpop"],
+    bearer_methods_supported: ["header"],
+    dpop_signing_alg_values_supported: HAIP_DPOP_SIGNING_ALGORITHMS,
     resource_signing_alg_values_supported: ["EdDSA"],
   };
 

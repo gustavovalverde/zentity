@@ -231,13 +231,14 @@ describe("RFC 9728 — protected resource metadata", () => {
     expect(scopes).toContain("identity_verification");
   });
 
-  it("advertises DPoP as bearer method", async () => {
+  it("advertises header tokens and the DPoP proof algorithm", async () => {
     const { GET } = await import(
       "@/app/.well-known/oauth-protected-resource/route"
     );
     const body = (await GET().json()) as Record<string, unknown>;
 
-    expect(body.bearer_methods_supported).toEqual(["header", "dpop"]);
+    expect(body.bearer_methods_supported).toEqual(["header"]);
+    expect(body.dpop_signing_alg_values_supported).toEqual(["ES256"]);
   });
 
   it("advertises EdDSA as resource signing algorithm", async () => {
