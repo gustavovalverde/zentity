@@ -188,6 +188,9 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     const response = await POST(makeRequest());
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+    );
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("invalid_token");
   });
@@ -222,6 +225,9 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(403);
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'Bearer error="insufficient_scope", scope="poh", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource", error_description="access token is missing required scope: poh"'
+    );
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe("insufficient_scope");
     expect(mocks.signJwt).not.toHaveBeenCalled();
@@ -235,6 +241,9 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
     const response = await POST(makeDpopRequest());
 
     expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'DPoP error="invalid_token", error_description="access token must be DPoP-bound", algs="ES256"'
+    );
     expect(mocks.signJwt).not.toHaveBeenCalled();
   });
 

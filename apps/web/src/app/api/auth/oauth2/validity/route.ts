@@ -4,7 +4,11 @@ import {
   extractIdentityScopes,
   hasAnyProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
-import { resolveProtectedResourcePrincipal } from "@/lib/auth/oidc/resource-principal";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
+import {
+  resolveProtectedResourcePrincipal,
+  resourceErrorResponse,
+} from "@/lib/auth/oidc/resource-principal";
 import { getRpValidityState } from "@/lib/identity/validity/rp-notice";
 
 function hasValidityAccess(scopes: readonly string[]): boolean {
@@ -16,13 +20,19 @@ function hasValidityAccess(scopes: readonly string[]): boolean {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const principal = await resolveProtectedResourcePrincipal(request);
-  if (!principal) {
-    return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+  const resolved = await resolveProtectedResourcePrincipal(request);
+  if (!resolved.ok) {
+    return resourceErrorResponse(resolved.error);
   }
+  const { principal } = resolved;
 
   if (!hasValidityAccess(principal.scopes)) {
-    return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
+    return resourceErrorResponse(
+      insufficientScope(
+        ["poh"],
+        "access token needs the poh scope, a proof scope, or an identity scope"
+      )
+    );
   }
 
   const validityState = await getRpValidityState({

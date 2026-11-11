@@ -16,7 +16,7 @@ export function getAppOrigin(): string {
  * hostname (`0.0.0.0`, `[::]`) and a TLS-terminating proxy hides the public
  * scheme, so the URL the server sees never matches the origin clients derive
  * from discovery. DPoP binding (RFC 9449) compares the proof `htu` against that
- * URL at the token and introspection endpoints, so a non-canonical origin
+ * URL at the token endpoint and Zentity's protected resources, so a non-canonical origin
  * rejects every otherwise-valid proof. Only the origin is rewritten; path,
  * query, method, headers, and body are preserved.
  */

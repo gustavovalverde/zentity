@@ -6,7 +6,6 @@ import type { JWTPayload } from "jose";
 
 import {
   createDpopReplayStore,
-  type DpopBindingErrorCode,
   enforceDpopBinding,
   isDpopBindingError,
   parseAccessTokenAuthorization,
@@ -52,27 +51,10 @@ function isCompactJws(token: string): boolean {
 }
 
 function invalidToken(description: string): APIError {
-  return new APIError(
-    "UNAUTHORIZED",
-    { error: "invalid_token", error_description: description },
-    {
-      "WWW-Authenticate": `Bearer error="invalid_token", error_description="${description}"`,
-    }
-  );
-}
-
-function dpopChallenge(
-  error: DpopBindingErrorCode,
-  description: string
-): APIError {
-  const safeDescription = description.replaceAll('"', "'");
-  return new APIError(
-    "UNAUTHORIZED",
-    { error, error_description: description },
-    {
-      "WWW-Authenticate": `DPoP error="${error}", error_description="${safeDescription}"`,
-    }
-  );
+  return new APIError("UNAUTHORIZED", {
+    error: "invalid_token",
+    error_description: description,
+  });
 }
 
 function providerApi(ctx: GenericEndpointContext) {
@@ -112,7 +94,8 @@ const ResourceRequestSchema = z.object({
 
 /**
  * Server-only endpoints, so validation runs with the provider's own context.
- * App code calls them through `resource-principal.ts`.
+ * App code calls them through `resource-principal.ts`, which turns a failure
+ * into the client's `WWW-Authenticate` challenge.
  */
 export function resourceAccessTokenPlugin() {
   return {
@@ -125,13 +108,13 @@ export function resourceAccessTokenPlugin() {
             ctx.body.authorization
           );
           if (!authorization?.token || authorization.scheme === "Unknown") {
-            throw invalidToken("missing access token");
+            throw invalidToken("access token required");
           }
           const payload = await providerApi(ctx).requireActiveAccessToken(
             authorization.token
           );
           if (!(await isZentityAccessToken(authorization.token, payload))) {
-            throw invalidToken("Invalid access token");
+            throw invalidToken("invalid access token");
           }
           try {
             await enforceDpopBinding({
@@ -145,7 +128,10 @@ export function resourceAccessTokenPlugin() {
             });
           } catch (error) {
             if (isDpopBindingError(error)) {
-              throw dpopChallenge(error.code, error.message);
+              throw new APIError("UNAUTHORIZED", {
+                error: error.code,
+                error_description: error.message,
+              });
             }
             throw error;
           }

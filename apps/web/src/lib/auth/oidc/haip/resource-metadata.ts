@@ -81,8 +81,3 @@ export function normalizeUserTokenResources(
     params.resource = Array.isArray(resource) ? external : external[0];
   }
 }
-
-export function getProtectedResourceMetadataUrl(): string {
-  const base = env.NEXT_PUBLIC_APP_URL.replace(TRAILING_SLASHES, "");
-  return `${base}/.well-known/oauth-protected-resource`;
-}

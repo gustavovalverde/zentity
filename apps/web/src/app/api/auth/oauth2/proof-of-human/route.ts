@@ -4,7 +4,11 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/env";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import { resolveProtectedResourcePrincipal } from "@/lib/auth/oidc/resource-principal";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
+import {
+  resolveProtectedResourcePrincipal,
+  resourceErrorResponse,
+} from "@/lib/auth/oidc/resource-principal";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
 const TRAILING_SLASHES = /\/+$/;
@@ -29,14 +33,14 @@ const TRAILING_SLASHES = /\/+$/;
  * and the downstream verifies the issuer signature plus the DPoP `cnf`.
  */
 export async function POST(request: Request) {
-  const principal = await resolveProtectedResourcePrincipal(request);
-
-  if (!principal) {
-    return NextResponse.json({ error: "invalid_token" }, { status: 401 });
+  const resolved = await resolveProtectedResourcePrincipal(request);
+  if (!resolved.ok) {
+    return resourceErrorResponse(resolved.error);
   }
+  const { principal } = resolved;
 
   if (!principal.scopes.includes("poh")) {
-    return NextResponse.json({ error: "insufficient_scope" }, { status: 403 });
+    return resourceErrorResponse(insufficientScope(["poh"]));
   }
 
   const model = await getVerificationReadModel(principal.userId);

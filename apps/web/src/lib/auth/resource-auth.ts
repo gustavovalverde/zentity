@@ -1,3 +1,4 @@
+import type { ResourceError } from "@/lib/auth/oidc/resource-challenge";
 import type { Session } from "./auth-config";
 
 import { getDpopJktFromPayload } from "@better-auth/core/oauth2";
@@ -7,7 +8,10 @@ import { NextResponse } from "next/server";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
+  invalidAccessToken,
+  resourceErrorResponse,
   tokenScopes,
   verifyResourceRequest,
 } from "@/lib/auth/oidc/resource-principal";
@@ -34,7 +38,7 @@ interface ClientCredentialsPrincipal {
 
 interface AuthFailure {
   ok: false;
-  response: NextResponse<{ error: string }>;
+  response: NextResponse;
 }
 
 interface BrowserSessionSuccess {
@@ -52,22 +56,19 @@ interface ClientCredentialsSuccess {
   principal: ClientCredentialsPrincipal;
 }
 
-function authError(
-  status: number,
-  error: string,
-  headers?: HeadersInit
-): AuthFailure {
+function authError(status: number, error: string): AuthFailure {
   return {
     ok: false,
-    response: NextResponse.json({ error }, { status, headers }),
+    response: NextResponse.json({ error }, { status }),
   };
 }
 
-function hasRequiredScopes(
-  scopes: string[],
-  requiredScopes: string[]
-): requiredScopes is [] {
-  return requiredScopes.every((scope) => scopes.includes(scope));
+function resourceAuthError(error: ResourceError): AuthFailure {
+  return { ok: false, response: resourceErrorResponse(error) };
+}
+
+function missingScopes(scopes: string[], requiredScopes: string[]): string[] {
+  return requiredScopes.filter((scope) => !scopes.includes(scope));
 }
 
 function audienceIncludes(aud: unknown, audience: string): boolean {
@@ -100,12 +101,16 @@ export async function requireBootstrapAccessToken(
   requiredScopes: string[] = []
 ): Promise<UserTokenSuccess | AuthFailure> {
   const verified = await verifyResourceRequest(request);
+  if (!verified.ok) {
+    return resourceAuthError(verified.error);
+  }
   if (
-    !verified.ok ||
     verified.format !== "opaque" ||
     !getDpopJktFromPayload(verified.payload)
   ) {
-    return authError(401, "Bootstrap access token required");
+    return resourceAuthError(
+      invalidAccessToken(request, "bootstrap access token required")
+    );
   }
   const { payload, token } = verified;
   const extensions = await loadOpaqueAccessTokenExtensions(token);
@@ -116,12 +121,15 @@ export async function requireBootstrapAccessToken(
     !(userId && clientId) ||
     extensions?.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
   ) {
-    return authError(401, "Bootstrap access token required");
+    return resourceAuthError(
+      invalidAccessToken(request, "bootstrap access token required")
+    );
   }
 
   const scopes = tokenScopes(payload);
-  if (!hasRequiredScopes(scopes, requiredScopes)) {
-    return authError(403, "Missing required scope");
+  const missing = missingScopes(scopes, requiredScopes);
+  if (missing.length > 0) {
+    return resourceAuthError(insufficientScope(missing));
   }
 
   const authentication = await resolveAuthenticationContext({
@@ -152,37 +160,40 @@ export async function requireClientCredentials(
 ): Promise<ClientCredentialsSuccess | AuthFailure> {
   const verified = await verifyResourceRequest(request);
   if (!verified.ok) {
-    const body = verified.error.body as
-      | { error_description?: string }
-      | undefined;
-    return authError(
-      verified.error.statusCode,
-      body?.error_description ?? "Invalid access token",
-      verified.error.headers
-    );
+    return resourceAuthError(verified.error);
   }
   const { payload, token } = verified;
   if (verified.format !== "jwt") {
-    return authError(401, "Opaque client credentials tokens are not supported");
+    return resourceAuthError(
+      invalidAccessToken(
+        request,
+        "opaque client credentials tokens are not supported"
+      )
+    );
   }
   if (!audienceIncludes(payload.aud, RP_API_AUDIENCE)) {
-    return authError(401, "Invalid access token");
+    return resourceAuthError(
+      invalidAccessToken(request, "invalid access token")
+    );
   }
 
   const clientId =
     typeof payload.client_id === "string" ? payload.client_id : undefined;
   if (!clientId) {
-    return authError(401, "Missing client_id");
+    return resourceAuthError(invalidAccessToken(request, "missing client_id"));
   }
   // A client_credentials token's subject is the client itself; a distinct
   // subject means a user token.
   if (payload.sub && payload.sub !== clientId) {
-    return authError(401, "Not a client credentials token");
+    return resourceAuthError(
+      invalidAccessToken(request, "not a client credentials token")
+    );
   }
 
   const scopes = tokenScopes(payload);
-  if (!hasRequiredScopes(scopes, requiredScopes)) {
-    return authError(401, "Missing required scope");
+  const missing = missingScopes(scopes, requiredScopes);
+  if (missing.length > 0) {
+    return resourceAuthError(insufficientScope(missing));
   }
 
   return {
