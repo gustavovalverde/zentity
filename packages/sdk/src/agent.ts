@@ -170,7 +170,7 @@ export function createAgent(config: AgentConfig): Agent {
       bindingMessage: options.bindingMessage,
       cibaEndpoint: discovery.backchannel_authentication_endpoint,
       clientId: config.clientId,
-      dpopSigner: config.dpopClient,
+      dpopClient: config.dpopClient,
       fetch: fetchFn,
       loginHint: options.loginHint ?? config.loginHint ?? "",
       onPendingApproval: config.onPendingApproval,

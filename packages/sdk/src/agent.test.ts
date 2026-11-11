@@ -1,13 +1,35 @@
-import type { DpopClient } from "./rp/dpop-client";
-
 import { describe, expect, it, vi } from "vitest";
 
 import { createAgent } from "./agent";
+import { createDpopClient } from "./rp/dpop-client";
 import {
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   parsePaymentSignatureHeader,
 } from "./rp/payment-required";
+
+const FAKE_TIMERS = {
+  toFake: ["setTimeout", "clearTimeout", "Date"],
+} satisfies Parameters<typeof vi.useFakeTimers>[0];
+
+// DPoP proofs are signed with real WebCrypto, which resolves outside the
+// fake clock, so timers are drained until the promise settles.
+async function settle<T>(promise: Promise<T>): Promise<T> {
+  let settled = false;
+  promise.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    }
+  );
+  while (!settled) {
+    await vi.runAllTimersAsync();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return promise;
+}
 
 const FUTURE_EXP = Math.floor(Date.now() / 1000) + 3600;
 
@@ -17,17 +39,6 @@ function encodeJwtPayload(payload: Record<string, unknown>): string {
   );
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${header}.${body}.`;
-}
-
-function createDpopClient(): DpopClient {
-  return {
-    keyPair: {
-      privateJwk: { kty: "EC", crv: "P-256" },
-      publicJwk: { kty: "EC", crv: "P-256" },
-    },
-    proofFor: vi.fn().mockResolvedValue("dpop-proof"),
-    withNonceRetry: vi.fn(async (attempt) => attempt()),
-  };
 }
 
 function createDiscoveryResponse(): Response {
@@ -78,7 +89,7 @@ function createPaymentRequiredHeader(): string {
 
 describe("createAgent", () => {
   it("caches capability tokens by client, audience, and action", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers(FAKE_TIMERS);
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(createDiscoveryResponse())
@@ -106,7 +117,7 @@ describe("createAgent", () => {
     const agent = createAgent({
       issuerUrl: "https://issuer.example",
       clientId: "client-1",
-      dpopClient: createDpopClient(),
+      dpopClient: await createDpopClient(),
       fetch: fetchFn,
       loginHint: "user@example.com",
     });
@@ -117,8 +128,7 @@ describe("createAgent", () => {
       bindingMessage: "Authorize purchase",
       scope: "openid poh",
     });
-    await vi.runAllTimersAsync();
-    const firstResult = await first;
+    const firstResult = await settle(first);
 
     const secondResult = await agent.requestCapability({
       action: "purchase",
@@ -133,7 +143,7 @@ describe("createAgent", () => {
   });
 
   it("auto-retries x402 responses with a proof-of-human token", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers(FAKE_TIMERS);
     const fetchFn = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -189,7 +199,7 @@ describe("createAgent", () => {
     const agent = createAgent({
       issuerUrl: "https://issuer.example",
       clientId: "client-1",
-      dpopClient: createDpopClient(),
+      dpopClient: await createDpopClient(),
       fetch: fetchFn,
       loginHint: "user@example.com",
     });
@@ -200,8 +210,7 @@ describe("createAgent", () => {
       body: JSON.stringify({ resourceId: "resource-1" }),
       x402: { autoPayWithProofOfHuman: true },
     });
-    await vi.runAllTimersAsync();
-    const response = await responsePromise;
+    const response = await settle(responsePromise);
 
     expect(response.status).toBe(200);
     const cibaBody = fetchFn.mock.calls[2]?.[1]?.body as URLSearchParams;

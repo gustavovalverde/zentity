@@ -6,26 +6,14 @@ export interface TokenEndpointResult {
 }
 
 export async function requestTokenEndpoint(
-  dpopClient: DpopClient,
+  dpopClient: Pick<DpopClient, "fetch">,
   tokenEndpoint: string,
   params: URLSearchParams
 ): Promise<TokenEndpointResult> {
-  const { response } = await dpopClient.withNonceRetry(async (nonce) => {
-    const proof = await dpopClient.proofFor(
-      "POST",
-      tokenEndpoint,
-      undefined,
-      nonce
-    );
-    const attemptResponse = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body: params,
-    });
-    return { response: attemptResponse, result: null };
+  const response = await dpopClient.fetch(tokenEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
   });
 
   const text = await response.clone().text();

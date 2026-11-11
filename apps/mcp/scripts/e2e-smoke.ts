@@ -201,7 +201,7 @@ async function requestRemoteToken(mcpUrl: string) {
     cibaEndpoint: `${zentityUrl}/api/auth/oauth2/bc-authorize`,
     tokenEndpoint: `${zentityUrl}/api/auth/oauth2/token`,
     clientId,
-    dpopSigner: dpopClient,
+    dpopClient,
     loginHint,
     scope: REMOTE_SCOPES,
     bindingMessage: "Zentity smoke test: connect to the MCP server",
@@ -255,16 +255,7 @@ async function connectHttp(home: string): Promise<Client> {
 
   const { accessToken, dpopClient } = await requestRemoteToken(mcpUrl);
   const transport = new StreamableHTTPClientTransport(new URL(mcpUrl), {
-    fetch: async (url, init) => {
-      const request = new Request(url, init);
-      const headers = new Headers(request.headers);
-      headers.set("Authorization", `DPoP ${accessToken}`);
-      headers.set(
-        "DPoP",
-        await dpopClient.proofFor(request.method, request.url, accessToken)
-      );
-      return fetch(new Request(request, { headers }));
-    },
+    fetch: (url, init) => dpopClient.fetch(url, { ...init, accessToken }),
   });
   const client = new Client(
     { name: "zentity-e2e-smoke", version: "0.1.0" },

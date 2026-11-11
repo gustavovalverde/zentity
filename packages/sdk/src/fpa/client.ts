@@ -209,17 +209,10 @@ async function postChallenge(
   endpoint: string,
   body: Record<string, unknown>
 ): Promise<{ body: Record<string, unknown>; response: Response }> {
-  const { response } = await dpopClient.withNonceRetry(async (nonce) => {
-    const proof = await dpopClient.proofFor("POST", endpoint, undefined, nonce);
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        DPoP: proof,
-      },
-      body: JSON.stringify(body),
-    });
-    return { response, result: null };
+  const response = await dpopClient.fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 
   return { body: await parseJsonBody(response.clone()), response };
@@ -765,17 +758,10 @@ export function createFirstPartyAuth(
     }
 
     const dpopClient = await getOrCreateDpopClient();
-    const { response } = await dpopClient.withNonceRetry(async (nonce) => {
-      const proof = await dpopClient.proofFor("POST", tokenEndpoint, undefined, nonce);
-      const response = await fetch(tokenEndpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          DPoP: proof,
-        },
-        body: requestBody,
-      });
-      return { response, result: null };
+    const response = await dpopClient.fetch(tokenEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: requestBody,
     });
 
     if (!response.ok) {

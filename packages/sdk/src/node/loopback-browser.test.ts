@@ -19,7 +19,9 @@ const mockDpopClient = {
     publicJwk: { crv: "P-256", kty: "EC" as const },
   },
   proofFor: vi.fn().mockResolvedValue("mock-proof"),
-  withNonceRetry: vi.fn(async (attempt) => attempt()),
+  fetch: vi.fn((url: string | URL, init?: RequestInit) =>
+    globalThis.fetch(url, init)
+  ),
 };
 
 function httpGet(url: string): Promise<void> {
@@ -51,7 +53,7 @@ describe("authenticateWithLoopbackBrowser", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     mockDpopClient.proofFor.mockClear();
-    mockDpopClient.withNonceRetry.mockClear();
+    mockDpopClient.fetch.mockClear();
     mockExchangeAuthorizationCode.mockReset();
     mockExecFile.mockReset();
   });

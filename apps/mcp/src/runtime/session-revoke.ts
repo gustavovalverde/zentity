@@ -10,25 +10,11 @@ export async function revokeAgentSession(
     config.zentityUrl
   );
   const revokeUrl = agentConfiguration.revocation_endpoint;
-  const body = JSON.stringify({ sessionId });
-
-  const { response } = await auth.dpopClient.withNonceRetry(async (nonce) => {
-    const proof = await auth.dpopClient.proofFor(
-      "POST",
-      revokeUrl,
-      auth.accessToken,
-      nonce
-    );
-    const attemptResponse = await fetch(revokeUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `DPoP ${auth.accessToken}`,
-        DPoP: proof,
-      },
-      body,
-    });
-    return { response: attemptResponse, result: null };
+  const response = await auth.dpopClient.fetch(revokeUrl, {
+    method: "POST",
+    accessToken: auth.accessToken,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId }),
   });
 
   if (!response.ok) {

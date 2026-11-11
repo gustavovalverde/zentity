@@ -38,7 +38,7 @@ const oauth: OAuthSessionContext = {
   dpopClient: {
     keyPair: mockDpopKey,
     proofFor: vi.fn(),
-    withNonceRetry: vi.fn(),
+    fetch: vi.fn(),
   },
   dpopKey: mockDpopKey,
   scopes: ["openid"],
@@ -53,7 +53,7 @@ function createParams(fingerprint: string) {
       cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
       tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
       clientId: oauth.clientId,
-      dpopSigner: oauth.dpopClient,
+      dpopClient: oauth.dpopClient,
       loginHint: oauth.accountSub,
       scope: "openid identity.name",
       bindingMessage: "Claude Code: Share my name",

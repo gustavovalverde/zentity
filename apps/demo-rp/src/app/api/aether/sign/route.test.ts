@@ -184,7 +184,7 @@ describe("POST /api/aether/sign", () => {
     // The RAR handed to CIBA is rebuilt server-side with the canonical intent hash.
     const cibaArgs = mocks.requestCibaApproval.mock.calls.at(0)?.[0] as {
       authorizationDetails: Array<{ intent_hash: string; type: string }>;
-      dpopSigner: unknown;
+      dpopClient: unknown;
       scope: string;
     };
     expect(cibaArgs.scope).toContain("payment_authorization:sign");
@@ -198,7 +198,7 @@ describe("POST /api/aether/sign", () => {
     )?.[0] as {
       dpopClient: unknown;
     };
-    expect(walletSpendArgs.dpopClient).toBe(cibaArgs.dpopSigner);
+    expect(walletSpendArgs.dpopClient).toBe(cibaArgs.dpopClient);
 
     vi.unstubAllGlobals();
   });

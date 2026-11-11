@@ -26,11 +26,8 @@ const TEST_PKCE = {
 const mockDpopClient = {
   keyPair: TEST_KEY_PAIR,
   proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
-  async withNonceRetry<T>(
-    attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-  ) {
-    return attempt();
-  },
+  fetch: (url: string | URL, init?: RequestInit) =>
+    globalThis.fetch(url, init),
 } satisfies DpopClient;
 
 const fpaMocks = vi.hoisted(() => ({

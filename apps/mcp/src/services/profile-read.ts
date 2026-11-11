@@ -188,7 +188,7 @@ export async function readProfile(input: {
       cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
       tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
       clientId: oauth.clientId,
-      dpopSigner: oauth.dpopClient,
+      dpopClient: oauth.dpopClient,
       loginHint: oauth.accountSub,
       scope,
       bindingMessage,

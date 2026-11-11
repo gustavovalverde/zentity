@@ -145,48 +145,27 @@ async function fetchRemoteValidityState(args: {
 }): Promise<RemoteValidityState> {
   const validityUrl = new URL(VALIDITY_PATH, env.ZENTITY_URL).toString();
   const dpop = await createDpopClientFromKeyPair(args.keyPair);
-  const { response, result } = await dpop.withNonceRetry(async (nonce) => {
-    const proof = await dpop.proofFor(
-      "GET",
-      validityUrl,
-      args.accessToken,
-      nonce
-    );
-    const response = await fetch(validityUrl, {
-      headers: {
-        Authorization: `DPoP ${args.accessToken}`,
-        DPoP: proof,
-      },
-    });
-
-    if (response.ok) {
-      return {
-        response,
-        result: await parseOAuthJsonResponse(
-          response,
-          "Issuer validity state request"
-        ),
-      };
-    }
-
+  const response = await dpop.fetch(validityUrl, {
+    accessToken: args.accessToken,
+  });
+  if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
-    return { response, result: payload };
-  });
-
-  if (!response.ok) {
     throw new Error(
       describeOAuthErrorResponse(
         response,
-        result as Record<string, unknown>,
+        payload,
         "Issuer validity state request"
       )
     );
   }
 
-  const body = result as Record<string, unknown>;
+  const body = await parseOAuthJsonResponse(
+    response,
+    "Issuer validity state request"
+  );
   return {
     eventId: typeof body.eventId === "string" ? body.eventId : null,
     eventKind: typeof body.eventKind === "string" ? body.eventKind : null,

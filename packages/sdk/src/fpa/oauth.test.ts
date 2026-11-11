@@ -29,11 +29,8 @@ function createMockDpopClient(): DpopClient {
       },
     },
     proofFor: vi.fn().mockResolvedValue("mock-proof"),
-    async withNonceRetry<T>(
-      attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-    ) {
-      return attempt();
-    },
+    fetch: (url: string | URL, init?: RequestInit) =>
+      globalThis.fetch(url, init),
   };
 }
 

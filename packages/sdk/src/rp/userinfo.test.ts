@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DpopRequestInit } from "./dpop-client";
 import { fetchUserInfo } from "./userinfo";
 
 describe("fetchUserInfo", () => {
@@ -8,34 +9,22 @@ describe("fetchUserInfo", () => {
   });
 
   it("uses a DPoP client when provided", async () => {
-    const proofFor = vi.fn(async () => "dpop-proof");
-    const withNonceRetry = async <T,>(
-      attempt: (nonce?: string) => Promise<{ response: Response; result: T }>
-    ) => attempt("nonce-1");
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ response: { sub: "user-1" } }), {
-        headers: { "content-type": "application/json" },
-        status: 200,
-      })
+    const dpopFetch = vi.fn(
+      async (_url: string | URL, _init?: DpopRequestInit) =>
+        new Response(JSON.stringify({ response: { sub: "user-1" } }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        })
     );
 
     const body = await fetchUserInfo({
       accessToken: "access-token",
-      dpopClient: { proofFor, withNonceRetry },
+      dpopClient: { fetch: dpopFetch },
       userInfoUrl: "https://issuer.example/userinfo",
     });
 
-    expect(proofFor).toHaveBeenCalledWith(
-      "GET",
-      "https://issuer.example/userinfo",
-      "access-token",
-      "nonce-1"
-    );
-    expect(fetch).toHaveBeenCalledWith("https://issuer.example/userinfo", {
-      headers: {
-        Authorization: "DPoP access-token",
-        DPoP: "dpop-proof",
-      },
+    expect(dpopFetch).toHaveBeenCalledWith("https://issuer.example/userinfo", {
+      accessToken: "access-token",
     });
     expect(body).toEqual({ sub: "user-1" });
   });

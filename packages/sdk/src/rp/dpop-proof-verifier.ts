@@ -7,6 +7,7 @@ import {
 	type JWTPayload,
 	jwtVerify,
 } from "jose";
+import { normalizeDpopHtu } from "./dpop-htu";
 
 const DEFAULT_DPOP_MAX_AGE_SECONDS = 300;
 
@@ -47,8 +48,12 @@ export interface VerifiedDpopProof {
 	thumbprint?: string | undefined;
 }
 
-function toUrlString(url: string | URL): string {
-	return url instanceof URL ? url.toString() : url;
+function htuMatches(htu: string, requestUrl: string | URL): boolean {
+	try {
+		return normalizeDpopHtu(htu) === normalizeDpopHtu(requestUrl);
+	} catch {
+		return false;
+	}
 }
 
 async function hashAccessToken(token: string): Promise<string> {
@@ -103,7 +108,7 @@ export async function verifyDpopProof(
 
 	if (
 		typeof payload.htu !== "string" ||
-		payload.htu !== toUrlString(options.url)
+		!htuMatches(payload.htu, options.url)
 	) {
 		fail("url_mismatch", "DPoP proof htu does not match request URI");
 	}

@@ -5,16 +5,8 @@ const mockOAuthContext = {
   clientId: "test-client",
   dpopClient: {
     proofFor: vi.fn().mockResolvedValue("mock-proof"),
-    withNonceRetry: async (
-      attempt: (nonce?: string) => Promise<{ response: Response }>
-    ) => {
-      const initial = await attempt();
-      if (initial.response.status !== 400 && initial.response.status !== 401) {
-        return initial;
-      }
-      const nonce = initial.response.headers.get("DPoP-Nonce");
-      return nonce ? attempt(nonce) : initial;
-    },
+    fetch: (url: string | URL, init?: RequestInit) =>
+      globalThis.fetch(url, init),
   },
   dpopKey: {
     privateJwk: { kty: "EC", crv: "P-256" },

@@ -108,7 +108,7 @@ async function resumeInteractiveFlow<T>(
     poll = await pollCibaTokenOnce(
       {
         clientId: entry.clientId,
-        dpopSigner: entry.dpopClient,
+        dpopClient: entry.dpopClient,
         tokenEndpoint: entry.tokenEndpoint,
       },
       entry.pendingAuthorization

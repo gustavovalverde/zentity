@@ -15,9 +15,8 @@ function userinfoResponse(body: unknown, status = 200): Response {
   });
 }
 
-const dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry"> = {
-  proofFor: () => Promise.resolve("mock-dpop-proof"),
-  withNonceRetry: (attempt) => attempt(),
+const dpopClient: Pick<DpopClient, "fetch"> = {
+  fetch: (url, init) => globalThis.fetch(url, init),
 };
 
 describe("redeemRelease – address parsing", () => {

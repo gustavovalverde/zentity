@@ -46,7 +46,7 @@ export interface RegisterHostOptions {
   accessToken: string;
   clientAttestationJwt?: string;
   clientAttestationPopJwt?: string;
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">;
+  dpopClient: Pick<DpopClient, "fetch">;
   endpoint: string | URL;
   fetch?: typeof globalThis.fetch;
   hostKey: HostKeyMaterial;
@@ -56,7 +56,7 @@ export interface RegisterHostOptions {
 export interface RegisterAgentSessionOptions {
   accessToken: string;
   display: AgentDisplay;
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">;
+  dpopClient: Pick<DpopClient, "fetch">;
   endpoint: string | URL;
   fetch?: typeof globalThis.fetch;
   hostId: string;
@@ -106,10 +106,6 @@ export function buildHostKeyNamespace(auth: {
   return auth.accountSub
     ? `${auth.clientId}:${auth.accountSub}`
     : auth.clientId;
-}
-
-function toUrlString(url: string | URL): string {
-  return url instanceof URL ? url.toString() : url;
 }
 
 function readRecord(candidate: unknown, name: string): Record<string, unknown> {
@@ -186,40 +182,21 @@ async function parseJsonText(text: string): Promise<unknown> {
   return text ? JSON.parse(text) : {};
 }
 
-async function postJsonWithDpopRetry(input: {
+function postJsonWithDpop(input: {
   accessToken: string;
   body: unknown;
-  dpopClient: Pick<DpopClient, "proofFor" | "withNonceRetry">;
-  fetch?: typeof globalThis.fetch;
-  headers?: Record<string, string | undefined>;
+  dpopClient: Pick<DpopClient, "fetch">;
+  fetch?: typeof globalThis.fetch | undefined;
+  headers?: Record<string, string>;
   url: string | URL;
 }): Promise<Response> {
-  const url = toUrlString(input.url);
-  const body = JSON.stringify(input.body);
-  const fetchFn = input.fetch ?? fetch;
-
-  const { response } = await input.dpopClient.withNonceRetry(async (nonce) => {
-    const dpopProof = await input.dpopClient.proofFor(
-      "POST",
-      url,
-      input.accessToken,
-      nonce
-    );
-    const response = await fetchFn(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `DPoP ${input.accessToken}`,
-        DPoP: dpopProof,
-        ...input.headers,
-      },
-      body,
-    });
-
-    return { response, result: undefined };
+  return input.dpopClient.fetch(input.url, {
+    method: "POST",
+    accessToken: input.accessToken,
+    headers: { "Content-Type": "application/json", ...input.headers },
+    body: JSON.stringify(input.body),
+    ...(input.fetch ? { fetch: input.fetch } : {}),
   });
-
-  return response;
 }
 
 async function readRegistrationResponse(
@@ -264,7 +241,7 @@ function buildSessionRegistrationRequest(input: {
 export async function registerHost(
   options: RegisterHostOptions
 ): Promise<RegisteredHost> {
-  const response = await postJsonWithDpopRetry({
+  const response = await postJsonWithDpop({
     accessToken: options.accessToken,
     dpopClient: options.dpopClient,
     url: options.endpoint,
@@ -317,7 +294,7 @@ export async function registerAgentSession(
   const sessionDid = encodeEd25519DidKeyFromJwk(sessionPublicKey);
   const hostJwt = await signHostAttestationJwt(options.hostKey, options.hostId);
 
-  const response = await postJsonWithDpopRetry({
+  const response = await postJsonWithDpop({
     accessToken: options.accessToken,
     dpopClient: options.dpopClient,
     url: options.endpoint,

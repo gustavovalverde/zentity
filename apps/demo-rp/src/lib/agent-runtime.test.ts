@@ -79,12 +79,8 @@ const testState = vi.hoisted(() => ({
   db: null as ReturnType<typeof createDbMock> | null,
   dpopClient: {
     proofFor: vi.fn(async () => "dpop-proof"),
-    withNonceRetry: vi.fn(
-      async (
-        attempt: (
-          nonce?: string
-        ) => Promise<{ response: Response; result: Response }>
-      ) => await attempt()
+    fetch: vi.fn((url: string | URL, init?: RequestInit) =>
+      globalThis.fetch(url, init)
     ),
   },
   fetchMock: vi.fn<typeof fetch>(),
@@ -247,7 +243,7 @@ describe("prepareAgentAssertionForScenario", () => {
     testState.readDcrClient.mockClear();
     testState.signAttestationHeaders.mockClear();
     testState.dpopClient.proofFor.mockClear();
-    testState.dpopClient.withNonceRetry.mockClear();
+    testState.dpopClient.fetch.mockClear();
     vi.stubGlobal("fetch", testState.fetchMock);
   });
 
@@ -301,13 +297,10 @@ describe("prepareAgentAssertionForScenario", () => {
         method: "POST",
       })
     );
-    expect(testState.fetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(testState.dpopClient.fetch).toHaveBeenCalledWith(
       "http://localhost:3000/api/auth/agent/host/register",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "DPoP bootstrap-token",
-        }),
+        accessToken: "bootstrap-token",
         method: "POST",
       })
     );
@@ -409,13 +402,10 @@ describe("prepareAgentAssertionForScenario", () => {
     expect(assertion).toEqual(expect.any(String));
     expect(testState.fetchMock).toHaveBeenCalledTimes(3);
     expect(dbState.runtimeRow.sessionId).toBe("session-new");
-    expect(testState.fetchMock).toHaveBeenNthCalledWith(
-      3,
+    expect(testState.dpopClient.fetch).toHaveBeenCalledWith(
       "http://localhost:3000/api/auth/agent/register",
       expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "DPoP bootstrap-token",
-        }),
+        accessToken: "bootstrap-token",
         method: "POST",
       })
     );

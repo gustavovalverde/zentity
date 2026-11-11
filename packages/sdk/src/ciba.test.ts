@@ -1,32 +1,74 @@
+import { decodeJwt } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   beginCibaApproval,
   CibaDeniedError,
   CibaTimeoutError,
-  type DpopProofSigner,
   pollCibaToken,
   pollCibaTokenOnce,
   requestCibaApproval,
 } from "./ciba";
+import { createDpopClient, type DpopClient } from "./rp/dpop-client";
 
-const dpopSigner: DpopProofSigner = {
-  proofFor: vi.fn().mockResolvedValue("mock-dpop-proof"),
+const FAKE_TIMERS = {
+  toFake: ["setTimeout", "clearTimeout", "Date"],
+} satisfies Parameters<typeof vi.useFakeTimers>[0];
+
+// DPoP proofs are signed with real WebCrypto, which resolves outside the
+// fake clock, so timers are drained until the promise settles.
+async function settle<T>(promise: Promise<T>): Promise<T> {
+  let settled = false;
+  promise.then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    }
+  );
+  while (!settled) {
+    await vi.runAllTimersAsync();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return promise;
+}
+
+let dpopClient: DpopClient;
+let BASE_PARAMS: {
+  bindingMessage: string;
+  cibaEndpoint: string;
+  clientId: string;
+  dpopClient: DpopClient;
+  loginHint: string;
+  scope: string;
+  tokenEndpoint: string;
 };
 
-const BASE_PARAMS = {
-  cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
-  tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
-  clientId: "test-client",
-  dpopSigner,
-  loginHint: "user-sub-123",
-  scope: "openid",
-  bindingMessage: "Approve test action",
-};
+function sentProofNonce(callIndex: number): unknown {
+  const init = vi.mocked(fetch).mock.calls[callIndex]?.[1];
+  return decodeJwt(new Headers(init?.headers).get("DPoP") ?? "").nonce;
+}
+
+function nonceChallenge(nonce: string): Response {
+  return new Response(JSON.stringify({ error: "use_dpop_nonce" }), {
+    status: 400,
+    headers: { "DPoP-Nonce": nonce },
+  });
+}
 
 describe("CIBA", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.mocked(dpopSigner.proofFor).mockClear();
+  beforeEach(async () => {
+    dpopClient = await createDpopClient();
+    BASE_PARAMS = {
+      cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
+      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
+      clientId: "test-client",
+      dpopClient,
+      loginHint: "user-sub-123",
+      scope: "openid",
+      bindingMessage: "Approve test action",
+    };
+    vi.useFakeTimers(FAKE_TIMERS);
   });
 
   afterEach(() => {
@@ -50,7 +92,6 @@ describe("CIBA", () => {
 
     expect(result).toEqual({
       authReqId: "req-abc",
-      dpopNonce: undefined,
       expiresIn: 300,
       intervalSeconds: 7,
     });
@@ -78,14 +119,10 @@ describe("CIBA", () => {
 
     const result = await beginCibaApproval(BASE_PARAMS);
 
-    expect(result.dpopNonce).toBe("nonce-1");
-    expect(dpopSigner.proofFor).toHaveBeenNthCalledWith(
-      2,
-      "POST",
-      BASE_PARAMS.cibaEndpoint,
-      undefined,
-      "nonce-1"
-    );
+    expect(result.authReqId).toBe("req-abc");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(sentProofNonce(0)).toBeUndefined();
+    expect(sentProofNonce(1)).toBe("nonce-1");
   });
 
   it("polls once and returns pending metadata without blocking", async () => {
@@ -98,7 +135,7 @@ describe("CIBA", () => {
     const result = await pollCibaTokenOnce(
       {
         clientId: BASE_PARAMS.clientId,
-        dpopSigner: BASE_PARAMS.dpopSigner,
+        dpopClient: BASE_PARAMS.dpopClient,
         tokenEndpoint: BASE_PARAMS.tokenEndpoint,
       },
       {
@@ -112,7 +149,6 @@ describe("CIBA", () => {
       status: "pending",
       pendingAuthorization: {
         authReqId: "req-pending",
-        dpopNonce: undefined,
         expiresIn: 300,
         intervalSeconds: 5,
       },
@@ -157,8 +193,7 @@ describe("CIBA", () => {
       resource: "https://merchant.example",
       onPendingApproval,
     });
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await settle(promise);
 
     expect(result.accessToken).toBe("ciba-token");
     expect(onPendingApproval).toHaveBeenCalledTimes(1);
@@ -193,8 +228,7 @@ describe("CIBA", () => {
       );
 
     const promise = requestCibaApproval(BASE_PARAMS);
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await settle(promise);
 
     expect(result.accessToken).toBe("polled-token");
     expect(fetch).toHaveBeenCalledTimes(3);
@@ -226,8 +260,7 @@ describe("CIBA", () => {
       );
 
     const promise = requestCibaApproval(BASE_PARAMS);
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await settle(promise);
 
     expect(result.accessToken).toBe("slow-token");
   });
@@ -256,7 +289,7 @@ describe("CIBA", () => {
 
     const promise = requestCibaApproval(BASE_PARAMS);
     const assertion = expect(promise).rejects.toThrow(CibaDeniedError);
-    await vi.runAllTimersAsync();
+    await settle(promise).catch(() => undefined);
     await assertion;
   });
 
@@ -280,7 +313,7 @@ describe("CIBA", () => {
 
     const promise = requestCibaApproval(BASE_PARAMS);
     const assertion = expect(promise).rejects.toThrow(CibaTimeoutError);
-    await vi.runAllTimersAsync();
+    await settle(promise).catch(() => undefined);
     await assertion;
   });
 
@@ -313,8 +346,7 @@ describe("CIBA", () => {
       ...BASE_PARAMS,
       authorizationDetails,
     });
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await settle(promise);
 
     expect(result.authorizationDetails).toEqual(authorizationDetails);
   });
@@ -334,7 +366,7 @@ describe("CIBA", () => {
     const promise = pollCibaToken(
       {
         clientId: BASE_PARAMS.clientId,
-        dpopSigner: BASE_PARAMS.dpopSigner,
+        dpopClient: BASE_PARAMS.dpopClient,
         tokenEndpoint: BASE_PARAMS.tokenEndpoint,
       },
       {
@@ -343,10 +375,63 @@ describe("CIBA", () => {
         intervalSeconds: 0,
       }
     );
-    await vi.runAllTimersAsync();
-    const result = await promise;
+    const result = await settle(promise);
 
     expect(result.accessToken).toBe("ciba-token");
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("survives an expired DPoP nonce while polling", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            auth_req_id: "req-nonce",
+            expires_in: 300,
+            interval: 0,
+          }),
+          { status: 200, headers: { "DPoP-Nonce": "nonce-1" } }
+        )
+      )
+      .mockResolvedValueOnce(nonceChallenge("nonce-2"))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: "nonce-token", token_type: "DPoP" }),
+          { status: 200 }
+        )
+      );
+
+    const promise = requestCibaApproval(BASE_PARAMS);
+    const result = await settle(promise);
+
+    expect(result.accessToken).toBe("nonce-token");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(sentProofNonce(1)).toBe("nonce-1");
+    expect(sentProofNonce(2)).toBe("nonce-2");
+  });
+
+  it("keeps polling when the nonce retry is also rejected", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(nonceChallenge("nonce-1"))
+      .mockResolvedValueOnce(nonceChallenge("nonce-2"))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ access_token: "late-token", token_type: "DPoP" }),
+          { status: 200 }
+        )
+      );
+
+    const promise = pollCibaToken(
+      {
+        clientId: BASE_PARAMS.clientId,
+        dpopClient: BASE_PARAMS.dpopClient,
+        tokenEndpoint: BASE_PARAMS.tokenEndpoint,
+      },
+      { authReqId: "req-stale", expiresIn: 300, intervalSeconds: 5 }
+    );
+    const result = await settle(promise);
+
+    expect(result.accessToken).toBe("late-token");
+    expect(sentProofNonce(2)).toBe("nonce-2");
   });
 });

@@ -146,7 +146,7 @@ export async function POST(request: Request) {
       cibaEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/bc-authorize`,
       tokenEndpoint: `${env.ZENTITY_URL}/api/auth/oauth2/token`,
       clientId: client.clientId,
-      dpopSigner: dpopClient,
+      dpopClient,
       loginHint,
       scope: `openid ${PAYMENT_AUTHORIZATION_CAPABILITY}`,
       authorizationDetails: [rar],

@@ -2,7 +2,7 @@ import type { DpopClient } from "./dpop-client";
 
 export interface FetchUserInfoOptions {
   accessToken: string;
-  dpopClient?: Pick<DpopClient, "proofFor" | "withNonceRetry">;
+  dpopClient?: Pick<DpopClient, "fetch">;
   unwrapResponseEnvelope?: boolean;
   userInfoUrl: string | URL;
 }
@@ -33,24 +33,9 @@ export async function fetchUserInfo(
   const userInfoUrl = toUrlString(options.userInfoUrl);
 
   if (options.dpopClient) {
-    const dpopClient = options.dpopClient;
-    const { response } = await dpopClient.withNonceRetry(
-      async (nonce) => {
-        const proof = await dpopClient.proofFor(
-          "GET",
-          userInfoUrl,
-          options.accessToken,
-          nonce
-        );
-        const response = await fetch(userInfoUrl, {
-          headers: {
-            Authorization: `DPoP ${options.accessToken}`,
-            DPoP: proof,
-          },
-        });
-        return { response, result: null };
-      }
-    );
+    const response = await options.dpopClient.fetch(userInfoUrl, {
+      accessToken: options.accessToken,
+    });
 
     if (!response.ok) {
       return null;
