@@ -1,16 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { createClient } from "@libsql/client";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
 
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
 const JSON_RPC_ACCEPT = "application/json, text/event-stream";
 const TRAILING_SLASHES = /\/+$/;
-
-interface DpopKeyPair {
-  jwk: JsonWebKey;
-  privateKey: CryptoKey;
-}
 
 interface ProtectedResourceMetadata {
   authorization_servers?: string[];
@@ -40,60 +35,6 @@ function createDatabaseClient() {
   });
 }
 
-async function createDpopKeyPair(): Promise<DpopKeyPair> {
-  const { privateKey, publicKey } = await generateKeyPair("ES256", {
-    extractable: true,
-  });
-
-  return {
-    jwk: await exportJWK(publicKey),
-    privateKey,
-  };
-}
-
-function buildTokenProof(
-  keyPair: DpopKeyPair,
-  url: string,
-  nonce?: string
-): Promise<string> {
-  return new SignJWT({
-    htm: "POST",
-    htu: url,
-    iat: Math.floor(Date.now() / 1000),
-    jti: randomUUID(),
-    ...(nonce ? { nonce } : {}),
-  })
-    .setProtectedHeader({
-      alg: "ES256",
-      jwk: keyPair.jwk,
-      typ: "dpop+jwt",
-    })
-    .sign(keyPair.privateKey);
-}
-
-function buildResourceProof(
-  keyPair: DpopKeyPair,
-  method: string,
-  url: string,
-  accessToken: string
-): Promise<string> {
-  const ath = createHash("sha256").update(accessToken).digest("base64url");
-
-  return new SignJWT({
-    ath,
-    htm: method,
-    htu: url,
-    iat: Math.floor(Date.now() / 1000),
-    jti: randomUUID(),
-  })
-    .setProtectedHeader({
-      alg: "ES256",
-      jwk: keyPair.jwk,
-      typ: "dpop+jwt",
-    })
-    .sign(keyPair.privateKey);
-}
-
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   const text = await response.text();
@@ -104,56 +45,39 @@ async function getJson<T>(url: string): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-async function postTokenWithDpop(
+/** Sends a token request; the SDK client answers a nonce challenge. */
+async function postToken(
+  dpop: DpopClient,
   tokenEndpoint: string,
-  body: Record<string, string>,
-  keyPair: DpopKeyPair
+  body: Record<string, string>
 ): Promise<{ json: Record<string, unknown>; status: number }> {
-  async function attempt(nonce?: string) {
-    const proof = await buildTokenProof(keyPair, tokenEndpoint, nonce);
-    const response = await fetch(tokenEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body: new URLSearchParams(body),
-    });
-    const text = await response.text();
+  const response = await dpop.fetch(tokenEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body).toString(),
+  });
+  const text = await response.text();
 
-    return {
-      dpopNonce: response.headers.get("DPoP-Nonce") ?? undefined,
-      json: text ? (JSON.parse(text) as Record<string, unknown>) : {},
-      status: response.status,
-    };
-  }
-
-  const first = await attempt();
-  if ((first.status === 400 || first.status === 401) && first.dpopNonce) {
-    const retry = await attempt(first.dpopNonce);
-    return { json: retry.json, status: retry.status };
-  }
-
-  return { json: first.json, status: first.status };
+  return {
+    json: text ? (JSON.parse(text) as Record<string, unknown>) : {},
+    status: response.status,
+  };
 }
 
 const MCP_PROTOCOL_VERSION = "2025-11-25";
 
-async function callMcp(
+function callMcp(
   mcpUrl: string,
   accessToken: string,
-  keyPair: DpopKeyPair,
+  dpop: DpopClient,
   body: Record<string, unknown>
 ): Promise<Response> {
-  const proof = await buildResourceProof(keyPair, "POST", mcpUrl, accessToken);
-
-  return fetch(mcpUrl, {
+  return dpop.fetch(mcpUrl, {
+    accessToken,
     method: "POST",
     headers: {
       Accept: JSON_RPC_ACCEPT,
-      Authorization: `DPoP ${accessToken}`,
       "Content-Type": "application/json",
-      DPoP: proof,
       "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
     },
     body: JSON.stringify(body),
@@ -292,20 +216,16 @@ async function main(): Promise<void> {
   const clientId = `live-mcp-probe-${randomUUID()}`;
   const authReqId = randomUUID();
   const userId = randomUUID();
-  const keyPair = await createDpopKeyPair();
+  const dpop = await createDpopClient();
 
   try {
     await seedProbeState(clientId, authReqId, userId, mcpPublicUrl);
 
-    const tokenResult = await postTokenWithDpop(
-      authMetadata.token_endpoint,
-      {
-        auth_req_id: authReqId,
-        client_id: clientId,
-        grant_type: CIBA_GRANT_TYPE,
-      },
-      keyPair
-    );
+    const tokenResult = await postToken(dpop, authMetadata.token_endpoint, {
+      auth_req_id: authReqId,
+      client_id: clientId,
+      grant_type: CIBA_GRANT_TYPE,
+    });
 
     console.log(
       JSON.stringify(
@@ -330,21 +250,16 @@ async function main(): Promise<void> {
 
     const accessToken = tokenResult.json.access_token;
 
-    const initializeResponse = await callMcp(
-      mcpEndpoint,
-      accessToken,
-      keyPair,
-      {
-        id: 1,
-        jsonrpc: "2.0",
-        method: "initialize",
-        params: {
-          capabilities: {},
-          clientInfo: { name: "live-mcp-probe", version: "0.1.0" },
-          protocolVersion: MCP_PROTOCOL_VERSION,
-        },
-      }
-    );
+    const initializeResponse = await callMcp(mcpEndpoint, accessToken, dpop, {
+      id: 1,
+      jsonrpc: "2.0",
+      method: "initialize",
+      params: {
+        capabilities: {},
+        clientInfo: { name: "live-mcp-probe", version: "0.1.0" },
+        protocolVersion: MCP_PROTOCOL_VERSION,
+      },
+    });
     const initializeBody = await initializeResponse.text();
 
     console.log(
@@ -365,7 +280,7 @@ async function main(): Promise<void> {
       );
     }
 
-    const whoamiResponse = await callMcp(mcpEndpoint, accessToken, keyPair, {
+    const whoamiResponse = await callMcp(mcpEndpoint, accessToken, dpop, {
       id: 2,
       jsonrpc: "2.0",
       method: "tools/call",
