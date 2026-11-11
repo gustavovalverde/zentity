@@ -61,7 +61,7 @@ export function getBarretenberg(): Promise<Barretenberg> {
 
 /**
  * Poseidon2 hash function for server-side use
- * Compatible with nodash::poseidon2 in Noir circuits
+ * Matches `Poseidon2::hash(inputs, inputs.len())` from noir-lang/poseidon in the Noir circuits
  */
 export async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   const bb = await getBarretenberg();

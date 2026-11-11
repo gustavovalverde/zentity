@@ -13,20 +13,20 @@
 // Output:
 //   - Returns true if the document is valid (expiry_date >= current_date)
 
-use nodash::poseidon2;
+use poseidon::poseidon2::Poseidon2;
 
 fn main(
-    expiry_date: Field,        // Private: actual expiry date (YYYYMMDD)
-    document_hash: Field,      // Private: document commitment
-    current_date: pub Field,   // Public: current date for verification
-    nonce: pub Field,          // Public: challenge nonce (replay resistance)
-    claim_hash: pub Field      // Public: claim hash binding to OCR data
+    expiry_date: Field, // Private: actual expiry date (YYYYMMDD)
+    document_hash: Field, // Private: document commitment
+    current_date: pub Field, // Public: current date for verification
+    nonce: pub Field, // Public: challenge nonce (replay resistance)
+    claim_hash: pub Field, // Public: claim hash binding to OCR data
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     let _ = nonce;
 
     // Bind proof to signed OCR claim
-    let computed_hash = poseidon2([expiry_date, document_hash]);
+    let computed_hash = Poseidon2::hash([expiry_date, document_hash], 2);
     assert(computed_hash == claim_hash, "Claim hash mismatch");
 
     // Sanity bound: current_date must be a plausible date (>= year 2000-01-01).
@@ -45,7 +45,7 @@ fn main(
 fn test_valid_document() {
     // Document expires in 2027, current date is 2025-12-12
     let doc_hash = 999;
-    let claim_hash = poseidon2([20271231, doc_hash]);
+    let claim_hash = Poseidon2::hash([20271231, doc_hash], 2);
     let result = main(20271231, doc_hash, 20251212, 12345, claim_hash);
     assert(result == true);
 }
@@ -54,7 +54,7 @@ fn test_valid_document() {
 fn test_valid_document_same_day() {
     // Document expires today
     let doc_hash = 888;
-    let claim_hash = poseidon2([20251212, doc_hash]);
+    let claim_hash = Poseidon2::hash([20251212, doc_hash], 2);
     let result = main(20251212, doc_hash, 20251212, 99999, claim_hash);
     assert(result == true);
 }
@@ -63,7 +63,7 @@ fn test_valid_document_same_day() {
 fn test_expired_document() {
     // Document expired in 2024, current date is 2025-12-12
     let doc_hash = 777;
-    let claim_hash = poseidon2([20241231, doc_hash]);
+    let claim_hash = Poseidon2::hash([20241231, doc_hash], 2);
     let result = main(20241231, doc_hash, 20251212, 11111, claim_hash);
     assert(result == false);
 }
@@ -72,7 +72,7 @@ fn test_expired_document() {
 fn test_recently_expired() {
     // Document expired yesterday
     let doc_hash = 666;
-    let claim_hash = poseidon2([20251211, doc_hash]);
+    let claim_hash = Poseidon2::hash([20251211, doc_hash], 2);
     let result = main(20251211, doc_hash, 20251212, 22222, claim_hash);
     assert(result == false);
 }
@@ -81,7 +81,7 @@ fn test_recently_expired() {
 fn test_far_future_expiry() {
     // Document valid until 2030
     let doc_hash = 555;
-    let claim_hash = poseidon2([20301231, doc_hash]);
+    let claim_hash = Poseidon2::hash([20301231, doc_hash], 2);
     let result = main(20301231, doc_hash, 20251212, 33333, claim_hash);
     assert(result == true);
 }
@@ -90,7 +90,7 @@ fn test_far_future_expiry() {
 fn test_zero_current_date_fails() {
     // current_date = 0 would make any document appear valid
     let doc_hash = 111;
-    let claim_hash = poseidon2([20271231, doc_hash]);
+    let claim_hash = Poseidon2::hash([20271231, doc_hash], 2);
     let _ = main(20271231, doc_hash, 0, 77777, claim_hash);
 }
 
@@ -98,6 +98,6 @@ fn test_zero_current_date_fails() {
 fn test_implausible_current_date_fails() {
     // current_date = 19991231 is before year 2000
     let doc_hash = 222;
-    let claim_hash = poseidon2([20271231, doc_hash]);
+    let claim_hash = Poseidon2::hash([20271231, doc_hash], 2);
     let _ = main(20271231, doc_hash, 19991231, 88888, claim_hash);
 }

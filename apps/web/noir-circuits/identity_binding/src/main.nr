@@ -26,17 +26,17 @@
 //   - Nonce prevents replay attacks (freshness)
 //   - Auth mode is NOT revealed (privacy improvement)
 
-use nodash::poseidon2;
+use poseidon::poseidon2::Poseidon2;
 
 fn main(
-    binding_secret: Field,           // Private: auth-mode-specific secret
-    user_id_hash: Field,             // Private: hash of user ID
-    document_hash: Field,            // Private: document commitment
-    nonce: pub Field,                // Public: challenge nonce (replay resistance)
-    msg_sender_hash: pub Field,      // Public: caller context binding
-    audience_hash: pub Field,        // Public: audience context binding
-    base_commitment: pub Field,      // Public: pre-registered base commitment
-    binding_commitment: pub Field    // Public: pre-computed commitment to verify
+    binding_secret: Field, // Private: auth-mode-specific secret
+    user_id_hash: Field, // Private: hash of user ID
+    document_hash: Field, // Private: document commitment
+    nonce: pub Field, // Public: challenge nonce (replay resistance)
+    msg_sender_hash: pub Field, // Public: caller context binding
+    audience_hash: pub Field, // Public: audience context binding
+    base_commitment: pub Field, // Public: pre-registered base commitment
+    binding_commitment: pub Field, // Public: pre-computed commitment to verify
 ) -> pub bool {
     // The nonce is bound to the proof through UltraHonk's public-input integrity
     // (the verifier rejects if the public inputs are altered after proving), so
@@ -45,17 +45,14 @@ fn main(
     let _ = nonce;
 
     // The base commitment binds strictly to the user's secret
-    let computed_base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let computed_base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
     assert(computed_base_commitment == base_commitment, "Base commitment mismatch");
 
     // The full commitment binds the proof to the session context
-    let computed_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let computed_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     // Verify the commitment matches
     assert(computed_commitment == binding_commitment, "Binding commitment mismatch");
@@ -65,7 +62,7 @@ fn main(
 
 // Helper function to compute user ID hash (for testing)
 fn hash_user_id(user_id: Field) -> Field {
-    poseidon2([user_id])
+    Poseidon2::hash([user_id], 1)
 }
 
 #[test]
@@ -78,15 +75,12 @@ fn test_passkey_binding() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     assert(main(
         binding_secret,
@@ -96,7 +90,7 @@ fn test_passkey_binding() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     ));
 }
 
@@ -110,15 +104,12 @@ fn test_opaque_binding() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     assert(main(
         binding_secret,
@@ -128,7 +119,7 @@ fn test_opaque_binding() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     ));
 }
 
@@ -142,15 +133,12 @@ fn test_wallet_binding() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     assert(main(
         binding_secret,
@@ -160,7 +148,7 @@ fn test_wallet_binding() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     ));
 }
 
@@ -174,7 +162,7 @@ fn test_wrong_commitment_fails() {
     let audience_hash: Field = 0x2222;
     let wrong_commitment: Field = 0xbad;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
     let _ = main(
         binding_secret,
@@ -184,7 +172,7 @@ fn test_wrong_commitment_fails() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        wrong_commitment
+        wrong_commitment,
     );
 }
 
@@ -197,15 +185,12 @@ fn test_different_secret_fails() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     let different_secret: Field = 0x4321;
     let _ = main(
@@ -216,7 +201,7 @@ fn test_different_secret_fails() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     );
 }
 
@@ -230,15 +215,12 @@ fn test_different_user_fails() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     let different_user: Field = 22222;
     let different_user_hash = hash_user_id(different_user);
@@ -250,7 +232,7 @@ fn test_different_user_fails() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     );
 }
 
@@ -263,15 +245,12 @@ fn test_different_document_fails() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     let different_document: Field = 0xdef0;
     let _ = main(
@@ -282,7 +261,7 @@ fn test_different_document_fails() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     );
 }
 
@@ -294,15 +273,12 @@ fn test_nonce_uniqueness() {
     let msg_sender_hash: Field = 0x1111;
     let audience_hash: Field = 0x2222;
 
-    let base_commitment = poseidon2([binding_secret, user_id_hash]);
+    let base_commitment = Poseidon2::hash([binding_secret, user_id_hash], 2);
 
-    let binding_commitment = poseidon2([
-        binding_secret,
-        user_id_hash,
-        document_hash,
-        msg_sender_hash,
-        audience_hash
-    ]);
+    let binding_commitment = Poseidon2::hash(
+        [binding_secret, user_id_hash, document_hash, msg_sender_hash, audience_hash],
+        5,
+    );
 
     assert(main(
         binding_secret,
@@ -312,7 +288,7 @@ fn test_nonce_uniqueness() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     ));
 
     assert(main(
@@ -323,6 +299,6 @@ fn test_nonce_uniqueness() {
         msg_sender_hash,
         audience_hash,
         base_commitment,
-        binding_commitment
+        binding_commitment,
     ));
 }

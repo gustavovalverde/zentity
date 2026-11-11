@@ -21,22 +21,22 @@
 // Note: Age calculation uses the formula: (current_days - dob_days) >= min_age_days
 // where min_age_days is typically calculated as min_age * 365.25 (accounting for leap years)
 
-use nodash::poseidon2;
+use poseidon::poseidon2::Poseidon2;
 
 fn main(
-    dob_days: Field,          // Private: days since base date for DOB
-    document_hash: Field,     // Private: document commitment
-    current_days: pub Field,  // Public: current date as days since base date
-    min_age_days: pub Field,  // Public: minimum age in days (e.g., 18 * 365 = 6570)
-    nonce: pub Field,         // Public: challenge nonce (replay resistance)
-    claim_hash: pub Field     // Public: claim hash binding to OCR data
+    dob_days: Field, // Private: days since base date for DOB
+    document_hash: Field, // Private: document commitment
+    current_days: pub Field, // Public: current date as days since base date
+    min_age_days: pub Field, // Public: minimum age in days (e.g., 18 * 365 = 6570)
+    nonce: pub Field, // Public: challenge nonce (replay resistance)
+    claim_hash: pub Field, // Public: claim hash binding to OCR data
 ) -> pub bool {
     // Nonce is included as public input for replay resistance
     // It doesn't affect the age calculation, but binds the proof to a specific challenge
     let _ = nonce;
 
     // Bind proof to signed OCR claim
-    let computed_hash = poseidon2([dob_days, document_hash]);
+    let computed_hash = Poseidon2::hash([dob_days, document_hash], 2);
     assert(computed_hash == claim_hash, "Claim hash mismatch");
 
     // Convert to u32 for safe comparison and arithmetic
@@ -92,7 +92,7 @@ fn test_age_verification_adult() {
     let min_age: Field = min_age_to_days(18) as Field;
 
     let doc_hash: Field = 999;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let result = main(dob, doc_hash, current, min_age, 12345, claim_hash);
     assert(result == true);
 }
@@ -106,7 +106,7 @@ fn test_age_verification_exactly_18() {
     let min_age: Field = min_age_to_days(18) as Field;
 
     let doc_hash: Field = 888;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let result = main(dob, doc_hash, current, min_age, 99999, claim_hash);
     assert(result == true);
 }
@@ -120,7 +120,7 @@ fn test_age_verification_under_21() {
     let min_age: Field = min_age_to_days(21) as Field;
 
     let doc_hash: Field = 777;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let result = main(dob, doc_hash, current, min_age, 11111, claim_hash);
     assert(result == false);
 }
@@ -134,7 +134,7 @@ fn test_age_verification_minor() {
     let min_age: Field = min_age_to_days(18) as Field;
 
     let doc_hash: Field = 666;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let result = main(dob, doc_hash, current, min_age, 22222, claim_hash);
     assert(result == false);
 }
@@ -150,7 +150,7 @@ fn test_day_precision_matters() {
     let min_age: Field = 6570; // 18 * 365
 
     let doc_hash: Field = 555;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let result = main(dob, doc_hash, current, min_age, 33333, claim_hash);
     // Age is 6569 days, minimum is 6570, so should fail
     assert(result == false);
@@ -163,7 +163,7 @@ fn test_same_day_birth() {
     let dob: Field = current; // Born today
 
     let doc_hash: Field = 444;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
 
     // Should pass for 0 days minimum
     let result = main(dob, doc_hash, current, 0, 33333, claim_hash);
@@ -182,7 +182,7 @@ fn test_future_dob_fails() {
     let min_age: Field = min_age_to_days(18) as Field;
 
     let doc_hash: Field = 333;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let _ = main(dob, doc_hash, current, min_age, 55555, claim_hash);
 }
 
@@ -194,7 +194,7 @@ fn test_implausibly_large_current_days_fails() {
     let min_age: Field = 0;
 
     let doc_hash: Field = 222;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let _ = main(dob, doc_hash, current, min_age, 66666, claim_hash);
 }
 
@@ -205,6 +205,6 @@ fn test_min_age_days_overflow_fails() {
     let min_age: Field = 4294967297; // 2^32 + 1
 
     let doc_hash: Field = 111;
-    let claim_hash = poseidon2([dob, doc_hash]);
+    let claim_hash = Poseidon2::hash([dob, doc_hash], 2);
     let _ = main(dob, doc_hash, current, min_age, 77777, claim_hash);
 }
