@@ -3,8 +3,7 @@ import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
-import { eq } from "drizzle-orm";
-import { calculateJwkThumbprint, decodeJwt } from "jose";
+import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -169,21 +168,12 @@ async function callChallenge(
 // RFC 7636 example: code_verifier → code_challenge (S256)
 const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
-const PAR_URI_RE = /^urn:ietf:params:oauth:request_uri:.+/;
-
-async function readPushedRequestParams(requestUri: unknown) {
-  const row = await db
-    .select({ requestParams: haipPushedRequests.requestParams })
+async function countPushedRequests() {
+  const rows = await db
+    .select({ requestId: haipPushedRequests.requestId })
     .from(haipPushedRequests)
-    .where(
-      eq(
-        haipPushedRequests.requestId,
-        String(requestUri).slice(PAR_URI_PREFIX.length)
-      )
-    )
-    .get();
-  return JSON.parse(row?.requestParams ?? "{}") as Record<string, unknown>;
+    .all();
+  return rows.length;
 }
 
 async function completeOpaqueFlow(
@@ -268,7 +258,7 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.server_public_key).toBeTypeOf("string");
     });
 
-    it("returns redirect_to_web with request_uri for passkey-only user", async () => {
+    it("returns redirect_to_web without a pushed request for passkey-only user", async () => {
       await createTestUser({ email: TEST_EMAIL });
 
       const { status, json } = await callChallenge({
@@ -283,46 +273,8 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(400);
       expect(json.error).toBe("redirect_to_web");
       expect(json.auth_session).toBeTypeOf("string");
-      expect(json.request_uri).toBeTypeOf("string");
-      expect(json.request_uri).toMatch(PAR_URI_RE);
-    });
-
-    it("binds the passkey browser request to the auth_session DPoP key", async () => {
-      await createTestUser({ email: TEST_EMAIL });
-      const sessionKey = await createTestDpopKeyPair();
-
-      const { json } = await callChallenge(
-        {
-          client_id: TEST_CLIENT_ID,
-          response_type: "code",
-          scope: "openid",
-          code_challenge: CODE_CHALLENGE,
-          code_challenge_method: "S256",
-          identifier: TEST_EMAIL,
-        },
-        { DPoP: await buildDpopProof(sessionKey, "POST", CHALLENGE_URL) }
-      );
-
-      expect(json.error).toBe("redirect_to_web");
-      const params = await readPushedRequestParams(json.request_uri);
-      expect(params.dpop_jkt).toBe(
-        await calculateJwkThumbprint(sessionKey.jwk, "sha256")
-      );
-    });
-
-    it("returns redirect_to_web without request_uri when no code_challenge", async () => {
-      await createTestUser({ email: TEST_EMAIL });
-
-      const { status, json } = await callChallenge({
-        client_id: TEST_CLIENT_ID,
-        response_type: "code",
-        scope: "openid",
-        identifier: TEST_EMAIL,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("redirect_to_web");
-      expect(json.request_uri).toBeUndefined();
+      expect(json).not.toHaveProperty("request_uri");
+      expect(await countPushedRequests()).toBe(0);
     });
 
     it("returns insufficient_authorization for unknown user (timing-safe)", async () => {
@@ -1283,7 +1235,7 @@ describe("Authorization Challenge Endpoint", () => {
       }
     });
 
-    it("step-up re-entry returns request_uri for passkey-only user", async () => {
+    it("step-up re-entry returns redirect_to_web without a pushed request for passkey-only user", async () => {
       const userId = await createTestUser({ email: TEST_EMAIL });
 
       // Step-up session (passkey-only user has no OPAQUE or wallet accounts)
@@ -1310,40 +1262,8 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(400);
       expect(json.error).toBe("redirect_to_web");
       expect(json.auth_session).toBe(authSession);
-      expect(json.request_uri).toMatch(PAR_URI_RE);
-    });
-
-    it("step-up re-entry binds the passkey browser request to the session DPoP key", async () => {
-      const userId = await createTestUser({ email: TEST_EMAIL });
-      const sessionKey = await createTestDpopKeyPair();
-      const sessionJkt = await calculateJwkThumbprint(sessionKey.jwk, "sha256");
-      const authSession = crypto.randomUUID();
-      await db
-        .insert(authChallengeSessions)
-        .values({
-          authSession,
-          clientId: TEST_CLIENT_ID,
-          userId,
-          dpopJkt: sessionJkt,
-          scope: "openid",
-          acrValues: "urn:zentity:assurance:tier-1",
-          state: "pending",
-          expiresAt: new Date(Date.now() + 600_000),
-        })
-        .run();
-
-      const { json } = await callChallenge(
-        {
-          auth_session: authSession,
-          code_challenge: CODE_CHALLENGE,
-          code_challenge_method: "S256",
-        },
-        { DPoP: await buildDpopProof(sessionKey, "POST", CHALLENGE_URL) }
-      );
-
-      expect(json.error).toBe("redirect_to_web");
-      const params = await readPushedRequestParams(json.request_uri);
-      expect(params.dpop_jkt).toBe(sessionJkt);
+      expect(json).not.toHaveProperty("request_uri");
+      expect(await countPushedRequests()).toBe(0);
     });
   });
 });

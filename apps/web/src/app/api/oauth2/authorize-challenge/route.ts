@@ -42,15 +42,12 @@ import {
 import {
   type AuthChallengeSession,
   authChallengeSessions,
-  haipPushedRequests,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import { getOpaqueStateKey } from "@/lib/privacy/primitives/derived-keys";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
-const PAR_LIFETIME_MS = 60 * 1000;
-const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const EIP712_NONCE_TTL_MS = 15 * 60 * 1000;
 const EIP712_APP_NAME = "Zentity";
 const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
@@ -414,30 +411,9 @@ async function handleInitialRequest(
   });
 
   if (challengeType === "redirect_to_web") {
-    const extras: Record<string, unknown> = { auth_session: authSession };
-
-    // Include PAR request_uri when PKCE was provided (FPA draft §3.2)
-    if (params.code_challenge) {
-      const requestId = generateRandomString(32, "a-z", "A-Z", "0-9");
-      await db.insert(haipPushedRequests).values({
-        requestId,
-        clientId: params.client_id,
-        requestParams: JSON.stringify({
-          client_id: params.client_id,
-          response_type: params.response_type,
-          scope: params.scope,
-          ...(params.claims && { claims: params.claims }),
-          code_challenge: params.code_challenge,
-          code_challenge_method: params.code_challenge_method,
-          ...(params.resource && { resource: params.resource }),
-          ...(dpopJkt && { dpop_jkt: dpopJkt }),
-        }),
-        expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
-      });
-      extras.request_uri = `${PAR_URI_PREFIX}${requestId}`;
-    }
-
-    return errorJson(400, "redirect_to_web", undefined, extras);
+    return errorJson(400, "redirect_to_web", undefined, {
+      auth_session: authSession,
+    });
   }
 
   if (challengeType === "eip712") {
@@ -846,35 +822,11 @@ async function handleStepUpReEntry(
     .where(eq(authChallengeSessions.id, session.id));
 
   if (challengeType === "redirect_to_web") {
-    const extras: Record<string, unknown> = { auth_session: authSession };
-
-    const effectiveCodeChallenge = codeChallenge ?? session.codeChallenge;
-    if (effectiveCodeChallenge) {
-      const requestId = generateRandomString(32, "a-z", "A-Z", "0-9");
-      await db.insert(haipPushedRequests).values({
-        requestId,
-        clientId: session.clientId,
-        requestParams: JSON.stringify({
-          client_id: session.clientId,
-          response_type: "code",
-          scope: session.scope,
-          ...(session.claims && { claims: session.claims }),
-          code_challenge: effectiveCodeChallenge,
-          code_challenge_method:
-            codeChallengeMethod ?? session.codeChallengeMethod ?? "S256",
-          ...(session.resource && { resource: session.resource }),
-          ...(session.dpopJkt && { dpop_jkt: session.dpopJkt }),
-        }),
-        expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
-      });
-      extras.request_uri = `${PAR_URI_PREFIX}${requestId}`;
-    }
-
     return errorJson(
       400,
       "redirect_to_web",
       "Passkey-only users must use browser flow",
-      extras
+      { auth_session: authSession }
     );
   }
 
