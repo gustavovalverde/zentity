@@ -26,6 +26,7 @@ import {
 import {
   buildDpopProof,
   createTestDpopKeyPair,
+  type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
 
@@ -169,31 +170,39 @@ const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 const PAR_URI_RE = /^urn:ietf:params:oauth:request_uri:.+/;
 
 async function completeOpaqueFlow(
-  initialRequestOverrides: Record<string, unknown> = {}
+  initialRequestOverrides: Record<string, unknown> = {},
+  dpopKeyPair?: DpopKeyPair
 ): Promise<{
   authSession: string;
   authorizationCode: string;
 }> {
   await ready;
-  const round1 = await callChallenge({
-    client_id: TEST_CLIENT_ID,
-    response_type: "code",
-    scope: "openid",
-    code_challenge: CODE_CHALLENGE,
-    code_challenge_method: "S256",
-    identifier: TEST_EMAIL,
-    ...initialRequestOverrides,
-  });
+  const dpopHeaders = async () =>
+    dpopKeyPair
+      ? { DPoP: await buildDpopProof(dpopKeyPair, "POST", CHALLENGE_URL) }
+      : undefined;
+  const round1 = await callChallenge(
+    {
+      client_id: TEST_CLIENT_ID,
+      response_type: "code",
+      scope: "openid",
+      code_challenge: CODE_CHALLENGE,
+      code_challenge_method: "S256",
+      identifier: TEST_EMAIL,
+      ...initialRequestOverrides,
+    },
+    await dpopHeaders()
+  );
   const authSession = round1.json.auth_session as string;
 
   const { clientLoginState, startLoginRequest } = client.startLogin({
     password: TEST_PASSWORD,
   });
 
-  const round2 = await callChallenge({
-    auth_session: authSession,
-    opaque_login_request: startLoginRequest,
-  });
+  const round2 = await callChallenge(
+    { auth_session: authSession, opaque_login_request: startLoginRequest },
+    await dpopHeaders()
+  );
 
   const loginResult = client.finishLogin({
     clientLoginState,
@@ -201,10 +210,13 @@ async function completeOpaqueFlow(
     password: TEST_PASSWORD,
   });
 
-  const round3 = await callChallenge({
-    auth_session: authSession,
-    opaque_finish_request: loginResult?.finishLoginRequest,
-  });
+  const round3 = await callChallenge(
+    {
+      auth_session: authSession,
+      opaque_finish_request: loginResult?.finishLoginRequest,
+    },
+    await dpopHeaders()
+  );
 
   return {
     authSession,
@@ -654,6 +666,63 @@ describe("Authorization Challenge Endpoint", () => {
       );
       expect(round2.status).toBe(400);
       expect(round2.json.error).toBe("invalid_dpop_proof");
+    });
+  });
+
+  describe("Authorization code DPoP binding", () => {
+    const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
+
+    async function issueBoundCode() {
+      await createUserWithOpaque(TEST_EMAIL);
+      const sessionKey = await createTestDpopKeyPair();
+      const { authorizationCode } = await completeOpaqueFlow({}, sessionKey);
+      return {
+        sessionKey,
+        tokenRequest: {
+          grant_type: "authorization_code",
+          client_id: TEST_CLIENT_ID,
+          code: authorizationCode,
+          code_verifier: CODE_VERIFIER,
+        },
+      };
+    }
+
+    it("rejects redemption without a DPoP proof", async () => {
+      const { tokenRequest } = await issueBoundCode();
+
+      const response = await auth.handler(
+        new Request(TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(tokenRequest),
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "invalid_dpop_proof",
+      });
+    });
+
+    it("rejects redemption with a proof from another key", async () => {
+      const { tokenRequest } = await issueBoundCode();
+
+      const { status, json } = await postTokenWithDpop(tokenRequest);
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("issues a token bound to the auth_session key", async () => {
+      const { sessionKey, tokenRequest } = await issueBoundCode();
+
+      const { status, json } = await postTokenWithDpop(
+        tokenRequest,
+        sessionKey
+      );
+
+      expect(status).toBe(200);
+      expect(json.token_type).toBe("DPoP");
     });
   });
 
