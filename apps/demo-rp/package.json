@@ -2,6 +2,9 @@
   "name": "demo-rp",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "26.x"
+  },
   "scripts": {
     "dev": "next dev --port 3102",
     "build": "next build",
@@ -53,7 +56,7 @@
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^25.9.9",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "drizzle-kit": "^0.31.11",

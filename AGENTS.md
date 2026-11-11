@@ -253,7 +253,7 @@ Notes:
 
 **Prerequisites:**
 
-- Node.js 24+ (recommended: use `.nvmrc` or `mise`)
+- Node.js 26+ (recommended: use `.nvmrc` or `mise`)
 - pnpm 10+ (package manager)
 - Rust 1.91+ (recommended: `mise`)
 - Python 3.12+ (recommended: `mise`)

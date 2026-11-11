@@ -5,7 +5,7 @@ ARG REPO_HOME=/workspace/zentity
 ARG APP_HOME=/workspace/zentity/apps/demo-rp
 
 # --- Stage 1: Dependencies ---
-FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS deps
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG APP_HOME
@@ -14,7 +14,8 @@ ARG REPO_HOME
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Node 25+ no longer bundles corepack; it activates the pnpm version pinned in packageManager.
+RUN npm install --global corepack@0.36.0 && corepack enable
 
 WORKDIR ${REPO_HOME}
 
@@ -39,19 +40,15 @@ COPY --link . .
 RUN pnpm --filter @zentity/sdk build && pnpm --filter demo-rp build
 
 # --- Stage 3: Runner ---
-FROM node:24-slim@sha256:b83af04d005d8e3716f542469a28ad2947ba382f6b4a76ddca0827a21446a540 AS runner
+FROM node:26-slim@sha256:5adad64f9a1fca2d51972caa65983634c8a774eb300d72b20f7f2a0f60368072 AS runner
 
 ARG APP_UID
 ARG APP_HOME
 ARG REPO_HOME
 
 ENV NODE_ENV=production
-ENV PNPM_HOME="/pnpm"
-ENV PATH="$PNPM_HOME:$PATH"
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3102
-
-RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR ${REPO_HOME}
 
