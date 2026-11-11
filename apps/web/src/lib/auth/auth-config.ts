@@ -2389,6 +2389,9 @@ export const auth = betterAuth({
       allowPasswordless: true,
     }),
     haip({
+      // Only advertised; the plugin does not enforce PAR at /oauth2/authorize.
+      // Remote MCP hosts (MCP SDK clients) authorize without PAR, so it stays
+      // optional.
       requirePar: false,
       parExpiresInSeconds: 60,
       vpRequestExpiresInSeconds: 300,

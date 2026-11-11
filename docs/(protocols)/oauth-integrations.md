@@ -21,7 +21,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 
 | Endpoint | Standard | Purpose |
 | --- | --- | --- |
-| `POST /api/auth/oauth2/par` | RFC 9126 | Pushed Authorization Request (required) |
+| `POST /api/auth/oauth2/par` | RFC 9126 | Pushed Authorization Request (optional) |
 | `GET /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive) |
 | `POST /api/auth/oauth2/bc-authorize` | OIDC CIBA | Backchannel authorization (headless) |
 | `POST /api/auth/oauth2/consent` | OAuth 2.1 | User consent submission |
@@ -237,7 +237,7 @@ Ping mode eliminates polling overhead and reduces latency between approval and t
 
 | Grant type | Flow |
 | --- | --- |
-| `authorization_code` | Browser redirect (PAR required) or first-party challenge |
+| `authorization_code` | Browser redirect (PAR optional) or first-party challenge |
 | `urn:openid:params:grant-type:ciba` | CIBA poll and ping modes |
 | `client_credentials` | Machine-to-machine (RFC 8707 resource required) |
 | `urn:ietf:params:oauth:grant-type:token-exchange` | RFC 8693 token exchange (audience narrowing, delegation) |
@@ -739,7 +739,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 | Feature | Standard | Status |
 | --- | --- | --- |
 | DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer only for tokens that are not DPoP-bound |
-| PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply) |
+| PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply, and remote MCP hosts built on the MCP SDK send authorization requests without PAR) |
 | Wallet attestation | HAIP | Supported when `TRUSTED_WALLET_ISSUERS` lists trusted attestation issuers |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |
 | x5c certificate chain | RFC 5280 | Full chain validation: SHA-256 thumbprint match + validity period (leaf + CA) + CA signature via `X509Certificate.checkIssued()` |
