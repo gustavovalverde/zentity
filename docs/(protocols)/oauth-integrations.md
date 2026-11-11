@@ -154,7 +154,7 @@ sequenceDiagram
   AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
 ```
 
-**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. The client then runs its own browser authorization with a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) pushes a PAR request with a loopback `redirect_uri` and opens the browser on it.
+**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. A client that receives `redirect_to_web` must start its own browser authorization code flow with PKCE and a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) signs in through that browser flow directly: it uses a loopback `redirect_uri` and pushes the request through PAR when discovery advertises a PAR endpoint.
 
 **DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
 
