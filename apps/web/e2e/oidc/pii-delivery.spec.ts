@@ -3,11 +3,11 @@ import { decodeJwt } from "jose";
 
 import {
   createDpopBinding,
-  createDpopProof,
   createIssuerSession,
   decideCibaRequest,
   findCibaRequestId,
   registerCibaClient,
+  sendDpopRequest,
 } from "./oidc-helpers";
 
 const RAW_BASE_URL =
@@ -109,21 +109,20 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // 7. Poll for tokens (with DPoP)
     const dpopBinding = await createDpopBinding();
-    const dpop = await createDpopProof({
-      method: "POST",
-      url: TOKEN_URL,
-      binding: dpopBinding,
-    });
-
-    const tokenRes = await request.post(TOKEN_URL, {
-      form: {
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id,
-        client_id: clientId,
-        resource: BASE_URL,
-      },
-      headers: { Origin: BASE_URL, DPoP: dpop.proof },
-    });
+    const tokenRes = await sendDpopRequest(
+      dpopBinding,
+      { method: "POST", url: TOKEN_URL },
+      (proof) =>
+        request.post(TOKEN_URL, {
+          form: {
+            grant_type: CIBA_GRANT_TYPE,
+            auth_req_id,
+            client_id: clientId,
+            resource: BASE_URL,
+          },
+          headers: { Origin: BASE_URL, DPoP: proof },
+        })
+    );
     if (!tokenRes.ok()) {
       throw new Error(
         `token exchange failed (${tokenRes.status()} ${tokenRes.statusText()}): ${await tokenRes.text()}`
@@ -159,18 +158,16 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // 10. Call userinfo → assert identity PII is returned. The access token is
     // DPoP-bound, so userinfo requires DPoP presentation with an ath proof.
-    const userinfoDpop = await createDpopProof({
-      method: "GET",
-      url: USERINFO_URL,
-      binding: dpopBinding,
-      accessToken: tokenBody.access_token,
-    });
-    const userinfoRes = await request.get(USERINFO_URL, {
-      headers: {
-        Authorization: `DPoP ${tokenBody.access_token}`,
-        DPoP: userinfoDpop.proof,
-      },
-    });
+    const getUserInfo = (accessToken: string) =>
+      sendDpopRequest(
+        dpopBinding,
+        { method: "GET", url: USERINFO_URL, accessToken },
+        (proof) =>
+          request.get(USERINFO_URL, {
+            headers: { Authorization: `DPoP ${accessToken}`, DPoP: proof },
+          })
+      );
+    const userinfoRes = await getUserInfo(tokenBody.access_token);
     expect(userinfoRes.ok()).toBeTruthy();
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;
 
@@ -183,18 +180,7 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
     // 11. Second userinfo call returns 401 invalid_token — single-use binding
     // (exact disclosure enforcement: once PII has been delivered, the
     // release context is consumed and the token is no longer usable)
-    const userinfo2Dpop = await createDpopProof({
-      method: "GET",
-      url: USERINFO_URL,
-      binding: dpopBinding,
-      accessToken: tokenBody.access_token,
-    });
-    const userinfo2Res = await request.get(USERINFO_URL, {
-      headers: {
-        Authorization: `DPoP ${tokenBody.access_token}`,
-        DPoP: userinfo2Dpop.proof,
-      },
-    });
+    const userinfo2Res = await getUserInfo(tokenBody.access_token);
     expect(userinfo2Res.status()).toBe(401);
     const userinfo2 = (await userinfo2Res.json()) as Record<string, unknown>;
     expect(userinfo2.error).toBe("invalid_token");
@@ -229,20 +215,20 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // Poll for tokens
     const dpopBinding = await createDpopBinding();
-    const dpop = await createDpopProof({
-      method: "POST",
-      url: TOKEN_URL,
-      binding: dpopBinding,
-    });
-    const tokenRes = await request.post(TOKEN_URL, {
-      form: {
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id,
-        client_id: clientId,
-        resource: BASE_URL,
-      },
-      headers: { Origin: BASE_URL, DPoP: dpop.proof },
-    });
+    const tokenRes = await sendDpopRequest(
+      dpopBinding,
+      { method: "POST", url: TOKEN_URL },
+      (proof) =>
+        request.post(TOKEN_URL, {
+          form: {
+            grant_type: CIBA_GRANT_TYPE,
+            auth_req_id,
+            client_id: clientId,
+            resource: BASE_URL,
+          },
+          headers: { Origin: BASE_URL, DPoP: proof },
+        })
+    );
     if (!tokenRes.ok()) {
       throw new Error(
         `token exchange failed (${tokenRes.status()} ${tokenRes.statusText()}): ${await tokenRes.text()}`
@@ -263,18 +249,21 @@ test.describe("PII delivery via userinfo (CIBA flow)", () => {
 
     // Userinfo has no PII. The access token is DPoP-bound, so userinfo requires
     // DPoP presentation with an ath proof.
-    const userinfoDpop = await createDpopProof({
-      method: "GET",
-      url: USERINFO_URL,
-      binding: dpopBinding,
-      accessToken: tokenBody.access_token,
-    });
-    const userinfoRes = await request.get(USERINFO_URL, {
-      headers: {
-        Authorization: `DPoP ${tokenBody.access_token}`,
-        DPoP: userinfoDpop.proof,
+    const userinfoRes = await sendDpopRequest(
+      dpopBinding,
+      {
+        method: "GET",
+        url: USERINFO_URL,
+        accessToken: tokenBody.access_token,
       },
-    });
+      (proof) =>
+        request.get(USERINFO_URL, {
+          headers: {
+            Authorization: `DPoP ${tokenBody.access_token}`,
+            DPoP: proof,
+          },
+        })
+    );
     expect(userinfoRes.ok()).toBeTruthy();
     const userinfo = (await userinfoRes.json()) as Record<string, unknown>;
 

@@ -5,8 +5,10 @@ import type { BetterAuthPlugin } from "better-auth";
 import type { JWTPayload } from "jose";
 
 import {
+  createDpopNonce,
   createDpopReplayStore,
   enforceDpopBinding,
+  getDpopJktFromPayload,
   isDpopBindingError,
   parseAccessTokenAuthorization,
 } from "@better-auth/core/oauth2";
@@ -21,6 +23,10 @@ import { decodeProtectedHeader } from "jose";
 import { z } from "zod";
 
 import { isTokenRevoked } from "@/lib/auth/jwt";
+import {
+  dpopNonceOptions,
+  nextDpopNonceHeaders,
+} from "@/lib/auth/oidc/haip/dpop";
 
 /**
  * Access-token validation for Zentity's own protected resources (tRPC, agent
@@ -29,9 +35,11 @@ import { isTokenRevoked } from "@/lib/auth/jwt";
  * The OAuth provider validates the token (signature or stored record, expiry,
  * revocation, owning client, and the session it is bound to). Core DPoP
  * enforcement then checks the sender constraint: a DPoP-bound token needs the
- * DPoP scheme and a proof whose method, URL, age, `ath`, and key match, with
- * each proof `jti` reserved in the database so it cannot be replayed on any
- * instance. Zentity adds what the provider does not check: JWT access tokens
+ * DPoP scheme and a proof whose method, URL, age, `ath`, key, and
+ * server-provided nonce match, with each proof `jti` reserved in the database
+ * so it cannot be replayed on any instance. Nonces are keyed from the auth
+ * secret, as on the token and UserInfo endpoints, so one nonce serves the whole
+ * origin. Zentity adds what the provider does not check: JWT access tokens
  * carry `typ: at+jwt`, and Zentity's revoked-`jti` list.
  */
 
@@ -44,6 +52,14 @@ export interface VerifiedAccessToken {
   format: AccessTokenFormat;
   payload: JWTPayload;
   token: string;
+}
+
+export interface VerifiedResourceRequest extends VerifiedAccessToken {
+  /**
+   * The next DPoP nonce (RFC 9449 §8.2) for the client, issued when the token
+   * is DPoP-bound. The response to the request sends it as `DPoP-Nonce`.
+   */
+  dpopNonce?: string;
 }
 
 function isCompactJws(token: string): boolean {
@@ -116,6 +132,7 @@ export function resourceAccessTokenPlugin() {
           if (!(await isZentityAccessToken(authorization.token, payload))) {
             throw invalidToken("invalid access token");
           }
+          const { secret } = ctx.context;
           try {
             await enforceDpopBinding({
               payload,
@@ -125,13 +142,17 @@ export function resourceAccessTokenPlugin() {
               url: ctx.body.url,
               replayStore: createDpopReplayStore(ctx.context.internalAdapter),
               signingAlgorithms: HAIP_DPOP_SIGNING_ALGORITHMS,
+              nonce: dpopNonceOptions(secret),
             });
           } catch (error) {
             if (isDpopBindingError(error)) {
-              throw new APIError("UNAUTHORIZED", {
-                error: error.code,
-                error_description: error.message,
-              });
+              throw new APIError(
+                "UNAUTHORIZED",
+                { error: error.code, error_description: error.message },
+                error.code === "use_dpop_nonce"
+                  ? await nextDpopNonceHeaders(secret)
+                  : undefined
+              );
             }
             throw error;
           }
@@ -139,7 +160,10 @@ export function resourceAccessTokenPlugin() {
             format: isCompactJws(authorization.token) ? "jwt" : "opaque",
             payload,
             token: authorization.token,
-          } satisfies VerifiedAccessToken);
+            ...(getDpopJktFromPayload(payload)
+              ? { dpopNonce: await createDpopNonce({ secret }) }
+              : {}),
+          } satisfies VerifiedResourceRequest);
         }
       ),
       introspectZentityAccessToken: createAuthEndpoint.serverOnly(

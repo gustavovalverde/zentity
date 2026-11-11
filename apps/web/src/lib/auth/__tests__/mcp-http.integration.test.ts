@@ -14,7 +14,8 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { createDpopNonce, DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
+import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // DPoP proofs sign the URL the client calls (RFC 9449 §4.2), and Zentity
@@ -53,11 +54,15 @@ const TRAILING_SLASHES = /\/+$/;
 
 const HEALTH_POLL_INTERVAL_MS = 100;
 const HEALTH_POLL_TIMEOUT_MS = 15_000;
-
-interface DpopKeyPair {
-  jwk: JsonWebKey;
-  privateKey: CryptoKey;
-}
+const USE_DPOP_NONCE_CHALLENGE = /^DPoP error="use_dpop_nonce"/;
+const MCP_NONCE_CHALLENGE = {
+  status: 401,
+  challenge: expect.stringMatching(USE_DPOP_NONCE_CHALLENGE),
+  hasNonce: true,
+};
+// A fixed secret lets the test mint an expired MCP nonce.
+const MCP_DPOP_NONCE_SECRET = crypto.randomBytes(32).toString("base64url");
+const MCP_PROTOCOL_VERSION = "2025-11-25";
 
 function nodeHeadersToHeaders(req: IncomingMessage): Headers {
   const headers = new Headers();
@@ -190,98 +195,70 @@ async function startAuthHarness(): Promise<{
   };
 }
 
-async function createDpopKeyPair(): Promise<DpopKeyPair> {
-  const { privateKey, publicKey } = await generateKeyPair("ES256", {
-    extractable: true,
+async function postToken(
+  dpop: DpopClient,
+  tokenUrl: string,
+  body: Record<string, string>
+): Promise<{ json: Record<string, unknown>; status: number }> {
+  const response = await dpop.fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(body).toString(),
   });
+  const text = await response.text();
   return {
-    jwk: await exportJWK(publicKey),
-    privateKey,
+    json: text ? (JSON.parse(text) as Record<string, unknown>) : {},
+    status: response.status,
   };
 }
 
-function buildTokenDpopProof(
-  keyPair: DpopKeyPair,
+function callMcp(
+  dpop: DpopClient,
+  accessToken: string,
   url: string,
-  nonce?: string
-): Promise<string> {
-  return new SignJWT({
-    htm: "POST",
-    htu: url,
-    iat: Math.floor(Date.now() / 1000),
-    jti: crypto.randomUUID(),
-    ...(nonce ? { nonce } : {}),
-  })
-    .setProtectedHeader({
-      alg: "ES256",
-      jwk: keyPair.jwk,
-      typ: "dpop+jwt",
-    })
-    .sign(keyPair.privateKey);
+  body: Record<string, unknown>,
+  transport: typeof fetch = fetch
+): Promise<Response> {
+  return dpop.fetch(url, {
+    accessToken,
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      "Content-Type": "application/json",
+      "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+    },
+    body: JSON.stringify(body),
+    fetch: transport,
+  });
 }
 
-function buildResourceDpopProof(
-  keyPair: DpopKeyPair,
-  method: string,
+/** Sends a tools/list call whose DPoP proof carries exactly `nonce`. */
+async function callMcpWithNonce(
+  dpop: DpopClient,
+  accessToken: string,
   url: string,
-  accessToken: string
-): Promise<string> {
-  const ath = crypto
-    .createHash("sha256")
-    .update(accessToken)
-    .digest("base64url");
-
-  return new SignJWT({
-    ath,
-    htm: method,
-    htu: url,
-    iat: Math.floor(Date.now() / 1000),
-    jti: crypto.randomUUID(),
-  })
-    .setProtectedHeader({
-      alg: "ES256",
-      jwk: keyPair.jwk,
-      typ: "dpop+jwt",
-    })
-    .sign(keyPair.privateKey);
+  nonce: string
+): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json, text/event-stream",
+      Authorization: `DPoP ${accessToken}`,
+      "Content-Type": "application/json",
+      DPoP: await dpop.proofFor("POST", url, accessToken, nonce),
+      "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "tools/list", id: 9 }),
+  });
 }
 
-async function postTokenWithDpop(
-  tokenUrl: string,
-  body: Record<string, string>,
-  keyPair: DpopKeyPair
-): Promise<{ json: Record<string, unknown>; status: number }> {
-  async function attempt(nonce?: string) {
-    const proof = await buildTokenDpopProof(keyPair, tokenUrl, nonce);
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
-      body: new URLSearchParams(body),
-    });
-    const text = await response.text();
-    const payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    const json =
-      payload && typeof payload === "object" && "response" in payload
-        ? ((payload.response as Record<string, unknown>) ?? {})
-        : payload;
-
-    return {
-      dpopNonce: response.headers.get("DPoP-Nonce"),
-      json,
-      status: response.status,
-    };
-  }
-
-  const first = await attempt();
-  if ((first.status === 400 || first.status === 401) && first.dpopNonce) {
-    const retry = await attempt(first.dpopNonce);
-    return { json: retry.json, status: retry.status };
-  }
-
-  return { json: first.json, status: first.status };
+/** The parts of a `use_dpop_nonce` challenge a client acts on. */
+function nonceChallenge(response: Response) {
+  return {
+    status: response.status,
+    challenge: response.headers.get("WWW-Authenticate"),
+    hasNonce: Boolean(response.headers.get(DPOP_NONCE_HEADER)),
+  };
 }
 
 function startMcpSubprocess(authBaseUrl: string): ChildProcess {
@@ -304,6 +281,7 @@ function startMcpSubprocess(authBaseUrl: string): ChildProcess {
         ZENTITY_URL: authBaseUrl,
         MCP_PUBLIC_URL,
         MCP_ALLOWED_ORIGINS: "*",
+        MCP_DPOP_NONCE_SECRET,
       },
       stdio: ["ignore", "pipe", "pipe"],
     }
@@ -397,15 +375,15 @@ describe("remote MCP HTTP auth integration", () => {
       resources: JSON.stringify([MCP_PUBLIC_URL]),
     });
 
-    const resourceKeyPair = await createDpopKeyPair();
-    const tokenResult = await postTokenWithDpop(
+    const dpop = await createDpopClient();
+    const tokenResult = await postToken(
+      dpop,
       `${authHarness.baseUrl}/api/auth/oauth2/token`,
       {
         grant_type: CIBA_GRANT_TYPE,
         auth_req_id: authReqId,
         client_id: REMOTE_CLIENT_ID,
-      },
-      resourceKeyPair
+      }
     );
 
     expect(tokenResult.status).toBe(200);
@@ -428,32 +406,29 @@ describe("remote MCP HTTP auth integration", () => {
     }
 
     const mcpUrl = `${MCP_PUBLIC_URL}/mcp`;
+    const exchanges: Response[] = [];
+    const recordingFetch: typeof fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      exchanges.push(response.clone());
+      return response;
+    };
 
-    const initializeProof = await buildResourceDpopProof(
-      resourceKeyPair,
-      "POST",
+    const initializeResponse = await callMcp(
+      dpop,
+      accessToken,
       mcpUrl,
-      accessToken
-    );
-    const initializeResponse = await fetch(mcpUrl, {
-      method: "POST",
-      headers: {
-        Accept: "application/json, text/event-stream",
-        Authorization: `DPoP ${accessToken}`,
-        "Content-Type": "application/json",
-        DPoP: initializeProof,
-      },
-      body: JSON.stringify({
+      {
         jsonrpc: "2.0",
         method: "initialize",
         id: 1,
         params: {
-          protocolVersion: "2025-11-25",
+          protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: "integration-test", version: "0.1.0" },
         },
-      }),
-    });
+      },
+      recordingFetch
+    );
 
     const initializeBody = await initializeResponse.text();
     if (initializeResponse.status !== 200) {
@@ -461,6 +436,17 @@ describe("remote MCP HTTP auth integration", () => {
         `initialize failed: ${initializeResponse.status} ${initializeBody}`
       );
     }
+    // The MCP server is its own origin, so the first proof carries no nonce
+    // and is challenged; the client retries with the nonce it was given.
+    expect(exchanges).toHaveLength(2);
+    expect(nonceChallenge(exchanges[0] as Response)).toEqual(
+      MCP_NONCE_CHALLENGE
+    );
+    expect(initializeResponse.headers.get(DPOP_NONCE_HEADER)).toBeTruthy();
+    expect(initializeResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(
+      initializeResponse.headers.get("Access-Control-Expose-Headers")
+    ).toContain("DPoP-Nonce");
 
     const initializeData = parseJsonRpcResponse(
       initializeResponse.headers.get("content-type"),
@@ -474,22 +460,11 @@ describe("remote MCP HTTP auth integration", () => {
       })
     );
 
-    const whoamiProof = await buildResourceDpopProof(
-      resourceKeyPair,
-      "POST",
+    const whoamiResponse = await callMcp(
+      dpop,
+      accessToken,
       mcpUrl,
-      accessToken
-    );
-    const whoamiResponse = await fetch(mcpUrl, {
-      method: "POST",
-      headers: {
-        Accept: "application/json, text/event-stream",
-        Authorization: `DPoP ${accessToken}`,
-        "Content-Type": "application/json",
-        DPoP: whoamiProof,
-        "MCP-Protocol-Version": "2025-11-25",
-      },
-      body: JSON.stringify({
+      {
         jsonrpc: "2.0",
         method: "tools/call",
         id: 2,
@@ -497,8 +472,11 @@ describe("remote MCP HTTP auth integration", () => {
           name: "whoami",
           arguments: {},
         },
-      }),
-    });
+      },
+      recordingFetch
+    );
+    // The nonce from initialize is accepted on the first try.
+    expect(exchanges).toHaveLength(3);
 
     const whoamiBody = await whoamiResponse.text();
     expect(whoamiResponse.status).toBe(200);
@@ -519,5 +497,25 @@ describe("remote MCP HTTP auth integration", () => {
         }),
       })
     );
+
+    // Nonces from Zentity's origin, from another secret, or past their
+    // lifetime are refused with a fresh one.
+    const zentityNonce = await createDpopNonce({
+      secret: (await auth.$context).secret,
+    });
+    const foreignNonce = await createDpopNonce({
+      secret: crypto.randomBytes(32).toString("base64url"),
+    });
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now - 600_000);
+    const staleNonce = await createDpopNonce({
+      secret: MCP_DPOP_NONCE_SECRET,
+    });
+    clock.mockRestore();
+    for (const nonce of [zentityNonce, foreignNonce, staleNonce]) {
+      expect(
+        nonceChallenge(await callMcpWithNonce(dpop, accessToken, mcpUrl, nonce))
+      ).toEqual(MCP_NONCE_CHALLENGE);
+    }
   });
 });

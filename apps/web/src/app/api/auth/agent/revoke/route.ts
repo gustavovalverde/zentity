@@ -6,7 +6,11 @@ import {
   revokeSessionForActor,
 } from "@/lib/agents/management";
 import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/session";
-import { requireBootstrapAccessToken } from "@/lib/auth/resource-auth";
+import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
+import {
+  requireBootstrapAccessToken,
+  type UserAccessPrincipal,
+} from "@/lib/auth/resource-auth";
 
 export const runtime = "nodejs";
 
@@ -21,7 +25,16 @@ export async function POST(request: Request) {
   if (!authResult.ok) {
     return authResult.response;
   }
+  return withNextDpopNonce(
+    await revokeSession(request, authResult.principal),
+    authResult.dpopNonce
+  );
+}
 
+async function revokeSession(
+  request: Request,
+  principal: UserAccessPrincipal
+): Promise<Response> {
   const body = await request.json().catch(() => null);
   const parsed = revokeSchema.safeParse(body);
   if (!parsed.success) {
@@ -36,9 +49,9 @@ export async function POST(request: Request) {
   try {
     const result = await revokeSessionForActor(
       {
-        clientId: authResult.principal.clientId,
+        clientId: principal.clientId,
         kind: "delegated_machine",
-        userId: authResult.principal.userId,
+        userId: principal.userId,
       },
       sessionId
     );

@@ -22,7 +22,11 @@ import {
   registerSessionRequestSchema,
 } from "@/lib/agents/session";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
-import { requireBootstrapAccessToken } from "@/lib/auth/resource-auth";
+import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
+import {
+  requireBootstrapAccessToken,
+  type UserAccessPrincipal,
+} from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
 
@@ -44,7 +48,16 @@ export async function POST(request: Request) {
   if (!authResult.ok) {
     return authResult.response;
   }
+  return withNextDpopNonce(
+    await registerSession(request, authResult.principal),
+    authResult.dpopNonce
+  );
+}
 
+async function registerSession(
+  request: Request,
+  principal: UserAccessPrincipal
+): Promise<Response> {
   const body = await request.json().catch(() => null);
   const parsed = registerSessionRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -54,7 +67,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const { principal } = authResult;
   const { hostJwt, did, requestedCapabilities = [], display } = parsed.data;
   let agentPublicKeyJwkJson: string;
 

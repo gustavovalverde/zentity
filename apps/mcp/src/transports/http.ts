@@ -103,7 +103,12 @@ export function createApp(
       audience: resource,
       jwksUrl: authorizationServer.jwksUrl,
       requiredScopes: ["openid"],
-      dpop: { replayStore: createInMemoryDpopReplayStore() },
+      // The replay store is process-local and the nonce secret is per process
+      // unless MCP_DPOP_NONCE_SECRET is set, so this serves one instance.
+      dpop: {
+        replayStore: createInMemoryDpopReplayStore(),
+        nonce: { required: true, secret: config.dpopNonceSecret },
+      },
     },
     (request, claims) => {
       const callerToken = stripAccessTokenAuthorizationScheme(
@@ -139,6 +144,9 @@ export function createApp(
   app.use(
     cors({
       origin: (origin) => matchOrigin(origin, config.allowedOrigins) ?? "",
+      // Hono replaces the handler's Access-Control-Expose-Headers with this
+      // list. The handler exposes WWW-Authenticate only on nonce challenges,
+      // so both names stay here for browsers to read every challenge.
       exposeHeaders: ["DPoP-Nonce", "WWW-Authenticate"],
     })
   );

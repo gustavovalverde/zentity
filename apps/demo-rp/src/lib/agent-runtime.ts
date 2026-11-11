@@ -12,10 +12,7 @@ import {
   signAgentAssertion,
 } from "@zentity/sdk";
 import { PAYMENT_AUTHORIZATION_CAPABILITY } from "@zentity/sdk/protocol";
-import {
-  createDpopClientFromKeyPair,
-  requestTokenEndpoint,
-} from "@zentity/sdk/rp";
+import { type DpopClient, requestTokenEndpoint } from "@zentity/sdk/rp";
 import { and, eq } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
 
@@ -26,9 +23,10 @@ import {
 } from "@/lib/agent-runtime-storage";
 import { signAttestationHeaders } from "@/lib/attestation";
 import { getDb } from "@/lib/db/connection";
-import { account, agentRuntime, oauthDpopKey } from "@/lib/db/schema";
+import { account, agentRuntime } from "@/lib/db/schema";
 import { readDcrClient } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import { getOAuthDpopClient } from "@/lib/oauth-dpop-client";
 import {
   getOAuthProviderId,
   type RouteScenarioId,
@@ -61,7 +59,7 @@ interface RegisterAgentSessionOptions {
 
 interface BootstrapAccessContext {
   accessToken: string;
-  dpop: Awaited<ReturnType<typeof createDpopClientFromKeyPair>>;
+  dpop: DpopClient;
 }
 
 function hasRegisteredSession(
@@ -111,30 +109,6 @@ function getAccountForScenario(userId: string, scenarioId: RouteScenarioId) {
       accessToken: true,
       accessTokenExpiresAt: true,
     },
-  });
-}
-
-function getDpopKey(scenarioId: RouteScenarioId, accessToken: string) {
-  return getDb().query.oauthDpopKey.findFirst({
-    where: and(
-      eq(oauthDpopKey.oauthProviderId, getOAuthProviderId(scenarioId)),
-      eq(oauthDpopKey.accessToken, accessToken)
-    ),
-  });
-}
-
-async function getPersistedDpopClient(
-  scenarioId: RouteScenarioId,
-  accessToken: string
-) {
-  const dpopRow = await getDpopKey(scenarioId, accessToken);
-  if (!dpopRow) {
-    throw new Error("Missing persisted DPoP key for the current OAuth session");
-  }
-
-  return createDpopClientFromKeyPair({
-    privateJwk: JSON.parse(dpopRow.privateJwk),
-    publicJwk: JSON.parse(dpopRow.publicJwk),
   });
 }
 
@@ -198,10 +172,10 @@ async function exchangeBootstrapAccessToken(
     throw new Error("Client not registered. Register the demo client first.");
   }
 
-  const dpop = await getPersistedDpopClient(
-    scenarioId,
-    authAccount.accessToken
-  );
+  const dpop = await getOAuthDpopClient(authAccount.accessToken);
+  if (!dpop) {
+    throw new Error("Missing persisted DPoP key for the current OAuth session");
+  }
   const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
 
   const { body, response } = await requestTokenEndpoint(

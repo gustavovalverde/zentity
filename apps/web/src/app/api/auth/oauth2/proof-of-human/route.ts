@@ -6,8 +6,10 @@ import { env } from "@/env";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
 import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
+  type ProtectedResourcePrincipal,
   resolveProtectedResourcePrincipal,
   resourceErrorResponse,
+  withNextDpopNonce,
 } from "@/lib/auth/oidc/resource-principal";
 import { getVerificationReadModel } from "@/lib/identity/verification/read-model";
 
@@ -37,8 +39,15 @@ export async function POST(request: Request) {
   if (!resolved.ok) {
     return resourceErrorResponse(resolved.error);
   }
-  const { principal } = resolved;
+  return withNextDpopNonce(
+    await issueProofOfHuman(resolved.principal),
+    resolved.dpopNonce
+  );
+}
 
+async function issueProofOfHuman(
+  principal: ProtectedResourcePrincipal
+): Promise<Response> {
   if (!principal.scopes.includes("poh")) {
     return resourceErrorResponse(insufficientScope(["poh"]));
   }

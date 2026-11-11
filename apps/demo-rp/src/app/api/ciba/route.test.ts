@@ -178,4 +178,29 @@ describe("POST /api/ciba", () => {
     });
     expect(owner.status).toBe(200);
   });
+
+  it("signs every token poll with one DPoP client so its nonce carries over", async () => {
+    await post({ action: "authorize", scenarioId: "aether", scope: "openid" });
+    mocks.requestTokenEndpoint.mockResolvedValueOnce({
+      body: { error: "authorization_pending" },
+      response: new Response(null, { status: 400 }),
+    });
+
+    const pending = await post({
+      action: "token",
+      scenarioId: "aether",
+      authReqId: "req-1",
+    });
+    const approved = await post({
+      action: "token",
+      scenarioId: "aether",
+      authReqId: "req-1",
+    });
+
+    expect(pending.status).toBe(400);
+    expect(approved.status).toBe(200);
+    const [firstPoll, secondPoll] = mocks.requestTokenEndpoint.mock.calls;
+    expect(firstPoll?.[0]).toBeDefined();
+    expect(secondPoll?.[0]).toBe(firstPoll?.[0]);
+  });
 });

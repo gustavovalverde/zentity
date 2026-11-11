@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
-import { calculateJwkThumbprint, SignJWT } from "jose";
+import { calculateJwkThumbprint } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
@@ -18,8 +18,8 @@ import {
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import {
+  buildDpopProof,
   createTestDpopKeyPair,
-  type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
 
@@ -71,31 +71,6 @@ async function createWebClient() {
       tokenEndpointAuthMethod: "none",
     })
     .run();
-}
-
-function buildResourceDpopProof(
-  keyPair: DpopKeyPair,
-  method: string,
-  url: string,
-  accessToken: string
-): Promise<string> {
-  const ath = crypto
-    .createHash("sha256")
-    .update(accessToken)
-    .digest("base64url");
-  return new SignJWT({
-    ath,
-    htm: method,
-    htu: url,
-    iat: Math.floor(Date.now() / 1000),
-    jti: crypto.randomUUID(),
-  })
-    .setProtectedHeader({
-      alg: "ES256",
-      jwk: keyPair.jwk,
-      typ: "dpop+jwt",
-    })
-    .sign(keyPair.privateKey);
 }
 
 describe("agent bootstrap token exchange", () => {
@@ -161,7 +136,7 @@ describe("agent bootstrap token exchange", () => {
     expect(stored?.dpopJkt).toBe(dpopJkt);
 
     const registerUrl = `${APP_URL}/api/auth/agent/host/register`;
-    const proof = await buildResourceDpopProof(
+    const proof = await buildDpopProof(
       dpopKeyPair,
       "POST",
       registerUrl,

@@ -56,6 +56,11 @@ interface DcrClient {
   clientSecret: string | null;
 }
 
+// Every poll signs with one key so the client's cached DPoP nonce carries
+// over and only the first poll is challenged. The key is held only here and
+// signs nothing but CIBA token polls and the userinfo read that follows.
+let cibaDpopClient: Promise<DpopClient> | undefined;
+
 async function handleAuthorize(
   userId: string,
   data: {
@@ -123,7 +128,8 @@ async function fetchTokenWithDpop(
   tokenUrl: string,
   params: Record<string, string>
 ): Promise<{ body: unknown; dpop: DpopClient; status: number }> {
-  const dpop = await createDpopClient();
+  cibaDpopClient ??= createDpopClient();
+  const dpop = await cibaDpopClient;
   const { body, response } = await requestTokenEndpoint(
     dpop,
     tokenUrl,

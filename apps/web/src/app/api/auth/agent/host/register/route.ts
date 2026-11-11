@@ -10,7 +10,11 @@ import {
   registerHostRequestSchema,
 } from "@/lib/agents/session";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
-import { requireBootstrapAccessToken } from "@/lib/auth/resource-auth";
+import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
+import {
+  requireBootstrapAccessToken,
+  type UserAccessPrincipal,
+} from "@/lib/auth/resource-auth";
 import { db } from "@/lib/db/connection";
 import { agentHosts } from "@/lib/db/schema/agent";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -24,7 +28,16 @@ export async function POST(request: Request) {
   if (!authResult.ok) {
     return authResult.response;
   }
+  return withNextDpopNonce(
+    await registerHost(request, authResult.principal),
+    authResult.dpopNonce
+  );
+}
 
+async function registerHost(
+  request: Request,
+  principal: UserAccessPrincipal
+): Promise<Response> {
   const body = await request.json().catch(() => null);
   const parsed = registerHostRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -34,7 +47,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const { principal } = authResult;
   const { did, name } = parsed.data;
   const clientId = principal.clientId;
   let publicKeyJwkJson: string;

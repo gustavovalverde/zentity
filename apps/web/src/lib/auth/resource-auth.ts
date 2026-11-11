@@ -19,7 +19,7 @@ import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 
 const RP_API_AUDIENCE = `${getAuthIssuer()}/resource/rp-api`;
 
-interface UserAccessPrincipal {
+export interface UserAccessPrincipal {
   /** The user's authentication the token was issued from, when recorded. */
   authContextId: string | null;
   clientId: string;
@@ -29,7 +29,7 @@ interface UserAccessPrincipal {
   userId: string;
 }
 
-interface ClientCredentialsPrincipal {
+export interface ClientCredentialsPrincipal {
   clientId: string;
   kind: "client_credentials";
   scopes: string[];
@@ -47,11 +47,15 @@ interface BrowserSessionSuccess {
 }
 
 interface UserTokenSuccess {
+  /** The next DPoP nonce, for `withNextDpopNonce`. */
+  dpopNonce: string | undefined;
   ok: true;
   principal: UserAccessPrincipal;
 }
 
 interface ClientCredentialsSuccess {
+  /** The next DPoP nonce when the token is DPoP-bound, for `withNextDpopNonce`. */
+  dpopNonce: string | undefined;
   ok: true;
   principal: ClientCredentialsPrincipal;
 }
@@ -139,6 +143,7 @@ export async function requireBootstrapAccessToken(
 
   return {
     ok: true,
+    dpopNonce: verified.dpopNonce,
     principal: {
       kind: "user_access_token",
       authContextId: authentication?.id ?? null,
@@ -198,6 +203,7 @@ export async function requireClientCredentials(
 
   return {
     ok: true,
+    dpopNonce: verified.dpopNonce,
     principal: { kind: "client_credentials", clientId, scopes, token },
   };
 }

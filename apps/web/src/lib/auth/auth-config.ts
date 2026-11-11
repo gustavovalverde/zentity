@@ -124,6 +124,10 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
+import {
+  challengeMissingTokenDpopNonce,
+  DPOP_NONCE_EXPIRES_IN_SECONDS,
+} from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -1980,6 +1984,11 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/token") {
+        await challengeMissingTokenDpopNonce({
+          proofJwt: ctx.headers?.get("DPoP"),
+          secret: ctx.context.secret,
+          url: `${ctx.context.baseURL}/oauth2/token`,
+        });
         if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
           await beforeCibaTokenLoadRequest(ctx);
         }
@@ -2101,9 +2110,14 @@ export const auth = betterAuth({
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-      // Native DPoP (RFC 9449) owns the token endpoint in 1.7. ES256 is the only
-      // proof algorithm Zentity wallets present.
-      dpop: { signingAlgorithms: ["ES256"] },
+      // ES256 is the only proof algorithm Zentity clients present. Proofs to the
+      // token and UserInfo endpoints must carry a nonce this server issued
+      // (RFC 9449 §8, §9); Zentity's own DPoP endpoints share its secret and
+      // lifetime, so one nonce serves the whole origin.
+      dpop: {
+        signingAlgorithms: ["ES256"],
+        nonce: { required: true, expiresIn: DPOP_NONCE_EXPIRES_IN_SECONDS },
+      },
       requestUriResolver: createParResolver(),
       pairwiseSecret: env.PAIRWISE_SECRET,
       scopes: [...OAUTH_SCOPES, PAYMENT_AUTHORIZATION_SCOPE],

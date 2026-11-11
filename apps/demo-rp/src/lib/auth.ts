@@ -5,7 +5,6 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDpopClient,
   createOpenIdTokenVerifier,
-  type DpopClient,
   fetchUserInfo,
   requestTokenEndpoint,
 } from "@zentity/sdk/rp";
@@ -25,6 +24,10 @@ import {
 } from "@/lib/db/schema";
 import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
+import {
+  getOAuthDpopClient,
+  rememberOAuthDpopClient,
+} from "@/lib/oauth-dpop-client";
 import { describeOAuthErrorResponse } from "@/lib/oauth-response";
 import type { RouteScenario } from "@/scenarios/route-scenario";
 import {
@@ -32,10 +35,6 @@ import {
   ROUTE_SCENARIOS,
   type RouteScenarioId,
 } from "@/scenarios/route-scenario-registry";
-
-// Store DPoP clients by access token so getUserInfo can reuse the same
-// keypair that getToken bound the token to (cnf.jkt).
-const dpopClients = new Map<string, DpopClient>();
 
 const STRIP_FIELDS = new Set([
   "is_anonymous",
@@ -107,8 +106,7 @@ async function buildOAuthProfile(tokens: {
   let body: Record<string, unknown> = {};
 
   if (tokens.accessToken) {
-    const dpop = dpopClients.get(tokens.accessToken);
-    dpopClients.delete(tokens.accessToken);
+    const dpop = await getOAuthDpopClient(tokens.accessToken);
     const userInfo = await fetchUserInfo({
       accessToken: tokens.accessToken,
       ...(dpop ? { dpopClient: dpop } : {}),
@@ -260,7 +258,7 @@ function makeProviderConfig(
       }
       const accessToken = result.access_token as string | undefined;
       if (accessToken) {
-        dpopClients.set(accessToken, dpop);
+        rememberOAuthDpopClient(accessToken, dpop);
         await getDb()
           .insert(oauthDpopKey)
           .values({

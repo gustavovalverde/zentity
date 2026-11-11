@@ -27,6 +27,8 @@ export interface DpopBinding {
   dpopJwk: JWK;
   dpopKey: DpopKeyPair;
   jkt: string;
+  /** The last `DPoP-Nonce` Zentity handed this key (RFC 9449 §8). */
+  nonce?: string;
 }
 
 // Minimal schema for E2E database lookups (Playwright can't resolve @/ imports)
@@ -398,22 +400,19 @@ export async function exchangePreAuthorizedCode(
     form.set("client_id", input.clientId);
   }
 
-  const dpop = await createDpopProof({
-    method: "POST",
-    url: `${AUTH_BASE_URL}/oauth2/token`,
-    ...(input.dpopBinding ? { binding: input.dpopBinding } : {}),
-  });
-
-  const res = await request.post(`${AUTH_BASE_URL}/oauth2/token`, {
-    data: form.toString(),
-    headers: {
-      Origin: BASE_URL,
-      "Content-Type": "application/x-www-form-urlencoded",
-      DPoP: dpop.proof,
-    },
-  });
-
-  return res;
+  return sendDpopRequest(
+    input.dpopBinding ?? (await createDpopBinding()),
+    { method: "POST", url: `${AUTH_BASE_URL}/oauth2/token` },
+    (proof) =>
+      request.post(`${AUTH_BASE_URL}/oauth2/token`, {
+        data: form.toString(),
+        headers: {
+          Origin: BASE_URL,
+          "Content-Type": "application/x-www-form-urlencoded",
+          DPoP: proof,
+        },
+      })
+  );
 }
 
 /** A fresh `c_nonce` from the OID4VCI Nonce Endpoint (§7). */
@@ -502,23 +501,23 @@ export async function issueCredential(
     data.vct = input.vct;
   }
 
-  const dpop = await createDpopProof({
-    method: "POST",
-    url: `${AUTH_BASE_URL}/oidc4vci/credential`,
-    accessToken: input.accessToken,
-    ...(input.dpopBinding ? { binding: input.dpopBinding } : {}),
-  });
-
-  const res = await request.post(`${AUTH_BASE_URL}/oidc4vci/credential`, {
-    data,
-    headers: {
-      Authorization: `DPoP ${input.accessToken}`,
-      DPoP: dpop.proof,
-      ...ORIGIN_HEADERS,
+  return sendDpopRequest(
+    input.dpopBinding ?? (await createDpopBinding()),
+    {
+      method: "POST",
+      url: `${AUTH_BASE_URL}/oidc4vci/credential`,
+      accessToken: input.accessToken,
     },
-  });
-
-  return res;
+    (proof) =>
+      request.post(`${AUTH_BASE_URL}/oidc4vci/credential`, {
+        data,
+        headers: {
+          Authorization: `DPoP ${input.accessToken}`,
+          DPoP: proof,
+          ...ORIGIN_HEADERS,
+        },
+      })
+  );
 }
 
 export interface IssuedCredentialBody {
@@ -725,6 +724,7 @@ export async function createDpopProof(input: {
   url: string;
   accessToken?: string;
   binding?: DpopBinding;
+  nonce?: string | undefined;
 }) {
   const binding = input.binding ?? (await createDpopBinding());
 
@@ -740,6 +740,7 @@ export async function createDpopProof(input: {
             .digest("base64url"),
         }
       : {}),
+    ...(input.nonce ? { nonce: input.nonce } : {}),
   })
     .setProtectedHeader({
       alg: "ES256",
@@ -750,6 +751,58 @@ export async function createDpopProof(input: {
 
   const proof = await builder.sign(binding.dpopKey.privateKey);
   return { proof, ...binding };
+}
+
+const USE_DPOP_NONCE_CHALLENGE = /\berror="use_dpop_nonce"/;
+
+async function asksForDpopNonce(response: APIResponse): Promise<boolean> {
+  if (response.status() === 401) {
+    return USE_DPOP_NONCE_CHALLENGE.test(
+      response.headers()["www-authenticate"] ?? ""
+    );
+  }
+  if (response.status() !== 400) {
+    return false;
+  }
+  try {
+    return (
+      ((await response.json()) as { error?: unknown }).error ===
+      "use_dpop_nonce"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sends a DPoP request as a DPoP client does (RFC 9449 §8): the proof carries
+ * the last nonce Zentity handed `binding`, the binding keeps the nonce each
+ * response returns, and a `use_dpop_nonce` refusal is retried once with the
+ * new nonce. `send` receives the proof for each attempt.
+ */
+export async function sendDpopRequest(
+  binding: DpopBinding,
+  input: { accessToken?: string; method: string; url: string },
+  send: (dpopProof: string) => Promise<APIResponse>
+): Promise<APIResponse> {
+  const attempt = async () => {
+    const { proof } = await createDpopProof({
+      ...input,
+      binding,
+      nonce: binding.nonce,
+    });
+    const response = await send(proof);
+    const nonce = response.headers()["dpop-nonce"];
+    if (nonce) {
+      binding.nonce = nonce;
+    }
+    return { response, nonce };
+  };
+  const first = await attempt();
+  if (first.nonce && (await asksForDpopNonce(first.response))) {
+    return (await attempt()).response;
+  }
+  return first.response;
 }
 
 /**

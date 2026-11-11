@@ -8,8 +8,14 @@ import {
   resolveSubForClient,
   resolveUserIdFromSubForClient,
 } from "@/lib/auth/oidc/pairwise";
-import { introspectZentityAccessToken } from "@/lib/auth/oidc/resource-principal";
-import { requireClientCredentials } from "@/lib/auth/resource-auth";
+import {
+  introspectZentityAccessToken,
+  withNextDpopNonce,
+} from "@/lib/auth/oidc/resource-principal";
+import {
+  type ClientCredentialsPrincipal,
+  requireClientCredentials,
+} from "@/lib/auth/resource-auth";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
@@ -70,7 +76,16 @@ export async function POST(request: Request) {
   if (!authResult.ok) {
     return authResult.response;
   }
+  return withNextDpopNonce(
+    await introspect(request, authResult.principal),
+    authResult.dpopNonce
+  );
+}
 
+async function introspect(
+  request: Request,
+  principal: ClientCredentialsPrincipal
+): Promise<Response> {
   const token = await extractToken(request);
   if (!token) {
     return NextResponse.json({ active: false });
@@ -91,7 +106,7 @@ export async function POST(request: Request) {
 
   const [tokenClient, callerClient] = await Promise.all([
     findClient(tokenClientId),
-    findClient(authResult.principal.clientId),
+    findClient(principal.clientId),
   ]);
 
   const tokenScopes =
@@ -122,7 +137,7 @@ export async function POST(request: Request) {
   if (typeof snapshotKey === "string") {
     tokenSnapshot = await resolveTokenSnapshotForTokenJti(
       snapshotKey,
-      authResult.principal.clientId
+      principal.clientId
     );
   }
   if (!tokenSnapshot) {

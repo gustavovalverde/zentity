@@ -12,6 +12,7 @@ import type { FeatureName } from "@/lib/assurance/tier";
 
 import { randomUUID } from "node:crypto";
 
+import { DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
 import { type Span, SpanStatusCode } from "@opentelemetry/api";
 import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
@@ -42,6 +43,8 @@ type SpanAttributes = Record<string, string | number | boolean>;
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
   authContext?: AuthenticationState | null;
+  /** The next DPoP nonce for a client whose DPoP-bound token verified. */
+  dpopNonce?: string | null;
   flowId: string | null;
   flowIdSource: "header" | "cookie" | "query" | "none";
   req: Request;
@@ -59,6 +62,7 @@ interface TrpcContext {
 interface ResolvedAuthSession {
   authContext: AuthenticationState | null;
   challenge: Headers | null;
+  dpopNonce?: string | undefined;
   session: Session | null;
 }
 
@@ -160,7 +164,12 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
     if (!(session && authContext)) {
       return refusedOAuthSession(req, "access token session has ended");
     }
-    return { session, authContext, challenge: null };
+    return {
+      session,
+      authContext,
+      challenge: null,
+      dpopNonce: verified.dpopNonce,
+    };
   }
 
   if (!authContext) {
@@ -170,6 +179,7 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   return {
     authContext,
     challenge: null,
+    dpopNonce: verified.dpopNonce,
     session: await buildSessionFromUserId(userId, {
       authContextId: authContext.id,
     }),
@@ -228,6 +238,7 @@ export async function createTrpcContext(args: {
   let session: Session | null = null;
   let authContext: AuthenticationState | null = null;
   let tokenChallenge: Headers | null = null;
+  let dpopNonce: string | null = null;
   try {
     session = await auth.api.getSession({ headers: args.req.headers });
     if (session?.session?.id) {
@@ -251,6 +262,7 @@ export async function createTrpcContext(args: {
       session = resolved.session;
       authContext = resolved.authContext;
       tokenChallenge = resolved.challenge;
+      dpopNonce = resolved.dpopNonce ?? null;
     } catch (error) {
       logError(error, {
         requestId: requestContext.requestId,
@@ -263,6 +275,7 @@ export async function createTrpcContext(args: {
     req: args.req,
     session: session ?? null,
     tokenChallenge,
+    dpopNonce,
     authContext,
     requestId: requestContext.requestId,
     flowId: requestContext.flowId,
@@ -273,7 +286,8 @@ export async function createTrpcContext(args: {
 
 /**
  * Sends the access-token challenge with an unauthorized response, so an OAuth
- * client learns why its token was refused (RFC 6750, RFC 9449).
+ * client learns why its token was refused (RFC 6750, RFC 9449), and the next
+ * DPoP nonce once its DPoP-bound token verified (RFC 9449 §8.2).
  */
 export function trpcResponseMeta(opts: {
   ctx?: TrpcContext | undefined;
@@ -282,6 +296,15 @@ export function trpcResponseMeta(opts: {
   const challenge = opts.ctx?.tokenChallenge;
   if (challenge && opts.errors.some((error) => error.code === "UNAUTHORIZED")) {
     return { headers: challenge };
+  }
+  const dpopNonce = opts.ctx?.dpopNonce;
+  if (dpopNonce) {
+    return {
+      headers: new Headers({
+        [DPOP_NONCE_HEADER]: dpopNonce,
+        "Cache-Control": "no-store",
+      }),
+    };
   }
   return {};
 }

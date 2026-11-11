@@ -19,7 +19,10 @@ import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { verifyRequestDpopProof } from "@/lib/auth/oidc/haip/dpop";
+import {
+  nextDpopNonceHeaders,
+  verifyRequestDpopProof,
+} from "@/lib/auth/oidc/haip/dpop";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
   authChallengeSessions,
@@ -264,21 +267,26 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
 
 /**
  * The token request's verified DPoP key, which binds the step-up auth_session.
- * The provider never verifies this proof, because the poll is refused first.
+ * The provider never verifies this proof, because the poll is refused first,
+ * so this check asks for a nonce the way the token endpoint does: a proof
+ * without a current one gets `use_dpop_nonce` and the nonce to retry with.
  */
 // biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
 async function verifiedTokenRequestJkt(ctx: any): Promise<string | undefined> {
   const check = await verifyRequestDpopProof({
+    context: ctx.context,
     proofJwt: ctx.headers?.get("DPoP"),
     method: "POST",
     url: `${ctx.context.baseURL}/oauth2/token`,
-    reservations: ctx.context.internalAdapter,
   });
   if (!check.ok) {
-    throw new APIError("BAD_REQUEST", {
-      error: "invalid_dpop_proof",
-      error_description: check.error,
-    });
+    throw new APIError(
+      "BAD_REQUEST",
+      { error: check.code, error_description: check.error },
+      check.code === "use_dpop_nonce"
+        ? await nextDpopNonceHeaders(ctx.context.secret)
+        : undefined
+    );
   }
   return check.jkt;
 }
@@ -343,11 +351,17 @@ export async function enforceCibaTokenAcr(
           expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
         });
 
-        throw new APIError("FORBIDDEN", {
-          error: "insufficient_authorization",
-          auth_session: authSession,
-          error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${record.acrValues}`,
-        });
+        // The client re-authenticates at the authorization challenge with
+        // the same key, so it gets the nonce for its next proof.
+        throw new APIError(
+          "FORBIDDEN",
+          {
+            error: "insufficient_authorization",
+            auth_session: authSession,
+            error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${record.acrValues}`,
+          },
+          dpopJkt ? await nextDpopNonceHeaders(ctx.context.secret) : undefined
+        );
       }
     }
 
