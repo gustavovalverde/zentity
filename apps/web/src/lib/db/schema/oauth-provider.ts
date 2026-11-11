@@ -29,6 +29,7 @@ export const oauthClients = sqliteTable(
       .notNull()
       .default(sql`(unixepoch() * 1000)`),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
     name: text("name"),
     uri: text("uri"),
     icon: text("icon"),

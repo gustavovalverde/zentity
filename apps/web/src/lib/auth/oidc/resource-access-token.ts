@@ -6,6 +6,7 @@ import type { JWTPayload } from "jose";
 
 import {
   createDpopReplayStore,
+  type DpopBindingErrorCode,
   enforceDpopBinding,
   isDpopBindingError,
   parseAccessTokenAuthorization,
@@ -61,7 +62,7 @@ function invalidToken(description: string): APIError {
 }
 
 function dpopChallenge(
-  error: "invalid_token" | "invalid_dpop_proof",
+  error: DpopBindingErrorCode,
   description: string
 ): APIError {
   const safeDescription = description.replaceAll('"', "'");
