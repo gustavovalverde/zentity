@@ -243,15 +243,11 @@ async function buildAuthenticationResult(
 
 export class RedirectToWebError extends Error {
   readonly authSession: string;
-  readonly requestUri?: string;
 
-  constructor(authSession: string, requestUri?: string) {
+  constructor(authSession: string) {
     super("Passkey-only user — redirect to browser required");
     this.authSession = authSession;
     this.name = "RedirectToWebError";
-    if (requestUri) {
-      this.requestUri = requestUri;
-    }
   }
 }
 
@@ -609,12 +605,7 @@ export function createFirstPartyAuth(
       round1.body.error === "redirect_to_web" &&
       typeof round1.body.auth_session === "string"
     ) {
-      throw new RedirectToWebError(
-        round1.body.auth_session,
-        typeof round1.body.request_uri === "string"
-          ? round1.body.request_uri
-          : undefined
-      );
+      throw new RedirectToWebError(round1.body.auth_session);
     }
 
     if (round1.response.status !== 401) {
@@ -660,12 +651,7 @@ export function createFirstPartyAuth(
       round1.body.error === "redirect_to_web" &&
       typeof round1.body.auth_session === "string"
     ) {
-      throw new RedirectToWebError(
-        round1.body.auth_session,
-        typeof round1.body.request_uri === "string"
-          ? round1.body.request_uri
-          : undefined
-      );
+      throw new RedirectToWebError(round1.body.auth_session);
     }
 
     if (round1.response.status !== 401) {

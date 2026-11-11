@@ -252,7 +252,7 @@ The controls in this section prevent session-level attacks: token replay, creden
 - Every endpoint that accepts a DPoP proof verifies its signature, `htm`, `htu`, and `iat` window before using its key. This includes the token endpoint, userinfo, Zentity's protected resources, the first-party Authorization Challenge Endpoint, and the step-up `auth_session` a CIBA token poll opens for a first-party client. An unverified `DPoP` header never supplies a key thumbprint.
 - Each proof's `jti` is reserved in the database for the proof's lifetime. A replayed proof is rejected on every server instance.
 - Resource requests also require the proof key to match the token's `cnf.jkt` and the proof's `ath` to match the presented token.
-- A DPoP-bound first-party `auth_session` records its key as `dpop_jkt` on the authorization code it issues and on the pushed request it returns to passkey-only users for the browser. The token endpoint refuses to redeem either code without a proof from the same key, so a leaked code cannot be exchanged by another client.
+- A DPoP-bound first-party `auth_session` records its key as `dpop_jkt` on the authorization code it issues. The token endpoint refuses to redeem that code without a proof from the same key, so a leaked code cannot be exchanged by another client.
 - Zentity does not issue DPoP nonces (RFC 9449 §8), so a proof's freshness rests on the `iat` window and `jti` reservation. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
 
 ### OPAQUE Password Integrity

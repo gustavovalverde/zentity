@@ -308,7 +308,6 @@ describe("createFirstPartyAuth", () => {
           JSON.stringify({
             auth_session: "auth-session-passkey",
             error: "redirect_to_web",
-            request_uri: "urn:request:123",
           }),
           { status: 400 }
         )
@@ -329,7 +328,6 @@ describe("createFirstPartyAuth", () => {
     ).rejects.toEqual(
       expect.objectContaining<Partial<RedirectToWebError>>({
         authSession: "auth-session-passkey",
-        requestUri: "urn:request:123",
       })
     );
   });

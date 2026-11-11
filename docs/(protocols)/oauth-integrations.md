@@ -154,9 +154,9 @@ sequenceDiagram
   AS-->>Client: { access_token, id_token, token_type: "DPoP", auth_session }
 ```
 
-**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with a PAR `request_uri` (when PKCE is present) so they can complete authorization in a browser.
+**Credential resolution**: The AS queries registered credentials and selects OPAQUE > EIP-712 > `redirect_to_web`. Unknown users receive a timing-safe OPAQUE challenge (indistinguishable from real). Passkey-only users receive `redirect_to_web` with an `auth_session` and no authorization request. The client then runs its own browser authorization with a redirect URI it controls. The SDK's installed client (`createInstalledClientAuth`) pushes a PAR request with a loopback `redirect_uri` and opens the browser on it.
 
-**DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, and so does the PAR `request_uri` returned with `redirect_to_web`. The token endpoint therefore redeems a code from either path only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
+**DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
 
 **Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
 
