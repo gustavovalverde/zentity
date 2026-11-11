@@ -85,6 +85,10 @@ Proofs use the request URL without its query as `htu`. A URL with a fragment is 
 
 Each client keeps its own nonces. When a server requires nonces, a new client needs one extra round trip to learn the nonce. Reuse one client per key instead of creating one per request.
 
+## Verifying DPoP Proofs
+
+The SDK signs DPoP proofs but does not verify them. A relying party that accepts DPoP-bound requests verifies them with Better Auth's `verifyAccessTokenRequest`, or `verifyDpopProof` for a proof alone, from `@better-auth/core/oauth2`. These check the proof's signature, method, URL, age, access-token hash, and key binding, reject a replayed `jti`, and can require server-provided nonces.
+
 ## x402 Selection
 
 `createX402Fetch()` selects the first advertised `PAYMENT-REQUIRED.accepts`
