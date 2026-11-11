@@ -6,8 +6,10 @@ import {
 } from "@/lib/auth/oidc/disclosure/registry";
 import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
+  type ProtectedResourcePrincipal,
   resolveProtectedResourcePrincipal,
   resourceErrorResponse,
+  withNextDpopNonce,
 } from "@/lib/auth/oidc/resource-principal";
 import { getRpValidityState } from "@/lib/identity/validity/rp-notice";
 
@@ -24,8 +26,15 @@ export async function GET(request: Request): Promise<Response> {
   if (!resolved.ok) {
     return resourceErrorResponse(resolved.error);
   }
-  const { principal } = resolved;
+  return withNextDpopNonce(
+    await readValidity(resolved.principal),
+    resolved.dpopNonce
+  );
+}
 
+async function readValidity(
+  principal: ProtectedResourcePrincipal
+): Promise<Response> {
   if (!hasValidityAccess(principal.scopes)) {
     return resourceErrorResponse(
       insufficientScope(

@@ -9,14 +9,8 @@
  * Usage: pnpm exec tsx scripts/ciba-cli-test.ts --login-hint <subject> [options]
  */
 
-import {
-  calculateJwkThumbprint,
-  decodeJwt,
-  exportJWK,
-  generateKeyPair,
-  type JWK,
-  SignJWT,
-} from "jose";
+import { createDpopClient, type DpopClient } from "@zentity/sdk/rp";
+import { calculateJwkThumbprint, decodeJwt } from "jose";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
 
@@ -156,13 +150,16 @@ ${c.dim}Options:${c.reset}
 
 async function fetchJson(
   url: string,
-  init?: RequestInit
+  init?: RequestInit & {
+    fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  }
 ): Promise<{
   status: number;
   body: Record<string, unknown>;
   headers: Headers;
 }> {
-  const response = await fetch(url, init);
+  const { fetch: send = fetch, ...request } = init ?? {};
+  const response = await send(url, request);
   const text = await response.text();
   let body: Record<string, unknown> = {};
   if (text) {
@@ -182,35 +179,18 @@ async function fetchJson(
 
 // ── DPoP ────────────────────────────────────────────────────────────────────
 
-interface DpopClient {
-  proofFor(method: string, url: string, nonce?: string): Promise<string>;
-  publicJwk: JWK;
+interface DpopKey {
+  client: DpopClient;
   thumbprint: string;
 }
 
-async function createDpopClient(): Promise<DpopClient> {
-  const { privateKey, publicKey } = await generateKeyPair("ES256");
-  const publicJwk = await exportJWK(publicKey);
-  const thumbprint = await calculateJwkThumbprint(publicJwk, "sha256");
-
-  function proofFor(
-    method: string,
-    url: string,
-    nonce?: string
-  ): Promise<string> {
-    return new SignJWT({
-      htm: method,
-      htu: url,
-      jti: crypto.randomUUID(),
-      iat: Math.floor(Date.now() / 1000),
-      ...(nonce ? { nonce } : {}),
-    })
-      .setProtectedHeader({ alg: "ES256", typ: "dpop+jwt", jwk: publicJwk })
-      .setIssuedAt()
-      .sign(privateKey);
-  }
-
-  return { publicJwk, thumbprint, proofFor };
+async function createDpopKey(): Promise<DpopKey> {
+  const client = await createDpopClient();
+  const thumbprint = await calculateJwkThumbprint(
+    client.keyPair.publicJwk,
+    "sha256"
+  );
+  return { client, thumbprint };
 }
 
 // ── Spinner ─────────────────────────────────────────────────────────────────
@@ -374,7 +354,7 @@ async function step3TokenPolling(
   authReqId: string,
   interval: number,
   timeout: number,
-  dpop: DpopClient
+  dpop: DpopKey
 ): Promise<Record<string, unknown>> {
   heading("3", "Token Polling with DPoP");
 
@@ -383,47 +363,22 @@ async function step3TokenPolling(
     grant_type: "urn:openid:params:grant-type:ciba",
     client_id: clientId,
     auth_req_id: authReqId,
-  });
+  }).toString();
 
-  let currentNonce: string | undefined;
   const startTime = Date.now();
   let currentInterval = interval;
 
-  // Initial DPoP nonce acquisition — first request always returns a nonce
-  info("Acquiring DPoP nonce...");
-  const initProof = await dpop.proofFor("POST", tokenUrl);
-  const initRes = await fetchJson(tokenUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      DPoP: initProof,
-    },
-    body: formBody,
-  });
-  const initNonce = initRes.headers.get("DPoP-Nonce");
-  if (initNonce) {
-    currentNonce = initNonce;
-    ok(`DPoP nonce acquired: ${currentNonce.slice(0, 16)}...`);
-  }
-
   const spinner = createSpinner("Waiting for user approval");
 
+  // The SDK client keeps Zentity's DPoP nonce between polls and retries a
+  // poll once when the server asks for a fresh one (RFC 9449 §8).
   async function poll(): Promise<Record<string, unknown> | null> {
-    const proof = await dpop.proofFor("POST", tokenUrl, currentNonce);
     const res = await fetchJson(tokenUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        DPoP: proof,
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: formBody,
+      fetch: dpop.client.fetch,
     });
-
-    // Always capture fresh nonce
-    const freshNonce = res.headers.get("DPoP-Nonce");
-    if (freshNonce) {
-      currentNonce = freshNonce;
-    }
 
     if (res.status >= 200 && res.status < 300 && res.body.access_token) {
       return res.body;
@@ -450,15 +405,6 @@ async function step3TokenPolling(
       fail("Authorization request expired");
       record("Token Polling", false);
       process.exit(1);
-    }
-
-    // If we got a DPoP nonce error, retry immediately with the new nonce
-    if (
-      (res.status === 400 || res.status === 401) &&
-      freshNonce &&
-      (res.body.error as string)?.includes("dpop")
-    ) {
-      return null;
     }
 
     // Unexpected error
@@ -496,10 +442,7 @@ async function step3TokenPolling(
   }
 }
 
-function step4TokenValidation(
-  tokens: Record<string, unknown>,
-  dpop: DpopClient
-) {
+function step4TokenValidation(tokens: Record<string, unknown>, dpop: DpopKey) {
   heading("4", "Token Validation");
 
   const accessToken = tokens.access_token as string;
@@ -646,7 +589,7 @@ async function main() {
 
   // DPoP keypair (shared across all token requests)
   info("\nGenerating ephemeral DPoP ES256 keypair...");
-  const dpop = await createDpopClient();
+  const dpop = await createDpopKey();
   ok(`DPoP JWK thumbprint: ${dpop.thumbprint}`);
 
   // Step 3

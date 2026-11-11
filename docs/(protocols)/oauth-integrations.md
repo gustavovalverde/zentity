@@ -282,7 +282,7 @@ All token requests require Demonstrating Proof-of-Possession. DPoP binds access 
 **How it works:**
 
 1. The client generates an ephemeral ES256 keypair (once per session)
-2. Each request to the token endpoint includes a `DPoP` header: a JWT signed by the client's private key containing the HTTP method (`htm`), the request URL without query or fragment (`htu`), a unique `jti`, and the issue time (`iat`)
+2. Each request to the token endpoint includes a `DPoP` header: a JWT signed by the client's private key containing the HTTP method (`htm`), the request URL without query or fragment (`htu`), a unique `jti`, the issue time (`iat`), and the latest nonce Zentity sent (`nonce`)
 3. The server binds the access token to the client's public key via `cnf.jkt` (JWK thumbprint)
 4. When using the access token at a resource endpoint, the client includes a DPoP proof with an `ath` claim (SHA-256 hash of the access token)
 
@@ -291,6 +291,7 @@ All token requests require Demonstrating Proof-of-Possession. DPoP binds access 
 - The signature verifies with the embedded ES256 key, and `typ` is `dpop+jwt`.
 - `htm` and `htu` match the request.
 - `iat` falls inside the proof lifetime window.
+- `nonce` is a nonce Zentity issued in the last 300 seconds (see [Server-provided nonces](#server-provided-nonces)).
 - The `jti` has not been seen before. Zentity reserves each `jti` in the database for the proof's lifetime, so a replayed proof is rejected on every server instance.
 
 A resource endpoint also requires the proof key to match the token's `cnf.jkt` and `ath` to match the presented token. A DPoP-bound token presented with the `Bearer` scheme is rejected.
@@ -304,7 +305,26 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 
 Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`. When a UserInfo 401 carries no challenge, as for a missing token, a revoked token, or a consumed identity release, Zentity adds one by the rules above.
 
-Zentity does not issue DPoP nonces (RFC 9449 §8), so clients never receive `use_dpop_nonce`. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
+#### Server-provided nonces
+
+A server-provided nonce stops a client from using a proof it signed ahead of time (RFC 9449 §11.2). Every DPoP proof sent to Zentity must carry a nonce Zentity issued in the last 300 seconds. This applies to these endpoints:
+
+- The token endpoint, for every grant: authorization code, refresh token, CIBA, token exchange, and the OID4VCI pre-authorized code.
+- UserInfo.
+- Zentity's protected resources: tRPC, agent registration, Proof-of-Human, validity, and the RP API.
+- The first-party Authorization Challenge Endpoint.
+- The OID4VCI credential and deferred credential endpoints.
+
+All these endpoints share one origin and derive their nonces from the same secret. A nonce from any of them is accepted by all of them. Requests without a `DPoP` header and bearer tokens that are not DPoP-bound need no nonce.
+
+A client learns the nonce from its first refused request:
+
+1. The client sends a proof without a nonce, or with an expired one.
+2. Zentity refuses the request with `use_dpop_nonce` and sends a fresh nonce in the `DPoP-Nonce` header. The token endpoint and the Authorization Challenge Endpoint answer 400 with `{"error": "use_dpop_nonce"}`. The resource endpoints answer 401 with `WWW-Authenticate: DPoP error="use_dpop_nonce", error_description="...", algs="ES256"`.
+3. The client signs a new proof with that nonce and sends the same request again. The refused request consumed nothing, so an authorization code, `auth_req_id`, or `auth_session` from the first attempt still works.
+4. Each accepted response carries the next nonce in `DPoP-Nonce`. The client puts the latest nonce in its next proof to any Zentity endpoint, and needs no extra round trip until the nonce expires.
+
+Every response that carries a nonce is sent with `Cache-Control: no-store`. The `@zentity/sdk` `DpopClient.fetch` handles these steps for you.
 
 **DPoP proof structure:**
 
@@ -320,6 +340,7 @@ Zentity does not issue DPoP nonces (RFC 9449 §8), so clients never receive `use
     "htu": "https://app.zentity.xyz/api/auth/oauth2/token",
     "jti": "unique-per-request",
     "iat": 1741654800,
+    "nonce": "<latest DPoP-Nonce from Zentity>",
     "ath": "base64url(SHA-256(access_token))"
   }
 }
@@ -614,7 +635,7 @@ Zentity acts as a Verifiable Credential Issuer following the OIDC4VCI specificat
 
 **Discovery**: `GET /.well-known/openid-credential-issuer`
 
-**Credential endpoint**: `POST /api/auth/oidc4vci/credential` (DPoP required)
+**Credential endpoint**: `POST /api/auth/oidc4vci/credential` (DPoP required, with a server-provided nonce)
 
 **Supported format**: `dc+sd-jwt` (SD-JWT VC), credential type `zentity_identity`
 
@@ -695,6 +716,8 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
 
 Clients follow `authorization_servers[0]` to the AS metadata, then proceed with DCR and authorization.
 
+The MCP server is a separate origin with its own DPoP nonces. A client that calls `/mcp` with a DPoP-bound token gets a 401 `use_dpop_nonce` challenge on its first request and the next nonce on every accepted response, in the same way as Zentity's resource endpoints. A nonce from Zentity's origin is not accepted there.
+
 Remote MCP clients (Claude Code, MCP Inspector, the MCP SDK) register with a Client ID Metadata Document or with DCR. A dynamic registration whose redirect URIs are all loopback HTTP registers as a native client even when it omits `application_type`. The AS lists `offline_access` in `scopes_supported`, so a client that registers the `refresh_token` grant and adds `offline_access` to its request, as the MCP refresh-token guidance (SEP-2207) describes, receives a refresh token. Refresh tokens rotate on every use and are bound to the client's DPoP key when it presents one. The MCP server's own protected resource metadata omits `offline_access`, because refresh is a concern between the client and the AS rather than a resource scope.
 
 ---
@@ -748,7 +771,7 @@ Zentity supports OIDC Back-Channel Logout for notifying RPs when a user session 
 
 | Feature | Standard | Status |
 | --- | --- | --- |
-| DPoP | RFC 9449 | Enforced at token endpoint; tRPC accepts Bearer only for tokens that are not DPoP-bound |
+| DPoP | RFC 9449 | Enforced at token endpoint, with server-provided nonces on every DPoP endpoint; tRPC accepts Bearer only for tokens that are not DPoP-bound |
 | PAR | RFC 9126 | Supported (optional; credential issuance uses the pre-authorized code grant, so HAIP's PAR requirement for the authorization endpoint does not apply, and remote MCP hosts built on the MCP SDK send authorization requests without PAR) |
 | Wallet attestation | HAIP | Supported when `TRUSTED_WALLET_ISSUERS` lists trusted attestation issuers |
 | JARM | OIDC JARM | ECDH-ES P-256, 90-day key rotation (old keys retained for in-flight decryption) |

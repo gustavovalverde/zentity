@@ -1,9 +1,15 @@
 import "server-only";
 
 import type { JWTPayload } from "jose";
-import type { VerifiedAccessToken } from "./resource-access-token";
+import type {
+  VerifiedAccessToken,
+  VerifiedResourceRequest,
+} from "./resource-access-token";
 
-import { getDpopJktFromPayload } from "@better-auth/core/oauth2";
+import {
+  DPOP_NONCE_HEADER,
+  getDpopJktFromPayload,
+} from "@better-auth/core/oauth2";
 import { APIError, isAPIError } from "better-auth/api";
 import { NextResponse } from "next/server";
 
@@ -23,7 +29,7 @@ import {
  */
 
 export type ResourceRequestResult =
-  | ({ ok: true } & VerifiedAccessToken)
+  | ({ ok: true } & VerifiedResourceRequest)
   | { error: ResourceError; ok: false };
 
 /** Refuses the access token the request presented. */
@@ -48,6 +54,21 @@ export function resourceErrorResponse(error: ResourceError): NextResponse {
 }
 
 /**
+ * Sends the next DPoP nonce on a response to a request whose DPoP-bound token
+ * was verified (RFC 9449 §8.2), so the client's next proof carries it.
+ */
+export function withNextDpopNonce<T extends Response>(
+  response: T,
+  dpopNonce: string | undefined
+): T {
+  if (dpopNonce) {
+    response.headers.set(DPOP_NONCE_HEADER, dpopNonce);
+    response.headers.set("Cache-Control", "no-store");
+  }
+  return response;
+}
+
+/**
  * Verifies the access token on a request to a Zentity protected resource.
  * The DPoP `htu` is the request URL on Zentity's canonical origin, the URL
  * clients derive from discovery.
@@ -64,7 +85,7 @@ export async function verifyResourceRequest(
         url: canonicalizeRequestOrigin(request).url,
       },
     });
-    return { ok: true, ...(verified as VerifiedAccessToken) };
+    return { ok: true, ...(verified as VerifiedResourceRequest) };
   } catch (error) {
     // The provider throws better-call's APIError, not better-auth's subclass.
     if (isAPIError(error)) {
@@ -86,7 +107,7 @@ export async function introspectZentityAccessToken(
   })) as VerifiedAccessToken;
 }
 
-interface ProtectedResourcePrincipal {
+export interface ProtectedResourcePrincipal {
   clientId: string;
   dpopJkt: string;
   scopes: string[];
@@ -101,7 +122,12 @@ export function tokenScopes(payload: JWTPayload): string[] {
 }
 
 type ProtectedResourcePrincipalResult =
-  | { ok: true; principal: ProtectedResourcePrincipal }
+  | {
+      /** The next DPoP nonce, for {@link withNextDpopNonce}. */
+      dpopNonce: string | undefined;
+      ok: true;
+      principal: ProtectedResourcePrincipal;
+    }
   | { error: ResourceError; ok: false };
 
 /**
@@ -147,6 +173,7 @@ export async function resolveProtectedResourcePrincipal(
 
   return {
     ok: true,
+    dpopNonce: verified.dpopNonce,
     principal: {
       sub,
       userId,

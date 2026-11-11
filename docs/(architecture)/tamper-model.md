@@ -253,7 +253,7 @@ The controls in this section prevent session-level attacks: token replay, creden
 - Each proof's `jti` is reserved in the database for the proof's lifetime. A replayed proof is rejected on every server instance.
 - Resource requests also require the proof key to match the token's `cnf.jkt` and the proof's `ath` to match the presented token.
 - A DPoP-bound first-party `auth_session` records its key as `dpop_jkt` on the authorization code it issues. The token endpoint refuses to redeem that code without a proof from the same key, so a leaked code cannot be exchanged by another client.
-- Zentity does not issue DPoP nonces (RFC 9449 §8), so a proof's freshness rests on the `iat` window and `jti` reservation. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
+- Every proof must also carry a nonce Zentity issued in the last 300 seconds (RFC 9449 §8, §9), so a client cannot use a proof it signed ahead of time. A proof without a current nonce is refused with `use_dpop_nonce` before its `jti` is reserved or any grant is consumed, and the response carries the nonce to retry with. Nonces are an HMAC over their issue time keyed from the auth secret, so every instance accepts them without shared state.
 
 ### OPAQUE Password Integrity
 

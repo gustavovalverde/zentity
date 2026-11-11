@@ -2,10 +2,11 @@ import { expect, test } from "@playwright/test";
 import { decodeJwt } from "jose";
 
 import {
-  createDpopProof,
+  createDpopBinding,
   createIssuerSession,
   decideCibaRequest,
   registerCibaClient,
+  sendDpopRequest,
 } from "./oidc-helpers";
 
 const RAW_BASE_URL =
@@ -60,16 +61,20 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     expect(approveRes.ok()).toBeTruthy();
 
     // Poll for tokens
-    const dpop = await createDpopProof({ method: "POST", url: TOKEN_URL });
-    const tokenRes = await request.post(TOKEN_URL, {
-      form: {
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id,
-        client_id: clientId,
-        resource: MCP_RESOURCE,
-      },
-      headers: { Origin: BASE_URL, DPoP: dpop.proof },
-    });
+    const tokenRes = await sendDpopRequest(
+      await createDpopBinding(),
+      { method: "POST", url: TOKEN_URL },
+      (proof) =>
+        request.post(TOKEN_URL, {
+          form: {
+            grant_type: CIBA_GRANT_TYPE,
+            auth_req_id,
+            client_id: clientId,
+            resource: MCP_RESOURCE,
+          },
+          headers: { Origin: BASE_URL, DPoP: proof },
+        })
+    );
     expect(tokenRes.ok()).toBeTruthy();
 
     const tokenBody = (await tokenRes.json()) as { access_token: string };
@@ -107,16 +112,20 @@ test.describe("Registered agent assertion in CIBA flow", () => {
     });
     expect(approveRes.ok()).toBeTruthy();
 
-    const dpop = await createDpopProof({ method: "POST", url: TOKEN_URL });
-    const tokenRes = await request.post(TOKEN_URL, {
-      form: {
-        grant_type: CIBA_GRANT_TYPE,
-        auth_req_id,
-        client_id: clientId,
-        resource: MCP_RESOURCE,
-      },
-      headers: { Origin: BASE_URL, DPoP: dpop.proof },
-    });
+    const tokenRes = await sendDpopRequest(
+      await createDpopBinding(),
+      { method: "POST", url: TOKEN_URL },
+      (proof) =>
+        request.post(TOKEN_URL, {
+          form: {
+            grant_type: CIBA_GRANT_TYPE,
+            auth_req_id,
+            client_id: clientId,
+            resource: MCP_RESOURCE,
+          },
+          headers: { Origin: BASE_URL, DPoP: proof },
+        })
+    );
     expect(tokenRes.ok()).toBeTruthy();
 
     const tokenBody = (await tokenRes.json()) as { access_token: string };

@@ -83,6 +83,7 @@ describe("requireBootstrapAccessToken", () => {
 
     expect(result).toEqual({
       ok: true,
+      dpopNonce: expect.any(String),
       principal: {
         kind: "user_access_token",
         authContextId,

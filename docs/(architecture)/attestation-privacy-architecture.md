@@ -77,7 +77,7 @@ Zentity provides the cryptographic infrastructure; the relying party determines 
 - Passkey authentication is **origin-bound** and uses **signature counters** to reduce replay and phishing risk.
 - OPAQUE authentication keeps raw passwords off the server; clients verify the server's static public key (pinned in production).
 - Passkey PRF-derived KEKs are **credential-bound**; secret wrappers reference the credential ID + PRF salt.
-- **DPoP replay protection**: every DPoP proof is verified before its key is trusted, and its `jti` is reserved in the database for the proof's lifetime, so a replayed proof is rejected (RFC 9449). Zentity issues no DPoP nonces.
+- **DPoP replay protection**: every DPoP proof is verified before its key is trusted, and its `jti` is reserved in the database for the proof's lifetime, so a replayed proof is rejected (RFC 9449). Each proof must also carry a nonce Zentity issued in the last 300 seconds, so a proof signed ahead of time is rejected.
 - **KB-JWT freshness**: verifiers enforce max age on Key Binding JWT timestamps.
 - **x509_hash client binding**: OID4VP verifier identity bound to leaf certificate thumbprint.
 - **FHE ciphertext HMAC binding**: HMAC-SHA256 keyed by `CIPHERTEXT_HMAC_SECRET` (HKDF-derived) over length-prefixed `[userId, attributeType, ciphertext]`, stored in `ciphertext_hash`, verified with `timingSafeEqual` on every read. Detects ciphertext swap attacks.

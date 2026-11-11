@@ -5,7 +5,6 @@ const TRAILING_SLASHES_REGEX = /\/+$/;
 import {
   createCredentialOffer,
   createDpopBinding,
-  createDpopProof,
   createIssuerSession,
   createProofJwt,
   createWalletClient,
@@ -17,6 +16,7 @@ import {
   issueCredential,
   oidcConfig,
   originHeaders,
+  sendDpopRequest,
   verifyIssuedCredential,
 } from "./oidc-helpers";
 
@@ -301,52 +301,34 @@ test.describe("OIDC4VCI issuer", () => {
     };
     expect(deferredBody.transaction_id).toBeTruthy();
 
-    const fulfillmentRes = await request.post(
-      `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
-      {
-        data: {
-          transaction_id: deferredBody.transaction_id,
+    const deferredUrl = `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`;
+    const requestDeferred = () =>
+      sendDpopRequest(
+        dpopBinding,
+        {
+          method: "POST",
+          url: deferredUrl,
+          accessToken: tokens.access_token,
         },
-        headers: {
-          Authorization: `DPoP ${tokens.access_token}`,
-          DPoP: (
-            await createDpopProof({
-              method: "POST",
-              url: `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
-              accessToken: tokens.access_token,
-              binding: dpopBinding,
-            })
-          ).proof,
-          ...originHeaders,
-        },
-      }
-    );
+        (proof) =>
+          request.post(deferredUrl, {
+            data: { transaction_id: deferredBody.transaction_id },
+            headers: {
+              Authorization: `DPoP ${tokens.access_token}`,
+              DPoP: proof,
+              ...originHeaders,
+            },
+          })
+      );
+
+    const fulfillmentRes = await requestDeferred();
     expect(fulfillmentRes.status()).toBe(200);
     const fulfillmentBody = (await fulfillmentRes.json()) as Parameters<
       typeof extractIssuedCredential
     >[0];
     expect(extractIssuedCredential(fulfillmentBody)).toBeTruthy();
 
-    const secondRes = await request.post(
-      `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
-      {
-        data: {
-          transaction_id: deferredBody.transaction_id,
-        },
-        headers: {
-          Authorization: `DPoP ${tokens.access_token}`,
-          DPoP: (
-            await createDpopProof({
-              method: "POST",
-              url: `${oidcConfig.authBaseUrl}/oidc4vci/credential/deferred`,
-              accessToken: tokens.access_token,
-              binding: dpopBinding,
-            })
-          ).proof,
-          ...originHeaders,
-        },
-      }
-    );
+    const secondRes = await requestDeferred();
     expect(secondRes.status()).toBe(400);
     const secondBody = (await secondRes.json()) as { error?: string };
     expect(secondBody.error).toBe("invalid_transaction_id");

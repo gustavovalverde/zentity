@@ -20,7 +20,10 @@ import {
   nonceIdentifier,
   verifyEip712Signature,
 } from "@/lib/auth/eip712/typed-data";
-import { verifyRequestDpopProof } from "@/lib/auth/oidc/haip/dpop";
+import {
+  nextDpopNonceHeaders,
+  verifyRequestDpopProof,
+} from "@/lib/auth/oidc/haip/dpop";
 import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
@@ -109,20 +112,21 @@ function errorJson(
 /**
  * The thumbprint of the request's verified DPoP proof, which binds the
  * auth_session and the code it yields. A forged, stale, replayed, or
- * mis-targeted proof is refused rather than read for its key.
+ * mis-targeted proof is refused rather than read for its key. A proof without
+ * a current nonce gets `use_dpop_nonce`, and {@link POST} sends the nonce to
+ * retry with (RFC 9449 §8).
  */
 async function verifyDpopJkt(
   request: Request
 ): Promise<{ jkt: string | undefined } | Response> {
-  const context = await auth.$context;
   const check = await verifyRequestDpopProof({
+    context: await auth.$context,
     proofJwt: request.headers.get("DPoP"),
     method: request.method,
     url: canonicalizeRequestOrigin(request).url,
-    reservations: context.internalAdapter,
   });
   if (!check.ok) {
-    return errorJson(400, "invalid_dpop_proof", check.error);
+    return errorJson(400, check.code, check.error);
   }
   return { jkt: check.jkt };
 }
@@ -223,6 +227,20 @@ async function issueEip712Challenge(
 // ── Route handler ───────────────────────────────────────
 
 export async function POST(request: Request): Promise<Response> {
+  const response = await handleChallengeRequest(request);
+  if (!request.headers.has("DPoP")) {
+    return response;
+  }
+  // Every answer to a DPoP request, including a use_dpop_nonce refusal,
+  // carries the nonce the client's next proof must use (RFC 9449 §8).
+  const nonceHeaders = await nextDpopNonceHeaders((await auth.$context).secret);
+  for (const [name, value] of Object.entries(nonceHeaders)) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
+
+async function handleChallengeRequest(request: Request): Promise<Response> {
   const ip = getClientIp(request.headers);
   const { limited, retryAfter } = fpaLimiter.check(ip);
   if (limited) {
