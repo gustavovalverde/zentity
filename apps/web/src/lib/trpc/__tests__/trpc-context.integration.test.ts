@@ -74,7 +74,7 @@ describe("tRPC context", () => {
     const revoked = await contextFor();
     expect(revoked.session).toBeNull();
     expect(revoked.tokenChallenge?.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+      'Bearer error="invalid_token", error_description="Invalid access token", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
     );
   });
 
@@ -87,16 +87,18 @@ describe("tRPC context", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+      'Bearer error="invalid_token", error_description="Invalid access token", resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
     );
   });
 
-  it("sends no challenge to a caller that presented no token", async () => {
+  it("points a caller that presented no token at the resource metadata", async () => {
     const response = await trpcGet(
       new Request("http://localhost:3000/api/trpc/assurance.profile")
     );
 
     expect(response.status).toBe(401);
-    expect(response.headers.get("WWW-Authenticate")).toBeNull();
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
+    );
   });
 });

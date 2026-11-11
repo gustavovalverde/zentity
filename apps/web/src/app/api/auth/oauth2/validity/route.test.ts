@@ -72,6 +72,41 @@ describe("GET /api/auth/oauth2/validity", () => {
     });
   });
 
+  it("names the error when a presented token is refused", async () => {
+    mocks.verifyResourceRequest.mockRejectedValue(
+      new APIError("UNAUTHORIZED", {
+        error: "invalid_token",
+        error_description: "Invalid access token",
+      })
+    );
+
+    const response = await GET(
+      makeRequest({ authorization: "Bearer expired-token" })
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      `Bearer error="invalid_token", error_description="Invalid access token", ${RESOURCE_METADATA}`
+    );
+  });
+
+  it("answers a refused token in the DPoP scheme it was presented with", async () => {
+    mocks.verifyResourceRequest.mockRejectedValue(
+      new APIError("UNAUTHORIZED", {
+        error: "invalid_token",
+        error_description: "Invalid access token",
+      })
+    );
+
+    const response = await GET(
+      makeRequest({ authorization: "DPoP expired-token", dpop: "proof" })
+    );
+
+    expect(response.headers.get("WWW-Authenticate")).toBe(
+      'DPoP error="invalid_token", error_description="Invalid access token", algs="ES256"'
+    );
+  });
+
   it("answers a bad DPoP proof with a DPoP challenge", async () => {
     mocks.verifyResourceRequest.mockRejectedValue(
       new APIError("UNAUTHORIZED", {

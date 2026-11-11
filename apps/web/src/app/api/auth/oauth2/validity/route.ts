@@ -4,8 +4,8 @@ import {
   extractIdentityScopes,
   hasAnyProofScope,
 } from "@/lib/auth/oidc/disclosure/registry";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
-  insufficientScope,
   resolveProtectedResourcePrincipal,
   resourceErrorResponse,
 } from "@/lib/auth/oidc/resource-principal";

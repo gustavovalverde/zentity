@@ -4,8 +4,8 @@ import { NextResponse } from "next/server";
 
 import { env } from "@/env";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
-  insufficientScope,
   resolveProtectedResourcePrincipal,
   resourceErrorResponse,
 } from "@/lib/auth/oidc/resource-principal";

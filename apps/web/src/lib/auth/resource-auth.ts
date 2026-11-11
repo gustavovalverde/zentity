@@ -1,4 +1,4 @@
-import type { ResourceError } from "@/lib/auth/oidc/resource-principal";
+import type { ResourceError } from "@/lib/auth/oidc/resource-challenge";
 import type { Session } from "./auth-config";
 
 import { getDpopJktFromPayload } from "@better-auth/core/oauth2";
@@ -8,8 +8,8 @@ import { NextResponse } from "next/server";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
-  insufficientScope,
   invalidAccessToken,
   resourceErrorResponse,
   tokenScopes,
@@ -109,7 +109,7 @@ export async function requireBootstrapAccessToken(
     !getDpopJktFromPayload(verified.payload)
   ) {
     return resourceAuthError(
-      invalidAccessToken("bootstrap access token required")
+      invalidAccessToken(request, "bootstrap access token required")
     );
   }
   const { payload, token } = verified;
@@ -122,7 +122,7 @@ export async function requireBootstrapAccessToken(
     extensions?.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
   ) {
     return resourceAuthError(
-      invalidAccessToken("bootstrap access token required")
+      invalidAccessToken(request, "bootstrap access token required")
     );
   }
 
@@ -165,23 +165,28 @@ export async function requireClientCredentials(
   const { payload, token } = verified;
   if (verified.format !== "jwt") {
     return resourceAuthError(
-      invalidAccessToken("opaque client credentials tokens are not supported")
+      invalidAccessToken(
+        request,
+        "opaque client credentials tokens are not supported"
+      )
     );
   }
   if (!audienceIncludes(payload.aud, RP_API_AUDIENCE)) {
-    return resourceAuthError(invalidAccessToken("invalid access token"));
+    return resourceAuthError(
+      invalidAccessToken(request, "invalid access token")
+    );
   }
 
   const clientId =
     typeof payload.client_id === "string" ? payload.client_id : undefined;
   if (!clientId) {
-    return resourceAuthError(invalidAccessToken("missing client_id"));
+    return resourceAuthError(invalidAccessToken(request, "missing client_id"));
   }
   // A client_credentials token's subject is the client itself; a distinct
   // subject means a user token.
   if (payload.sub && payload.sub !== clientId) {
     return resourceAuthError(
-      invalidAccessToken("not a client credentials token")
+      invalidAccessToken(request, "not a client credentials token")
     );
   }
 

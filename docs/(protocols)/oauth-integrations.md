@@ -297,11 +297,12 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 
 **Refused requests**: Zentity's own protected resources (tRPC, agent registration, proof-of-human, validity, and the RP API) answer a refused token with a `WWW-Authenticate` challenge the client can act on:
 
-- A missing or invalid token gets a 401 with `Bearer resource_metadata="https://app.zentity.xyz/.well-known/oauth-protected-resource"` (RFC 9728).
+- A request without a token gets a 401 with `Bearer resource_metadata="https://app.zentity.xyz/.well-known/oauth-protected-resource"` (RFC 9728 §5). tRPC sends it too when the request carries neither a session cookie nor a token.
+- An expired, revoked, or otherwise invalid token gets a 401 that also names the error, in the scheme the client used: `Bearer error="invalid_token", error_description="...", resource_metadata="..."` (RFC 6750 §3.1), or `DPoP error="invalid_token", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A failed DPoP proof or binding gets a 401 with `DPoP error="...", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A token without a required scope gets a 403 with `Bearer error="insufficient_scope", scope="..."` naming the scopes to request (RFC 6750 §3.1).
 
-Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`.
+Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`. When a UserInfo 401 carries no challenge, as for a missing token, a revoked token, or a consumed identity release, Zentity adds one by the rules above.
 
 Zentity does not issue DPoP nonces (RFC 9449 §8), so clients never receive `use_dpop_nonce`. Server-issued nonce support is tracked upstream in [better-auth#12376](https://github.com/better-auth/better-auth/pull/12376).
 

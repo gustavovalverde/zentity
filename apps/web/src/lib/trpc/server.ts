@@ -62,10 +62,13 @@ interface ResolvedAuthSession {
   session: Session | null;
 }
 
-function refusedOAuthSession(description: string): ResolvedAuthSession {
+function refusedOAuthSession(
+  req: Request,
+  description: string
+): ResolvedAuthSession {
   return {
     authContext: null,
-    challenge: new Headers(invalidAccessToken(description).headers),
+    challenge: new Headers(invalidAccessToken(req, description).headers),
     session: null,
   };
 }
@@ -122,7 +125,9 @@ async function loadPersistedSession(
  */
 async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (!req.headers.get("authorization")) {
-    return { session: null, authContext: null, challenge: null };
+    // Points an OAuth client probing without a token at the resource
+    // metadata (RFC 9728 §5). Browsers ignore Bearer challenges.
+    return refusedOAuthSession(req, "access token required");
   }
 
   const verified = await verifyResourceRequest(req);
@@ -136,7 +141,10 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   const userId =
     typeof verified.payload.sub === "string" ? verified.payload.sub : undefined;
   if (!(verified.format === "opaque" && userId)) {
-    return refusedOAuthSession("access token is not valid for this resource");
+    return refusedOAuthSession(
+      req,
+      "access token is not valid for this resource"
+    );
   }
 
   const sessionId =
@@ -150,13 +158,13 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (sessionId) {
     const session = await loadPersistedSession(sessionId);
     if (!(session && authContext)) {
-      return refusedOAuthSession("access token session has ended");
+      return refusedOAuthSession(req, "access token session has ended");
     }
     return { session, authContext, challenge: null };
   }
 
   if (!authContext) {
-    return refusedOAuthSession("access token session has ended");
+    return refusedOAuthSession(req, "access token session has ended");
   }
 
   return {
