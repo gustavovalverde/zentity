@@ -3,7 +3,8 @@ import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
-import { decodeJwt } from "jose";
+import { eq } from "drizzle-orm";
+import { calculateJwkThumbprint, decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +17,7 @@ import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
   authChallengeSessions,
+  haipPushedRequests,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
@@ -26,6 +28,7 @@ import {
 import {
   buildDpopProof,
   createTestDpopKeyPair,
+  type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
 
@@ -166,34 +169,57 @@ async function callChallenge(
 // RFC 7636 example: code_verifier → code_challenge (S256)
 const CODE_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 const CODE_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+const PAR_URI_PREFIX = "urn:ietf:params:oauth:request_uri:";
 const PAR_URI_RE = /^urn:ietf:params:oauth:request_uri:.+/;
 
+async function readPushedRequestParams(requestUri: unknown) {
+  const row = await db
+    .select({ requestParams: haipPushedRequests.requestParams })
+    .from(haipPushedRequests)
+    .where(
+      eq(
+        haipPushedRequests.requestId,
+        String(requestUri).slice(PAR_URI_PREFIX.length)
+      )
+    )
+    .get();
+  return JSON.parse(row?.requestParams ?? "{}") as Record<string, unknown>;
+}
+
 async function completeOpaqueFlow(
-  initialRequestOverrides: Record<string, unknown> = {}
+  initialRequestOverrides: Record<string, unknown> = {},
+  dpopKeyPair?: DpopKeyPair
 ): Promise<{
   authSession: string;
   authorizationCode: string;
 }> {
   await ready;
-  const round1 = await callChallenge({
-    client_id: TEST_CLIENT_ID,
-    response_type: "code",
-    scope: "openid",
-    code_challenge: CODE_CHALLENGE,
-    code_challenge_method: "S256",
-    identifier: TEST_EMAIL,
-    ...initialRequestOverrides,
-  });
+  const dpopHeaders = async () =>
+    dpopKeyPair
+      ? { DPoP: await buildDpopProof(dpopKeyPair, "POST", CHALLENGE_URL) }
+      : undefined;
+  const round1 = await callChallenge(
+    {
+      client_id: TEST_CLIENT_ID,
+      response_type: "code",
+      scope: "openid",
+      code_challenge: CODE_CHALLENGE,
+      code_challenge_method: "S256",
+      identifier: TEST_EMAIL,
+      ...initialRequestOverrides,
+    },
+    await dpopHeaders()
+  );
   const authSession = round1.json.auth_session as string;
 
   const { clientLoginState, startLoginRequest } = client.startLogin({
     password: TEST_PASSWORD,
   });
 
-  const round2 = await callChallenge({
-    auth_session: authSession,
-    opaque_login_request: startLoginRequest,
-  });
+  const round2 = await callChallenge(
+    { auth_session: authSession, opaque_login_request: startLoginRequest },
+    await dpopHeaders()
+  );
 
   const loginResult = client.finishLogin({
     clientLoginState,
@@ -201,10 +227,13 @@ async function completeOpaqueFlow(
     password: TEST_PASSWORD,
   });
 
-  const round3 = await callChallenge({
-    auth_session: authSession,
-    opaque_finish_request: loginResult?.finishLoginRequest,
-  });
+  const round3 = await callChallenge(
+    {
+      auth_session: authSession,
+      opaque_finish_request: loginResult?.finishLoginRequest,
+    },
+    await dpopHeaders()
+  );
 
   return {
     authSession,
@@ -256,6 +285,29 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.auth_session).toBeTypeOf("string");
       expect(json.request_uri).toBeTypeOf("string");
       expect(json.request_uri).toMatch(PAR_URI_RE);
+    });
+
+    it("binds the passkey browser request to the auth_session DPoP key", async () => {
+      await createTestUser({ email: TEST_EMAIL });
+      const sessionKey = await createTestDpopKeyPair();
+
+      const { json } = await callChallenge(
+        {
+          client_id: TEST_CLIENT_ID,
+          response_type: "code",
+          scope: "openid",
+          code_challenge: CODE_CHALLENGE,
+          code_challenge_method: "S256",
+          identifier: TEST_EMAIL,
+        },
+        { DPoP: await buildDpopProof(sessionKey, "POST", CHALLENGE_URL) }
+      );
+
+      expect(json.error).toBe("redirect_to_web");
+      const params = await readPushedRequestParams(json.request_uri);
+      expect(params.dpop_jkt).toBe(
+        await calculateJwkThumbprint(sessionKey.jwk, "sha256")
+      );
     });
 
     it("returns redirect_to_web without request_uri when no code_challenge", async () => {
@@ -654,6 +706,63 @@ describe("Authorization Challenge Endpoint", () => {
       );
       expect(round2.status).toBe(400);
       expect(round2.json.error).toBe("invalid_dpop_proof");
+    });
+  });
+
+  describe("Authorization code DPoP binding", () => {
+    const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
+
+    async function issueBoundCode() {
+      await createUserWithOpaque(TEST_EMAIL);
+      const sessionKey = await createTestDpopKeyPair();
+      const { authorizationCode } = await completeOpaqueFlow({}, sessionKey);
+      return {
+        sessionKey,
+        tokenRequest: {
+          grant_type: "authorization_code",
+          client_id: TEST_CLIENT_ID,
+          code: authorizationCode,
+          code_verifier: CODE_VERIFIER,
+        },
+      };
+    }
+
+    it("rejects redemption without a DPoP proof", async () => {
+      const { tokenRequest } = await issueBoundCode();
+
+      const response = await auth.handler(
+        new Request(TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(tokenRequest),
+        })
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: "invalid_dpop_proof",
+      });
+    });
+
+    it("rejects redemption with a proof from another key", async () => {
+      const { tokenRequest } = await issueBoundCode();
+
+      const { status, json } = await postTokenWithDpop(tokenRequest);
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("issues a token bound to the auth_session key", async () => {
+      const { sessionKey, tokenRequest } = await issueBoundCode();
+
+      const { status, json } = await postTokenWithDpop(
+        tokenRequest,
+        sessionKey
+      );
+
+      expect(status).toBe(200);
+      expect(json.token_type).toBe("DPoP");
     });
   });
 
@@ -1202,6 +1311,39 @@ describe("Authorization Challenge Endpoint", () => {
       expect(json.error).toBe("redirect_to_web");
       expect(json.auth_session).toBe(authSession);
       expect(json.request_uri).toMatch(PAR_URI_RE);
+    });
+
+    it("step-up re-entry binds the passkey browser request to the session DPoP key", async () => {
+      const userId = await createTestUser({ email: TEST_EMAIL });
+      const sessionKey = await createTestDpopKeyPair();
+      const sessionJkt = await calculateJwkThumbprint(sessionKey.jwk, "sha256");
+      const authSession = crypto.randomUUID();
+      await db
+        .insert(authChallengeSessions)
+        .values({
+          authSession,
+          clientId: TEST_CLIENT_ID,
+          userId,
+          dpopJkt: sessionJkt,
+          scope: "openid",
+          acrValues: "urn:zentity:assurance:tier-1",
+          state: "pending",
+          expiresAt: new Date(Date.now() + 600_000),
+        })
+        .run();
+
+      const { json } = await callChallenge(
+        {
+          auth_session: authSession,
+          code_challenge: CODE_CHALLENGE,
+          code_challenge_method: "S256",
+        },
+        { DPoP: await buildDpopProof(sessionKey, "POST", CHALLENGE_URL) }
+      );
+
+      expect(json.error).toBe("redirect_to_web");
+      const params = await readPushedRequestParams(json.request_uri);
+      expect(params.dpop_jkt).toBe(sessionJkt);
     });
   });
 });

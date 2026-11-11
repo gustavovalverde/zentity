@@ -430,6 +430,7 @@ async function handleInitialRequest(
           code_challenge: params.code_challenge,
           code_challenge_method: params.code_challenge_method,
           ...(params.resource && { resource: params.resource }),
+          ...(dpopJkt && { dpop_jkt: dpopJkt }),
         }),
         expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
       });
@@ -862,6 +863,7 @@ async function handleStepUpReEntry(
           code_challenge_method:
             codeChallengeMethod ?? session.codeChallengeMethod ?? "S256",
           ...(session.resource && { resource: session.resource }),
+          ...(session.dpopJkt && { dpop_jkt: session.dpopJkt }),
         }),
         expiresAt: new Date(Date.now() + PAR_LIFETIME_MS),
       });
@@ -1010,8 +1012,11 @@ async function issueAuthorizationCode(
       query: {
         client_id: session.clientId,
         scope: session.scope,
-        // Headless first-party codes carry no redirect_uri; the patched
-        // oauth-provider exchanges them without one (RFC 6749 §4.1.3).
+        // Headless first-party codes carry no redirect_uri, which the token
+        // endpoint accepts because none was bound (RFC 6749 §4.1.3).
+        // dpop_jkt makes the token endpoint require a proof from the key
+        // that authenticated this auth_session (RFC 9449 §10).
+        ...(session.dpopJkt && { dpop_jkt: session.dpopJkt }),
         ...(session.claims && { claims: session.claims }),
         ...(session.codeChallenge && {
           code_challenge: session.codeChallenge,
