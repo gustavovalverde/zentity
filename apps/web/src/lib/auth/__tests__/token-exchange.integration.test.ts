@@ -347,7 +347,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.act).toEqual({ sub: resourceServerClientId });
     });
 
-    it("rejects resource-server DPoP re-binding without matching audience", async () => {
+    it("rejects another client's token outside the resource server's audience", async () => {
       const resourceServerClientId = "installed-resource-server";
       await createTestClient(resourceServerClientId, {
         zentity_protected_resource: APP_AUDIENCE,
@@ -376,7 +376,7 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_dpop_proof");
+      expect(json.error).toBe("invalid_grant");
     });
 
     it("rejects resource-server DPoP re-binding without a proof", async () => {
@@ -405,6 +405,23 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(400);
       expect(json.error).toBe("invalid_dpop_proof");
       expect(json.error_description).toBe("DPoP proof header is required");
+    });
+
+    it("rejects an access token issued to another client", async () => {
+      await createTestClient("other-client");
+      const subjectToken = await mintAccessToken(userId, {
+        azp: "other-client",
+      });
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
     });
 
     it("binds audience to resource parameter", async () => {
@@ -773,6 +790,23 @@ describe("Token Exchange (RFC 8693)", () => {
     });
   });
 
+  describe("id_token audience", () => {
+    it("rejects an id_token issued to another client", async () => {
+      const subjectIdToken = await mintIdToken(userId, "other-client");
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: subjectIdToken,
+        subject_token_type: ID_TOKEN_TYPE,
+        requested_token_type: ACCESS_TOKEN_TYPE,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
+    });
+  });
+
   describe("id_token scope defaults", () => {
     it("defaults to openid when no scope requested", async () => {
       const subjectIdToken = await mintIdToken(userId);
@@ -828,49 +862,45 @@ describe("Token Exchange (RFC 8693)", () => {
 
   describe("act claim nesting", () => {
     it("nests act claims across multiple exchanges", async () => {
-      // First exchange: agent A gets a token with act: { sub: "agent-a" }
-      const agentAId = "agent-a";
-      await createTestClient(agentAId);
-
       const originalToken = await mintAccessToken(userId, {
         scope: "openid identity.name",
       });
 
       const firstExchange = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: agentAId,
+        client_id: TEST_CLIENT_ID,
         subject_token: originalToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
+        audience: MCP_AUDIENCE,
         scope: "openid identity.name",
       });
 
       const firstPayload = await exchangedClaims(
         firstExchange.json.access_token as string
       );
-      expect(firstPayload.act).toEqual({ sub: agentAId });
+      expect(firstPayload.act).toEqual({ sub: TEST_CLIENT_ID });
 
-      // Second exchange must prove possession of agent A's sender-constrained token.
-      const agentBId = "agent-b";
-      await createTestClient(agentBId);
+      // The second hop is the resource server the first token was issued for.
+      const resourceServerClientId = "mcp-resource-server";
+      await createTestClient(resourceServerClientId, {
+        zentity_protected_resource: MCP_AUDIENCE,
+      });
 
-      const { status, json: secondExchange } = await postTokenWithDpop(
-        {
-          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: agentBId,
-          subject_token: firstExchange.json.access_token as string,
-          subject_token_type: ACCESS_TOKEN_TYPE,
-          scope: "openid",
-        },
-        firstExchange.dpopKeyPair
-      );
+      const { status, json: secondExchange } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: resourceServerClientId,
+        subject_token: firstExchange.json.access_token as string,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        scope: "openid",
+      });
 
       expect(status).toBe(200);
       const secondPayload = await exchangedClaims(
         secondExchange.access_token as string
       );
       expect(secondPayload.act).toEqual({
-        sub: agentBId,
-        act: { sub: agentAId },
+        sub: resourceServerClientId,
+        act: { sub: TEST_CLIENT_ID },
       });
     });
     it("reports the actor at introspection of an opaque exchanged token", async () => {
@@ -928,7 +958,7 @@ describe("Token Exchange (RFC 8693)", () => {
       await db
         .insert(oauthAccessTokens)
         .values({
-          act: JSON.stringify({ sub: cibaClientId }),
+          act: JSON.stringify({ sub: "ciba-agent" }),
           authContextId: defaultAuthContextId,
           clientId: cibaClientId,
           confirmation: JSON.stringify({
@@ -947,7 +977,7 @@ describe("Token Exchange (RFC 8693)", () => {
       const { status, json } = await postTokenWithDpop(
         {
           grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-          client_id: TEST_CLIENT_ID,
+          client_id: cibaClientId,
           subject_token: subjectToken,
           subject_token_type: ACCESS_TOKEN_TYPE,
           scope: "openid",
@@ -958,8 +988,8 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       const payload = await exchangedClaims(json.access_token as string);
       expect(payload.act).toEqual({
-        sub: TEST_CLIENT_ID,
-        act: { sub: cibaClientId },
+        sub: cibaClientId,
+        act: { sub: "ciba-agent" },
       });
     });
   });
@@ -984,7 +1014,9 @@ describe("Token Exchange (RFC 8693)", () => {
 
     it("resolves opaque Zentity-audienced tokens at userinfo to the client's pairwise subject", async () => {
       await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId);
+      const subjectToken = await mintAccessToken(userId, {
+        azp: PAIRWISE_CLIENT_ID,
+      });
 
       const { status, json, dpopKeyPair } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
@@ -1025,7 +1057,9 @@ describe("Token Exchange (RFC 8693)", () => {
 
     it("uses pairwise sub in access tokens audienced to a separate resource server", async () => {
       await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId);
+      const subjectToken = await mintAccessToken(userId, {
+        azp: PAIRWISE_CLIENT_ID,
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
@@ -1048,7 +1082,9 @@ describe("Token Exchange (RFC 8693)", () => {
 
     it("uses pairwise sub in id_token output", async () => {
       await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId);
+      const subjectToken = await mintAccessToken(userId, {
+        azp: PAIRWISE_CLIENT_ID,
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,

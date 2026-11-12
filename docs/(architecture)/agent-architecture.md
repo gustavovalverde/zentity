@@ -478,29 +478,23 @@ Key points:
 
 ### Claim narrowing on token exchange
 
-RFC 8693 token exchange has a single output in the agent flow: a downstream access token re-bound to the target audience. Whether the audience is another agent runtime or a non-agent relying party (a merchant, a facilitator, an API) is reflected in which claims survive the exchange, not in which token type is issued.
+RFC 8693 token exchange has a single output in the agent flow: an access token re-bound to the target audience. Only the client the subject token was issued to, or the protected resource it was issued for, may perform the exchange.
 
-When the target audience is itself an agent runtime, the exchanged token retains the full AAP profile (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. When the target audience is a non-agent relying party, those agent control-plane claims are dropped: the exchanged token carries only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
+The exchanged token keeps the AAP profile of the subject token (`agent`, `task`, `capabilities`, `oversight`, `audit`) and adds `delegation` to project the chain. `sub` and `act.sub` are pairwise for the exchanging client. The exchange does not carry the subject token's `authorization_details`.
 
 ```json
 {
   "iss": "https://app.zentity.xyz/api/auth",
-  "aud": "merchant_client_id",
-  "sub": "user_pairwise_sub_for_merchant",
+  "aud": "https://mcp.example.com",
+  "sub": "user_pairwise_sub_for_client",
   "act": {
-    "sub": "agent_pairwise_sub_for_merchant"
+    "sub": "agent_pairwise_sub_for_client"
   },
-  "authorization_details": [
-    {
-      "type": "purchase",
-      "merchant": "Acme",
-      "item": "Widget",
-      "amount": {
-        "value": "29.99",
-        "currency": "USD"
-      }
-    }
-  ],
+  "delegation": {
+    "depth": 1,
+    "max_depth": 1,
+    "parent_jti": "subject_token_jti"
+  },
   "cnf": {
     "jkt": "dpop_key_thumbprint"
   },
@@ -515,12 +509,12 @@ The token response uses the standard RFC 8693 access-token form:
 {
   "access_token": "<token>",
   "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
-  "token_type": "Bearer",
+  "token_type": "DPoP",
   "expires_in": 3600
 }
 ```
 
-The exchange is also the privilege-reduction step: scopes and `authorization_details` are a subset of the subject token's, lifetime is capped by the subject token's remaining lifetime, and `cnf.jkt` is rebound to the caller's DPoP proof.
+The exchange is also the privilege-reduction step: scopes are a subset of the subject token's, and lifetime is capped by the subject token's remaining lifetime. A DPoP-bound subject token's exchange stays bound to the same key, except when the protected resource performs it and binds its own key.
 
 ### Host and runtime proofs
 
@@ -756,7 +750,7 @@ When a tool needs user approval:
 3. it starts a CIBA request
 4. it polls until approval, denial, or timeout
 
-When the tool needs the delegated token rebound to a non-agent relying party (a merchant or facilitator), the downstream client can exchange the CIBA access token through RFC 8693 token exchange. The exchange rebinds the audience and narrows the claim set: agent control-plane sections are dropped, leaving only pairwise `sub`, pairwise `act.sub`, the approved `authorization_details`, and `cnf.jkt`.
+When the tool needs the delegated token rebound to another audience, the client the CIBA access token was issued to can exchange it through RFC 8693 token exchange. So can the protected resource the token was issued for, as registered in its `zentity_protected_resource` client metadata. No other client can. The exchange rebinds the audience and narrows the scopes. The exchanged token carries the user's `sub` for the exchanging client, the agent's `act.sub` derived for that client, the AAP `task`, `oversight`, `audit`, and `capabilities` sections, a new `delegation` entry that points at the source token, and `cnf.jkt`. It does not carry the source token's `authorization_details`.
 
 ### Session expiry
 
@@ -819,7 +813,7 @@ OAuth 2.1, PKCE (RFC 7636), PAR (RFC 9126), and DPoP (RFC 9449) form the transpo
 
 Removing any one of these specs does not change the agent model, only the security properties of the channel. PKCE prevents authorization code interception, PAR moves authorization parameters from the front channel to the back channel, and DPoP sender-constrains tokens so a stolen token is useless without the holder's proof-of-possession key.
 
-DPoP is the one transport spec that crosses into agent territory. When token exchange mints a downstream token from a CIBA access token, DPoP re-binds the issued token to the caller's key. The security property is transport-level, but its effect is agent containment: even a leaked exchanged token is useless without the caller's proof-of-possession key.
+DPoP is the one transport spec that crosses into agent territory. When token exchange mints a downstream token from a DPoP-bound CIBA access token, the exchange request must carry a proof signed with the source token's key, and the issued token stays bound to that key. A client that does not hold that key cannot exchange the token. The one exception is the protected resource the token was issued for: it never holds the caller's key, so it proves its own key and the issued token is bound to that key instead. The security property is transport-level, but its effect is agent containment: even a leaked CIBA token or exchanged token is useless without the bound proof-of-possession key.
 
 ### Structured intent
 

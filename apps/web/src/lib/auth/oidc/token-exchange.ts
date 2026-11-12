@@ -199,8 +199,7 @@ async function isSubjectResourceServer(input: {
 }): Promise<boolean> {
   if (
     input.subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN ||
-    !input.sourceClientId ||
-    input.sourceClientId === input.clientId
+    !input.sourceClientId
   ) {
     return false;
   }
@@ -431,17 +430,29 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       (subjectPayload.client_id as string | undefined) ??
       (typeof subjectPayload.aud === "string" ? subjectPayload.aud : undefined);
 
-    // A DPoP-bound subject token stays bound to its key, so the provider
-    // requires a proof signed with it. The resource server the token was
-    // issued for never holds that key, so it must prove its own instead.
-    const bindsResourceServerKey =
-      subjectDpopJkt !== undefined &&
+    // Only the client a subject token was issued to, or the protected
+    // resource it was issued for, may exchange it.
+    const exchangesAsResourceServer =
+      sourceClientId !== client.clientId &&
       (await isSubjectResourceServer({
         clientId: client.clientId,
         sourceClientId,
         subjectAudience: subjectPayload.aud,
         subjectTokenType,
       }));
+    if (sourceClientId !== client.clientId && !exchangesAsResourceServer) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_grant",
+        error_description:
+          "Subject token was not issued to the requesting client or for its resource",
+      });
+    }
+
+    // A DPoP-bound subject token stays bound to its key, so the provider
+    // requires a proof signed with it. The resource server the token was
+    // issued for never holds that key, so it must prove its own instead.
+    const bindsResourceServerKey =
+      subjectDpopJkt !== undefined && exchangesAsResourceServer;
     const dpopJkt = getConfirmationJkt(
       await provider.resolveConfirmation({
         client,
