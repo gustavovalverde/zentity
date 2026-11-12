@@ -6,7 +6,6 @@ import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 import { vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
-import { DPOP_NONCE_EXPIRES_IN_SECONDS } from "@/lib/auth/oidc/haip/dpop";
 
 const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 
@@ -43,7 +42,12 @@ export function foreignDpopNonce(): Promise<string> {
 
 /** A nonce this server issued longer ago than nonces stay valid. */
 export async function staleDpopNonce(): Promise<string> {
-  const issuedAt = Date.now() - (DPOP_NONCE_EXPIRES_IN_SECONDS + 60) * 1000;
+  const expiresIn = (await auth.$context).getPlugin("oauth-provider")?.options
+    .dpop?.nonce?.expiresIn;
+  if (!expiresIn) {
+    throw new Error("the OAuth provider must set a DPoP nonce lifetime");
+  }
+  const issuedAt = Date.now() - (expiresIn + 60) * 1000;
   const clock = vi.spyOn(Date, "now").mockReturnValue(issuedAt);
   try {
     return await currentDpopNonce();

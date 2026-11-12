@@ -1,16 +1,18 @@
+import type { GenericEndpointContext } from "@better-auth/core";
+import type { BetterAuthPlugin } from "better-auth";
+
 import { createHash, randomBytes } from "node:crypto";
 
 import { ready, server } from "@serenity-kit/opaque";
+import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
 import { generateRandomString } from "better-auth/crypto";
 import { and, eq, lt } from "drizzle-orm";
-import { NextResponse } from "next/server";
 import { getAddress } from "viem";
 import { z } from "zod";
 
 import { env } from "@/env";
 import { computeAcr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { auth } from "@/lib/auth/auth-config";
 import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
@@ -20,10 +22,7 @@ import {
   nonceIdentifier,
   verifyEip712Signature,
 } from "@/lib/auth/eip712/typed-data";
-import {
-  nextDpopNonceHeaders,
-  verifyRequestDpopProof,
-} from "@/lib/auth/oidc/haip/dpop";
+import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
@@ -33,7 +32,6 @@ import {
   LOGIN_REQUEST_LENGTH,
   validateBase64Length,
 } from "@/lib/auth/opaque/validation";
-import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import { db } from "@/lib/db/connection";
 import {
   accounts,
@@ -103,7 +101,7 @@ function errorJson(
   description?: string,
   extra?: Record<string, unknown>
 ) {
-  return NextResponse.json(
+  return Response.json(
     { error, ...(description && { error_description: description }), ...extra },
     { status }
   );
@@ -111,24 +109,15 @@ function errorJson(
 
 /**
  * The thumbprint of the request's verified DPoP proof, which binds the
- * auth_session and the code it yields. A forged, stale, replayed, or
- * mis-targeted proof is refused rather than read for its key. A proof without
- * a current nonce gets `use_dpop_nonce`, and {@link POST} sends the nonce to
- * retry with (RFC 9449 §8).
+ * auth_session and the code it yields. The provider refuses a forged, stale,
+ * replayed, or mis-targeted proof rather than read it for its key, answers a
+ * proof without a current nonce with `use_dpop_nonce` and the nonce to retry
+ * with, and hands a verified proof the next nonce (RFC 9449 §8).
  */
-async function verifyDpopJkt(
-  request: Request
-): Promise<{ jkt: string | undefined } | Response> {
-  const check = await verifyRequestDpopProof({
-    context: await auth.$context,
-    proofJwt: request.headers.get("DPoP"),
-    method: request.method,
-    url: canonicalizeRequestOrigin(request).url,
-  });
-  if (!check.ok) {
-    return errorJson(400, check.code, check.error);
-  }
-  return { jkt: check.jkt };
+async function verifiedDpopJkt(
+  ctx: GenericEndpointContext
+): Promise<string | undefined> {
+  return (await oauthProviderApi(ctx).verifyDpopProof())?.jkt;
 }
 
 function hashCode(code: string): string {
@@ -163,14 +152,11 @@ async function validateChallengeSession(
 }
 
 async function checkDpopContinuity(
-  request: Request,
+  ctx: GenericEndpointContext,
   session: AuthChallengeSession
 ): Promise<Response | null> {
-  const dpop = await verifyDpopJkt(request);
-  if (dpop instanceof Response) {
-    return dpop;
-  }
-  if (session.dpopJkt && dpop.jkt !== session.dpopJkt) {
+  const dpopJkt = await verifiedDpopJkt(ctx);
+  if (session.dpopJkt && dpopJkt !== session.dpopJkt) {
     return errorJson(400, "invalid_session", "DPoP key mismatch");
   }
   return null;
@@ -212,7 +198,7 @@ async function issueEip712Challenge(
     EIP712_APP_NAME
   );
 
-  return NextResponse.json(
+  return Response.json(
     {
       auth_session: authSession,
       challenge_type: "eip712",
@@ -224,24 +210,31 @@ async function issueEip712Challenge(
   );
 }
 
-// ── Route handler ───────────────────────────────────────
+// ── Endpoint ────────────────────────────────────────────
 
-export async function POST(request: Request): Promise<Response> {
-  const response = await handleChallengeRequest(request);
-  if (!request.headers.has("DPoP")) {
-    return response;
-  }
-  // Every answer to a DPoP request, including a use_dpop_nonce refusal,
-  // carries the nonce the client's next proof must use (RFC 9449 §8).
-  const nonceHeaders = await nextDpopNonceHeaders((await auth.$context).secret);
-  for (const [name, value] of Object.entries(nonceHeaders)) {
-    response.headers.set(name, value);
-  }
-  return response;
+/**
+ * The First-Party Apps Authorization Challenge Endpoint
+ * (`draft-ietf-oauth-first-party-apps`), served under the auth base path so
+ * the provider verifies its DPoP proofs and nonces as it does the token
+ * endpoint's.
+ */
+export function authorizeChallengePlugin() {
+  return {
+    id: "zentity-authorize-challenge",
+    endpoints: {
+      authorizeChallenge: createAuthEndpoint(
+        "/oauth2/authorize-challenge",
+        { method: "POST", metadata: { noStore: true } },
+        async (ctx) => await handleChallengeRequest(ctx)
+      ),
+    },
+  } satisfies BetterAuthPlugin;
 }
 
-async function handleChallengeRequest(request: Request): Promise<Response> {
-  const ip = getClientIp(request.headers);
+function handleChallengeRequest(
+  ctx: GenericEndpointContext
+): Response | Promise<Response> {
+  const ip = getClientIp(ctx.headers ?? new Headers());
   const { limited, retryAfter } = fpaLimiter.check(ip);
   if (limited) {
     return rateLimitResponse(retryAfter);
@@ -255,28 +248,25 @@ async function handleChallengeRequest(request: Request): Promise<Response> {
       () => undefined
     );
 
-  const body = (await request.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
-  if (!body) {
+  const body = ctx.body as Record<string, unknown> | undefined;
+  if (!body || typeof body !== "object") {
     return errorJson(400, "invalid_request", "Missing request body");
   }
 
   if (body.auth_session && body.opaque_finish_request) {
-    return handleOpaqueFinish(request, body);
+    return handleOpaqueFinish(ctx, body);
   }
   if (body.auth_session && body.eip712_signature) {
-    return handleEip712Finish(request, body);
+    return handleEip712Finish(ctx, body);
   }
   if (body.auth_session && body.opaque_login_request) {
-    return handleOpaqueStart(request, body);
+    return handleOpaqueStart(ctx, body);
   }
   if (body.client_id && body.identifier) {
-    return handleInitialRequest(request, body);
+    return handleInitialRequest(ctx, body);
   }
   if (body.auth_session) {
-    return handleStepUpReEntry(request, body);
+    return handleStepUpReEntry(ctx, body);
   }
 
   return errorJson(400, "invalid_request", "Unrecognized request format");
@@ -285,7 +275,7 @@ async function handleChallengeRequest(request: Request): Promise<Response> {
 // ── Round 1: Identify user, choose challenge type ───────
 
 async function handleInitialRequest(
-  request: Request,
+  ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
   const parsed = InitialRequestSchema.safeParse(body);
@@ -346,11 +336,7 @@ async function handleInitialRequest(
   }
 
   // The verified DPoP key binds every later round of this auth_session.
-  const dpop = await verifyDpopJkt(request);
-  if (dpop instanceof Response) {
-    return dpop;
-  }
-  const dpopJkt = dpop.jkt;
+  const dpopJkt = await verifiedDpopJkt(ctx);
 
   // Resolve user — by wallet address or email
   const identifier = params.identifier.trim();
@@ -470,7 +456,7 @@ async function handleInitialRequest(
   await ready;
   const serverPublicKey = server.getPublicKey(env.OPAQUE_SERVER_SETUP);
 
-  return NextResponse.json(
+  return Response.json(
     {
       auth_session: authSession,
       challenge_type: "opaque",
@@ -484,7 +470,7 @@ async function handleInitialRequest(
 // ── Round 2: OPAQUE startLogin ──────────────────────────
 
 async function handleOpaqueStart(
-  request: Request,
+  ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
   const parsed = OpaqueStartSchema.safeParse(body);
@@ -502,7 +488,7 @@ async function handleOpaqueStart(
     return errorJson(400, "invalid_session", "Invalid session state");
   }
 
-  const dpopError = await checkDpopContinuity(request, session);
+  const dpopError = await checkDpopContinuity(ctx, session);
   if (dpopError) {
     return dpopError;
   }
@@ -563,13 +549,13 @@ async function handleOpaqueStart(
     .set({ opaqueServerState: encryptedState })
     .where(eq(authChallengeSessions.id, session.id));
 
-  return NextResponse.json({ opaque_login_response: loginResponse });
+  return Response.json({ opaque_login_response: loginResponse });
 }
 
 // ── Round 3: OPAQUE finishLogin + issue auth code ───────
 
 async function handleOpaqueFinish(
-  request: Request,
+  ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
   const parsed = OpaqueFinishSchema.safeParse(body);
@@ -587,7 +573,7 @@ async function handleOpaqueFinish(
     return errorJson(400, "invalid_session", "OPAQUE round 2 not completed");
   }
 
-  const dpopError = await checkDpopContinuity(request, session);
+  const dpopError = await checkDpopContinuity(ctx, session);
   if (dpopError) {
     return dpopError;
   }
@@ -625,13 +611,13 @@ async function handleOpaqueFinish(
     return errorJson(401, "access_denied", "Authentication failed");
   }
 
-  return issueAuthorizationCode(request, session, user.id, auth_session);
+  return issueAuthorizationCode(ctx, session, user.id, auth_session);
 }
 
 // ── EIP-712 Round 2: Verify signature + issue auth code ─
 
 async function handleEip712Finish(
-  request: Request,
+  ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
   const parsed = Eip712FinishSchema.safeParse(body);
@@ -652,13 +638,13 @@ async function handleEip712Finish(
     return errorJson(400, "invalid_session", "EIP-712 round 1 not completed");
   }
 
-  const dpopError = await checkDpopContinuity(request, session);
+  const dpopError = await checkDpopContinuity(ctx, session);
   if (dpopError) {
     return dpopError;
   }
 
   // Parse wallet context from session
-  const ctx = JSON.parse(session.opaqueServerState) as {
+  const wallet = JSON.parse(session.opaqueServerState) as {
     walletAddress: string;
     chainId: number;
     nonce: string;
@@ -669,29 +655,29 @@ async function handleEip712Finish(
   const nonceRow = await db
     .select({ id: verifications.id, value: verifications.value })
     .from(verifications)
-    .where(eq(verifications.identifier, ctx.nonceIdentifier))
+    .where(eq(verifications.identifier, wallet.nonceIdentifier))
     .get();
 
-  if (!nonceRow || nonceRow.value !== ctx.nonce) {
+  if (!nonceRow || nonceRow.value !== wallet.nonce) {
     return errorJson(401, "access_denied", "Nonce expired or already used");
   }
 
   await db
     .delete(verifications)
-    .where(eq(verifications.identifier, ctx.nonceIdentifier));
+    .where(eq(verifications.identifier, wallet.nonceIdentifier));
 
   // Verify signature
   const typedData = buildDefaultTypedData(
-    ctx.walletAddress,
-    ctx.chainId,
-    ctx.nonce,
+    wallet.walletAddress,
+    wallet.chainId,
+    wallet.nonce,
     EIP712_APP_NAME
   );
 
   const valid = await verifyEip712Signature(
     eip712_signature,
     typedData,
-    ctx.walletAddress
+    wallet.walletAddress
   );
   if (!valid) {
     return errorJson(401, "access_denied", "Invalid signature");
@@ -707,20 +693,18 @@ async function handleEip712Finish(
     return errorJson(401, "access_denied", "Authentication failed");
   }
 
-  return issueAuthorizationCode(request, session, user.id, auth_session);
+  return issueAuthorizationCode(ctx, session, user.id, auth_session);
 }
 
 async function resolveExistingBrowserAuth(
-  request: Request,
+  ctx: GenericEndpointContext,
   userId: string
 ): Promise<{
   authContextId: string;
   authTimeMs: number;
   sessionId: string;
 } | null> {
-  const browserSession = await auth.api.getSession({
-    headers: request.headers,
-  });
+  const browserSession = await getSessionFromCtx(ctx);
 
   if (!(browserSession?.user?.id === userId && browserSession.session.id)) {
     return null;
@@ -765,7 +749,7 @@ async function resolveCredentialType(
 }
 
 async function handleStepUpReEntry(
-  request: Request,
+  ctx: GenericEndpointContext,
   body: Record<string, unknown>
 ): Promise<Response> {
   const authSession =
@@ -779,7 +763,7 @@ async function handleStepUpReEntry(
     return errorJson(400, "invalid_session", "Session expired or not found");
   }
 
-  const dpopError = await checkDpopContinuity(request, session);
+  const dpopError = await checkDpopContinuity(ctx, session);
   if (dpopError) {
     return dpopError;
   }
@@ -789,12 +773,7 @@ async function handleStepUpReEntry(
     if (!session.userId) {
       return errorJson(400, "invalid_session", "Invalid session state");
     }
-    return issueAuthorizationCode(
-      request,
-      session,
-      session.userId,
-      authSession
-    );
+    return issueAuthorizationCode(ctx, session, session.userId, authSession);
   }
 
   // Only pending step-up sessions (created without challengeType) continue
@@ -869,7 +848,7 @@ async function handleStepUpReEntry(
   await ready;
   const serverPublicKey = server.getPublicKey(env.OPAQUE_SERVER_SETUP);
 
-  return NextResponse.json(
+  return Response.json(
     {
       auth_session: authSession,
       challenge_type: "opaque",
@@ -883,7 +862,7 @@ async function handleStepUpReEntry(
 // ── Shared: Issue authorization code ────────────────────
 
 async function issueAuthorizationCode(
-  request: Request,
+  ctx: GenericEndpointContext,
   session: AuthChallengeSession,
   userId: string,
   authSession: string
@@ -915,7 +894,7 @@ async function issueAuthorizationCode(
 
   const existingBrowserAuth =
     session.state === "authenticated"
-      ? await resolveExistingBrowserAuth(request, userId)
+      ? await resolveExistingBrowserAuth(ctx, userId)
       : null;
 
   let sessionId: string;
@@ -1017,5 +996,5 @@ async function issueAuthorizationCode(
     })
     .where(eq(authChallengeSessions.id, session.id));
 
-  return NextResponse.json({ authorization_code: code });
+  return Response.json({ authorization_code: code });
 }

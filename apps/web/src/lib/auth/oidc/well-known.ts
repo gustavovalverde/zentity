@@ -48,10 +48,7 @@ export const joinAuthIssuerPath = (issuer: string, path: string): string => {
  */
 export const discoveryMetadataExtension: OAuthProviderExtension = {
   metadata: ({ document }) => ({
-    authorization_challenge_endpoint: new URL(
-      "/api/oauth2/authorize-challenge",
-      document.issuer
-    ).toString(),
+    authorization_challenge_endpoint: `${document.issuer}/oauth2/authorize-challenge`,
     // openid_credential (OID4VCI, via HAIP) and payment_authorization
     // (RFC 9396 payment approvals).
     authorization_details_types_supported: [

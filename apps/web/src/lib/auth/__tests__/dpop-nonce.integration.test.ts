@@ -17,10 +17,6 @@ import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
 import { POST as registerHost } from "@/app/api/auth/agent/host/register/route";
 import { POST as proofOfHuman } from "@/app/api/auth/oauth2/proof-of-human/route";
 import { GET as getValidity } from "@/app/api/auth/oauth2/validity/route";
-import {
-  POST as authorizeChallenge,
-  fpaLimiter,
-} from "@/app/api/oauth2/authorize-challenge/route";
 import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
 import { env } from "@/env";
 import {
@@ -28,6 +24,7 @@ import {
   AGENT_HOST_REGISTER_SCOPE,
 } from "@/lib/agents/session";
 import { auth } from "@/lib/auth/auth-config";
+import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { db } from "@/lib/db/connection";
@@ -54,7 +51,7 @@ const APP_URL = "http://localhost:3000";
 const AUTH_URL = `${APP_URL}/api/auth`;
 const TOKEN_URL = `${AUTH_URL}/oauth2/token`;
 const USERINFO_URL = `${AUTH_URL}/oauth2/userinfo`;
-const CHALLENGE_URL = `${APP_URL}/api/oauth2/authorize-challenge`;
+const CHALLENGE_URL = `${AUTH_URL}/oauth2/authorize-challenge`;
 const HOST_REGISTER_URL = `${AUTH_URL}/agent/host/register`;
 const POH_URL = `${AUTH_URL}/oauth2/proof-of-human`;
 const VALIDITY_URL = `${AUTH_URL}/oauth2/validity`;
@@ -192,7 +189,7 @@ function challengeSender(
   body: Record<string, unknown>
 ): NonceSender {
   return async (nonce) =>
-    authorizeChallenge(
+    auth.handler(
       new Request(CHALLENGE_URL, {
         method: "POST",
         headers: {
@@ -649,7 +646,7 @@ describe("server-provided DPoP nonces", () => {
     });
 
     it("leaves requests without a DPoP proof alone", async () => {
-      const response = await authorizeChallenge(
+      const response = await auth.handler(
         new Request(CHALLENGE_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -3,14 +3,16 @@ import type { Eip712TypedData } from "@/lib/auth/eip712/types";
 import crypto from "node:crypto";
 
 import { client, ready, server } from "@serenity-kit/opaque";
+import { makeSignature } from "better-auth/crypto";
+import { eq } from "drizzle-orm";
 import { decodeJwt } from "jose";
 import { privateKeyToAccount } from "viem/accounts";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { fpaLimiter } from "@/app/api/oauth2/authorize-challenge/route";
 import { env } from "@/env";
 import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
+import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { db } from "@/lib/db/connection";
 import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
@@ -31,7 +33,8 @@ import {
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
 
-const CHALLENGE_URL = "http://localhost:3000/api/oauth2/authorize-challenge";
+const CHALLENGE_URL =
+  "http://localhost:3000/api/auth/oauth2/authorize-challenge";
 const TEST_CLIENT_ID = "fpa-test-client";
 const THIRD_PARTY_CLIENT_ID = "third-party-client";
 const TEST_PASSWORD = "correct-horse-battery-staple";
@@ -139,22 +142,11 @@ async function createUserWithOpaque(
   return { userId, registrationRecord };
 }
 
-function _post(body: Record<string, unknown>) {
-  return fetch(CHALLENGE_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
 async function callChallenge(
   body: Record<string, unknown>,
   headers?: Record<string, string>
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  const { POST: handler } = await import(
-    "@/app/api/oauth2/authorize-challenge/route"
-  );
-  const response = await handler(
+  const response = await auth.handler(
     new Request(CHALLENGE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
@@ -1175,7 +1167,7 @@ describe("Authorization Challenge Endpoint", () => {
       expect((recheck.json.authorization_code as string).length).toBe(32);
     });
 
-    it("uses persisted auth context when browser session payload omits it", async () => {
+    it("reuses the authentication stored for the user's browser session", async () => {
       const userId = await createTestUser({ email: TEST_EMAIL });
       const authSession = crypto.randomUUID();
       const browserSessionId = crypto.randomUUID();
@@ -1189,18 +1181,23 @@ describe("Authorization Challenge Endpoint", () => {
         referenceId: browserSessionId,
       });
 
+      const browserSessionToken = crypto.randomUUID();
       await db
         .insert(sessions)
         .values({
           id: browserSessionId,
           userId,
-          token: crypto.randomUUID(),
+          token: browserSessionToken,
           authContextId: authContext.id,
           expiresAt: new Date(Date.now() + 3_600_000),
           createdAt: new Date(),
           updatedAt: new Date(),
         })
         .run();
+      const signature = await makeSignature(
+        browserSessionToken,
+        env.BETTER_AUTH_SECRET
+      );
 
       await db
         .insert(authChallengeSessions)
@@ -1215,24 +1212,23 @@ describe("Authorization Challenge Endpoint", () => {
         })
         .run();
 
-      const getSessionSpy = vi.spyOn(auth.api, "getSession").mockResolvedValue({
-        user: { id: userId },
-        session: {
-          id: browserSessionId,
-          authContextId: null,
-        },
-      } as unknown as Awaited<ReturnType<typeof auth.api.getSession>>);
+      const { status, json } = await callChallenge(
+        { auth_session: authSession },
+        {
+          cookie: `better-auth.session_token=${browserSessionToken}.${signature}`,
+        }
+      );
 
-      try {
-        const { status, json } = await callChallenge({
-          auth_session: authSession,
-        });
-
-        expect(status).toBe(200);
-        expect(json.authorization_code).toBeTypeOf("string");
-      } finally {
-        getSessionSpy.mockRestore();
-      }
+      expect(status).toBe(200);
+      expect(json.authorization_code).toBeTypeOf("string");
+      const issued = await db
+        .select({
+          resolvedAuthContextId: authChallengeSessions.resolvedAuthContextId,
+        })
+        .from(authChallengeSessions)
+        .where(eq(authChallengeSessions.authSession, authSession))
+        .get();
+      expect(issued?.resolvedAuthContextId).toBe(authContext.id);
     });
 
     it("step-up re-entry returns redirect_to_web without a pushed request for passkey-only user", async () => {
