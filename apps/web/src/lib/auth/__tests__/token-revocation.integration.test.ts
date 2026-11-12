@@ -324,6 +324,7 @@ describe("RFC 7009 token revocation", () => {
 
   it("revokes the owner's opaque access token", async () => {
     const token = await mintOpaqueAccessToken({
+      act: { sub: OWNER.id },
       clientId: OWNER.id,
       exchangeClaims: {},
       expiresAt: new Date(Date.now() + 3_600_000),

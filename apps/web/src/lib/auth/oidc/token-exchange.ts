@@ -748,7 +748,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       );
     }
 
-    const exchangeClaims: Record<string, unknown> = {
+    const exchangeClaims = {
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
         : {}),
@@ -757,6 +757,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     };
     const accessToken = isZentityHostedResource(targetAudience)
       ? await mintOpaqueAccessToken({
+          act: exchangeClaims.act,
           authContextId: subjectSessionId ? undefined : subjectAuth.id,
           clientId: client.clientId,
           dpopJkt,

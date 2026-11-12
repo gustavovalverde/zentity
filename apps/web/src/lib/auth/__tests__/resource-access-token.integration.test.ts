@@ -248,6 +248,7 @@ describe("protected resource access tokens", () => {
   describe("Zentity-hosted endpoints", () => {
     async function mintUserToken(keyPair: DpopKeyPair) {
       return mintOpaqueAccessToken({
+        act: { sub: CLIENT_ID },
         clientId: CLIENT_ID,
         dpopJkt: await jkt(keyPair),
         exchangeClaims: {},
@@ -309,6 +310,7 @@ describe("protected resource access tokens", () => {
   describe("resource challenges", () => {
     async function mintUserToken(keyPair: DpopKeyPair, scopes: string[]) {
       return mintOpaqueAccessToken({
+        act: { sub: CLIENT_ID },
         clientId: CLIENT_ID,
         dpopJkt: await jkt(keyPair),
         exchangeClaims: {},
@@ -413,6 +415,7 @@ describe("protected resource access tokens", () => {
     it("refuses opaque tokens", async () => {
       const keyPair = await createTestDpopKeyPair();
       const token = await mintOpaqueAccessToken({
+        act: { sub: CLIENT_ID },
         clientId: CLIENT_ID,
         dpopJkt: await jkt(keyPair),
         exchangeClaims: {},
