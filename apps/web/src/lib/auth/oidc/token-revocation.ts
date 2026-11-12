@@ -11,6 +11,7 @@ import { APIError } from "better-auth";
 import { decodeJwt } from "jose";
 
 import { isTokenRevoked, verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { invalidAccessToken } from "@/lib/auth/oidc/resource-challenge";
 import { db } from "@/lib/db/connection";
 import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 
@@ -145,15 +146,16 @@ export async function revokedAccessTokenJti(
   return;
 }
 
+/**
+ * The provider does not consult `revoked_token`, so UserInfo refuses a
+ * revoked JWT access token here, before the provider runs.
+ */
 export async function beforeUserInfoRejectRevokedToken(
   ctx: GenericEndpointContext
 ): Promise<void> {
   const authorization = ctx.request?.headers.get("authorization");
   if (authorization && (await revokedAccessTokenJti(authorization))) {
-    throw new APIError("UNAUTHORIZED", {
-      error: "invalid_token",
-      error_description: "access token revoked",
-    });
+    throw invalidAccessToken(ctx.request, "access token revoked");
   }
 }
 

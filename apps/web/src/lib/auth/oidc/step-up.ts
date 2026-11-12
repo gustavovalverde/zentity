@@ -19,10 +19,7 @@ import { APIError, getSessionFromCtx } from "better-auth/api";
 import { eq } from "drizzle-orm";
 
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import {
-  nextDpopNonceHeaders,
-  verifyRequestDpopProof,
-} from "@/lib/auth/oidc/haip/dpop";
+import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
   authChallengeSessions,
@@ -265,32 +262,6 @@ export async function enforceAuthorizeAcr(ctx: any, db: LibSQLDatabase<any>) {
 // CIBA enforcement
 // ---------------------------------------------------------------------------
 
-/**
- * The token request's verified DPoP key, which binds the step-up auth_session.
- * The provider never verifies this proof, because the poll is refused first,
- * so this check asks for a nonce the way the token endpoint does: a proof
- * without a current one gets `use_dpop_nonce` and the nonce to retry with.
- */
-// biome-ignore lint/suspicious/noExplicitAny: middleware context is untyped
-async function verifiedTokenRequestJkt(ctx: any): Promise<string | undefined> {
-  const check = await verifyRequestDpopProof({
-    context: ctx.context,
-    proofJwt: ctx.headers?.get("DPoP"),
-    method: "POST",
-    url: `${ctx.context.baseURL}/oauth2/token`,
-  });
-  if (!check.ok) {
-    throw new APIError(
-      "BAD_REQUEST",
-      { error: check.code, error_description: check.error },
-      check.code === "use_dpop_nonce"
-        ? await nextDpopNonceHeaders(ctx.context.secret)
-        : undefined
-    );
-  }
-  return check.jkt;
-}
-
 /** The CIBA request fields the token-time step-up check reads. */
 export interface CibaStepUpRecord {
   acrValues: string | null;
@@ -337,7 +308,10 @@ export async function enforceCibaTokenAcr(
 
       if (client?.firstParty) {
         const authSession = randomBytes(32).toString("base64url");
-        const dpopJkt = await verifiedTokenRequestJkt(ctx);
+        // The poll is refused here, so the token endpoint never verifies
+        // this proof. The provider API verifies it, nonce included, before
+        // its key binds the auth_session.
+        const dpopJkt = (await oauthProviderApi(ctx).verifyDpopProof())?.jkt;
 
         await db.insert(authChallengeSessions).values({
           authSession,
@@ -352,7 +326,9 @@ export async function enforceCibaTokenAcr(
         });
 
         // The client re-authenticates at the authorization challenge with
-        // the same key, so it gets the nonce for its next proof.
+        // the same key, so it gets the nonce verifyDpopProof set for its next
+        // proof. A before-hook error reaches the client with its own headers
+        // only.
         throw new APIError(
           "FORBIDDEN",
           {
@@ -360,7 +336,7 @@ export async function enforceCibaTokenAcr(
             auth_session: authSession,
             error_description: `User assurance is tier-${assurance.tier}, does not satisfy acr_values: ${record.acrValues}`,
           },
-          dpopJkt ? await nextDpopNonceHeaders(ctx.context.secret) : undefined
+          ctx.responseHeaders
         );
       }
     }

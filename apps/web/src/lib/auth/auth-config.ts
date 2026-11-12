@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
+import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDcqlMatcher,
@@ -77,6 +78,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
+import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
   captureBackchannelExtras,
   cibaApprovalPlugin,
@@ -124,10 +126,7 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
-import {
-  challengeMissingTokenDpopNonce,
-  DPOP_NONCE_EXPIRES_IN_SECONDS,
-} from "@/lib/auth/oidc/haip/dpop";
+import { challengeMissingTokenDpopNonce } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -149,6 +148,10 @@ import {
   pinPaymentRequest,
 } from "@/lib/auth/oidc/payment-mint";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
+import {
+  invalidAccessToken,
+  type ResourceError,
+} from "@/lib/auth/oidc/resource-challenge";
 import {
   enforceAuthorizeAcr,
   enforceCibaTokenAcr,
@@ -266,6 +269,18 @@ function toDisclosureApiError(error: DisclosureBindingError): APIError {
   return error.oauthError === "invalid_grant"
     ? invalidGrantDisclosureError(error.reason)
     : invalidTokenDisclosureError(error.reason);
+}
+
+/**
+ * Refuses the token of a UserInfo request whose identity release no longer
+ * holds. The provider accepted the token, so the refusal carries its own
+ * challenge, in the scheme the request presented the token with.
+ */
+function userInfoReleaseError(reason: string): ResourceError {
+  return invalidAccessToken(
+    tryGetCurrentAuthEndpointContext()?.request,
+    reason
+  );
 }
 
 const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
@@ -1969,11 +1984,7 @@ export const auth = betterAuth({
         return;
       }
       if (ctx.path === "/oauth2/token") {
-        await challengeMissingTokenDpopNonce({
-          proofJwt: ctx.headers?.get("DPoP"),
-          secret: ctx.context.secret,
-          url: `${ctx.context.baseURL}/oauth2/token`,
-        });
+        await challengeMissingTokenDpopNonce(ctx);
         if (ctx.body?.grant_type === CIBA_GRANT_TYPE) {
           await beforeCibaTokenLoadRequest(ctx);
         }
@@ -2095,13 +2106,13 @@ export const auth = betterAuth({
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,
-      // ES256 is the only proof algorithm Zentity clients present. Proofs to the
-      // token and UserInfo endpoints must carry a nonce this server issued
-      // (RFC 9449 §8, §9); Zentity's own DPoP endpoints share its secret and
-      // lifetime, so one nonce serves the whole origin.
+      // ES256 is the only proof algorithm Zentity clients present. Every DPoP
+      // proof sent to this origin must carry a nonce this server issued in the
+      // last 300 seconds (RFC 9449 §8, §9). Zentity's own DPoP endpoints verify
+      // proofs with these settings, so one nonce serves the whole origin.
       dpop: {
         signingAlgorithms: ["ES256"],
-        nonce: { required: true, expiresIn: DPOP_NONCE_EXPIRES_IN_SECONDS },
+        nonce: { required: true, expiresIn: 300 },
       },
       requestUriResolver: createParResolver(),
       pairwiseSecret: env.PAIRWISE_SECRET,
@@ -2135,8 +2146,9 @@ export const auth = betterAuth({
             : {};
         }
         // First-party-app step-up: when the authorization code was issued from
-        // a DPoP-bound auth_session (authorize-challenge route), echo it back
-        // so the FPA client can re-authenticate on a later acr step-up failure.
+        // a DPoP-bound auth_session (authorization challenge endpoint), echo it
+        // back so the FPA client can re-authenticate on a later acr step-up
+        // failure.
         const authSession = (
           verificationValue as Record<string, unknown> | undefined
         )?.authSession;
@@ -2246,7 +2258,7 @@ export const auth = betterAuth({
         let releaseContext: ReleaseContext | null = null;
         if (releaseId) {
           if (!clientId) {
-            throw invalidTokenDisclosureError("release_context_client_missing");
+            throw userInfoReleaseError("release_context_client_missing");
           }
           try {
             releaseContext = await validateReleaseContextForSubject({
@@ -2265,7 +2277,7 @@ export const auth = betterAuth({
                 },
                 error.reason
               );
-              throw toDisclosureApiError(error);
+              throw userInfoReleaseError(error.reason);
             }
             throw error;
           }
@@ -2288,14 +2300,14 @@ export const auth = betterAuth({
 
         if (releaseContext?.expectsIdentityPayload) {
           if (!(payload && clientId)) {
-            throw invalidTokenDisclosureError("identity_payload_missing");
+            throw userInfoReleaseError("identity_payload_missing");
           }
           if (
             payload.meta.clientId !== clientId ||
             (releaseContext.scopeHash &&
               payload.meta.scopeHash !== releaseContext.scopeHash)
           ) {
-            throw invalidTokenDisclosureError("identity_payload_mismatch");
+            throw userInfoReleaseError("identity_payload_mismatch");
           }
         }
 
@@ -2423,6 +2435,7 @@ export const auth = betterAuth({
     cibaApprovalPlugin(cibaApproval),
     tokenExchangePlugin(),
     resourceAccessTokenPlugin(),
+    authorizeChallengePlugin(),
     // Must stay last: forwards Set-Cookie from every prior plugin's after-hook.
     nextCookies(),
   ],

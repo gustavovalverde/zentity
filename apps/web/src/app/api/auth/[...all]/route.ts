@@ -1,7 +1,6 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth } from "@/lib/auth/auth-config";
-import { withUserInfoChallenge } from "@/lib/auth/oidc/resource-challenge";
 import { ensureWalletClientExists } from "@/lib/auth/oidc/wallet-dcr";
 import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 import {
@@ -23,11 +22,7 @@ export async function GET(request: Request) {
   const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
-
-  return withUserInfoChallenge(
-    canonicalRequest,
-    await authGET(canonicalRequest)
-  );
+  return authGET(canonicalRequest);
 }
 
 export async function POST(request: Request) {
@@ -35,8 +30,5 @@ export async function POST(request: Request) {
   const requestContext = resolveRequestContext(canonicalRequest.headers);
   attachRequestContextToSpan(requestContext);
   await ensureOidc4vciWalletClientIfNeeded(canonicalRequest);
-  return withUserInfoChallenge(
-    canonicalRequest,
-    await authPOST(canonicalRequest)
-  );
+  return authPOST(canonicalRequest);
 }

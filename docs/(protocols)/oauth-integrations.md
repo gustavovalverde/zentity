@@ -25,7 +25,7 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `GET /api/auth/oauth2/authorize` | OAuth 2.1 | Authorization request (interactive) |
 | `POST /api/auth/oauth2/bc-authorize` | OIDC CIBA | Backchannel authorization (headless) |
 | `POST /api/auth/oauth2/consent` | OAuth 2.1 | User consent submission |
-| `POST /api/oauth2/authorize-challenge` | draft-ietf-oauth-first-party-apps | First-party app challenge (headless, no redirect) |
+| `POST /api/auth/oauth2/authorize-challenge` | draft-ietf-oauth-first-party-apps | First-party app challenge (headless, no redirect) |
 
 ### Tokens
 
@@ -288,7 +288,7 @@ All token requests require Demonstrating Proof-of-Possession. DPoP binds access 
 3. The server binds the access token to the client's public key via `cnf.jkt` (JWK thumbprint)
 4. When using the access token at a resource endpoint, the client includes a DPoP proof with an `ath` claim (SHA-256 hash of the access token)
 
-**Proof checks**: the token endpoint, userinfo, Zentity's protected resources, and the first-party Authorization Challenge Endpoint verify each proof the same way:
+**Proof checks**: the token endpoint, userinfo, Zentity's protected resources, and the first-party Authorization Challenge Endpoint verify each proof the same way, with the OAuth provider's DPoP settings:
 
 - The signature verifies with the embedded ES256 key, and `typ` is `dpop+jwt`.
 - `htm` and `htu` match the request.
@@ -305,7 +305,7 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 - A failed DPoP proof or binding gets a 401 with `DPoP error="...", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A token without a required scope gets a 403 with `Bearer error="insufficient_scope", scope="..."` naming the scopes to request (RFC 6750 §3.1).
 
-Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`. When a UserInfo 401 carries no challenge, as for a missing token, a revoked token, or a consumed identity release, Zentity adds one by the rules above.
+Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, and a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`. UserInfo also refuses a revoked JWT access token and a consumed identity release, and answers those by the rules above.
 
 #### Server-provided nonces
 
@@ -687,7 +687,7 @@ See [SSI Architecture](<../(architecture)/ssi-architecture.md>) for the complete
   "authorization_endpoint": "https://app.zentity.xyz/api/auth/oauth2/authorize",
   "jwks_uri": "https://app.zentity.xyz/api/auth/oauth2/jwks",
   "backchannel_authentication_endpoint": "https://app.zentity.xyz/api/auth/oauth2/bc-authorize",
-  "authorization_challenge_endpoint": "https://app.zentity.xyz/api/oauth2/authorize-challenge",
+  "authorization_challenge_endpoint": "https://app.zentity.xyz/api/auth/oauth2/authorize-challenge",
   "pushed_authorization_request_endpoint": "https://app.zentity.xyz/api/auth/oauth2/par",
   "require_pushed_authorization_requests": false,
   "grant_types_supported": ["authorization_code", "urn:openid:params:grant-type:ciba", "..."],

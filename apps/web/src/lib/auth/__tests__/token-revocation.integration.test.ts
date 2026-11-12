@@ -165,6 +165,20 @@ async function userInfoStatus(
   return response.status;
 }
 
+/** The status and challenge of a UserInfo request with these headers. */
+async function userInfoRefusal(
+  headers: Record<string, string>
+): Promise<{ challenge: string | null; status: number }> {
+  const response = await auth.handler(
+    new Request(`${AUTH_URL}/oauth2/userinfo`, { headers })
+  );
+  await response.text();
+  return {
+    status: response.status,
+    challenge: response.headers.get("WWW-Authenticate"),
+  };
+}
+
 async function introspectionActive(token: string): Promise<unknown> {
   const response = await auth.handler(
     new Request(`${AUTH_URL}/oauth2/introspect`, {
@@ -301,6 +315,38 @@ describe("RFC 7009 token revocation", () => {
       401
     );
     expect(await introspectionActive(tokens.accessToken)).toBe(false);
+  });
+
+  it("challenges a revoked JWT at UserInfo in the scheme it was presented with", async () => {
+    const tokens = await issueTokens(userId, sessionId, OWNER.id);
+    await revoke({
+      token: tokens.accessToken,
+      token_type_hint: "access_token",
+      ...credentialsFor(OWNER.id),
+    });
+
+    const url = `${AUTH_URL}/oauth2/userinfo`;
+    expect(
+      await userInfoRefusal({
+        authorization: `DPoP ${tokens.accessToken}`,
+        DPoP: await buildDpopProof(
+          tokens.dpopKeyPair,
+          "GET",
+          url,
+          tokens.accessToken
+        ),
+      })
+    ).toEqual({
+      status: 401,
+      challenge:
+        'DPoP error="invalid_token", error_description="access token revoked", algs="ES256"',
+    });
+    expect(
+      await userInfoRefusal({ authorization: `Bearer ${tokens.accessToken}` })
+    ).toEqual({
+      status: 401,
+      challenge: `Bearer error="invalid_token", error_description="access token revoked", resource_metadata="${RESOURCE}/.well-known/oauth-protected-resource"`,
+    });
   });
 
   it("revokes the owner's refresh token", async () => {

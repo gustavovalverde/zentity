@@ -55,10 +55,7 @@ describe("GET /api/auth/oauth2/validity", () => {
 
   it("answers a missing token with a bearer challenge naming the resource metadata", async () => {
     mocks.verifyResourceRequest.mockRejectedValue(
-      new APIError("UNAUTHORIZED", {
-        error: "invalid_token",
-        error_description: "access token required",
-      })
+      new APIError("UNAUTHORIZED", { message: "access token required" })
     );
 
     const response = await GET(makeRequest());
@@ -67,9 +64,7 @@ describe("GET /api/auth/oauth2/validity", () => {
     expect(response.headers.get("WWW-Authenticate")).toBe(
       `Bearer ${RESOURCE_METADATA}`
     );
-    await expect(response.json()).resolves.toMatchObject({
-      error: "invalid_token",
-    });
+    await expect(response.json()).resolves.not.toHaveProperty("error");
   });
 
   it("names the error when a presented token is refused", async () => {

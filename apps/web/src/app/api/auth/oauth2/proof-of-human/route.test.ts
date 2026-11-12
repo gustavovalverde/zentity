@@ -75,6 +75,12 @@ function rejectToken() {
   );
 }
 
+function rejectMissingToken() {
+  mocks.verifyResourceRequest.mockRejectedValue(
+    new APIError("UNAUTHORIZED", { message: "access token required" })
+  );
+}
+
 function makeVerifiedModel(
   overrides: Partial<VerificationReadModel> = {}
 ): VerificationReadModel {
@@ -184,15 +190,14 @@ describe("POST /api/auth/oauth2/proof-of-human", () => {
   });
 
   it("returns 401 for missing authorization header", async () => {
-    rejectToken();
+    rejectMissingToken();
     const response = await POST(makeRequest());
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
       'Bearer resource_metadata="http://localhost:3000/.well-known/oauth-protected-resource"'
     );
-    const body = (await response.json()) as { error: string };
-    expect(body.error).toBe("invalid_token");
+    await expect(response.json()).resolves.not.toHaveProperty("error");
   });
 
   it("returns 401 for malformed authorization header", async () => {

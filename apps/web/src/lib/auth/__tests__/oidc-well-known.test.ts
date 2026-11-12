@@ -149,7 +149,7 @@ describe.each(["openid-configuration", "oauth-authorization-server"] as const)(
 
       expect(metadata).toMatchObject({
         authorization_challenge_endpoint:
-          "http://localhost:3000/api/oauth2/authorize-challenge",
+          "http://localhost:3000/api/auth/oauth2/authorize-challenge",
         poh_endpoint: "http://localhost:3000/api/auth/oauth2/proof-of-human",
         poh_issuer_uri:
           "http://localhost:3000/api/auth/.well-known/proof-of-human",
