@@ -155,6 +155,7 @@ export const oauthAccessTokens = sqliteTable(
     ),
     revoked: integer("revoked", { mode: "timestamp_ms" }),
     confirmation: text("confirmation"),
+    act: text("act"),
     scopes: text("scopes").notNull(),
     exchangeClaims: text("exchange_claims"),
   },

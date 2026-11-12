@@ -208,6 +208,8 @@ sequenceDiagram
 
 **Grant type**: `urn:openid:params:grant-type:ciba`
 
+**Tokens**: every CIBA access token names its actor in `act` (RFC 8693 §4.1): the verified agent session for an agent request, otherwise the client. A refreshed token would no longer name the actor, so the CIBA grant returns no refresh token, even when `offline_access` is granted.
+
 **Registration**: a CIBA client must register `backchannel_token_delivery_mode` as `poll` or `ping`. Registration without a supported delivery mode fails with `invalid_client_metadata`.
 
 **Request encoding**: `POST /oauth2/bc-authorize` accepts only `application/x-www-form-urlencoded` bodies (CIBA Core §7.1). Send `authorization_details` as a JSON-encoded string parameter. A value that is not valid JSON gets `invalid_request`. `binding_message` must be plain text of at most 64 characters, or the request gets `invalid_binding_message`. `truncateBindingMessage` from `@zentity/sdk/protocol` shortens a longer message; shorten it before you show it to the user or hash it into an `Agent-Assertion`.

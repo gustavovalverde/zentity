@@ -839,8 +839,8 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
 
 /**
  * Drains the CIBA token stash after `/oauth2/token`: writes the approval-time
- * authentication context onto the issued access/refresh records (Zentity
- * extension columns the upstream issuance does not set) and persists the agent
+ * authentication context onto the issued access token record (a Zentity
+ * extension column the upstream issuance does not set) and persists the agent
  * snapshot keyed by the minted token's identity. Every CIBA token references
  * the stored auth_req_id hash, set as the request's `referenceId` at approval.
  * The snapshot is keyed by the JWT's jti (the AS owns it) or, for opaque
@@ -854,18 +854,11 @@ async function afterCibaTokenPersist(ctx: HookCtx) {
   const { authReqIdHash } = pending;
 
   if (pending.authContextId) {
-    await Promise.all([
-      db
-        .update(oauthAccessTokens)
-        .set({ authContextId: pending.authContextId })
-        .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
-        .run(),
-      db
-        .update(oauthRefreshTokens)
-        .set({ authContextId: pending.authContextId })
-        .where(eq(oauthRefreshTokens.referenceId, authReqIdHash))
-        .run(),
-    ]);
+    await db
+      .update(oauthAccessTokens)
+      .set({ authContextId: pending.authContextId })
+      .where(eq(oauthAccessTokens.referenceId, authReqIdHash))
+      .run();
   }
 
   const audienceClientId = ctx.body?.client_id as string | undefined;
@@ -1196,31 +1189,23 @@ async function buildAccessTokenDisclosureClaims(
 }
 
 /**
- * Claims a CIBA token carries. The client that started the backchannel request
- * acts for the user, so a CIBA-capable client's tokens name it as `act.sub`,
- * here and at opaque introspection. A token from the CIBA grant also carries
- * the verified agent's AAP claims, whose `act` names the agent instead, and the
+ * Claims a token from the CIBA grant carries besides its actor, which the
+ * grant stamps as `act` itself: the verified agent's other AAP claims and the
  * RFC 9396 authorization details, payment ones re-minted in canonical form.
  */
 async function buildCibaAccessTokenClaims(
   info: OAuthClaimExtensionInput
 ): Promise<Record<string, unknown>> {
-  const isCibaClient = info.client.grantTypes?.includes(CIBA_GRANT_TYPE);
-  if (
-    !isCibaClient ||
-    (info.grantType !== undefined && info.grantType !== CIBA_GRANT_TYPE)
-  ) {
+  if (info.grantType !== CIBA_GRANT_TYPE) {
     return {};
   }
-  const actor = { act: { sub: info.client.clientId } };
-  const pending =
-    info.grantType === CIBA_GRANT_TYPE ? await getPendingCibaToken() : null;
+  const pending = await getPendingCibaToken();
   if (!pending || pending.authReqIdHash !== info.referenceId) {
-    return actor;
+    return {};
   }
+  const { act: _actor, ...agentClaims } = pending.agentClaims ?? {};
   return {
-    ...actor,
-    ...(pending.agentClaims ?? {}),
+    ...agentClaims,
     ...(pending.authorizationDetails
       ? { authorization_details: pending.authorizationDetails }
       : {}),

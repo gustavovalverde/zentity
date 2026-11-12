@@ -20,85 +20,39 @@ import { env } from "@/env";
 /** better-call's APIError, which the provider and core throw. */
 export type ResourceError = ReturnType<typeof createInsufficientScopeError>;
 
-// RFC 6750 §3 limits error_description to printable ASCII without `"` or `\`,
-// and the challenge builder throws on anything else. Core DPoP messages can
-// quote values (`typ must be "dpop+jwt"`).
-const AUTH_PARAM_UNSAFE = /[^\x20-\x21\x23-\x5b\x5d-\x7e]/g;
-const ERROR_CODE = /^[\x20-\x21\x23-\x5b\x5d-\x7e]+$/;
-
 const CHALLENGE_OPTIONS = {
   dpopSigningAlgorithms: HAIP_DPOP_SIGNING_ALGORITHMS,
 };
 
-function challengeDescription(error: ResourceError): string {
-  const body = error.body as { error_description?: unknown } | undefined;
-  const description =
-    typeof body?.error_description === "string"
-      ? body.error_description
-      : error.message;
-  return (
-    description.replaceAll('"', "'").replace(AUTH_PARAM_UNSAFE, "") ||
-    "invalid access token"
-  );
-}
-
-function challengeErrorCode(error: ResourceError): string {
-  const code = (error.body as { error?: unknown } | undefined)?.error;
-  return typeof code === "string" && ERROR_CODE.test(code)
-    ? code
-    : "invalid_token";
-}
-
-/** The scheme the request presented its access token with, if any. */
-function presentedScheme(request: Request): "Bearer" | "DPoP" | null {
+/** Whether the request presented an access token in a supported scheme. */
+function presentsToken(request: Request): boolean {
   const authorization = parseAccessTokenAuthorization(
     request.headers.get("authorization")
   );
-  if (!authorization?.token || authorization.scheme === "Unknown") {
-    return null;
-  }
-  return authorization.scheme;
+  return Boolean(authorization?.token) && authorization?.scheme !== "Unknown";
 }
 
 /**
- * The 401 challenge for a refused token. Better Auth's
- * `createResourceServerChallenge` builds the DPoP challenge for a failed proof
- * and the RFC 9728 pointer otherwise, but leaves out the error code for a
- * presented token. RFC 6750 §3.1 and RFC 9449 §7.1 ask for it, in the scheme
- * the client used, so it is added here. A request that presented no token
- * gets the pointer alone.
+ * The 401 challenge for a refused token, in the scheme the request presented
+ * it with. RFC 6750 §3.1 gives an error code only to a request that presented
+ * a token, so a request without one gets the RFC 9728 pointer alone, even when
+ * the error body names `invalid_token`.
  */
 function unauthorizedChallenge(
   error: ResourceError,
   request: Request
 ): ResourceError {
-  const description = challengeDescription(error);
-  const input = new APIError(
-    "UNAUTHORIZED",
-    { ...error.body, error_description: description },
-    error.headers
-  );
+  const input = presentsToken(request)
+    ? error
+    : new APIError("UNAUTHORIZED", { message: error.message }, error.headers);
   const challenge = createResourceServerChallenge(
     input,
     env.NEXT_PUBLIC_APP_URL,
-    CHALLENGE_OPTIONS
+    { ...CHALLENGE_OPTIONS, request }
   );
-  if (!challenge) {
-    return input;
-  }
-  const headers = new Headers(challenge.headers);
-  const value = headers.get("WWW-Authenticate") ?? "";
-  const scheme = presentedScheme(request);
-  if (scheme && value.startsWith("Bearer ")) {
-    const code = challengeErrorCode(error);
-    headers.set(
-      "WWW-Authenticate",
-      scheme === "DPoP"
-        ? `DPoP error="${code}", error_description="${description}", algs="${HAIP_DPOP_SIGNING_ALGORITHMS.join(" ")}"`
-        : `Bearer error="${code}", error_description="${description}", ${value.slice("Bearer ".length)}`
-    );
-  }
-  return new APIError("UNAUTHORIZED", input.body, headers);
+  return challenge
+    ? new APIError("UNAUTHORIZED", error.body, challenge.headers)
+    : error;
 }
 
 /**
@@ -140,10 +94,9 @@ export function insufficientScope(
 
 /**
  * Adds the token challenge to a UserInfo 401 that carries none. The provider
- * sends one only for an unknown token and for `use_dpop_nonce`; a missing
- * token, other DPoP binding failures, and Zentity's own UserInfo hooks
- * (revoked token, consumed identity release) reach the client without one,
- * which RFC 7235 §3.1 does not allow.
+ * challenges its own refusals, but Zentity's UserInfo hooks (revoked token,
+ * consumed identity release) refuse before it runs, and RFC 7235 §3.1 requires
+ * a challenge on every 401.
  */
 export async function withUserInfoChallenge(
   request: Request,
