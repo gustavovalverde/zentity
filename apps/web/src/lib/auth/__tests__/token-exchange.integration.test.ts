@@ -50,6 +50,7 @@ const APP_AUDIENCE = "http://localhost:3000";
 const CREDENTIAL_AUDIENCE = `${authIssuer}/oidc4vci/credential`;
 const MCP_AUDIENCE = env.MCP_PUBLIC_URL;
 const USERINFO_URL = `${authIssuer}/oauth2/userinfo`;
+const INTROSPECT_URL = `${authIssuer}/oauth2/introspect`;
 const JWT_SHAPE = /^eyJ[^.]*\.[^.]*\.[^.]*$/;
 
 let testKeyPair: Awaited<ReturnType<typeof generateKeyPair>>;
@@ -849,6 +850,50 @@ describe("Token Exchange (RFC 8693)", () => {
         sub: agentBId,
         act: { sub: agentAId },
       });
+    });
+    it("reports the actor at introspection of an opaque exchanged token", async () => {
+      const clientId = "introspecting-exchange-agent";
+      const clientSecret = "introspecting-exchange-secret";
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId,
+          clientSecret: crypto
+            .createHash("sha256")
+            .update(clientSecret)
+            .digest("base64url"),
+          name: clientId,
+          redirectUris: JSON.stringify(["http://localhost/callback"]),
+          grantTypes: JSON.stringify([TOKEN_EXCHANGE_GRANT_TYPE]),
+          tokenEndpointAuthMethod: "client_secret_post",
+        })
+        .run();
+
+      const exchange = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: clientId,
+        client_secret: clientSecret,
+        subject_token: await mintAccessToken(userId),
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        audience: APP_AUDIENCE,
+      });
+      expect(exchange.status).toBe(200);
+      expect(exchange.json.access_token).not.toMatch(JWT_SHAPE);
+
+      const response = await auth.handler(
+        new Request(INTROSPECT_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            token: exchange.json.access_token as string,
+            client_id: clientId,
+            client_secret: clientSecret,
+          }),
+        })
+      );
+      const introspection = (await response.json()) as Record<string, unknown>;
+      expect(introspection.active).toBe(true);
+      expect(introspection.act).toEqual({ sub: clientId });
     });
   });
 

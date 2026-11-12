@@ -248,7 +248,7 @@ describe("CIBA token endpoint", () => {
     );
   });
 
-  it("preserves the access-token binding across refresh-token grants", async () => {
+  it("issues no refresh token, because the token names its actor", async () => {
     const authReqId = await insertCibaRequest({
       userId,
       status: "approved",
@@ -256,36 +256,14 @@ describe("CIBA token endpoint", () => {
       scope: "openid offline_access",
     });
 
-    const initial = await postTokenWithDpop({
+    const { status, json } = await postTokenWithDpop({
       grant_type: CIBA_GRANT_TYPE,
       auth_req_id: authReqId,
       client_id: TEST_CLIENT_ID,
     });
 
-    expect(initial.status).toBe(200);
-    expect(typeof initial.json.refresh_token).toBe("string");
-
-    // The refresh grant must present the same DPoP key the access token is bound
-    // to; reuse the keypair the initial issuance generated.
-    const refreshed = await postTokenWithDpop(
-      {
-        grant_type: "refresh_token",
-        refresh_token: initial.json.refresh_token as string,
-        client_id: TEST_CLIENT_ID,
-      },
-      initial.dpopKeyPair
-    );
-
-    expect(refreshed.status).toBe(200);
-
-    const tokenShape = await inspectCibaAccessToken(
-      refreshed.json.access_token as string,
-      authReqId,
-      userId
-    );
-    if (tokenShape.kind === "jwt") {
-      expect(tokenShape.payload.aud).toContain(TEST_RESOURCE);
-    }
+    expect(status).toBe(200);
+    expect(json).not.toHaveProperty("refresh_token");
   });
 
   it("deletes CIBA request after successful token issuance (replay prevention)", async () => {
@@ -445,6 +423,28 @@ describe("CIBA token endpoint", () => {
       expect(tokenShape.payload.oversight).toBeUndefined();
       expect(tokenShape.payload.audit).toBeUndefined();
       expect(tokenShape.payload.delegation).toBeUndefined();
+    }
+  });
+
+  it("stores the actor on an opaque CIBA token for introspection", async () => {
+    const authReqId = await insertCibaRequest({ userId, status: "approved" });
+
+    const { json } = await postTokenWithDpop({
+      grant_type: CIBA_GRANT_TYPE,
+      auth_req_id: authReqId,
+      client_id: TEST_CLIENT_ID,
+    });
+
+    const tokenShape = await inspectCibaAccessToken(
+      json.access_token as string,
+      authReqId,
+      userId
+    );
+    expect(tokenShape.kind).toBe("opaque");
+    if (tokenShape.kind === "opaque") {
+      expect(JSON.parse(tokenShape.record.act ?? "null")).toEqual({
+        sub: TEST_CLIENT_ID,
+      });
     }
   });
 });

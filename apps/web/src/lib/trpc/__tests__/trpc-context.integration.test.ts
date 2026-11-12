@@ -49,6 +49,7 @@ describe("tRPC context", () => {
       .values({ clientId: "opaque-client", redirectUris: "[]" })
       .run();
     const token = await mintOpaqueAccessToken({
+      act: { sub: "opaque-client" },
       clientId: "opaque-client",
       exchangeClaims: {},
       expiresAt: new Date(Date.now() + 3_600_000),

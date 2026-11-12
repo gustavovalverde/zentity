@@ -71,6 +71,7 @@ export async function loadOpaqueAccessTokenExtensions(
  * kept server-side.
  */
 export async function mintOpaqueAccessToken(input: {
+  act: object;
   authContextId?: string | undefined;
   clientId: string;
   dpopJkt?: string | undefined;
@@ -96,6 +97,7 @@ export async function mintOpaqueAccessToken(input: {
       confirmation: input.dpopJkt
         ? JSON.stringify({ jkt: input.dpopJkt })
         : null,
+      act: JSON.stringify(input.act),
       exchangeClaims: JSON.stringify(input.exchangeClaims),
     })
     .run();

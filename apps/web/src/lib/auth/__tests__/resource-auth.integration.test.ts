@@ -56,6 +56,7 @@ describe("requireBootstrapAccessToken", () => {
     overrides: Partial<Parameters<typeof mintOpaqueAccessToken>[0]> = {}
   ) {
     return mintOpaqueAccessToken({
+      act: { sub: CLIENT_ID },
       clientId: CLIENT_ID,
       dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
       exchangeClaims: { zentity_token_use: "agent_bootstrap" },

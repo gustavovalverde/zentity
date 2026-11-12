@@ -307,6 +307,7 @@ describe("server-provided DPoP nonces", () => {
     }
   ): Promise<string> {
     return mintOpaqueAccessToken({
+      act: { sub: input.clientId ?? CODE_CLIENT_ID },
       authContextId,
       clientId: input.clientId ?? CODE_CLIENT_ID,
       dpopJkt: await calculateJwkThumbprint(keyPair.jwk),
