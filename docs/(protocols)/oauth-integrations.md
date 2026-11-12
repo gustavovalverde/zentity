@@ -259,17 +259,21 @@ One active use of token exchange is agent bootstrap. A client first receives a p
 | Access token | ID token | Obtain an OpenID assertion for a downstream service |
 | ID token | Access token | Convert identity assertion to an access credential |
 
-**Scope attenuation:** The requested scope must be a subset of the source token's scope. Requesting scopes beyond what the source token carries is rejected. The ID token branch defaults to `["openid"]` regardless of source token scopes.
+**Who may exchange:** Only the client a source token was issued to may exchange it, with one exception. The protected resource an access token was issued for, as registered in its `zentity_protected_resource` client metadata, may exchange a JWT access token whose audience names that resource. Any other client gets `invalid_grant`. An ID token can only be exchanged by the client it was issued to.
 
-**DPoP passthrough:** If the source token is DPoP-bound, the exchanged token inherits the same sender constraint.
+**Scope attenuation:** The requested scope must be a subset of the source token's scope, and requesting scopes beyond it is rejected. The one exception is agent bootstrap: an installed agent client exchanging its own login token may request only agent bootstrap scopes, even when the login token lacks them. The ID token branch defaults to `["openid"]` regardless of source token scopes.
 
-**Delegation profile:** Exchanged agent-backed access tokens keep the standard nested `act` chain for OAuth compatibility and add AAP `delegation` metadata. The current deployment supports single-server lineage on exchanged access tokens, with `delegation.depth = 1` and `delegation.parent_jti = <source token jti>` on the first exchange. Purchase authorization artifacts omit `delegation` because discovery advertises `delegation_chains: false`; a deployment that advertises `delegation_chains: true` would need to preserve the projected `delegation` lineage on those artifacts as well.
+**DPoP binding:** If the source token is DPoP-bound, the exchange request must carry a DPoP proof signed with the same key, and the exchanged token stays bound to that key. A missing proof or a proof with another key gets `invalid_dpop_proof`. The exception is the protected resource the source token was issued for, as registered in its `zentity_protected_resource` client metadata. It never holds the caller's key, so it proves its own key instead and the exchanged token is bound to that key.
+
+**Actor:** Every exchanged access token names its actor in `act`. For an agent-backed source token, the actor is the agent session, with `act.sub` derived for the exchanging client. Otherwise it is the exchanging client, with the source token's `act` nested under it. An opaque exchanged token keeps `act` in the provider's token record, so introspection returns it, as it does for CIBA tokens.
+
+**Delegation profile:** Exchanged agent-backed access tokens add AAP `delegation` metadata. The current deployment supports single-server lineage on exchanged access tokens, with `delegation.depth = 1` and `delegation.parent_jti = <source token jti>` on the first exchange. Purchase authorization artifacts omit `delegation` because discovery advertises `delegation_chains: false`; a deployment that advertises `delegation_chains: true` would need to preserve the projected `delegation` lineage on those artifacts as well.
 
 **`at_hash` in ID token exchanges:** When the source token is an access token and the output type is an ID token, the response includes an `at_hash` claim, computed as the left half of SHA-256 of the access token (base64url-encoded), following the same algorithm as standard OIDC at_hash computation and using the signing algorithm's hash function.
 
 **`resource`/`audience` parameter:** The `resource` parameter (RFC 8707) specifies the intended audience for the exchanged token. Precedence: `resource` > `audience` > issuer URI.
 
-**Bootstrap exchange:** When the source token is a login token used for agent bootstrap, the exchange is scope-narrowing rather than delegation-heavy. The output token is DPoP-bound and audience-bound to Zentity's agent control plane, and it should not be reused for unrelated downstream APIs.
+**Bootstrap exchange:** When the source token is a login token used for agent bootstrap, the exchanging client must be the installed agent client the login token was issued to. The output token carries only the agent bootstrap scopes, which replace the login token's scopes rather than narrowing them. It is DPoP-bound and audience-bound to Zentity's agent control plane, and it should not be reused for unrelated downstream APIs.
 
 ---
 

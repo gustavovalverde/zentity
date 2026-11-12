@@ -11,6 +11,7 @@ import {
 } from "@better-auth/core/oauth2";
 import {
   extendOAuthProvider,
+  type OAuthActorClaim,
   type OAuthExtensionGrantHandler,
   type OAuthExtensionGrantHandlerInput,
 } from "@better-auth/oauth-provider";
@@ -186,33 +187,31 @@ async function loadClientResourceAudience(
   return resolveClientResourceAudience(row?.metadata);
 }
 
-function canRebindDpopForResourceServer(input: {
+/**
+ * Whether the requesting client is the protected resource another client's
+ * access token was issued for, by the resource it registered.
+ */
+async function isSubjectResourceServer(input: {
   clientId: string;
-  clientResourceAudience: string | undefined;
-  requestDpopJkt: string | undefined;
   sourceClientId: string | undefined;
   subjectAudience: unknown;
   subjectTokenType: string;
-}): boolean {
+}): Promise<boolean> {
   if (
     input.subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN ||
-    !input.requestDpopJkt ||
-    !input.sourceClientId ||
-    input.sourceClientId === input.clientId
+    !input.sourceClientId
   ) {
     return false;
   }
 
-  if (
-    !(
-      input.clientResourceAudience &&
-      tokenExchangeAudiences.includes(input.clientResourceAudience)
-    )
-  ) {
-    return false;
-  }
-
-  return audienceIncludes(input.subjectAudience, input.clientResourceAudience);
+  const clientResourceAudience = await loadClientResourceAudience(
+    input.clientId
+  );
+  return (
+    clientResourceAudience !== undefined &&
+    tokenExchangeAudiences.includes(clientResourceAudience) &&
+    audienceIncludes(input.subjectAudience, clientResourceAudience)
+  );
 }
 
 /**
@@ -333,17 +332,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       requireCredentials: false,
     });
     const client = authenticated.client;
-    // The provider verifies the request's DPoP proof against the token
-    // endpoint (method, URL, age, single-use jti) before its key is trusted.
-    const requestDpopJkt = getConfirmationJkt(
-      await provider.resolveConfirmation({
-        client,
-        scopes: [],
-        ...(authenticated.confirmation
-          ? { confirmation: authenticated.confirmation }
-          : {}),
-      })
-    );
 
     // Verify the subject token JWT (must be issued by this AS)
     let subjectPayload: Record<string, unknown>;
@@ -388,6 +376,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
               ? { [AUTHENTICATION_CONTEXT_CLAIM]: extensions.authContextId }
               : {}),
             ...(referenceId ? { jti: referenceId } : {}),
+            ...(verified.act ? { act: verified.act } : {}),
             ...(extensions?.exchangeClaims ?? {}),
             ...(tokenSnapshot?.claims ?? {}),
           };
@@ -441,27 +430,45 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       (subjectPayload.client_id as string | undefined) ??
       (typeof subjectPayload.aud === "string" ? subjectPayload.aud : undefined);
 
-    const dpopProofMatchesSubject =
-      !subjectDpopJkt || subjectDpopJkt === requestDpopJkt;
-    const clientResourceAudience = await loadClientResourceAudience(
-      client.clientId
-    );
-    if (
-      subjectDpopJkt &&
-      !dpopProofMatchesSubject &&
-      !canRebindDpopForResourceServer({
+    // Only the client a subject token was issued to, or the protected
+    // resource it was issued for, may exchange it.
+    const exchangesAsResourceServer =
+      sourceClientId !== client.clientId &&
+      (await isSubjectResourceServer({
         clientId: client.clientId,
-        clientResourceAudience,
-        requestDpopJkt,
         sourceClientId,
         subjectAudience: subjectPayload.aud,
         subjectTokenType,
-      })
-    ) {
+      }));
+    if (sourceClientId !== client.clientId && !exchangesAsResourceServer) {
       throw new APIError("BAD_REQUEST", {
         error: "invalid_grant",
         error_description:
-          "Subject token DPoP binding does not match exchange request",
+          "Subject token was not issued to the requesting client or for its resource",
+      });
+    }
+
+    // A DPoP-bound subject token stays bound to its key, so the provider
+    // requires a proof signed with it. The resource server the token was
+    // issued for never holds that key, so it must prove its own instead.
+    const bindsResourceServerKey =
+      subjectDpopJkt !== undefined && exchangesAsResourceServer;
+    const dpopJkt = getConfirmationJkt(
+      await provider.resolveConfirmation({
+        client,
+        scopes: [],
+        ...(authenticated.confirmation
+          ? { confirmation: authenticated.confirmation }
+          : {}),
+        ...(subjectDpopJkt && !bindsResourceServerKey
+          ? { expectedJkt: subjectDpopJkt }
+          : {}),
+      })
+    );
+    if (subjectDpopJkt && !dpopJkt) {
+      throw new APIError("BAD_REQUEST", {
+        error: "invalid_dpop_proof",
+        error_description: "DPoP proof header is required",
       });
     }
 
@@ -547,9 +554,9 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     }
 
     // Build act claim with nesting (RFC 8693 §4.4)
-    const actClaim: Record<string, unknown> = { sub: client.clientId };
+    const actClaim: OAuthActorClaim = { sub: client.clientId };
     if (subjectPayload.act && typeof subjectPayload.act === "object") {
-      actClaim.act = subjectPayload.act;
+      actClaim.act = subjectPayload.act as OAuthActorClaim;
     }
 
     const parentAccessTokenClaims = getAapClaimsFromPayload(subjectPayload);
@@ -604,7 +611,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
     const jti = crypto.randomUUID();
-    const dpopJkt = requestDpopJkt;
 
     // Resolve target audience: resource (RFC 8707) > audience (RFC 8693) > issuer
     const targetAudience = resolveTargetAudience(resource, audienceParam);
@@ -748,16 +754,19 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       );
     }
 
-    const exchangeClaims = {
+    // An agent-backed token names the agent session as its actor.
+    const { act: agentActor, ...agentClaims } =
+      exchangedAccessTokenClaims ?? {};
+    const act: OAuthActorClaim = agentActor ? { ...agentActor } : actClaim;
+    const exchangeClaims: Record<string, unknown> = {
       ...(includesBootstrapScope
         ? { zentity_token_use: AGENT_BOOTSTRAP_TOKEN_USE }
         : {}),
-      act: actClaim,
-      ...(exchangedAccessTokenClaims ?? {}),
+      ...agentClaims,
     };
     const accessToken = isZentityHostedResource(targetAudience)
       ? await mintOpaqueAccessToken({
-          act: exchangeClaims.act,
+          act,
           authContextId: subjectSessionId ? undefined : subjectAuth.id,
           clientId: client.clientId,
           dpopJkt,
@@ -783,6 +792,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
               ? {}
               : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
             ...exchangeClaims,
+            act,
             ...(dpopJkt ? { cnf: { jkt: dpopJkt } } : {}),
           },
           { typ: "at+jwt" }
