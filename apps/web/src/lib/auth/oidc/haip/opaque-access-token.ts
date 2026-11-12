@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { OAuthActorClaim } from "@better-auth/oauth-provider";
+
 import { createHash, randomBytes } from "node:crypto";
 
 import { eq } from "drizzle-orm";
@@ -10,9 +12,9 @@ import { oauthAccessTokens } from "@/lib/db/schema/oauth-provider";
 /**
  * Zentity's opaque access tokens live in the OAuth provider's token store, so
  * the provider validates, introspects, and revokes them like natively issued
- * ones. Zentity keeps two extension columns the provider never reads: the
- * claims a token exchange would otherwise put in a JWT, and the
- * authentication context of a token issued without a session.
+ * ones, `act` included. Zentity keeps two extension columns the provider never
+ * reads: the other claims a token exchange would otherwise put in a JWT, and
+ * the authentication context of a token issued without a session.
  */
 
 interface OpaqueAccessTokenExtensions {
@@ -68,10 +70,10 @@ export async function loadOpaqueAccessTokenExtensions(
  * Mints an opaque access token in the OAuth provider's token store, so
  * userinfo, introspection, and Zentity's resource servers resolve it like a
  * natively issued one. Claims the token would otherwise carry in a JWT are
- * kept server-side.
+ * kept server-side, `act` in the provider's own column.
  */
 export async function mintOpaqueAccessToken(input: {
-  act: object;
+  act?: OAuthActorClaim | undefined;
   authContextId?: string | undefined;
   clientId: string;
   dpopJkt?: string | undefined;
@@ -97,7 +99,7 @@ export async function mintOpaqueAccessToken(input: {
       confirmation: input.dpopJkt
         ? JSON.stringify({ jkt: input.dpopJkt })
         : null,
-      act: JSON.stringify(input.act),
+      act: input.act ? JSON.stringify(input.act) : null,
       exchangeClaims: JSON.stringify(input.exchangeClaims),
     })
     .run();

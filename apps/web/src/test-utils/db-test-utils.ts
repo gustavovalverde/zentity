@@ -296,6 +296,7 @@ export async function findStoredOpaqueAccessToken(token: string) {
   const exchangeClaims = parseJson(row.exchangeClaims);
   return {
     ...row,
+    act: parseJson(row.act),
     dpopJkt: getConfirmationJkt(parseJson(row.confirmation)) ?? null,
     exchangeClaims:
       exchangeClaims && typeof exchangeClaims === "object"

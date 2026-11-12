@@ -28,6 +28,7 @@ import { sessions } from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
   jwks as jwksTable,
+  oauthAccessTokens,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
@@ -177,6 +178,7 @@ async function exchangedClaims(
     sub: row.userId,
     scope: row.scopes.join(" "),
     jti: row.referenceId,
+    ...(row.act ? { act: row.act } : {}),
     ...(row.dpopJkt ? { cnf: { jkt: row.dpopJkt } } : {}),
   };
 }
@@ -285,10 +287,7 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-      expect(json.error_description).toBe(
-        "Subject token DPoP binding does not match exchange request"
-      );
+      expect(json.error).toBe("invalid_dpop_proof");
     });
 
     it("rejects JWT access-token subject when DPoP proof is missing", async () => {
@@ -307,10 +306,8 @@ describe("Token Exchange (RFC 8693)", () => {
       });
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-      expect(json.error_description).toBe(
-        "Subject token DPoP binding does not match exchange request"
-      );
+      expect(json.error).toBe("invalid_dpop_proof");
+      expect(json.error_description).toBe("DPoP proof header is required");
     });
 
     it("allows a resource server to re-bind a DPoP-bound subject token", async () => {
@@ -379,10 +376,35 @@ describe("Token Exchange (RFC 8693)", () => {
       );
 
       expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-      expect(json.error_description).toBe(
-        "Subject token DPoP binding does not match exchange request"
-      );
+      expect(json.error).toBe("invalid_dpop_proof");
+    });
+
+    it("rejects resource-server DPoP re-binding without a proof", async () => {
+      const resourceServerClientId = "installed-resource-server";
+      await createTestClient(resourceServerClientId, {
+        zentity_protected_resource: APP_AUDIENCE,
+      });
+      await createTestClient("upstream-client");
+
+      const callerKeyPair = await createTestDpopKeyPair();
+      const subjectToken = await mintAccessToken(userId, {
+        aud: APP_AUDIENCE,
+        azp: "upstream-client",
+        dpopJkt: await calculateJwkThumbprint(callerKeyPair.jwk),
+        scope: "openid identity.name",
+      });
+
+      const { status, json } = await postTokenWithoutDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: resourceServerClientId,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        scope: "openid",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_dpop_proof");
+      expect(json.error_description).toBe("DPoP proof header is required");
     });
 
     it("binds audience to resource parameter", async () => {
@@ -894,6 +916,51 @@ describe("Token Exchange (RFC 8693)", () => {
       const introspection = (await response.json()) as Record<string, unknown>;
       expect(introspection.active).toBe(true);
       expect(introspection.act).toEqual({ sub: clientId });
+    });
+
+    it("nests the actor the provider stored on an opaque subject token", async () => {
+      // A CIBA token, for example, names its actor only in the provider's
+      // own act column.
+      const cibaClientId = "ciba-client";
+      await createTestClient(cibaClientId);
+      const dpopKeyPair = await createTestDpopKeyPair();
+      const subjectToken = crypto.randomBytes(32).toString("base64url");
+      await db
+        .insert(oauthAccessTokens)
+        .values({
+          act: JSON.stringify({ sub: cibaClientId }),
+          authContextId: defaultAuthContextId,
+          clientId: cibaClientId,
+          confirmation: JSON.stringify({
+            jkt: await calculateJwkThumbprint(dpopKeyPair.jwk),
+          }),
+          expiresAt: new Date(Date.now() + 3_600_000),
+          scopes: JSON.stringify(["openid"]),
+          token: crypto
+            .createHash("sha256")
+            .update(subjectToken)
+            .digest("base64url"),
+          userId,
+        })
+        .run();
+
+      const { status, json } = await postTokenWithDpop(
+        {
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+          scope: "openid",
+        },
+        dpopKeyPair
+      );
+
+      expect(status).toBe(200);
+      const payload = await exchangedClaims(json.access_token as string);
+      expect(payload.act).toEqual({
+        sub: TEST_CLIENT_ID,
+        act: { sub: cibaClientId },
+      });
     });
   });
 

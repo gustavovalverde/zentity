@@ -442,7 +442,7 @@ describe("CIBA token endpoint", () => {
     );
     expect(tokenShape.kind).toBe("opaque");
     if (tokenShape.kind === "opaque") {
-      expect(JSON.parse(tokenShape.record.act ?? "null")).toEqual({
+      expect(tokenShape.record.act).toEqual({
         sub: TEST_CLIENT_ID,
       });
     }
