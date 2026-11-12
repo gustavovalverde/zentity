@@ -925,7 +925,7 @@ describe("Token Exchange (RFC 8693)", () => {
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: clientId,
         client_secret: clientSecret,
-        subject_token: await mintAccessToken(userId),
+        subject_token: await mintAccessToken(userId, { azp: clientId }),
         subject_token_type: ACCESS_TOKEN_TYPE,
         audience: APP_AUDIENCE,
       });
