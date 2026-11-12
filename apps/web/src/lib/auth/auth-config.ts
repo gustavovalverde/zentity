@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
+import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDcqlMatcher,
@@ -148,6 +149,10 @@ import {
 } from "@/lib/auth/oidc/payment-mint";
 import { resourceAccessTokenPlugin } from "@/lib/auth/oidc/resource-access-token";
 import {
+  invalidAccessToken,
+  type ResourceError,
+} from "@/lib/auth/oidc/resource-challenge";
+import {
   enforceAuthorizeAcr,
   enforceCibaTokenAcr,
 } from "@/lib/auth/oidc/step-up";
@@ -264,6 +269,18 @@ function toDisclosureApiError(error: DisclosureBindingError): APIError {
   return error.oauthError === "invalid_grant"
     ? invalidGrantDisclosureError(error.reason)
     : invalidTokenDisclosureError(error.reason);
+}
+
+/**
+ * Refuses the token of a UserInfo request whose identity release no longer
+ * holds. The provider accepted the token, so the refusal carries its own
+ * challenge, in the scheme the request presented the token with.
+ */
+function userInfoReleaseError(reason: string): ResourceError {
+  return invalidAccessToken(
+    tryGetCurrentAuthEndpointContext()?.request,
+    reason
+  );
 }
 
 const resolveLastLoginMethod = (ctx: { path?: string }): LoginMethod | null => {
@@ -2241,7 +2258,7 @@ export const auth = betterAuth({
         let releaseContext: ReleaseContext | null = null;
         if (releaseId) {
           if (!clientId) {
-            throw invalidTokenDisclosureError("release_context_client_missing");
+            throw userInfoReleaseError("release_context_client_missing");
           }
           try {
             releaseContext = await validateReleaseContextForSubject({
@@ -2260,7 +2277,7 @@ export const auth = betterAuth({
                 },
                 error.reason
               );
-              throw toDisclosureApiError(error);
+              throw userInfoReleaseError(error.reason);
             }
             throw error;
           }
@@ -2283,14 +2300,14 @@ export const auth = betterAuth({
 
         if (releaseContext?.expectsIdentityPayload) {
           if (!(payload && clientId)) {
-            throw invalidTokenDisclosureError("identity_payload_missing");
+            throw userInfoReleaseError("identity_payload_missing");
           }
           if (
             payload.meta.clientId !== clientId ||
             (releaseContext.scopeHash &&
               payload.meta.scopeHash !== releaseContext.scopeHash)
           ) {
-            throw invalidTokenDisclosureError("identity_payload_mismatch");
+            throw userInfoReleaseError("identity_payload_mismatch");
           }
         }
 

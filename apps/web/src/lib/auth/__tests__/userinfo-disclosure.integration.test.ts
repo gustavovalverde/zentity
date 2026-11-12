@@ -318,6 +318,9 @@ describe("userinfo disclosure binding", () => {
     const secondBody = await parseHandlerJson(secondUserInfo);
     expect(secondUserInfo.status).toBe(401);
     expect(secondBody.error).toBe("invalid_token");
+    expect(secondUserInfo.headers.get("WWW-Authenticate")).toBe(
+      'DPoP error="invalid_token", error_description="identity_payload_missing", algs="ES256"'
+    );
   });
 
   it("delivers OAuth authorization-code identity payloads without public release claims", async () => {

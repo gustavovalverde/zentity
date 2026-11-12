@@ -66,6 +66,11 @@ function invalidToken(description: string): APIError {
   });
 }
 
+/** RFC 6750 §3.1: a request without credentials gets no error code. */
+function missingToken(): APIError {
+  return new APIError("UNAUTHORIZED", { message: "access token required" });
+}
+
 /** The checks the provider does not make for Zentity-signed JWTs. */
 export async function isZentityAccessToken(
   token: string,
@@ -105,7 +110,7 @@ export function resourceAccessTokenPlugin() {
             ctx.body.authorization
           );
           if (!authorization?.token || authorization.scheme === "Unknown") {
-            throw invalidToken("access token required");
+            throw missingToken();
           }
           const provider = oauthProviderApi(ctx);
           const payload = await provider.requireActiveAccessToken(

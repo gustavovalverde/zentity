@@ -10,7 +10,7 @@ import {
   DPOP_NONCE_HEADER,
   getDpopJktFromPayload,
 } from "@better-auth/core/oauth2";
-import { APIError, isAPIError } from "better-auth/api";
+import { isAPIError } from "better-auth/api";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth/auth-config";
@@ -18,6 +18,7 @@ import { canonicalizeRequestOrigin } from "@/lib/auth/origin";
 
 import { resolveSubForClientId } from "./pairwise";
 import {
+  invalidAccessToken,
   type ResourceError,
   withResourceChallenge,
 } from "./resource-challenge";
@@ -31,20 +32,6 @@ import {
 export type ResourceRequestResult =
   | ({ ok: true } & VerifiedResourceRequest)
   | { error: ResourceError; ok: false };
-
-/** Refuses the access token the request presented. */
-export function invalidAccessToken(
-  request: Request,
-  description: string
-): ResourceError {
-  return withResourceChallenge(
-    new APIError("UNAUTHORIZED", {
-      error: "invalid_token",
-      error_description: description,
-    }),
-    request
-  );
-}
 
 export function resourceErrorResponse(error: ResourceError): NextResponse {
   return NextResponse.json(error.body ?? { error: error.message }, {

@@ -8,9 +8,11 @@ import { NextResponse } from "next/server";
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
-import { insufficientScope } from "@/lib/auth/oidc/resource-challenge";
 import {
+  insufficientScope,
   invalidAccessToken,
+} from "@/lib/auth/oidc/resource-challenge";
+import {
   resourceErrorResponse,
   tokenScopes,
   verifyResourceRequest,

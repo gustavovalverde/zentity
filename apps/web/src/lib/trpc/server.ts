@@ -24,8 +24,10 @@ import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
 import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
   invalidAccessToken,
-  verifyResourceRequest,
-} from "@/lib/auth/oidc/resource-principal";
+  missingAccessToken,
+  type ResourceError,
+} from "@/lib/auth/oidc/resource-challenge";
+import { verifyResourceRequest } from "@/lib/auth/oidc/resource-principal";
 import { db } from "@/lib/db/connection";
 import { sessions, users } from "@/lib/db/schema/auth";
 import { logError, logWarn } from "@/lib/logging/error-logger";
@@ -66,13 +68,10 @@ interface ResolvedAuthSession {
   session: Session | null;
 }
 
-function refusedOAuthSession(
-  req: Request,
-  description: string
-): ResolvedAuthSession {
+function refusedOAuthSession(error: ResourceError): ResolvedAuthSession {
   return {
     authContext: null,
-    challenge: new Headers(invalidAccessToken(req, description).headers),
+    challenge: new Headers(error.headers),
     session: null,
   };
 }
@@ -131,23 +130,18 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (!req.headers.get("authorization")) {
     // Points an OAuth client probing without a token at the resource
     // metadata (RFC 9728 §5). Browsers ignore Bearer challenges.
-    return refusedOAuthSession(req, "access token required");
+    return refusedOAuthSession(missingAccessToken());
   }
 
   const verified = await verifyResourceRequest(req);
   if (!verified.ok) {
-    return {
-      session: null,
-      authContext: null,
-      challenge: new Headers(verified.error.headers),
-    };
+    return refusedOAuthSession(verified.error);
   }
   const userId =
     typeof verified.payload.sub === "string" ? verified.payload.sub : undefined;
   if (!(verified.format === "opaque" && userId)) {
     return refusedOAuthSession(
-      req,
-      "access token is not valid for this resource"
+      invalidAccessToken(req, "access token is not valid for this resource")
     );
   }
 
@@ -162,7 +156,9 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   if (sessionId) {
     const session = await loadPersistedSession(sessionId);
     if (!(session && authContext)) {
-      return refusedOAuthSession(req, "access token session has ended");
+      return refusedOAuthSession(
+        invalidAccessToken(req, "access token session has ended")
+      );
     }
     return {
       session,
@@ -173,7 +169,9 @@ async function resolveOAuthSession(req: Request): Promise<ResolvedAuthSession> {
   }
 
   if (!authContext) {
-    return refusedOAuthSession(req, "access token session has ended");
+    return refusedOAuthSession(
+      invalidAccessToken(req, "access token session has ended")
+    );
   }
 
   return {

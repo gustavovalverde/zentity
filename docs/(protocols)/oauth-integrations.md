@@ -305,7 +305,7 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 - A failed DPoP proof or binding gets a 401 with `DPoP error="...", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A token without a required scope gets a 403 with `Bearer error="insufficient_scope", scope="..."` naming the scopes to request (RFC 6750 §3.1).
 
-Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`. When a UserInfo 401 carries no challenge, as for a missing token, a revoked token, or a consumed identity release, Zentity adds one by the rules above.
+Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, and a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`. UserInfo also refuses a revoked JWT access token and a consumed identity release, and answers those by the rules above.
 
 #### Server-provided nonces
 
