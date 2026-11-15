@@ -188,7 +188,6 @@ async function createCaller(
     req: new Request(options.url ?? "http://localhost/api/trpc", {
       ...(options.headers === undefined ? {} : { headers: options.headers }),
     }),
-    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
     flowId: null,

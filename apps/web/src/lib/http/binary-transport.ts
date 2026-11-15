@@ -4,47 +4,11 @@ import { decode, encode } from "@msgpack/msgpack";
 
 import { HttpError, safeReadBodyText } from "@/lib/http/fetch";
 
-interface BinaryRequestOptions extends RequestInit {
-  timeoutMs?: number;
-}
-
-function buildTimeoutSignal(
-  original: AbortSignal | null | undefined,
-  timeoutMs?: number
-): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  if (typeof timeoutMs === "number" && timeoutMs > 0) {
-    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  }
-
-  if (original) {
-    if (original.aborted) {
-      controller.abort();
-    } else {
-      original.addEventListener("abort", () => controller.abort(), {
-        once: true,
-      });
-    }
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    },
-  };
-}
-
 export async function fetchMsgpack<T>(
   url: string,
   payload?: unknown,
-  options?: BinaryRequestOptions
+  fetchInit: RequestInit = {}
 ): Promise<T> {
-  const { timeoutMs, ...fetchInit } = options ?? {};
   const headers = new Headers(fetchInit.headers ?? {});
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/msgpack");
@@ -53,7 +17,6 @@ export async function fetchMsgpack<T>(
     headers.set("Accept", "application/msgpack");
   }
 
-  const { signal, cleanup } = buildTimeoutSignal(fetchInit.signal, timeoutMs);
   let body: ArrayBuffer | undefined;
   if (payload !== undefined) {
     const bytes = payload instanceof Uint8Array ? payload : encode(payload);
@@ -67,8 +30,7 @@ export async function fetchMsgpack<T>(
     ...fetchInit,
     headers,
     ...(body === undefined ? {} : { body }),
-    ...(signal === undefined ? {} : { signal }),
-  }).finally(cleanup);
+  });
 
   if (!response.ok) {
     const bodyText = await safeReadBodyText(response);
@@ -91,9 +53,7 @@ export async function fetchMsgpack<T>(
 
 export function fetchBinary(
   url: string,
-  options?: BinaryRequestOptions
+  options?: RequestInit
 ): Promise<Response> {
-  const { timeoutMs, ...fetchInit } = options ?? {};
-  const { signal, cleanup } = buildTimeoutSignal(fetchInit.signal, timeoutMs);
-  return fetch(url, { ...fetchInit, signal }).finally(cleanup);
+  return fetch(url, options);
 }

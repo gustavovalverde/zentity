@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
 import {
   getClientIp,
@@ -13,13 +14,17 @@ import {
   resolveRequestContext,
 } from "@/lib/observability/request-context";
 
-interface ClientErrorPayload {
-  digest?: string;
-  message?: string;
-  name?: string;
-  path?: string;
-  stack?: string;
-}
+// A malformed or oversized field is dropped rather than failing the report.
+const boundedString = (max: number) =>
+  z.string().max(max).optional().catch(undefined);
+
+const clientErrorSchema = z.object({
+  digest: boundedString(200),
+  message: boundedString(2000),
+  name: boundedString(200),
+  path: boundedString(2000),
+  stack: boundedString(10_000),
+});
 
 function sanitizePath(path: string | undefined): string | undefined {
   if (!path) {
@@ -47,31 +52,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     getRequestLogBindings(requestContext)
   );
 
-  let payload: ClientErrorPayload | null = null;
+  let body: unknown;
   try {
-    payload = (await request.json()) as ClientErrorPayload;
+    body = await request.json();
   } catch {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
-  const safePath =
-    payload && typeof payload.path === "string"
-      ? sanitizePath(payload.path)
-      : undefined;
-  const safeMessage =
-    payload && typeof payload.message === "string"
-      ? sanitizeLogMessage(payload.message)
-      : undefined;
-  const safeStack =
-    payload && typeof payload.stack === "string"
-      ? sanitizeLogMessage(payload.stack)
-      : undefined;
+  const payload = clientErrorSchema.catch({}).parse(body);
+  const safePath = sanitizePath(payload.path);
+  const safeMessage = payload.message
+    ? sanitizeLogMessage(payload.message)
+    : undefined;
+  const safeStack = payload.stack
+    ? sanitizeLogMessage(payload.stack)
+    : undefined;
 
   log.error(
     {
       source: "client",
-      digest: typeof payload?.digest === "string" ? payload.digest : undefined,
-      name: typeof payload?.name === "string" ? payload.name : "Error",
+      digest: payload.digest,
+      name: payload.name ?? "Error",
       path: safePath,
       message: process.env.NODE_ENV === "production" ? undefined : safeMessage,
       stack: process.env.NODE_ENV === "production" ? undefined : safeStack,

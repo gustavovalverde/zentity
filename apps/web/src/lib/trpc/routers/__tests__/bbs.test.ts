@@ -49,7 +49,6 @@ async function createCaller(session: Session | null) {
   const { bbsRouter } = await import("@/lib/trpc/routers/zk");
   return bbsRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
-    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
     flowId: null,
