@@ -14,9 +14,10 @@ import type { AppKitNetwork } from "@reown/appkit/networks";
 
 import { hardhat as appKitHardhat, sepolia } from "@reown/appkit/networks";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
+import { cookieStorage, createStorage } from "@wagmi/core";
 import { useCallback, useState } from "react";
 import { parseEther, testActions } from "viem";
-import { cookieStorage, createStorage, usePublicClient } from "wagmi";
+import { usePublicClient } from "wagmi";
 
 import { env } from "@/env";
 import {
