@@ -6,10 +6,7 @@ import {
   jwtVerify,
 } from "jose";
 import type { AccessTokenClaims } from "../protocol/claims";
-import {
-  createDiscoveryResolver,
-  type DiscoveryDocument,
-} from "../protocol/discovery";
+import { createDiscoveryResolver } from "../protocol/discovery";
 
 const DEFAULT_JWKS_TTL_MS = 5 * 60 * 1000;
 
@@ -45,23 +42,9 @@ function toUrl(value: string | URL): URL {
 export function createJwksTokenVerifier(
   options: JwksTokenVerifierOptions
 ): TokenVerifier {
-  let cached:
-    | {
-        expiresAt: number;
-        value: RemoteJwkSet;
-      }
-    | undefined;
-
-  function getJwks() {
-    if (!cached || Date.now() >= cached.expiresAt) {
-      cached = {
-        expiresAt: Date.now() + (options.jwksTtlMs ?? DEFAULT_JWKS_TTL_MS),
-        value: createRemoteJWKSet(toUrl(options.jwksUrl)),
-      };
-    }
-
-    return cached.value;
-  }
+  const jwks = createRemoteJWKSet(toUrl(options.jwksUrl), {
+    cacheMaxAge: options.jwksTtlMs ?? DEFAULT_JWKS_TTL_MS,
+  });
 
   return {
     async verify<T extends JWTPayload = JWTPayload>(
@@ -70,7 +53,7 @@ export function createJwksTokenVerifier(
     ): Promise<JWTVerifyResult<T>> {
       return jwtVerify<T>(
         token,
-        getJwks(),
+        jwks,
         options.issuer
           ? { ...verifyOptions, issuer: options.issuer }
           : verifyOptions
@@ -89,12 +72,9 @@ export function createOpenIdTokenVerifier(
       ? { discoveryTtlMs: options.discoveryTtlMs }
       : {}),
   });
-  let cachedJwks:
-    | {
-        document: DiscoveryDocument;
-        value: RemoteJwkSet;
-      }
-    | undefined;
+  // One key set per jwks_uri, so a refreshed discovery document that keeps
+  // the same jwks_uri keeps jose's key cache.
+  let cachedJwks: { jwksUri: string; value: RemoteJwkSet } | undefined;
 
   async function getVerificationContext() {
     const document = await resolver.read();
@@ -102,9 +82,9 @@ export function createOpenIdTokenVerifier(
       throw new Error("OpenID discovery response missing jwks_uri");
     }
 
-    if (!cachedJwks || cachedJwks.document !== document) {
+    if (cachedJwks?.jwksUri !== document.jwks_uri) {
       cachedJwks = {
-        document,
+        jwksUri: document.jwks_uri,
         value: createRemoteJWKSet(new URL(document.jwks_uri)),
       };
     }
