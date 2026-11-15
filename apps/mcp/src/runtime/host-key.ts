@@ -89,7 +89,10 @@ export async function getOrCreateHostKey(
   const privateJwk = await exportJWK(privateKey);
   const publicJwk = await exportJWK(publicKey);
 
-  const data: HostKeyMaterial = { privateKey: privateJwk, publicKey: publicJwk };
+  const data: HostKeyMaterial = {
+    privateKey: privateJwk,
+    publicKey: publicJwk,
+  };
   saveHostKey(zentityUrl, namespace, data);
   console.error(
     `[host-key] Generated and persisted new Ed25519 host keypair for ${namespace}`
