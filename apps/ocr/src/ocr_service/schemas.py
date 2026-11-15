@@ -3,19 +3,17 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from pydantic.alias_generators import to_camel
 from pydantic.config import ConfigDict
 
-MAX_IMAGE_BASE64_CHARS = 16_000_000
+from .services.ocr_engine import MAX_IMAGE_BASE64_CHARS
+
 HEX_64_PATTERN = r"^[0-9a-fA-F]{64}$"
 
 
-def _to_camel(string: str) -> str:
-    parts = string.split("_")
-    return parts[0] + "".join(word.capitalize() for word in parts[1:])
-
-
 class APIModel(BaseModel):
-    model_config = ConfigDict(alias_generator=_to_camel, populate_by_name=True)
+    # from_attributes lets handlers pass the service dataclasses straight into response models.
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
 
 
 class ImageRequest(APIModel):
