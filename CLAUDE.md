@@ -84,9 +84,8 @@ Router names must match the domain they serve. Only rename `crypto` → `zk` was
 ```bash
 pnpm dev             # Start dev server
 pnpm build           # Production build
-pnpm lint            # Biome linting (with write)
 pnpm lint:check      # Check lint issues (no write)
-pnpm lint:fix        # Fix lint issues (with unsafe fixes)
+pnpm lint:fix        # Fix lint issues (Biome, with write)
 pnpm typecheck       # TypeScript type checking
 pnpm check-all       # Run typecheck + lint + markdown + build + circuit version check
 

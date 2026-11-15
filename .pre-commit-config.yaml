@@ -49,29 +49,11 @@ repos:
   # ===========================================
   - repo: local
     hooks:
-      - id: lockfile-sync-web
-        name: pnpm lockfile sync (web)
-        entry: bash -c 'cd apps/web && pnpm install --frozen-lockfile'
+      - id: lockfile-sync-pnpm
+        name: pnpm lockfile sync (workspace)
+        entry: pnpm install --frozen-lockfile
         language: system
-        files: ^apps/web/package\.json$
-        pass_filenames: false
-      - id: lockfile-sync-demo-rp
-        name: pnpm lockfile sync (demo-rp)
-        entry: bash -c 'cd apps/demo-rp && pnpm install --frozen-lockfile'
-        language: system
-        files: ^apps/demo-rp/package\.json$
-        pass_filenames: false
-      - id: lockfile-sync-landing
-        name: pnpm lockfile sync (landing)
-        entry: bash -c 'cd apps/landing && pnpm install --frozen-lockfile'
-        language: system
-        files: ^apps/landing/package\.json$
-        pass_filenames: false
-      - id: lockfile-sync-mcp
-        name: pnpm lockfile sync (mcp)
-        entry: bash -c 'cd apps/mcp && pnpm install --frozen-lockfile'
-        language: system
-        files: ^apps/mcp/package\.json$
+        files: ^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|(apps|packages)/[^/]+/package\.json)$
         pass_filenames: false
       - id: lockfile-sync-fhe
         name: Cargo lockfile sync (fhe)
@@ -95,7 +77,7 @@ repos:
         pass_filenames: false
       - id: tsc-check-web
         name: TypeScript type-check (web)
-        entry: bash -c 'cd apps/web && pnpm run type-check'
+        entry: bash -c 'cd apps/web && pnpm run typecheck'
         language: system
         files: ^apps/web/.*\.(ts|tsx)$
         pass_filenames: false

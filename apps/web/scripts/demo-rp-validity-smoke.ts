@@ -48,16 +48,6 @@ function ensure(condition: unknown, message: string): asserts condition {
   }
 }
 
-function ensureEqual(
-  actual: number | string,
-  expected: number | string,
-  message: string
-): void {
-  if (actual !== expected) {
-    fail(`${message} (expected ${expected}, got ${actual})`);
-  }
-}
-
 async function expectResponseStatus(
   response: Response | import("playwright").APIResponse,
   expectedStatus: number,
@@ -126,11 +116,10 @@ async function ensureDemoRpDatabaseReady(): Promise<void> {
     },
   });
 
-  ensureEqual(
+  expect(
     push.status ?? -1,
-    0,
     "Failed to apply the demo-rp database schema before running the smoke test"
-  );
+  ).toBe(0);
 }
 
 async function resetAidProviderState(): Promise<void> {
@@ -515,19 +504,17 @@ async function run(): Promise<void> {
     });
 
     const initialState = await waitForValidityState(page, "verified", false);
-    ensureEqual(
+    expect(
       (initialState.snapshot as { validityStatus: string }).validityStatus,
-      "verified",
       "The demo-rp pull route did not expose the verified issuer snapshot"
-    );
+    ).toBe("verified");
 
     const clientId = await readAidClientId();
     const initialNotices = await readStoredNotices(clientId);
-    ensureEqual(
+    expect(
       initialNotices.notices.length,
-      0,
       "The smoke run expected a clean demo-rp notice store before delivery"
-    );
+    ).toBe(0);
 
     await triggerFreshnessTransition();
     await page.reload({ waitUntil: "networkidle" });
@@ -555,11 +542,10 @@ async function run(): Promise<void> {
     await page.reload({ waitUntil: "networkidle" });
 
     const staleState = await waitForValidityState(page, "stale", true);
-    ensureEqual(
+    expect(
       (staleState.snapshot as { validityStatus: string }).validityStatus,
-      "stale",
       "The demo-rp pull route did not reflect the stale issuer snapshot"
-    );
+    ).toBe("stale");
 
     const storedNotices = await readStoredNotices(clientId);
     ensure(
