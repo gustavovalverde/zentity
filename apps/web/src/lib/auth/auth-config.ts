@@ -2016,10 +2016,7 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
     }),
-    eip712Auth({
-      appName: "Zentity",
-      emailDomainName: "wallet.zentity.app",
-    }),
+    eip712Auth({ emailDomainName: "wallet.zentity.app" }),
     jwt({
       ...signingKeyOptions,
       jwks: {

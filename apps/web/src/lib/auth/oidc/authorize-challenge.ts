@@ -17,9 +17,9 @@ import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
+import { consumeWalletNonce, issueWalletNonce } from "@/lib/auth/eip712/server";
 import {
-  buildDefaultTypedData,
-  nonceIdentifier,
+  buildWalletAuthTypedData,
   verifyEip712Signature,
 } from "@/lib/auth/eip712/typed-data";
 import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
@@ -49,8 +49,6 @@ import { getOpaqueStateKey } from "@/lib/privacy/primitives/derived-keys";
 
 const SESSION_LIFETIME_MS = 10 * 60 * 1000;
 const CODE_LIFETIME_S = 600;
-const EIP712_NONCE_TTL_MS = 15 * 60 * 1000;
-const EIP712_APP_NAME = "Zentity";
 const ETH_ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
 const SCOPE_SEPARATOR_RE = /\s+/;
 
@@ -163,21 +161,16 @@ async function checkDpopContinuity(
 }
 
 async function issueEip712Challenge(
+  ctx: GenericEndpointContext,
   sessionId: string,
   authSession: string,
   wallet: { address: string; chainId: number }
 ): Promise<Response> {
-  const nonce = crypto.randomUUID();
-  const nid = nonceIdentifier(wallet.address, wallet.chainId);
-
-  await db.insert(verifications).values({
-    id: randomBytes(16).toString("hex"),
-    identifier: nid,
-    value: nonce,
-    expiresAt: new Date(Date.now() + EIP712_NONCE_TTL_MS),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+  const nonce = await issueWalletNonce(
+    ctx.context.internalAdapter,
+    wallet.address,
+    wallet.chainId
+  );
 
   await db
     .update(authChallengeSessions)
@@ -186,16 +179,14 @@ async function issueEip712Challenge(
         walletAddress: wallet.address,
         chainId: wallet.chainId,
         nonce,
-        nonceIdentifier: nid,
       }),
     })
     .where(eq(authChallengeSessions.id, sessionId));
 
-  const typedData = buildDefaultTypedData(
+  const typedData = buildWalletAuthTypedData(
     wallet.address,
     wallet.chainId,
-    nonce,
-    EIP712_APP_NAME
+    nonce
   );
 
   return Response.json(
@@ -447,7 +438,7 @@ async function handleInitialRequest(
     }
 
     const chainId = params.chain_id ?? walletInfo.chainId;
-    return issueEip712Challenge(createdSession.id, authSession, {
+    return issueEip712Challenge(ctx, createdSession.id, authSession, {
       address: walletInfo.address,
       chainId,
     });
@@ -648,30 +639,22 @@ async function handleEip712Finish(
     walletAddress: string;
     chainId: number;
     nonce: string;
-    nonceIdentifier: string;
   };
 
-  // Consume nonce (single-use)
-  const nonceRow = await db
-    .select({ id: verifications.id, value: verifications.value })
-    .from(verifications)
-    .where(eq(verifications.identifier, wallet.nonceIdentifier))
-    .get();
-
-  if (!nonceRow || nonceRow.value !== wallet.nonce) {
+  const nonceConsumed = await consumeWalletNonce(
+    ctx.context.internalAdapter,
+    wallet.nonce,
+    wallet.walletAddress,
+    wallet.chainId
+  );
+  if (!nonceConsumed) {
     return errorJson(401, "access_denied", "Nonce expired or already used");
   }
 
-  await db
-    .delete(verifications)
-    .where(eq(verifications.identifier, wallet.nonceIdentifier));
-
-  // Verify signature
-  const typedData = buildDefaultTypedData(
+  const typedData = buildWalletAuthTypedData(
     wallet.walletAddress,
     wallet.chainId,
-    wallet.nonce,
-    EIP712_APP_NAME
+    wallet.nonce
   );
 
   const valid = await verifyEip712Signature(
@@ -841,7 +824,7 @@ async function handleStepUpReEntry(
       return errorJson(401, "access_denied", "Authentication failed");
     }
 
-    return issueEip712Challenge(session.id, authSession, wallet);
+    return issueEip712Challenge(ctx, session.id, authSession, wallet);
   }
 
   // OPAQUE

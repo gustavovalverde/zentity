@@ -21,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
-import { invalidateSessionDataCache } from "@/lib/auth/session-cleanup";
 
 // Better Auth's shouldRequirePassword (utils/password.mjs) returns true
 // whenever the user has a credential-provider account with a password — even
@@ -47,7 +46,6 @@ export function BackupCodesClient() {
       // /two-factor/verify just flipped twoFactorEnabled=true in the DB. The
       // session_data cookie still caches the old value — force a DB read
       // before any twoFactor endpoint call to avoid TWO_FACTOR_NOT_ENABLED.
-      invalidateSessionDataCache();
       await authClient.getSession({ query: { disableCookieCache: true } });
 
       try {
@@ -84,7 +82,6 @@ export function BackupCodesClient() {
     setIsSubmitting(true);
     setError(null);
     try {
-      invalidateSessionDataCache();
       await authClient.getSession({ query: { disableCookieCache: true } });
       const result = await authClient.twoFactor.generateBackupCodes({
         password: password.trim(),
