@@ -12,6 +12,7 @@ import {
   hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const TEST_CLIENT_ID = "resolve-approval-client";
 
@@ -220,5 +221,33 @@ describe("resolveCibaApprovalData", () => {
     expect(result?.request).not.toHaveProperty("binding_message");
     expect(result?.request).not.toHaveProperty("acr_values");
     expect(result?.request).not.toHaveProperty("authorization_details");
+  });
+
+  it("states what approving takes from this user, with server labels for every scope", async () => {
+    const requestId = await insertCibaRequest(userId, {
+      scope: "openid compliance:read email",
+    });
+
+    const withoutPasskey = await resolveCibaApprovalData(requestId, userId);
+    expect(withoutPasskey?.request).toMatchObject({
+      approval_requirement: "session",
+      page_only: true,
+      passkey_available: false,
+      scope_labels: [
+        { scope: "compliance:read", label: "compliance status" },
+        { scope: "email", label: "email address" },
+      ],
+    });
+
+    const identityRequest = await insertCibaRequest(userId, {
+      scope: "openid identity.name",
+    });
+    await new TestAuthenticator().register(userId);
+    const withPasskey = await resolveCibaApprovalData(identityRequest, userId);
+    expect(withPasskey?.request).toMatchObject({
+      approval_requirement: "user_verification",
+      page_only: true,
+      passkey_available: true,
+    });
   });
 });

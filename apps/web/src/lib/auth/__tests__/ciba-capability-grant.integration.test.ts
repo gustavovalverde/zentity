@@ -33,6 +33,11 @@ import {
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
 import {
+  postDecision,
+  requestIdForAuthReqId,
+  signInApprover,
+} from "@/test-utils/ciba-decision-test-utils";
+import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
@@ -43,6 +48,7 @@ import {
   type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const APP_URL = "http://localhost:3000";
 const BC_AUTHORIZE_URL = `${APP_URL}/api/auth/oauth2/bc-authorize`;
@@ -510,6 +516,16 @@ describe("CIBA approval from capability grants", () => {
       }).ceremony
     ).toBe("user_verification");
     expect(await ledgerEntries(agent.sessionId)).toEqual([]);
+
+    // R3: the verified Agent-Assertion does not lower the ceremony either.
+    await new TestAuthenticator().register(userId);
+    const approver = await signInApprover(userId);
+    const decision = await postDecision(approver, {
+      request_id: await requestIdForAuthReqId(hashCibaAuthReqId(authReqId)),
+      channel: "page",
+    });
+    expect(decision.status).toBe(403);
+    expect(decision.json.error).toBe("insufficient_user_authentication");
   });
 
   // R22: the payment scope is a grantable item only with its payment entry.

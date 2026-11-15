@@ -558,19 +558,22 @@ This snapshot ties the later token to the actual registered runtime, not a free-
 2. **Atomic status transitions.** The transition from `approved` to `redeemed` MUST use compare-and-swap semantics. Concurrent polling attempts that race the transition MUST fail rather than duplicate-issue tokens.
 3. **Entropy.** `auth_req_id` values MUST be generated with cryptographic entropy sufficient to prevent enumeration (e.g., UUID v4).
 
-### 6.4 Biometric Approval Strength
+### 6.4 User-Verification Approval Strength
 
-An agent with browser control (for example, Playwright or an MCP browser tool) can navigate to approval URLs and click buttons. The `biometric` approval strength defends against self-approval by requiring WebAuthn `userVerification: required`, a biometric or PIN gesture that the agent cannot produce.
+An agent with browser control (for example, Playwright or an MCP browser tool) can navigate to approval URLs and click buttons, and it may know the user's password. The `user_verification` approval strength defends against self-approval by requiring a WebAuthn assertion with `userVerification: required`: a PIN or biometric gesture on the user's authenticator, which the agent cannot produce. The user-verified flag does not say which of the two the authenticator used, so this profile does not distinguish them.
 
-For `biometric`-strength capabilities:
+For a request whose ceremony is `user_verification`:
 
-- Push notifications show "Open to approve" link only; inline approve/deny actions are disabled because they cannot trigger WebAuthn.
-- The approval endpoint returns a WebAuthn challenge that MUST be satisfied before the approval is accepted.
-- Password-based session re-authentication is insufficient because the agent may know the password.
+- Push notifications offer review and deny only. Inline approval is disabled because a service worker cannot run a WebAuthn ceremony, and the AS refuses a notification-channel approval of the request.
+- The approval page requests assertion options from the AS (`POST {decision_endpoint}/options`). The AS issues a single-use challenge bound to the request and the user's session, valid for 120 seconds, over the user's own credentials; a new options request replaces the previous challenge.
+- The page posts the assertion with the decision. The AS verifies it against the challenge, the user's own credential, the relying party ID, the page origin, the user-verified flag, and the signature counter, and only then records the approval.
+- A user without a registered passkey cannot approve such a request; the AS answers `passkey_required`, and the user may still deny.
 
-The `session` strength accepts any in-session re-authentication an agent with browser access could automate (cookie presence, password re-entry). The `biometric` strength requires a WebAuthn user-verification ceremony that cannot be performed without the registered authenticator.
+Manual approvals of `payment_authorization` and purchases need `user_verification`. Identity-scoped approvals need it when the user has a passkey; a user without a passkey approves them with the session.
 
-**Identity scope exception.** When a CIBA request includes identity scopes, push notifications MUST NOT include inline approve actions, even for `session`-strength capabilities. Vault unlock (required by VEIL Section 6 for identity claim delivery) cannot be triggered from a service worker or agent browser context, making identity-scoped requests functionally equivalent to `biometric` for inline approval purposes. The user MUST navigate to the approval page in a full browser context.
+The `session` strength accepts any in-session interaction an agent with browser access could automate (cookie presence, password re-entry). The `user_verification` strength requires a ceremony that cannot be performed without the registered authenticator. Residual: the passkey prompt itself shows no transaction detail, so the user relies on the approval page for what they approve.
+
+**Identity scope exception.** When a CIBA request includes identity scopes, push notifications MUST NOT include inline approve actions, even for `session`-strength capabilities. Vault unlock (required by VEIL Section 6 for identity claim delivery) cannot be triggered from a service worker or agent browser context. The user MUST navigate to the approval page in a full browser context, and the AS refuses an identity approval for which no release was staged.
 
 ### 6.5 Approval Policy Derivation
 

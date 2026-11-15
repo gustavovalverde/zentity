@@ -60,7 +60,8 @@ The endpoints below cluster by lifecycle stage: discovery, authorization, token 
 | `GET /api/auth/ciba/request?request_id=...` | Fetch a pending request addressed to the signed-in user (for the approval page) |
 | `POST /api/ciba/identity/intent` | Acquire intent token for PII staging (binds user + CIBA request + scopes) |
 | `POST /api/ciba/identity/stage` | Stage vault-unlocked PII with intent token (ephemeral, 10-min TTL) |
-| `POST /api/auth/ciba/decision` | Approve or deny a pending CIBA request: `{ request_id, decision: "approved" \| "denied" }` |
+| `POST /api/auth/ciba/decision/options` | Passkey assertion options bound to the request and the session, for an approval that needs user verification: `{ request_id }` |
+| `POST /api/auth/ciba/decision` | Approve or deny a pending CIBA request: `{ request_id, decision: "approved" \| "denied", channel: "page" \| "push" \| "email", webauthn? }` |
 | `POST /api/ciba/push/subscribe` | Register browser push subscription for CIBA notifications |
 | `POST /api/ciba/push/unsubscribe` | Remove push subscription |
 
@@ -254,6 +255,33 @@ CIBA requests support `authorization_details` (RFC 9396) for structured action m
 The user is notified through three channels: web push notifications with inline approve/deny actions, email with an approval link, and a dashboard listing at `/dashboard/agents` (Requests tab). Push notifications and emails route to the standalone approval page at `/approve/[requestId]` (no dashboard chrome). The request id in that link is not the `auth_req_id`. The client's `auth_req_id` is stored only as a hash and never appears in a URL.
 
 **`requiresVaultUnlock`**: When a CIBA request includes identity scopes, the push notification shows only a "Deny" inline action (vault unlock requires a full browser context). All clicks route the user to the approval page where they can unlock their vault and approve.
+
+**Approval ceremony**: the server derives what an approval needs from the whole stored request through one policy table (`approvalPolicy`, see [Agent Architecture](<../(architecture)/agent-architecture.md#the-approval-policy>)):
+
+- A request is approved inline from a notification only when every scope is one the notification names with server text (`compliance:read` and the `proof:*` predicates other than `proof:sybil`). Any other scope, any `authorization_details` entry, or a user-verification ceremony sends the user to the approval page.
+- A `payment_authorization` approval needs a user-verified passkey assertion. An identity-scoped approval needs one when the user has a passkey; a user without a passkey approves it with the session after unlocking the vault on the page.
+- For a user-verified approval, the page calls `POST /api/auth/ciba/decision/options`, runs one assertion with `userVerification: "required"` over the challenge, and posts the result as `webauthn` with the decision. The challenge is single use, lives 120 seconds, and is bound to the request and the session; a new options call replaces it. A `webauthn` member on a request that needs only a session is verified too, and records `user_verification`.
+- `channel` says where the user decided. A missing `channel` counts as `push`, the value service workers installed before the field existed imply.
+
+The decision runs its checks in this order: the request is the user's, pending, and unexpired; a notification approval of a page-only request is refused; `acr_values`; a staged identity release for identity scopes; the passkey assertion. A refusal leaves the request pending. The two endpoints each allow 20 requests per minute per IP. Errors:
+
+| Condition | Status, `error`, description |
+| --- | --- |
+| Unknown request | 404 `invalid_request` "Unknown request" |
+| Already decided | 400 `invalid_request` "This request was already approved" (or denied) |
+| Expired | 400 `expired_token` "This request has expired" |
+| Notification approval of a page-only request | 403 `review_required` "Open the approval page to review this request" |
+| Unmet `acr_values` | 403 `insufficient_user_authentication` |
+| Identity scopes without a staged release | 403 `vault_unlock_required` |
+| User verification needed, no `webauthn` | 403 `insufficient_user_authentication` "Confirm with your passkey to approve this request", with `approval_requirement: "user_verification"` |
+| User verification needed, no passkey | 409 `passkey_required` |
+| Challenge missing, used, or expired | 400 `invalid_request` "Start the passkey confirmation again" |
+| Assertion fails (another user's passkey, no user verification, origin, relying party, signature, counter) | 403 `insufficient_user_authentication` "Passkey confirmation failed" |
+| No authentication context on the session | 401 `login_required` |
+
+**Approval record and oversight**: every decision writes one `ciba_approval` row before the plugin can consume the request, and the CIBA token response carries `oversight: { method, approved_at }` for every approval: `method` is `session`, `user_verification`, or `capability_grant`, and `approved_at` is the decision time in seconds. Resource servers learn nothing about the ceremony from an access token, because the provider keeps `acr`, `amr`, and `auth_time` out of access tokens.
+
+**`amr` and `auth_time`**: the ID token describes the authentication that approved the request. A user-verified approval states `amr: ["pop", "user", "mfa"]` with `auth_time` the verification time. A session approval states the session's sign-in: `["pop", "user", "mfa"]` for a passkey sign-in with user verification, `["pop", "user"]` without it, `["pwd"]` for a password, `["otp"]` for a magic link, `["pop"]` for a wallet, and no `amr` when nothing was observed. A capability-grant approval states the sign-in under which the agent session was registered: it is the user's last authentication, not activity for this request.
 
 #### Ping mode
 

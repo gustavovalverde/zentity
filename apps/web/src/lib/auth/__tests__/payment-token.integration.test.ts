@@ -6,6 +6,21 @@ const mockEnv = vi.hoisted(() => {
   process.env.WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
   return { walletAudience: process.env.WALLET_AUDIENCE as string | undefined };
 });
+const notificationMock = vi.hoisted(() => ({ fail: false }));
+vi.mock("@/lib/agents/push-sender", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/lib/agents/push-sender")>();
+  return {
+    ...mod,
+    buildCibaPushPayload: (
+      ...args: Parameters<typeof mod.buildCibaPushPayload>
+    ) => {
+      if (notificationMock.fail) {
+        throw new Error("notification failed");
+      }
+      return mod.buildCibaPushPayload(...args);
+    },
+  };
+});
 vi.mock("@/env", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/env")>();
   return {
@@ -29,11 +44,20 @@ import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
+  confirmWithPasskey,
+  decisionRecord,
+  postDecision,
+  requestIdForAuthReqId,
+  requestStatus,
+  signInApprover,
+} from "@/test-utils/ciba-decision-test-utils";
+import {
   createTestUser,
   hashCibaAuthReqId,
   resetDatabase,
 } from "@/test-utils/db-test-utils";
 import { postTokenWithDpop } from "@/test-utils/dpop-test-utils";
+import { TestAuthenticator } from "@/test-utils/webauthn-test-utils";
 
 const WALLET_AUDIENCE = "urn:zentity:wallet:payment-token-test";
 const CIBA_GRANT_TYPE = "urn:openid:params:grant-type:ciba";
@@ -87,6 +111,97 @@ describe("payment_authorization token", () => {
 
   afterEach(() => {
     mockEnv.walletAudience = WALLET_AUDIENCE;
+    notificationMock.fail = false;
+  });
+
+  async function requestPayment(): Promise<string> {
+    const authorize = await postBcAuthorize({
+      client_id: CLIENT_ID,
+      scope: `openid ${PAYMENT_AUTHORIZATION_SCOPE}`,
+      login_hint: userId,
+      authorization_details: JSON.stringify([PAYMENT_RAR]),
+    });
+    if (authorize.status !== 200) {
+      throw new Error(`bc-authorize answered ${authorize.status}`);
+    }
+    return requestIdForAuthReqId(
+      hashCibaAuthReqId(authorize.json.auth_req_id as string)
+    );
+  }
+
+  // R2 and R3: a session cookie does not approve a payment, with or without
+  // an Agent-Assertion (this request carries none).
+  it("refuses a manual payment approval without a passkey assertion", async () => {
+    await new TestAuthenticator().register(userId);
+    const requestId = await requestPayment();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json).toEqual(
+      expect.objectContaining({
+        error: "insufficient_user_authentication",
+        error_description: "Confirm with your passkey to approve this request",
+        approval_requirement: "user_verification",
+      })
+    );
+    expect(await requestStatus(requestId)).toBe("pending");
+  });
+
+  it("approves a manual payment with a user-verified assertion", async () => {
+    const authenticator = await new TestAuthenticator().register(userId);
+    const requestId = await requestPayment();
+    const approver = await signInApprover(userId);
+    const webauthn = await confirmWithPasskey(
+      approver,
+      requestId,
+      authenticator
+    );
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+      webauthn,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await decisionRecord(requestId)).toEqual(
+      expect.objectContaining({ approvalMethod: "user_verification" })
+    );
+  });
+
+  it("tells a user without a passkey to add one", async () => {
+    const requestId = await requestPayment();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.json.error).toBe("passkey_required");
+    expect(await requestStatus(requestId)).toBe("pending");
+  });
+
+  // R4: the requirement does not live in the best-effort notification.
+  it("requires user verification when the notification fails", async () => {
+    await new TestAuthenticator().register(userId);
+    notificationMock.fail = true;
+    const requestId = await requestPayment();
+    const approver = await signInApprover(userId);
+
+    const response = await postDecision(approver, {
+      request_id: requestId,
+      channel: "page",
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.json.error).toBe("insufficient_user_authentication");
   });
 
   async function issuePaymentToken(): Promise<Record<string, unknown>> {

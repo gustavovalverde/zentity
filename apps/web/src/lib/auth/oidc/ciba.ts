@@ -7,6 +7,7 @@ import type {
 } from "@better-auth/oauth-provider";
 import type {
   AapAccessTokenClaims,
+  AccountAssurance,
   AuthenticationState,
 } from "@zentity/sdk/protocol";
 import type { BetterAuthPlugin } from "better-auth";
@@ -25,14 +26,26 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
-import { computeAcr } from "@/lib/assurance/oidc-claims";
+import { approvalPolicy, requiredCeremony } from "@/lib/agents/capability";
+import { computeAcr, loginMethodToAmr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
+  createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
+import {
+  loadReleaseContext,
+  releaseIdFor,
+} from "@/lib/auth/oidc/disclosure/context";
 import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
+import {
+  hasPasskey,
+  issuePasskeyStepUp,
+  PasskeyStepUpError,
+  verifyPasskeyStepUp,
+} from "@/lib/auth/passkey/step-up";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
@@ -231,6 +244,28 @@ export interface CibaApproval {
   }) => Promise<void>;
 }
 
+/**
+ * Refuses an approval when the user's tier does not satisfy the request's
+ * `acr_values`, and returns the user's assurance for the ID token `acr`.
+ */
+async function assertAcrSatisfied(
+  userId: string,
+  storedAcrValues: string | null
+): Promise<AccountAssurance> {
+  const assurance = await getAccountAssurance(userId, {
+    isAuthenticated: true,
+  });
+  const acrValues = parseStoredStringArray(storedAcrValues);
+  if (acrValues.length > 0 && !findSatisfiedAcr(acrValues, assurance.tier)) {
+    throw cibaDecisionError(
+      "FORBIDDEN",
+      "insufficient_user_authentication",
+      `Your assurance level (tier-${assurance.tier}) does not meet the required level: ${acrValues.join(" ")}`
+    );
+  }
+  return assurance;
+}
+
 async function loadPendingRequest(requestId: string, userId: string) {
   const row = await db
     .select({
@@ -354,20 +389,7 @@ export function createCibaApproval(
       const row = await loadPendingRequest(input.requestId, input.userId);
 
       const { authentication, grant } = input;
-      const assurance = await getAccountAssurance(input.userId, {
-        isAuthenticated: true,
-      });
-      const acrValues = parseStoredStringArray(row.acrValues);
-      if (
-        acrValues.length > 0 &&
-        !findSatisfiedAcr(acrValues, assurance.tier)
-      ) {
-        throw cibaDecisionError(
-          "FORBIDDEN",
-          "insufficient_user_authentication",
-          `Your assurance level (tier-${assurance.tier}) does not meet the required level: ${acrValues.join(" ")}`
-        );
-      }
+      const assurance = await assertAcrSatisfied(input.userId, row.acrValues);
 
       const recordId = await insertDecisionRecord(row, {
         requestId: input.requestId,
@@ -441,6 +463,114 @@ function unknownCibaRequest(): APIError {
   });
 }
 
+function passkeyRequired(): APIError {
+  return new APIError("CONFLICT", {
+    error: "passkey_required",
+    error_description: "Add a passkey to approve this request",
+  });
+}
+
+const webauthnAssertionSchema = z.object({
+  id: z.string().min(1),
+  rawId: z.string().min(1),
+  type: z.literal("public-key"),
+  authenticatorAttachment: z.enum(["platform", "cross-platform"]).optional(),
+  response: z.object({
+    clientDataJSON: z.string().min(1),
+    authenticatorData: z.string().min(1),
+    signature: z.string().min(1),
+    userHandle: z.string().optional(),
+  }),
+  clientExtensionResults: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * Loads a request the session user may decide: theirs, pending, and
+ * unexpired. Both decision endpoints answer these refusals the same way.
+ */
+async function loadDecidableRequest(requestId: string, userId: string) {
+  const row = await db
+    .select({
+      acrValues: cibaRequests.acrValues,
+      authorizationDetails: cibaRequests.authorizationDetails,
+      authReqId: cibaRequests.authReqId,
+      clientId: cibaRequests.clientId,
+      expiresAt: cibaRequests.expiresAt,
+      scope: cibaRequests.scope,
+      status: cibaRequests.status,
+      userId: cibaRequests.userId,
+    })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.id, requestId))
+    .limit(1)
+    .get();
+  if (!row || row.userId !== userId) {
+    throw unknownCibaRequest();
+  }
+  if (row.status !== "pending") {
+    throw new APIError("BAD_REQUEST", {
+      error: "invalid_request",
+      error_description: `This request was already ${row.status}`,
+    });
+  }
+  if (row.expiresAt <= new Date()) {
+    throw new APIError("BAD_REQUEST", {
+      error: "expired_token",
+      error_description: "This request has expired",
+    });
+  }
+  return row;
+}
+
+/**
+ * Verifies the posted passkey confirmation and records it as the approving
+ * authentication, so the ID token's `amr` and `auth_time` describe it.
+ */
+async function confirmWithPasskey(
+  context: AuthContext,
+  input: {
+    requestId: string;
+    response: z.infer<typeof webauthnAssertionSchema>;
+    sessionId: string;
+    userId: string;
+  }
+): Promise<AuthenticationState> {
+  let verifiedAt: Date;
+  try {
+    ({ verifiedAt } = await verifyPasskeyStepUp(context.internalAdapter, {
+      requestId: input.requestId,
+      sessionId: input.sessionId,
+      userId: input.userId,
+      response: { ...input.response, clientExtensionResults: {} },
+    }));
+  } catch (error) {
+    if (!(error instanceof PasskeyStepUpError)) {
+      throw error;
+    }
+    throw error.reason === "challenge_missing"
+      ? cibaDecisionError(
+          "BAD_REQUEST",
+          "invalid_request",
+          "Start the passkey confirmation again"
+        )
+      : cibaDecisionError(
+          "FORBIDDEN",
+          "insufficient_user_authentication",
+          "Passkey confirmation failed"
+        );
+  }
+  return createAuthenticationContext({
+    userId: input.userId,
+    loginMethod: "passkey",
+    amr: loginMethodToAmr("passkey", { userVerified: true }),
+    authenticatedAt: verifiedAt,
+    sourceKind: "ciba_approval",
+    sourceSessionId: input.sessionId,
+    referenceType: "ciba_request",
+    referenceId: input.requestId,
+  });
+}
+
 /**
  * The endpoints Zentity's approval page and push notifications call. They
  * run inside Better Auth, so they share its session handling and the
@@ -474,6 +604,32 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
           return ctx.json(details.request);
         }
       ),
+      cibaDecisionOptions: createAuthEndpoint(
+        "/ciba/decision/options",
+        {
+          method: "POST",
+          body: z.object({ request_id: z.string().min(1) }),
+          use: [sensitiveSessionMiddleware],
+          metadata: { noStore: true },
+        },
+        async (ctx) => {
+          const { session } = ctx.context;
+          const requestId = ctx.body.request_id;
+          await loadDecidableRequest(requestId, session.user.id);
+          const options = await issuePasskeyStepUp(
+            ctx.context.internalAdapter,
+            {
+              requestId,
+              sessionId: session.session.id,
+              userId: session.user.id,
+            }
+          );
+          if (!options) {
+            throw passkeyRequired();
+          }
+          return ctx.json(options);
+        }
+      ),
       decideCibaRequest: createAuthEndpoint(
         "/ciba/decision",
         {
@@ -484,6 +640,7 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
             // Service workers installed before the channel existed post
             // without one from a notification action.
             channel: z.enum(["push", "page", "email"]).default("push"),
+            webauthn: webauthnAssertionSchema.optional(),
           }),
           // A decision issues tokens, so a revoked session must not act from
           // the cookie cache.
@@ -494,35 +651,65 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
           const { session } = ctx.context;
           const userId = session.user.id;
           const requestId = ctx.body.request_id;
-          const details = await resolveCibaApprovalData(requestId, userId);
-          if (!details) {
-            throw unknownCibaRequest();
+          const { channel } = ctx.body;
+          const row = await loadDecidableRequest(requestId, userId);
+
+          if (ctx.body.decision === "denied") {
+            await approval.deny({ channel, requestId, userId });
+            return ctx.json({ status: "denied" });
           }
-          const { status, expires_at } = details.request;
-          if (status !== "pending") {
-            throw new APIError("BAD_REQUEST", {
-              error: "invalid_request",
-              error_description: `This request was already ${status}`,
-            });
+
+          const policy = approvalPolicy({
+            scope: row.scope,
+            authorizationDetails: row.authorizationDetails,
+          });
+          // The channel is client-asserted, so it can only refuse more.
+          if (channel === "push" && policy.pageOnly) {
+            throw cibaDecisionError(
+              "FORBIDDEN",
+              "review_required",
+              "Open the approval page to review this request"
+            );
           }
-          if (new Date(expires_at) <= new Date()) {
-            throw new APIError("BAD_REQUEST", {
-              error: "expired_token",
-              error_description: "This request has expired",
+          await assertAcrSatisfied(userId, row.acrValues);
+          if (policy.hasIdentityScopes) {
+            const release = await loadReleaseContext(
+              releaseIdFor(row.authReqId, row.clientId)
+            );
+            if (release?.userId !== userId) {
+              throw cibaDecisionError(
+                "FORBIDDEN",
+                "vault_unlock_required",
+                "Unlock your vault on the approval page to share this information"
+              );
+            }
+          }
+
+          const userHasPasskey = await hasPasskey(userId);
+          const ceremony = requiredCeremony(policy, {
+            hasPasskey: userHasPasskey,
+          });
+          const { webauthn } = ctx.body;
+          if (ceremony === "user_verification" && !webauthn) {
+            if (!userHasPasskey) {
+              throw passkeyRequired();
+            }
+            throw new APIError("FORBIDDEN", {
+              error: "insufficient_user_authentication",
+              error_description:
+                "Confirm with your passkey to approve this request",
+              approval_requirement: "user_verification",
             });
           }
 
-          if (ctx.body.decision === "denied") {
-            await approval.deny({
-              channel: ctx.body.channel,
-              requestId,
-              userId,
-            });
-            return ctx.json({ status: "denied" });
-          }
-          const authentication = await getAuthenticationStateBySessionId(
-            session.session.id
-          );
+          const authentication = webauthn
+            ? await confirmWithPasskey(ctx.context, {
+                requestId,
+                response: webauthn,
+                sessionId: session.session.id,
+                userId,
+              })
+            : await getAuthenticationStateBySessionId(session.session.id);
           if (!authentication) {
             throw new APIError("UNAUTHORIZED", {
               error: "login_required",
@@ -533,16 +720,23 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
             requestId,
             userId,
             authentication,
-            channel: ctx.body.channel,
-            grant: { method: "session" },
+            channel,
+            grant: { method: webauthn ? "user_verification" : "session" },
           });
           return ctx.json({ status: "approved" });
         }
       ),
     },
+    // Better Auth keys rate-limit counters by IP and path, so each endpoint
+    // gets its own limit.
     rateLimit: [
       {
         pathMatcher: (path: string) => path === "/ciba/decision",
+        window: 60,
+        max: 20,
+      },
+      {
+        pathMatcher: (path: string) => path === "/ciba/decision/options",
         window: 60,
         max: 20,
       },

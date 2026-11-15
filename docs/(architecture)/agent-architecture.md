@@ -295,7 +295,17 @@ The approval router produces three practical outcomes:
 | Push approval | No matching grant, or the request spans capabilities or ungrantable scopes | Push notification and approval page |
 | User-verified approval | The policy ceremony is `user_verification`, such as a payment or a purchase | Push links to the approval page, which asks for a passkey assertion |
 
-A silent approval is recorded in `ciba_approval` for the user who owns the host, with `approval_method` set to `capability_grant` and `approval_channel` set to `grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
+A silent approval is recorded in `ciba_approval` for the user who owns the host, with `approval_method` set to `capability_grant` and `approval_channel` set to `grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. That `auth_time` is the user's last authentication, not activity for this request. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
+
+### Manual approval ceremony
+
+A manual approval goes through `POST /api/auth/ciba/decision`, which recomputes the policy from the stored request and refuses, leaving the request pending:
+
+- a notification approval (`channel` `push`, or none, which is what an old service worker sends) of a page-only request, with `review_required`;
+- an identity approval without a staged release, with `vault_unlock_required`;
+- an approval that needs user verification without a passkey assertion, with `insufficient_user_authentication`, or with `passkey_required` when the user has no passkey.
+
+User verification is needed for `payment_authorization` and purchases, and for identity scopes when the user has a passkey. The approval page fetches a challenge from `POST /api/auth/ciba/decision/options`, bound to the request and the session, and posts the assertion with the decision. A verified assertion becomes the approval's authentication context, so the ID token states `amr: ["pop", "user", "mfa"]` and the verification time as `auth_time`. See [ADR platform/0007](../adr/platform/0007-ciba-approval-ceremony-and-record.md) for the decision contract.
 
 ### Runtime proof enters here
 
