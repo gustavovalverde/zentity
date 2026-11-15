@@ -16,7 +16,12 @@
 [build]
 builder = "DOCKERFILE"
 
+# drainingSeconds is the gap between SIGTERM and SIGKILL for the previous deploy (Railway's
+# default is 0, which kills in-flight TFHE requests despite the graceful shutdown handler).
+# Keep it above FHE_REQUEST_TIMEOUT_MS (default 60 s) so a request that started before the
+# signal can finish.
 [deploy]
+drainingSeconds = 65
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
