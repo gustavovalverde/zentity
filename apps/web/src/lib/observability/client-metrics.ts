@@ -102,29 +102,6 @@ let listenersBound = false;
 
 const isBrowser = globalThis.window !== undefined;
 
-function normalizeAttributes(
-  attributes?: MetricAttributes
-): MetricAttributes | undefined {
-  if (!attributes) {
-    return;
-  }
-  const out: MetricAttributes = {};
-  for (const [key, value] of Object.entries(attributes)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-    if (typeof value === "string") {
-      if (!value) {
-        continue;
-      }
-      out[key] = value.length > 64 ? value.slice(0, 64) : value;
-    } else if (typeof value === "number" || typeof value === "boolean") {
-      out[key] = value;
-    }
-  }
-  return Object.keys(out).length ? out : undefined;
-}
-
 function getBaseAttributes(): MetricAttributes {
   return { flow_present: Boolean(getFlowId()) };
 }
@@ -224,17 +201,12 @@ export function recordClientMetric(input: {
   }
   bindListeners();
 
-  const definition = CLIENT_METRIC_DEFINITIONS[input.name];
-  const attributes = normalizeAttributes({
-    ...getBaseAttributes(),
-    ...input.attributes,
-  });
-
+  // The ingest route filters, truncates, and drops empty attributes.
   enqueue({
     name: input.name,
     value: input.value,
-    unit: definition.unit,
-    attributes,
+    unit: CLIENT_METRIC_DEFINITIONS[input.name].unit,
+    attributes: { ...getBaseAttributes(), ...input.attributes },
   });
 
   if (queue.length >= MAX_BATCH_SIZE) {
