@@ -22,6 +22,12 @@ import { requireBrowserSession } from "@/lib/auth/resource-auth";
 
 import { POST } from "../route";
 
+const authenticate = () =>
+  vi.mocked(requireBrowserSession).mockResolvedValue({
+    ok: true,
+    session: { user: { id: "user-1" } },
+  } as never);
+
 const makeRequest = (payload: unknown) =>
   new Request("http://localhost/api/fhe/keys/register", {
     method: "POST",
@@ -42,6 +48,7 @@ describe("fhe keys/register route", () => {
   });
 
   it("rejects invalid msgpack", async () => {
+    authenticate();
     const req = new Request("http://localhost/api/fhe/keys/register", {
       method: "POST",
       body: new Uint8Array([0xc1]),
@@ -55,6 +62,7 @@ describe("fhe keys/register route", () => {
   });
 
   it("requires non-empty key bytes", async () => {
+    authenticate();
     const req = makeRequest({
       serverKey: new Uint8Array([]),
       publicKey: new Uint8Array([1]),
@@ -65,6 +73,32 @@ describe("fhe keys/register route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "serverKey and publicKey must be non-empty byte arrays.",
     });
+  });
+
+  it.each([
+    ["nil", null],
+    ["a non-object", 42],
+  ])(
+    "rejects a %s payload with 400 instead of throwing",
+    async (_label, payload) => {
+      authenticate();
+
+      const response = await POST(makeRequest(payload));
+
+      expect(response.status).toBe(400);
+      expect(fheMocks.registerFheKey).not.toHaveBeenCalled();
+    }
+  );
+
+  it("requires authentication before decoding the body", async () => {
+    const req = new Request("http://localhost/api/fhe/keys/register", {
+      method: "POST",
+      body: new Uint8Array([0xc1]),
+    });
+
+    const response = await POST(req);
+
+    expect(response.status).toBe(401);
   });
 
   it("requires authentication", async () => {
