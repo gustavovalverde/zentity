@@ -1,3 +1,4 @@
+import type { FaceResult } from "@vladmandic/human";
 import type { AdvanceResult } from "../challenges";
 
 import { createHash } from "node:crypto";
@@ -13,7 +14,6 @@ import {
   getFacingDirection,
   getHappyScore,
   getLiveScore,
-  getPrimaryFace,
   getRealScore,
   getYawDegrees,
 } from "../human/metrics";
@@ -25,7 +25,6 @@ vi.mock("../human/metrics", () => ({
   getFacingDirection: vi.fn(),
   getHappyScore: vi.fn(),
   getLiveScore: vi.fn(),
-  getPrimaryFace: vi.fn(),
   getRealScore: vi.fn(),
   getYawDegrees: vi.fn(),
 }));
@@ -41,14 +40,11 @@ const USER = "user-a";
 const FRAME = Buffer.from([1, 2, 3]);
 
 type Detection = Awaited<ReturnType<typeof detectFromBuffer>>;
-const EMPTY_RESULT = {} as Detection;
-// Non-null sentinel face; the metric mocks supply the scores.
-const FACE = { box: [0, 0, 10, 10] } as unknown as ReturnType<
-  typeof getPrimaryFace
->;
+// Sentinel face; the metric mocks supply the scores.
+const FACE = { box: [0, 0, 10, 10] } as FaceResult;
+const FACE_RESULT = { face: [FACE] } as unknown as Detection;
 
 const detect = vi.mocked(detectFromBuffer);
-const primaryFace = vi.mocked(getPrimaryFace);
 const happy = vi.mocked(getHappyScore);
 const real = vi.mocked(getRealScore);
 const live = vi.mocked(getLiveScore);
@@ -61,8 +57,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
   vi.clearAllMocks();
-  detect.mockResolvedValue(EMPTY_RESULT);
-  primaryFace.mockReturnValue(FACE);
+  detect.mockResolvedValue(FACE_RESULT);
   happy.mockReturnValue(0);
   real.mockReturnValue(0.95);
   live.mockReturnValue(0.95);

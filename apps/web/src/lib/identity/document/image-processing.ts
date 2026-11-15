@@ -1,24 +1,24 @@
-import { stripDataUrl } from "@/lib/identity/liveness/human/server";
+import type { Box } from "@vladmandic/human";
+
+import { dataUrlToBuffer } from "@/lib/identity/liveness/human/server";
 
 /**
  * Crop face region from image and return as base64 data URL.
  * This improves embedding quality for small faces in large documents.
  *
  * @param dataUrl - Base64 encoded image data URL
- * @param box - Face bounding box coordinates
+ * @param box - Human.js face box as [x, y, width, height]
  * @param padding - Padding around face (default 30%)
  * @returns Base64 data URL of cropped face region
  */
 export async function cropFaceRegion(
   dataUrl: string,
-  box: { x: number; y: number; width: number; height: number },
+  [boxX, boxY, boxW, boxH]: Box,
   padding = 0.3
 ): Promise<string> {
   const tf = await import("@tensorflow/tfjs-node");
 
-  const base64 = stripDataUrl(dataUrl);
-  const buffer = Buffer.from(base64, "base64");
-  const decoded = tf.node.decodeImage(buffer, 3);
+  const decoded = tf.node.decodeImage(dataUrlToBuffer(dataUrl), 3);
   if (decoded.rank !== 3) {
     decoded.dispose();
     throw new Error("Animated images are not supported");
@@ -29,12 +29,12 @@ export async function cropFaceRegion(
   const width = tensor.shape[1];
 
   // Calculate padded crop region
-  const padW = box.width * padding;
-  const padH = box.height * padding;
-  const x1 = Math.max(0, Math.floor(box.x - padW));
-  const y1 = Math.max(0, Math.floor(box.y - padH));
-  const x2 = Math.min(width, Math.ceil(box.x + box.width + padW));
-  const y2 = Math.min(height, Math.ceil(box.y + box.height + padH));
+  const padW = boxW * padding;
+  const padH = boxH * padding;
+  const x1 = Math.max(0, Math.floor(boxX - padW));
+  const y1 = Math.max(0, Math.floor(boxY - padH));
+  const x2 = Math.min(width, Math.ceil(boxX + boxW + padW));
+  const y2 = Math.min(height, Math.ceil(boxY + boxH + padH));
 
   const cropWidth = x2 - x1;
   const cropHeight = y2 - y1;
