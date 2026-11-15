@@ -94,6 +94,7 @@ export async function createVpSession(
   const now = new Date();
   await db.insert(vpSessions).values({
     id: sessionId,
+    clientId,
     nonce,
     state,
     dcqlQuery: JSON.stringify(scenario.dcqlQuery),

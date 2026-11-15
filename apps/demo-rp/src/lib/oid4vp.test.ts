@@ -37,13 +37,21 @@ const scenarioId = VERIFIER_SCENARIOS[0]?.id ?? "";
 
 async function createSession() {
   const { createVpSession } = await import("./oid4vp");
-  const { sessionId } = await createVpSession(scenarioId, null);
+  const { authorizationUri, sessionId } = await createVpSession(
+    scenarioId,
+    null
+  );
   const row = await database.current
     ?.select()
     .from(vpSessions)
     .where(eq(vpSessions.id, sessionId))
     .get();
-  return { sessionId, signedRequest: `signed-request.${row?.state}` };
+  return {
+    authorizationUri,
+    row,
+    sessionId,
+    signedRequest: `signed-request.${row?.state}`,
+  };
 }
 
 describe("VP session request objects", () => {
@@ -56,6 +64,15 @@ describe("VP session request objects", () => {
     );
     await client.batch(statements);
     database.current = drizzle(client);
+  });
+
+  it("records the client_id the request advertises", async () => {
+    const { authorizationUri, row } = await createSession();
+
+    expect(row?.clientId).toBe("x509_hash:leaf-thumbprint");
+    expect(new URL(authorizationUri).searchParams.get("client_id")).toBe(
+      row?.clientId
+    );
   });
 
   it("serves the request object from a server instance that did not sign it", async () => {

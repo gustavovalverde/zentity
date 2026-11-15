@@ -146,6 +146,7 @@ export const agentRuntime = sqliteTable(
 
 export const vpSessions = sqliteTable("vp_session", {
   id: text("id").primaryKey(),
+  clientId: text("clientId").notNull(),
   nonce: text("nonce").notNull(),
   state: text("state").notNull(),
   dcqlQuery: text("dcqlQuery").notNull(),
