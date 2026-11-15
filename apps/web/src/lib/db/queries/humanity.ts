@@ -79,65 +79,45 @@ export async function createHumanityChallenge(args: {
   provider: string;
   userId: string;
 }): Promise<HumanityChallenge> {
-  const createdAt = new Date().toISOString();
-  await db
+  const row = await db
     .insert(humanityChallenges)
-    .values({
-      id: args.id,
-      userId: args.userId,
-      provider: args.provider,
-      nonce: args.nonce,
-      expiresAt: args.expiresAt,
-      createdAt,
-    })
-    .run();
-
-  return {
-    id: args.id,
-    userId: args.userId,
-    provider: args.provider,
-    nonce: args.nonce,
-    expiresAt: args.expiresAt,
-    consumedAt: null,
-    createdAt,
-  };
+    .values({ ...args, createdAt: new Date().toISOString() })
+    .returning()
+    .get();
+  if (!row) {
+    throw new Error("Failed to create humanity challenge");
+  }
+  return row;
 }
 
+/**
+ * Marks a matching, unexpired, unconsumed challenge consumed in one statement.
+ * Returns null when no such challenge exists, so a challenge is consumed once.
+ */
 export async function consumeHumanityChallenge(args: {
   id: string;
   nonce: string;
   provider: string;
   userId: string;
 }): Promise<HumanityChallenge | null> {
-  return await db.transaction(async (tx) => {
-    const challenge = await tx
-      .select()
-      .from(humanityChallenges)
-      .where(
-        and(
-          eq(humanityChallenges.id, args.id),
-          eq(humanityChallenges.userId, args.userId),
-          eq(humanityChallenges.provider, args.provider),
-          eq(humanityChallenges.nonce, args.nonce),
-          isNull(humanityChallenges.consumedAt)
-        )
+  const now = new Date().toISOString();
+  const row = await db
+    .update(humanityChallenges)
+    .set({ consumedAt: now })
+    .where(
+      and(
+        eq(humanityChallenges.id, args.id),
+        eq(humanityChallenges.userId, args.userId),
+        eq(humanityChallenges.provider, args.provider),
+        eq(humanityChallenges.nonce, args.nonce),
+        isNull(humanityChallenges.consumedAt),
+        gt(humanityChallenges.expiresAt, now)
       )
-      .limit(1)
-      .get();
+    )
+    .returning()
+    .get();
 
-    if (!challenge || challenge.expiresAt <= new Date().toISOString()) {
-      return null;
-    }
-
-    const consumedAt = new Date().toISOString();
-    await tx
-      .update(humanityChallenges)
-      .set({ consumedAt })
-      .where(eq(humanityChallenges.id, challenge.id))
-      .run();
-
-    return { ...challenge, consumedAt };
-  });
+  return row ?? null;
 }
 
 // ─── Attach / detach ─────────────────────────────────────────────────
@@ -191,39 +171,28 @@ export async function attachHumanityCredential(args: {
     }
 
     const now = new Date().toISOString();
-    const id = crypto.randomUUID();
-    const providerMetadata = args.providerMetadata
-      ? JSON.stringify(args.providerMetadata)
-      : null;
-    await tx
+    const row = await tx
       .insert(humanityCredentials)
       .values({
-        id,
+        id: crypto.randomUUID(),
         userId: args.userId,
         provider: args.provider,
         providerSubjectHash: args.providerSubjectHash,
         providerSubjectKind: args.providerSubjectKind,
-        providerMetadata,
+        providerMetadata: args.providerMetadata
+          ? JSON.stringify(args.providerMetadata)
+          : null,
         expiresAt: args.expiresAt ?? null,
         attachedAt: now,
         createdAt: now,
         updatedAt: now,
       })
-      .run();
-
-    return {
-      id,
-      userId: args.userId,
-      provider: args.provider,
-      providerSubjectKind: args.providerSubjectKind,
-      providerSubjectHash: args.providerSubjectHash,
-      providerMetadata,
-      attachedAt: now,
-      expiresAt: args.expiresAt ?? null,
-      revokedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
+      .returning()
+      .get();
+    if (!row) {
+      throw new Error("Failed to attach humanity credential");
+    }
+    return row;
   });
 }
 
