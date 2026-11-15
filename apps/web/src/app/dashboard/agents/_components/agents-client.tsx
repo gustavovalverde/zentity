@@ -31,6 +31,7 @@ import { RequestsTab } from "./requests-tab";
 interface CibaRequestRow {
   acrValues: string | null;
   agentSessionId: string | null;
+  approvalChannel: string | null;
   approvalMethod: string | null;
   attestationProvider: string | null;
   attestationTier: string | null;

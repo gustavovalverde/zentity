@@ -72,7 +72,8 @@ async function approvedCibaRequest(input: {
     requestId: row.id,
     userId: input.userId,
     authentication,
-    grant: { method: "user" },
+    channel: "page",
+    grant: { method: "session" },
   });
   return authReqId;
 }

@@ -645,8 +645,8 @@ Access tokens issued after agent-verified CIBA approval carry the delegation cla
   ],
 
   "oversight": {
-    "approval_reference": "<auth_req_id>",
-    "requires_human_approval_for": ["identity.*"]
+    "method": "user_verification",
+    "approved_at": 1711000000
   },
 
   "audit": {
@@ -673,11 +673,14 @@ Access tokens issued after agent-verified CIBA approval carry the delegation cla
 | `task.id` | Task identifier from the Agent-Assertion |
 | `task.purpose` | Category-level intent (not verbatim description) |
 | `capabilities` | Approved capabilities with their constraint snapshot |
-| `oversight.requires_human_approval_for` | Scopes that MUST route through human approval |
+| `oversight.method` | How the approval happened: `capability_grant` (a grant approved it without the user), `session` (the user approved in an active session), or `user_verification` (the user approved with a user-verified WebAuthn assertion bound to the request) |
+| `oversight.approved_at` | When the decision was recorded, in seconds since the epoch |
 | `audit.trace_id` | CIBA `auth_req_id` for end-to-end correlation |
 | `cnf.jkt` | DPoP proof-of-possession key thumbprint |
 
 **Conditional emission.** If `assertion_verified` is `false` on the CIBA request, delegation claims MUST NOT be emitted; the token is issued as a standard CIBA token without agent semantics.
+
+**Approval evidence for every client.** The AS records each decision durably before the token can be issued, and the CIBA token response for every approval, agent-backed or not, carries an `oversight` member with the same `method` and `approved_at`, so a client learns how its request was approved without reading the access token.
 
 ### 7.2 Chain Tracking
 
@@ -1056,7 +1059,7 @@ This document requests registrations in the "JSON Web Token Claims" registry (RF
 - `agent` — Object describing the acting agent runtime and attestation posture.
 - `task` — Object describing the task category under which delegation was authorized.
 - `capabilities` — Array of approved named actions with typed constraint snapshots.
-- `oversight` — Object carrying human-approval requirements and the originating approval reference.
+- `oversight` — Object stating how the approval happened (`method`) and when (`approved_at`).
 - `audit` — Object carrying a CIBA trace identifier and session reference.
 - `delegation` — Object tracking the delegation chain, as defined in §7.2.
 

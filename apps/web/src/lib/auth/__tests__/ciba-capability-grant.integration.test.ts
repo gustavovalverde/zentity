@@ -27,7 +27,7 @@ import {
   agentSessions,
   capabilityUsageLedger,
 } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
 import {
   oauthAccessTokens,
   oauthClients,
@@ -262,20 +262,35 @@ function readStoredRequest(authReqId: string) {
     .get();
 }
 
-function readRequest(authReqId: string) {
-  return db
-    .select({
-      approvalMethod: cibaRequests.approvalMethod,
-      approvedCapabilityName: cibaRequests.approvedCapabilityName,
-      approvedConstraints: cibaRequests.approvedConstraints,
-      approvedHostPolicyId: cibaRequests.approvedHostPolicyId,
-      authContextId: cibaRequests.authContextId,
-      status: cibaRequests.status,
-    })
-    .from(cibaRequests)
-    .where(eq(cibaRequests.authReqId, hashCibaAuthReqId(authReqId)))
-    .limit(1)
-    .get();
+/** The request's status with what its decision record says, if any. */
+async function readRequest(authReqId: string) {
+  const referenceId = hashCibaAuthReqId(authReqId);
+  const [request, approval] = await Promise.all([
+    db
+      .select({
+        authContextId: cibaRequests.authContextId,
+        status: cibaRequests.status,
+      })
+      .from(cibaRequests)
+      .where(eq(cibaRequests.authReqId, referenceId))
+      .limit(1)
+      .get(),
+    db
+      .select()
+      .from(cibaApprovals)
+      .where(eq(cibaApprovals.referenceId, referenceId))
+      .limit(1)
+      .get(),
+  ]);
+  return {
+    status: request?.status,
+    authContextId: request?.authContextId,
+    approvalMethod: approval?.approvalMethod ?? null,
+    approvalChannel: approval?.approvalChannel ?? null,
+    approvedCapabilityName: approval?.capability ?? null,
+    approvedConstraints: approval?.constraints ?? null,
+    approvedHostPolicyId: approval?.hostPolicyId ?? null,
+  };
 }
 
 function ledgerEntries(sessionId: string) {
@@ -319,6 +334,7 @@ describe("CIBA approval from capability grants", () => {
       expect.objectContaining({
         status: "approved",
         approvalMethod: "capability_grant",
+        approvalChannel: "grant",
         approvedCapabilityName: "check_compliance",
         approvedHostPolicyId: expect.any(String),
         authContextId: delegationAuthContextId,

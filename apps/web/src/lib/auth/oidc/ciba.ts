@@ -1,7 +1,10 @@
 import "server-only";
 
 import type { AuthContext } from "@better-auth/core";
-import type { OAuthTokenIssueParams } from "@better-auth/oauth-provider";
+import type {
+  OAuthActorClaim,
+  OAuthTokenIssueParams,
+} from "@better-auth/oauth-provider";
 import type {
   AapAccessTokenClaims,
   AuthenticationState,
@@ -32,7 +35,13 @@ import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import {
+  type CibaApprovalChannel,
+  type CibaApprovalMethod,
+  cibaApprovals,
+  cibaRequests,
+  type NewCibaApproval,
+} from "@/lib/db/schema/ciba";
 
 /**
  * Zentity's side of OpenID CIBA on top of `@better-auth/ciba`: the approval
@@ -61,8 +70,16 @@ export interface PendingCibaToken {
   authContextId: string;
   /** The stored `auth_req_id` hash, which every CIBA token references. */
   authReqIdHash: string;
+  /** How the approval happened, from `ciba_approval`, for the token response. */
+  oversight: CibaOversight | null;
   /** Durable agent snapshot, set only for verified agent sessions. */
   snapshot: StoredTokenSnapshot | null;
+}
+
+/** The token response member that tells the client how the user approved. */
+interface CibaOversight {
+  approved_at: number;
+  method: CibaApprovalMethod;
 }
 
 const pendingCibaTokenState = defineRequestState<PendingCibaToken | null>(
@@ -79,42 +96,38 @@ export function getPendingCibaToken(): Promise<PendingCibaToken | null> {
 
 // ── Token grant actor and authentication ─────────────────────────────
 
-/**
- * What a CIBA token carries from its approval. The RFC 8693 actor is the
- * verified agent session behind the request, otherwise the client, which acts
- * for the user. The approval-time authentication context goes in the token's
- * claims, which the provider stores on an opaque token, because the token has
- * no session to resolve it from.
- */
-async function resolveCibaIssuance(
+async function pendingCibaTokenFor(
   params: OAuthTokenIssueParams
-): Promise<Pick<OAuthTokenIssueParams, "accessTokenClaims" | "act">> {
+): Promise<PendingCibaToken | null> {
   const pending = await getPendingCibaToken();
-  const approval =
-    pending && pending.authReqIdHash === params.referenceId ? pending : null;
-  const agentActor = approval?.agentClaims?.act;
-  return {
-    act: agentActor
-      ? { ...agentActor }
-      : { sub: params.client.clientId, sub_profile: "service" },
-    ...(approval?.authContextId
-      ? {
-          accessTokenClaims: {
-            ...params.accessTokenClaims,
-            [AUTHENTICATION_CONTEXT_CLAIM]: approval.authContextId,
-          },
-        }
-      : {}),
-  };
+  return pending && pending.authReqIdHash === params.referenceId
+    ? pending
+    : null;
+}
+
+/**
+ * The RFC 8693 actor a CIBA token names: the verified agent session behind
+ * the request, otherwise the client, which acts for the user.
+ */
+function resolveCibaActor(
+  params: OAuthTokenIssueParams,
+  pending: PendingCibaToken | null
+): OAuthActorClaim {
+  const agentActor = pending?.agentClaims?.act;
+  return agentActor
+    ? { ...agentActor }
+    : { sub: params.client.clientId, sub_profile: "service" };
 }
 
 /**
  * Better Auth owns a token's `act` and stamps only the one a grant passes to
  * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
  * grant issues through a provider that adds it, along with the approval's
- * authentication context. Like any delegated issuance, a CIBA token then comes
- * without a refresh token, because a refreshed token would no longer name the
- * actor.
+ * authentication context and the `oversight` token response member. The
+ * authentication context goes in the token's claims, which the provider
+ * stores on an opaque token, because the token has no session to resolve it
+ * from. Like any delegated issuance, a CIBA token then comes without a
+ * refresh token, because a refreshed token would no longer name the actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
   const grants = oauthProviderOptions(context).extensions?.find(
@@ -129,20 +142,38 @@ function issueCibaTokensWithActor(context: AuthContext): void {
       ...input,
       provider: {
         ...input.provider,
-        issueTokens: async (params) =>
-          input.provider.issueTokens({
+        issueTokens: async (params) => {
+          const pending = await pendingCibaTokenFor(params);
+          return input.provider.issueTokens({
             ...params,
-            ...(await resolveCibaIssuance(params)),
-          }),
+            act: resolveCibaActor(params, pending),
+            ...(pending?.authContextId
+              ? {
+                  accessTokenClaims: {
+                    ...params.accessTokenClaims,
+                    [AUTHENTICATION_CONTEXT_CLAIM]: pending.authContextId,
+                  },
+                }
+              : {}),
+            ...(pending?.oversight
+              ? {
+                  tokenResponse: {
+                    ...params.tokenResponse,
+                    oversight: pending.oversight,
+                  },
+                }
+              : {}),
+          });
+        },
       },
     });
 }
 
 // ── Approval decision ────────────────────────────────────────────────
 
-/** How an approval was obtained, recorded on the request for oversight. */
+/** How an approval was obtained, recorded in `ciba_approval`. */
 type CibaApprovalGrant =
-  | { method: "user" }
+  | { method: "session" | "user_verification" }
   | {
       capabilityName: string;
       constraints: GrantConstraint[] | null;
@@ -154,6 +185,7 @@ type CibaApprovalGrant =
 interface CibaDecisionInput {
   /** The authentication that approves the request, issued as amr/auth_time. */
   authentication: AuthenticationState;
+  channel: CibaApprovalChannel;
   grant: CibaApprovalGrant;
   requestId: string;
   userId: string;
@@ -185,14 +217,133 @@ export interface CibaApproval {
   /**
    * Approves a pending request for its hinted user. The user's assurance tier
    * must satisfy any `acr_values` the client sent, and is issued as the ID
-   * token `acr`. Zentity's approval metadata, and the request's own hash as
-   * the token `referenceId` that keys release contexts and agent snapshots,
-   * are written while the request is still pending, so a token poll can never
-   * claim it without them.
+   * token `acr`. The `ciba_approval` record, and the request's own hash as
+   * the token `referenceId` that keys release contexts, agent snapshots, and
+   * the record, are written while the request is still pending, so a token
+   * poll can never claim it without them.
    */
   approve: (input: CibaDecisionInput) => Promise<void>;
   /** Denies a pending request for its hinted user. */
-  deny: (input: { requestId: string; userId: string }) => Promise<void>;
+  deny: (input: {
+    channel: CibaApprovalChannel;
+    requestId: string;
+    userId: string;
+  }) => Promise<void>;
+}
+
+async function loadPendingRequest(requestId: string, userId: string) {
+  const row = await db
+    .select({
+      acrValues: cibaRequests.acrValues,
+      agentSessionId: cibaRequests.agentSessionId,
+      assertionVerified: cibaRequests.assertionVerified,
+      attestationProvider: cibaRequests.attestationProvider,
+      attestationTier: cibaRequests.attestationTier,
+      authorizationDetails: cibaRequests.authorizationDetails,
+      authReqId: cibaRequests.authReqId,
+      bindingMessage: cibaRequests.bindingMessage,
+      clientId: cibaRequests.clientId,
+      createdAt: cibaRequests.createdAt,
+      expiresAt: cibaRequests.expiresAt,
+      hostId: cibaRequests.hostId,
+      scope: cibaRequests.scope,
+      status: cibaRequests.status,
+      userId: cibaRequests.userId,
+    })
+    .from(cibaRequests)
+    .where(eq(cibaRequests.id, requestId))
+    .limit(1)
+    .get();
+  if (
+    !row ||
+    row.userId !== userId ||
+    row.status !== "pending" ||
+    row.expiresAt <= new Date()
+  ) {
+    throw cibaDecisionError(
+      "BAD_REQUEST",
+      "invalid_request",
+      "This request is invalid, has expired, or was sent to another account"
+    );
+  }
+  return row;
+}
+
+type PendingCibaRequest = Awaited<ReturnType<typeof loadPendingRequest>>;
+
+/**
+ * Inserts the decision record. The unique `reference_id` lets only one
+ * decision win; a loser learns which decision came first.
+ */
+async function insertDecisionRecord(
+  row: PendingCibaRequest,
+  record: Omit<
+    NewCibaApproval,
+    | "acrValues"
+    | "agentSessionId"
+    | "attestationProvider"
+    | "attestationTier"
+    | "authorizationDetails"
+    | "bindingMessage"
+    | "clientId"
+    | "decidedAt"
+    | "expiresAt"
+    | "hostId"
+    | "referenceId"
+    | "requestedAt"
+    | "scope"
+    | "userId"
+  >
+): Promise<string> {
+  const verifiedAgent = row.assertionVerified === true;
+  const [inserted] = await db
+    .insert(cibaApprovals)
+    .values({
+      ...record,
+      referenceId: row.authReqId,
+      userId: row.userId,
+      clientId: row.clientId,
+      scope: row.scope,
+      bindingMessage: row.bindingMessage,
+      authorizationDetails: row.authorizationDetails,
+      acrValues: row.acrValues,
+      agentSessionId: verifiedAgent ? row.agentSessionId : null,
+      hostId: verifiedAgent ? row.hostId : null,
+      attestationTier: verifiedAgent ? row.attestationTier : null,
+      attestationProvider: verifiedAgent ? row.attestationProvider : null,
+      requestedAt: row.createdAt,
+      decidedAt: new Date(),
+      expiresAt: row.expiresAt,
+    })
+    .onConflictDoNothing({ target: cibaApprovals.referenceId })
+    .returning({ id: cibaApprovals.id });
+  if (inserted) {
+    return inserted.id;
+  }
+  const winner = await db
+    .select({ decision: cibaApprovals.decision })
+    .from(cibaApprovals)
+    .where(eq(cibaApprovals.referenceId, row.authReqId))
+    .limit(1)
+    .get();
+  throw cibaDecisionError(
+    "BAD_REQUEST",
+    "invalid_request",
+    `This request was already ${winner?.decision ?? "approved"}`
+  );
+}
+
+/** Completes the request, or removes the record so a retry can decide. */
+async function completeOrRollback(
+  recordId: string,
+  complete: () => Promise<unknown>
+): Promise<void> {
+  try {
+    await complete();
+  } catch (error) {
+    await db.delete(cibaApprovals).where(eq(cibaApprovals.id, recordId)).run();
+    throw error;
+  }
 }
 
 export function createCibaApproval(
@@ -200,30 +351,7 @@ export function createCibaApproval(
 ): CibaApproval {
   return {
     async approve(input) {
-      const row = await db
-        .select({
-          acrValues: cibaRequests.acrValues,
-          authReqId: cibaRequests.authReqId,
-          expiresAt: cibaRequests.expiresAt,
-          status: cibaRequests.status,
-          userId: cibaRequests.userId,
-        })
-        .from(cibaRequests)
-        .where(eq(cibaRequests.id, input.requestId))
-        .limit(1)
-        .get();
-      if (
-        !row ||
-        row.userId !== input.userId ||
-        row.status !== "pending" ||
-        row.expiresAt <= new Date()
-      ) {
-        throw cibaDecisionError(
-          "BAD_REQUEST",
-          "invalid_request",
-          "This request is invalid, has expired, or was sent to another account"
-        );
-      }
+      const row = await loadPendingRequest(input.requestId, input.userId);
 
       const { authentication, grant } = input;
       const assurance = await getAccountAssurance(input.userId, {
@@ -241,44 +369,60 @@ export function createCibaApproval(
         );
       }
 
-      await db
-        .update(cibaRequests)
-        .set({
-          referenceId: row.authReqId,
-          authContextId: authentication.id,
-          approvalMethod: grant.method,
-          ...(grant.method === "capability_grant"
-            ? {
-                approvedCapabilityName: grant.capabilityName,
-                approvedConstraints: grant.constraints,
-                approvedGrantId: grant.grantId,
-                approvedHostPolicyId: grant.hostPolicyId,
-              }
-            : {}),
-        })
-        .where(
-          and(
-            eq(cibaRequests.id, input.requestId),
-            eq(cibaRequests.status, "pending")
-          )
-        )
-        .run();
-
-      await completeCibaRequest({
+      const recordId = await insertDecisionRecord(row, {
         requestId: input.requestId,
-        userId: input.userId,
         decision: "approved",
-        acr: computeAcr(assurance.tier),
-        ...(authentication.amr.length > 0 ? { amr: authentication.amr } : {}),
-        authTime: new Date(authentication.authenticatedAt * 1000),
+        approvalMethod: grant.method,
+        approvalChannel: input.channel,
+        authContextId: authentication.id,
+        ...(grant.method === "capability_grant"
+          ? {
+              capability: grant.capabilityName,
+              constraints: grant.constraints,
+              grantId: grant.grantId,
+              hostPolicyId: grant.hostPolicyId,
+            }
+          : {}),
+      });
+
+      await completeOrRollback(recordId, async () => {
+        await db
+          .update(cibaRequests)
+          .set({
+            referenceId: row.authReqId,
+            authContextId: authentication.id,
+          })
+          .where(
+            and(
+              eq(cibaRequests.id, input.requestId),
+              eq(cibaRequests.status, "pending")
+            )
+          )
+          .run();
+        await completeCibaRequest({
+          requestId: input.requestId,
+          userId: input.userId,
+          decision: "approved",
+          acr: computeAcr(assurance.tier),
+          ...(authentication.amr.length > 0 ? { amr: authentication.amr } : {}),
+          authTime: new Date(authentication.authenticatedAt * 1000),
+        });
       });
     },
     async deny(input) {
-      await completeCibaRequest({
+      const row = await loadPendingRequest(input.requestId, input.userId);
+      const recordId = await insertDecisionRecord(row, {
         requestId: input.requestId,
-        userId: input.userId,
         decision: "denied",
+        approvalChannel: input.channel,
       });
+      await completeOrRollback(recordId, () =>
+        completeCibaRequest({
+          requestId: input.requestId,
+          userId: input.userId,
+          decision: "denied",
+        })
+      );
     },
   };
 }
@@ -337,6 +481,9 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
           body: z.object({
             request_id: z.string().min(1),
             decision: z.enum(["approved", "denied"]),
+            // Service workers installed before the channel existed post
+            // without one from a notification action.
+            channel: z.enum(["push", "page", "email"]).default("push"),
           }),
           // A decision issues tokens, so a revoked session must not act from
           // the cookie cache.
@@ -366,7 +513,11 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
           }
 
           if (ctx.body.decision === "denied") {
-            await approval.deny({ requestId, userId });
+            await approval.deny({
+              channel: ctx.body.channel,
+              requestId,
+              userId,
+            });
             return ctx.json({ status: "denied" });
           }
           const authentication = await getAuthenticationStateBySessionId(
@@ -382,7 +533,8 @@ export function cibaApprovalPlugin(approval: CibaApproval) {
             requestId,
             userId,
             authentication,
-            grant: { method: "user" },
+            channel: ctx.body.channel,
+            grant: { method: "session" },
           });
           return ctx.json({ status: "approved" });
         }

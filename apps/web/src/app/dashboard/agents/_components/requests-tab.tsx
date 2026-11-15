@@ -25,6 +25,7 @@ import { PushNotificationBanner } from "./push-banner";
 import { PwaInstallBanner } from "./pwa-install-banner";
 
 interface CibaRequest {
+  approvalChannel: string | null;
   approvalMethod: string | null;
   attestationTier: string | null;
   authorizationDetails: string | null;
@@ -71,6 +72,25 @@ function formatScopeDescription(scope: string): string {
     .filter((s) => s !== "openid")
     .map((s) => SCOPE_DESCRIPTIONS[s] ?? s)
     .join(", ");
+}
+
+const CHANNEL_LABELS: Record<string, string> = {
+  email: "Email link",
+  page: "Approval page",
+  push: "Notification",
+};
+
+/** Where the user decided, and whether a passkey confirmed it. */
+function formatDecision(req: CibaRequest): string | null {
+  const channel = req.approvalChannel
+    ? CHANNEL_LABELS[req.approvalChannel]
+    : undefined;
+  if (!channel) {
+    return null;
+  }
+  return req.approvalMethod === "user_verification"
+    ? `${channel} · Passkey`
+    : channel;
 }
 
 function formatPurchaseDetail(
@@ -148,9 +168,8 @@ export function RequestsTab({
             const expired = isExpired(req.expiresAt, req.status);
             const displayStatus = expired ? "expired" : req.status;
             const isAttested = req.attestationTier === "attested";
-            const isAutoApproved =
-              req.approvalMethod === "capability_grant" ||
-              req.approvalMethod === "boundary";
+            const isAutoApproved = req.approvalMethod === "capability_grant";
+            const decision = formatDecision(req);
             const purchaseDetail = formatPurchaseDetail(
               req.authorizationDetails
             );
@@ -181,6 +200,11 @@ export function RequestsTab({
                       </ItemDescription>
                       {purchaseDetail && (
                         <p className="font-medium text-sm">{purchaseDetail}</p>
+                      )}
+                      {decision && (
+                        <p className="text-muted-foreground text-xs">
+                          {decision}
+                        </p>
                       )}
                     </ItemContent>
                     <div className="flex shrink-0 items-center gap-2">

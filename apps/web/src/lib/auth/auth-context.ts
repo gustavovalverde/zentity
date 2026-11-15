@@ -17,7 +17,7 @@ import { deriveAuthStrength, isValidLoginMethod } from "@/lib/assurance/tier";
 import { db } from "@/lib/db/connection";
 import { agentSessions } from "@/lib/db/schema/agent";
 import { authenticationContexts, sessions } from "@/lib/db/schema/auth";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthRefreshTokens } from "@/lib/db/schema/oauth-provider";
 import { credentialBindingCommitments } from "@/lib/db/schema/privacy";
 
@@ -353,7 +353,7 @@ export function resolveAuthenticationContext(input: {
 
 /**
  * Deletes an authentication context that no session, token, agent session,
- * CIBA request, or credential binding refers to. A context that something
+ * CIBA request or approval record, or credential binding refers to. A context that something
  * still refers to stays, since those references outlive the session that
  * created it.
  */
@@ -366,6 +366,7 @@ export async function deleteUnreferencedAuthenticationContext(
       | typeof oauthRefreshTokens
       | typeof agentSessions
       | typeof cibaRequests
+      | typeof cibaApprovals
       | typeof credentialBindingCommitments
   ) =>
     notExists(
@@ -383,6 +384,7 @@ export async function deleteUnreferencedAuthenticationContext(
         unreferenced(oauthRefreshTokens),
         unreferenced(agentSessions),
         unreferenced(cibaRequests),
+        unreferenced(cibaApprovals),
         unreferenced(credentialBindingCommitments)
       )
     )

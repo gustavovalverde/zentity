@@ -157,10 +157,13 @@ async function issueAgentToken(
     version: "1.0.0",
     taskId: "task-123",
     assertionVerified: true,
-    approvedCapabilityName: "purchase",
-    approvedConstraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
-    approvedGrantId: "grant-123",
-    approvalStrength: "session",
+    approval: {
+      approvalMethod: "capability_grant",
+      approvalChannel: "grant",
+      capability: "purchase",
+      constraints: [{ field: "merchant", op: "eq", value: "Test Store" }],
+      grantId: "grant-123",
+    },
     attestationProvider: "AgentPass",
     attestationTier: "attested",
   });
@@ -318,7 +321,7 @@ describe("Agent Introspection", () => {
     expect(result.body.oversight).toEqual({
       approval_id: "grant-123",
       approved_at: expect.any(Number),
-      method: "session",
+      method: "capability_grant",
     });
     // auth_req_id is hashed at rest; the audit correlation claim carries the
     // hash, never the raw bearer value.

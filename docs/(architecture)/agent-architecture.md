@@ -295,7 +295,7 @@ The approval router produces three practical outcomes:
 | Push approval | No matching grant, or the request spans capabilities or ungrantable scopes | Push notification and approval page |
 | User-verified approval | The policy ceremony is `user_verification`, such as a payment or a purchase | Push links to the approval page, which asks for a passkey assertion |
 
-A silent approval is recorded for the user who owns the host, with `approval_method` set to `capability_grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
+A silent approval is recorded in `ciba_approval` for the user who owns the host, with `approval_method` set to `capability_grant` and `approval_channel` set to `grant`. No one authenticates during a silent approval. The issued tokens therefore carry the authentication that registered the agent session: its `amr`, its `auth_time`, and its authentication context. If the session has no recorded authentication, the request falls back to push approval and no usage limit is consumed.
 
 ### Runtime proof enters here
 
@@ -460,8 +460,9 @@ After approval, the agent receives a CIBA access token that identifies both the 
     }
   ],
   "oversight": {
-    "approval_reference": "grant-123",
-    "requires_human_approval_for": ["purchase"]
+    "approval_id": "grant-123",
+    "approved_at": 1759996400,
+    "method": "capability_grant"
   },
   "audit": {
     "trace_id": "auth_req_id",
@@ -492,6 +493,7 @@ Key points:
 - `sub` identifies the human for the target client.
 - `act.sub` and `agent.id` identify the acting session for the target client.
 - `agent`, `task`, `capabilities`, `oversight`, and `audit` are the AAP-profiled token sections.
+- `oversight.method` and `oversight.approved_at` come from the request's `ciba_approval` record: the method the user approved with (`session`, `user_verification`, or `capability_grant`) and the decision time. The CIBA token response carries the same `oversight` member for every approval, agent-backed or not.
 - `authorization_details` preserves what was approved.
 - `cnf.jkt` sender-constrains the token when DPoP is in play.
 

@@ -12,8 +12,10 @@ import { oauthClients } from "./oauth-provider";
  * through `acrValues` are the `@better-auth/ciba` model; its adapter writes the
  * `string[]` fields `resources` and `acrValues` as JSON arrays, so raw readers
  * parse them with `parseStoredStringArray`. The rest are Zentity extensions
- * the plugin never reads: the verified agent session and attestation, the
- * capability grant that approved it, and the approving authentication context.
+ * the plugin never reads: the verified agent session and attestation, and the
+ * approving authentication context. The plugin deletes the row when it issues
+ * the token or answers a denied or expired poll, so what was decided lives in
+ * `ciba_approval`.
  */
 export const cibaRequests = sqliteTable(
   "ciba_request",
@@ -66,14 +68,6 @@ export const cibaRequests = sqliteTable(
     agentClaims: text("agent_claims"),
     assertionVerified: integer("assertion_verified", { mode: "boolean" }),
     pairwiseActSub: text("pairwise_act_sub"),
-    approvedCapabilityName: text("approved_capability_name"),
-    approvedConstraints: text("approved_constraints", { mode: "json" }).$type<
-      GrantConstraint[]
-    >(),
-    approvedGrantId: text("approved_grant_id"),
-    approvedHostPolicyId: text("approved_host_policy_id"),
-    approvalStrength: text("approval_strength"),
-    approvalMethod: text("approval_method"),
     attestationProvider: text("attestation_provider"),
     attestationTier: text("attestation_tier"),
     authContextId: text("auth_context_id").references(
@@ -91,6 +85,70 @@ export const cibaRequests = sqliteTable(
 
 export type CibaRequest = typeof cibaRequests.$inferSelect;
 export type NewCibaRequest = typeof cibaRequests.$inferInsert;
+
+/**
+ * One decision on a CIBA request, written before the plugin can consume the
+ * request and kept until the user is deleted. `referenceId` is the stored
+ * `auth_req_id` hash every token of the approval references, and its unique
+ * index lets only one decision win. The request fields are copies, because
+ * the request row does not survive token issuance.
+ */
+export const cibaApprovals = sqliteTable(
+  "ciba_approval",
+  {
+    id: text("id").primaryKey().default(defaultId),
+    referenceId: text("reference_id").notNull().unique(),
+    requestId: text("request_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // No foreign key, so the history survives the client's deletion.
+    clientId: text("client_id").notNull(),
+    scope: text("scope").notNull(),
+    bindingMessage: text("binding_message"),
+    authorizationDetails: text("authorization_details"),
+    acrValues: text("acr_values"),
+    decision: text("decision", { enum: ["approved", "denied"] }).notNull(),
+    approvalMethod: text("approval_method", {
+      enum: ["session", "user_verification", "capability_grant"],
+    }),
+    approvalChannel: text("approval_channel", {
+      enum: ["push", "page", "email", "grant"],
+    }).notNull(),
+    capability: text("capability"),
+    grantId: text("grant_id"),
+    hostPolicyId: text("host_policy_id"),
+    constraints: text("constraints", { mode: "json" }).$type<
+      GrantConstraint[]
+    >(),
+    agentSessionId: text("agent_session_id").references(
+      () => agentSessions.id,
+      { onDelete: "set null" }
+    ),
+    hostId: text("host_id").references(() => agentHosts.id, {
+      onDelete: "set null",
+    }),
+    attestationTier: text("attestation_tier"),
+    attestationProvider: text("attestation_provider"),
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
+    requestedAt: integer("requested_at", { mode: "timestamp_ms" }).notNull(),
+    decidedAt: integer("decided_at", { mode: "timestamp_ms" }).notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    index("ciba_approval_user_decided_idx").on(table.userId, table.decidedAt),
+    index("ciba_approval_client_id_idx").on(table.clientId),
+    index("ciba_approval_agent_session_id_idx").on(table.agentSessionId),
+  ]
+);
+
+export type CibaApproval = typeof cibaApprovals.$inferSelect;
+export type NewCibaApproval = typeof cibaApprovals.$inferInsert;
+export type CibaApprovalMethod = NonNullable<CibaApproval["approvalMethod"]>;
+export type CibaApprovalChannel = CibaApproval["approvalChannel"];
 
 // ---------------------------------------------------------------------------
 // Web Push subscriptions (used for CIBA approval notifications)

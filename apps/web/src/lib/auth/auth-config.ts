@@ -175,7 +175,10 @@ import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { siweAuth } from "@/lib/auth/siwe/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
-import { denyPendingCibaRequestsForUser } from "@/lib/db/queries/ciba";
+import {
+  denyPendingCibaRequestsForUser,
+  findCibaApproval,
+} from "@/lib/db/queries/ciba";
 import { getActiveHumanityCredentials } from "@/lib/db/queries/humanity";
 import { detachVaultCredential } from "@/lib/db/queries/privacy";
 import {
@@ -788,7 +791,8 @@ function accessTokenJti(token: string): string | undefined {
 /**
  * Loads what a CIBA token poll needs from the request row before the plugin
  * consumes (deletes) it: the step-up re-check, the staged identity release,
- * the verified agent context, and the approval-time authentication context.
+ * the verified agent context, the approval-time authentication context, and
+ * the approval record's oversight.
  * The result is stashed for the claim contributors and the after-hook of the
  * same request. A refusal here leaves the approved request in place for
  * another poll.
@@ -825,14 +829,22 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
     await touchReleaseContext(releaseId, Date.now() + 3600 * 1000);
   }
 
+  const approval = await findCibaApproval(authReqIdHash);
   const contribution = await buildCibaAgentContribution(
     row as unknown as Record<string, unknown>,
-    row.clientId
+    row.clientId,
+    approval
   );
   await setPendingCibaToken({
     agentClaims: contribution?.claims ?? null,
     authContextId: row.authContextId ?? "",
     authReqIdHash,
+    oversight: approval?.approvalMethod
+      ? {
+          method: approval.approvalMethod,
+          approved_at: Math.floor(approval.decidedAt.getTime() / 1000),
+        }
+      : null,
     snapshot: contribution?.snapshot ?? null,
   });
 }
@@ -1477,6 +1489,7 @@ async function approveFromCapabilityGrant(input: {
       requestId: input.requestId,
       userId: input.userId,
       authentication,
+      channel: "grant",
       grant: {
         method: "capability_grant",
         capabilityName: grantResult.capabilityName,

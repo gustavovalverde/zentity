@@ -2,31 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import { resolveOversightMethod } from "@/lib/agents/claims";
 
-const OVERSIGHT_METHODS = [
-  "capability_grant",
-  "email",
-  "session",
-  "biometric",
-] as const;
-
+// R5: oversight states the recorded method, never a ranking of the method
+// against the capability's catalog strength.
 describe("resolveOversightMethod", () => {
-  it("selects the strongest available oversight method", () => {
-    for (const approvalMethod of OVERSIGHT_METHODS) {
-      for (const approvalStrength of OVERSIGHT_METHODS) {
-        expect(resolveOversightMethod(approvalMethod, approvalStrength)).toBe(
-          OVERSIGHT_METHODS[
-            Math.max(
-              OVERSIGHT_METHODS.indexOf(approvalMethod),
-              OVERSIGHT_METHODS.indexOf(approvalStrength)
-            )
-          ]
-        );
-      }
+  it.each(["capability_grant", "session", "user_verification"] as const)(
+    "states the recorded %s method as is",
+    (method) => {
+      expect(resolveOversightMethod(method)).toBe(method);
     }
-  });
+  );
 
-  it("falls back to session when stored metadata is absent or unknown", () => {
-    expect(resolveOversightMethod(null, null)).toBe("session");
-    expect(resolveOversightMethod("unknown", undefined)).toBe("session");
-  });
+  it.each([null, undefined, "", "user", "biometric", "email", "none"])(
+    "states no method for %j, which no approval records",
+    (method) => {
+      expect(resolveOversightMethod(method)).toBeNull();
+    }
+  );
 });

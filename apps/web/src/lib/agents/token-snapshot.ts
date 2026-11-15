@@ -5,6 +5,7 @@ import type {
   CapabilityClaim,
   HostAttestationTier,
 } from "@zentity/sdk/protocol";
+import type { CibaApproval } from "@/lib/db/schema/ciba";
 import type { GrantConstraint } from "./approval-evaluate";
 
 import { createHash } from "node:crypto";
@@ -13,6 +14,7 @@ import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/lib/db/connection";
+import { findCibaApproval } from "@/lib/db/queries/ciba";
 import { agentHosts, agentTokenSnapshots } from "@/lib/db/schema/agent";
 import { getReleaseId } from "@/lib/observability/release";
 
@@ -32,14 +34,12 @@ interface LoadedTokenSnapshot {
   sessionId: string;
 }
 
+/**
+ * The verified agent runtime behind a CIBA token. What was approved, and how,
+ * is read from the request's `ciba_approval` record, keyed by `authReqId`.
+ */
 export interface StoredTokenSnapshot {
   agentSessionId: string | null;
-  approvalMethod: string | null;
-  approvalStrength: string | null;
-  approvedCapabilityName: string | null;
-  approvedConstraints: GrantConstraint[] | null;
-  approvedGrantId: string | null;
-  approvedHostPolicyId: string | null;
   assertionVerified: boolean | null;
   attestationProvider: string | null;
   attestationTier: string | null;
@@ -73,32 +73,43 @@ function toUnixSeconds(value: Date | null | undefined, fallback = new Date()) {
   return Math.floor((value ?? fallback).getTime() / 1000);
 }
 
-function buildApprovalId(row: StoredTokenSnapshot): string {
+function buildApprovalId(
+  row: StoredTokenSnapshot,
+  approval: CibaApproval
+): string {
   return (
-    row.approvedGrantId ??
-    row.approvedHostPolicyId ??
+    approval.grantId ??
+    approval.hostPolicyId ??
     row.authReqId ??
     row.agentSessionId ??
     "agent-approval"
   );
 }
 
-function buildTaskDescription(row: StoredTokenSnapshot): string {
+function buildTaskDescription(
+  row: StoredTokenSnapshot,
+  approval: CibaApproval
+): string {
   return (
     row.bindingMessage ??
-    row.approvedCapabilityName ??
+    approval.capability ??
     row.taskId ??
     row.authReqId ??
     "agent-request"
   );
 }
 
-function buildTaskHash(row: StoredTokenSnapshot): string {
+function buildTaskHash(
+  row: StoredTokenSnapshot,
+  approval: CibaApproval
+): string {
   if (row.taskHash) {
     return row.taskHash;
   }
 
-  return createHash("sha256").update(buildTaskDescription(row)).digest("hex");
+  return createHash("sha256")
+    .update(buildTaskDescription(row, approval))
+    .digest("hex");
 }
 
 function buildCapabilitiesFromConstraints(
@@ -134,11 +145,24 @@ async function findHostDid(
   return host ? encodeEd25519DidKeyFromJwk(host.publicKey) : undefined;
 }
 
+/**
+ * Agent claims for a token, or null when the request had no verified agent
+ * or no recorded approval. Pass `approval` when the caller already loaded it.
+ */
 async function resolveTokenSnapshot(
   row: StoredTokenSnapshot | undefined,
-  audienceClientId: string
+  audienceClientId: string,
+  loadedApproval?: CibaApproval | null
 ): Promise<LoadedTokenSnapshot | null> {
   if (!(row?.agentSessionId && row.assertionVerified)) {
+    return null;
+  }
+  const approval =
+    loadedApproval === undefined && row.authReqId
+      ? await findCibaApproval(row.authReqId)
+      : loadedApproval;
+  const method = resolveOversightMethod(approval?.approvalMethod);
+  if (!(approval && method)) {
     return null;
   }
 
@@ -147,7 +171,7 @@ async function resolveTokenSnapshot(
     findHostDid(row.hostId),
   ]);
   const hostAttestation = asHostAttestationTier(row.attestationTier);
-  const constraints = row.approvedConstraints ?? undefined;
+  const constraints = approval.constraints ?? undefined;
 
   return {
     authReqId: row.authReqId ?? row.agentSessionId,
@@ -169,19 +193,16 @@ async function resolveTokenSnapshot(
         type: "mcp-agent",
       },
       task: {
-        hash: buildTaskHash(row),
-        description: buildTaskDescription(row),
+        hash: buildTaskHash(row, approval),
+        description: buildTaskDescription(row, approval),
         createdAt: toUnixSeconds(row.createdAt),
         expiresAt: toUnixSeconds(row.expiresAt, row.createdAt ?? new Date()),
         ...(constraints === undefined ? {} : { constraints }),
       },
       oversight: {
-        approvalId: buildApprovalId(row),
-        approvedAt: toUnixSeconds(row.createdAt),
-        method: resolveOversightMethod(
-          row.approvalMethod,
-          row.approvalStrength
-        ),
+        approvalId: buildApprovalId(row, approval),
+        approvedAt: toUnixSeconds(approval.decidedAt),
+        method,
       },
       audit: {
         releaseId: getReleaseId(),
@@ -190,7 +211,7 @@ async function resolveTokenSnapshot(
         ...(row.authReqId ? { cibaRequestId: row.authReqId } : {}),
       },
       capabilities: buildCapabilitiesFromConstraints(
-        row.approvedCapabilityName,
+        approval.capability,
         constraints
       ),
     }),
@@ -220,12 +241,6 @@ async function upsertTokenSnapshot(
       version: row.version,
       taskId: row.taskId,
       taskHash: row.taskHash ?? null,
-      approvalMethod: row.approvalMethod,
-      approvedCapabilityName: row.approvedCapabilityName,
-      approvedConstraints: row.approvedConstraints,
-      approvedGrantId: row.approvedGrantId,
-      approvedHostPolicyId: row.approvedHostPolicyId,
-      approvalStrength: row.approvalStrength,
       attestationProvider: row.attestationProvider,
       attestationTier: row.attestationTier ?? "unverified",
       assertionVerified: Boolean(row.assertionVerified),
@@ -242,12 +257,6 @@ async function upsertTokenSnapshot(
         version: row.version,
         taskId: row.taskId,
         taskHash: row.taskHash ?? null,
-        approvalMethod: row.approvalMethod,
-        approvedCapabilityName: row.approvedCapabilityName,
-        approvedConstraints: row.approvedConstraints,
-        approvedGrantId: row.approvedGrantId,
-        approvedHostPolicyId: row.approvedHostPolicyId,
-        approvalStrength: row.approvalStrength,
         attestationProvider: row.attestationProvider,
         attestationTier: row.attestationTier ?? "unverified",
         assertionVerified: Boolean(row.assertionVerified),
@@ -268,14 +277,6 @@ function readString(value: unknown): string | null {
 function toStoredSnapshot(row: Record<string, unknown>): StoredTokenSnapshot {
   return {
     agentSessionId: readString(row.agentSessionId),
-    approvalMethod: readString(row.approvalMethod),
-    approvalStrength: readString(row.approvalStrength),
-    approvedCapabilityName: readString(row.approvedCapabilityName),
-    approvedConstraints: Array.isArray(row.approvedConstraints)
-      ? (row.approvedConstraints as GrantConstraint[])
-      : null,
-    approvedGrantId: readString(row.approvedGrantId),
-    approvedHostPolicyId: readString(row.approvedHostPolicyId),
     assertionVerified:
       typeof row.assertionVerified === "boolean" ? row.assertionVerified : null,
     attestationProvider: readString(row.attestationProvider),
@@ -309,10 +310,15 @@ interface CibaAgentContribution {
  */
 export async function buildCibaAgentContribution(
   cibaRequest: Record<string, unknown>,
-  audienceClientId: string
+  audienceClientId: string,
+  approval: CibaApproval | undefined
 ): Promise<CibaAgentContribution | null> {
   const snapshot = toStoredSnapshot(cibaRequest);
-  const resolved = await resolveTokenSnapshot(snapshot, audienceClientId);
+  const resolved = await resolveTokenSnapshot(
+    snapshot,
+    audienceClientId,
+    approval ?? null
+  );
   if (!resolved) {
     return null;
   }
@@ -337,13 +343,7 @@ export async function findStoredTokenSnapshotByJti(
   const row = await db
     .select({
       agentSessionId: agentTokenSnapshots.agentSessionId,
-      approvalMethod: agentTokenSnapshots.approvalMethod,
-      approvalStrength: agentTokenSnapshots.approvalStrength,
       assertionVerified: agentTokenSnapshots.assertionVerified,
-      approvedCapabilityName: agentTokenSnapshots.approvedCapabilityName,
-      approvedConstraints: agentTokenSnapshots.approvedConstraints,
-      approvedGrantId: agentTokenSnapshots.approvedGrantId,
-      approvedHostPolicyId: agentTokenSnapshots.approvedHostPolicyId,
       attestationProvider: agentTokenSnapshots.attestationProvider,
       attestationTier: agentTokenSnapshots.attestationTier,
       authReqId: agentTokenSnapshots.authReqId,

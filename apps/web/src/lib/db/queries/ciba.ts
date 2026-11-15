@@ -2,7 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db/connection";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import {
+  type CibaApproval,
+  cibaApprovals,
+  cibaRequests,
+} from "@/lib/db/schema/ciba";
 
 type CibaRequestRow = Pick<
   typeof cibaRequests.$inferSelect,
@@ -13,6 +17,21 @@ type ValidatedCibaRequest = Pick<
   CibaRequestRow,
   "authorizationDetails" | "clientId" | "scope"
 >;
+
+/**
+ * The decision recorded for a CIBA request, keyed by the stored auth_req_id
+ * hash that every token of the approval carries as its `reference_id`.
+ */
+export function findCibaApproval(
+  referenceId: string
+): Promise<CibaApproval | undefined> {
+  return db
+    .select()
+    .from(cibaApprovals)
+    .where(eq(cibaApprovals.referenceId, referenceId))
+    .limit(1)
+    .get();
+}
 
 function fetchCibaRequest(
   authReqId: string

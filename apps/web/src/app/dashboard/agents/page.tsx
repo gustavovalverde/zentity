@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -6,8 +6,8 @@ import { env } from "@/env";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import { detectAuthMode, getCachedSession } from "@/lib/auth/session";
 import { db } from "@/lib/db/connection";
-import { agentHosts } from "@/lib/db/schema/agent";
-import { cibaRequests } from "@/lib/db/schema/ciba";
+import { agentHosts, agentSessions } from "@/lib/db/schema/agent";
+import { cibaApprovals, cibaRequests } from "@/lib/db/schema/ciba";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 
 import { AgentsClient } from "./_components/agents-client";
@@ -58,12 +58,12 @@ export default async function AgentsPage({
   const mailpitUrl =
     process.env.NODE_ENV === "production" ? null : resolveLocalMailpitUrl();
 
-  const [requests, detected, assurance] = await Promise.all([
+  const userId = session.user.id;
+  const [pending, decided, detected, assurance] = await Promise.all([
     db
       .select({
         acrValues: cibaRequests.acrValues,
         agentSessionId: cibaRequests.agentSessionId,
-        approvalMethod: cibaRequests.approvalMethod,
         attestationProvider: cibaRequests.attestationProvider,
         attestationTier: cibaRequests.attestationTier,
         authorizationDetails: cibaRequests.authorizationDetails,
@@ -78,17 +78,60 @@ export default async function AgentsPage({
         model: cibaRequests.model,
         runtime: cibaRequests.runtime,
         scope: cibaRequests.scope,
-        status: cibaRequests.status,
       })
       .from(cibaRequests)
       .leftJoin(oauthClients, eq(cibaRequests.clientId, oauthClients.clientId))
       .leftJoin(agentHosts, eq(cibaRequests.hostId, agentHosts.id))
-      .where(eq(cibaRequests.userId, session.user.id))
+      .where(
+        and(eq(cibaRequests.userId, userId), eq(cibaRequests.status, "pending"))
+      )
       .orderBy(desc(cibaRequests.createdAt))
       .limit(50),
-    detectAuthMode(session.user.id),
-    getAccountAssurance(session.user.id),
+    db
+      .select({
+        acrValues: cibaApprovals.acrValues,
+        agentSessionId: cibaApprovals.agentSessionId,
+        approvalChannel: cibaApprovals.approvalChannel,
+        approvalMethod: cibaApprovals.approvalMethod,
+        attestationProvider: cibaApprovals.attestationProvider,
+        attestationTier: cibaApprovals.attestationTier,
+        authorizationDetails: cibaApprovals.authorizationDetails,
+        bindingMessage: cibaApprovals.bindingMessage,
+        clientId: cibaApprovals.clientId,
+        clientName: oauthClients.name,
+        createdAt: cibaApprovals.requestedAt,
+        decision: cibaApprovals.decision,
+        displayName: agentSessions.displayName,
+        expiresAt: cibaApprovals.expiresAt,
+        hostName: agentHosts.name,
+        id: cibaApprovals.requestId,
+        model: agentSessions.model,
+        runtime: agentSessions.runtime,
+        scope: cibaApprovals.scope,
+      })
+      .from(cibaApprovals)
+      .leftJoin(oauthClients, eq(cibaApprovals.clientId, oauthClients.clientId))
+      .leftJoin(agentHosts, eq(cibaApprovals.hostId, agentHosts.id))
+      .leftJoin(
+        agentSessions,
+        eq(cibaApprovals.agentSessionId, agentSessions.id)
+      )
+      .where(eq(cibaApprovals.userId, userId))
+      .orderBy(desc(cibaApprovals.decidedAt))
+      .limit(50),
+    detectAuthMode(userId),
+    getAccountAssurance(userId),
   ]);
+
+  const requests = [
+    ...pending.map((row) => ({
+      ...row,
+      approvalChannel: null,
+      approvalMethod: null,
+      status: "pending",
+    })),
+    ...decided.map(({ decision, ...row }) => ({ ...row, status: decision })),
+  ];
 
   return (
     <AgentsClient
