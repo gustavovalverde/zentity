@@ -1,10 +1,12 @@
 import "server-only";
 
 import { and, eq, inArray, sql, TransactionRollbackError } from "drizzle-orm";
-import { createPublicClient, http, parseAbiItem } from "viem";
-import { hardhat, sepolia } from "viem/chains";
+import { parseAbiItem } from "viem";
 
-import { getNetworkById } from "@/lib/blockchain/networks";
+import {
+  createNetworkPublicClient,
+  getNetworkById,
+} from "@/lib/blockchain/networks";
 import { db } from "@/lib/db/connection";
 import {
   getIdentityValiditySnapshot,
@@ -28,17 +30,6 @@ const IDENTITY_ATTESTED_EVENT = parseAbiItem(
 const IDENTITY_REVOKED_EVENT = parseAbiItem(
   "event IdentityRevoked(address indexed user)"
 );
-
-function getViemChain(chainId: number) {
-  switch (chainId) {
-    case 11_155_111:
-      return sepolia;
-    case 31_337:
-      return hardhat;
-    default:
-      return undefined;
-  }
-}
 
 interface ChainLogMetadata {
   blockNumber?: bigint | null;
@@ -95,17 +86,7 @@ export async function ingestChainValidityEvents(args: {
     );
   }
 
-  const chain = getViemChain(network.chainId);
-  if (!chain) {
-    throw new Error(
-      `Unsupported chain for validity ingress: ${network.chainId}`
-    );
-  }
-
-  const client = createPublicClient({
-    chain,
-    transport: http(network.rpcUrl),
-  });
+  const client = createNetworkPublicClient(network);
 
   const currentBlock = Number(await client.getBlockNumber());
   const cursor = await getIdentityValiditySourceCursor("chain", args.networkId);

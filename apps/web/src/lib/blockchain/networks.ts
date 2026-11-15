@@ -9,6 +9,7 @@
  * 2. Set type to "confidential" (encrypted)
  * 3. Configure contracts addresses via env vars
  * 4. Enable via NEXT_PUBLIC_ENABLE_{NETWORK}=true
+ * 5. Add the viem chain to VIEM_CHAINS so getViemChain resolves its chain ID
  */
 import "server-only";
 
@@ -17,6 +18,8 @@ import {
   getConfidentialContractAddresses,
   getIdentityRegistryMirrorAddress,
 } from "@zentity/contracts";
+import { createPublicClient, http } from "viem";
+import { hardhat, sepolia } from "viem/chains";
 
 import { env } from "@/env";
 
@@ -208,6 +211,35 @@ const BASE_SEPOLIA_MIRROR: BaseMirrorConfig = {
   explorer: BASE_SEPOLIA_EXPLORER_URL,
   enabled: BASE_SEPOLIA_ENABLED,
 };
+
+const VIEM_CHAINS = {
+  11155111: sepolia,
+  31337: hardhat,
+} as const;
+
+/**
+ * Resolve the viem chain definition for an EVM chain ID.
+ * Throws for chains without a definition so callers never skip a chain read.
+ */
+export function getViemChain(chainId: number) {
+  const chain = VIEM_CHAINS[chainId as keyof typeof VIEM_CHAINS];
+  if (!chain) {
+    throw new Error(`Unsupported chain ID: ${chainId}`);
+  }
+  return chain;
+}
+
+/**
+ * Create a read-only viem client for a configured network.
+ */
+export function createNetworkPublicClient(
+  network: Pick<NetworkConfig, "chainId" | "rpcUrl">
+) {
+  return createPublicClient({
+    chain: getViemChain(network.chainId),
+    transport: http(network.rpcUrl),
+  });
+}
 
 /**
  * Get all networks that are enabled and have contracts configured.

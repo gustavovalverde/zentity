@@ -28,10 +28,10 @@ import {
   zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { hardhat, sepolia } from "viem/chains";
 
 import {
   getNetworkById,
+  getViemChain,
   isNetworkAvailable,
   type NetworkConfig,
 } from "../networks";
@@ -102,6 +102,7 @@ export interface IAttestationProvider {
   checkTransaction(txHash: string): Promise<TransactionStatus>;
   readonly config: NetworkConfig;
   getAttestationStatus(userAddress: string): Promise<AttestationStatus>;
+  getWalletClient(): ReturnType<AttestationProvider["getWalletClient"]>;
   readonly networkId: string;
   readonly networkName: string;
   revokeAttestation(userAddress: string): Promise<AttestationResult>;
@@ -120,11 +121,6 @@ export interface IAttestationProvider {
 // ---------------------------------------------------------------------------
 // Provider implementation
 // ---------------------------------------------------------------------------
-
-const VIEM_CHAINS = {
-  11155111: sepolia,
-  31337: hardhat,
-} as const;
 
 export function toHexPrefixed(value: string): `0x${string}` {
   return (value.startsWith("0x") ? value : `0x${value}`) as `0x${string}`;
@@ -204,18 +200,15 @@ export class AttestationProvider implements IAttestationProvider {
     this.registrarPrivateKey = config.registrarPrivateKey || "";
   }
 
-  private getWalletClient() {
+  /** Registrar wallet client (also exposes public read actions). */
+  getWalletClient() {
     if (!this.registrarPrivateKey) {
       throw new Error(
         `Registrar private key is not configured for ${this.networkId}`
       );
     }
 
-    const chain = VIEM_CHAINS[this.config.chainId as keyof typeof VIEM_CHAINS];
-    if (!chain) {
-      throw new Error(`Unsupported chain ID: ${this.config.chainId}`);
-    }
-
+    const chain = getViemChain(this.config.chainId);
     const account = privateKeyToAccount(
       toHexPrefixed(this.registrarPrivateKey)
     );
