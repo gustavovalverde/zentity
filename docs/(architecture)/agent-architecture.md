@@ -707,7 +707,7 @@ A relying party can ask whether an agent session is still active without learnin
 
 ### Agent JWKS
 
-`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating signed agent-facing JWTs and tokens issued by token exchange.
+`GET /api/auth/agent/jwks` publishes the signing keys used for agent-facing JWT verification: the same key set as `/api/auth/oauth2/jwks`, which holds the live signing keys and retired ones still inside the grace period. The discovery document points here, not to a separate experimental path. This is the key material a client needs for validating signed agent-facing JWTs and tokens issued by token exchange.
 
 ### A2A discovery
 

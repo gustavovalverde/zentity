@@ -207,6 +207,22 @@ describe("JWKS signing key rotation", () => {
 
       expect(kids).not.toContain(original);
     });
+
+    it("serves the same key set from the agent JWKS endpoint", async () => {
+      const original = await signedKid("EdDSA");
+      await rotateSigningKey("EdDSA");
+      await expireKey(original, new Date(Date.now() - 366 * DAY_MS));
+      const { GET: getAgentJwks } = await import(
+        "@/app/api/auth/agent/jwks/route"
+      );
+
+      const served = (await (await getAgentJwks()).json()) as {
+        keys: { kid?: string }[];
+      };
+
+      expect(served).toEqual(await getPublishedJwks());
+      expect(served.keys.map((key) => key.kid)).not.toContain(original);
+    });
   });
 
   describe("cleanupExpiredKeys", () => {
