@@ -330,9 +330,9 @@ const trpc = initTRPC.context<TrpcContext>().create({
 
 /**
  * Wraps each procedure in a span. tRPC reports failures as a `{ ok: false }`
- * result rather than a throw. Every failure records its tRPC code; only server
- * errors (codes that map to HTTP 5xx) mark the span ERROR, following the
- * OpenTelemetry HTTP and RPC server conventions.
+ * result rather than a throw. Every failure records its tRPC code in
+ * `rpc.status_code`; only codes that tRPC maps to HTTP 5xx set `error.type` and
+ * mark the span ERROR, following the OpenTelemetry HTTP server convention.
  */
 const withTracing = trpc.middleware(({ path, type, ctx, next }) => {
   const attributes: Attributes = {
@@ -350,11 +350,9 @@ const withTracing = trpc.middleware(({ path, type, ctx, next }) => {
     const result = await next({ ctx: { ...ctx, span, traceId, spanId } });
     if (!result.ok) {
       const { code } = result.error;
-      span.setAttributes({
-        [ATTR_RPC_STATUS_CODE]: code,
-        [ATTR_ERROR_TYPE]: code,
-      });
+      span.setAttribute(ATTR_RPC_STATUS_CODE, code);
       if (getHTTPStatusCodeFromError(result.error) >= 500) {
+        span.setAttribute(ATTR_ERROR_TYPE, code);
         span.setStatus({ code: SpanStatusCode.ERROR, message: code });
       }
     }

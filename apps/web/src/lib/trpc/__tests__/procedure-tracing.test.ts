@@ -130,13 +130,14 @@ describe("tRPC procedure spans", () => {
 
     expect(spanFor("rejectsInput").status).toBeUndefined();
     expect(spanFor("rejectsInput").attributes).toMatchObject({
-      "error.type": "BAD_REQUEST",
       "rpc.status_code": "BAD_REQUEST",
     });
+    expect(spanFor("rejectsInput").attributes["error.type"]).toBeUndefined();
     expect(spanFor("requiresSession").status).toBeUndefined();
     expect(spanFor("requiresSession").attributes).toMatchObject({
       "rpc.status_code": "UNAUTHORIZED",
     });
+    expect(spanFor("requiresSession").attributes["error.type"]).toBeUndefined();
   });
 
   it("leaves a successful procedure's status unset", async () => {
