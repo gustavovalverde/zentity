@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { db } from "@/lib/db/connection";
 import {
   createBlockchainAttestation,
   deleteBlockchainAttestationsByUserId,
@@ -11,7 +13,11 @@ import {
   updateBlockchainAttestationSubmitted,
   updateBlockchainAttestationWallet,
 } from "@/lib/db/queries/attestation";
+import { blockchainAttestations } from "@/lib/db/schema/identity";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
+
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const BACKDATED = "2000-01-01T00:00:00.000Z";
 
 describe("attestation queries", () => {
   beforeEach(async () => {
@@ -67,5 +73,29 @@ describe("attestation queries", () => {
     await expect(
       getBlockchainAttestationsByUserId(userId)
     ).resolves.toHaveLength(0);
+  });
+
+  it("refreshes updatedAt on updates that do not set it", async () => {
+    const userId = await createTestUser();
+    const attestation = await createBlockchainAttestation({
+      userId,
+      walletAddress: "0xabc",
+      networkId: "sepolia",
+      chainId: 11_155_111,
+    });
+    await db
+      .update(blockchainAttestations)
+      .set({ updatedAt: BACKDATED })
+      .where(eq(blockchainAttestations.id, attestation.id))
+      .run();
+
+    await updateBlockchainAttestationSubmitted(attestation.id, "0xtx");
+
+    const row = await getBlockchainAttestationByUserAndNetwork(
+      userId,
+      "sepolia"
+    );
+    expect(row?.updatedAt).toMatch(ISO_TIMESTAMP);
+    expect(row?.updatedAt).not.toBe(BACKDATED);
   });
 });

@@ -1,4 +1,5 @@
-import type { Eip712AuthOptions, Eip712TypedData } from "./types";
+import type { InternalAdapter } from "@better-auth/core";
+import type { Eip712TypedData } from "./types";
 
 import { APIError, type BetterAuthPlugin } from "better-auth";
 import { createAuthEndpoint, getSessionFromCtx } from "better-auth/api";
@@ -8,27 +9,55 @@ import { z } from "zod";
 
 import { createSessionAuthenticationContext } from "@/lib/auth/auth-context";
 
-import {
-  buildDefaultTypedData,
-  nonceIdentifier,
-  verifyEip712Signature,
-} from "./typed-data";
+import { buildWalletAuthTypedData, verifyEip712Signature } from "./typed-data";
 
-const DEFAULT_NONCE_TTL_SECONDS = 900; // 15 minutes
+const NONCE_TTL_MS = 15 * 60 * 1000;
 
-export const eip712Auth = (options: Eip712AuthOptions = {}) => {
-  const appName = options.appName || "App";
-  const emailDomainName = options.emailDomainName || "wallet.app";
-  const nonceTtlSeconds = options.nonceTtlSeconds || DEFAULT_NONCE_TTL_SECONDS;
+function nonceIdentifier(nonce: string): string {
+  return `eip712:${nonce}`;
+}
 
-  const buildTypedData = (
-    address: string,
-    chainId: number,
-    nonce: string
-  ): Eip712TypedData =>
-    options.buildTypedData
-      ? options.buildTypedData({ address, chainId, nonce })
-      : buildDefaultTypedData(address, chainId, nonce, appName);
+function nonceSubject(address: string, chainId: number): string {
+  return `${address.toLowerCase()}:${chainId}`;
+}
+
+/**
+ * Stores a single-use sign-in nonce for one wallet on one chain. The row is
+ * keyed by the nonce, so consuming a nonce cannot burn another one.
+ */
+export async function issueWalletNonce(
+  internalAdapter: InternalAdapter,
+  address: string,
+  chainId: number
+): Promise<string> {
+  const nonce = crypto.randomUUID();
+  await internalAdapter.createVerificationValue({
+    identifier: nonceIdentifier(nonce),
+    value: nonceSubject(address, chainId),
+    expiresAt: new Date(Date.now() + NONCE_TTL_MS),
+  });
+  return nonce;
+}
+
+/**
+ * Consumes the nonce whether or not it matches, and reports whether it was
+ * unexpired and issued for this wallet and chain. Concurrent callers race on
+ * one atomic consume, so at most one of them sees `true`.
+ */
+export async function consumeWalletNonce(
+  internalAdapter: InternalAdapter,
+  nonce: string,
+  address: string,
+  chainId: number
+): Promise<boolean> {
+  const verification = await internalAdapter.consumeVerificationValue(
+    nonceIdentifier(nonce)
+  );
+  return verification?.value === nonceSubject(address, chainId);
+}
+
+export const eip712Auth = (options: { emailDomainName: string }) => {
+  const { emailDomainName } = options;
 
   async function verifySignature(
     signature: string,
@@ -48,34 +77,16 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
   }
 
   async function consumeNonce(
-    // biome-ignore lint/suspicious/noExplicitAny: better-auth internalAdapter type
-    internalAdapter: any,
+    internalAdapter: InternalAdapter,
     address: string,
     chainId: number,
     nonce: string
   ): Promise<void> {
-    const identifier = nonceIdentifier(address, chainId);
-    const verification =
-      await internalAdapter.findVerificationValue(identifier);
-
-    if (!verification || verification.value !== nonce) {
+    if (!(await consumeWalletNonce(internalAdapter, nonce, address, chainId))) {
       throw new APIError("UNAUTHORIZED", {
         message: "Invalid or expired nonce",
       });
     }
-
-    if (new Date(verification.expiresAt) < new Date()) {
-      await internalAdapter.deleteVerificationByIdentifier(
-        verification.identifier
-      );
-      throw new APIError("UNAUTHORIZED", {
-        message: "Invalid or expired nonce",
-      });
-    }
-
-    await internalAdapter.deleteVerificationByIdentifier(
-      verification.identifier
-    );
   }
 
   return {
@@ -109,16 +120,12 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           const address = getAddress(ctx.body.address);
           const { chainId } = ctx.body;
 
-          const nonce = crypto.randomUUID();
-          const expiresAt = new Date(Date.now() + nonceTtlSeconds * 1000);
-
-          await ctx.context.internalAdapter.createVerificationValue({
-            identifier: nonceIdentifier(address, chainId),
-            value: nonce,
-            expiresAt,
-          });
-
-          const typedData = buildTypedData(address, chainId, nonce);
+          const nonce = await issueWalletNonce(
+            ctx.context.internalAdapter,
+            address,
+            chainId
+          );
+          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
 
           return ctx.json({ nonce, typedData });
         }
@@ -150,7 +157,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           );
 
           // Reconstruct typed data and verify both signatures
-          const typedData = buildTypedData(address, chainId, nonce);
+          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
           await verifySignature(signature, typedData, address);
           await verifySignature(signature2, typedData, address);
 
@@ -308,7 +315,7 @@ export const eip712Auth = (options: Eip712AuthOptions = {}) => {
           );
 
           // Reconstruct typed data and verify signature
-          const typedData = buildTypedData(address, chainId, nonce);
+          const typedData = buildWalletAuthTypedData(address, chainId, nonce);
           await verifySignature(signature, typedData, address);
 
           // Look up wallet — try exact chain first, then any chain

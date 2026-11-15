@@ -36,7 +36,7 @@ describe("token verifiers", () => {
     vi.restoreAllMocks();
   });
 
-  it("reuses a fixed JWKS until the cache TTL expires", async () => {
+  it("creates one JWKS per verifier and lets jose cache it for the TTL", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     joseMocks.jwtVerify.mockResolvedValue({ payload: { sub: "user-1" } });
@@ -49,10 +49,13 @@ describe("token verifiers", () => {
 
     await verifier.verify("token-a");
     await verifier.verify("token-b");
-    vi.advanceTimersByTime(1_001);
     await verifier.verify("token-c");
 
-    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(2);
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(1);
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledWith(
+      new URL("https://issuer.example/jwks"),
+      { cacheMaxAge: 1_000 }
+    );
     expect(joseMocks.jwtVerify).toHaveBeenNthCalledWith(
       1,
       "token-a",
@@ -67,7 +70,7 @@ describe("token verifiers", () => {
     );
   });
 
-  it("memoizes OpenID discovery metadata using Cache-Control max-age", async () => {
+  it("memoizes OpenID discovery metadata using Cache-Control max-age and keeps one JWKS per jwks_uri", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
     joseMocks.jwtVerify.mockResolvedValue({ payload: { sub: "user-1" } });
@@ -86,7 +89,13 @@ describe("token verifiers", () => {
     await verifier.verify("token-c", { audience: "client-1" });
 
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(2);
+    // The refreshed discovery document keeps the same jwks_uri, so the key
+    // set (and jose's cache) is reused.
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(1);
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledWith(
+      new URL("https://issuer.example/api/auth/oauth2/jwks"),
+      { cacheMaxAge: 5 * 60 * 1000 }
+    );
     expect(joseMocks.jwtVerify).toHaveBeenNthCalledWith(
       1,
       "token-a",
@@ -134,5 +143,36 @@ describe("token verifiers", () => {
         issuer: "https://public.zentity.example",
       }
     );
+  });
+
+  it("builds a new JWKS when the discovery document moves jwks_uri", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    joseMocks.jwtVerify.mockResolvedValue({ payload: { sub: "user-1" } });
+    const jwksUris = [
+      "https://issuer.example/jwks-1",
+      "https://issuer.example/jwks-2",
+    ];
+    vi.spyOn(globalThis, "fetch").mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            issuer: "https://public.zentity.example",
+            jwks_uri: jwksUris.shift(),
+          }),
+          { headers: { "Cache-Control": "max-age=10" }, status: 200 }
+        )
+      )
+    );
+
+    const verifier = createOpenIdTokenVerifier({
+      issuerUrl: "https://issuer.example",
+    });
+
+    await verifier.verify("token-a");
+    vi.advanceTimersByTime(11_000);
+    await verifier.verify("token-b");
+
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(2);
   });
 });

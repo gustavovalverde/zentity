@@ -474,10 +474,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 # apps/ocr/pyproject.toml
 opentelemetry-api = "1.39.1"
 opentelemetry-sdk = "1.39.1"
-opentelemetry-exporter-otlp = "1.39.1"
+opentelemetry-exporter-otlp-proto-http = "1.39.1"
 opentelemetry-instrumentation-fastapi = "0.60b1"
-opentelemetry-instrumentation-requests = "0.60b1"
-opentelemetry-instrumentation-httpx = "0.60b1"
 ```
 
 ```toml

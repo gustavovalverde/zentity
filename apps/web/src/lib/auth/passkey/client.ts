@@ -15,15 +15,6 @@ type PasskeyErrorLike = {
   statusText?: string;
 } | null;
 
-interface WebauthnResponse {
-  clientExtensionResults?: unknown;
-  response?: {
-    id?: string;
-    rawId?: string;
-    transports?: AuthenticatorTransport[];
-  };
-}
-
 export function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {
   if (!error) {
     return false;
@@ -36,42 +27,6 @@ export function isPasskeyAlreadyRegistered(error: PasskeyErrorLike): boolean {
   return message.includes("previously registered");
 }
 
-function getWebauthnPayload(result: unknown): WebauthnResponse | null {
-  if (!result || typeof result !== "object") {
-    return null;
-  }
-  if (!("webauthn" in result)) {
-    return null;
-  }
-  const webauthn = (result as { webauthn?: unknown }).webauthn;
-  if (!webauthn || typeof webauthn !== "object") {
-    return null;
-  }
-  return webauthn as WebauthnResponse;
-}
-
-function getCredentialId(params: {
-  data?: { credentialID?: string } | undefined;
-  webauthn: WebauthnResponse | null;
-}): string | null {
-  const dataId = params.data?.credentialID;
-  if (dataId) {
-    return dataId;
-  }
-  const response = params.webauthn?.response;
-  return response?.id ?? response?.rawId ?? null;
-}
-
-function getTransports(
-  webauthn: WebauthnResponse | null
-): AuthenticatorTransport[] | undefined {
-  const response = webauthn?.response;
-  if (!(response && "transports" in response)) {
-    return;
-  }
-  return response.transports as AuthenticatorTransport[];
-}
-
 /**
  * Resolve PRF output from WebAuthn response or via fallback evaluation.
  *
@@ -82,11 +37,11 @@ function getTransports(
 async function resolvePrfOutput(params: {
   prfSalt: Uint8Array;
   credentialId: string | null;
-  webauthn: WebauthnResponse | null;
+  clientExtensionResults: unknown;
   allowFallback?: boolean;
 }): Promise<Uint8Array | null> {
   const prfOutput = extractPrfOutputFromClientResults({
-    clientExtensionResults: params.webauthn?.clientExtensionResults,
+    clientExtensionResults: params.clientExtensionResults,
     credentialId: params.credentialId ?? undefined,
   });
   if (prfOutput) {
@@ -101,12 +56,8 @@ async function resolvePrfOutput(params: {
     return null;
   }
 
-  const transports = getTransports(params.webauthn);
   const { prfOutputs } = await evaluatePrf({
     credentialIdToSalt: { [params.credentialId]: params.prfSalt },
-    credentialTransports: transports
-      ? { [params.credentialId]: transports }
-      : undefined,
   });
   return (
     prfOutputs.get(params.credentialId) ??
@@ -147,7 +98,7 @@ export async function registerPasskeyWithPrf(params: {
     returnWebAuthnResponse: true,
     extensions: buildPrfExtension(params.prfSalt),
     context: params.context,
-  } as unknown as Parameters<typeof authClient.passkey.addPasskey>[0]);
+  });
 
   if (!registration || registration.error || !registration.data) {
     const message = resolveErrorMessage(
@@ -161,11 +112,9 @@ export async function registerPasskeyWithPrf(params: {
     };
   }
 
-  const webauthn = getWebauthnPayload(registration);
-  const credentialId = getCredentialId({
-    data: registration.data as { credentialID?: string } | undefined,
-    webauthn,
-  });
+  const webauthn = "webauthn" in registration ? registration.webauthn : null;
+  const credentialId =
+    registration.data.credentialID || webauthn?.response.id || null;
 
   if (!credentialId) {
     return {
@@ -181,7 +130,7 @@ export async function registerPasskeyWithPrf(params: {
   const prfOutput = await resolvePrfOutput({
     prfSalt: params.prfSalt,
     credentialId,
-    webauthn,
+    clientExtensionResults: webauthn?.clientExtensionResults,
     allowFallback: false,
   });
 
@@ -232,7 +181,7 @@ export async function signInWithPasskey(params?: {
   const result = await authClient.signIn.passkey({
     returnWebAuthnResponse: Boolean(prfSalt),
     extensions: prfSalt ? buildPrfExtension(prfSalt) : undefined,
-  } as unknown as Parameters<typeof authClient.signIn.passkey>[0]);
+  });
 
   if (!result || result.error || !result.data) {
     const message = resolveErrorMessage(
@@ -250,15 +199,12 @@ export async function signInWithPasskey(params?: {
     return { ok: true, data: result.data };
   }
 
-  const webauthn = getWebauthnPayload(result);
-  const credentialId = getCredentialId({
-    data: undefined,
-    webauthn,
-  });
+  const webauthn = "webauthn" in result ? result.webauthn : null;
+  const credentialId = webauthn?.response.id || null;
   const prfOutput = await resolvePrfOutput({
     prfSalt,
     credentialId,
-    webauthn,
+    clientExtensionResults: webauthn?.clientExtensionResults,
     allowFallback: allowPrfFallback,
   });
 

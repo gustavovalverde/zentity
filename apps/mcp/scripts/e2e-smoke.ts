@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 /**
  * End-to-end smoke test for the MCP server.
@@ -8,9 +8,9 @@
  * and approval URLs are printed for the operator to open.
  *
  * Usage:
- *   bun run scripts/e2e-smoke.ts                  # tool surface only, no Zentity needed
- *   bun run scripts/e2e-smoke.ts --with-auth      # + whoami, my_proofs, check_compliance
- *   bun run scripts/e2e-smoke.ts --with-ciba      # + my_profile and purchase approvals
+ *   pnpm test:e2e                     # tool surface only, no Zentity needed
+ *   pnpm test:e2e --with-auth         # + whoami, my_proofs, check_compliance
+ *   pnpm test:e2e --with-ciba         # + my_profile and purchase approvals
  *
  * Options:
  *   --transport stdio|http   Transport to exercise (default: stdio)
@@ -50,6 +50,7 @@ const httpPort = readOption("--port", "3300");
 const zentityUrl = process.env.ZENTITY_URL ?? "http://localhost:3000";
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS ?? 300_000);
 const serverEntry = resolve(import.meta.dirname, "../src/index.ts");
+const SERVER_RUNTIME_ARGS = ["--import", "tsx", serverEntry];
 const POLL_INTERVAL_MS = 5000;
 const REMOTE_SCOPES = "openid email compliance:read proof:identity";
 const EXPECTED_TOOLS = [
@@ -153,8 +154,8 @@ function pipeServerLogs(
 
 async function connectStdio(home: string): Promise<Client> {
   const transport = new StdioClientTransport({
-    command: "bun",
-    args: ["run", serverEntry],
+    command: process.execPath,
+    args: SERVER_RUNTIME_ARGS,
     env: {
       HOME: home,
       PATH: process.env.PATH ?? "",
@@ -216,8 +217,8 @@ async function requestRemoteToken(mcpUrl: string) {
 async function connectHttp(home: string): Promise<Client> {
   const publicUrl = `http://localhost:${httpPort}`;
   const child = spawn(
-    "bun",
-    ["run", serverEntry, "--transport", "http", "--port", httpPort],
+    process.execPath,
+    [...SERVER_RUNTIME_ARGS, "--transport", "http", "--port", httpPort],
     {
       env: {
         HOME: home,

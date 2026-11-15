@@ -1,4 +1,7 @@
+import { bytesToHex } from "@noble/curves/utils.js";
 import { exportJWK, generateKeyPair, importJWK, type JWK, SignJWT } from "jose";
+import { z } from "zod";
+import { HOST_ATTESTATION_TIERS } from "./protocol/claims";
 import {
   encodeEd25519DidKeyFromJwk,
   type HostAttestationTier,
@@ -73,19 +76,25 @@ export interface SignAgentAssertionOptions {
   taskId?: string;
 }
 
-interface RegisterHostResponseBody {
-  attestation_tier: HostAttestationTier;
-  created: boolean;
-  did: string;
-  hostId: string;
-}
+const nonEmptyString = z.string().min(1);
 
-interface RegisterSessionResponseBody {
-  did: string;
-  grants: AgentSessionGrant[];
-  sessionId: string;
-  status: string;
-}
+const registerHostResponseSchema = z.object({
+  attestation_tier: z.enum(HOST_ATTESTATION_TIERS),
+  created: z.boolean(),
+  did: nonEmptyString,
+  hostId: nonEmptyString,
+});
+
+const registerSessionResponseSchema = z.object({
+  did: nonEmptyString,
+  // A non-array `grants` means no grants; a malformed entry is an error.
+  grants: z.preprocess(
+    (value) => (Array.isArray(value) ? value : []),
+    z.array(z.object({ capability: nonEmptyString, status: nonEmptyString }))
+  ),
+  sessionId: nonEmptyString,
+  status: nonEmptyString,
+});
 
 export class AgentRegistrationError extends Error {
   readonly responseBody: string;
@@ -108,74 +117,16 @@ export function buildHostKeyNamespace(auth: {
     : auth.clientId;
 }
 
-function readRecord(candidate: unknown, name: string): Record<string, unknown> {
-  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
-    throw new Error(`${name} must be an object`);
+function parseRegistrationResponse<T extends z.ZodType>(
+  schema: T,
+  body: unknown,
+  name: string
+): z.output<T> {
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    throw new Error(`Invalid ${name}: ${z.prettifyError(result.error)}`);
   }
-  return candidate as Record<string, unknown>;
-}
-
-function readString(record: Record<string, unknown>, key: string): string {
-  const field = record[key];
-  if (typeof field !== "string" || field.length === 0) {
-    throw new Error(`Agent registration response missing ${key}`);
-  }
-  return field;
-}
-
-function readBoolean(record: Record<string, unknown>, key: string): boolean {
-  const field = record[key];
-  if (typeof field !== "boolean") {
-    throw new Error(`Agent registration response missing ${key}`);
-  }
-  return field;
-}
-
-function readHostAttestationTier(tier: unknown): HostAttestationTier {
-  if (
-    tier === "attested" ||
-    tier === "self-declared" ||
-    tier === "unverified"
-  ) {
-    return tier;
-  }
-  throw new Error("Agent registration response missing attestation_tier");
-}
-
-function readSessionGrants(grants: unknown): AgentSessionGrant[] {
-  if (!Array.isArray(grants)) {
-    return [];
-  }
-
-  return grants.map((grant) => {
-    const record = readRecord(grant, "grant");
-    return {
-      capability: readString(record, "capability"),
-      status: readString(record, "status"),
-    };
-  });
-}
-
-function parseRegisterHostResponse(body: unknown): RegisterHostResponseBody {
-  const record = readRecord(body, "host registration response");
-  return {
-    hostId: readString(record, "hostId"),
-    did: readString(record, "did"),
-    created: readBoolean(record, "created"),
-    attestation_tier: readHostAttestationTier(record.attestation_tier),
-  };
-}
-
-function parseRegisterSessionResponse(
-  body: unknown
-): RegisterSessionResponseBody {
-  const record = readRecord(body, "session registration response");
-  return {
-    did: readString(record, "did"),
-    sessionId: readString(record, "sessionId"),
-    status: readString(record, "status"),
-    grants: readSessionGrants(record.grants),
-  };
+  return result.data;
 }
 
 async function parseJsonText(text: string): Promise<unknown> {
@@ -257,8 +208,10 @@ export async function registerHost(
     },
   });
 
-  const hostResponse = parseRegisterHostResponse(
-    await readRegistrationResponse(response, "Host registration failed")
+  const hostResponse = parseRegistrationResponse(
+    registerHostResponseSchema,
+    await readRegistrationResponse(response, "Host registration failed"),
+    "host registration response"
   );
   return {
     hostId: hostResponse.hostId,
@@ -307,8 +260,10 @@ export async function registerAgentSession(
     }),
   });
 
-  const sessionResponse = parseRegisterSessionResponse(
-    await readRegistrationResponse(response, "Agent registration failed")
+  const sessionResponse = parseRegistrationResponse(
+    registerSessionResponseSchema,
+    await readRegistrationResponse(response, "Agent registration failed"),
+    "session registration response"
   );
 
   return {
@@ -326,9 +281,7 @@ export async function registerAgentSession(
 async function sha256Hex(text: string): Promise<string> {
   const encoded = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+  return bytesToHex(new Uint8Array(digest));
 }
 
 export async function signAgentAssertion(

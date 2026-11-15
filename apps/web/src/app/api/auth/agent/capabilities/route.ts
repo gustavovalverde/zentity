@@ -23,8 +23,8 @@ export async function GET() {
     capabilities.map((c) => ({
       name: c.name,
       description: c.description,
-      input_schema: c.inputSchema ? JSON.parse(c.inputSchema) : null,
-      output_schema: c.outputSchema ? JSON.parse(c.outputSchema) : null,
+      input_schema: c.inputSchema,
+      output_schema: c.outputSchema,
       approval_strength: c.approvalStrength,
     }))
   );

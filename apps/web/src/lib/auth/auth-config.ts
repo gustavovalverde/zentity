@@ -2,8 +2,6 @@ import type { CibaNotification } from "@better-auth/ciba";
 import type { AuthContext, GenericEndpointContext } from "@better-auth/core";
 import type { LoginMethod } from "@zentity/sdk/protocol";
 
-import { createHash } from "node:crypto";
-
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
@@ -30,6 +28,7 @@ import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
 import { passkey } from "@better-auth/passkey";
 import { setGlobalConfig as setOpenid4vcConfig } from "@openid4vc/utils";
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import {
   decodeJwtPayloadStrict,
   PAYMENT_AUTHORIZATION_TYPE,
@@ -60,10 +59,7 @@ import {
   normalizeAuthorizationDetails,
 } from "@/lib/agents/capability";
 import { buildCibaPushPayload, sendWebPush } from "@/lib/agents/push-sender";
-import {
-  AGENT_BOOTSTRAP_SCOPES,
-  bindAgentAssertionToCibaRequest,
-} from "@/lib/agents/session";
+import { bindAgentAssertionToCibaRequest } from "@/lib/agents/session";
 import {
   buildCibaAgentContribution,
   persistTokenSnapshot,
@@ -167,11 +163,7 @@ import {
 } from "@/lib/auth/oidc/step-up";
 import { resolveSybilNullifier } from "@/lib/auth/oidc/sybil";
 import { tokenExchangePlugin } from "@/lib/auth/oidc/token-exchange";
-import {
-  beforeRevokeJwtAccessToken,
-  beforeUserInfoRejectRevokedToken,
-  revokedAccessTokenJti,
-} from "@/lib/auth/oidc/token-revocation";
+import { recordRevokedAccessToken } from "@/lib/auth/oidc/token-revocation";
 import {
   discoveryMetadataExtension,
   getAuthIssuer,
@@ -769,9 +761,6 @@ async function afterIntrospectKeepJwtSubject(ctx: HookCtx) {
   if (!introspection?.active) {
     return;
   }
-  if (await revokedAccessTokenJti(token)) {
-    return ctx.json({ active: false });
-  }
   const { sub } = decodeJwt(token);
   if (typeof sub !== "string") {
     return;
@@ -949,10 +938,6 @@ async function afterDcrRegisterEnableEndSession(ctx: HookCtx) {
   }
 }
 
-function hashAuthorizationCodeIdentifier(code: string): string {
-  return createHash("sha256").update(code).digest("base64url");
-}
-
 /**
  * Rebinds an authorization code to its own reference before the grant redeems
  * it, so every token the code issues references this one authorization rather
@@ -965,7 +950,7 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
     return;
   }
 
-  const record = await findAuthorizationCodeRecord(code);
+  const record = await findAuthorizationCodeRecord(ctx, code);
   if (!record) {
     return;
   }
@@ -1032,21 +1017,20 @@ async function beforeTokenFinalizeDisclosureBindings(ctx: HookCtx) {
 }
 
 async function findAuthorizationCodeRecord(
+  ctx: HookCtx,
   code: string
 ): Promise<{ identifier: string; value: string } | null> {
-  const identifiers = [code, hashAuthorizationCodeIdentifier(code)];
-  for (const identifier of identifiers) {
-    const record = await db
-      .select({ value: verifications.value })
-      .from(verifications)
-      .where(eq(verifications.identifier, identifier))
-      .limit(1)
-      .get();
-    if (record?.value) {
-      return { identifier, value: record.value };
-    }
-  }
-  return null;
+  const identifier = await oauthProviderApi(ctx).hashToken(
+    code,
+    "authorization_code"
+  );
+  const record = await db
+    .select({ value: verifications.value })
+    .from(verifications)
+    .where(eq(verifications.identifier, identifier))
+    .limit(1)
+    .get();
+  return record?.value ? { identifier, value: record.value } : null;
 }
 
 async function pendingCibaAuthContextId(
@@ -1882,6 +1866,9 @@ export const auth = betterAuth({
         },
       },
     },
+    verification: {
+      create: { before: recordRevokedAccessToken },
+    },
   },
   socialProviders,
   session: {
@@ -1908,12 +1895,6 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path === "/oauth2/revoke") {
-        return beforeRevokeJwtAccessToken(ctx);
-      }
-      if (ctx.path === "/oauth2/userinfo") {
-        return beforeUserInfoRejectRevokedToken(ctx);
-      }
       if (ctx.path === "/oauth2/register") {
         return beforeDcrRegister(ctx);
       }
@@ -2029,10 +2010,7 @@ export const auth = betterAuth({
     organization({
       creatorRole: "owner",
     }),
-    eip712Auth({
-      appName: "Zentity",
-      emailDomainName: "wallet.zentity.app",
-    }),
+    eip712Auth({ emailDomainName: "wallet.zentity.app" }),
     jwt({
       ...signingKeyOptions,
       jwks: {
@@ -2050,6 +2028,11 @@ export const auth = betterAuth({
     }),
     oauthProvider({
       accessTokenExpiresIn: 3600,
+      // `/oauth2/revoke` revokes JWT access tokens, and revoking a refresh
+      // token revokes the JWT access tokens of its grant. Introspection,
+      // UserInfo, and Zentity's resources then refuse them; the wallet
+      // runtime learns of them from the revocation feed.
+      revocableJwtAccessTokens: true,
       // Payment tokens live 120s (D-6); every other scope keeps the 3600s
       // default. Token issuance takes the minimum across the granted scopes.
       scopeExpirations: PAYMENT_TOKEN_SCOPE_EXPIRATIONS,

@@ -116,7 +116,11 @@ async function readLatestValidityNotice(args: {
     .get();
 
   return row
-    ? { ...row, validityStatus: toValidityStatus(row.validityStatus) }
+    ? {
+        ...row,
+        receivedAt: row.receivedAt.toISOString(),
+        validityStatus: toValidityStatus(row.validityStatus),
+      }
     : null;
 }
 

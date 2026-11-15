@@ -9,6 +9,7 @@ import {
 } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
 import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { auth } from "@/lib/auth/auth-config";
@@ -39,6 +40,7 @@ import {
 import {
   buildDpopProof,
   createTestDpopKeyPair,
+  type DpopKeyPair,
   postTokenWithDpop,
 } from "@/test-utils/dpop-test-utils";
 
@@ -477,6 +479,52 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(status).toBe(200);
       const payload = decodeJwt(json.access_token as string);
       expect(payload.aud).toBe(MCP_AUDIENCE);
+    });
+
+    it("lets the client revoke an exchanged JWT access token", async () => {
+      const exchange = (subjectToken: string, keyPair?: DpopKeyPair) =>
+        postTokenWithDpop(
+          {
+            grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+            client_id: TEST_CLIENT_ID,
+            subject_token: subjectToken,
+            subject_token_type: ACCESS_TOKEN_TYPE,
+            resource: MCP_AUDIENCE,
+          },
+          keyPair
+        );
+      const { json, dpopKeyPair } = await exchange(
+        await mintAccessToken(userId)
+      );
+      const exchanged = json.access_token as string;
+      expect(exchanged).toMatch(JWT_SHAPE);
+      expect((await exchange(exchanged, dpopKeyPair)).status).toBe(200);
+
+      const revocation = await auth.handler(
+        new Request(`${authIssuer}/oauth2/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            token: exchanged,
+            client_id: TEST_CLIENT_ID,
+          }),
+        })
+      );
+      expect(revocation.status).toBe(200);
+
+      const refused = await exchange(exchanged, dpopKeyPair);
+      expect(refused.status).toBe(400);
+      expect(refused.json.error).toBe("invalid_grant");
+      const feed = await listRevocations(
+        new Request("http://localhost:3000/api/auth/oauth2/revoked?since=0", {
+          headers: env.INTERNAL_SERVICE_TOKEN
+            ? { authorization: `Bearer ${env.INTERNAL_SERVICE_TOKEN}` }
+            : {},
+        })
+      );
+      expect(
+        ((await feed.json()) as { revocations: { jti: string }[] }).revocations
+      ).toEqual([expect.objectContaining({ jti: decodeJwt(exchanged).jti })]);
     });
 
     it("issues opaque tokens for Zentity-hosted audiences", async () => {

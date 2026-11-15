@@ -1,6 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type {
-  CallToolResult,
   Implementation,
   McpServer,
   ServerContext,
@@ -97,28 +96,17 @@ export function tryGetRuntimeState(
 }
 
 /**
- * Wraps a tool callback so it runs inside the caller's auth context. Auth
- * failures become tool errors instead of protocol errors.
+ * Wraps a tool callback so it runs inside the caller's auth context. A thrown
+ * error, including an auth failure, reaches the client as an `isError` tool
+ * result because McpServer converts it, so handlers throw instead of building
+ * error results.
  */
 export function withToolAuth<Args, R>(
   server: McpServer,
   handler: (args: Args, ctx: ServerContext) => Promise<R>
-): (args: Args, ctx: ServerContext) => Promise<R | CallToolResult> {
+): (args: Args, ctx: ServerContext) => Promise<R> {
   return async (args, ctx) => {
-    let auth: AuthContext;
-    try {
-      auth = await requireAuth(clientInfoOf(server, ctx));
-    } catch (error) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: error instanceof Error ? error.message : "Not authenticated",
-          },
-        ],
-      };
-    }
+    const auth = await requireAuth(clientInfoOf(server, ctx));
     return runWithAuth(auth, () => handler(args, ctx));
   };
 }

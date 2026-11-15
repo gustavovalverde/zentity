@@ -44,7 +44,7 @@ Each sub-directory is a bounded context; the filename inside identifies the conc
 | `identity/` | Verification flows: `document/` (OCR), `liveness/` (multi-gesture), `verification/` (orchestration) |
 | `logging/` | Pino logger, error logger, redaction |
 | `observability/` | Metrics, telemetry, request context, warmup |
-| `privacy/` | `zk/` (Noir + UltraHonk), `fhe/` (TFHE keys), `secrets/` (encrypted blobs + vault), `credentials/` (passkey/OPAQUE/wallet wrapping), `primitives/` (crypto base), `bbs/` (BBS+ signatures) |
+| `privacy/` | `zk/` (Noir + UltraHonk), `fhe/` (TFHE keys), `secrets/` (encrypted blobs + vault), `credentials/` (KEK derivation, DEK wrapping, wallet and recovery-key material), `primitives/` (crypto base), `bbs/` (BBS+ signatures) |
 | `trpc/` | Server/client setup + `routers/` (one file per domain: `identity.ts`, `zk.ts`, `agent.ts`, etc.) |
 
 ### `src/components/`

@@ -285,23 +285,14 @@ function startMcpSubprocess(authBaseUrl: string): ChildProcess {
 }
 
 async function waitForHealth(baseUrl: string): Promise<void> {
-  const deadline = Date.now() + HEALTH_POLL_TIMEOUT_MS;
-  const healthUrl = `${baseUrl}/health`;
-
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(healthUrl);
-      if (res.ok) {
-        return;
+  await vi.waitFor(
+    async () => {
+      const res = await fetch(`${baseUrl}/health`);
+      if (!res.ok) {
+        throw new Error(`MCP health returned ${res.status}`);
       }
-    } catch {
-      // not ready yet
-    }
-    await new Promise((r) => setTimeout(r, HEALTH_POLL_INTERVAL_MS));
-  }
-
-  throw new Error(
-    `MCP subprocess did not become healthy within ${HEALTH_POLL_TIMEOUT_MS}ms`
+    },
+    { timeout: HEALTH_POLL_TIMEOUT_MS, interval: HEALTH_POLL_INTERVAL_MS }
   );
 }
 

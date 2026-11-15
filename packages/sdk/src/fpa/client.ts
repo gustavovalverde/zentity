@@ -1,3 +1,8 @@
+import {
+  client as opaqueClient,
+  ready as opaqueReady,
+} from "@serenity-kit/opaque";
+import { z } from "zod";
 import type { SdkErrorCode } from "../protocol/claims";
 import {
   createDpopClientFromKeyPair,
@@ -6,7 +11,6 @@ import {
   type DpopKeyPair,
 } from "../rp/dpop-client";
 import { createDiscoveryResolver, type FirstPartyAuthDiscoveryDocument } from "./discovery";
-import { ensureOpaqueReady, finishOpaqueLogin, startOpaqueLogin } from "./opaque";
 import {
   exchangeAuthorizationCode,
   exchangeToken,
@@ -144,11 +148,35 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-async function parseJsonBody(response: Response): Promise<Record<string, unknown>> {
-  return ((await response.json().catch(() => ({}))) ?? {}) as Record<
-    string,
-    unknown
-  >;
+// Challenge responses are read leniently: a field of the wrong type is
+// treated as absent, and each step reports the field it needs.
+const optionalField = <T extends z.ZodType>(schema: T) =>
+  schema.optional().catch(undefined);
+
+const challengeBodySchema = z.object({
+  auth_session: optionalField(z.string()),
+  authorization_code: optionalField(z.string()),
+  challenge_type: optionalField(z.string()),
+  error: optionalField(z.string()),
+  opaque_login_response: optionalField(z.string()),
+  typed_data: optionalField(z.record(z.string(), z.unknown())),
+});
+
+type ChallengeBody = z.infer<typeof challengeBodySchema>;
+
+async function parseChallengeBody(response: Response): Promise<ChallengeBody> {
+  const json = await response.json().catch(() => undefined);
+  return challengeBodySchema.safeParse(json).data ?? {};
+}
+
+function required<T extends string | object>(
+  value: T | undefined,
+  message: string
+): T {
+  if (!value) {
+    throw new Error(message);
+  }
+  return value;
 }
 
 function requireChallengeEndpoint(document: FirstPartyAuthDiscoveryDocument): string {
@@ -164,58 +192,32 @@ function requireTokenEndpoint(document: FirstPartyAuthDiscoveryDocument): string
   return document.token_endpoint;
 }
 
-function readAuthorizationCode(body: Record<string, unknown>): string {
-  const authorizationCode = body.authorization_code;
-  if (typeof authorizationCode !== "string" || authorizationCode.length === 0) {
-    throw new Error("Authorization response missing authorization_code");
-  }
-  return authorizationCode;
+function readAuthorizationCode(body: ChallengeBody): string {
+  return required(
+    body.authorization_code,
+    "Authorization response missing authorization_code"
+  );
 }
 
-function readChallengeType(body: Record<string, unknown>): "eip712" | "opaque" {
-  const challengeType = body.challenge_type;
-  if (challengeType === "opaque" || challengeType === "eip712") {
-    return challengeType;
+function readChallengeType(body: ChallengeBody): "eip712" | "opaque" {
+  if (body.challenge_type === "opaque" || body.challenge_type === "eip712") {
+    return body.challenge_type;
   }
-  throw new Error(`Unsupported challenge type: ${String(challengeType)}`);
-}
-
-function readAuthSession(body: Record<string, unknown>): string {
-  const authSession = body.auth_session;
-  if (typeof authSession !== "string" || authSession.length === 0) {
-    throw new Error("Challenge response missing auth_session");
-  }
-  return authSession;
-}
-
-function readOpaqueLoginResponse(body: Record<string, unknown>): string {
-  const loginResponse = body.opaque_login_response;
-  if (typeof loginResponse !== "string" || loginResponse.length === 0) {
-    throw new Error("OPAQUE response missing opaque_login_response");
-  }
-  return loginResponse;
-}
-
-function readTypedData(body: Record<string, unknown>): Record<string, unknown> {
-  const typedData = body.typed_data;
-  if (!typedData || typeof typedData !== "object" || Array.isArray(typedData)) {
-    throw new Error("EIP-712 response missing typed_data");
-  }
-  return typedData as Record<string, unknown>;
+  throw new Error(`Unsupported challenge type: ${String(body.challenge_type)}`);
 }
 
 async function postChallenge(
   dpopClient: DpopClient,
   endpoint: string,
   body: Record<string, unknown>
-): Promise<{ body: Record<string, unknown>; response: Response }> {
+): Promise<{ body: ChallengeBody; response: Response }> {
   const response = await dpopClient.fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
-  return { body: await parseJsonBody(response.clone()), response };
+  return { body: await parseChallengeBody(response.clone()), response };
 }
 
 async function buildAuthenticationResult(
@@ -461,8 +463,10 @@ export function createFirstPartyAuth(
     authSession: string,
     passwordStrategy: PasswordAuthorizationStrategy
   ): Promise<AuthorizationCodeResult> {
-    await ensureOpaqueReady();
-    const opaqueStart = startOpaqueLogin(passwordStrategy.password);
+    await opaqueReady;
+    const opaqueStart = opaqueClient.startLogin({
+      password: passwordStrategy.password,
+    });
     const round2 = await postChallenge(dpopClient, endpoint, {
       auth_session: authSession,
       opaque_login_request: opaqueStart.startLoginRequest,
@@ -474,11 +478,14 @@ export function createFirstPartyAuth(
       );
     }
 
-    const finishResult = finishOpaqueLogin(
-      opaqueStart.clientLoginState,
-      readOpaqueLoginResponse(round2.body),
-      passwordStrategy.password
-    );
+    const finishResult = opaqueClient.finishLogin({
+      clientLoginState: opaqueStart.clientLoginState,
+      loginResponse: required(
+        round2.body.opaque_login_response,
+        "OPAQUE response missing opaque_login_response"
+      ),
+      password: passwordStrategy.password,
+    });
     if (!finishResult) {
       throw new Error(
         "OPAQUE finishLogin failed — invalid password or server response"
@@ -510,9 +517,11 @@ export function createFirstPartyAuth(
     endpoint: string,
     authSession: string,
     walletStrategy: WalletAuthorizationStrategy,
-    round1Body: Record<string, unknown>
+    round1Body: ChallengeBody
   ): Promise<AuthorizationCodeResult> {
-    const signature = await walletStrategy.signTypedData(readTypedData(round1Body));
+    const signature = await walletStrategy.signTypedData(
+      required(round1Body.typed_data, "EIP-712 response missing typed_data")
+    );
     const round2 = await postChallenge(dpopClient, endpoint, {
       auth_session: authSession,
       eip712_signature: signature,
@@ -535,10 +544,13 @@ export function createFirstPartyAuth(
   async function continueAuthorization(
     dpopClient: DpopClient,
     endpoint: string,
-    round1: { body: Record<string, unknown>; response: Response },
+    round1: { body: ChallengeBody; response: Response },
     strategies: AuthorizationStrategies
   ): Promise<AuthorizationCodeResult> {
-    const authSession = readAuthSession(round1.body);
+    const authSession = required(
+      round1.body.auth_session,
+      "Challenge response missing auth_session"
+    );
     const challengeType = readChallengeType(round1.body);
 
     if (challengeType === "opaque") {

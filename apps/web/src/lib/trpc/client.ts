@@ -86,22 +86,15 @@ const links = [
   }),
   httpBatchLink({
     url: getTrpcUrl(),
-    fetch(url, options) {
-      // Include credentials so session cookies are sent with requests.
-      const { signal, cleanup } = createTimeoutSignal(options?.signal);
+    headers() {
       const flowId = getFlowId();
-      const headers = new Headers(options?.headers ?? {});
-      if (flowId) {
-        headers.set("X-Zentity-Flow-Id", flowId);
-      }
-      return globalThis
-        .fetch(url, {
-          ...options,
-          headers,
-          credentials: "include",
-          signal,
-        })
-        .finally(cleanup);
+      return flowId ? { "X-Zentity-Flow-Id": flowId } : {};
+    },
+    // `AbortSignal.any` is not yet in this app's browser targets, so the
+    // timeout is chained to the caller's signal by hand.
+    fetch(url, options) {
+      const { signal, cleanup } = createTimeoutSignal(options?.signal);
+      return globalThis.fetch(url, { ...options, signal }).finally(cleanup);
     },
   }),
 ];
@@ -110,7 +103,7 @@ const links = [
  * Type-safe tRPC client for browser use.
  * Call it directly from event handlers, utilities, and non-component code.
  * TrpcProvider hands the same instance to the TanStack Query integration.
- * Automatically includes credentials for session cookies.
+ * Same-origin requests carry the session cookie.
  */
 export const trpc = createTRPCClient<AppRouter>({
   links,

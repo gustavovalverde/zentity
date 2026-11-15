@@ -1,4 +1,5 @@
 import { createDpopClient, requestTokenEndpoint } from "@zentity/sdk/rp";
+import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -121,26 +122,22 @@ export async function POST(request: Request) {
     }
 
     // 2. Generate holder key pair (EdDSA / Ed25519)
-    const keyPair = await crypto.subtle.generateKey("Ed25519", true, [
-      "sign",
-      "verify",
-    ]);
-    const holderPublicJwk = await crypto.subtle.exportKey(
-      "jwk",
-      keyPair.publicKey
-    );
-    const holderPrivateJwk = await crypto.subtle.exportKey(
-      "jwk",
-      keyPair.privateKey
-    );
+    const { privateKey, publicKey } = await generateKeyPair("EdDSA", {
+      extractable: true,
+    });
+    const holderPublicJwk = await exportJWK(publicKey);
+    const holderPrivateJwk = await exportJWK(privateKey);
 
-    // 3. Create proof JWT
-    const proofJwt = await createProofJwt(
-      cNonce,
-      offer.credential_issuer,
-      holderPublicJwk,
-      keyPair.privateKey
-    );
+    // 3. Create proof JWT (OID4VCI 1.0 Appendix F.1)
+    const proofJwt = await new SignJWT({ nonce: cNonce })
+      .setProtectedHeader({
+        alg: "EdDSA",
+        typ: "openid4vci-proof+jwt",
+        jwk: holderPublicJwk,
+      })
+      .setAudience(offer.credential_issuer)
+      .setIssuedAt()
+      .sign(privateKey);
 
     // 4. Request credential (with DPoP — credential endpoint requires it)
     const configId =
@@ -187,34 +184,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
-
-async function createProofJwt(
-  nonce: string,
-  audience: string,
-  holderPublicJwk: JsonWebKey,
-  holderPrivateKey: CryptoKey
-): Promise<string> {
-  const header = {
-    alg: "EdDSA",
-    jwk: holderPublicJwk,
-    typ: "openid4vci-proof+jwt",
-  };
-  const payload = {
-    aud: audience,
-    nonce,
-    iat: Math.floor(Date.now() / 1000),
-  };
-
-  const headerB64 = Buffer.from(JSON.stringify(header)).toString("base64url");
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signingInput = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = await crypto.subtle.sign(
-    "Ed25519",
-    holderPrivateKey,
-    signingInput
-  );
-  const sigB64 = Buffer.from(new Uint8Array(signature)).toString("base64url");
-
-  return `${headerB64}.${payloadB64}.${sigB64}`;
 }

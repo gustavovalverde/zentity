@@ -9,7 +9,6 @@ import {
 } from "@playwright/test";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
   base64url,
   calculateJwkThumbprint,
@@ -21,6 +20,9 @@ import {
   SignJWT,
 } from "jose";
 
+import { cibaRequests } from "../../src/lib/db/schema/ciba";
+import { oidc4vciIssuedCredentials } from "../../src/lib/db/schema/oidc-credentials";
+
 type DpopKeyPair = Awaited<ReturnType<typeof generateKeyPair>>;
 
 export interface DpopBinding {
@@ -30,21 +32,6 @@ export interface DpopBinding {
   /** The last `DPoP-Nonce` Zentity handed this key (RFC 9449 §8). */
   nonce?: string;
 }
-
-// Minimal schema for E2E database lookups (Playwright can't resolve @/ imports)
-const oidc4vciIssuedCredentials = sqliteTable("oidc4vci_issued_credential", {
-  id: text("id").primaryKey(),
-  credential: text("credential").notNull(),
-  status: integer("status").notNull(),
-  statusListId: text("status_list_id").notNull(),
-  statusListIndex: integer("status_list_index").notNull(),
-  revokedAt: integer("revoked_at", { mode: "timestamp" }),
-});
-
-const cibaRequests = sqliteTable("ciba_request", {
-  id: text("id").primaryKey(),
-  authReqId: text("auth_req_id").notNull(),
-});
 
 const RAW_BASE_URL =
   process.env.PLAYWRIGHT_TEST_BASE_URL ?? "http://localhost:3000";
@@ -719,7 +706,7 @@ export async function createDpopBinding(): Promise<DpopBinding> {
   return { dpopKey, dpopJwk, jkt };
 }
 
-export async function createDpopProof(input: {
+async function createDpopProof(input: {
   method: string;
   url: string;
   accessToken?: string;
@@ -803,45 +790,6 @@ export async function sendDpopRequest(
     return (await attempt()).response;
   }
   return first.response;
-}
-
-/**
- * Submit a Pushed Authorization Request (PAR) to the issuer.
- * Returns the request_uri for use in the authorize redirect.
- */
-export async function submitPar(
-  request: APIRequestContext,
-  input: {
-    clientId: string;
-    redirectUri: string;
-    scope: string;
-    state?: string;
-    codeChallenge?: string;
-    codeChallengeMethod?: string;
-  }
-) {
-  const form = new URLSearchParams();
-  form.set("client_id", input.clientId);
-  form.set("redirect_uri", input.redirectUri);
-  form.set("response_type", "code");
-  form.set("scope", input.scope);
-  if (input.state) {
-    form.set("state", input.state);
-  }
-  if (input.codeChallenge) {
-    form.set("code_challenge", input.codeChallenge);
-    form.set("code_challenge_method", input.codeChallengeMethod ?? "S256");
-  }
-
-  const res = await request.post(`${AUTH_BASE_URL}/oauth2/par`, {
-    data: form.toString(),
-    headers: {
-      Origin: BASE_URL,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-  });
-
-  return res;
 }
 
 export const oidcConfig = {

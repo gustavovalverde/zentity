@@ -88,7 +88,7 @@ jobs:
             pre-commit-hygiene-${{ runner.os }}-
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         env:
-          SKIP: no-commit-to-branch,biome-check-web,tsc-check-web,knip-check-web,oxlint-type-aware-web,circuits-check-web,next-build-web,biome-check-landing,tsc-check-landing,vitest-unit-web,vitest-integration-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,commitlint,lockfile-sync-web,lockfile-sync-demo-rp,lockfile-sync-landing,lockfile-sync-mcp,lockfile-sync-fhe,mcp-test
+          SKIP: no-commit-to-branch,biome-check-web,tsc-check-web,knip-check-web,oxlint-type-aware-web,circuits-check-web,next-build-web,biome-check-landing,tsc-check-landing,vitest-unit-web,vitest-integration-web,markdownlint,ruff-check,ruff-format,cargo-fmt-fhe,cargo-clippy-fhe,commitlint,lockfile-sync-pnpm,lockfile-sync-fhe,mcp-test
 
   # ============================================
   # Commit & PR Quality
@@ -125,7 +125,7 @@ jobs:
       - run: pnpm --filter @zentity/sdk build
       - run: pnpm run lint:check
         working-directory: apps/web
-      - run: pnpm run type-check
+      - run: pnpm run typecheck
         working-directory: apps/web
       - run: pnpm run knip
         working-directory: apps/web

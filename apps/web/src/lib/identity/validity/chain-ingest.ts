@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql, TransactionRollbackError } from "drizzle-orm";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { hardhat, sepolia } from "viem/chains";
 
@@ -17,7 +17,6 @@ import {
 } from "@/lib/db/schema/identity";
 
 import {
-  isDuplicateValidityEvent,
   recordChainAttestationConfirmed,
   recordValidityTransition,
 } from "./transition";
@@ -243,7 +242,7 @@ export async function ingestChainValidityEvents(args: {
             .where(eq(identityBundles.userId, attestation.userId))
             .run();
 
-          await recordValidityTransition({
+          const recorded = await recordValidityTransition({
             executor: tx,
             userId: attestation.userId,
             verificationId: snapshot?.effectiveVerificationId ?? null,
@@ -265,6 +264,11 @@ export async function ingestChainValidityEvents(args: {
             },
           });
 
+          // A replayed chain event was already applied: undo this pass.
+          if (!recorded) {
+            tx.rollback();
+          }
+
           createdTransition = true;
         });
 
@@ -272,7 +276,7 @@ export async function ingestChainValidityEvents(args: {
           transitionsCreated += 1;
         }
       } catch (error) {
-        if (isDuplicateValidityEvent(error)) {
+        if (error instanceof TransactionRollbackError) {
           skippedDuplicate += 1;
           continue;
         }
@@ -298,7 +302,6 @@ export async function ingestChainValidityEvents(args: {
         status: "confirmed",
         blockNumber,
         confirmedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       })
       .where(eq(blockchainAttestations.id, attestation.id))
       .run();

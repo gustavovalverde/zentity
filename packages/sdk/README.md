@@ -49,6 +49,7 @@ const agent = createAgent({
 - `@zentity/sdk`: agent runtime helpers
 - `@zentity/sdk/rp`: relying-party token verification, DPoP, x402 helpers
 - `@zentity/sdk/protocol`: shared protocol types such as `AccessTokenClaims`
+- `@zentity/sdk/agent-contract`: agent bootstrap scopes and the `agent-configuration` document schema shared by Zentity and agent runtimes
 - `@zentity/sdk/fpa`: first-party app auth
 - `@zentity/sdk/node`: Node/Bun installed-client helpers and file storage
 - `@zentity/sdk/testing`: fixture keys, PoH token mocks, mock issuer

@@ -8,16 +8,3 @@ export interface Eip712TypedData {
   primaryType: string;
   types: Record<string, Array<{ name: string; type: string }>>;
 }
-
-interface BuildTypedDataParams {
-  address: string;
-  chainId: number;
-  nonce: string;
-}
-
-export interface Eip712AuthOptions {
-  appName?: string;
-  buildTypedData?: (params: BuildTypedDataParams) => Eip712TypedData;
-  emailDomainName?: string;
-  nonceTtlSeconds?: number;
-}

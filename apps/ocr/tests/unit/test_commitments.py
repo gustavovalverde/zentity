@@ -7,6 +7,8 @@ Tests the privacy-preserving cryptographic commitment generation:
 - Verification of claims against stored commitments
 """
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from ocr_service.services.commitments import (
@@ -239,19 +241,19 @@ class TestGenerateUserSalt:
 class TestIdentityCommitments:
     """Tests for IdentityCommitments class."""
 
-    def test_to_dict_excludes_salt(self, sample_salt):
+    def test_is_immutable(self, sample_salt):
         commitments = IdentityCommitments(
             document_hash="abc123",
             name_commitment="def456",
             user_salt=sample_salt,
-            document_type="cedula",
         )
-        result = commitments.to_dict()
+        with pytest.raises(FrozenInstanceError):
+            commitments.document_hash = "other"  # type: ignore[misc]
 
-        assert "document_hash" in result
-        assert "name_commitment" in result
-        assert "document_type" in result
-        assert "user_salt" not in result  # Salt should NOT be in dict
+    def test_optional_fields_default_to_none(self, sample_salt):
+        commitments = IdentityCommitments("abc123", "def456", sample_salt)
+        assert commitments.document_type is None
+        assert commitments.issuing_country_commitment is None
 
 
 class TestGenerateIdentityCommitments:

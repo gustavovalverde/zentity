@@ -1,6 +1,6 @@
-//! Liveness score endpoint HTTP tests.
+//! Liveness threshold endpoint HTTP tests.
 //!
-//! Tests the /encrypt-liveness and /verify-liveness-threshold endpoints.
+//! Tests the /verify-liveness-threshold endpoint. Ciphertexts under test come from /encrypt-batch.
 //! Includes full roundtrip integration tests with decryption.
 
 use tfhe::prelude::FheDecrypt;
@@ -17,262 +17,10 @@ use http::fixtures::liveness_boundaries::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct EncryptLivenessResponse {
-    #[serde(with = "serde_bytes")]
-    ciphertext: Vec<u8>,
-    score: f64,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct VerifyLivenessThresholdResponse {
     #[serde(with = "serde_bytes")]
     passes_ciphertext: Vec<u8>,
     threshold: f64,
-}
-
-// ============================================================================
-// Encrypt Liveness Score - Happy Path Tests
-// ============================================================================
-
-/// Encrypt liveness score returns 200 with valid inputs.
-#[tokio::test]
-async fn encrypt_liveness_success() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(TYPICAL_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
-    assert!(!body.ciphertext.is_empty());
-    assert_eq!(body.score, TYPICAL_SCORE);
-}
-
-/// Encrypt with minimum score (0.0) succeeds.
-#[tokio::test]
-async fn encrypt_liveness_boundary_zero() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(MIN_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
-    assert_eq!(body.score, MIN_SCORE);
-}
-
-/// Encrypt with maximum score (1.0) succeeds.
-#[tokio::test]
-async fn encrypt_liveness_boundary_one() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(MAX_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
-    assert_eq!(body.score, MAX_SCORE);
-}
-
-/// Encrypt with precision score preserves 4 decimal places.
-#[tokio::test]
-async fn encrypt_liveness_precision() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(PRECISION_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body: EncryptLivenessResponse = http::parse_msgpack_body(response).await;
-    let echoed_score = body.score;
-    assert!(
-        (echoed_score - PRECISION_SCORE).abs() < 0.0001,
-        "Score precision not preserved: {} vs {}",
-        echoed_score,
-        PRECISION_SCORE
-    );
-}
-
-// ============================================================================
-// Encrypt Liveness Score - Validation Error Tests
-// ============================================================================
-
-/// Score over max (1.5) returns 400.
-#[tokio::test]
-async fn encrypt_liveness_over_max() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(OVER_MAX_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-/// Negative score returns 400.
-#[tokio::test]
-async fn encrypt_liveness_negative() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = http::fixtures::encrypt_liveness_request(NEGATIVE_SCORE, &key_id);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-}
-
-/// Invalid key id returns 404.
-#[tokio::test]
-async fn encrypt_liveness_invalid_key_id() {
-    let app = http::test_app();
-
-    let body = serde_json::json!({
-        "score": 0.85,
-        "keyId": "not-valid-key-id"
-    });
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-/// Missing fields returns 400/422.
-#[tokio::test]
-async fn encrypt_liveness_missing_fields() {
-    let app = http::test_app();
-
-    let body = http::fixtures::empty_object();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert!(
-        response.status() == StatusCode::BAD_REQUEST
-            || response.status() == StatusCode::UNPROCESSABLE_ENTITY
-    );
-}
-
-/// String instead of number for score returns 400/422.
-#[tokio::test]
-async fn encrypt_liveness_wrong_type() {
-    let app = http::test_app();
-    let key_id = common::get_registered_key_id();
-
-    let body = serde_json::json!({
-        "score": "not-a-number",
-        "keyId": key_id
-    });
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert!(
-        response.status() == StatusCode::BAD_REQUEST
-            || response.status() == StatusCode::UNPROCESSABLE_ENTITY
-    );
 }
 
 // ============================================================================
@@ -282,27 +30,9 @@ async fn encrypt_liveness_wrong_type() {
 /// Verify liveness threshold returns 200 with valid inputs.
 #[tokio::test]
 async fn verify_liveness_threshold_success() {
-    let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.9, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(encrypt_response.status(), StatusCode::OK);
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.9, &key_id).await;
 
     let verify_body =
         http::fixtures::verify_liveness_threshold_request(&ciphertext, TYPICAL_THRESHOLD, &key_id);
@@ -334,26 +64,9 @@ async fn verify_liveness_threshold_success() {
 /// Non-existent key ID returns 404.
 #[tokio::test]
 async fn verify_liveness_threshold_invalid_key_id() {
-    let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.85, &key_id).await;
 
     let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
         ciphertext: ciphertext.clone(),
@@ -380,26 +93,9 @@ async fn verify_liveness_threshold_invalid_key_id() {
 /// Threshold over max (1.5) returns 400.
 #[tokio::test]
 async fn verify_liveness_threshold_over_max() {
-    let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.85, &key_id).await;
 
     let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
         ciphertext: ciphertext.clone(),
@@ -426,26 +122,9 @@ async fn verify_liveness_threshold_over_max() {
 /// Negative threshold returns 400.
 #[tokio::test]
 async fn verify_liveness_threshold_negative() {
-    let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.85, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.85, &key_id).await;
 
     let verify_body = http::fixtures::VerifyLivenessThresholdRequest {
         ciphertext: ciphertext.clone(),
@@ -530,26 +209,9 @@ async fn verify_liveness_threshold_missing_fields() {
 async fn liveness_roundtrip_passes_threshold() {
     use tfhe::FheBool;
 
-    let app = http::test_app();
     let (client_key, _, key_id) = common::get_test_keys();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.9, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.9, &key_id).await;
 
     let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
@@ -583,26 +245,9 @@ async fn liveness_roundtrip_passes_threshold() {
 async fn liveness_roundtrip_fails_threshold() {
     use tfhe::FheBool;
 
-    let app = http::test_app();
     let (client_key, _, key_id) = common::get_test_keys();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.7, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.7, &key_id).await;
 
     let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
@@ -635,26 +280,9 @@ async fn liveness_roundtrip_fails_threshold() {
 async fn liveness_roundtrip_exact_threshold() {
     use tfhe::FheBool;
 
-    let app = http::test_app();
     let (client_key, _, key_id) = common::get_test_keys();
 
-    let encrypt_body = http::fixtures::encrypt_liveness_request(0.8, &key_id);
-
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-liveness")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptLivenessResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("livenessScore", 0.8, &key_id).await;
 
     let verify_body = http::fixtures::verify_liveness_threshold_request(&ciphertext, 0.8, &key_id);
 
@@ -685,25 +313,6 @@ async fn liveness_roundtrip_exact_threshold() {
 // ============================================================================
 // HTTP Method Tests
 // ============================================================================
-
-/// GET on encrypt endpoint returns 405.
-#[tokio::test]
-async fn encrypt_liveness_rejects_get() {
-    let app = http::test_app();
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/encrypt-liveness")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
-}
 
 /// GET on verify endpoint returns 405.
 #[tokio::test]

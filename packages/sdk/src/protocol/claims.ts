@@ -8,7 +8,12 @@ export type SdkErrorCode =
 	| "token_refresh_failed"
 	| "use_dpop_nonce";
 
-export type HostAttestationTier = "attested" | "self-declared" | "unverified";
+export const HOST_ATTESTATION_TIERS = [
+	"attested",
+	"self-declared",
+	"unverified",
+] as const;
+export type HostAttestationTier = (typeof HOST_ATTESTATION_TIERS)[number];
 
 export type OversightMethod =
 	| "biometric"

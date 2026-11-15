@@ -2,8 +2,8 @@
  * Shared DEK Wrapping Module
  *
  * Centralizes the AES-GCM wrapping/unwrapping pattern used by all credential types.
- * Each credential module (passkey, OPAQUE, wallet) derives the KEK differently,
- * but the wrapping/unwrapping logic is identical.
+ * Each credential (passkey, OPAQUE, wallet, recovery key, vault key) derives
+ * its KEK differently, but the wrapping/unwrapping logic is identical.
  */
 
 import {

@@ -1,11 +1,12 @@
 import "server-only";
 
+import { SDJwtInstance, splitSdJwt } from "@sd-jwt/core";
 import { decodeBase64UrlJsonStrict } from "@zentity/sdk/protocol";
 import { createJwksTokenVerifier } from "@zentity/sdk/rp";
-import type { JWK } from "jose";
-import { importJWK, jwtVerify } from "jose";
+import { compactVerify, importJWK, type JWK } from "jose";
 
 import { env } from "@/lib/env";
+import { readDisclosedClaims, sha256Hasher } from "@/lib/sd-jwt";
 
 const MAX_KB_JWT_AGE_SECONDS = 300;
 
@@ -17,116 +18,66 @@ function getIssuerTokenVerifier() {
   return issuerTokenVerifier;
 }
 
-interface VerifyResult {
-  claims: Record<string, unknown>;
-  verified: boolean;
-}
-
-function decodeDisclosures(
-  disclosureParts: string[]
-): Record<string, unknown> | null {
-  const claims: Record<string, unknown> = {};
-  for (const disc of disclosureParts) {
+const sdjwt = new SDJwtInstance({
+  hasher: sha256Hasher,
+  async verifier(data, signature) {
     try {
-      const decoded = decodeBase64UrlJsonStrict(disc);
-      // SD-JWT disclosure format: [salt, claim_name, claim_value]
-      if (
-        !Array.isArray(decoded) ||
-        decoded.length !== 3 ||
-        typeof decoded[1] !== "string" ||
-        decoded[1].length === 0
-      ) {
-        return null;
-      }
-      const claimName = decoded[1];
-      if (Object.hasOwn(claims, claimName)) {
-        return null;
-      }
-      claims[claimName] = decoded[2];
+      await getIssuerTokenVerifier().verify(`${data}.${signature}`);
+      return true;
     } catch {
-      return null;
+      return false;
     }
-  }
-  return claims;
-}
-
-async function verifyKbJwt(
-  kbJwt: string,
-  issuerPayload: Record<string, unknown>,
-  expectedNonce: string,
-  expectedAudience: string
-): Promise<boolean> {
+  },
   // The issuer binds the credential to the holder key it carries as cnf.jwk
-  // (SD-JWT VC); the KB-JWT must verify against that key.
-  const holderJwk = (issuerPayload.cnf as { jwk?: JWK } | undefined)?.jwk;
-  if (!holderJwk) {
-    return false;
-  }
-
-  const holderKey = await importJWK(holderJwk);
-  const { payload: kbPayload } = await jwtVerify(kbJwt, holderKey, {
-    audience: expectedAudience,
-    maxTokenAge: MAX_KB_JWT_AGE_SECONDS,
-  });
-
-  return kbPayload.nonce === expectedNonce;
-}
+  // (SD-JWT VC); the KB-JWT must verify against that key. It is imported for
+  // the KB-JWT's alg: holder JWKs may omit alg, or name Ed25519 for EdDSA.
+  async kbVerifier(data, signature, payload) {
+    const holderJwk = payload.cnf?.jwk as JWK | undefined;
+    if (!holderJwk) {
+      return false;
+    }
+    try {
+      await compactVerify(`${data}.${signature}`, (header) =>
+        importJWK(holderJwk, header.alg)
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  },
+});
 
 /**
- * Verifies an SD-JWT VP token locally.
+ * Verifies an SD-JWT VP token and returns the claims the holder disclosed,
+ * or null when the token is rejected.
  *
- * 1. Splits the compact SD-JWT into issuer JWT, disclosures, and KB-JWT
- * 2. Verifies the issuer signature against Zentity JWKS
- * 3. Validates KB-JWT (audience, nonce, freshness, holder binding)
- * 4. Extracts disclosed claims
+ * The issuer JWT must verify against the Zentity JWKS and every disclosure
+ * must match a digest the issuer signed. The KB-JWT must be signed by the
+ * credential's `cnf.jwk` holder key over this exact presentation (`sd_hash`),
+ * for this verifier and nonce, within the last five minutes.
  */
 export async function verifyVpToken(
   vpToken: string,
   expectedNonce: string,
   expectedAudience: string
-): Promise<VerifyResult> {
-  // SD-JWT compact format: <issuer-jwt>~<disclosure1>~<disclosure2>~...~<kb-jwt>
-  const parts = vpToken.split("~");
-  const issuerJwt = parts[0];
-  if (parts.length < 2 || !issuerJwt) {
-    return { verified: false, claims: {} };
-  }
-
-  const kbJwt = parts.at(-1);
-  // OID4VP + SD-JWT VC mandate a Key Binding JWT in the final segment.
-  // A missing or empty KB-JWT defeats holder binding, audience, nonce, and
-  // freshness checks, so reject before doing any further work.
-  if (!kbJwt) {
-    return { verified: false, claims: {} };
-  }
-  const disclosureParts = parts.slice(1, -1).filter(Boolean);
-
-  let issuerPayload: Record<string, unknown>;
+): Promise<Record<string, unknown> | null> {
   try {
-    const { payload } = await getIssuerTokenVerifier().verify(issuerJwt);
-    issuerPayload = payload as Record<string, unknown>;
-  } catch {
-    return { verified: false, claims: {} };
-  }
-
-  const disclosedClaims = decodeDisclosures(disclosureParts);
-  if (!disclosedClaims) {
-    return { verified: false, claims: {} };
-  }
-
-  try {
-    const valid = await verifyKbJwt(
-      kbJwt,
-      issuerPayload,
-      expectedNonce,
-      expectedAudience
-    );
-    if (!valid) {
-      return { verified: false, claims: disclosedClaims };
+    // @sd-jwt/core reads disclosures with JSON.parse, which keeps the last of
+    // duplicate member names. Reject those so every parser sees one value.
+    for (const disclosure of splitSdJwt(vpToken).disclosures) {
+      decodeBase64UrlJsonStrict(disclosure);
     }
+    const { kb } = await sdjwt.verify(vpToken, {
+      keyBindingNonce: expectedNonce,
+      expectedKeyBindingAudience: expectedAudience,
+      keyBindingMaxAgeSeconds: MAX_KB_JWT_AGE_SECONDS,
+    });
+    // verify() skips holder binding without a nonce; never accept that.
+    if (!kb) {
+      return null;
+    }
+    return await readDisclosedClaims(sdjwt, vpToken);
   } catch {
-    return { verified: false, claims: disclosedClaims };
+    return null;
   }
-
-  return { verified: true, claims: disclosedClaims };
 }

@@ -1,8 +1,9 @@
 /**
  * JSON fetch wrapper with timeout + structured error reporting.
  *
- * Callers receive `HttpError` on non-2xx responses or unreadable JSON,
- * and `TimeoutError` when the request exceeds `timeoutMs`.
+ * Callers receive `HttpError` on non-2xx responses or unreadable JSON, and a
+ * `TimeoutError` DOMException (see `isTimeoutError`) when the request
+ * exceeds `timeoutMs`.
  */
 
 export class HttpError extends Error {
@@ -27,29 +28,13 @@ export class HttpError extends Error {
   }
 }
 
-export async function safeReadBodyText(response: Response): Promise<string> {
-  try {
-    return await response.text();
-  } catch {
-    try {
-      const jsonValue = (await response.json()) as unknown;
-      return JSON.stringify(jsonValue);
-    } catch {
-      return "";
-    }
-  }
+export function safeReadBodyText(response: Response): Promise<string> {
+  return response.text().catch(() => "");
 }
 
-export class TimeoutError extends Error {
-  readonly url: string;
-  readonly timeoutMs: number;
-
-  constructor(url: string, timeoutMs: number) {
-    super(`Request timed out after ${timeoutMs}ms`);
-    this.name = "TimeoutError";
-    this.url = url;
-    this.timeoutMs = timeoutMs;
-  }
+/** `AbortSignal.timeout` rejects with a DOMException named `TimeoutError`. */
+export function isTimeoutError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "TimeoutError";
 }
 
 interface FetchJsonOptions extends RequestInit {
@@ -57,23 +42,17 @@ interface FetchJsonOptions extends RequestInit {
   timeoutMs?: number;
 }
 
-export async function fetchWithTimeout(
+/** The timeout covers reading the response body as well as the headers. */
+export function fetchWithTimeout(
   url: string,
   init: RequestInit | undefined,
   timeoutMs: number
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new TimeoutError(url, timeoutMs);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return fetch(url, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+  });
 }
 
 export async function fetchJson<T>(
@@ -95,10 +74,10 @@ export async function fetchJson<T>(
     });
   }
 
+  const bodyText = await response.text();
   try {
-    return (await response.json()) as T;
+    return JSON.parse(bodyText) as T;
   } catch {
-    const bodyText = await safeReadBodyText(response);
     throw new HttpError({
       message: "Invalid JSON response",
       status: response.status,

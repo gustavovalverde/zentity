@@ -1,5 +1,3 @@
-import { createHmac } from "node:crypto";
-
 // ---------------------------------------------------------------------------
 // Additional authenticated data (AAD) encoding
 // ---------------------------------------------------------------------------
@@ -37,18 +35,6 @@ export function encodeAad(parts: string[]): Uint8Array {
   }
 
   return bytesOut;
-}
-
-// ---------------------------------------------------------------------------
-// HMAC-SHA256 over length-prefixed AAD parts
-// ---------------------------------------------------------------------------
-
-/**
- * Length-prefixed HMAC-SHA256 helper.
- * Pairs with `encodeAad` so call sites stay collision-free.
- */
-export function hmacSha256Hex(secret: string, parts: string[]): string {
-  return createHmac("sha256", secret).update(encodeAad(parts)).digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -169,10 +155,15 @@ export function base64UrlToBytes(base64Url: string): Uint8Array {
 // Hex encoding
 // ---------------------------------------------------------------------------
 
+const HEX_DIGITS = /^[\da-f]+$/i;
+
 export function hexToBytes(hex: string): Uint8Array {
   const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
   if (normalized.length === 0 || normalized.length % 2 !== 0) {
     throw new Error("Expected even-length hex string");
+  }
+  if (!HEX_DIGITS.test(normalized)) {
+    throw new Error("Expected hex string to contain only hex digits");
   }
 
   const bytes = new Uint8Array(normalized.length / 2);
@@ -188,6 +179,39 @@ export function bytesToHex(bytes: Uint8Array): string {
     hex += byte.toString(16).padStart(2, "0");
   }
   return hex;
+}
+
+// ---------------------------------------------------------------------------
+// HKDF-SHA256 (WebCrypto, isomorphic)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive `bits` of output keying material with HKDF-SHA256.
+ * Salt and info are wire constants for every caller: changing them changes
+ * every derived secret.
+ */
+export async function hkdfBits(
+  ikm: Uint8Array,
+  params: { bits: number; info: string; salt?: Uint8Array }
+): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(ikm),
+    "HKDF",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: toArrayBuffer(params.salt ?? new Uint8Array(0)),
+      info: toArrayBuffer(textEncoder.encode(params.info)),
+    },
+    key,
+    params.bits
+  );
+  return new Uint8Array(bits);
 }
 
 // ---------------------------------------------------------------------------

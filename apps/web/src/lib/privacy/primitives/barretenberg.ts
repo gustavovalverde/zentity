@@ -10,6 +10,7 @@
 import "server-only";
 
 import { BackendType, Barretenberg, BN254_FR_MODULUS } from "@aztec/bb.js";
+import { bytesToBigInt, numberToBytes } from "viem";
 
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
@@ -20,14 +21,8 @@ let bbInitPromise: Promise<Barretenberg> | null = null;
 /**
  * Convert a bigint to a 32-byte big-endian Uint8Array (Fr field element)
  */
-function bigIntToFr(value: bigint): Uint8Array {
-  const reduced = value % BN254_FR_MODULUS;
-  const hex = reduced.toString(16).padStart(64, "0");
-  const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+export function bigIntToFr(value: bigint): Uint8Array {
+  return numberToBytes(value % BN254_FR_MODULUS, { size: 32 });
 }
 
 const CRS_PATH = env.BB_CRS_PATH;
@@ -67,11 +62,7 @@ export async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   const bb = await getBarretenberg();
   const frValues = values.map(bigIntToFr);
   const result = await bb.poseidon2Hash({ inputs: frValues });
-  // Convert result (Fr/Uint8Array) back to bigint
-  const hex = Array.from(result.hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return BigInt(`0x${hex}`);
+  return bytesToBigInt(result.hash);
 }
 
 /**

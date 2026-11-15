@@ -5,32 +5,6 @@ import {
   ready as opaqueProtocolReady,
 } from "@serenity-kit/opaque";
 
-function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.codePointAt(index) ?? 0;
-  }
-  return bytes;
-}
-
-function normalizeBase64(base64: string): string {
-  const normalized = base64.replaceAll("-", "+").replaceAll("_", "/");
-  const padLength = normalized.length % 4;
-  if (padLength === 0) {
-    return normalized;
-  }
-  return `${normalized}${"=".repeat(4 - padLength)}`;
-}
-
-function base64UrlToBytes(base64Url: string): Uint8Array {
-  return base64ToBytes(normalizeBase64(base64Url));
-}
-
 export async function deriveOpaqueExportKey(
   api: APIRequestContext,
   password: string
@@ -87,7 +61,7 @@ export async function deriveOpaqueExportKey(
     );
   }
 
-  return base64UrlToBytes(verifyResult.exportKey);
+  return new Uint8Array(Buffer.from(verifyResult.exportKey, "base64url"));
 }
 
 export async function ensureOpaquePasswordRegistration(

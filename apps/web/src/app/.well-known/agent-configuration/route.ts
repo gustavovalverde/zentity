@@ -1,16 +1,16 @@
 import {
+  AGENT_BOOTSTRAP_SCOPES,
+  type AgentConfiguration,
+  agentConfigurationSchema,
+} from "@zentity/sdk/agent-contract";
+import {
   AAP_CLAIMS_VERSION,
   ACT_DID_EMISSION_POLICY,
   AGENT_DID_METHODS_SUPPORTED,
 } from "@zentity/sdk/protocol";
 
 import { env } from "@/env";
-import {
-  AGENT_BOOTSTRAP_SCOPES,
-  AGENT_BOOTSTRAP_TOKEN_USE,
-  type AgentConfiguration,
-  agentConfigurationSchema,
-} from "@/lib/agents/session";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 
 /**

@@ -1,3 +1,4 @@
+import { AGENT_SESSION_REGISTER_SCOPE } from "@zentity/sdk/agent-contract";
 import {
   decodeEd25519DidKeyToJwk,
   decodeJwtPayloadStrict,
@@ -17,10 +18,7 @@ import {
   DEFAULT_HOST_POLICY_CAPABILITIES,
   ensureCapabilitiesSeeded,
 } from "@/lib/agents/capability";
-import {
-  AGENT_SESSION_REGISTER_SCOPE,
-  registerSessionRequestSchema,
-} from "@/lib/agents/session";
+import { registerSessionRequestSchema } from "@/lib/agents/session";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
 import {

@@ -22,7 +22,6 @@ async function createAdminCaller() {
   const { adminRouter } = await import("@/lib/trpc/routers/admin");
   return adminRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
-    resHeaders: new Headers(),
     session: {
       user: {
         id: "admin-user",
@@ -55,7 +54,6 @@ async function createUserCaller() {
   const { adminRouter } = await import("@/lib/trpc/routers/admin");
   return adminRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
-    resHeaders: new Headers(),
     session: {
       user: {
         id: "normal-user",
