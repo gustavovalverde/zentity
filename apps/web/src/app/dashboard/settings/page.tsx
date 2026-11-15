@@ -27,7 +27,6 @@ import {
 import { SetPasswordSection } from "./_components/set-password-section";
 import { TwoFactorCard } from "./_components/two-factor-card";
 import { UserDataSection } from "./_components/user-data-section";
-import { WalletBindingSection } from "./_components/wallet-binding-section";
 
 type SettingsTab = "security" | "profile" | "account";
 
@@ -80,7 +79,6 @@ export default async function SettingsPage({
       <PasskeyManagementSection access={access} />
       <TwoFactorCard hasPassword={hasPassword} />
       {hasPassword ? <OpaqueChangePasswordSection /> : <SetPasswordSection />}
-      <WalletBindingSection />
       <RecoveryKeySection access={access} />
     </>
   );
