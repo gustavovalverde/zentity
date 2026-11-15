@@ -22,6 +22,10 @@ import {
   decodeFunctionData,
   http,
   publicActions,
+  serializeSignature,
+  TransactionNotFoundError,
+  TransactionReceiptNotFoundError,
+  zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { hardhat, sepolia } from "viem/chains";
@@ -31,6 +35,7 @@ import {
   isNetworkAvailable,
   type NetworkConfig,
 } from "../networks";
+import { toContractSignature } from "./signature";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,7 +134,10 @@ const TX_LOOKUP_MAX_ATTEMPTS = 20;
 const TX_LOOKUP_RETRY_MS = 1000;
 
 function isTransactionNotFoundError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("could not be found");
+  return (
+    error instanceof TransactionNotFoundError ||
+    error instanceof TransactionReceiptNotFoundError
+  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -169,9 +177,11 @@ function decodeAttestWithPermitConsent(
     return null;
   }
 
-  const vByte = Number(consentV).toString(16).padStart(2, "0");
-  const signature =
-    `${consentR}${consentS.slice(2)}${vByte}`.toLowerCase() as `0x${string}`;
+  const signature = serializeSignature({
+    r: consentR,
+    s: consentS,
+    v: BigInt(consentV),
+  });
 
   return {
     attributeMask: Number(attributeMask),
@@ -250,9 +260,6 @@ export class AttestationProvider implements IAttestationProvider {
 
     const domain = getAttestPermitDomain(this.config.chainId, contractAddress);
 
-    const zeroHash =
-      "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
-
     const normalizedProofSetHash = params.proofSetHash
       ? ((params.proofSetHash.startsWith("0x")
           ? params.proofSetHash
@@ -282,14 +289,7 @@ export class AttestationProvider implements IAttestationProvider {
       message,
     });
 
-    const { v, r, s } = (() => {
-      const sig = signature.slice(2);
-      return {
-        r: `0x${sig.slice(0, 64)}` as string,
-        s: `0x${sig.slice(64, 128)}` as string,
-        v: Number.parseInt(sig.slice(128, 130), 16),
-      };
-    })();
+    const { v, r, s } = toContractSignature(signature);
 
     const permit: AttestPermitData = {
       birthYearOffset: params.identityData.birthYearOffset,
