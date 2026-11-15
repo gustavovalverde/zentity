@@ -116,14 +116,6 @@ export async function initTelemetry(): Promise<void> {
   process.once("SIGINT", shutdown);
 }
 
-export function getTracer() {
-  return trace.getTracer(getServiceName());
-}
-
-export function currentSpan(): Span | undefined {
-  return trace.getSpan(context.active()) ?? undefined;
-}
-
 export function injectTraceHeaders(
   headers: Record<string, string>
 ): Record<string, string> {
@@ -136,37 +128,33 @@ export function injectTraceHeaders(
   return carrier;
 }
 
+/**
+ * Runs `run` inside an active span. A throw marks the span ERROR; otherwise
+ * the status stays unset, which OpenTelemetry treats as success. The SDK drops
+ * attributes whose value is `undefined`.
+ */
 export function withSpan<T>(
   name: string,
   attributes: Attributes,
   run: (span: Span) => Promise<T> | T
 ): Promise<T> {
-  const tracer = getTracer();
-  const filtered = Object.fromEntries(
-    Object.entries(attributes).filter(([, value]) => value !== undefined)
-  ) as Attributes;
-  return tracer.startActiveSpan(
-    name,
-    { attributes: filtered },
-    async (span) => {
-      try {
-        const result = await run(span);
-        span.setStatus({ code: SpanStatusCode.OK });
-        return result;
-      } catch (error) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "span failed",
-        });
-        if (error instanceof Error) {
-          span.recordException(error);
-        }
-        throw error;
-      } finally {
-        span.end();
+  const tracer = trace.getTracer(getServiceName());
+  return tracer.startActiveSpan(name, { attributes }, async (span) => {
+    try {
+      return await run(span);
+    } catch (error) {
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: error instanceof Error ? error.message : "span failed",
+      });
+      if (error instanceof Error) {
+        span.recordException(error);
       }
+      throw error;
+    } finally {
+      span.end();
     }
-  );
+  });
 }
 
 export function hashIdentifier(value: string): string {

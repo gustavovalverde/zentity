@@ -13,8 +13,13 @@ import type { FeatureName } from "@/lib/assurance/tier";
 import { randomUUID } from "node:crypto";
 
 import { DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
-import { type Span, SpanStatusCode } from "@opentelemetry/api";
+import { type Attributes, type Span, SpanStatusCode } from "@opentelemetry/api";
+import {
+  ATTR_ERROR_TYPE,
+  ATTR_RPC_STATUS_CODE,
+} from "@opentelemetry/semantic-conventions";
 import { initTRPC, TRPCError } from "@trpc/server";
+import { getHTTPStatusCodeFromError } from "@trpc/server/http";
 import { eq } from "drizzle-orm";
 
 import { getSecurityPosture } from "@/lib/assurance/posture";
@@ -38,9 +43,7 @@ import {
   getSpanAttributesFromContext,
   resolveRequestContext,
 } from "@/lib/observability/request-context";
-import { getTracer, hashIdentifier } from "@/lib/observability/telemetry";
-
-type SpanAttributes = Record<string, string | number | boolean>;
+import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
 /** Base context available to all procedures (public and protected). */
 interface TrpcContext {
@@ -325,64 +328,38 @@ const trpc = initTRPC.context<TrpcContext>().create({
   },
 });
 
-const withTracing = trpc.middleware(({ path, type, input, ctx, next }) => {
-  const tracer = getTracer();
-  const inputMeta = extractInputMeta(input);
-
-  const attributes: SpanAttributes = {
+/**
+ * Wraps each procedure in a span. tRPC reports failures as a `{ ok: false }`
+ * result rather than a throw. Every failure records its tRPC code; only server
+ * errors (codes that map to HTTP 5xx) mark the span ERROR, following the
+ * OpenTelemetry HTTP and RPC server conventions.
+ */
+const withTracing = trpc.middleware(({ path, type, ctx, next }) => {
+  const attributes: Attributes = {
     "rpc.system": "trpc",
     "rpc.method": path,
     "rpc.type": type,
-    "request.id": ctx.requestId,
+    ...getSpanAttributesFromContext(ctx),
+    "session.id": ctx.session?.session?.id
+      ? hashIdentifier(ctx.session.session.id)
+      : undefined,
   };
 
-  const flowAttributes = getSpanAttributesFromContext(ctx);
-  for (const [key, value] of Object.entries(flowAttributes)) {
-    if (value !== undefined) {
-      attributes[key] = value;
-    }
-  }
-
-  if (typeof inputMeta.inputSize === "number") {
-    attributes["input.size"] = inputMeta.inputSize;
-  }
-  if (typeof inputMeta.hasImage === "boolean") {
-    attributes["input.has_image"] = inputMeta.hasImage;
-  }
-  if (ctx.session?.session?.id) {
-    attributes["session.id"] = hashIdentifier(ctx.session.session.id);
-  }
-
-  return tracer.startActiveSpan(
-    `trpc.${path}`,
-    { attributes },
-    async (span) => {
-      try {
-        const spanContext = span.spanContext();
-        const result = await next({
-          ctx: {
-            ...ctx,
-            span,
-            traceId: spanContext.traceId,
-            spanId: spanContext.spanId,
-          },
-        });
-        span.setStatus({ code: SpanStatusCode.OK });
-        return result;
-      } catch (error) {
-        span.setStatus({
-          code: SpanStatusCode.ERROR,
-          message: error instanceof Error ? error.message : "tRPC failed",
-        });
-        if (error instanceof Error) {
-          span.recordException(error);
-        }
-        throw error;
-      } finally {
-        span.end();
+  return withSpan(`trpc.${path}`, attributes, async (span) => {
+    const { traceId, spanId } = span.spanContext();
+    const result = await next({ ctx: { ...ctx, span, traceId, spanId } });
+    if (!result.ok) {
+      const { code } = result.error;
+      span.setAttributes({
+        [ATTR_RPC_STATUS_CODE]: code,
+        [ATTR_ERROR_TYPE]: code,
+      });
+      if (getHTTPStatusCodeFromError(result.error) >= 500) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: code });
       }
     }
-  );
+    return result;
+  });
 });
 
 /**
