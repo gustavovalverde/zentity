@@ -48,7 +48,7 @@ export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
       </CardHeader>
       <CardContent className="flex justify-center">
         <QRCodeSVG
-          className="max-w-full rounded-lg"
+          className="h-auto max-w-full rounded-lg"
           level="M"
           marginSize={2}
           role="img"

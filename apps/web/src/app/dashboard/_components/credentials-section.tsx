@@ -297,7 +297,7 @@ export function CredentialsSection() {
             <div className="flex aspect-square w-full max-w-72 items-center justify-center rounded-lg border bg-white p-2">
               {offerDialog ? (
                 <QRCodeSVG
-                  className="max-w-full"
+                  className="h-auto max-w-full"
                   level="M"
                   marginSize={2}
                   role="img"

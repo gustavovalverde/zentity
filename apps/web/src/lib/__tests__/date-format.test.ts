@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { formatDate } from "../date-format";
 
@@ -21,9 +21,31 @@ describe("formatDate", () => {
     expect(formatDate(iso, "Unknown")).toBe(formatted);
   });
 
-  it("reads SQLite timestamps as UTC", () => {
-    expect(formatDate("2026-03-15 12:00:00", "Unknown")).toBe(
-      formatDate("2026-03-15T12:00:00Z", "Unknown")
-    );
+  describe("SQLite timestamps", () => {
+    const originalTz = process.env.TZ;
+
+    afterEach(() => {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+      vi.resetModules();
+    });
+
+    it("reads them as UTC regardless of the viewer's time zone", async () => {
+      // 23:30 UTC is already the next calendar day at UTC+13, but the same day
+      // when the zone-less string is wrongly read as local time.
+      process.env.TZ = "Pacific/Auckland";
+      vi.resetModules();
+      const { formatDate: formatInAuckland } = await import("../date-format");
+
+      expect(formatInAuckland("2026-03-15 23:30:00", "Unknown")).toBe(
+        formatInAuckland("2026-03-15T23:30:00Z", "Unknown")
+      );
+      expect(formatInAuckland("2026-03-15 23:30:00", "Unknown")).toContain(
+        "16"
+      );
+    });
   });
 });

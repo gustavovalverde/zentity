@@ -45,7 +45,7 @@ function StoreQrCode({ url }: Readonly<{ url: string }>) {
   return (
     <a href={url} rel="noopener noreferrer" target="_blank">
       <QRCodeSVG
-        className="max-w-full rounded-lg"
+        className="h-auto max-w-full rounded-lg"
         level="M"
         marginSize={2}
         role="img"
