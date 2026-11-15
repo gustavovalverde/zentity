@@ -1,4 +1,7 @@
+import { SignJWT } from "jose";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getIdentityIntentKey } from "@/lib/privacy/primitives/derived-keys";
 
 const { mockInfo } = vi.hoisted(() => ({
   mockInfo: vi.fn(),
@@ -13,6 +16,7 @@ vi.mock("@/lib/logging/logger", () => ({
 import {
   clearIdentityPayload,
   consumeIdentityPayload,
+  createIdentityIntentToken,
   createScopeHash,
   EPHEMERAL_TTL_MS,
   finalReleaseIdentityKey,
@@ -20,6 +24,7 @@ import {
   pendingOAuthIdentityKey,
   promoteIdentityPayload,
   storeIdentityPayload,
+  verifyIdentityIntentToken,
 } from "../delivery";
 
 function clearIdentityPayloadStore(): void {
@@ -174,5 +179,63 @@ describe("exact-key identity payload store", () => {
     expect(hasIdentityPayload(finalKey)).toBe(true);
     expect(clearIdentityPayload(pendingKey)).toBe(false);
     expect(consumeIdentityPayload(finalKey)?.claims.given_name).toBe("Grace");
+  });
+});
+
+describe("identity intent tokens", () => {
+  const input = {
+    userId: "user-1",
+    clientId: "client-1",
+    authReqId: "auth-req-1",
+    scopes: ["openid", "identity.name"],
+  };
+
+  it("round-trips the bound user, client, and scope hash", async () => {
+    const intent = await createIdentityIntentToken(input);
+
+    const payload = await verifyIdentityIntentToken(intent.intentToken);
+
+    expect(payload).toEqual({
+      jti: intent.jti,
+      userId: "user-1",
+      clientId: "client-1",
+      authReqId: "auth-req-1",
+      scopeHash: createScopeHash(input.scopes),
+      exp: intent.expiresAt,
+    });
+  });
+
+  it("reports an expired token as expired", async () => {
+    const intent = await createIdentityIntentToken({
+      ...input,
+      ttlSeconds: -1,
+    });
+
+    await expect(verifyIdentityIntentToken(intent.intentToken)).rejects.toThrow(
+      "expired_intent_token"
+    );
+  });
+
+  it("rejects a token whose payload was changed", async () => {
+    const { intentToken } = await createIdentityIntentToken(input);
+    const [header, , signature] = intentToken.split(".");
+    const forged = Buffer.from(
+      JSON.stringify({ userId: "user-2", clientId: "client-1" })
+    ).toString("base64url");
+
+    await expect(
+      verifyIdentityIntentToken(`${header}.${forged}.${signature}`)
+    ).rejects.toThrow("invalid_intent_token");
+  });
+
+  it("rejects another JWT type signed with the same key", async () => {
+    const otherType = await new SignJWT({ userId: "user-1" })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setExpirationTime("2m")
+      .sign(new TextEncoder().encode(getIdentityIntentKey()));
+
+    await expect(verifyIdentityIntentToken(otherType)).rejects.toThrow(
+      "invalid_intent_token"
+    );
   });
 });
