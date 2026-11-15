@@ -149,6 +149,8 @@ export const vpSessions = sqliteTable("vp_session", {
   nonce: text("nonce").notNull(),
   state: text("state").notNull(),
   dcqlQuery: text("dcqlQuery").notNull(),
+  signedRequest: text("signedRequest").notNull(),
+  requestFetchedAt: integer("requestFetchedAt", { mode: "timestamp_ms" }),
   status: text("status", {
     enum: ["pending", "verified", "expired", "failed"],
   })
