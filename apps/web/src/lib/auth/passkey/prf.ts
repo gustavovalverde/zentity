@@ -143,7 +143,6 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
 
 export async function evaluatePrf(params: {
   credentialIdToSalt: Record<string, Uint8Array>;
-  credentialTransports?: Record<string, AuthenticatorTransport[]> | undefined;
   userVerification?: UserVerificationRequirement | undefined;
   timeoutMs?: number | undefined;
 }): Promise<{
@@ -165,14 +164,10 @@ export async function evaluatePrf(params: {
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
   const allowCredentials: PublicKeyCredentialDescriptor[] = credentialIds.map(
-    (credentialId) => {
-      const transports = params.credentialTransports?.[credentialId];
-      return {
-        type: "public-key" as const,
-        id: toArrayBuffer(base64UrlToBytes(credentialId)),
-        ...(transports === undefined ? {} : { transports }),
-      };
-    }
+    (credentialId) => ({
+      type: "public-key",
+      id: toArrayBuffer(base64UrlToBytes(credentialId)),
+    })
   );
 
   const evalByCredential: Record<string, { first: ArrayBuffer }> = {};
