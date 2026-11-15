@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 PASSPORT_MRZ_HINT_PATTERN = re.compile(r"P<[A-Z0-9]{3}", re.IGNORECASE)
 MAX_IMAGE_BASE64_CHARS = 16_000_000
-MAX_IMAGE_BYTES = 12 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
 
 # Fast engine settings for the MRZ region (trade accuracy for speed).
@@ -117,13 +116,11 @@ def decode_base64_image(base64_string: str) -> np.ndarray:
     except (binascii.Error, ValueError) as exc:
         raise ValueError("Invalid base64 image payload") from exc
 
-    if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise ValueError("Decoded image too large")
-
     with Image.open(io.BytesIO(image_bytes)) as image:
-        image.load()
+        # open() only parses the header; reject before load() decodes the pixels.
         if image.width * image.height > MAX_IMAGE_PIXELS:
             raise ValueError("Image dimensions too large")
+        image.load()
         rgb_image = image.convert("RGB")
         try:
             return np.array(rgb_image)
