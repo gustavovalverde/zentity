@@ -442,8 +442,10 @@ const isPlaywrightE2e =
   typeof process.env.E2E_DATABASE_PATH === "string" ||
   typeof process.env.E2E_TURSO_DATABASE_URL === "string";
 const enableEmailAndPassword = isOidcE2e || isPlaywrightE2e;
-// scope field added for HAIP §4.1; the oidc4vci plugin type doesn't include it yet,
-// but it passes through to credential issuer metadata where the route handler picks it up
+// No `scope` here: the plugin would then issue a credential to any token
+// carrying that scope, and `identity_verification` is a hidden scope that
+// consent grants without showing it. Issuance stays bound to the token's
+// credential configuration; the metadata route advertises the scope (HAIP §4.1).
 const oidc4vciCredentialConfigurations: Oidc4vciOptions["credentialConfigurations"] =
   [
     {

@@ -15,7 +15,6 @@ import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
 import { auth } from "../auth-config";
-import { callAuthApi, unwrapMetadata } from "../oidc/well-known";
 
 async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
   const allKeys = await db.select().from(jwks);
@@ -29,10 +28,7 @@ async function buildJwksFromDb(): Promise<Record<string, unknown>[]> {
 
 describe("HAIP — discovery metadata", () => {
   async function getOpenIdConfig(): Promise<Record<string, unknown>> {
-    const raw = unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig"));
-    return raw instanceof Response
-      ? ((await raw.json()) as Record<string, unknown>)
-      : (raw as Record<string, unknown>);
+    return (await auth.api.getOpenIdConfig()) as Record<string, unknown>;
   }
 
   it("OpenID config includes pushed_authorization_request_endpoint", async () => {

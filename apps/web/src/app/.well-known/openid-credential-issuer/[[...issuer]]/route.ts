@@ -1,20 +1,20 @@
+import { metadataResponse } from "@better-auth/oauth-provider";
+
 import { auth } from "@/lib/auth/auth-config";
 import {
-  buildWellKnownResponse,
-  callAuthApi,
   DEFAULT_AUTH_BASE_PATH,
-  getAuthIssuer,
   issuerPathMatches,
-  unwrapMetadata,
 } from "@/lib/auth/oidc/well-known";
+
+const CREDENTIAL_SCOPE = "identity_verification";
 
 /**
  * OIDC4VCI credential issuer metadata endpoint.
  *
- * Enhances better-auth's metadata with:
+ * Adds to the oidc4vci plugin's document:
  * - token_endpoint for wallet compatibility (e.g., walt.id)
- * - nonce_endpoint per HAIP §4.1 (required when key binding is supported)
- * - scope per credential configuration per HAIP §4.1
+ * - scope per credential configuration per HAIP §4.1, advertised here rather
+ *   than configured on the plugin (see `oidc4vciCredentialConfigurations`)
  */
 export async function GET(
   _request: Request,
@@ -27,33 +27,20 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  const metadata = unwrapMetadata(
-    await callAuthApi(auth.api, "getCredentialIssuerMetadata")
-  ) as Record<string, unknown>;
-
+  const metadata = await auth.api.getCredentialIssuerMetadata();
   const authServer =
-    (metadata.authorization_servers as string[] | undefined)?.[0] ??
-    (metadata.credential_issuer as string);
-  const issuer = getAuthIssuer();
+    metadata.authorization_servers?.[0] ?? metadata.credential_issuer;
 
-  // HAIP §4.1: credential configurations MUST include scope
-  const configs = metadata.credential_configurations_supported as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  if (configs) {
-    for (const config of Object.values(configs)) {
-      if (!config.scope) {
-        config.scope = "identity_verification";
-      }
-    }
-  }
-
-  const enhancedMetadata = {
+  return metadataResponse({
     ...metadata,
     token_endpoint: `${authServer}/oauth2/token`,
-    nonce_endpoint: `${issuer}/oidc4vci/nonce`,
-    ...(configs ? { credential_configurations_supported: configs } : {}),
-  };
-
-  return buildWellKnownResponse(enhancedMetadata);
+    credential_configurations_supported: Object.fromEntries(
+      Object.entries(metadata.credential_configurations_supported).map(
+        ([id, config]) => [
+          id,
+          { ...config, scope: config.scope || CREDENTIAL_SCOPE },
+        ]
+      )
+    ),
+  });
 }

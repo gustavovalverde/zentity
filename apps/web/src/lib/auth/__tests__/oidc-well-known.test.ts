@@ -41,7 +41,9 @@ describe("oidc well-known metadata", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       credential_issuer?: string;
-      credential_configurations_supported?: Record<string, unknown>;
+      credential_configurations_supported?: Record<string, { scope?: string }>;
+      nonce_endpoint?: string;
+      token_endpoint?: string;
     };
 
     expect(body.credential_issuer).toContain("/api/auth");
@@ -49,6 +51,17 @@ describe("oidc well-known metadata", () => {
     expect(
       Object.keys(body.credential_configurations_supported || {})
     ).toContain("identity_verification");
+    expect(body.nonce_endpoint).toBe(
+      "http://localhost:3000/api/auth/oidc4vci/nonce"
+    );
+    expect(body.token_endpoint).toBe(
+      "http://localhost:3000/api/auth/oauth2/token"
+    );
+    for (const config of Object.values(
+      body.credential_configurations_supported ?? {}
+    )) {
+      expect(config.scope).toBe("identity_verification");
+    }
   });
 
   it("keeps OpenID config issuer aligned with auth base path", async () => {
