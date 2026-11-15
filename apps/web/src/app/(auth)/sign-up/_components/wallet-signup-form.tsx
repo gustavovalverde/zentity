@@ -13,6 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import { ensureAuthSession } from "@/lib/auth/session-cleanup";
+import { isWalletRejection } from "@/lib/blockchain/tx-errors";
 
 interface WalletSignUpFormProps {
   disabled?: boolean;
@@ -95,11 +96,7 @@ export function WalletSignUpForm({
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to sign message.";
-      if (
-        message.toLowerCase().includes("user rejected") ||
-        message.toLowerCase().includes("denied") ||
-        message.toLowerCase().includes("cancel")
-      ) {
+      if (isWalletRejection(err)) {
         setError("Signature request was cancelled. Please try again.");
       } else {
         setError(message);

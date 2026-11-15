@@ -2,27 +2,7 @@ import "server-only";
 
 import { logger } from "@/lib/logging/logger";
 
-import {
-  isMailpitConfigured,
-  isResendConfigured,
-  sendMailpitMessage,
-  sendResendMessage,
-} from "./transport";
-
-function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
-}
-
-function resolveTransport(): "resend" | "mailpit" | "console" {
-  const useMailpit = !isProduction() && isMailpitConfigured();
-  if (useMailpit) {
-    return "mailpit";
-  }
-  if (isResendConfigured()) {
-    return "resend";
-  }
-  return "console";
-}
+import { sendEmail } from "./transport";
 
 async function send(payload: {
   to: string[];
@@ -31,21 +11,12 @@ async function send(payload: {
   html: string;
   tags: string[];
 }): Promise<void> {
-  const transport = resolveTransport();
-
-  if (transport === "console") {
+  if ((await sendEmail(payload)) === "unconfigured") {
     logger.info(
       { to: payload.to, subject: payload.subject },
       "Email (console fallback)"
     );
     logger.info({ url: extractUrl(payload.text) }, "Action URL");
-    return;
-  }
-
-  if (transport === "resend") {
-    await sendResendMessage(payload);
-  } else {
-    await sendMailpitMessage(payload);
   }
 }
 

@@ -16,13 +16,13 @@ import { hardhat as appKitHardhat, sepolia } from "@reown/appkit/networks";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { cookieStorage, createStorage } from "@wagmi/core";
 import { useCallback, useState } from "react";
+import { parseEther, testActions } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { env } from "@/env";
 import {
   getConfidentialClientNetwork,
   HARDHAT_CONFIDENTIAL_CHAIN_ID,
-  SEPOLIA_CONFIDENTIAL_CHAIN_ID,
 } from "@/lib/blockchain/confidential/client-networks";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +30,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const CONFIDENTIAL_CHAIN_NETWORK_NAME = "Zama Confidential Sepolia";
-const CONFIDENTIAL_CHAIN_EXPLORER_URL = "https://sepolia.etherscan.io";
 const localHardhatNetwork = getConfidentialClientNetwork(
   HARDHAT_CONFIDENTIAL_CHAIN_ID
 );
@@ -38,25 +37,14 @@ const localHardhatRpcUrl =
   localHardhatNetwork?.rpcUrl ?? env.NEXT_PUBLIC_LOCAL_RPC_URL;
 
 export const confidentialSepolia = {
-  id: SEPOLIA_CONFIDENTIAL_CHAIN_ID,
+  ...sepolia,
   name: CONFIDENTIAL_CHAIN_NETWORK_NAME,
-  nativeCurrency: {
-    name: "Sepolia Ether",
-    symbol: "ETH",
-    decimals: 18,
-  },
   rpcUrls: {
+    ...sepolia.rpcUrls,
     default: {
       http: [env.NEXT_PUBLIC_CONFIDENTIAL_CHAIN_RPC_URL],
     },
   },
-  blockExplorers: {
-    default: {
-      name: "Etherscan",
-      url: CONFIDENTIAL_CHAIN_EXPLORER_URL,
-    },
-  },
-  testnet: true,
 } as const satisfies AppKitNetwork;
 
 const localHardhat = {
@@ -134,7 +122,7 @@ export const wagmiAdapter = new WagmiAdapter({
 // Dev faucet hook (Hardhat only)
 // ---------------------------------------------------------------------------
 
-const DEV_FAUCET_WEI = "0x8AC7230489E80000"; // 10 ETH
+const DEV_FAUCET_WEI = parseEther("10");
 
 export function useDevFaucet(chainId?: number) {
   const publicClient = usePublicClient({ chainId });
@@ -157,16 +145,9 @@ export function useDevFaucet(chainId?: number) {
       setError(null);
 
       try {
-        const requester = publicClient as unknown as {
-          request: (args: {
-            method: string;
-            params?: unknown[];
-          }) => Promise<unknown>;
-        };
-        await requester.request({
-          method: "hardhat_setBalance",
-          params: [address, DEV_FAUCET_WEI],
-        });
+        await publicClient
+          .extend(testActions({ mode: "hardhat" }))
+          .setBalance({ address, value: DEV_FAUCET_WEI });
         return true;
       } catch (err) {
         setError(err instanceof Error ? err : new Error("Faucet failed"));

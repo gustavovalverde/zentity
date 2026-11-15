@@ -1,86 +1,51 @@
 import "server-only";
 
-const FACILITATOR_URL = "https://x402.org/facilitator";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import type {
+  PaymentPayload,
+  PaymentRequirements,
+  SettleResponse,
+  VerifyResponse,
+} from "@x402/core/types";
 
-interface VerifyResult {
-  invalidReason?: string;
-  isValid: boolean;
-  payer?: string;
+const facilitator = new HTTPFacilitatorClient();
+
+function failureMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
-interface SettleResult {
-  errorReason?: string;
-  network?: string;
-  success: boolean;
-  transaction?: string;
-}
-
+/**
+ * The library client throws on transport errors, timeouts, and non-2xx
+ * answers. The route treats every one of them as a failed payment, so they
+ * become `isValid: false` here.
+ */
 export async function verifyViaFacilitator(
-  paymentSignature: string,
-  paymentRequirements: unknown
-): Promise<VerifyResult> {
+  paymentPayload: PaymentPayload,
+  paymentRequirements: PaymentRequirements
+): Promise<VerifyResponse> {
   try {
-    const paymentPayload = JSON.parse(
-      Buffer.from(paymentSignature, "base64").toString("utf8")
-    );
-
-    const res = await fetch(`${FACILITATOR_URL}/verify`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        x402Version: paymentPayload.x402Version ?? 2,
-        paymentPayload,
-        paymentRequirements,
-      }),
-    });
-
-    if (!res.ok) {
-      return {
-        isValid: false,
-        invalidReason: `Facilitator returned ${res.status}`,
-      };
-    }
-
-    return (await res.json()) as VerifyResult;
-  } catch (e) {
+    return await facilitator.verify(paymentPayload, paymentRequirements);
+  } catch (error) {
     return {
       isValid: false,
-      invalidReason: e instanceof Error ? e.message : "Verification failed",
+      invalidReason: failureMessage(error, "Verification failed"),
     };
   }
 }
 
+/** A settle timeout is indeterminate, so it is reported as a failure. */
 export async function settleViaFacilitator(
-  paymentSignature: string,
-  paymentRequirements: unknown
-): Promise<SettleResult> {
+  paymentPayload: PaymentPayload,
+  paymentRequirements: PaymentRequirements
+): Promise<SettleResponse> {
   try {
-    const paymentPayload = JSON.parse(
-      Buffer.from(paymentSignature, "base64").toString("utf8")
-    );
-
-    const res = await fetch(`${FACILITATOR_URL}/settle`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        x402Version: paymentPayload.x402Version ?? 2,
-        paymentPayload,
-        paymentRequirements,
-      }),
-    });
-
-    if (!res.ok) {
-      return {
-        success: false,
-        errorReason: `Facilitator returned ${res.status}`,
-      };
-    }
-
-    return (await res.json()) as SettleResult;
-  } catch (e) {
+    return await facilitator.settle(paymentPayload, paymentRequirements);
+  } catch (error) {
     return {
       success: false,
-      errorReason: e instanceof Error ? e.message : "Settlement failed",
+      errorReason: failureMessage(error, "Settlement failed"),
+      transaction: "",
+      network: paymentRequirements.network,
     };
   }
 }

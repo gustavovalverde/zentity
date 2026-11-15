@@ -34,7 +34,6 @@ const vaultMocks = vi.hoisted(() => ({
     },
   },
   resetToGesture: vi.fn(),
-  vaultState: { status: "loaded" as const },
 }));
 
 vi.mock("@/components/vault-unlock", () => ({
@@ -47,13 +46,24 @@ vi.mock("@/components/vault-unlock", () => ({
     () => "identity.address identity.dob identity.name openid"
   ),
   fetchIntentFromEndpoint: vi.fn(),
-  useVaultUnlock: () => vaultMocks,
+  useVaultUnlock: ({ active }: { active: boolean }) => ({
+    ...vaultMocks,
+    vaultState: active
+      ? { status: "loaded" as const }
+      : { status: "idle" as const },
+  }),
   VaultUnlockPanel: () => <div>Vault ready</div>,
 }));
 
 import { AgentApprovalView } from "../agent-approval-view";
+import { TrpcProvider } from "../providers/trpc-provider";
 
 const DECISION_URL = "/api/auth/ciba/decision";
+const PROFILE_URL_PREFIX = "/api/trpc/assurance.profile";
+
+const VERIFICATION_WARNING = /Complete identity verification first/;
+
+let profileTier = 1;
 
 function decisionBody(decision: "approved" | "denied") {
   return expect.objectContaining({
@@ -62,9 +72,36 @@ function decisionBody(decision: "approved" | "denied") {
   });
 }
 
+function renderView({
+  scope,
+  userTier,
+}: {
+  scope: string;
+  userTier?: 0 | 1 | 2 | 3;
+}) {
+  return render(
+    <TrpcProvider>
+      <AgentApprovalView
+        authMode="passkey"
+        initialRequest={{
+          request_id: "req-1",
+          client_name: "Zentity",
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          scope,
+          status: "pending",
+        }}
+        requestId="req-1"
+        {...(userTier === undefined ? {} : { userTier })}
+        wallet={null}
+      />
+    </TrpcProvider>
+  );
+}
+
 describe("AgentApprovalView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    profileTier = 1;
 
     vi.stubGlobal(
       "fetch",
@@ -80,6 +117,14 @@ describe("AgentApprovalView", () => {
           );
         }
 
+        if (url.startsWith(PROFILE_URL_PREFIX)) {
+          return Promise.resolve(
+            Response.json([
+              { result: { data: { assurance: { tier: profileTier } } } },
+            ])
+          );
+        }
+
         if (url === DECISION_URL) {
           return Promise.resolve(new Response(null, { status: 200 }));
         }
@@ -90,20 +135,7 @@ describe("AgentApprovalView", () => {
   });
 
   it("warns about missing fields but still allows partial profile disclosure", async () => {
-    render(
-      <AgentApprovalView
-        authMode="passkey"
-        initialRequest={{
-          request_id: "req-1",
-          client_name: "Zentity",
-          expires_at: new Date(Date.now() + 60_000).toISOString(),
-          scope: "openid identity.name identity.address identity.dob",
-          status: "pending",
-        }}
-        requestId="req-1"
-        wallet={null}
-      />
-    );
+    renderView({ scope: "openid identity.name identity.address identity.dob" });
 
     expect(screen.getByRole("alert").textContent).toContain(
       "Residential address"
@@ -133,5 +165,33 @@ describe("AgentApprovalView", () => {
     });
 
     expect(screen.getByText("Request Approved")).toBeTruthy();
+  });
+
+  it("refreshes the assurance tier from the server for proof scopes", async () => {
+    profileTier = 2;
+    renderView({ scope: "openid proof:age", userTier: 1 });
+
+    await waitFor(() => {
+      expect(screen.queryByText(VERIFICATION_WARNING)).toBeNull();
+    });
+    expect(
+      (screen.getByRole("button", { name: "Approve" }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false);
+  });
+
+  it("keeps the verification warning while the server tier is below verified", async () => {
+    renderView({ scope: "openid proof:age", userTier: 1 });
+
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(fetch)
+          .mock.calls.some(([url]) =>
+            String(url).startsWith(PROFILE_URL_PREFIX)
+          )
+      ).toBe(true);
+    });
+    expect(screen.getByText(VERIFICATION_WARNING)).toBeTruthy();
   });
 });

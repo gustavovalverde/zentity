@@ -14,8 +14,7 @@
  * mismatch returns 401. The compare is constant-time.
  */
 
-import { timingSafeEqual } from "node:crypto";
-
+import { constantTimeEqual } from "better-auth/crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -34,12 +33,7 @@ function isAuthorized(request: Request): boolean {
   }
   const header = request.headers.get("authorization") ?? "";
   const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (presented.length === 0) {
-    return false;
-  }
-  const a = Buffer.from(presented);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  return presented.length > 0 && constantTimeEqual(presented, expected);
 }
 
 export async function GET(request: Request) {
@@ -91,7 +85,6 @@ export async function GET(request: Request) {
     revocations: rows.map((row) => ({
       jti: row.jti,
       revoked_at: row.revokedAt.toISOString(),
-      reason: row.reason,
     })),
     truncated: rows.length === parsed.data.limit,
   });

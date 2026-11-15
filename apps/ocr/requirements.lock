@@ -9,16 +9,11 @@ annotated-doc==0.0.5
 annotated-types==0.8.0
     # via pydantic
 anyio==4.16.0
-    # via
-    #   httpx
-    #   starlette
+    # via starlette
 asgiref==3.13.0
     # via opentelemetry-instrumentation-asgi
 certifi==2026.10.23
-    # via
-    #   httpcore
-    #   httpx
-    #   requests
+    # via requests
 charset-normalizer==3.5.2
     # via requests
 click==8.5.1
@@ -30,23 +25,12 @@ fastapi==0.162.2
 flatbuffers==25.12.19
     # via onnxruntime
 googleapis-common-protos==1.76.0
-    # via
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-grpcio==1.85.1
-    # via opentelemetry-exporter-otlp-proto-grpc
+    # via opentelemetry-exporter-otlp-proto-http
 h11==0.16.0
-    # via
-    #   httpcore
-    #   uvicorn
-httpcore==1.0.9
-    # via httpx
-httpx==0.28.1
-    # via ocr-service (pyproject.toml)
+    # via uvicorn
 idna==3.20
     # via
     #   anyio
-    #   httpx
     #   requests
 iso3166==3.0.0
     # via ocr-service (pyproject.toml)
@@ -64,78 +48,53 @@ omegaconf==2.4.0
 onnxruntime==1.31.1
     # via ocr-service (pyproject.toml)
 opencv-python-headless==5.0.0.93
-    # via
-    #   ocr-service (pyproject.toml)
-    #   rapidocr
+    # via rapidocr
 opentelemetry-api==1.45.2
     # via
     #   fastapi
     #   ocr-service (pyproject.toml)
     #   opentelemetry-exporter-http-transport
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-httpx
-    #   opentelemetry-instrumentation-requests
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-http-transport[requests]==0.66b2
     # via opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp==1.45.2
-    # via ocr-service (pyproject.toml)
 opentelemetry-exporter-otlp-common==0.66b2
-    # via
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
+    # via opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-common==1.45.2
-    # via
-    #   opentelemetry-exporter-otlp-proto-grpc
-    #   opentelemetry-exporter-otlp-proto-http
-opentelemetry-exporter-otlp-proto-grpc==1.45.2
-    # via opentelemetry-exporter-otlp
+    # via opentelemetry-exporter-otlp-proto-http
 opentelemetry-exporter-otlp-proto-http==1.45.2
-    # via opentelemetry-exporter-otlp
+    # via ocr-service (pyproject.toml)
 opentelemetry-instrumentation==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-httpx
-    #   opentelemetry-instrumentation-requests
 opentelemetry-instrumentation-asgi==0.66b2
     # via opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-fastapi==0.66b2
     # via ocr-service (pyproject.toml)
-opentelemetry-instrumentation-httpx==0.66b2
-    # via ocr-service (pyproject.toml)
-opentelemetry-instrumentation-requests==0.66b2
-    # via ocr-service (pyproject.toml)
 opentelemetry-proto==1.45.2
     # via
     #   opentelemetry-exporter-otlp-proto-common
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.45.2
     # via
     #   ocr-service (pyproject.toml)
     #   opentelemetry-exporter-otlp-common
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-semantic-conventions==0.66b2
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-httpx
-    #   opentelemetry-instrumentation-requests
     #   opentelemetry-sdk
 opentelemetry-util-http==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-httpx
-    #   opentelemetry-instrumentation-requests
 packaging==26.3
     # via
     #   onnxruntime
@@ -182,9 +141,7 @@ typing-extensions==4.16.0
     # via
     #   anyio
     #   fastapi
-    #   grpcio
     #   opentelemetry-api
-    #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
@@ -201,6 +158,4 @@ urllib3==2.8.0
 uvicorn==0.54.0
     # via ocr-service (pyproject.toml)
 wrapt==2.5.2
-    # via
-    #   opentelemetry-instrumentation
-    #   opentelemetry-instrumentation-httpx
+    # via opentelemetry-instrumentation

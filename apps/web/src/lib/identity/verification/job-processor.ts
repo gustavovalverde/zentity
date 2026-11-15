@@ -122,7 +122,6 @@ function processIdentityVerificationJob(jobId: string): Promise<void> {
           status: "running",
           startedAt: claimTime,
           attempts: sql`${identityVerificationJobs.attempts} + 1`,
-          updatedAt: sql`datetime('now')`,
         })
         .where(
           and(

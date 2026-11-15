@@ -7,7 +7,7 @@ import type {
   ValidityTransitionSource,
 } from "@/lib/db/schema/identity";
 
-import { db } from "@/lib/db/connection";
+import { type DbExecutor, db } from "@/lib/db/connection";
 import {
   appendIdentityValidityEvent,
   getIdentityValiditySnapshot,
@@ -20,8 +20,6 @@ import {
   scheduleValidityDeliveries,
 } from "./delivery";
 
-type IdentityValidityExecutor = Pick<typeof db, "insert" | "select" | "update">;
-
 interface ValiditySnapshotInput {
   effectiveVerificationId?: string | null;
   freshnessCheckedAt?: string | null;
@@ -32,10 +30,10 @@ interface ValiditySnapshotInput {
   verificationExpiresAt?: string | null;
 }
 
-async function persistValidityTransition(args: {
+interface ValidityTransitionArgs {
   bundleSnapshot?: ValiditySnapshotInput;
   eventKind: ValidityEventKind;
-  executor?: IdentityValidityExecutor;
+  executor?: DbExecutor;
   occurredAt?: string;
   reason?: string | null;
   source: ValidityTransitionSource;
@@ -45,7 +43,16 @@ async function persistValidityTransition(args: {
   triggeredBy?: string | null;
   userId: string;
   verificationId?: string | null;
-}): Promise<IdentityValidityEvent> {
+}
+
+interface ValidityTransitionResult {
+  deliveries: Awaited<ReturnType<typeof scheduleValidityDeliveries>>;
+  event: IdentityValidityEvent;
+}
+
+async function persistValidityTransition(
+  args: ValidityTransitionArgs
+): Promise<IdentityValidityEvent | null> {
   const executor = args.executor ?? db;
   const currentSnapshot = await getIdentityValiditySnapshot(
     args.userId,
@@ -59,7 +66,25 @@ async function persistValidityTransition(args: {
     );
   }
 
-  if (args.bundleSnapshot) {
+  const event = await appendIdentityValidityEvent(
+    {
+      eventKind: args.eventKind,
+      reason: args.reason,
+      source: args.source,
+      sourceBlockNumber: args.sourceBlockNumber,
+      sourceEventId: args.sourceEventId,
+      sourceNetwork: args.sourceNetwork,
+      triggeredBy: args.triggeredBy,
+      userId: args.userId,
+      validityStatus: nextSnapshot.validityStatus,
+      verificationId: args.verificationId,
+      createdAt: args.occurredAt,
+    },
+    executor
+  );
+
+  // A replayed source event changes nothing, snapshot included.
+  if (event && args.bundleSnapshot) {
     await upsertIdentityValiditySnapshot(
       {
         effectiveVerificationId:
@@ -77,42 +102,31 @@ async function persistValidityTransition(args: {
     );
   }
 
-  return await appendIdentityValidityEvent(
-    {
-      eventKind: args.eventKind,
-      reason: args.reason ?? null,
-      source: args.source,
-      sourceBlockNumber: args.sourceBlockNumber ?? null,
-      sourceEventId: args.sourceEventId ?? null,
-      sourceNetwork: args.sourceNetwork ?? null,
-      triggeredBy: args.triggeredBy ?? null,
-      userId: args.userId,
-      validityStatus: nextSnapshot.validityStatus,
-      verificationId: args.verificationId ?? null,
-      ...(args.occurredAt ? { createdAt: args.occurredAt } : {}),
-    },
-    executor
-  );
+  return event;
 }
 
-export async function recordValidityTransition(args: {
-  bundleSnapshot?: ValiditySnapshotInput;
-  eventKind: ValidityEventKind;
-  executor?: IdentityValidityExecutor;
-  occurredAt?: string;
-  reason?: string | null;
-  source: ValidityTransitionSource;
-  sourceBlockNumber?: number | null;
-  sourceEventId?: string | null;
-  sourceNetwork?: string | null;
-  triggeredBy?: string | null;
-  userId: string;
-  verificationId?: string | null;
-}): Promise<{
-  deliveries: Awaited<ReturnType<typeof scheduleValidityDeliveries>>;
-  event: IdentityValidityEvent;
-}> {
+/**
+ * Records a validity transition, schedules its deliveries, and drains them in
+ * the background.
+ *
+ * A transition with a `sourceEventId` is idempotent through the
+ * (source, sourceNetwork, sourceEventId) unique index: replaying one records
+ * nothing and resolves to null. A transition without a `sourceEventId` always
+ * records.
+ */
+export async function recordValidityTransition(
+  args: ValidityTransitionArgs & { sourceEventId?: null | undefined }
+): Promise<ValidityTransitionResult>;
+export async function recordValidityTransition(
+  args: ValidityTransitionArgs
+): Promise<ValidityTransitionResult | null>;
+export async function recordValidityTransition(
+  args: ValidityTransitionArgs
+): Promise<ValidityTransitionResult | null> {
   const event = await persistValidityTransition(args);
+  if (!event) {
+    return null;
+  }
   const deliveries = await scheduleValidityDeliveries(event.id, args.executor);
 
   // Drain the queued deliveries in the background. Anything that fails is
@@ -150,33 +164,16 @@ export async function recordChainAttestationConfirmed(args: {
     return false;
   }
 
-  try {
-    await recordValidityTransition({
-      userId: args.userId,
-      verificationId: snapshot.effectiveVerificationId ?? null,
-      eventKind: "verified",
-      source: "chain",
-      sourceEventId: args.sourceEventId,
-      sourceNetwork: args.networkId,
-      sourceBlockNumber: args.blockNumber ?? null,
-      reason: "blockchain_attestation_confirmed",
-    });
+  const recorded = await recordValidityTransition({
+    userId: args.userId,
+    verificationId: snapshot.effectiveVerificationId ?? null,
+    eventKind: "verified",
+    source: "chain",
+    sourceEventId: args.sourceEventId,
+    sourceNetwork: args.networkId,
+    sourceBlockNumber: args.blockNumber ?? null,
+    reason: "blockchain_attestation_confirmed",
+  });
 
-    return true;
-  } catch (error) {
-    if (isDuplicateValidityEvent(error)) {
-      return false;
-    }
-    throw error;
-  }
-}
-
-export function isDuplicateValidityEvent(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  return (
-    error.message.includes("identity_validity_events_source_event_unique") ||
-    error.message.includes("SQLITE_CONSTRAINT_UNIQUE")
-  );
+  return recorded !== null;
 }

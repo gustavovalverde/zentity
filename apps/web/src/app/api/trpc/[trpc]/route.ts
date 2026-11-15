@@ -13,41 +13,15 @@ import { createTrpcContext, trpcResponseMeta } from "@/lib/trpc/server";
 // Node.js runtime required for server-side face detection (tfjs-node).
 export const runtime = "nodejs";
 
-async function handler(req: Request) {
-  // Create response headers container for procedures to set cookies
-  const resHeaders = new Headers();
-
-  const response = await fetchRequestHandler({
+// Response headers come from `trpcResponseMeta`.
+function handler(req: Request) {
+  return fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
     router: appRouter,
-    createContext: async () => createTrpcContext({ req, resHeaders }),
+    createContext: () => createTrpcContext({ req }),
     responseMeta: trpcResponseMeta,
   });
-
-  // Check if any cookies need to be set
-  const hasCookies = resHeaders.has("Set-Cookie");
-
-  if (!hasCookies) {
-    return response;
-  }
-
-  // Read the response body to avoid stream issues
-  const body = await response.text();
-
-  // Create merged headers with cookies
-  const mergedHeaders = new Headers(response.headers);
-  resHeaders.forEach((value, key) => {
-    mergedHeaders.append(key, value);
-  });
-
-  // Return a new Response with the body as text and merged headers
-  const withCookies = new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: mergedHeaders,
-  });
-  return withCookies;
 }
 
 export { handler as GET, handler as POST };

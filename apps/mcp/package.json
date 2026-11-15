@@ -11,8 +11,8 @@
   ],
   "scripts": {
     "build:sdk": "pnpm --filter @zentity/sdk build",
-    "dev": "pnpm run build:sdk && bun run --watch src/index.ts",
-    "build": "pnpm run build:sdk && bun build src/index.ts --outdir dist --target node --format esm && printf '#!/usr/bin/env node\\n' | cat - dist/index.js > dist/tmp && mv dist/tmp dist/index.js && chmod +x dist/index.js",
+    "dev": "pnpm run build:sdk && tsx watch src/index.ts",
+    "build": "pnpm run build:sdk && tsup src/index.ts --format esm --target node24 --clean --out-dir dist",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --transport http",
     "lint": "pnpm exec ultracite fix",
@@ -20,7 +20,7 @@
     "lint:fix": "pnpm exec ultracite fix",
     "typecheck": "pnpm run build:sdk && tsc --noEmit",
     "test": "pnpm run build:sdk && vitest run",
-    "test:e2e": "pnpm run build:sdk && bun run scripts/e2e-smoke.ts"
+    "test:e2e": "pnpm run build:sdk && tsx scripts/e2e-smoke.ts"
   },
   "dependencies": {
     "@better-auth/core": "1.8.0-beta.10",
@@ -38,6 +38,8 @@
     "@biomejs/biome": "2.6.6",
     "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "^26.6.6",
+    "tsup": "^9.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "ultracite": "8.1.1",
     "vitest": "^5.1.0"

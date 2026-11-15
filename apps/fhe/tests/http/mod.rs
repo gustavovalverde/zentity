@@ -42,6 +42,18 @@ impl TestAppBuilder {
         self
     }
 
+    /// Configure the maximum request body size.
+    pub fn with_body_limit_bytes(mut self, bytes: usize) -> Self {
+        self.settings = self.settings.with_body_limit_bytes(bytes);
+        self
+    }
+
+    /// Configure the request timeout.
+    pub fn with_request_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.settings = self.settings.with_request_timeout(timeout);
+        self
+    }
+
     /// Build the test router.
     pub fn build(self) -> Router {
         build_router(&self.settings)
@@ -92,6 +104,37 @@ pub async fn parse_msgpack_body<T: DeserializeOwned>(response: Response) -> T {
     }
 
     rmp_serde::from_slice(&bytes).expect("Failed to decode msgpack response")
+}
+
+/// Encrypt one attribute through `/encrypt-batch` and return its ciphertext.
+///
+/// `field` is the request field name, for example `"dobDays"` or `"livenessScore"`.
+pub async fn encrypt_attribute(field: &str, value: impl Serialize, key_id: &str) -> Vec<u8> {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    let body = serde_json::json!({ "keyId": key_id, field: value });
+    let response = test_app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/encrypt-batch")
+                .header("content-type", "application/msgpack")
+                .body(Body::from(msgpack_body(&body)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let mut ciphertexts: std::collections::HashMap<String, Option<serde_bytes::ByteBuf>> =
+        parse_msgpack_body(response).await;
+    ciphertexts
+        .remove(&format!("{field}Ciphertext"))
+        .flatten()
+        .expect("ciphertext for requested attribute")
+        .into_vec()
 }
 
 /// Helper to get response status and body as string (for debugging).

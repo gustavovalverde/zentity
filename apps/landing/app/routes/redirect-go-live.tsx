@@ -1,5 +1,3 @@
-import { Navigate } from "react-router";
+import { redirect } from "react-router";
 
-export default function GoLiveRedirect() {
-  return <Navigate to="/docs/oauth-integrations" replace />;
-}
+export const loader = () => redirect("/docs/oauth-integrations", 301);

@@ -9,6 +9,7 @@ import type { AuthenticationState } from "@zentity/sdk/protocol";
 import "server-only";
 
 import type { FeatureName } from "@/lib/assurance/tier";
+import type { RateLimiter } from "@/lib/http/rate-limit";
 
 import { randomUUID } from "node:crypto";
 
@@ -54,8 +55,6 @@ interface TrpcContext {
   flowIdSource: "header" | "cookie" | "query" | "none";
   req: Request;
   requestId: string;
-  /** Response headers that will be merged with tRPC response. Use for Set-Cookie. */
-  resHeaders: Headers;
   session: Session | null;
   span?: Span;
   spanId?: string;
@@ -233,7 +232,6 @@ async function buildSessionFromUserId(
  */
 export async function createTrpcContext(args: {
   req: Request;
-  resHeaders?: Headers;
 }): Promise<TrpcContext> {
   const requestContext = resolveRequestContext(args.req.headers);
   let session: Session | null = null;
@@ -281,7 +279,6 @@ export async function createTrpcContext(args: {
     requestId: requestContext.requestId,
     flowId: requestContext.flowId,
     flowIdSource: requestContext.flowIdSource,
-    resHeaders: args.resHeaders ?? new Headers(),
   };
 }
 
@@ -509,6 +506,16 @@ export const protectedProcedure = trpc.procedure
   .use(withTracing)
   .use(withLogging)
   .use(enforceAuth);
+
+/** Authenticated procedure limited per user by a shared sliding-window limiter. */
+export function rateLimitedProcedure(limiter: RateLimiter) {
+  return protectedProcedure.use(({ ctx, next }) => {
+    if (limiter.check(ctx.userId).limited) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
+    }
+    return next({ ctx });
+  });
+}
 
 const ADMIN_ROLES = new Set(["admin"]);
 

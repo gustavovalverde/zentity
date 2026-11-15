@@ -81,15 +81,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify the VP token
-    const clientId = env.NEXT_PUBLIC_APP_URL;
-    const { verified, claims } = await verifyVpToken(
+    // OpenID4VP 1.0 sets the KB-JWT audience to the full Client Identifier
+    // the request advertised (`x509_hash:<thumbprint>`).
+    const claims = await verifyVpToken(
       vpToken,
       session.nonce,
-      clientId
+      session.clientId
     );
 
-    if (!verified) {
+    if (!claims) {
       await updateVpSession(session.id, {
         status: "failed",
         result: JSON.stringify({ error: "Verification failed" }),

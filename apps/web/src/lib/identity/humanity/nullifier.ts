@@ -14,7 +14,7 @@
 import "server-only";
 
 import { env } from "@/env";
-import { hmacSha256Hex } from "@/lib/privacy/primitives/symmetric";
+import { hmacSha256Hex } from "@/lib/privacy/primitives/hmac";
 
 const SUBJECT_AAD = "zentity:humanity:subject:v1";
 const STABLE_ID_AAD = "zentity:humanity:stable_id:v1";

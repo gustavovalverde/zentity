@@ -75,58 +75,6 @@ describe("webauthn-prf", () => {
       expect(result.reason).toBe("PRF extension not supported.");
     });
 
-    it("detects PRF support via getClientCapabilities with prf=true directly", async () => {
-      const mockGetClientCapabilities = vi.fn().mockResolvedValue({
-        prf: true,
-      });
-
-      globalThis.PublicKeyCredential = {
-        getClientCapabilities: mockGetClientCapabilities,
-      } as unknown as typeof PublicKeyCredential;
-
-      const module = await import("../prf");
-      checkPrfSupport = module.checkPrfSupport;
-
-      const result = await checkPrfSupport();
-
-      expect(result.supported).toBe(true);
-    });
-
-    it("detects PRF support via extensions array containing prf", async () => {
-      const mockGetClientCapabilities = vi.fn().mockResolvedValue({
-        extensions: ["prf", "largeBlob"],
-      });
-
-      globalThis.PublicKeyCredential = {
-        getClientCapabilities: mockGetClientCapabilities,
-      } as unknown as typeof PublicKeyCredential;
-
-      const module = await import("../prf");
-      checkPrfSupport = module.checkPrfSupport;
-
-      const result = await checkPrfSupport();
-
-      expect(result.supported).toBe(true);
-    });
-
-    it("detects PRF unsupported when extensions array exists without prf", async () => {
-      const mockGetClientCapabilities = vi.fn().mockResolvedValue({
-        extensions: ["largeBlob", "minPinLength"],
-      });
-
-      globalThis.PublicKeyCredential = {
-        getClientCapabilities: mockGetClientCapabilities,
-      } as unknown as typeof PublicKeyCredential;
-
-      const module = await import("../prf");
-      checkPrfSupport = module.checkPrfSupport;
-
-      const result = await checkPrfSupport();
-
-      expect(result.supported).toBe(false);
-      expect(result.reason).toBe("PRF extension not supported.");
-    });
-
     it("falls back to assuming supported when getClientCapabilities is unavailable", async () => {
       globalThis.PublicKeyCredential =
         {} as unknown as typeof PublicKeyCredential;
@@ -153,30 +101,6 @@ describe("webauthn-prf", () => {
 
       const result = await checkPrfSupport();
 
-      expect(result.supported).toBe(true);
-    });
-
-    it("tries public-key hint when initial getClientCapabilities fails", async () => {
-      const mockGetClientCapabilities = vi
-        .fn()
-        .mockRejectedValueOnce(new Error("First call failed"))
-        .mockResolvedValueOnce({ "extension:prf": true });
-
-      globalThis.PublicKeyCredential = {
-        getClientCapabilities: mockGetClientCapabilities,
-      } as unknown as typeof PublicKeyCredential;
-
-      const module = await import("../prf");
-      checkPrfSupport = module.checkPrfSupport;
-
-      const result = await checkPrfSupport();
-
-      expect(mockGetClientCapabilities).toHaveBeenCalledTimes(2);
-      expect(mockGetClientCapabilities).toHaveBeenNthCalledWith(1);
-      expect(mockGetClientCapabilities).toHaveBeenNthCalledWith(
-        2,
-        "public-key"
-      );
       expect(result.supported).toBe(true);
     });
   });

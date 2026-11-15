@@ -10,8 +10,6 @@ use tfhe::{CompressedPublicKey, FheUint16};
 
 /// Scale factor for converting float to u16 (4 decimal precision)
 const SCORE_SCALE: f64 = 10000.0;
-#[allow(dead_code)]
-const MAX_SCORE_VALUE: u16 = 10000;
 
 /// Convert a liveness score (0.0-1.0) to scaled u16 (0-10000)
 pub fn score_to_u16(score: f64) -> Result<u16, FheError> {
@@ -22,12 +20,6 @@ pub fn score_to_u16(score: f64) -> Result<u16, FheError> {
         )));
     }
     Ok((score * SCORE_SCALE).round() as u16)
-}
-
-/// Convert scaled u16 (0-10000) back to float (0.0-1.0)
-#[allow(dead_code)]
-pub fn u16_to_score(value: u16) -> f64 {
-    (value as f64) / SCORE_SCALE
 }
 
 /// Convert a threshold (0.0-1.0) to scaled u16 (0-10000)
@@ -118,32 +110,6 @@ mod tests {
         assert!(score_to_u16(10.0).is_err());
     }
 
-    #[test]
-    fn test_u16_to_score() {
-        assert_eq!(u16_to_score(0), 0.0);
-        assert_eq!(u16_to_score(5000), 0.5);
-        assert_eq!(u16_to_score(10000), 1.0);
-        assert_eq!(u16_to_score(3000), 0.3);
-        assert_eq!(u16_to_score(8500), 0.85);
-    }
-
-    #[test]
-    fn test_score_roundtrip() {
-        // Test multiple values for roundtrip accuracy
-        let test_values = [0.0, 0.1, 0.3, 0.5, 0.7654, 0.85, 0.9999, 1.0];
-
-        for &original in &test_values {
-            let scaled = score_to_u16(original).unwrap();
-            let recovered = u16_to_score(scaled);
-            assert!(
-                (original - recovered).abs() < 0.0001,
-                "Roundtrip failed for {}: got {}",
-                original,
-                recovered
-            );
-        }
-    }
-
     // ===================
     // Threshold Conversion Tests
     // ===================
@@ -169,7 +135,6 @@ mod tests {
     #[test]
     fn test_scale_factor() {
         assert_eq!(SCORE_SCALE, 10000.0);
-        assert_eq!(MAX_SCORE_VALUE, 10000);
     }
 
     // ===================

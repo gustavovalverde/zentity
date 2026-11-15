@@ -17,6 +17,7 @@ import hashlib
 import re
 import secrets
 import unicodedata
+from dataclasses import dataclass
 
 
 def generate_user_salt() -> str:
@@ -172,6 +173,7 @@ def verify_document_claim(claimed_doc_number: str, stored_hash: str, user_salt: 
     return secrets.compare_digest(claimed_hash, stored_hash)
 
 
+@dataclass(frozen=True)
 class IdentityCommitments:
     """
     Container for all identity commitments generated from a document.
@@ -179,30 +181,11 @@ class IdentityCommitments:
     This is what gets stored in the database instead of raw PII.
     """
 
-    def __init__(
-        self,
-        document_hash: str,
-        name_commitment: str,
-        user_salt: str,
-        document_type: str | None = None,
-        issuing_country_commitment: str | None = None,
-    ):
-        self.document_hash = document_hash
-        self.name_commitment = name_commitment
-        self.user_salt = user_salt
-        self.document_type = document_type
-        self.issuing_country_commitment = issuing_country_commitment
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
-        return {
-            "document_hash": self.document_hash,
-            "name_commitment": self.name_commitment,
-            "document_type": self.document_type,
-            "issuing_country_commitment": self.issuing_country_commitment,
-            # Note: user_salt is intentionally excluded from serialization
-            # It should be stored separately and securely
-        }
+    document_hash: str
+    name_commitment: str
+    user_salt: str
+    document_type: str | None = None
+    issuing_country_commitment: str | None = None
 
 
 def generate_issuing_country_commitment(issuing_country_code: str, user_salt: str) -> str:

@@ -35,7 +35,6 @@ function caller() {
     flowIdSource: "none",
     req: new Request("http://localhost/api/trpc"),
     requestId: "test-request-id",
-    resHeaders: new Headers(),
     session: {
       user: { id: state.userId, email: "user@example.com" },
       session: { id: state.sessionId },

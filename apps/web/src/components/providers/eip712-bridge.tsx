@@ -42,7 +42,6 @@ export function Eip712Bridge() {
       return;
     }
 
-    let cancelled = false;
     inFlightRef.current = true;
     const signInWithWallet = async () => {
       const existingSession = await authClient.getSession();
@@ -69,27 +68,13 @@ export function Eip712Bridge() {
     };
 
     signInWithWallet()
-      .catch((error) => {
-        if (cancelled) {
-          return;
-        }
-        const message =
-          error instanceof Error ? error.message : "Wallet sign-in failed.";
-        if (
-          message.toLowerCase().includes("user rejected") ||
-          message.toLowerCase().includes("denied") ||
-          message.toLowerCase().includes("cancel")
-        ) {
-          return;
-        }
+      .catch(() => {
+        // Best-effort background sign-in: a rejection or failure leaves the
+        // user signed out and the sign-in page remains available.
       })
       .finally(() => {
         inFlightRef.current = false;
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [address, chainId, isConnected, pathname, signTypedData]);
 
   return null;

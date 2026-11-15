@@ -5,6 +5,11 @@ import type { OAuthSessionContext } from "../../src/runtime/auth-context.js";
 
 const mockBeginCibaApproval = vi.fn();
 const mockPollCibaTokenOnce = vi.fn();
+const mockDiscoverMcpOAuth = vi.fn();
+
+vi.mock("../../src/oauth-client.js", () => ({
+  discoverMcpOAuth: () => mockDiscoverMcpOAuth(),
+}));
 
 vi.mock("../../src/config.js", () => ({
   config: {
@@ -49,15 +54,9 @@ function createParams(fingerprint: string) {
     toolName: "my_profile" as const,
     fingerprint,
     oauth,
-    cibaRequest: {
-      cibaEndpoint: "http://localhost:3000/api/auth/oauth2/bc-authorize",
-      tokenEndpoint: "http://localhost:3000/api/auth/oauth2/token",
-      clientId: oauth.clientId,
-      dpopClient: oauth.dpopClient,
-      loginHint: oauth.accountSub,
+    approval: {
       scope: "openid identity.name",
       bindingMessage: "Claude Code: Share my name",
-      resource: "http://localhost:3000",
     },
     browserSearchParams: { fields: "name" },
     onApproved: (tokenSet: { accessToken: string }) =>
@@ -76,6 +75,37 @@ describe("interactive tool flow", () => {
     mockBeginCibaApproval.mockReset();
     mockPollCibaTokenOnce.mockReset();
     mockBeginCibaApproval.mockResolvedValue(PENDING);
+    mockDiscoverMcpOAuth.mockReset();
+    mockDiscoverMcpOAuth.mockResolvedValue({
+      backchannel_authentication_endpoint: "https://as.test/ciba",
+      token_endpoint: "https://as.test/token",
+    });
+  });
+
+  it("builds the CIBA request from the discovered endpoints", async () => {
+    await beginOrResumeInteractiveFlow(createParams("discovery"));
+
+    expect(mockBeginCibaApproval).toHaveBeenCalledWith({
+      bindingMessage: "Claude Code: Share my name",
+      cibaEndpoint: "https://as.test/ciba",
+      clientId: oauth.clientId,
+      dpopClient: oauth.dpopClient,
+      loginHint: oauth.accountSub,
+      resource: "http://localhost:3000",
+      scope: "openid identity.name",
+      tokenEndpoint: "https://as.test/token",
+    });
+  });
+
+  it("fails when discovery has no backchannel authentication endpoint", async () => {
+    mockDiscoverMcpOAuth.mockResolvedValueOnce({
+      token_endpoint: "https://as.test/token",
+    });
+
+    await expect(
+      beginOrResumeInteractiveFlow(createParams("no-ciba"))
+    ).rejects.toThrow("backchannel authentication endpoint");
+    expect(mockBeginCibaApproval).not.toHaveBeenCalled();
   });
 
   it("starts a CIBA request and returns the browser interaction", async () => {

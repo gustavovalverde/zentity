@@ -1,3 +1,4 @@
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import type { FirstPartyAuthDiscoveryDocument } from "@zentity/sdk/fpa";
 import {
   buildLoopbackClientRegistration,
@@ -12,7 +13,6 @@ import {
   type OAuthSessionContext,
   withDpopClient,
 } from "./runtime/auth-context.js";
-import { RUNTIME_BOOTSTRAP_SCOPES } from "./runtime/bootstrap-scopes.js";
 
 const LOOPBACK_REDIRECT_URI = "http://127.0.0.1/callback";
 const MCP_SERVER_CLIENT_NAME = "@zentity/mcp-server";
@@ -36,7 +36,7 @@ const INSTALLED_AGENT_CIBA_SCOPES = [
 const INSTALLED_AGENT_REGISTRATION_SCOPES = [
   ...INSTALLED_AGENT_LOGIN_SCOPES,
   ...INSTALLED_AGENT_CIBA_SCOPES,
-  ...RUNTIME_BOOTSTRAP_SCOPES,
+  ...AGENT_BOOTSTRAP_SCOPES,
 ] as const;
 
 const INSTALLED_AGENT_GRANT_TYPES = [

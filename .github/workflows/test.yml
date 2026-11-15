@@ -84,9 +84,6 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - run: pnpm install --frozen-lockfile
         working-directory: apps/web
-      - name: Install MCP deps (for mcp-http integration test subprocess)
-        run: pnpm install --frozen-lockfile
-        working-directory: apps/mcp
       - run: pnpm --filter @zentity/sdk build
 
       - name: Unit tests

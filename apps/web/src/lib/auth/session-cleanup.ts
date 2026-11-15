@@ -14,15 +14,6 @@ import { resetFheKeyStoreCache } from "@/lib/privacy/fhe/key-store";
 import { resetProfileSecretCache } from "@/lib/privacy/secrets/profile";
 
 /**
- * Cookie names to clear during session transitions.
- * These are set by Better Auth.
- */
-const SESSION_COOKIES = [
-  "better-auth.session_token",
-  "better-auth.session_data",
-] as const;
-
-/**
  * Clear all client-side caches.
  * Call this during sign-out and before sign-in to ensure clean state
  * when users switch on shared browsers.
@@ -34,27 +25,6 @@ function clearClientCaches(): void {
   resetBackgroundKeygen();
 
   resetFlowId();
-}
-
-/**
- * Clear all session cookies.
- * Must be called from client-side code.
- */
-function clearSessionCookies(): void {
-  if (globalThis.document === undefined) {
-    return;
-  }
-
-  const secureFlag =
-    globalThis.window.location.protocol === "https:" ? "; Secure" : "";
-
-  for (const name of SESSION_COOKIES) {
-    // Clear with various path combinations to ensure removal
-    // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie clearing for session isolation
-    document.cookie = `${name}=; Max-Age=0; Path=/${secureFlag}`;
-    // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie clearing for session isolation
-    document.cookie = `${name}=; Max-Age=0; Path=/; SameSite=Lax${secureFlag}`;
-  }
 }
 
 /**
@@ -81,9 +51,9 @@ interface CompleteSignOutOptions {
  * 1. Clear client caches (synchronous, immediate)
  * 2. Clear React Query cache if provided
  * 3. Call PRF output clear callback (from PasskeyAuthProvider)
- * 4. Call Better Auth signOut (invalidates server session)
- * 5. Clear cookies (ensures no stale cache)
- * 6. Redirect to home
+ * 4. Call Better Auth signOut (invalidates the server session and expires
+ *    its HTTP-only session cookies)
+ * 5. Redirect to home
  */
 export async function completeSignOut(
   options: CompleteSignOutOptions = {}
@@ -104,33 +74,8 @@ export async function completeSignOut(
   // 4. Sign out via Better Auth (this clears server session)
   await betterAuthSignOut();
 
-  // 5. Clear cookies (including session_data cache)
-  clearSessionCookies();
-
-  // 6. Redirect
+  // 5. Redirect
   navigateTo(redirectToPath);
-}
-
-/**
- * Invalidate only the session data cache cookie.
- * Preserves the session_token (user stays authenticated) but forces
- * the next server-side getSession() to re-read from the database.
- *
- * Call after updating user data (email, name, isAnonymous) via Drizzle
- * to ensure the dashboard renders fresh data instead of stale cache.
- */
-export function invalidateSessionDataCache(): void {
-  if (globalThis.document === undefined) {
-    return;
-  }
-
-  const secureFlag =
-    globalThis.window.location.protocol === "https:" ? "; Secure" : "";
-
-  // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie cache invalidation
-  document.cookie = `better-auth.session_data=; Max-Age=0; Path=/${secureFlag}`;
-  // biome-ignore lint/suspicious/noDocumentCookie: Intentional cookie cache invalidation
-  document.cookie = `better-auth.session_data=; Max-Age=0; Path=/; SameSite=Lax${secureFlag}`;
 }
 
 /**
@@ -141,7 +86,6 @@ export function invalidateSessionDataCache(): void {
  */
 export function prepareForNewSession(): void {
   clearClientCaches();
-  clearSessionCookies();
 }
 
 /**

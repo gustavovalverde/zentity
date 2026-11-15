@@ -1,7 +1,7 @@
 import "server-only";
 
 import { resolve } from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { exportJWK, generateKeyPair } from "jose";
 import { getDb } from "@/lib/db/connection";
 import { vpSessions } from "@/lib/db/schema";
@@ -16,9 +16,6 @@ import {
 import { VERIFIER_SCENARIOS } from "@/scenarios/veripass/verifier-registry";
 
 const VP_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-// In-memory cache for signed JAR JWTs — only needed until wallet fetches them
-const jarCache = new Map<string, { jwt: string; expiresAt: number }>();
 
 interface VpSession {
   authorizationUri: string;
@@ -97,9 +94,11 @@ export async function createVpSession(
   const now = new Date();
   await db.insert(vpSessions).values({
     id: sessionId,
+    clientId,
     nonce,
     state,
     dcqlQuery: JSON.stringify(scenario.dcqlQuery),
+    signedRequest,
     status: "pending",
     encryptionKey: JSON.stringify(ephemeralPrivateJwk),
     sessionCookie,
@@ -108,24 +107,29 @@ export async function createVpSession(
     expiresAt: new Date(now.getTime() + VP_TTL_MS),
   });
 
-  // Cache JAR JWT for wallet retrieval via /api/oid4vp/request
-  jarCache.set(sessionId, {
-    jwt: signedRequest,
-    expiresAt: now.getTime() + VP_TTL_MS,
-  });
-
   return { sessionId, authorizationUri };
 }
 
-export function getSignedRequest(sessionId: string): string | null {
-  const entry = jarCache.get(sessionId);
-  if (!entry || Date.now() > entry.expiresAt) {
-    jarCache.delete(sessionId);
-    return null;
-  }
-  // Single-use: delete after retrieval
-  jarCache.delete(sessionId);
-  return entry.jwt;
+/**
+ * Returns the session's signed request object to the first fetch before the
+ * session expires, and null to every other fetch.
+ */
+export async function consumeSignedRequest(
+  sessionId: string
+): Promise<string | null> {
+  const now = new Date();
+  const [fetched] = await getDb()
+    .update(vpSessions)
+    .set({ requestFetchedAt: now })
+    .where(
+      and(
+        eq(vpSessions.id, sessionId),
+        isNull(vpSessions.requestFetchedAt),
+        gt(vpSessions.expiresAt, now)
+      )
+    )
+    .returning({ signedRequest: vpSessions.signedRequest });
+  return fetched?.signedRequest ?? null;
 }
 
 export function getVpSession(sessionId: string) {

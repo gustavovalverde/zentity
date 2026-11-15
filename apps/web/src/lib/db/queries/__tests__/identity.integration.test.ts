@@ -14,12 +14,15 @@ import {
   deleteIdentityData,
   getAccountIdentity,
   getIdentityBundleByUserId,
+  getLatestIdentityDraftByUserId,
   getLatestVerification,
   hasProfileSecret,
   reconcileIdentityBundle,
   revokeIdentity,
   updateIdentityBundleAttestationState,
+  updateIdentityDraft,
   upsertIdentityBundle,
+  upsertIdentityDraft,
   upsertVerification,
 } from "@/lib/db/queries/identity";
 import {
@@ -40,9 +43,44 @@ import {
 } from "@/lib/privacy/secrets/storage.server";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 
+const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
 describe("identity queries", () => {
   beforeEach(async () => {
     await resetDatabase();
+  });
+
+  it("returns the most recently updated draft as the latest", async () => {
+    const userId = await createTestUser();
+    const older = await upsertIdentityDraft({
+      id: crypto.randomUUID(),
+      userId,
+      verificationId: crypto.randomUUID(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const newer = await upsertIdentityDraft({
+      id: crypto.randomUUID(),
+      userId,
+      verificationId: crypto.randomUUID(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await updateIdentityDraft(older.id, { documentProcessed: true });
+
+    const latest = await getLatestIdentityDraftByUserId(userId);
+    expect(latest?.id).toBe(older.id);
+    expect(latest?.updatedAt).toMatch(ISO_TIMESTAMP);
+    expect(newer.updatedAt).toMatch(ISO_TIMESTAMP);
+  });
+
+  it("writes bundle timestamps in ISO format on insert and update", async () => {
+    const userId = await createTestUser();
+    await upsertIdentityBundle({ userId, validityStatus: "pending" });
+    await upsertIdentityBundle({ userId, fheStatus: "pending" });
+
+    const bundle = await getIdentityBundleByUserId(userId);
+    expect(bundle?.createdAt).toMatch(ISO_TIMESTAMP);
+    expect(bundle?.updatedAt).toMatch(ISO_TIMESTAMP);
   });
 
   it("upserts bundle validity and updates attestation state", async () => {
@@ -87,7 +125,7 @@ describe("identity queries", () => {
       blobRef: computeSecretBlobRef(secretId),
       blobHash: "0".repeat(64),
       blobSize: 7,
-      metadata: JSON.stringify({ envelopeFormat: "json" }),
+      metadata: { envelopeFormat: "json" },
     });
     await db.insert(secretWrappers).values({
       id: crypto.randomUUID(),
@@ -120,7 +158,7 @@ describe("identity queries", () => {
         blobRef,
         blobHash: "0".repeat(64),
         blobSize: 7,
-        metadata: JSON.stringify({ envelopeFormat: "json" }),
+        metadata: { envelopeFormat: "json" },
       });
       await db.insert(secretWrappers).values({
         id: crypto.randomUUID(),

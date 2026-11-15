@@ -222,15 +222,22 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 
 1. User selects a verifier scenario
 2. A DCQL query is built from the scenario's required claims
-3. A VP session is created with a JAR JWT signed using x5c chain (`client_id` is `x509_hash:<leaf certificate thumbprint>`)
+3. A VP session is created with a JAR JWT signed using x5c chain (`client_id` is `x509_hash:<leaf certificate thumbprint>`). The session row stores the signed request, and the wallet can fetch it once from `/api/oid4vp/request` before the session expires.
 4. The wallet selects disclosures matching the query and creates a VP token
 5. The verifier receives the `direct_post.jwt` response (JARM with ECDH-ES P-256 encryption)
-6. KB-JWT is verified against the holder key in the credential's `cnf.jwk`, with audience + nonce + freshness (300s)
+6. The SD-JWT presentation is verified (see below), with the session's `client_id` as the expected KB-JWT audience
 7. Disclosed claims are extracted and displayed
 
-### KB-JWT Verification
+### SD-JWT Presentation Verification
 
-`verifyVpToken()` in `src/lib/verify.ts` performs the full SD-JWT verification chain: issuer signature against Zentity JWKS, disclosure decode, holder key from `cnf.jwk`, KB-JWT signature, and audience/nonce/freshness enforcement.
+`verifyVpToken()` in `src/lib/verify.ts` verifies the presentation with `@sd-jwt/core`:
+
+- The issuer JWT signature must verify against the Zentity JWKS.
+- Every disclosure must match an `_sd` digest the issuer signed. Disclosures are also decoded strictly, so duplicate JSON member names are rejected.
+- The KB-JWT (`typ: kb+jwt`) must be signed by the holder key in the credential's `cnf.jwk`, and its `sd_hash` must cover exactly the presented issuer JWT and disclosures.
+- The KB-JWT `aud` must be the session's `client_id`, its `nonce` the session nonce, and its `iat` no older than 300 seconds.
+
+The session result holds only the claims the holder selectively disclosed, not the issuer's always-visible claims such as `iss`, `vct`, or `cnf`.
 
 ## How Step-Up Works
 

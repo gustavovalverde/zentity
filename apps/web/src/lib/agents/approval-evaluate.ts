@@ -575,7 +575,7 @@ function recordUsageIfAllowed(
       amount: entry.amount,
       currency: entry.currency,
       unit: entry.unit,
-      metadata: entry.metadata ? JSON.stringify(entry.metadata) : undefined,
+      metadata: entry.metadata,
       executedAt: new Date(now),
     });
 

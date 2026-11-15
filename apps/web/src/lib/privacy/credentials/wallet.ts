@@ -5,13 +5,10 @@ import "client-only";
 /**
  * Wallet Credential Module
  *
- * Handles wallet signature-based KEK derivation and DEK wrapping.
- * Uses EIP-712 typed data signatures with deterministic message structure
- * to ensure reproducible KEK derivation across sessions.
+ * Identifies wallet credentials and builds the deterministic EIP-712 message
+ * whose signature is the wallet's KEK input, so the same wallet reproduces
+ * the same KEK across sessions.
  */
-
-import { deriveKekFromWalletSignature } from "./derivation";
-import { unwrapDek, wrapDek } from "./wrap";
 
 export const WALLET_CREDENTIAL_PREFIX = "wallet";
 
@@ -86,67 +83,4 @@ export function buildKekSignatureTypedData(params: {
       purpose: "Zentity Encryption Key Derivation",
     },
   };
-}
-
-/**
- * Wrap a DEK using wallet signature-derived KEK.
- *
- * The AAD (Additional Authenticated Data) binds the wrapped DEK to:
- * - Secret ID (prevents key substitution attacks)
- * - Credential ID (identifies which wallet wrapped this)
- * - User ID (prevents cross-user key reuse)
- */
-export async function wrapDekWithWalletSignature(params: {
-  secretId: string;
-  userId: string;
-  address: string;
-  chainId: number;
-  dek: Uint8Array;
-  signatureBytes: Uint8Array;
-}): Promise<string> {
-  const credentialId = getWalletCredentialId({
-    address: params.address,
-    chainId: params.chainId,
-  });
-  const kek = await deriveKekFromWalletSignature(
-    params.signatureBytes,
-    params.userId
-  );
-  return wrapDek({
-    secretId: params.secretId,
-    credentialId,
-    userId: params.userId,
-    dek: params.dek,
-    kek,
-  });
-}
-
-/**
- * Unwrap a DEK using wallet signature-derived KEK.
- *
- * The signature must match the one used during wrapping (same message = same signature = same KEK).
- */
-export async function unwrapDekWithWalletSignature(params: {
-  secretId: string;
-  userId: string;
-  address: string;
-  chainId: number;
-  wrappedDek: string;
-  signatureBytes: Uint8Array;
-}): Promise<Uint8Array> {
-  const credentialId = getWalletCredentialId({
-    address: params.address,
-    chainId: params.chainId,
-  });
-  const kek = await deriveKekFromWalletSignature(
-    params.signatureBytes,
-    params.userId
-  );
-  return unwrapDek({
-    secretId: params.secretId,
-    credentialId,
-    userId: params.userId,
-    wrappedDek: params.wrappedDek,
-    kek,
-  });
 }

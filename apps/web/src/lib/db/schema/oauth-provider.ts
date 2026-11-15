@@ -1,3 +1,5 @@
+import type { ParsedClaimsParameter } from "../../auth/oidc/disclosure/claims";
+
 import { sql } from "drizzle-orm";
 import {
   index,
@@ -284,8 +286,12 @@ export const oidcReleaseContexts = sqliteTable(
     clientId: text("client_id")
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-    claimsRequest: text("claims_request"),
-    approvedIdentityScopes: text("approved_identity_scopes"),
+    claimsRequest: text("claims_request", {
+      mode: "json",
+    }).$type<ParsedClaimsParameter>(),
+    approvedIdentityScopes: text("approved_identity_scopes", {
+      mode: "json",
+    }).$type<string[]>(),
     scopeHash: text("scope_hash"),
     expectsIdentityPayload: integer("expects_identity_payload", {
       mode: "boolean",
@@ -337,7 +343,9 @@ export const oauthPendingDisclosures = sqliteTable(
     clientId: text("client_id")
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
-    approvedIdentityScopes: text("approved_identity_scopes").notNull(),
+    approvedIdentityScopes: text("approved_identity_scopes", { mode: "json" })
+      .$type<string[]>()
+      .notNull(),
     scopeHash: text("scope_hash").notNull(),
     intentJti: text("intent_jti").notNull(),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),

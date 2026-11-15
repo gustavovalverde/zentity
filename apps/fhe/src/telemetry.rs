@@ -8,11 +8,16 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::SdkTracerProvider;
+use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider};
 use opentelemetry_sdk::Resource;
-use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
+use opentelemetry_semantic_conventions::resource::{
+    DEPLOYMENT_ENVIRONMENT_NAME, SERVICE_NAME, SERVICE_VERSION,
+};
+use tracing::Subscriber;
 use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt, EnvFilter,
+};
 
 static TRACER_PROVIDER: OnceCell<SdkTracerProvider> = OnceCell::new();
 
@@ -47,14 +52,17 @@ pub fn init_tracing() {
         .unwrap_or_else(|_| "fhe_service=info,tower_http=debug".into());
     let fmt_layer = tracing_subscriber::fmt::layer();
 
-    if !is_enabled() {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(fmt_layer)
-            .init();
-        return;
-    }
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .with(is_enabled().then(otel_layer))
+        .init();
+}
 
+fn otel_layer<S>() -> OpenTelemetryLayer<S, SdkTracer>
+where
+    S: Subscriber + for<'span> LookupSpan<'span>,
+{
     global::set_text_map_propagator(TraceContextPropagator::new());
 
     let mut exporter_builder = opentelemetry_otlp::SpanExporter::builder().with_http();
@@ -73,7 +81,7 @@ pub fn init_tracing() {
         .with_attribute(KeyValue::new(SERVICE_NAME, service_name()))
         .with_attribute(KeyValue::new(SERVICE_VERSION, service_version()))
         .with_attribute(KeyValue::new(
-            "deployment.environment.name",
+            DEPLOYMENT_ENVIRONMENT_NAME,
             deployment_environment(),
         ))
         .build();
@@ -85,14 +93,7 @@ pub fn init_tracing() {
 
     let _ = TRACER_PROVIDER.set(tracer_provider.clone());
     global::set_tracer_provider(tracer_provider.clone());
-    let tracer = tracer_provider.tracer("fhe_service");
-    let otel_layer = OpenTelemetryLayer::new(tracer);
-
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .with(otel_layer)
-        .init();
+    OpenTelemetryLayer::new(tracer_provider.tracer("fhe_service"))
 }
 
 pub fn shutdown_tracing() {

@@ -50,6 +50,25 @@ describe("hash-to-field", () => {
     expect(BigInt(mapped)).not.toBe(directModulo);
   });
 
+  it("matches independent HKDF-SHA256 (zero salt, 512-bit) vectors", async () => {
+    await expect(
+      hashToFieldHexFromString(
+        "user-123",
+        HASH_TO_FIELD_INFO.IDENTITY_MSG_SENDER
+      )
+    ).resolves.toBe(
+      "0x0ee50d6ae43840c38233dc7292d694ca187caae9e843545bb5631601a2cebd6f"
+    );
+    await expect(
+      hashToFieldHexFromHex(
+        `0x${"ff".repeat(32)}`,
+        HASH_TO_FIELD_INFO.DOCUMENT_HASH
+      )
+    ).resolves.toBe(
+      "0x150f99babe24e1e4966332e11576ac9a4e14c1095c9e046094050f5cbca2b033"
+    );
+  });
+
   it("normalizes field hex to canonical width", () => {
     expect(normalizeFieldHex("0x1")).toBe(
       "0x0000000000000000000000000000000000000000000000000000000000000001"

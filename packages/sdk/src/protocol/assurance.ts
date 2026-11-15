@@ -11,13 +11,16 @@ export type TierName = (typeof TIER_NAMES)[AccountTier];
 
 export type AuthStrength = "basic" | "strong";
 
-export type LoginMethod =
-	| "passkey"
-	| "opaque"
-	| "magic-link"
-	| "oauth"
-	| "eip712"
-	| "credential";
+export const LOGIN_METHODS = [
+	"passkey",
+	"opaque",
+	"magic-link",
+	"oauth",
+	"eip712",
+	"credential",
+] as const;
+
+export type LoginMethod = (typeof LOGIN_METHODS)[number];
 
 export type AuthenticationSourceKind =
 	| "better_auth"

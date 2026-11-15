@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { config } from "./config.js";
 
 async function main(): Promise<void> {

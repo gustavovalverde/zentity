@@ -1,3 +1,4 @@
+import type { PaymentPayload, SettleResponse } from "@x402/core/types";
 import {
   asObjectRecord,
   createPaymentRequired,
@@ -31,8 +32,6 @@ const bodySchema = z.object({
     .optional(),
 });
 
-type SettlementResult = Awaited<ReturnType<typeof settleViaFacilitator>>;
-
 let proofOfHumanTokenVerifier:
   | ReturnType<typeof createProofOfHumanTokenVerifier>
   | undefined;
@@ -50,9 +49,7 @@ function buildPaymentRequired(
   routeConfig: X402RouteConfig
 ) {
   return createPaymentRequired({
-    accepts: Array.isArray(routeConfig.accepts)
-      ? routeConfig.accepts
-      : [routeConfig.accepts],
+    accepts: routeConfig.accepts,
     resource: { url: resource.endpoint },
     ...(routeConfig.description
       ? { description: routeConfig.description }
@@ -195,21 +192,16 @@ async function validateOnChainCompliance(
 }
 
 function getProofOfHumanTokenFromPayment(
-  paymentSignature: string
+  paymentPayload: PaymentPayload
 ): string | undefined {
-  try {
-    const paymentPayload = parsePaymentSignatureHeader(paymentSignature);
-    const extension = asObjectRecord(paymentPayload.extensions?.zentity);
-    const pohToken = extension?.pohToken;
-    return typeof pohToken === "string" ? pohToken : undefined;
-  } catch {
-    return undefined;
-  }
+  const extension = asObjectRecord(paymentPayload.extensions?.zentity);
+  const pohToken = extension?.pohToken;
+  return typeof pohToken === "string" ? pohToken : undefined;
 }
 
 function buildSuccess(
   resource: X402Resource,
-  settlement: SettlementResult,
+  settlement: SettleResponse,
   poh?: ProofOfHumanClaims,
   onChain?: Record<string, unknown>
 ) {
@@ -318,12 +310,24 @@ export async function POST(request: Request) {
   }
 
   // Verify payment via the x402 facilitator
-  const paymentRequirements = Array.isArray(routeConfig.accepts)
-    ? routeConfig.accepts[0]
-    : routeConfig.accepts;
+  const paymentRequirements = routeConfig.accepts;
+
+  let paymentPayload: PaymentPayload;
+  try {
+    paymentPayload = parsePaymentSignatureHeader(paymentSignature);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "payment_invalid",
+        detail:
+          error instanceof Error ? error.message : "Malformed payment payload",
+      },
+      { status: 402 }
+    );
+  }
 
   const verification = await verifyViaFacilitator(
-    paymentSignature,
+    paymentPayload,
     paymentRequirements
   );
   if (!verification.isValid) {
@@ -339,7 +343,7 @@ export async function POST(request: Request) {
   // Payment-only resources: payment is sufficient
   if (resource.requiredTier === 0) {
     const settlement = await settleViaFacilitator(
-      paymentSignature,
+      paymentPayload,
       paymentRequirements
     );
     if (!settlement.success) {
@@ -349,7 +353,7 @@ export async function POST(request: Request) {
     return buildSuccess(resource, settlement);
   }
 
-  const pohToken = getProofOfHumanTokenFromPayment(paymentSignature);
+  const pohToken = getProofOfHumanTokenFromPayment(paymentPayload);
   const pohResult = await validatePohToken(pohToken, resource);
   if (!pohResult.ok) {
     return pohResult.response;
@@ -377,7 +381,7 @@ export async function POST(request: Request) {
   }
 
   const settlement = await settleViaFacilitator(
-    paymentSignature,
+    paymentPayload,
     paymentRequirements
   );
   if (!settlement.success) {

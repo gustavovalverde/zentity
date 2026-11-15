@@ -4,14 +4,15 @@
 //! client-owned keypairs. Client keys never leave the browser.
 
 use once_cell::sync::OnceCell;
-use redb::{Database, ReadableDatabase, TableDefinition};
+use redb::{Database, ReadableDatabase, TableDefinition, TableHandle};
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::Instant;
-use tfhe::prelude::*;
-use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, FheUint8, ServerKey};
+use tfhe::named::Named;
+use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, ServerKey, Unversionize};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -40,6 +41,22 @@ pub struct KeyStore {
     pub(crate) db: Database,
 }
 
+/// Caches only ever gain entries, so a panic while one is locked cannot leave
+/// it inconsistent; keep serving from the inner state instead of failing.
+fn read_cache<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|error| {
+        warn!("Key cache lock poisoned; continuing with inner state");
+        error.into_inner()
+    })
+}
+
+fn write_cache<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|error| {
+        warn!("Key cache lock poisoned; continuing with inner state");
+        error.into_inner()
+    })
+}
+
 pub fn decode_compressed_public_key(
     public_key_bytes: &[u8],
 ) -> Result<CompressedPublicKey, FheError> {
@@ -50,41 +67,6 @@ pub fn decode_compressed_server_key(
     server_key_bytes: &[u8],
 ) -> Result<CompressedServerKey, FheError> {
     super::decode_tfhe_binary(server_key_bytes)
-}
-
-/// Validate uploaded key material before persistence.
-///
-/// This performs a lightweight key sanity check:
-/// 1. Decompress server key
-/// 2. Set thread-local server key
-/// 3. Encrypt a small sentinel value with the public key
-/// 4. Serialize the encrypted value
-///
-/// Panics from malformed keys are caught and mapped to InvalidInput.
-pub fn validate_registered_keys(
-    public_key: &CompressedPublicKey,
-    server_key: &CompressedServerKey,
-) -> Result<(), FheError> {
-    const SENTINEL: u8 = 7;
-
-    let public_key = public_key.clone();
-    let server_key = server_key.clone();
-
-    let validation = catch_unwind(AssertUnwindSafe(move || {
-        let decompressed = server_key.decompress();
-        set_server_key(decompressed);
-
-        let encrypted = FheUint8::try_encrypt(SENTINEL, &public_key)
-            .map_err(|error| FheError::InvalidInput(format!("Invalid public key: {error}")))?;
-        super::encode_tfhe_binary(&encrypted).map(|_| ())
-    }));
-
-    match validation {
-        Ok(result) => result,
-        Err(_) => Err(FheError::InvalidInput(
-            "Invalid FHE key material: validation panicked".to_string(),
-        )),
-    }
 }
 
 impl KeyStore {
@@ -131,6 +113,15 @@ impl KeyStore {
         Ok(())
     }
 
+    fn with_db(db: Database) -> Self {
+        Self {
+            server_keys: RwLock::default(),
+            server_keys_compressed: RwLock::default(),
+            public_keys: RwLock::default(),
+            db,
+        }
+    }
+
     fn new() -> Result<Self, FheError> {
         let keys_dir = Self::resolve_keys_dir();
         let db = Self::open_db(&keys_dir)?;
@@ -140,32 +131,13 @@ impl KeyStore {
             Self::keystore_path(&keys_dir).display()
         );
 
-        Ok(Self {
-            server_keys: RwLock::new(HashMap::new()),
-            server_keys_compressed: RwLock::new(HashMap::new()),
-            public_keys: RwLock::new(HashMap::new()),
-            db,
-        })
+        Ok(Self::with_db(db))
     }
 
+    /// Open a store backed by `keys_dir`, bypassing the global store. Keys already
+    /// persisted there are loaded on first use.
     pub(crate) fn new_for_tests(keys_dir: PathBuf) -> Self {
-        let db = Self::open_db(&keys_dir).expect("Failed to open test keystore");
-        KeyStore {
-            server_keys: RwLock::new(HashMap::new()),
-            server_keys_compressed: RwLock::new(HashMap::new()),
-            public_keys: RwLock::new(HashMap::new()),
-            db,
-        }
-    }
-
-    pub(crate) fn load_for_tests(keys_dir: PathBuf) -> Self {
-        let db = Self::open_db(&keys_dir).expect("Failed to open test keystore");
-        KeyStore {
-            server_keys: RwLock::new(HashMap::new()),
-            server_keys_compressed: RwLock::new(HashMap::new()),
-            public_keys: RwLock::new(HashMap::new()),
-            db,
-        }
+        Self::with_db(Self::open_db(&keys_dir).expect("Failed to open test keystore"))
     }
 
     pub(crate) fn keystore_path_for_tests(keys_dir: &Path) -> PathBuf {
@@ -184,110 +156,54 @@ impl KeyStore {
         let server_bytes = tracing::info_span!("fhe.serialize_server_key", key_id = %key_id)
             .in_scope(|| super::encode_tfhe_binary(server_key))?;
 
-        let write_txn = self.db.begin_write().map_err(|error| {
-            FheError::Internal(format!(
-                "Failed to start redb write transaction for {key_id}: {error}"
-            ))
-        })?;
-
-        {
-            let mut public_table = write_txn.open_table(PUBLIC_KEYS_TABLE).map_err(|error| {
-                FheError::Internal(format!(
-                    "Failed to open public key table for {key_id}: {error}"
-                ))
+        self.write_key_rows(key_id, &public_bytes, &server_bytes)
+            .map_err(|error| {
+                FheError::Internal(format!("Failed to persist FHE keys for {key_id}: {error}"))
             })?;
-            public_table
-                .insert(key_id, public_bytes.as_slice())
-                .map_err(|error| {
-                    FheError::Internal(format!(
-                        "Failed to persist public key for {key_id}: {error}"
-                    ))
-                })?;
-
-            let mut server_table = write_txn.open_table(SERVER_KEYS_TABLE).map_err(|error| {
-                FheError::Internal(format!(
-                    "Failed to open server key table for {key_id}: {error}"
-                ))
-            })?;
-            server_table
-                .insert(key_id, server_bytes.as_slice())
-                .map_err(|error| {
-                    FheError::Internal(format!(
-                        "Failed to persist server key for {key_id}: {error}"
-                    ))
-                })?;
-        }
-
-        tracing::info_span!("fhe.persist_key.commit", key_id = %key_id).in_scope(|| {
-            write_txn.commit().map_err(|error| {
-                FheError::Internal(format!(
-                    "Failed to commit key persistence for {key_id}: {error}"
-                ))
-            })
-        })?;
 
         Ok(start.elapsed().as_millis())
     }
 
-    fn load_public_key_from_db(&self, key_id: &str) -> Option<CompressedPublicKey> {
-        let read_txn = match self.db.begin_read() {
-            Ok(txn) => txn,
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to open redb read transaction");
-                return None;
-            }
-        };
-        let table = match read_txn.open_table(PUBLIC_KEYS_TABLE) {
-            Ok(table) => table,
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to open public key table");
-                return None;
-            }
-        };
-        let value = match table.get(key_id) {
-            Ok(value) => value,
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to read public key from table");
-                return None;
-            }
-        }?;
-        let bytes = value.value();
-        match super::decode_tfhe_binary(bytes) {
-            Ok(key) => Some(key),
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to deserialize public key");
-                None
-            }
-        }
+    fn write_key_rows(
+        &self,
+        key_id: &str,
+        public_bytes: &[u8],
+        server_bytes: &[u8],
+    ) -> Result<(), redb::Error> {
+        let write_txn = self.db.begin_write()?;
+        write_txn
+            .open_table(PUBLIC_KEYS_TABLE)?
+            .insert(key_id, public_bytes)?;
+        write_txn
+            .open_table(SERVER_KEYS_TABLE)?
+            .insert(key_id, server_bytes)?;
+        tracing::info_span!("fhe.persist_key.commit", key_id = %key_id)
+            .in_scope(|| write_txn.commit())?;
+        Ok(())
     }
 
-    fn load_compressed_server_key_from_db(&self, key_id: &str) -> Option<CompressedServerKey> {
-        let read_txn = match self.db.begin_read() {
-            Ok(txn) => txn,
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to open redb read transaction");
-                return None;
+    /// Read and decode one key from `table`. A missing, unreadable, or
+    /// undecodable row is `None`; the cause is logged.
+    fn load_from_table<T>(&self, table: TableDefinition<&str, &[u8]>, key_id: &str) -> Option<T>
+    where
+        T: DeserializeOwned + Unversionize + Named,
+    {
+        let loaded = (|| {
+            let read_txn = self.db.begin_read()?;
+            let rows = read_txn.open_table(table)?;
+            let row = rows.get(key_id)?;
+            Ok::<_, redb::Error>(row.map(|value| super::decode_tfhe_binary::<T>(value.value())))
+        })();
+
+        match loaded {
+            Ok(Some(Ok(key))) => Some(key),
+            Ok(Some(Err(error))) => {
+                warn!(key_id = %key_id, table = table.name(), error = %error, "Failed to deserialize key");
+                None
             }
-        };
-        let table = match read_txn.open_table(SERVER_KEYS_TABLE) {
-            Ok(table) => table,
+            Ok(None) => None,
             Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to open server key table");
-                return None;
-            }
-        };
-        let value = match table.get(key_id) {
-            Ok(value) => value,
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to read server key from table");
-                return None;
-            }
-        }?;
-        let bytes = value.value();
-        match super::decode_tfhe_binary(bytes) {
-            Ok(key) => Some(key),
-            Err(error) => {
-                warn!(key_id = %key_id, error = %error, "Failed to deserialize server key");
+                warn!(key_id = %key_id, table = table.name(), error = %error, "Failed to read key from redb");
                 None
             }
         }
@@ -314,17 +230,8 @@ impl KeyStore {
             })?;
 
         let cache_start = Instant::now();
-        let mut public_keys = self
-            .public_keys
-            .write()
-            .map_err(|_| FheError::Internal("Public key store lock poisoned".to_string()))?;
-        public_keys.insert(key_id.clone(), public_key);
-
-        let mut server_keys_compressed = self
-            .server_keys_compressed
-            .write()
-            .map_err(|_| FheError::Internal("Server key store lock poisoned".to_string()))?;
-        server_keys_compressed.insert(key_id.clone(), server_key);
+        write_cache(&self.public_keys).insert(key_id.clone(), public_key);
+        write_cache(&self.server_keys_compressed).insert(key_id.clone(), server_key);
         let cache_ms = cache_start.elapsed().as_millis();
         info!(
             key_id = %key_id,
@@ -338,126 +245,39 @@ impl KeyStore {
 
     /// Get a server key by ID (decompressed).
     pub fn get_server_key(&self, key_id: &str) -> Option<ServerKey> {
-        let cached_server_key = {
-            let guard = match self.server_keys.read() {
-                Ok(guard) => guard,
-                Err(error) => {
-                    warn!(
-                        key_id = %key_id,
-                        error = %error,
-                        "Server key cache lock poisoned; continuing with inner state"
-                    );
-                    error.into_inner()
-                }
-            };
-            guard.get(key_id).cloned()
-        };
-
-        if let Some(key) = cached_server_key {
+        if let Some(key) = read_cache(&self.server_keys).get(key_id).cloned() {
             return Some(key);
         }
 
-        let compressed = {
-            let compressed_cached = {
-                let guard = match self.server_keys_compressed.read() {
-                    Ok(guard) => guard,
-                    Err(error) => {
-                        warn!(
-                            key_id = %key_id,
-                            error = %error,
-                            "Compressed server key cache lock poisoned; continuing with inner state"
-                        );
-                        error.into_inner()
-                    }
-                };
-                guard.get(key_id).cloned()
-            };
-
-            if let Some(key) = compressed_cached {
-                Some(key)
-            } else {
-                self.load_compressed_server_key_from_db(key_id)
-            }
+        let cached_compressed = read_cache(&self.server_keys_compressed)
+            .get(key_id)
+            .cloned();
+        let compressed = match cached_compressed {
+            Some(key) => key,
+            None => self.load_from_table::<CompressedServerKey>(SERVER_KEYS_TABLE, key_id)?,
         };
 
-        let compressed = compressed?;
         let server_key_result = tracing::info_span!("fhe.decompress_server_key", key_id = %key_id)
             .in_scope(|| catch_unwind(AssertUnwindSafe(|| compressed.decompress())));
-        let server_key = match server_key_result {
-            Ok(key) => key,
-            Err(_) => {
-                warn!(key_id = %key_id, "Server key decompression panicked");
-                return None;
-            }
+        let Ok(server_key) = server_key_result else {
+            warn!(key_id = %key_id, "Server key decompression panicked");
+            return None;
         };
 
-        {
-            let mut guard = match self.server_keys.write() {
-                Ok(guard) => guard,
-                Err(error) => {
-                    warn!(
-                        key_id = %key_id,
-                        error = %error,
-                        "Server key cache write lock poisoned; continuing with inner state"
-                    );
-                    error.into_inner()
-                }
-            };
-            guard.insert(key_id.to_string(), server_key.clone());
-        }
-        {
-            let mut guard = match self.server_keys_compressed.write() {
-                Ok(guard) => guard,
-                Err(error) => {
-                    warn!(
-                        key_id = %key_id,
-                        error = %error,
-                        "Compressed server key cache write lock poisoned; continuing with inner state"
-                    );
-                    error.into_inner()
-                }
-            };
-            guard.insert(key_id.to_string(), compressed);
-        }
+        write_cache(&self.server_keys).insert(key_id.to_string(), server_key.clone());
+        write_cache(&self.server_keys_compressed).insert(key_id.to_string(), compressed);
 
         Some(server_key)
     }
 
     /// Get a public key by ID
     pub fn get_public_key(&self, key_id: &str) -> Option<CompressedPublicKey> {
-        let cached_public_key = {
-            let guard = match self.public_keys.read() {
-                Ok(guard) => guard,
-                Err(error) => {
-                    warn!(
-                        key_id = %key_id,
-                        error = %error,
-                        "Public key cache lock poisoned; continuing with inner state"
-                    );
-                    error.into_inner()
-                }
-            };
-            guard.get(key_id).cloned()
-        };
-        if let Some(key) = cached_public_key {
+        if let Some(key) = read_cache(&self.public_keys).get(key_id).cloned() {
             return Some(key);
         }
 
-        let key = self.load_public_key_from_db(key_id)?;
-        {
-            let mut guard = match self.public_keys.write() {
-                Ok(guard) => guard,
-                Err(error) => {
-                    warn!(
-                        key_id = %key_id,
-                        error = %error,
-                        "Public key cache write lock poisoned; continuing with inner state"
-                    );
-                    error.into_inner()
-                }
-            };
-            guard.insert(key_id.to_string(), key.clone());
-        }
+        let key = self.load_from_table::<CompressedPublicKey>(PUBLIC_KEYS_TABLE, key_id)?;
+        write_cache(&self.public_keys).insert(key_id.to_string(), key.clone());
         Some(key)
     }
 }
@@ -524,5 +344,28 @@ mod tests {
 
         assert!(store.get_server_key(&key_id).is_some());
         assert!(store.server_keys.read().unwrap().contains_key(&key_id));
+    }
+
+    #[test]
+    fn register_key_survives_poisoned_cache_lock() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = KeyStore::new_for_tests(dir.path().to_path_buf());
+        let client_key = ClientKey::generate(ConfigBuilder::default().build());
+
+        let panicked = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = store.public_keys.write().unwrap();
+            panic!("poison the public key cache");
+        }));
+        assert!(panicked.is_err());
+        assert!(store.public_keys.is_poisoned());
+
+        let key_id = store
+            .register_key(
+                CompressedPublicKey::new(&client_key),
+                CompressedServerKey::new(&client_key),
+            )
+            .expect("register key with a poisoned cache lock");
+
+        assert!(store.get_public_key(&key_id).is_some());
     }
 }

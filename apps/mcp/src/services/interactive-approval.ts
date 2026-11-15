@@ -17,6 +17,7 @@ import {
 import type { DpopClient } from "@zentity/sdk/rp";
 import { clientCapabilitiesOf } from "../agent.js";
 import { config } from "../config.js";
+import { discoverMcpOAuth } from "../oauth-client.js";
 import type { OAuthSessionContext } from "../runtime/auth-context.js";
 
 const INTERACTION_TTL_BUFFER_MS = 5000;
@@ -43,13 +44,40 @@ interface InteractiveToolFlowEntry {
   tokenEndpoint: string;
 }
 
+/** What varies per tool call; the session and the endpoints fill in the rest. */
+export type ApprovalRequest = Pick<
+  CibaRequest,
+  "agentAssertion" | "authorizationDetails" | "bindingMessage" | "scope"
+>;
+
 interface StartInteractiveFlowParams<T> {
+  approval: ApprovalRequest;
   browserSearchParams?: Record<string, string | undefined>;
-  cibaRequest: CibaRequest;
   fingerprint: string;
   oauth: OAuthSessionContext;
   onApproved: (tokenSet: CibaTokenSet) => Promise<T>;
   toolName: "my_profile" | "purchase";
+}
+
+async function buildCibaRequest(
+  oauth: OAuthSessionContext,
+  approval: ApprovalRequest
+): Promise<CibaRequest> {
+  const discovery = await discoverMcpOAuth();
+  if (!discovery.backchannel_authentication_endpoint) {
+    throw new Error(
+      "Zentity discovery does not advertise a backchannel authentication endpoint"
+    );
+  }
+  return {
+    ...approval,
+    cibaEndpoint: discovery.backchannel_authentication_endpoint,
+    clientId: oauth.clientId,
+    dpopClient: oauth.dpopClient,
+    loginHint: oauth.accountSub,
+    resource: config.zentityUrl,
+    tokenEndpoint: discovery.token_endpoint,
+  };
 }
 
 const flows = new Map<string, InteractiveToolFlowEntry>();
@@ -145,9 +173,10 @@ export async function beginOrResumeInteractiveFlow<T>(
     return resumeInteractiveFlow(existing, params);
   }
 
-  const pendingAuthorization = await beginCibaApproval(params.cibaRequest);
+  const cibaRequest = await buildCibaRequest(params.oauth, params.approval);
+  const pendingAuthorization = await beginCibaApproval(cibaRequest);
   logPendingApprovalHandoff(
-    createPendingApproval(params.cibaRequest, pendingAuthorization)
+    createPendingApproval(cibaRequest, pendingAuthorization)
   );
 
   const entry: InteractiveToolFlowEntry = {
@@ -163,7 +192,7 @@ export async function beginOrResumeInteractiveFlow<T>(
     }),
     clientId: params.oauth.clientId,
     dpopClient: params.oauth.dpopClient,
-    tokenEndpoint: params.cibaRequest.tokenEndpoint,
+    tokenEndpoint: cibaRequest.tokenEndpoint,
   };
   flows.set(params.fingerprint, entry);
 

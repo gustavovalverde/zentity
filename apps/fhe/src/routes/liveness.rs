@@ -1,47 +1,12 @@
-//! Liveness score encryption and verification endpoints.
+//! Liveness threshold verification endpoint.
 
-use axum::body::Bytes;
-use axum::http::HeaderMap;
-use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use tracing::info_span;
 
 use super::run_cpu_bound;
 use crate::crypto;
 use crate::error::FheError;
-use crate::transport;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptLivenessRequest {
-    /// Liveness score from 0.0 to 1.0
-    score: f64,
-    key_id: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptLivenessResponse {
-    #[serde(with = "serde_bytes")]
-    ciphertext: Vec<u8>,
-    /// Original score that was encrypted (for confirmation)
-    score: f64,
-}
-
-#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
-pub async fn encrypt_liveness(headers: HeaderMap, body: Bytes) -> Result<Response, FheError> {
-    let payload: EncryptLivenessRequest = transport::decode_msgpack(&headers, body)?;
-    let EncryptLivenessRequest { score, key_id } = payload;
-    let ciphertext = run_cpu_bound(move || {
-        let public_key = info_span!("fhe.get_public_key", key_id = %key_id)
-            .in_scope(|| crypto::get_public_key_for_encryption(&key_id))?;
-        info_span!("fhe.encrypt.liveness_score", value = %score)
-            .in_scope(|| crypto::encrypt_liveness_score(score, &public_key))
-    })
-    .await?;
-
-    transport::encode_msgpack(&headers, &EncryptLivenessResponse { ciphertext, score })
-}
+use crate::transport::MsgPack;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,12 +26,10 @@ pub struct VerifyLivenessThresholdResponse {
     threshold: f64,
 }
 
-#[tracing::instrument(skip(headers, body), fields(request_bytes = body.len()))]
+#[tracing::instrument(skip_all)]
 pub async fn verify_liveness_threshold(
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response, FheError> {
-    let payload: VerifyLivenessThresholdRequest = transport::decode_msgpack(&headers, body)?;
+    MsgPack(payload): MsgPack<VerifyLivenessThresholdRequest>,
+) -> Result<MsgPack<VerifyLivenessThresholdResponse>, FheError> {
     let VerifyLivenessThresholdRequest {
         ciphertext,
         threshold,
@@ -84,11 +47,8 @@ pub async fn verify_liveness_threshold(
     })
     .await?;
 
-    transport::encode_msgpack(
-        &headers,
-        &VerifyLivenessThresholdResponse {
-            passes_ciphertext,
-            threshold,
-        },
-    )
+    Ok(MsgPack(VerifyLivenessThresholdResponse {
+        passes_ciphertext,
+        threshold,
+    }))
 }
