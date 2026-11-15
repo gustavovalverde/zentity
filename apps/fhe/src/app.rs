@@ -9,7 +9,8 @@ use axum::{
 };
 use tower::{limit::ConcurrencyLimitLayer, ServiceBuilder};
 use tower_http::{
-    compression::CompressionLayer, decompression::RequestDecompressionLayer, timeout::TimeoutLayer,
+    compression::CompressionLayer, decompression::RequestDecompressionLayer,
+    limit::RequestBodyLimitLayer, timeout::TimeoutLayer,
 };
 
 use crate::{auth::internal_auth, routes, settings::Settings};
@@ -17,11 +18,13 @@ use crate::{auth::internal_auth, routes, settings::Settings};
 pub fn build_router(settings: &Settings) -> Router {
     routes::init_cpu_limiter(settings.cpu_concurrency_limit());
 
-    // Request bodies are decompressed as the handler reads them, so the body
-    // limit bounds the decompressed size. Authentication runs on the route,
-    // before the body is read.
+    // The body limit applies twice: RequestBodyLimitLayer caps the bytes on the
+    // wire, outside the decompressor, and DefaultBodyLimit caps the decompressed
+    // size the handler reads. Authentication runs on the route, before the body
+    // is read.
     let middleware_stack = ServiceBuilder::new()
         .layer(CompressionLayer::new())
+        .layer(RequestBodyLimitLayer::new(settings.body_limit_bytes()))
         .layer(RequestDecompressionLayer::new())
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,

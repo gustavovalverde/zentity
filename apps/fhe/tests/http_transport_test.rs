@@ -88,6 +88,61 @@ async fn gzip_request_body_is_bounded_after_decompression() {
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
 
+/// A gzip stream of empty stored blocks: large on the wire, empty once decompressed.
+fn padded_empty_gzip(blocks: usize) -> Vec<u8> {
+    let mut stream = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+    for _ in 0..blocks {
+        stream.extend_from_slice(&[0x00, 0x00, 0x00, 0xff, 0xff]);
+    }
+    stream.extend_from_slice(&[0x01, 0x00, 0x00, 0xff, 0xff]);
+    stream.extend_from_slice(&[0; 8]); // CRC-32 and size of the empty payload
+    stream
+}
+
+/// The body limit also applies to the compressed bytes on the wire, so a body that
+/// decompresses to almost nothing cannot be streamed without bound.
+#[tokio::test]
+async fn gzip_request_body_is_bounded_on_the_wire() {
+    let padded = padded_empty_gzip(100_000);
+    assert!(padded.len() > 64 * 1024);
+    let mut decoded = Vec::new();
+    GzDecoder::new(padded.as_slice())
+        .read_to_end(&mut decoded)
+        .unwrap();
+    assert!(
+        decoded.is_empty(),
+        "the padded stream must decode to nothing"
+    );
+
+    let announced = TestAppBuilder::new()
+        .with_body_limit_bytes(64 * 1024)
+        .build()
+        .oneshot(
+            batch_request()
+                .header(header::CONTENT_ENCODING, "gzip")
+                .header(header::CONTENT_LENGTH, padded.len())
+                .body(Body::from(padded.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(announced.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+    // Without a Content-Length header the limit is enforced while the body is read.
+    let streamed = TestAppBuilder::new()
+        .with_body_limit_bytes(64 * 1024)
+        .build()
+        .oneshot(
+            batch_request()
+                .header(header::CONTENT_ENCODING, "gzip")
+                .body(Body::from(padded))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(streamed.status(), StatusCode::PAYLOAD_TOO_LARGE);
+}
+
 /// A corrupt gzip stream is a 400 in the service's JSON error format.
 #[tokio::test]
 async fn corrupt_gzip_request_body_returns_json_400() {
