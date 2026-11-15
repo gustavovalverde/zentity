@@ -92,6 +92,10 @@ describe("token verifiers", () => {
     // The refreshed discovery document keeps the same jwks_uri, so the key
     // set (and jose's cache) is reused.
     expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledTimes(1);
+    expect(joseMocks.createRemoteJWKSet).toHaveBeenCalledWith(
+      new URL("https://issuer.example/api/auth/oauth2/jwks"),
+      { cacheMaxAge: 5 * 60 * 1000 }
+    );
     expect(joseMocks.jwtVerify).toHaveBeenNthCalledWith(
       1,
       "token-a",

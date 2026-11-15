@@ -149,6 +149,26 @@ describe("CIBA", () => {
     expect(sentProofNonce(1)).toBe("nonce-1");
   });
 
+  it("keeps polling when a pending error carries a null error_description", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: "authorization_pending",
+          error_description: null,
+        }),
+        { status: 400 }
+      )
+    );
+
+    const result = await pollCibaTokenOnce(BASE_PARAMS, {
+      authReqId: "req-pending",
+      expiresIn: 300,
+      intervalSeconds: 5,
+    });
+
+    expect(result.status).toBe("pending");
+  });
+
   it("polls once and returns pending metadata without blocking", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "authorization_pending" }), {

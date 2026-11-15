@@ -19,7 +19,7 @@ const cibaTokenResponseSchema = z.object({
 
 const cibaErrorResponseSchema = z.object({
   error: z.string(),
-  error_description: z.string().optional(),
+  error_description: z.string().optional().catch(undefined),
 });
 
 function parseCibaResponse<T extends z.ZodType>(

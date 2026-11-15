@@ -85,7 +85,9 @@ export function createOpenIdTokenVerifier(
     if (cachedJwks?.jwksUri !== document.jwks_uri) {
       cachedJwks = {
         jwksUri: document.jwks_uri,
-        value: createRemoteJWKSet(new URL(document.jwks_uri)),
+        value: createRemoteJWKSet(new URL(document.jwks_uri), {
+          cacheMaxAge: DEFAULT_JWKS_TTL_MS,
+        }),
       };
     }
 
