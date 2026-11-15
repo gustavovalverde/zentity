@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveKekFromOpaqueExport,
   deriveKekFromPrf,
+  deriveKekFromRecoveryKey,
   deriveKekFromWalletSignature,
   generatePrfSalt,
 } from "@/lib/privacy/credentials/derivation";
@@ -227,7 +228,61 @@ describe("key-derivation", () => {
     });
   });
 
+  describe("deriveKekFromRecoveryKey", () => {
+    it("derives deterministic KEK from same input", async () => {
+      const recoveryKey = new Uint8Array(32).fill(0x24);
+      const kek1 = await deriveKekFromRecoveryKey(recoveryKey, "user-123");
+      const kek2 = await deriveKekFromRecoveryKey(recoveryKey, "user-123");
+
+      const testData = new TextEncoder().encode("test");
+      const encrypted = await encryptAesGcm(kek1, testData);
+
+      expect(await decryptAesGcm(kek2, encrypted)).toEqual(testData);
+    });
+
+    it("rejects a recovery key that is not 32 bytes", async () => {
+      await expect(
+        deriveKekFromRecoveryKey(new Uint8Array(31), "user-123")
+      ).rejects.toThrow("Recovery key must be 32 bytes");
+      await expect(
+        deriveKekFromRecoveryKey(new Uint8Array(64), "user-123")
+      ).rejects.toThrow("Recovery key must be 32 bytes");
+    });
+  });
+
   describe("cross-credential isolation", () => {
+    it("recovery-key and OPAQUE KEKs differ even with overlapping input bytes", async () => {
+      const recoveryKey = crypto.getRandomValues(new Uint8Array(32));
+      const userId = "user-123";
+      const recoveryKek = await deriveKekFromRecoveryKey(recoveryKey, userId);
+      const opaqueKek = await deriveKekFromOpaqueExport(
+        new Uint8Array([...recoveryKey, ...recoveryKey]),
+        userId
+      );
+
+      const testData = new TextEncoder().encode("test");
+
+      await expect(
+        decryptAesGcm(recoveryKek, await encryptAesGcm(opaqueKek, testData))
+      ).rejects.toThrow();
+      await expect(
+        decryptAesGcm(opaqueKek, await encryptAesGcm(recoveryKek, testData))
+      ).rejects.toThrow();
+    });
+
+    it("recovery-key and PRF KEKs differ for the same 32 bytes", async () => {
+      const input = crypto.getRandomValues(new Uint8Array(32));
+      const recoveryKek = await deriveKekFromRecoveryKey(input, "user-123");
+      const prfKek = await deriveKekFromPrf(input, "user-123");
+
+      const encrypted = await encryptAesGcm(
+        prfKek,
+        new TextEncoder().encode("test")
+      );
+
+      await expect(decryptAesGcm(recoveryKek, encrypted)).rejects.toThrow();
+    });
+
     it("PRF and OPAQUE KEKs differ even with overlapping input bytes", async () => {
       const sharedBytes = new Uint8Array(64).fill(0x42);
       const prfInput = sharedBytes.slice(0, 32);

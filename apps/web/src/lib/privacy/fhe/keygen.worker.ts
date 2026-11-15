@@ -1,5 +1,8 @@
 /// <reference lib="webworker" />
 
+// Type-only: the runtime module is the copy of tfhe.js served from /tfhe/.
+import type * as Tfhe from "tfhe";
+
 interface WorkerKeygenRequest {
   id: number;
   type: "generate_key_material";
@@ -36,42 +39,7 @@ interface WorkerError {
   type: "error";
 }
 
-interface TfheClientKey {
-  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
-}
-
-interface TfheCompressedPublicKey {
-  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
-}
-
-interface TfheCompressedServerKey {
-  safe_serialize(serializedSizeLimit: bigint): Uint8Array;
-}
-
-interface TfheConfigBuilder {
-  build(): unknown;
-}
-
-interface TfheModuleStatic {
-  default(wasmPath?: string): Promise<unknown>;
-  init_panic_hook(): void;
-  initThreadPool(threads: number): Promise<void>;
-  TfheClientKey: {
-    generate(config: unknown): TfheClientKey;
-  };
-  TfheCompressedPublicKey: {
-    new: (clientKey: TfheClientKey) => TfheCompressedPublicKey;
-  };
-  TfheCompressedServerKey: {
-    new: (clientKey: TfheClientKey) => TfheCompressedServerKey;
-  };
-  TfheConfigBuilder: {
-    default(): TfheConfigBuilder;
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type TfheModule = TfheModuleStatic;
+type TfheModule = typeof Tfhe;
 
 /**
  * Upper bound for one versioned key blob. The FHE service reads these with
