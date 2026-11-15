@@ -8,7 +8,6 @@ import { createHash } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 
 import { computeOAuthRequestKey } from "@/lib/auth/oidc/oauth-request";
-import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
 import {
   oauthPendingDisclosures,
@@ -90,30 +89,6 @@ export function releaseIdFor(
     .digest("base64url");
 }
 
-function serializeClaimsRequest(
-  claimsRequest: ParsedClaimsParameter | null
-): string | null {
-  return claimsRequest ? JSON.stringify(claimsRequest) : null;
-}
-
-function deserializeClaimsRequest(
-  raw: string | null | undefined
-): ParsedClaimsParameter | null {
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as ParsedClaimsParameter;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function serializeStringArray(values: string[] | null): string | null {
-  return values ? JSON.stringify(values) : null;
-}
-
 async function cleanupExpiredIntentJtis(): Promise<void> {
   try {
     await db
@@ -165,8 +140,8 @@ async function cleanupExpiredReleaseContexts(): Promise<void> {
 function toReleaseContext(
   row:
     | {
-        approvedIdentityScopes: string | null;
-        claimsRequest: string | null;
+        approvedIdentityScopes: string[] | null;
+        claimsRequest: ParsedClaimsParameter | null;
         clientId: string;
         expectsIdentityPayload: boolean;
         expiresAt: Date | number;
@@ -192,8 +167,8 @@ function toReleaseContext(
     flowType: row.flowType as ReleaseFlowType,
     userId: row.userId,
     clientId: row.clientId,
-    claimsRequest: deserializeClaimsRequest(row.claimsRequest),
-    approvedIdentityScopes: parseStoredStringArray(row.approvedIdentityScopes),
+    claimsRequest: row.claimsRequest,
+    approvedIdentityScopes: row.approvedIdentityScopes ?? [],
     scopeHash: row.scopeHash,
     expectsIdentityPayload: row.expectsIdentityPayload,
     expiresAt,
@@ -203,7 +178,7 @@ function toReleaseContext(
 function toPendingOauthDisclosure(
   row:
     | {
-        approvedIdentityScopes: string;
+        approvedIdentityScopes: string[];
         clientId: string;
         expiresAt: Date | number;
         intentJti: string;
@@ -225,7 +200,7 @@ function toPendingOauthDisclosure(
     oauthRequestKey: row.oauthRequestKey,
     userId: row.userId,
     clientId: row.clientId,
-    approvedIdentityScopes: parseStoredStringArray(row.approvedIdentityScopes),
+    approvedIdentityScopes: row.approvedIdentityScopes,
     scopeHash: row.scopeHash,
     intentJti: row.intentJti,
     expiresAt,
@@ -319,7 +294,7 @@ export async function stagePendingOauthDisclosure(input: {
         oauthRequestKey: input.oauthRequestKey,
         userId: input.userId,
         clientId: input.clientId,
-        approvedIdentityScopes: JSON.stringify(input.scopes),
+        approvedIdentityScopes: input.scopes,
         scopeHash: input.scopeHash,
         intentJti: input.intentJti,
         expiresAt: new Date(expiresAt),
@@ -443,10 +418,8 @@ export async function finalizeOauthDisclosureFromVerification(input: {
       flowType: "oauth",
       userId: input.userId,
       clientId,
-      claimsRequest: serializeClaimsRequest(claimsRequest),
-      approvedIdentityScopes: serializeStringArray(
-        pending ? pending.approvedIdentityScopes : null
-      ),
+      claimsRequest,
+      approvedIdentityScopes: pending ? pending.approvedIdentityScopes : null,
       scopeHash: pending?.scopeHash ?? null,
       expectsIdentityPayload: Boolean(pending),
       expiresAt: new Date(expiresAt),
@@ -456,10 +429,8 @@ export async function finalizeOauthDisclosureFromVerification(input: {
       target: oidcReleaseContexts.releaseId,
       set: {
         clientId,
-        claimsRequest: serializeClaimsRequest(claimsRequest),
-        approvedIdentityScopes: serializeStringArray(
-          pending ? pending.approvedIdentityScopes : null
-        ),
+        claimsRequest,
+        approvedIdentityScopes: pending ? pending.approvedIdentityScopes : null,
         scopeHash: pending?.scopeHash ?? null,
         expectsIdentityPayload: Boolean(pending),
         expiresAt: new Date(expiresAt),
@@ -550,7 +521,7 @@ export async function stageFinalCibaDisclosure(input: {
         userId: input.userId,
         clientId: input.clientId,
         claimsRequest: null,
-        approvedIdentityScopes: JSON.stringify(input.scopes),
+        approvedIdentityScopes: input.scopes,
         scopeHash: input.scopeHash,
         expectsIdentityPayload: true,
         expiresAt: new Date(expiresAt),
