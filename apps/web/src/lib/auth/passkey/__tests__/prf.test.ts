@@ -113,7 +113,6 @@ describe("webauthn-prf", () => {
 
       const result = extractPrfOutputFromClientResults({
         clientExtensionResults: null,
-        credentialId: "cred",
       });
 
       expect(result).toBeNull();
@@ -129,28 +128,54 @@ describe("webauthn-prf", () => {
         clientExtensionResults: {
           prf: { results: { first: output.buffer } },
         },
-        credentialId: "cred",
       });
 
       expect(result).toEqual(output);
     });
 
-    it("parses PRF output from resultsByCredential base64url", async () => {
+    it("parses PRF output from Uint8Array", async () => {
+      const module = await import("../prf");
+      extractPrfOutputFromClientResults =
+        module.extractPrfOutputFromClientResults;
+
+      const output = new Uint8Array(32).map((_, idx) => idx + 1);
+      const result = extractPrfOutputFromClientResults({
+        clientExtensionResults: { prf: { results: { first: output } } },
+      });
+
+      expect(result).toEqual(output);
+    });
+
+    it("parses PRF output from base64url string", async () => {
       const module = await import("../prf");
       extractPrfOutputFromClientResults =
         module.extractPrfOutputFromClientResults;
 
       const output = new Uint8Array(32).map((_, idx) => 255 - idx);
-      const encoded = bytesToBase64Url(output);
 
       const result = extractPrfOutputFromClientResults({
         clientExtensionResults: {
-          prf: { resultsByCredential: { cred: encoded } },
+          prf: { results: { first: bytesToBase64Url(output) } },
         },
-        credentialId: "cred",
       });
 
       expect(result).toEqual(output);
+    });
+
+    it("ignores the non-standard resultsByCredential output", async () => {
+      const module = await import("../prf");
+      extractPrfOutputFromClientResults =
+        module.extractPrfOutputFromClientResults;
+
+      const output = new Uint8Array(32).map((_, idx) => idx);
+
+      const result = extractPrfOutputFromClientResults({
+        clientExtensionResults: {
+          prf: { resultsByCredential: { cred: output.buffer } },
+        },
+      });
+
+      expect(result).toBeNull();
     });
   });
 });
