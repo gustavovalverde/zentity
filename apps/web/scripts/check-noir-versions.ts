@@ -1,6 +1,11 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { glob } from "node:fs/promises";
 import { join } from "node:path";
+
+import {
+  normalizeVersion,
+  readInstalledVersion,
+} from "@/lib/privacy/zk/version-check";
 
 const VERSION_PREFIX_RE = /^[~^]/;
 
@@ -9,33 +14,14 @@ interface PackageJson {
   devDependencies?: Record<string, string>;
 }
 
-function normalizeVersion(raw: string | null | undefined): string | null {
-  if (!raw) {
-    return null;
-  }
-  const trimmed = raw.trim().replace(VERSION_PREFIX_RE, "");
-  const [prefix] = trimmed.split("+");
-  return prefix || null;
+function normalizeRange(raw: string | null | undefined): string | null {
+  return normalizeVersion(raw?.trim().replace(VERSION_PREFIX_RE, ""));
 }
 
 function readPackageJson(root: string): PackageJson {
   const pkgPath = join(root, "package.json");
   const raw = readFileSync(pkgPath, "utf8");
   return JSON.parse(raw) as PackageJson;
-}
-
-function readInstalledVersion(root: string, pkgName: string): string | null {
-  const pkgPath = join(root, "node_modules", pkgName, "package.json");
-  if (!existsSync(pkgPath)) {
-    return null;
-  }
-  try {
-    const raw = readFileSync(pkgPath, "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    return typeof parsed.version === "string" ? parsed.version : null;
-  } catch {
-    return null;
-  }
 }
 
 function getDependencyVersion(pkg: PackageJson, name: string): string | null {
@@ -46,16 +32,16 @@ async function main() {
   const root = process.cwd();
   const pkg = readPackageJson(root);
 
-  const noirJsVersion = normalizeVersion(
-    readInstalledVersion(root, "@noir-lang/noir_js") ??
+  const noirJsVersion = normalizeRange(
+    readInstalledVersion("@noir-lang/noir_js") ??
       getDependencyVersion(pkg, "@noir-lang/noir_js")
   );
-  const acvmVersion = normalizeVersion(
-    readInstalledVersion(root, "@noir-lang/acvm_js") ??
+  const acvmVersion = normalizeRange(
+    readInstalledVersion("@noir-lang/acvm_js") ??
       getDependencyVersion(pkg, "@noir-lang/acvm_js")
   );
-  const abiVersion = normalizeVersion(
-    readInstalledVersion(root, "@noir-lang/noirc_abi") ??
+  const abiVersion = normalizeRange(
+    readInstalledVersion("@noir-lang/noirc_abi") ??
       getDependencyVersion(pkg, "@noir-lang/noirc_abi")
   );
 
@@ -87,7 +73,7 @@ async function main() {
       const raw = JSON.parse(readFileSync(fullPath, "utf8")) as {
         noir_version?: string;
       };
-      const version = normalizeVersion(raw.noir_version);
+      const version = normalizeRange(raw.noir_version);
       if (version) {
         artifactVersions.add(version);
       } else {

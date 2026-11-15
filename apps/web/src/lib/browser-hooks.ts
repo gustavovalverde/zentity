@@ -13,6 +13,34 @@ import { useEffect, useState } from "react";
 const MOBILE_BREAKPOINT = 768;
 const MOBILE_DEVICE_PATTERN = /Android|iPhone|iPad/i;
 const MACINTOSH_PATTERN = /Macintosh/i;
+const IOS_PHONE_PATTERN = /iPhone|iPod/;
+const MAC_UA_PATTERN = /Macintosh/;
+
+/**
+ * True for iPhone, iPod, and touch-capable iPads that report a Mac user agent
+ * (iPadOS 13+). Browser-only: reads `navigator`.
+ */
+export function isIOSDevice(): boolean {
+  if (IOS_PHONE_PATTERN.test(navigator.userAgent)) {
+    return true;
+  }
+  const uaData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const isMac = uaData.userAgentData?.platform
+    ? uaData.userAgentData.platform === "macOS"
+    : MAC_UA_PATTERN.test(navigator.userAgent);
+
+  return isMac && navigator.maxTouchPoints > 1;
+}
+
+function isMobileUserAgent(): boolean {
+  return (
+    MOBILE_DEVICE_PATTERN.test(navigator.userAgent) ||
+    (navigator.maxTouchPoints > 1 &&
+      MACINTOSH_PATTERN.test(navigator.userAgent))
+  );
+}
 
 /**
  * True on viewports narrower than 768px. Returns `undefined` during SSR so
@@ -46,11 +74,7 @@ export function useIsMobileDevice(): boolean {
     if (typeof navigator === "undefined") {
       return false;
     }
-    return (
-      MOBILE_DEVICE_PATTERN.test(navigator.userAgent) ||
-      (navigator.maxTouchPoints > 1 &&
-        MACINTOSH_PATTERN.test(navigator.userAgent))
-    );
+    return isMobileUserAgent();
   });
 
   return isMobile;
@@ -66,14 +90,6 @@ export function useMobileDetect() {
   const [isLandscape, setIsLandscape] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => {
-      const isMobileDevice =
-        MOBILE_DEVICE_PATTERN.test(navigator.userAgent) ||
-        (navigator.maxTouchPoints > 1 &&
-          MACINTOSH_PATTERN.test(navigator.userAgent));
-      setIsMobile(isMobileDevice);
-    };
-
     const landscapeQuery = globalThis.window.matchMedia(
       "(orientation: landscape)"
     );
@@ -81,7 +97,7 @@ export function useMobileDetect() {
       setIsLandscape(e.matches);
     };
 
-    checkMobile();
+    setIsMobile(isMobileUserAgent());
     setIsLandscape(landscapeQuery.matches);
     landscapeQuery.addEventListener("change", handleOrientation);
 

@@ -2,8 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { VisuallyHidden } from "@/components/ui/visually-hidden";
-
 interface ScreenReaderAnnouncerProps {
   /** Message to announce. Changes trigger new announcements. */
   message: string | null;
@@ -15,7 +13,7 @@ interface ScreenReaderAnnouncerProps {
  * Dedicated screen reader announcer for liveness hints.
  *
  * Provides cleaner announcements than aria-live on visible elements
- * by using a VisuallyHidden element with proper announcement timing.
+ * by using a visually hidden (sr-only) element with proper announcement timing.
  *
  * Based on AWS Amplify FaceLivenessDetector accessibility patterns.
  */
@@ -43,12 +41,13 @@ export function ScreenReaderAnnouncer({
   }, [message]);
 
   return (
-    <VisuallyHidden
+    <span
       aria-atomic="true"
       aria-live={priority}
+      className="sr-only"
       role={priority === "assertive" ? "alert" : "status"}
     >
       {announcement}
-    </VisuallyHidden>
+    </span>
   );
 }

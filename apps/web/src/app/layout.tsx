@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { ThemeProvider } from "next-themes";
 
 import { PrivacyModeProvider } from "@/components/providers/privacy-mode-provider";
-import { ThemeProvider } from "@/components/providers/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { env } from "@/env";
 import { CSP_NONCE_HEADER } from "@/lib/http/content-security-policy";
@@ -44,12 +44,7 @@ export const metadata: Metadata = {
     description:
       "Privacy-first identity verification using passkeys, zero-knowledge proofs, fully homomorphic encryption, and commitments.",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "Zentity - Prove everything. Reveal nothing.",
-    description:
-      "Privacy-first identity verification using passkeys, zero-knowledge proofs, fully homomorphic encryption, and commitments.",
-  },
+  twitter: { card: "summary_large_image" },
 };
 
 export default async function RootLayout({

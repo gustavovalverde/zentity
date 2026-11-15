@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { getCircuitVerificationKey } from "@/lib/privacy/zk/noir/verifier";
-import { isProofType } from "@/lib/privacy/zk/proof-types";
+import { isProofType, ProofType } from "@/lib/privacy/zk/proof-types";
 
 export async function GET(
   _request: NextRequest,
@@ -11,8 +11,7 @@ export async function GET(
   if (!isProofType(circuitType)) {
     return NextResponse.json(
       {
-        error:
-          "circuitType must be 'age_verification', 'doc_validity', 'nationality_membership', or 'face_match'",
+        error: `circuitType must be one of: ${Object.values(ProofType).join(", ")}`,
       },
       { status: 400 }
     );

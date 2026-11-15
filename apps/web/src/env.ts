@@ -4,11 +4,11 @@ import { z } from "zod";
 const TRAILING_SLASHES = /\/+$/;
 const WORLD_ID_PRIVATE_KEY_HEX_REGEX = /^(0x)?[0-9a-fA-F]{64}$/;
 const DEFAULT_MCP_PUBLIC_URL = "http://localhost:3300";
-const booleanTransform = (v: string) => v === "true" || v === "1";
-
-const booleanString = z
-  .enum(["true", "false", "0", "1"])
-  .transform(booleanTransform);
+const booleanString = z.stringbool({
+  truthy: ["true", "1"],
+  falsy: ["false", "0"],
+  case: "sensitive",
+});
 
 const isTruthyEnvValue = (value: string | undefined) =>
   value === "true" || value === "1";
@@ -27,11 +27,8 @@ const isAnyHumanityProviderEnabled = () =>
     isTruthyEnvValue(process.env[flag])
   );
 
-const booleanStringWithDefault = (defaultValue: "true" | "false") =>
-  z
-    .enum(["true", "false", "0", "1"])
-    .default(defaultValue)
-    .transform(booleanTransform);
+const booleanStringWithDefault = (defaultValue: boolean) =>
+  booleanString.default(defaultValue);
 
 /**
  * A wallet or key-attestation provider Zentity trusts (HAIP §4.4), identified
@@ -103,7 +100,7 @@ export const env = createEnv({
     // Internal services
     FHE_SERVICE_URL: serviceUrl("http://localhost:5001"),
     OCR_SERVICE_URL: serviceUrl("http://localhost:5004"),
-    DOCUMENT_OCR_ENABLED: booleanStringWithDefault("false"),
+    DOCUMENT_OCR_ENABLED: booleanStringWithDefault(false),
     INTERNAL_SERVICE_TOKEN: z
       .string()
       .optional()
@@ -246,7 +243,7 @@ export const env = createEnv({
     // Storage & ZK
     SECRET_BLOB_DIR: z.string().default(".data/secret-blobs"),
     BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
-    ZK_WARMUP_STRICT: booleanStringWithDefault("true"),
+    ZK_WARMUP_STRICT: booleanStringWithDefault(true),
 
     // Observability. The OpenTelemetry SDK reads the other standard OTEL_*
     // variables itself; these decide whether it starts and name the service.
@@ -269,11 +266,11 @@ export const env = createEnv({
     NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY: z.string().optional(),
 
     // Feature flags
-    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: booleanStringWithDefault("true"),
-    NEXT_PUBLIC_ENABLE_HARDHAT: booleanStringWithDefault("false"),
-    NEXT_PUBLIC_ENABLE_BASE_SEPOLIA: booleanStringWithDefault("false"),
-    NEXT_PUBLIC_ZKPASSPORT_ENABLED: booleanStringWithDefault("false"),
-    NEXT_PUBLIC_WORLD_ID_ENABLED: booleanStringWithDefault("false"),
+    NEXT_PUBLIC_ENABLE_CONFIDENTIAL_CHAIN: booleanStringWithDefault(true),
+    NEXT_PUBLIC_ENABLE_HARDHAT: booleanStringWithDefault(false),
+    NEXT_PUBLIC_ENABLE_BASE_SEPOLIA: booleanStringWithDefault(false),
+    NEXT_PUBLIC_ZKPASSPORT_ENABLED: booleanStringWithDefault(false),
+    NEXT_PUBLIC_WORLD_ID_ENABLED: booleanStringWithDefault(false),
     NEXT_PUBLIC_WORLD_ID_APP_ID: z
       .string()
       .optional()
@@ -290,11 +287,11 @@ export const env = createEnv({
     NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL: z
       .string()
       .default("https://sepolia.base.org"),
-    NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: booleanStringWithDefault("true"),
-    NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: booleanStringWithDefault("true"),
-    NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: booleanStringWithDefault("true"),
-    NEXT_PUBLIC_APPKIT_ENABLE_COINBASE: booleanStringWithDefault("true"),
-    NEXT_PUBLIC_APPKIT_ANALYTICS: booleanStringWithDefault("true"),
+    NEXT_PUBLIC_APPKIT_ENABLE_WALLETCONNECT: booleanStringWithDefault(true),
+    NEXT_PUBLIC_APPKIT_ENABLE_INJECTED: booleanStringWithDefault(true),
+    NEXT_PUBLIC_APPKIT_ENABLE_EIP6963: booleanStringWithDefault(true),
+    NEXT_PUBLIC_APPKIT_ENABLE_COINBASE: booleanStringWithDefault(true),
+    NEXT_PUBLIC_APPKIT_ANALYTICS: booleanStringWithDefault(true),
 
     // Web Push
     NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().optional(),
@@ -309,87 +306,10 @@ export const env = createEnv({
     process.env.NEXT_PHASE === "phase-production-build" ||
     process.env.NEXT_PHASE === "phase-export",
 
-  runtimeEnv: {
-    NODE_ENV: process.env.NODE_ENV,
-    BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
-    OPAQUE_SERVER_SETUP: process.env.OPAQUE_SERVER_SETUP,
-    TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL,
-    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
-    DRIZZLE_LOG: process.env.DRIZZLE_LOG,
-    FHE_SERVICE_URL: process.env.FHE_SERVICE_URL,
-    OCR_SERVICE_URL: process.env.OCR_SERVICE_URL,
-    DOCUMENT_OCR_ENABLED: process.env.DOCUMENT_OCR_ENABLED,
-    INTERNAL_SERVICE_TOKEN: process.env.INTERNAL_SERVICE_TOKEN,
-    WALLET_AUDIENCE: process.env.WALLET_AUDIENCE,
-    CRON_SECRET: process.env.CRON_SECRET,
-    CLAIM_SIGNING_SECRET: process.env.CLAIM_SIGNING_SECRET,
-    CIPHERTEXT_HMAC_SECRET: process.env.CIPHERTEXT_HMAC_SECRET,
-    KEY_ENCRYPTION_KEY: process.env.KEY_ENCRYPTION_KEY,
-    BBS_ISSUER_SECRET: process.env.BBS_ISSUER_SECRET,
-    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
-    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
-    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
-    DEDUP_HMAC_SECRET: process.env.DEDUP_HMAC_SECRET,
-    HUMANITY_HMAC_SECRET: process.env.HUMANITY_HMAC_SECRET,
-    PAIRWISE_SECRET: process.env.PAIRWISE_SECRET,
-    TRUSTED_ORIGINS: process.env.TRUSTED_ORIGINS,
-    OIDC4VP_JWKS_URL: process.env.OIDC4VP_JWKS_URL,
-    TRUSTED_WALLET_ISSUERS: process.env.TRUSTED_WALLET_ISSUERS,
-    TRUSTED_AGENT_ATTESTERS: process.env.TRUSTED_AGENT_ATTESTERS,
-    TRUSTED_SOFTWARE_STATEMENT_ISSUERS:
-      process.env.TRUSTED_SOFTWARE_STATEMENT_ISSUERS,
-    MCP_PUBLIC_URL: process.env.MCP_PUBLIC_URL,
-    WORLD_ID_RP_ID: process.env.WORLD_ID_RP_ID,
-    WORLD_ID_RP_SIGNING_KEY: process.env.WORLD_ID_RP_SIGNING_KEY,
-    WORLD_ID_VERIFY_URL: process.env.WORLD_ID_VERIFY_URL,
-    WORLD_ID_ENVIRONMENT: process.env.WORLD_ID_ENVIRONMENT,
-    WORLD_ID_RP_SIGNATURE_TTL_SECONDS:
-      process.env.WORLD_ID_RP_SIGNATURE_TTL_SECONDS,
-    CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY:
-      process.env.CONFIDENTIAL_CHAIN_REGISTRAR_PRIVATE_KEY,
-    CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY:
-      process.env.CONFIDENTIAL_CHAIN_IDENTITY_REGISTRY,
-    CONFIDENTIAL_CHAIN_COMPLIANCE_RULES:
-      process.env.CONFIDENTIAL_CHAIN_COMPLIANCE_RULES,
-    CONFIDENTIAL_CHAIN_COMPLIANT_ERC20:
-      process.env.CONFIDENTIAL_CHAIN_COMPLIANT_ERC20,
-    CONFIDENTIAL_RELAYER_URL: process.env.CONFIDENTIAL_RELAYER_URL,
-    CONFIDENTIAL_RELAYER_API_KEY: process.env.CONFIDENTIAL_RELAYER_API_KEY,
-    LOCAL_REGISTRAR_PRIVATE_KEY: process.env.LOCAL_REGISTRAR_PRIVATE_KEY,
-    LOCAL_RPC_URL: process.env.LOCAL_RPC_URL,
-    BASE_SEPOLIA_RPC_URL: process.env.BASE_SEPOLIA_RPC_URL,
-    BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY:
-      process.env.BASE_SEPOLIA_REGISTRAR_PRIVATE_KEY,
-    BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR:
-      process.env.BASE_SEPOLIA_IDENTITY_REGISTRY_MIRROR,
-    LOCAL_IDENTITY_REGISTRY: process.env.LOCAL_IDENTITY_REGISTRY,
-    LOCAL_COMPLIANCE_RULES: process.env.LOCAL_COMPLIANCE_RULES,
-    LOCAL_COMPLIANT_ERC20: process.env.LOCAL_COMPLIANT_ERC20,
-    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
-    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
-    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
-    MAILPIT_BASE_URL: process.env.MAILPIT_BASE_URL,
-    MAILPIT_SEND_API_URL: process.env.MAILPIT_SEND_API_URL,
-    MAILPIT_SEND_API_USERNAME: process.env.MAILPIT_SEND_API_USERNAME,
-    MAILPIT_SEND_API_PASSWORD: process.env.MAILPIT_SEND_API_PASSWORD,
-    RESEND_API_KEY: process.env.RESEND_API_KEY,
-    MAIL_FROM_EMAIL: process.env.MAIL_FROM_EMAIL,
-    MAIL_FROM_NAME: process.env.MAIL_FROM_NAME,
-    SECRET_BLOB_DIR: process.env.SECRET_BLOB_DIR,
-    BB_CRS_PATH: process.env.BB_CRS_PATH,
-    ZK_WARMUP_STRICT: process.env.ZK_WARMUP_STRICT,
-    LOG_LEVEL: process.env.LOG_LEVEL,
-    OTEL_ENABLED: process.env.OTEL_ENABLED,
-    OTEL_SERVICE_NAME: process.env.OTEL_SERVICE_NAME,
-    OTEL_EXPORTER_OTLP_ENDPOINT: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
-    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:
-      process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
-    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
-      process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
-    ZENTITY_ADMIN_API_KEY: process.env.ZENTITY_ADMIN_API_KEY,
-    DEMO_MODE: process.env.DEMO_MODE,
-    E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY,
+  // Server variables are read from process.env at runtime. Next inlines client
+  // variables only from literal process.env.NEXT_PUBLIC_* references, so those
+  // stay listed.
+  experimental__runtimeEnv: {
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
     NEXT_PUBLIC_OPAQUE_SERVER_PUBLIC_KEY:

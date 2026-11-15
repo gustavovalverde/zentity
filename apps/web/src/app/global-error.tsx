@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { reportClientError } from "@/lib/observability/client-error";
 import "./globals.css";
 
 export default function GlobalError({
@@ -12,20 +13,7 @@ export default function GlobalError({
   reset: () => void;
 }>) {
   useEffect(() => {
-    fetch("/api/status/log-client-error", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: error.name,
-        message: error.message,
-        digest: error.digest,
-        path: globalThis.window?.location?.pathname,
-        stack: error.stack,
-        source: "global-error-boundary",
-      }),
-    }).catch(() => {
-      // Logging failure should not cascade to user
-    });
+    reportClientError(error, "global-error-boundary");
   }, [error]);
 
   return (

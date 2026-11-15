@@ -20,7 +20,6 @@ import { reportRejection } from "@/lib/async-handler";
 import { authClient } from "@/lib/auth/auth-client";
 import {
   getPasswordLengthError,
-  PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "@/lib/auth/password";
 
@@ -100,19 +99,6 @@ export function ResetPasswordForm({ token }: Readonly<ResetPasswordFormProps>) {
     setBreachCheckKey((k) => k + 1);
   };
 
-  const validatePassword = (value: string) => {
-    if (!value) {
-      return "Password is required";
-    }
-    if (value.length < PASSWORD_MIN_LENGTH) {
-      return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
-    }
-    if (value.length > PASSWORD_MAX_LENGTH) {
-      return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
-    }
-    return;
-  };
-
   const validateConfirmPassword = (value: string) => {
     if (!value) {
       return "Please confirm your password";
@@ -144,8 +130,8 @@ export function ResetPasswordForm({ token }: Readonly<ResetPasswordFormProps>) {
         <form.Field
           name="password"
           validators={{
-            onBlur: ({ value }) => validatePassword(value),
-            onSubmit: ({ value }) => validatePassword(value),
+            onBlur: ({ value }) => getPasswordLengthError(value),
+            onSubmit: ({ value }) => getPasswordLengthError(value),
           }}
         >
           {(field) => {

@@ -35,8 +35,6 @@ src/lib/bbs/
 ├── signer.ts         # Credential creation and signing (issuer)
 ├── holder.ts         # Presentation creation (holder)
 ├── verifier.ts       # Signature and proof verification
-├── client-storage.ts # IndexedDB storage for credentials
-├── hooks.ts          # React hooks for credential management
 └── __tests__/
     ├── bbs.test.ts                    # Unit tests
     ├── bbs-security.test.ts           # Security tests
