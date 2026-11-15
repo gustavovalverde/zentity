@@ -21,7 +21,8 @@ import { cn } from "@/lib/cn";
  * The breached-password check is:
  * - Triggered by the parent via `breachCheckKey` (e.g., on confirm-password blur
  *   when both fields match).
- * - UX-only. Server-side enforcement remains in Better Auth (haveIBeenPwned()).
+ * - UX-only. OPAQUE keeps the password away from the server, so there is no
+ *   server-side breach enforcement.
  *
  * Required vs recommended:
  * - "Required" reflects our current client policy expectations (length + not

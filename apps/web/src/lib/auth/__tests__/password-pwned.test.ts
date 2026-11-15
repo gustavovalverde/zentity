@@ -19,7 +19,7 @@ describe("checkPasswordPwned", () => {
   });
 
   it("sends only the 5-character prefix and no credentials", async () => {
-    const fetchMock = stubFetch(new Response("ABCDE:1"));
+    const fetchMock = stubFetch(new Response(`${"A".repeat(35)}:1`));
 
     await checkPasswordPwned("password");
 
@@ -34,7 +34,7 @@ describe("checkPasswordPwned", () => {
   });
 
   it("reports a match found locally in the returned range", async () => {
-    stubFetch(new Response(`ABCDE:2\r\n${SUFFIX}:9\r\n`));
+    stubFetch(new Response(`${"A".repeat(35)}:2\r\n${SUFFIX}:9\r\n`));
 
     await expect(checkPasswordPwned("password")).resolves.toEqual({
       compromised: true,
@@ -43,7 +43,7 @@ describe("checkPasswordPwned", () => {
   });
 
   it("ignores padded zero-count entries", async () => {
-    stubFetch(new Response(`${SUFFIX}:0\r\nABCDE:4`));
+    stubFetch(new Response(`${SUFFIX}:0\r\n${"A".repeat(35)}:4`));
 
     await expect(checkPasswordPwned("password")).resolves.toEqual({
       compromised: false,
@@ -52,7 +52,7 @@ describe("checkPasswordPwned", () => {
   });
 
   it("reports a clean password when the suffix is absent", async () => {
-    stubFetch(new Response("ABCDE:4\r\nFFFFF:1"));
+    stubFetch(new Response(`${"A".repeat(35)}:4\r\n${"F".repeat(35)}:1`));
 
     await expect(checkPasswordPwned("password")).resolves.toEqual({
       compromised: false,
@@ -62,6 +62,15 @@ describe("checkPasswordPwned", () => {
 
   it("skips the check when the relay fails", async () => {
     stubFetch(new Response(null, { status: 502 }));
+
+    await expect(checkPasswordPwned("password")).resolves.toEqual({
+      compromised: false,
+      skipped: true,
+    });
+  });
+
+  it("skips the check when a 200 response is not a range", async () => {
+    stubFetch(new Response("<html>Sign in to continue</html>"));
 
     await expect(checkPasswordPwned("password")).resolves.toEqual({
       compromised: false,

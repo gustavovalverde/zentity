@@ -87,6 +87,7 @@ async function sha1HexUpper(input: string): Promise<string> {
 }
 
 const HIBP_PREFIX_LENGTH = 5;
+const HIBP_RANGE_LINE = /^[0-9A-F]{35}:\d+$/i;
 
 /**
  * Client-side breach check against the HIBP range API, relayed by
@@ -115,9 +116,16 @@ export async function checkPasswordPwned(
     return { compromised: false, skipped: true };
   }
 
+  const lines = body.split("\n").map((line) => line.trim());
+  // A real range always has entries; anything else (a captive-portal page, an
+  // empty body) is not a verdict.
+  if (!lines.some((line) => HIBP_RANGE_LINE.test(line))) {
+    return { compromised: false, skipped: true };
+  }
+
   // Padded entries carry a count of 0 and never represent a real breach.
-  const compromised = body.split("\n").some((line) => {
-    const [lineSuffix, count] = line.trim().split(":");
+  const compromised = lines.some((line) => {
+    const [lineSuffix, count] = line.split(":");
     return lineSuffix?.toUpperCase() === suffix && Number(count) > 0;
   });
   return { compromised, skipped: false };
