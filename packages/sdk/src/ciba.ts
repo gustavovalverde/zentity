@@ -1,25 +1,39 @@
+import { z } from "zod";
 import type { DpopClient } from "./rp/dpop-client";
 
 const DEFAULT_POLL_INTERVAL_MS = 5000;
 const SLOW_DOWN_INCREMENT_MS = 5000;
 
-interface CibaAuthResponse {
-  auth_req_id: string;
-  expires_in: number;
-  interval?: number;
-}
+const cibaAuthResponseSchema = z.object({
+  auth_req_id: z.string().min(1),
+  expires_in: z.number().positive(),
+  interval: z.number().nonnegative().optional(),
+});
 
-interface CibaTokenResponse {
-  access_token: string;
-  authorization_details?: unknown[];
-  expires_in?: number;
-  id_token?: string;
-  token_type: string;
-}
+const cibaTokenResponseSchema = z.object({
+  access_token: z.string().min(1),
+  authorization_details: z.array(z.unknown()).optional(),
+  expires_in: z.number().optional(),
+  id_token: z.string().optional(),
+});
 
-interface CibaErrorResponse {
-  error: string;
-  error_description?: string;
+const cibaErrorResponseSchema = z.object({
+  error: z.string(),
+  error_description: z.string().optional(),
+});
+
+function parseCibaResponse<T extends z.ZodType>(
+  schema: T,
+  body: unknown,
+  name: string
+): z.output<T> {
+  const result = schema.safeParse(body);
+  if (!result.success) {
+    throw new Error(
+      `Invalid CIBA ${name} response: ${z.prettifyError(result.error)}`
+    );
+  }
+  return result.data;
 }
 
 export interface CibaPendingAuthorization {
@@ -116,7 +130,11 @@ export async function beginCibaApproval(
     throw new Error(`CIBA authorization failed: ${response.status} ${text}`);
   }
 
-  const authResponse = (await response.json()) as CibaAuthResponse;
+  const authResponse = parseCibaResponse(
+    cibaAuthResponseSchema,
+    await response.json(),
+    "authorization"
+  );
 
   return {
     authReqId: authResponse.auth_req_id,
@@ -277,7 +295,11 @@ async function parsePollResponse(
   currentInterval: number
 ): Promise<PollOutcome> {
   if (response.ok) {
-    const tokenResponse = (await response.json()) as CibaTokenResponse;
+    const tokenResponse = parseCibaResponse(
+      cibaTokenResponseSchema,
+      await response.json(),
+      "token"
+    );
     return {
       done: true,
       tokenSet: {
@@ -291,7 +313,13 @@ async function parsePollResponse(
     };
   }
 
-  const error = (await response.json()) as CibaErrorResponse;
+  const errorResult = cibaErrorResponseSchema.safeParse(
+    await response.json().catch(() => undefined)
+  );
+  if (!errorResult.success) {
+    throw new Error(`CIBA poll error: HTTP ${response.status}`);
+  }
+  const error = errorResult.data;
 
   if (error.error === "authorization_pending") {
     return { done: false, nextInterval: currentInterval, nonceRejected: false };
