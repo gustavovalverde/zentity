@@ -7,6 +7,8 @@ dynamic validator discovery. Covers both happy paths and edge cases/pitfalls.
 
 from datetime import date, timedelta
 
+import pytest
+
 from ocr_service.services.validators import (
     # Constants for confidence calculation
     FIELD_EXTRACTION_MAX_SCORE,
@@ -487,6 +489,34 @@ class TestValidateDob:
         dob = date.today() - timedelta(days=365)
         issues = validate_dob(dob.isoformat())
         assert "minor_age_detected" in issues
+
+    @pytest.fixture
+    def fixed_today(self, monkeypatch):
+        """Pin validators' date.today() to 2026-11-15."""
+
+        class FixedDate(date):
+            @classmethod
+            def today(cls):
+                return cls(2026, 11, 15)
+
+        monkeypatch.setattr("ocr_service.services.validators.date", FixedDate)
+
+    @pytest.mark.usefixtures("fixed_today")
+    def test_four_days_before_18th_birthday_is_minor(self):
+        """days // 365 would call this person 18; the exact age is 17."""
+        assert "minor_age_detected" in validate_dob("2008-11-19")
+
+    @pytest.mark.usefixtures("fixed_today")
+    def test_day_before_18th_birthday_is_minor(self):
+        assert "minor_age_detected" in validate_dob("2008-11-16")
+
+    @pytest.mark.usefixtures("fixed_today")
+    def test_18th_birthday_today_is_adult(self):
+        assert validate_dob("2008-11-15") == []
+
+    @pytest.mark.usefixtures("fixed_today")
+    def test_day_after_18th_birthday_is_adult(self):
+        assert validate_dob("2008-11-14") == []
 
     def test_17_years_old_is_minor(self):
         """17 year old is still a minor."""

@@ -394,7 +394,8 @@ def validate_dob(dob: str) -> list[str]:
     try:
         birth = datetime.strptime(dob, "%Y-%m-%d").date()
         today = date.today()
-        age = (today - birth).days // 365
+        # Whole years completed: one less until this year's birthday has passed.
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
 
         if age < 0 or age > 150:
             issues.append("invalid_date_of_birth")
