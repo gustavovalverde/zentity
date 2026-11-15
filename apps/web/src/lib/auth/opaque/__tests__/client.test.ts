@@ -9,6 +9,7 @@ let serverSetup: string;
 let serverPublicKey: string;
 let registrationRecord: string | null;
 let failPath: string | null;
+let requestedPaths: string[];
 
 beforeAll(async () => {
   await ready;
@@ -19,6 +20,7 @@ beforeAll(async () => {
 beforeEach(() => {
   registrationRecord = null;
   failPath = null;
+  requestedPaths = [];
 });
 
 function registrationChallenge(body: { registrationRequest: string }) {
@@ -110,6 +112,7 @@ const routes: Record<string, (body: Body) => unknown> = {
 };
 
 function fetchStub<T>(path: string, options?: Record<string, unknown>) {
+  requestedPaths.push(path);
   if (path === failPath) {
     return Promise.resolve({
       data: null,
@@ -270,10 +273,14 @@ describe("opaque client", () => {
     const untrusted = actions({
       serverPublicKey: server.getPublicKey(server.createSetup()),
     });
+    requestedPaths = [];
 
     await expect(run(untrusted)).resolves.toEqual({
       data: null,
       error: { message: "Untrusted OPAQUE server key - possible MITM attack" },
     });
+    expect(requestedPaths.filter((path) => path.endsWith("/complete"))).toEqual(
+      []
+    );
   });
 });
