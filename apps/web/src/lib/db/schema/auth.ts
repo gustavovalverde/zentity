@@ -209,7 +209,7 @@ export const authenticationContexts = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     sourceKind: text("source_kind").notNull(),
     loginMethod: text("login_method").notNull(),
-    amr: text("amr").notNull(),
+    amr: text("amr", { mode: "json" }).$type<string[]>().notNull(),
     authStrength: text("auth_strength").notNull(),
     authenticatedAt: integer("authenticated_at", {
       mode: "timestamp_ms",
