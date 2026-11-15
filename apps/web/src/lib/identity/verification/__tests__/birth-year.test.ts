@@ -4,6 +4,7 @@ import {
   calculateBirthYearOffsetFromYear,
   dobDaysToBirthYearOffset,
   dobToDaysSince1900,
+  isoDateToInt,
   minAgeYearsToDays,
   parseBirthYearFromDob,
 } from "../birth-year";
@@ -31,6 +32,62 @@ describe("birth-year", () => {
     });
   });
 
+  describe("ISO date parsing", () => {
+    const accepted: [string, number][] = [
+      ["1990-05-15", 19_900_515],
+      ["2000-02-29", 20_000_229],
+      ["1900-01-01", 19_000_101],
+      ["2099-12-31", 20_991_231],
+    ];
+    const rejected = [
+      "",
+      " ",
+      "invalid",
+      "15/05/1990",
+      "1990/05/15",
+      "15-05-1990",
+      "05/15/1990",
+      "19900515",
+      "1990-5-15",
+      "1990-05-5",
+      "90-05-15",
+      "0050-05-15",
+      " 1990-05-15",
+      "1990-05-15 ",
+      "1990-05-15T00:00:00Z",
+      "1990-05-15abc",
+      "1990-13-01",
+      "1990-00-10",
+      "1990-05-00",
+      "1990-05-32",
+      "1990-02-30",
+      "2023-02-29",
+      "1900-02-29",
+      "1990-04-31",
+    ];
+
+    it.each(accepted)("accepts %s as %i", (value, expected) => {
+      expect(isoDateToInt(value)).toBe(expected);
+    });
+
+    it.each(rejected)("rejects %j", (value) => {
+      expect(isoDateToInt(value)).toBeNull();
+      expect(dobToDaysSince1900(value)).toBeUndefined();
+      expect(parseBirthYearFromDob(value)).toBeUndefined();
+    });
+
+    it("rejects missing input", () => {
+      expect(isoDateToInt(null)).toBeNull();
+      expect(isoDateToInt(undefined)).toBeNull();
+    });
+
+    it("keeps dobDays and the birth year on the same parsed date", () => {
+      expect(dobToDaysSince1900("1900-01-02")).toBe(1);
+      expect(dobToDaysSince1900("1970-01-01")).toBe(25_567);
+      expect(parseBirthYearFromDob("1990-12-31")).toBe(1990);
+    });
+  });
+
   describe("minAgeYearsToDays", () => {
     it("converts years to days using 365.25", () => {
       expect(minAgeYearsToDays(18)).toBe(6574);
@@ -41,10 +98,6 @@ describe("birth-year", () => {
   describe("parseBirthYearFromDob", () => {
     it("extracts year from YYYY-MM-DD", () => {
       expect(parseBirthYearFromDob("1990-05-15")).toBe(1990);
-    });
-
-    it("extracts year from DD/MM/YYYY", () => {
-      expect(parseBirthYearFromDob("15/05/1990")).toBe(1990);
     });
 
     it("returns undefined for invalid input", () => {

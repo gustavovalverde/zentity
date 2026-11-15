@@ -25,9 +25,6 @@ const resolvedPath = fs.existsSync(standaloneModelsPath)
   ? standaloneModelsPath
   : nodeModulesModelsPath;
 
-/** Filesystem path for serving model files. */
-export const HUMAN_MODELS_DIR = resolvedPath;
-
 /**
  * TensorFlow.js Node.js backend requires file:// URLs for local paths.
  * Trailing slash ensures relative URL resolution works correctly.
@@ -137,69 +134,15 @@ export function getHumanServer(): Promise<Human> {
   return initPromise;
 }
 
-export function stripDataUrl(input: string): string {
+/** Decode the base64 payload of a data URL (or bare base64 string) to bytes. */
+export function dataUrlToBuffer(input: string): Buffer {
   const comma = input.indexOf(",");
-  return comma >= 0 ? input.slice(comma + 1) : input;
+  return Buffer.from(comma >= 0 ? input.slice(comma + 1) : input, "base64");
 }
 
 /**
- * Decode a base64 data URL to a tensor for server-side Human.js detection.
- * tfjs-node cannot directly process base64 strings like the browser version.
- */
-// TensorFlow tensor type from dynamic import
-type TfTensor = Awaited<
-  ReturnType<typeof import("@tensorflow/tfjs-node")["node"]["decodeImage"]>
->;
-
-async function decodeBase64Image(dataUrl: string): Promise<TfTensor> {
-  const tf = await import("@tensorflow/tfjs-node");
-  const base64 = stripDataUrl(dataUrl);
-  const buffer = Buffer.from(base64, "base64");
-  return decodeBuffer(tf, buffer);
-}
-
-function decodeBuffer(
-  tf: typeof import("@tensorflow/tfjs-node"),
-  buffer: Buffer
-): TfTensor {
-  // decodeImage returns a 3D or 4D tensor (height, width, channels)
-  return tf.node.decodeImage(buffer, 3);
-}
-
-/**
- * Run Human.js detection on a base64 image (server-side).
- * Uses a semaphore to limit concurrent detections and prevent resource exhaustion.
- */
-export async function detectFromBase64(dataUrl: string) {
-  const start = performance.now();
-  let result: "ok" | "error" = "ok";
-
-  await detectionSemaphore.acquire();
-
-  let tensor: TfTensor | null = null;
-  try {
-    const human = await getHumanServer();
-    tensor = await decodeBase64Image(dataUrl);
-    return await human.detect(tensor);
-  } catch (error) {
-    result = "error";
-    throw error;
-  } finally {
-    // Dispose tensor to prevent memory leaks
-    try {
-      tensor?.dispose();
-    } catch {
-      // ignore dispose errors
-    }
-    detectionSemaphore.release();
-    recordLivenessDetectDuration(performance.now() - start, { result });
-  }
-}
-
-/**
- * Run Human.js detection directly from a Buffer (server-side).
- * Skips base64 encoding overhead - use when you already have binary image data.
- * Uses the same semaphore as detectFromBase64 to limit concurrent detections.
+ * Run Human.js detection directly from encoded image bytes (server-side).
+ * A semaphore limits concurrent detections to prevent resource exhaustion.
  */
 export async function detectFromBuffer(buffer: Buffer) {
   const start = performance.now();
@@ -207,12 +150,13 @@ export async function detectFromBuffer(buffer: Buffer) {
 
   await detectionSemaphore.acquire();
 
-  let tensor: TfTensor | null = null;
+  let tensor: { dispose(): void } | null = null;
   try {
     const tf = await import("@tensorflow/tfjs-node");
     const human = await getHumanServer();
-    tensor = decodeBuffer(tf, buffer);
-    return await human.detect(tensor);
+    const decoded = tf.node.decodeImage(buffer, 3);
+    tensor = decoded;
+    return await human.detect(decoded);
   } catch (error) {
     result = "error";
     throw error;
@@ -225,6 +169,11 @@ export async function detectFromBuffer(buffer: Buffer) {
     detectionSemaphore.release();
     recordLivenessDetectDuration(performance.now() - start, { result });
   }
+}
+
+/** Run Human.js detection on a base64 data URL (server-side). */
+export function detectFromBase64(dataUrl: string) {
+  return detectFromBuffer(dataUrlToBuffer(dataUrl));
 }
 
 /**

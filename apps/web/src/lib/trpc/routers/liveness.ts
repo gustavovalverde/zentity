@@ -22,10 +22,6 @@ import {
 import { createRateLimiter } from "@/lib/http/rate-limit";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
-  getEmbeddingVector,
-  getLargestFace,
-} from "@/lib/identity/liveness/human/metrics";
-import {
   detectFromBase64,
   getHumanServer,
 } from "@/lib/identity/liveness/human/server";
@@ -112,23 +108,17 @@ export const livenessRouter = router({
       const human = await getHumanServer();
 
       const idResultInitial = await detectFromBase64(input.idImage);
-      const idFaceInitial = getLargestFace(idResultInitial);
+      const idFaceInitial = idResultInitial.face[0];
 
       let idResult = idResultInitial;
       let croppedFaceDataUrl: string | null = null;
 
-      if (idFaceInitial?.box) {
+      if (idFaceInitial) {
         try {
-          const box = Array.isArray(idFaceInitial.box)
-            ? {
-                x: idFaceInitial.box[0],
-                y: idFaceInitial.box[1],
-                width: idFaceInitial.box[2],
-                height: idFaceInitial.box[3],
-              }
-            : idFaceInitial.box;
-
-          croppedFaceDataUrl = await cropFaceRegion(input.idImage, box);
+          croppedFaceDataUrl = await cropFaceRegion(
+            input.idImage,
+            idFaceInitial.box
+          );
           idResult = await detectFromBase64(croppedFaceDataUrl);
         } catch {
           /* Crop failed, fallback to initial detection result */
@@ -137,8 +127,8 @@ export const livenessRouter = router({
 
       const selfieResult = await detectFromBase64(input.selfieImage);
 
-      const idFace = getLargestFace(idResult);
-      const selfieFace = getLargestFace(selfieResult);
+      const idFace = idResult.face[0];
+      const selfieFace = selfieResult.face[0];
 
       if (!(idFace && selfieFace)) {
         return {
@@ -155,8 +145,8 @@ export const livenessRouter = router({
         };
       }
 
-      const idEmb = getEmbeddingVector(idFace);
-      const selfieEmb = getEmbeddingVector(selfieFace);
+      const idEmb = idFace.embedding;
+      const selfieEmb = selfieFace.embedding;
 
       if (!(idEmb && selfieEmb)) {
         return {
