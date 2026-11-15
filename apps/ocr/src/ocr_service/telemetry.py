@@ -11,12 +11,16 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-DEFAULT_OTLP_ENDPOINT = "http://localhost:4318/v1/traces"
+
+def _has_value(name: str) -> bool:
+    return bool(os.getenv(name, "").strip())
 
 
 def _is_enabled() -> bool:
-    return os.getenv("OTEL_ENABLED", "").lower() in {"true", "1", "yes"} or bool(
-        os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    return (
+        os.getenv("OTEL_ENABLED", "").lower() in {"true", "1", "yes"}
+        or _has_value("OTEL_EXPORTER_OTLP_ENDPOINT")
+        or _has_value("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
     )
 
 
@@ -32,11 +36,9 @@ def configure_telemetry() -> TracerProvider | None:
     if not _is_enabled():
         return None
 
-    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", DEFAULT_OTLP_ENDPOINT)
-
-    # Resource.create reads OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES, and the exporter
-    # reads OTEL_EXPORTER_OTLP_HEADERS. The endpoint stays explicit because this repo's shared
-    # OTEL_EXPORTER_OTLP_ENDPOINT is the full traces URL, not the SDK's base URL.
+    # Resource.create reads OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES. The exporter reads
+    # OTEL_EXPORTER_OTLP_TRACES_ENDPOINT as given, else OTEL_EXPORTER_OTLP_ENDPOINT plus
+    # /v1/traces, and OTEL_EXPORTER_OTLP_HEADERS.
     resource = Resource.create(
         {
             "service.version": _service_version(),
@@ -44,7 +46,7 @@ def configure_telemetry() -> TracerProvider | None:
         }
     )
 
-    exporter = OTLPSpanExporter(endpoint=endpoint)
+    exporter = OTLPSpanExporter()
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
