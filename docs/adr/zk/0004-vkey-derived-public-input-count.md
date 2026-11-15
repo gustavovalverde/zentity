@@ -33,9 +33,13 @@ This check is enforced inside the server-side verifier worker before cryptograph
 ## Alternatives Considered
 
 * Keep minimum-only validation (insufficient for correctness).
-* Use ABI/artifact metadata for input length (not always present/reliable).
+* Use ABI/artifact metadata for input length (not always present/reliable). Reversed on 2026-11-15, see the revision history.
 * Allow variable-length inputs (incompatible with verifier expectations).
 
 ## More Information
 
 * The vkey parsing logic is colocated with verification key derivation.
+
+## Revision history
+
+* 2026-11-15: The count is read from the compiled circuit ABI (public parameters plus a public return value), not parsed from the vkey, because the compiled artifacts are bundled with the verifier and always carry the ABI. The exact-length rejection is unchanged. A unit test checks that `PROOF_TYPE_SPECS` public-input order and indices match each artifact ABI.
