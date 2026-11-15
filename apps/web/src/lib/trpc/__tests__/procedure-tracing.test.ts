@@ -84,7 +84,6 @@ const caller = testRouter.createCaller({
   flowIdSource: "none",
   req: new Request("http://localhost/api/trpc"),
   requestId: "test-request-id",
-  resHeaders: new Headers(),
   session: null,
 });
 
