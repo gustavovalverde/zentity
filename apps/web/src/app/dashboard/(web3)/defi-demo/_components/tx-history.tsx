@@ -13,6 +13,7 @@ import {
   ExternalLink,
   History,
 } from "lucide-react";
+import { formatUnits } from "viem";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import {
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { useTRPC } from "@/lib/trpc/client";
+
+const TOKEN_DECIMALS = 18;
 
 interface TxHistoryProps {
   explorerUrl: string | null;
@@ -55,7 +58,7 @@ interface TxHistoryData {
   transfers: Transfer[];
 }
 
-function TxDetailLine({
+export function TxDetailLine({
   tx,
   formatAddress,
 }: Readonly<{
@@ -69,11 +72,7 @@ function TxDetailLine({
     return <>From: {formatAddress(tx.from)}</>;
   }
   if (tx.type === "mint" && tx.amount) {
-    return (
-      <>
-        Amount: {(BigInt(tx.amount) / BigInt(10 ** 18)).toLocaleString()} tokens
-      </>
-    );
+    return <>Amount: {formatUnits(BigInt(tx.amount), TOKEN_DECIMALS)} tokens</>;
   }
   return null;
 }

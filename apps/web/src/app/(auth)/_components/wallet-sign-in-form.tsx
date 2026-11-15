@@ -19,6 +19,7 @@ import {
 } from "@/lib/auth/oidc/oauth-post-login";
 import { redirectTo } from "@/lib/auth/redirect";
 import { prepareForNewSession } from "@/lib/auth/session-cleanup";
+import { isWalletRejection } from "@/lib/blockchain/tx-errors";
 
 type SignInStatus = "idle" | "connecting" | "ready" | "signing";
 
@@ -91,11 +92,7 @@ export function WalletSignInButton() {
       const message =
         err instanceof Error ? err.message : "Wallet sign-in failed.";
 
-      if (
-        message.toLowerCase().includes("user rejected") ||
-        message.toLowerCase().includes("denied") ||
-        message.toLowerCase().includes("cancel")
-      ) {
+      if (isWalletRejection(err)) {
         setError("Sign-in was cancelled. Please try again.");
       } else {
         setError(message);
