@@ -102,26 +102,6 @@ export const riskLevelEnum = ["low", "medium", "high", "critical"] as const;
 
 export type RiskLevel = (typeof riskLevelEnum)[number];
 
-/**
- * Humanity provider id. Open `text()` column following the `proof_system`
- * precedent — adding a provider does not require a schema migration.
- *
- * Current value: `world_id_orb`, `world_id_document`, `world_id_device`.
- * Future values: `proof_of_humanity_v1`, `gitcoin_passport_v1`, `civic_pass`,
- * `bright_id`, etc. The registry at `src/lib/identity/humanity/registry.ts`
- * is the source of truth for which provider ids are accepted.
- */
-export type HumanityProvider = string;
-
-/**
- * What kind of identifier the provider commits to. Open `text()`.
- * `nullifier` for context-scoped one-way pseudonyms (World ID, Semaphore),
- * `registry_entry` for on-chain registry references (Proof of Humanity),
- * `score_threshold` for aggregator providers (Gitcoin Passport),
- * `attestation_token` for tokenized passes (Civic).
- */
-export type HumanityProviderSubjectKind = string;
-
 export const identityBundles = sqliteTable(
   "identity_bundles",
   {

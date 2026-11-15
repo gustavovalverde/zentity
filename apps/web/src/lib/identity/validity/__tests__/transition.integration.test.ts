@@ -66,8 +66,8 @@ describe("recordValidityTransition atomicity", () => {
     });
 
     expect(result?.event.validityStatus).toBe("verified");
-    expect(
-      (await getIdentityValiditySnapshot(userId))?.validityStatus
-    ).toBe("verified");
+    expect((await getIdentityValiditySnapshot(userId))?.validityStatus).toBe(
+      "verified"
+    );
   });
 });
