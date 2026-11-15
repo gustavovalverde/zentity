@@ -176,12 +176,19 @@ docker build -t zentity-ocr apps/ocr
 - FHE service: `http://localhost:5001`
 - OCR service: `http://localhost:5004`
 
-Optional observability:
+Optional observability. The web app treats `OTEL_EXPORTER_OTLP_ENDPOINT` as the
+collector's base URL and appends `/v1/traces` and `/v1/metrics`. The FHE and OCR
+services read the same variable as the full traces URL:
 
 ```bash
 OTEL_ENABLED=true
+# Web
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# FHE and OCR
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
 ```
+
+Docker Compose already points all three services at its collector.
 
 Quick manual test (happy path):
 

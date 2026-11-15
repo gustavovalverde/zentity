@@ -248,15 +248,14 @@ export const env = createEnv({
     BB_CRS_PATH: z.string().default("/tmp/.bb-crs"),
     ZK_WARMUP_STRICT: booleanStringWithDefault("true"),
 
-    // Observability
+    // Observability. The OpenTelemetry SDK reads the other standard OTEL_*
+    // variables itself; these decide whether it starts and name the service.
     LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).optional(),
     OTEL_ENABLED: booleanString.optional(),
     OTEL_SERVICE_NAME: z.string().default("zentity-web"),
     OTEL_EXPORTER_OTLP_ENDPOINT: z.string().optional(),
     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: z.string().optional(),
     OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: z.string().optional(),
-    OTEL_EXPORTER_OTLP_HEADERS: z.string().optional(),
-    OTEL_METRICS_EXPORT_INTERVAL_MS: z.coerce.number().default(60_000),
 
     // Misc
     ZENTITY_ADMIN_API_KEY: z.string().optional(),
@@ -388,9 +387,6 @@ export const env = createEnv({
       process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
     OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:
       process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
-    OTEL_EXPORTER_OTLP_HEADERS: process.env.OTEL_EXPORTER_OTLP_HEADERS,
-    OTEL_METRICS_EXPORT_INTERVAL_MS:
-      process.env.OTEL_METRICS_EXPORT_INTERVAL_MS,
     ZENTITY_ADMIN_API_KEY: process.env.ZENTITY_ADMIN_API_KEY,
     DEMO_MODE: process.env.DEMO_MODE,
     E2E_OIDC_ONLY: process.env.E2E_OIDC_ONLY,

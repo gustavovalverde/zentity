@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { NodeSDK } from "@opentelemetry/sdk-node";
+
 import { createHash } from "node:crypto";
 
 import {
@@ -13,35 +15,7 @@ import {
 
 import { env } from "@/env";
 
-const DEFAULT_OTLP_TRACE_ENDPOINT = "http://localhost:4318/v1/traces";
-const DEFAULT_OTLP_METRICS_ENDPOINT = "http://localhost:4318/v1/metrics";
-const OTLP_SIGNAL_SUFFIX_REGEX = /\/v1\/(traces|metrics|logs)$/;
-const TRAILING_SLASH_REGEX = /\/$/;
-
-// biome-ignore lint/suspicious/noExplicitAny: SDK type loaded dynamically
-let sdk: any = null;
-
-function parseHeaders(raw?: string): Record<string, string> | undefined {
-  if (!raw) {
-    return;
-  }
-
-  const headers: Record<string, string> = {};
-  for (const entry of raw.split(",")) {
-    const [key, ...rest] = entry.split("=");
-    if (!key || rest.length === 0) {
-      continue;
-    }
-    const trimmedKey = key.trim();
-    const value = rest.join("=").trim();
-    if (!(trimmedKey && value)) {
-      continue;
-    }
-    headers[trimmedKey] = value;
-  }
-
-  return Object.keys(headers).length ? headers : undefined;
-}
+let sdk: NodeSDK | null = null;
 
 export function getServiceName(): string {
   return env.OTEL_SERVICE_NAME;
@@ -60,143 +34,73 @@ function getEnvironmentName(): string {
   return env.NEXT_PUBLIC_APP_ENV ?? env.NODE_ENV;
 }
 
-function tracingEnabled(): boolean {
-  return env.OTEL_ENABLED === true || Boolean(env.OTEL_EXPORTER_OTLP_ENDPOINT);
-}
-
-function metricsEnabled(): boolean {
+// Without this gate the SDK would export to its http://localhost:4318 default
+// in every environment.
+function telemetryEnabled(): boolean {
   return (
     env.OTEL_ENABLED === true ||
-    Boolean(env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT) ||
-    Boolean(env.OTEL_EXPORTER_OTLP_ENDPOINT)
+    Boolean(
+      env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+        env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+        env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+    )
   );
 }
 
-function telemetryEnabled(): boolean {
-  return tracingEnabled() || metricsEnabled();
-}
-
-function resolveOtlpEndpoint(signal: "traces" | "metrics"): string {
-  const specificEnv =
-    signal === "traces"
-      ? env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-      : env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
-
-  if (specificEnv) {
-    return specificEnv;
-  }
-
-  const shared = env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  if (shared) {
-    if (shared.endsWith(`/v1/${signal}`)) {
-      return shared;
-    }
-    if (shared.endsWith("/v1")) {
-      return `${shared}/${signal}`;
-    }
-    if (shared.endsWith("/v1/")) {
-      return `${shared}${signal}`;
-    }
-    const normalized = shared.replace(
-      OTLP_SIGNAL_SUFFIX_REGEX,
-      `/v1/${signal}`
-    );
-    if (normalized !== shared) {
-      return normalized;
-    }
-    return `${shared.replace(TRAILING_SLASH_REGEX, "")}/v1/${signal}`;
-  }
-
-  return signal === "traces"
-    ? DEFAULT_OTLP_TRACE_ENDPOINT
-    : DEFAULT_OTLP_METRICS_ENDPOINT;
-}
-
-function getMetricsExportIntervalMs(): number {
-  return env.OTEL_METRICS_EXPORT_INTERVAL_MS;
-}
-
+/**
+ * Starts the OpenTelemetry Node SDK. Exporters, endpoints, headers, protocol,
+ * and the metric export interval come from the standard `OTEL_*` variables.
+ * Logs are not exported: Pino writes them to stdout, and the Pino
+ * instrumentation only adds trace context to each record.
+ */
 export async function initTelemetry(): Promise<void> {
-  if (sdk) {
-    return;
-  }
-  if (!telemetryEnabled()) {
+  if (sdk || !telemetryEnabled()) {
     return;
   }
 
   const [
     { getNodeAutoInstrumentations },
-    { OTLPMetricExporter },
-    { OTLPTraceExporter },
     { defaultResource, resourceFromAttributes },
-    { PeriodicExportingMetricReader },
     { NodeSDK },
-    { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION },
+    { ATTR_DEPLOYMENT_ENVIRONMENT_NAME, ATTR_SERVICE_VERSION },
   ] = await Promise.all([
     import("@opentelemetry/auto-instrumentations-node"),
-    import("@opentelemetry/exporter-metrics-otlp-http"),
-    import("@opentelemetry/exporter-trace-otlp-http"),
     import("@opentelemetry/resources"),
-    import("@opentelemetry/sdk-metrics"),
     import("@opentelemetry/sdk-node"),
     import("@opentelemetry/semantic-conventions"),
   ]);
 
-  const traceEndpoint = resolveOtlpEndpoint("traces");
-  const metricsEndpoint = resolveOtlpEndpoint("metrics");
-  const headers = parseHeaders(env.OTEL_EXPORTER_OTLP_HEADERS);
-
-  const traceExporter = tracingEnabled()
-    ? new OTLPTraceExporter({
-        url: traceEndpoint,
-        ...(headers === undefined ? {} : { headers }),
-      })
-    : undefined;
-  const metricReader = metricsEnabled()
-    ? new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({
-          url: metricsEndpoint,
-          ...(headers === undefined ? {} : { headers }),
-        }),
-        exportIntervalMillis: getMetricsExportIntervalMs(),
-      })
-    : undefined;
-
-  const resource = defaultResource().merge(
-    resourceFromAttributes({
-      [ATTR_SERVICE_NAME]: getServiceName(),
-      [ATTR_SERVICE_VERSION]: getServiceVersion(),
-      "deployment.environment": getEnvironmentName(),
-    })
-  );
-
   sdk = new NodeSDK({
-    resource,
-    ...(traceExporter === undefined ? {} : { traceExporter }),
-    ...(metricReader === undefined ? {} : { metricReaders: [metricReader] }),
-    instrumentations: tracingEnabled()
-      ? [
-          getNodeAutoInstrumentations({
-            "@opentelemetry/instrumentation-http": {
-              ignoreIncomingRequestHook: (req) => {
-                const url = req.url ?? "";
-                return (
-                  url.startsWith("/_next") ||
-                  url.startsWith("/favicon") ||
-                  url.startsWith("/robots.txt") ||
-                  url.startsWith("/api/status/health") ||
-                  url.startsWith("/api/zk/health") ||
-                  url.startsWith("/api/password/pwned") ||
-                  url.startsWith("/api/status/metrics/client") ||
-                  url.startsWith("/api/status/build-info") ||
-                  url.startsWith("/api/confidential/relayer") ||
-                  url.startsWith("/health")
-                );
-              },
-            },
-          }),
-        ]
-      : [],
+    serviceName: getServiceName(),
+    resource: defaultResource().merge(
+      resourceFromAttributes({
+        [ATTR_SERVICE_VERSION]: getServiceVersion(),
+        [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: getEnvironmentName(),
+      })
+    ),
+    logRecordProcessors: [],
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        "@opentelemetry/instrumentation-http": {
+          ignoreIncomingRequestHook: (req) => {
+            const url = req.url ?? "";
+            return (
+              url.startsWith("/_next") ||
+              url.startsWith("/favicon") ||
+              url.startsWith("/robots.txt") ||
+              url.startsWith("/api/status/health") ||
+              url.startsWith("/api/zk/health") ||
+              url.startsWith("/api/password/pwned") ||
+              url.startsWith("/api/status/metrics/client") ||
+              url.startsWith("/api/status/build-info") ||
+              url.startsWith("/api/confidential/relayer") ||
+              url.startsWith("/health")
+            );
+          },
+        },
+        "@opentelemetry/instrumentation-pino": { disableLogSending: true },
+      }),
+    ],
   });
 
   sdk.start();
