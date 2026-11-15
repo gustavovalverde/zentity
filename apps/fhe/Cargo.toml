@@ -56,3 +56,14 @@ tempfile = "3.27"
 
 [profile.release]
 lto = "fat"
+
+# TFHE key generation and homomorphic operations are orders of magnitude slower unoptimized,
+# so the debug test profile optimizes the FHE crates. Release is unaffected.
+[profile.dev.package.tfhe]
+opt-level = 3
+[profile.dev.package.tfhe-fft]
+opt-level = 3
+[profile.dev.package.tfhe-ntt]
+opt-level = 3
+[profile.dev.package.tfhe-csprng]
+opt-level = 3
