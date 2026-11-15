@@ -85,11 +85,11 @@ To reduce frustration, the UI performs a pre-check after the user completes both
 
 ### What the Browser Sends
 
-The client does not send the plaintext password. It computes SHA-1 of the password (uppercase hex) and sends only the hash to the server-side route handler.
+The client does not send the plaintext password or the full hash. It computes SHA-1 of the password (uppercase hex) and sends only the first 5 characters, as `GET /api/password/pwned?prefix=XXXXX`. The route rejects anything that is not exactly 5 hex characters, so a full hash is refused. The request carries no cookies or flow identifiers, and the route does not log the prefix.
 
 ### What the Server Sends to HIBP
 
-The route handler uses the Have I Been Pwned range API (k-anonymity): it sends only the first 5 characters of the SHA-1 hash prefix to HIBP, never the plaintext password. The HIBP `Add-Padding` header reduces response size leakage.
+The route handler relays the Have I Been Pwned range API (k-anonymity): it sends the 5-character prefix to HIBP with the `Add-Padding` header and returns the `SUFFIX:COUNT` lines unchanged. The server never receives the suffix. The browser matches its own suffix locally and ignores padded entries with a count of 0. A lookup failure (invalid upstream response, timeout, rate limit) skips the check instead of blocking sign-up.
 
 ### DevTools Visibility
 
