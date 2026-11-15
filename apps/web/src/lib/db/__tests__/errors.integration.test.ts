@@ -67,6 +67,33 @@ describe("isUniqueConstraintError", () => {
     expect(isUniqueConstraintError(error)).toBe(false);
   });
 
+  it("ignores constraint text that only appears in the bound parameters", async () => {
+    const hostile = "UNIQUE constraint failed: identity_validity_events.id";
+    const error = await captureFailure(() =>
+      db
+        .insert(identityValidityEvents)
+        .values({
+          ...validityEvent("missing-user", "event-4"),
+          reason: hostile,
+        })
+        .run()
+    );
+
+    // The foreign-key failure's wrapper message embeds the bound parameters.
+    expect(error).toBeInstanceOf(DrizzleQueryError);
+    expect(error.message).toContain(hostile);
+    expect(isUniqueConstraintError(error)).toBe(false);
+  });
+
+  it("matches a driver error that only carries the message", () => {
+    const remote = new DrizzleQueryError(
+      "insert into t values (?)",
+      ["x"],
+      new Error("SQLite error: UNIQUE constraint failed: t.id")
+    );
+    expect(isUniqueConstraintError(remote)).toBe(true);
+  });
+
   it("returns false for values that are not errors", () => {
     expect(isUniqueConstraintError(null)).toBe(false);
     expect(isUniqueConstraintError("UNIQUE constraint failed")).toBe(false);
