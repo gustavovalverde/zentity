@@ -1,15 +1,7 @@
 import "server-only";
 
-import {
-  createRemoteJWKSet,
-  type JWTPayload,
-  type JWTVerifyOptions,
-  errors as joseErrors,
-  jwtVerify,
-} from "jose";
+import { createRemoteJWKSet } from "jose";
 
-import { getLocalKeySet } from "@/lib/auth/oidc/jwt-signer";
-import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { logger } from "@/lib/logging/logger";
 
@@ -43,42 +35,4 @@ export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
 
   remoteJwksCache.set(jwksUrl, jwks);
   return jwks;
-}
-
-// ── Locally-issued JWT verification ────────────────────────────────────
-
-const authIssuer = getAuthIssuer();
-
-async function verifyWithLocalKeys(
-  token: string,
-  options: JWTVerifyOptions
-): Promise<JWTPayload> {
-  try {
-    return (await jwtVerify(token, await getLocalKeySet(), options)).payload;
-  } catch (error) {
-    if (!(error instanceof joseErrors.JWKSNoMatchingKey)) {
-      throw error;
-    }
-    return (await jwtVerify(token, await getLocalKeySet(true), options))
-      .payload;
-  }
-}
-
-/**
- * Verifies a JWT this issuer signed. `typ` is required so one kind of token
- * (an ID token, a logout token) is never accepted as another.
- */
-export async function verifyAuthIssuedJwt(
-  token: string,
-  options: { audience?: string | string[]; typ: string }
-): Promise<JWTPayload | null> {
-  try {
-    return await verifyWithLocalKeys(token, {
-      issuer: authIssuer,
-      typ: options.typ,
-      ...(options.audience ? { audience: options.audience } : {}),
-    });
-  } catch {
-    return null;
-  }
 }

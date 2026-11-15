@@ -39,15 +39,9 @@ import {
   resolveTokenSnapshotForTokenJti,
 } from "@/lib/agents/token-snapshot";
 import {
-  buildOidcAssuranceClaims,
-  computeAtHash,
-} from "@/lib/assurance/oidc-claims";
-import { getAccountAssurance } from "@/lib/assurance/posture";
-import {
   AUTHENTICATION_CONTEXT_CLAIM,
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
-import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
 import { PROTECTED_RESOURCE_METADATA_FIELD } from "@/lib/auth/oidc/client-metadata";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import {
@@ -55,10 +49,7 @@ import {
   isZentityHostedResource,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { signJwt } from "@/lib/auth/oidc/jwt-signer";
-import {
-  resolveSubForClient,
-  resolveUserIdFromSub,
-} from "@/lib/auth/oidc/pairwise";
+import { resolveUserIdFromSub } from "@/lib/auth/oidc/pairwise";
 import { isZentityAccessToken } from "@/lib/auth/oidc/resource-access-token";
 import { getAuthIssuer, joinAuthIssuerPath } from "@/lib/auth/oidc/well-known";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
@@ -70,17 +61,6 @@ export const TOKEN_EXCHANGE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:token-exchange";
 
 const TOKEN_TYPE_ACCESS_TOKEN = "urn:ietf:params:oauth:token-type:access_token";
-const TOKEN_TYPE_ID_TOKEN = "urn:ietf:params:oauth:token-type:id_token";
-
-const SUPPORTED_SUBJECT_TYPES = new Set([
-  TOKEN_TYPE_ACCESS_TOKEN,
-  TOKEN_TYPE_ID_TOKEN,
-]);
-
-const SUPPORTED_OUTPUT_TYPES = new Set([
-  TOKEN_TYPE_ACCESS_TOKEN,
-  TOKEN_TYPE_ID_TOKEN,
-]);
 
 const authIssuer = getAuthIssuer();
 const appUrl = env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "");
@@ -192,12 +172,8 @@ async function isSubjectResourceServer(input: {
   clientId: string;
   sourceClientId: string | undefined;
   subjectAudience: unknown;
-  subjectTokenType: string;
 }): Promise<boolean> {
-  if (
-    input.subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN ||
-    !input.sourceClientId
-  ) {
+  if (!input.sourceClientId) {
     return false;
   }
 
@@ -275,17 +251,10 @@ function getRequestingClientMetadata(clientId: string) {
 }
 
 /**
- * RFC 8693 Token Exchange grant handler.
- *
- * Three exchange modes:
- * - Access Token → Access Token (scope attenuation, audience binding)
- * - Access Token → ID Token
- * - ID Token → Access Token
- *
- * Every exchanged token includes an `act` claim for the delegation chain.
- * Scope attenuation is enforced: requested scope must be a subset of the
- * subject token's scope. ID token subjects carry no scopes, so only
- * "openid" is allowed unless no scope is requested (defaults to "openid").
+ * RFC 8693 Token Exchange grant handler: exchanges an access token this AS
+ * issued for another access token, with scope attenuation and audience
+ * binding. Every exchanged token includes an `act` claim for the delegation
+ * chain, and its requested scope must be a subset of the subject token's.
  */
 function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
   return (async ({ ctx, provider }: OAuthExtensionGrantHandlerInput) => {
@@ -312,18 +281,20 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    if (!SUPPORTED_SUBJECT_TYPES.has(subjectTokenType)) {
+    if (subjectTokenType !== TOKEN_TYPE_ACCESS_TOKEN) {
       throw new APIError("BAD_REQUEST", {
         error: "invalid_request",
         error_description: `Unsupported subject_token_type: ${subjectTokenType}`,
       });
     }
 
-    const outputType = requestedTokenType ?? TOKEN_TYPE_ACCESS_TOKEN;
-    if (!SUPPORTED_OUTPUT_TYPES.has(outputType)) {
+    if (
+      requestedTokenType !== undefined &&
+      requestedTokenType !== TOKEN_TYPE_ACCESS_TOKEN
+    ) {
       throw new APIError("BAD_REQUEST", {
         error: "invalid_request",
-        error_description: `Unsupported requested_token_type: ${outputType}`,
+        error_description: `Unsupported requested_token_type: ${requestedTokenType}`,
       });
     }
 
@@ -334,61 +305,47 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
     });
     const client = authenticated.client;
 
-    // Verify the subject token JWT (must be issued by this AS)
+    // Validate the subject token, which this AS must have issued
     let subjectPayload: Record<string, unknown>;
     let subjectDpopJkt: string | undefined;
     let opaqueSubjectUserId: string | undefined;
     try {
-      if (subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN) {
-        const verified = await verifyAccessTokenSubject(provider, subjectToken);
-        subjectDpopJkt = getDpopJktFromPayload(verified);
-        if (subjectToken.split(".").length === 3) {
-          subjectPayload = verified as Record<string, unknown>;
-        } else {
-          const subjectUserId =
-            typeof verified.sub === "string" ? verified.sub : undefined;
-          const subjectClientId =
-            typeof verified.client_id === "string"
-              ? verified.client_id
-              : undefined;
-          if (!(subjectUserId && subjectClientId)) {
-            throw new Error("Opaque subject token has no user");
-          }
-          opaqueSubjectUserId = subjectUserId;
-          const referenceId =
-            typeof verified.reference_id === "string"
-              ? verified.reference_id
-              : undefined;
-          const tokenSnapshot = referenceId
-            ? await resolveTokenSnapshotForTokenJti(
-                referenceId,
-                subjectClientId
-              )
-            : null;
-
-          // The provider returns the token's stored claims in its payload. The
-          // audience is left out: only a JWT subject may be exchanged by the
-          // resource server it names.
-          const { aud: _audience, ...storedPayload } = verified;
-          subjectPayload = {
-            ...storedPayload,
-            ...(referenceId ? { jti: referenceId } : {}),
-            ...(tokenSnapshot?.claims ?? {}),
-          };
-        }
+      const verified = await verifyAccessTokenSubject(provider, subjectToken);
+      subjectDpopJkt = getDpopJktFromPayload(verified);
+      if (subjectToken.split(".").length === 3) {
+        subjectPayload = verified as Record<string, unknown>;
       } else {
-        const payload = await verifyAuthIssuedJwt(subjectToken, {
-          typ: "JWT",
-        });
-        if (!payload) {
-          throw new Error("Subject token failed verification");
+        const subjectUserId =
+          typeof verified.sub === "string" ? verified.sub : undefined;
+        const subjectClientId =
+          typeof verified.client_id === "string"
+            ? verified.client_id
+            : undefined;
+        if (!(subjectUserId && subjectClientId)) {
+          throw new Error("Opaque subject token has no user");
         }
-        subjectPayload = payload as Record<string, unknown>;
+        opaqueSubjectUserId = subjectUserId;
+        const referenceId =
+          typeof verified.reference_id === "string"
+            ? verified.reference_id
+            : undefined;
+        const tokenSnapshot = referenceId
+          ? await resolveTokenSnapshotForTokenJti(referenceId, subjectClientId)
+          : null;
+
+        // The provider returns the token's stored claims in its payload. The
+        // audience is left out: only a JWT subject may be exchanged by the
+        // resource server it names.
+        const { aud: _audience, ...storedPayload } = verified;
+        subjectPayload = {
+          ...storedPayload,
+          ...(referenceId ? { jti: referenceId } : {}),
+          ...(tokenSnapshot?.claims ?? {}),
+        };
       }
     } catch (cause) {
       logger.warn(
         {
-          subjectTokenType,
           subjectTokenShape: subjectToken.startsWith("eyJ") ? "jwt" : "opaque",
           cause: cause instanceof Error ? cause.message : String(cause),
         },
@@ -419,11 +376,9 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    // Resolve the client-facing sub back to the raw userId
     const sourceClientId =
       (subjectPayload.azp as string | undefined) ??
-      (subjectPayload.client_id as string | undefined) ??
-      (typeof subjectPayload.aud === "string" ? subjectPayload.aud : undefined);
+      (subjectPayload.client_id as string | undefined);
 
     // Only the client a subject token was issued to, or the protected
     // resource it was issued for, may exchange it.
@@ -433,7 +388,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
         clientId: client.clientId,
         sourceClientId,
         subjectAudience: subjectPayload.aud,
-        subjectTokenType,
       }));
     if (sourceClientId !== client.clientId && !exchangesAsResourceServer) {
       throw new APIError("BAD_REQUEST", {
@@ -467,6 +421,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
+    // A JWT subject carries the client-facing sub; resolve it to the user id.
     let rawUserId = opaqueSubjectUserId ?? sub;
     if (!opaqueSubjectUserId && sourceClientId) {
       rawUserId = (await resolveUserIdFromSub(sub, sourceClientId)) ?? sub;
@@ -487,7 +442,7 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
       });
     }
 
-    // Scope attenuation — enforced for all subject token types
+    // Scope attenuation
     const subjectScopes: string[] =
       typeof subjectPayload.scope === "string"
         ? subjectPayload.scope.split(" ")
@@ -497,7 +452,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
         ? requestedScope.split(" ").filter(Boolean)
         : [];
     const bootstrapOnlyRequest =
-      subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN &&
       requestedScopes.length > 0 &&
       requestedScopes.every((scope) => AGENT_BOOTSTRAP_SCOPE_SET.has(scope));
     const requestingClientMetadata = bootstrapOnlyRequest
@@ -516,34 +470,17 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
 
     let targetScopes: string[];
     if (requestedScope) {
-      if (subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN) {
-        // Access token subjects: requested must be a subset
-        if (!canSelfBootstrap) {
-          for (const s of requestedScopes) {
-            if (!subjectScopes.includes(s)) {
-              throw new APIError("BAD_REQUEST", {
-                error: "invalid_scope",
-                error_description: `Requested scope '${s}' exceeds subject token scope`,
-              });
-            }
-          }
-        }
-      } else {
-        // ID token subjects carry no scopes — only "openid" is safe
+      if (!canSelfBootstrap) {
         for (const s of requestedScopes) {
-          if (s !== "openid") {
+          if (!subjectScopes.includes(s)) {
             throw new APIError("BAD_REQUEST", {
               error: "invalid_scope",
-              error_description:
-                "ID token subjects only support 'openid' scope",
+              error_description: `Requested scope '${s}' exceeds subject token scope`,
             });
           }
         }
       }
       targetScopes = requestedScopes;
-    } else if (subjectTokenType === TOKEN_TYPE_ID_TOKEN) {
-      // ID token subjects carry no scopes — always default to openid
-      targetScopes = ["openid"];
     } else {
       targetScopes = subjectScopes.length > 0 ? [...subjectScopes] : ["openid"];
     }
@@ -704,53 +641,6 @@ function createTokenExchangeHandler(): OAuthExtensionGrantHandler {
           delegation,
         })
       : undefined;
-
-    // ID Token output
-    if (outputType === TOKEN_TYPE_ID_TOKEN) {
-      const clientSub = client.redirectUris
-        ? await resolveSubForClient(rawUserId, {
-            subjectType: client.subjectType ?? null,
-            redirectUris: parseStoredStringArray(client.redirectUris),
-          })
-        : rawUserId;
-      const assurance = await getAccountAssurance(rawUserId, {
-        isAuthenticated: true,
-      });
-      const idTokenPayload: Record<string, unknown> = {
-        iss: authIssuer,
-        sub: clientSub,
-        aud: client.clientId,
-        azp: client.clientId,
-        jti,
-        iat: now,
-        exp,
-        act: actClaim,
-        ...buildOidcAssuranceClaims(assurance, subjectAuth),
-        ...(subjectSessionId ? { sid: subjectSessionId } : {}),
-        ...(subjectSessionId
-          ? {}
-          : { [AUTHENTICATION_CONTEXT_CLAIM]: subjectAuth.id }),
-        ...(subjectTokenType === TOKEN_TYPE_ACCESS_TOKEN
-          ? { at_hash: computeAtHash(subjectToken) }
-          : {}),
-      };
-
-      const idToken = await signJwt(idTokenPayload);
-      return ctx.json(
-        {
-          access_token: idToken,
-          issued_token_type: TOKEN_TYPE_ID_TOKEN,
-          token_type: "N_A",
-          expires_in: expiresIn,
-        },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-            Pragma: "no-cache",
-          },
-        }
-      );
-    }
 
     // An agent-backed token names the agent session as its actor.
     const { act: agentActor, ...agentClaims } =

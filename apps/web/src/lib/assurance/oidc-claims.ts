@@ -3,7 +3,6 @@
  *
  * Maps Zentity's internal assurance model (AccountTier, LoginMethod)
  * to standard OIDC claims (acr, amr) and eIDAS LoA URIs.
- * Also computes at_hash per OIDC Core §3.1.3.6.
  */
 
 import type {
@@ -12,8 +11,6 @@ import type {
   AuthenticationState,
   LoginMethod,
 } from "@zentity/sdk/protocol";
-
-import crypto from "node:crypto";
 
 // --- ACR (Authentication Context Class Reference) ---
 
@@ -41,18 +38,6 @@ const EIDAS_URIS = {
 
 function computeAcrEidas(tier: AccountTier): string {
   return EIDAS_URIS[tier];
-}
-
-export function buildOidcAssuranceClaims(
-  assurance: Pick<AccountAssurance, "tier">,
-  auth: Pick<AuthenticationState, "amr" | "authenticatedAt">
-) {
-  return {
-    acr: computeAcr(assurance.tier),
-    acr_eidas: computeAcrEidas(assurance.tier),
-    auth_time: auth.authenticatedAt,
-    ...(auth.amr.length > 0 ? { amr: auth.amr } : {}),
-  };
 }
 
 /**
@@ -95,18 +80,4 @@ export function loginMethodToAmr(
     return AMR_MAP.none;
   }
   return AMR_MAP[method as keyof typeof AMR_MAP];
-}
-
-// --- at_hash (Access Token Hash, OIDC Core §3.1.3.6) ---
-
-/**
- * Compute at_hash for an RS256 ID token: base64url-encoded left half of the
- * SHA-256 hash of the access token's ASCII representation.
- */
-export function computeAtHash(accessToken: string): string {
-  const hash = crypto
-    .createHash("sha256")
-    .update(accessToken, "ascii")
-    .digest();
-  return hash.subarray(0, hash.length / 2).toString("base64url");
 }

@@ -11,7 +11,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { GET as listRevocations } from "@/app/api/auth/oauth2/revoked/route";
 import { env } from "@/env";
-import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
@@ -25,8 +24,6 @@ import {
 import { TOKEN_EXCHANGE_GRANT_TYPE } from "@/lib/auth/oidc/token-exchange";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
-import { sessions } from "@/lib/db/schema/auth";
-import { identityBundles } from "@/lib/db/schema/identity";
 import {
   jwks as jwksTable,
   oauthAccessTokens,
@@ -183,24 +180,6 @@ async function exchangedClaims(
     ...(row.act ? { act: row.act } : {}),
     ...(row.dpopJkt ? { cnf: { jkt: row.dpopJkt } } : {}),
   };
-}
-
-function mintIdToken(
-  sub: string,
-  aud: string = TEST_CLIENT_ID,
-  authContextId = defaultAuthContextId
-): Promise<string> {
-  const payload: Record<string, unknown> = {
-    iss: authIssuer,
-    sub,
-    aud,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
-  };
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: testKid })
-    .sign(testKeyPair.privateKey);
 }
 
 describe("Token Exchange (RFC 8693)", () => {
@@ -721,174 +700,6 @@ describe("Token Exchange (RFC 8693)", () => {
     });
   });
 
-  describe("access token → id_token", () => {
-    it("returns a valid id_token with act claim and at_hash", async () => {
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        requested_token_type: ID_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.issued_token_type).toBe(ID_TOKEN_TYPE);
-      expect(json.token_type).toBe("N_A");
-
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.sub).toBe(userId);
-      expect(payload.iss).toBe(authIssuer);
-      expect(payload.aud).toBe(TEST_CLIENT_ID);
-      expect(payload.act).toEqual({
-        sub: TEST_CLIENT_ID,
-        sub_profile: "service",
-      });
-      expect(payload[AUTHENTICATION_CONTEXT_CLAIM]).toBe(defaultAuthContextId);
-
-      // at_hash binds the id_token to the subject access token (OIDC Core §3.3.2.11)
-      const expectedAtHash = computeAtHash(subjectToken);
-      expect(payload.at_hash).toBe(expectedAtHash);
-    });
-
-    it("includes assurance claims (acr, acr_eidas, amr, auth_time)", async () => {
-      // Seed tier-1 user: identity bundle with FHE keys
-      await db
-        .insert(identityBundles)
-        .values({
-          userId,
-          fheKeyId: "test-fhe-key-id",
-          fheStatus: "complete",
-          validityStatus: "verified",
-        })
-        .run();
-
-      const authContext = await createAuthenticationContext({
-        userId,
-        loginMethod: "passkey",
-        authenticatedAt: new Date(),
-        sourceKind: "better_auth",
-        sourceSessionId: crypto.randomUUID(),
-        referenceType: "session",
-      });
-
-      // Seed a passkey-authenticated session so the exchanged ID token can
-      // resolve trusted auth provenance.
-      await db
-        .insert(sessions)
-        .values({
-          id: crypto.randomUUID(),
-          userId,
-          token: crypto.randomUUID(),
-          authContextId: authContext.id,
-          expiresAt: new Date(Date.now() + 3_600_000),
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .run();
-
-      const subjectToken = await mintAccessToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        requested_token_type: ID_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.acr).toBe("urn:zentity:assurance:tier-1");
-      expect(payload.acr_eidas).toBe("http://eidas.europa.eu/LoA/low");
-      expect(payload.amr).toEqual(["pop", "hwk", "user"]);
-      expect(payload.auth_time).toBeDefined();
-      expect(typeof payload.auth_time).toBe("number");
-    });
-  });
-
-  describe("id_token → id_token", () => {
-    it("omits at_hash when subject is not an access token", async () => {
-      const subjectIdToken = await mintIdToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
-        requested_token_type: ID_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.issued_token_type).toBe(ID_TOKEN_TYPE);
-
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.at_hash).toBeUndefined();
-    });
-  });
-
-  describe("id_token → access token", () => {
-    it("mints an access token from a valid id_token", async () => {
-      const subjectIdToken = await mintIdToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
-        requested_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.issued_token_type).toBe(ACCESS_TOKEN_TYPE);
-      expect(json.token_type).toBe("DPoP");
-
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.sub).toBe(userId);
-      expect(payload.act).toEqual({
-        sub: TEST_CLIENT_ID,
-        sub_profile: "service",
-      });
-    });
-  });
-
-  describe("id_token audience", () => {
-    it("rejects an id_token issued to another client", async () => {
-      const subjectIdToken = await mintIdToken(userId, "other-client");
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
-        requested_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_grant");
-    });
-  });
-
-  describe("id_token scope defaults", () => {
-    it("defaults to openid when no scope requested", async () => {
-      const subjectIdToken = await mintIdToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
-        requested_token_type: ACCESS_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      expect(json.scope).toBe("openid");
-      const payload = await exchangedClaims(json.access_token as string);
-      expect(payload.scope).toBe("openid");
-    });
-  });
-
   describe("scope attenuation enforcement", () => {
     it("rejects scope broadening on access token subjects", async () => {
       const subjectToken = await mintAccessToken(userId, {
@@ -900,21 +711,6 @@ describe("Token Exchange (RFC 8693)", () => {
         client_id: TEST_CLIENT_ID,
         subject_token: subjectToken,
         subject_token_type: ACCESS_TOKEN_TYPE,
-        scope: "openid identity.name",
-      });
-
-      expect(status).toBe(400);
-      expect(json.error).toBe("invalid_scope");
-    });
-
-    it("rejects non-openid scopes on id_token subjects", async () => {
-      const subjectIdToken = await mintIdToken(userId);
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: subjectIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
         scope: "openid identity.name",
       });
 
@@ -1156,33 +952,6 @@ describe("Token Exchange (RFC 8693)", () => {
       );
     });
 
-    it("uses pairwise sub in id_token output", async () => {
-      await createPairwiseClient();
-      const subjectToken = await mintAccessToken(userId, {
-        azp: PAIRWISE_CLIENT_ID,
-      });
-
-      const { status, json } = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: PAIRWISE_CLIENT_ID,
-        subject_token: subjectToken,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-        requested_token_type: ID_TOKEN_TYPE,
-      });
-
-      expect(status).toBe(200);
-      const payload = await exchangedClaims(json.access_token as string);
-
-      expect(payload.sub).not.toBe(userId);
-
-      const expectedSub = await computePairwiseSub(
-        userId,
-        [PAIRWISE_REDIRECT],
-        process.env.PAIRWISE_SECRET as string
-      );
-      expect(payload.sub).toBe(expectedSub);
-    });
-
     it("preserves raw userId for public-subject clients", async () => {
       // Default test client is public-subject
       const subjectToken = await mintAccessToken(userId);
@@ -1199,24 +968,22 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(payload.sub).toBe(userId);
     });
 
-    it("resolves pairwise id_token input to raw userId for user lookup", async () => {
+    it("resolves a pairwise access-token subject to the user", async () => {
       await createPairwiseClient();
 
       const pairwiseSub = await resolveSubForClient(userId, {
         subjectType: "pairwise",
         redirectUris: [PAIRWISE_REDIRECT],
       });
-      const pairwiseIdToken = await mintIdToken(
-        pairwiseSub,
-        PAIRWISE_CLIENT_ID
-      );
+      const subjectToken = await mintAccessToken(pairwiseSub, {
+        azp: PAIRWISE_CLIENT_ID,
+      });
 
       const { status, json } = await postTokenWithDpop({
         grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
         client_id: PAIRWISE_CLIENT_ID,
-        subject_token: pairwiseIdToken,
-        subject_token_type: ID_TOKEN_TYPE,
-        requested_token_type: ACCESS_TOKEN_TYPE,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
       });
 
       expect(status).toBe(200);
@@ -1259,7 +1026,7 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(json.error).toBe("invalid_grant");
     });
 
-    it("rejects subject tokens whose type does not match subject_token_type", async () => {
+    it("rejects JWTs that are not access tokens as access-token subjects", async () => {
       const idTokenTyped = await new SignJWT({
         iss: authIssuer,
         sub: userId,
@@ -1282,21 +1049,15 @@ describe("Token Exchange (RFC 8693)", () => {
         .setProtectedHeader({ alg: "EdDSA", typ: "logout+jwt", kid: testKid })
         .sign(testKeyPair.privateKey);
 
-      const asAccessToken = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: idTokenTyped,
-        subject_token_type: ACCESS_TOKEN_TYPE,
-      });
-      const asIdToken = await postTokenWithDpop({
-        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
-        client_id: TEST_CLIENT_ID,
-        subject_token: logoutTyped,
-        subject_token_type: ID_TOKEN_TYPE,
-      });
-
-      expect(asAccessToken.json.error).toBe("invalid_grant");
-      expect(asIdToken.json.error).toBe("invalid_grant");
+      for (const subjectToken of [idTokenTyped, logoutTyped]) {
+        const { json } = await postTokenWithDpop({
+          grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+          client_id: TEST_CLIENT_ID,
+          subject_token: subjectToken,
+          subject_token_type: ACCESS_TOKEN_TYPE,
+        });
+        expect(json.error).toBe("invalid_grant");
+      }
     });
 
     it("rejects unsupported subject_token_type", async () => {
@@ -1311,6 +1072,25 @@ describe("Token Exchange (RFC 8693)", () => {
 
       expect(status).toBe(400);
       expect(json.error).toBe("invalid_request");
+    });
+
+    it.each([
+      ["subject_token_type", { subject_token_type: ID_TOKEN_TYPE }],
+      ["requested_token_type", { requested_token_type: ID_TOKEN_TYPE }],
+    ])("rejects an ID token %s", async (parameter, tokenType) => {
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: TEST_CLIENT_ID,
+        subject_token: await mintAccessToken(userId),
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        ...tokenType,
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_request");
+      expect(json.error_description).toBe(
+        `Unsupported ${parameter}: ${ID_TOKEN_TYPE}`
+      );
     });
   });
 });
