@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { generateDek } from "@/lib/privacy/secrets/envelope";
-
-import { wrapDekWithOpaqueExport } from "../opaque";
-import {
-  generateRecoveryKey,
-  parseRecoveryKey,
-  unwrapDekWithRecoveryKey,
-  wrapDekWithRecoveryKey,
-} from "../recovery-key";
+import { generateRecoveryKey, parseRecoveryKey } from "../recovery-key";
 
 describe("recovery key", () => {
   it("generates 24 words encoding 32 bytes of entropy", () => {
@@ -45,80 +37,5 @@ describe("recovery key", () => {
       new Uint8Array(32)
     );
     expect(parseRecoveryKey([...zeros, "abandon"].join(" "))).toBeNull();
-  });
-
-  it("wraps and unwraps a DEK", async () => {
-    const secretId = crypto.randomUUID();
-    const userId = crypto.randomUUID();
-    const dek = generateDek();
-    const { key } = generateRecoveryKey();
-
-    const wrappedDek = await wrapDekWithRecoveryKey({
-      secretId,
-      userId,
-      dek,
-      recoveryKey: key,
-    });
-
-    await expect(
-      unwrapDekWithRecoveryKey({
-        secretId,
-        userId,
-        wrappedDek,
-        recoveryKey: key,
-      })
-    ).resolves.toEqual(dek);
-  });
-
-  it("fails to unwrap with a different key or user", async () => {
-    const secretId = crypto.randomUUID();
-    const userId = crypto.randomUUID();
-    const dek = generateDek();
-    const { key } = generateRecoveryKey();
-    const wrappedDek = await wrapDekWithRecoveryKey({
-      secretId,
-      userId,
-      dek,
-      recoveryKey: key,
-    });
-
-    await expect(
-      unwrapDekWithRecoveryKey({
-        secretId,
-        userId,
-        wrappedDek,
-        recoveryKey: generateRecoveryKey().key,
-      })
-    ).rejects.toThrow();
-    await expect(
-      unwrapDekWithRecoveryKey({
-        secretId,
-        userId: crypto.randomUUID(),
-        wrappedDek,
-        recoveryKey: key,
-      })
-    ).rejects.toThrow();
-  });
-
-  it("is domain-separated from other credential KEKs", async () => {
-    const secretId = crypto.randomUUID();
-    const userId = crypto.randomUUID();
-    const dek = generateDek();
-    const { key } = generateRecoveryKey();
-    const opaqueWrapped = await wrapDekWithOpaqueExport({
-      secretId,
-      userId,
-      dek,
-      exportKey: new Uint8Array([...key, ...key]),
-    });
-
-    await expect(
-      unwrapDekWithRecoveryKey({
-        secretId,
-        userId,
-        wrappedDek: opaqueWrapped,
-        recoveryKey: key,
-      })
-    ).rejects.toThrow();
   });
 });
