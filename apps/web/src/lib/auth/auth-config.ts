@@ -895,29 +895,6 @@ async function afterClientCreatedUseZentitySector(ctx: HookCtx) {
   }
 }
 
-// The provider never enables RP-initiated logout during dynamic registration;
-// a client that registers post-logout redirects is asking for it.
-async function afterDcrRegisterEnableEndSession(ctx: HookCtx) {
-  const postLogoutRedirectUris = ctx.body?.post_logout_redirect_uris;
-  if (
-    !(Array.isArray(postLogoutRedirectUris) && postLogoutRedirectUris.length)
-  ) {
-    return;
-  }
-
-  const responseBody = await readReturnedResponseBody(
-    (ctx.context as { returned?: unknown }).returned
-  );
-  const clientId = responseBody?.client_id;
-  if (typeof clientId === "string") {
-    await db
-      .update(oauthClients)
-      .set({ enableEndSession: true })
-      .where(eq(oauthClients.clientId, clientId))
-      .run();
-  }
-}
-
 /**
  * Rebinds an authorization code to its own reference before the grant redeems
  * it, so every token the code issues references this one authorization rather
@@ -1942,10 +1919,6 @@ export const auth = betterAuth({
       if (ctx.path && CLIENT_CREATION_PATHS.has(ctx.path)) {
         await afterClientCreatedUseZentitySector(ctx);
       }
-      if (ctx.path === "/oauth2/register") {
-        await afterDcrRegisterEnableEndSession(ctx);
-        return;
-      }
       if (ctx.path === "/oauth2/consent") {
         await afterConsentPairwiseCleanup(ctx);
         return;
@@ -2073,6 +2046,14 @@ export const auth = betterAuth({
       allowDynamicClientRegistration: true,
       // Allow public clients (no client_secret) - required for mobile/browser wallets
       allowUnauthenticatedClientRegistration: true,
+      // A dynamically registered client with post-logout redirects is asking
+      // for RP-initiated logout. Enabling it makes the provider refuse any
+      // redirect outside the client's origins, which would stop a metadata
+      // document client from authorizing at all, so only `/oauth2/register`
+      // opts in.
+      clientRegistrationEnableEndSession: ({ client, registrationSource }) =>
+        registrationSource === "dynamic" &&
+        (client.post_logout_redirect_uris?.length ?? 0) > 0,
       clientRegistrationDefaultScopes: defaultClientScopes,
       clientRegistrationAllowedScopes: allowedClientScopes,
       clientReference: ({ session }) =>

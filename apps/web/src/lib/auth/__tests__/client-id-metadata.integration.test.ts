@@ -112,6 +112,31 @@ describe("CIMD: Client ID Metadata Document Resolution", () => {
       expect(client?.applicationType).toBe("native");
     });
 
+    it("creates a client with a loopback post-logout redirect, without logout", async () => {
+      mockFetchMetadata(
+        validMetadata({
+          post_logout_redirect_uris: ["http://127.0.0.1:8123/signed-out"],
+        })
+      );
+
+      const { status } = await postPar({
+        client_id: cimdClientId,
+        response_type: "code",
+        redirect_uri: REDIRECT_URI,
+        scope: "openid",
+        resource: "http://localhost:3000",
+        code_challenge: "test-challenge",
+        code_challenge_method: "S256",
+      });
+
+      expect(status).toBe(201);
+      const client = await db.query.oauthClients.findFirst({
+        where: (t, { eq }) => eq(t.clientId, cimdClientId),
+      });
+      expect(client).toBeDefined();
+      expect(client?.enableEndSession).toBeFalsy();
+    });
+
     it("rejects metadata with mismatched client_id", async () => {
       mockFetchMetadata(
         validMetadata({ client_id: "https://other.example.com" })
