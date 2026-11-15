@@ -678,7 +678,7 @@ export const opaque = (options: OpaquePluginOptions) => {
 
           // Consumed before any write so concurrent redemptions of one token
           // cannot each create a session. A failure after this point burns
-          // the token and the client restarts sign-up.
+          // the token.
           const verification =
             await ctx.context.internalAdapter.consumeVerificationValue(
               `${SIGNUP_TOKEN_PREFIX}:${ctx.body.signupToken}`
