@@ -16,8 +16,8 @@ from .validators import (
     ValidationResult,
     calculate_confidence,
     validate_dob,
+    validate_document_number,
     validate_expiration_date,
-    validate_national_id_detailed,
     validate_passport_number,
 )
 
@@ -41,9 +41,7 @@ def _validate_national_id(
     validation_details: list[ValidationResult],
 ) -> None:
     if extracted.document_number and extracted.nationality_code:
-        result = validate_national_id_detailed(
-            extracted.document_number, extracted.nationality_code
-        )
+        result = validate_document_number(extracted.document_number, extracted.nationality_code)
         if result.error_code:
             validation_issues.append(result.error_code)
             if result.error_message:

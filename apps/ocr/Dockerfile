@@ -47,15 +47,7 @@ WORKDIR ${APP_HOME}
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/* /tmp/*
+ENV OTEL_SERVICE_NAME=zentity-ocr
 
 COPY --link requirements.lock .
 
@@ -95,7 +87,7 @@ USER ${APP_USER}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+    CMD ["python", "-c", "import os, urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ[\"PORT\"]}/health', timeout=5)"]
 
 # Run uvicorn via startup script (exec form for proper signal handling)
 CMD ["./start.sh"]

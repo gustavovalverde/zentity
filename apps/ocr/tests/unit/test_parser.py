@@ -127,6 +127,11 @@ class TestMrzDateConversion:
         assert _mrz_date_to_iso(None) is None
         assert _mrz_date_to_iso("123") is None  # Too short
 
+    def test_ocr_garbled_date_returns_none(self):
+        """Non-digit OCR noise in the MRZ slice must not raise."""
+        assert _mrz_date_to_iso("7O0812") is None
+        assert _mrz_date_to_iso("<<<<<<") is None
+
 
 class TestExtractPassportFields:
     """Tests for the extract_passport_fields function."""
@@ -301,15 +306,9 @@ class TestParseDateToIso:
         """Parses DD-MM-YYYY format."""
         assert parse_date_to_iso("15-05-1990") == "1990-05-15"
 
-    def test_yymmdd_mrz_format(self):
-        """Parses YYMMDD MRZ format with century inference."""
-        assert parse_date_to_iso("900515") == "1990-05-15"
-        assert parse_date_to_iso("250101") == "2025-01-01"
-
-    def test_century_inference_boundary(self):
-        """Century inference: 00-49 -> 20xx, 50-99 -> 19xx."""
-        assert parse_date_to_iso("490101") == "2049-01-01"
-        assert parse_date_to_iso("500101") == "1950-01-01"
+    def test_yymmdd_is_not_a_document_date(self):
+        """MRZ YYMMDD dates go through the MRZ helper, not the document date parser."""
+        assert parse_date_to_iso("900515") is None
 
     # --- Edge cases / Pitfalls ---
 
@@ -432,24 +431,11 @@ class TestNormalizeCedulaNumber:
 
     # --- Edge cases / Pitfalls ---
 
-    def test_wrong_length_attempts_formatting(self):
-        """Wrong length still attempts formatting via fallback."""
-        result = normalize_cedula_number("1234567890")  # 10 digits
-        # The function uses stdnum which may still try to format
-        # or falls back to manual formatting if 11 digits
-        assert result is not None
-
-    def test_too_short_attempts_formatting(self):
-        """Short input still gets processed."""
-        result = normalize_cedula_number("12345")
-        # The function processes input even if too short
-        assert result is not None
-
-    def test_too_long_returns_original(self):
-        """Too long returns original."""
-        result = normalize_cedula_number("001-1234567-89")
-        # May strip to 11 digits or return original
-        assert result is not None
+    def test_wrong_length_returned_unchanged(self):
+        """Anything other than 11 digits is returned as given."""
+        assert normalize_cedula_number("1234567890") == "1234567890"  # 10 digits
+        assert normalize_cedula_number("12345") == "12345"
+        assert normalize_cedula_number("001-1234567-89") == "001-1234567-89"  # 12 digits
 
     def test_empty_returns_empty(self):
         """Empty string returns empty."""
@@ -458,9 +444,8 @@ class TestNormalizeCedulaNumber:
 
     def test_non_numeric_characters_handled(self):
         """Non-numeric characters are handled."""
-        # Should strip non-numeric for counting
-        result = normalize_cedula_number("001.1234567.8")
-        assert "-" in result or result == "001.1234567.8"
+        # Any separator is ignored when counting and formatting digits
+        assert normalize_cedula_number("001.1234567.8") == "001-1234567-8"
 
 
 # =============================================================================
