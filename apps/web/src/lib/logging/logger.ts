@@ -28,16 +28,6 @@ const logLevel = env.LOG_LEVEL ?? (isDev ? "debug" : "info");
  * Base logger instance - created once at module load.
  * Use createRequestLogger() for request-scoped logging.
  */
-const redactPaths = [
-  // Request/auth data
-  "req.headers.authorization",
-  "req.headers.cookie",
-  'req.headers["x-zentity-internal-token"]',
-
-  // Canonical redaction keys (nested with wildcard)
-  ...Array.from(REDACT_KEYS, (key) => `*.${key}`),
-];
-
 export const logger: Logger = pino({
   level: logLevel,
 
@@ -47,20 +37,11 @@ export const logger: Logger = pino({
     env: process.env.NODE_ENV || "development",
   },
 
-  // Pino's built-in redaction (fast, runs before serialization)
+  // Pino's built-in redaction of the canonical keys, one level deep
+  // (fast, runs before serialization)
   redact: {
-    paths: redactPaths,
+    paths: Array.from(REDACT_KEYS, (key) => `*.${key}`),
     censor: "[REDACTED]",
-  },
-
-  // Custom serializers
-  serializers: {
-    err: pino.stdSerializers.err,
-    // Minimal request serialization (no headers/cookies)
-    req: (req: Request) => ({
-      method: req.method,
-      url: new URL(req.url).pathname,
-    }),
   },
 });
 
