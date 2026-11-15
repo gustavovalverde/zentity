@@ -160,12 +160,14 @@ ruff format src           # Format
 MCP identity server supporting HTTP and stdio transports.
 
 ```bash
-pnpm dev              # Run with watch (stdio transport)
+pnpm dev              # Run stdio transport once (no watch: tsx watch logs to stdout and corrupts JSON-RPC)
 pnpm start:http       # Run HTTP transport (port 3300)
 pnpm build            # Build to dist/
 pnpm test             # Vitest unit tests
 pnpm test:e2e         # Smoke test script
 ```
+
+The repo-root `.mcp.json` launches the stdio server with Node (`pnpm --silent --dir apps/mcp exec tsx src/index.ts`). Build the SDK first (`pnpm --filter @zentity/sdk build`), because `@zentity/sdk` subpaths resolve from `dist`.
 
 Env vars: `ZENTITY_URL` (Zentity server URL), `MCP_ALLOWED_ORIGINS` (CORS origins for HTTP transport), `MCP_DPOP_NONCE_SECRET` (optional, min 32 chars; the secret the HTTP transport derives DPoP nonces from). Without `MCP_DPOP_NONCE_SECRET` each process generates its own secret, and the DPoP replay store is in memory, so the HTTP transport serves one instance; a multi-instance deployment must set the same secret on every instance and use a shared replay store.
 

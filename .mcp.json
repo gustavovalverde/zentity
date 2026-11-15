@@ -2,8 +2,8 @@
 	"mcpServers": {
 		"zentity": {
 			"type": "stdio",
-			"command": "bun",
-			"args": ["run", "./apps/mcp/src/index.ts"],
+			"command": "pnpm",
+			"args": ["--silent", "--dir", "apps/mcp", "exec", "tsx", "src/index.ts"],
 			"env": {
 				"ZENTITY_URL": "http://localhost:3000"
 			}
