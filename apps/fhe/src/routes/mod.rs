@@ -1,8 +1,6 @@
 //! HTTP Route handlers
 
 mod batch;
-mod compliance;
-mod country;
 mod dob;
 mod health;
 mod keys;
@@ -17,12 +15,10 @@ use tokio::task;
 use crate::error::FheError;
 
 pub use batch::encrypt_batch;
-pub use compliance::encrypt_compliance_level;
-pub use country::encrypt_country_code;
-pub use dob::{encrypt_dob_days, verify_age_from_dob};
+pub use dob::verify_age_from_dob;
 pub use health::{build_info, health};
 pub use keys::register_key;
-pub use liveness::{encrypt_liveness, verify_liveness_threshold};
+pub use liveness::verify_liveness_threshold;
 
 struct CpuLimiter {
     semaphore: Arc<Semaphore>,

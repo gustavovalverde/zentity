@@ -65,7 +65,8 @@ async fn main() {
             "http.request",
             method = %req.method(),
             path = %req.uri().path(),
-            request_id = %request_id
+            request_id = %request_id,
+            request_bytes = tracing::field::Empty
         );
         let _ = span.set_parent(parent_context);
         span

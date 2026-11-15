@@ -10,21 +10,11 @@ use axum::{
 };
 use serde_json::json;
 
-const PUBLIC_PATHS: [&str; 2] = ["/health", "/build-info"];
-
-fn is_public_path(path: &str) -> bool {
-    PUBLIC_PATHS.contains(&path)
-}
-
 pub async fn internal_auth(
     State(token): State<Option<String>>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    if is_public_path(req.uri().path()) {
-        return next.run(req).await;
-    }
-
     if let Some(expected) = token.as_ref().filter(|value| !value.is_empty()) {
         let provided = req
             .headers()

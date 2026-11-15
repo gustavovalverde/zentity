@@ -22,9 +22,6 @@ pub enum FheError {
     #[error("Msgpack encode error: {0}")]
     MsgpackEncode(#[from] rmp_serde::encode::Error),
 
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
     #[error("TFHE error: {0}")]
     Tfhe(String),
 
@@ -39,7 +36,6 @@ impl IntoResponse for FheError {
             FheError::InvalidInput(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::MsgpackDecode(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::MsgpackEncode(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
-            FheError::Io(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Tfhe(_) => (StatusCode::BAD_REQUEST, self.to_string()),
             FheError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
         };

@@ -1,74 +1,51 @@
 //! Router construction for the FHE HTTP API.
 
 use axum::{
-    error_handling::HandleErrorLayer,
     extract::DefaultBodyLimit,
     http::StatusCode,
     middleware,
     routing::{get, post},
-    BoxError, Json, Router,
+    Router,
 };
-use serde::Serialize;
-use tower::{limit::ConcurrencyLimitLayer, timeout::TimeoutLayer, ServiceBuilder};
+use tower::{limit::ConcurrencyLimitLayer, ServiceBuilder};
+use tower_http::{
+    compression::CompressionLayer, decompression::RequestDecompressionLayer, timeout::TimeoutLayer,
+};
 
 use crate::{auth::internal_auth, routes, settings::Settings};
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
-fn error_response(
-    status: StatusCode,
-    message: impl Into<String>,
-) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        status,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
-}
-
 pub fn build_router(settings: &Settings) -> Router {
     routes::init_cpu_limiter(settings.cpu_concurrency_limit());
+
+    // Request bodies are decompressed as the handler reads them, so the body
+    // limit bounds the decompressed size. Authentication runs on the route,
+    // before the body is read.
     let middleware_stack = ServiceBuilder::new()
-        .layer(HandleErrorLayer::new(|error: BoxError| async move {
-            if error.is::<tower::timeout::error::Elapsed>() {
-                error_response(StatusCode::REQUEST_TIMEOUT, "Request timed out")
-            } else {
-                error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Unhandled internal error: {error}"),
-                )
-            }
-        }))
-        .layer(TimeoutLayer::new(settings.request_timeout()))
-        .layer(ConcurrencyLimitLayer::new(settings.concurrency_limit()))
-        .layer(middleware::from_fn_with_state(
-            settings.internal_token(),
-            internal_auth,
+        .layer(CompressionLayer::new())
+        .layer(RequestDecompressionLayer::new())
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            settings.request_timeout(),
         ))
+        .layer(ConcurrencyLimitLayer::new(settings.concurrency_limit()))
         .layer(DefaultBodyLimit::max(settings.body_limit_bytes()));
 
-    Router::new()
-        .route("/health", get(routes::health))
-        .route("/build-info", get(routes::build_info))
+    let protected = Router::new()
         .route("/keys/register", post(routes::register_key))
-        // DOB days (days since 1900-01-01 - full precision)
-        .route("/encrypt-dob-days", post(routes::encrypt_dob_days))
-        .route("/verify-age-from-dob", post(routes::verify_age_from_dob))
-        // Batch encryption
         .route("/encrypt-batch", post(routes::encrypt_batch))
-        .route("/encrypt-country-code", post(routes::encrypt_country_code))
-        .route(
-            "/encrypt-compliance-level",
-            post(routes::encrypt_compliance_level),
-        )
-        .route("/encrypt-liveness", post(routes::encrypt_liveness))
+        .route("/verify-age-from-dob", post(routes::verify_age_from_dob))
         .route(
             "/verify-liveness-threshold",
             post(routes::verify_liveness_threshold),
         )
-        .layer(middleware_stack)
+        .route_layer(middleware::from_fn_with_state(
+            settings.internal_token(),
+            internal_auth,
+        ))
+        .layer(middleware_stack);
+
+    Router::new()
+        .route("/health", get(routes::health))
+        .route("/build-info", get(routes::build_info))
+        .merge(protected)
 }
