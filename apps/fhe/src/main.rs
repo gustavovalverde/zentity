@@ -3,26 +3,12 @@
 //! Provides endpoints for encrypting data and performing age verification
 //! using Fully Homomorphic Encryption (TFHE-rs).
 
-use axum::{
-    body::Body,
-    http::{HeaderMap, Request},
-};
+use axum::{body::Body, http::Request};
 use fhe_service::{app::build_router, crypto, settings::Settings, telemetry};
-use opentelemetry::{global, propagation::Extractor};
+use opentelemetry::global;
+use opentelemetry_http::HeaderExtractor;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-struct HeaderExtractor<'a>(&'a HeaderMap);
-
-impl Extractor for HeaderExtractor<'_> {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.0.get(key).and_then(|value| value.to_str().ok())
-    }
-
-    fn keys(&self) -> Vec<&str> {
-        self.0.keys().map(|key| key.as_str()).collect()
-    }
-}
 
 #[tokio::main]
 async fn main() {
