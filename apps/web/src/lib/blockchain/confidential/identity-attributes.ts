@@ -3,11 +3,7 @@
 import type { ClearValue, EncryptedValue, EncryptResult } from "@zama-fhe/sdk";
 import type { EncryptedHandle } from "./encrypted-values";
 
-import {
-  buildEncryptedHandle,
-  buildInputProof,
-  normalizeEncryptedHandle,
-} from "./encrypted-values";
+import { buildEncryptedHandle, buildInputProof } from "./encrypted-values";
 
 export interface IdentityAttributesForAttestation {
   birthYearOffset: number;
@@ -62,16 +58,13 @@ export function buildEncryptedIdentityAttributes(
   };
 }
 
-export function resolveIdentityAttributeHandles(input: {
-  birthYearOffset: unknown;
-  complianceLevel: unknown;
-  countryCode: unknown;
-  isBlacklisted: unknown;
-}): IdentityAttributeHandles | null {
-  const birthYearOffset = normalizeEncryptedHandle(input.birthYearOffset);
-  const countryCode = normalizeEncryptedHandle(input.countryCode);
-  const complianceLevel = normalizeEncryptedHandle(input.complianceLevel);
-  const isBlacklisted = normalizeEncryptedHandle(input.isBlacklisted);
+export function resolveIdentityAttributeHandles(
+  input: {
+    [K in keyof IdentityAttributeHandles]: EncryptedHandle | undefined;
+  }
+): IdentityAttributeHandles | null {
+  const { birthYearOffset, countryCode, complianceLevel, isBlacklisted } =
+    input;
 
   if (!(birthYearOffset && countryCode && complianceLevel && isBlacklisted)) {
     return null;

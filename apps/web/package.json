@@ -100,7 +100,7 @@
     "@wagmi/core": "3.6.9",
     "@worldcoin/idkit": "4.6.0",
     "@zama-fhe/sdk": "3.7.2",
-    "@zentity/contracts": "0.7.0",
+    "@zentity/contracts": "0.8.0",
     "@zentity/sdk": "workspace:*",
     "@zkpassport/registry": "^0.15.3",
     "@zkpassport/sdk": "^0.19.3",

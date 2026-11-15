@@ -62,7 +62,7 @@ export async function readOnChainCompliance(
 
     return {
       address: walletAddress,
-      compliant: Boolean(compliant),
+      compliant,
       contract: mirrorAddress,
       minComplianceLevel,
       network: BASE_SEPOLIA_NETWORK,

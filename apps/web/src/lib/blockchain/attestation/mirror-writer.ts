@@ -77,8 +77,8 @@ async function readMirrorLevel(
   ]);
 
   return {
-    isAttested: Boolean(isAttested),
-    currentLevel: Number(currentLevel),
+    isAttested,
+    currentLevel,
   };
 }
 
@@ -93,7 +93,7 @@ async function readMirrorAttestation(
     args: [userAddress],
   });
 
-  return Boolean(isAttested);
+  return isAttested;
 }
 
 export async function writeMirrorCompliance(

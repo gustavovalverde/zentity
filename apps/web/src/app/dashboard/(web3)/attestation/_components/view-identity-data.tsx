@@ -199,18 +199,16 @@ export function ViewIdentityData() {
   // Check if user is attested on-chain
   const readEnabled = Boolean(contractAddress && address);
 
-  const { data: rawIsAttested, isLoading: isAttestedLoading } = useReadContract(
-    {
-      address: contractAddress,
-      abi: identityRegistryAbi,
-      functionName: "isAttested",
-      args: address ? [address] : undefined,
-      account: address,
-      query: { enabled: readEnabled },
-    }
-  );
+  const { data: isAttested, isLoading: isAttestedLoading } = useReadContract({
+    address: contractAddress,
+    abi: identityRegistryAbi,
+    functionName: "isAttested",
+    args: address ? [address] : undefined,
+    account: address,
+    query: { enabled: readEnabled },
+  });
 
-  const { data: rawBirthYearHandle, isLoading: isBirthYearLoading } =
+  const { data: birthYearHandle, isLoading: isBirthYearLoading } =
     useReadContract({
       address: contractAddress,
       abi: identityRegistryAbi,
@@ -220,7 +218,7 @@ export function ViewIdentityData() {
       query: { enabled: readEnabled },
     });
 
-  const { data: rawCountryCodeHandle, isLoading: isCountryLoading } =
+  const { data: countryCodeHandle, isLoading: isCountryLoading } =
     useReadContract({
       address: contractAddress,
       abi: identityRegistryAbi,
@@ -230,7 +228,7 @@ export function ViewIdentityData() {
       query: { enabled: readEnabled },
     });
 
-  const { data: rawComplianceLevelHandle, isLoading: isComplianceLoading } =
+  const { data: complianceLevelHandle, isLoading: isComplianceLoading } =
     useReadContract({
       address: contractAddress,
       abi: identityRegistryAbi,
@@ -240,7 +238,7 @@ export function ViewIdentityData() {
       query: { enabled: readEnabled },
     });
 
-  const { data: rawBlacklistHandle, isLoading: isBlacklistLoading } =
+  const { data: blacklistHandle, isLoading: isBlacklistLoading } =
     useReadContract({
       address: contractAddress,
       abi: identityRegistryAbi,
@@ -249,14 +247,6 @@ export function ViewIdentityData() {
       account: address,
       query: { enabled: readEnabled },
     });
-
-  const isAttested = rawIsAttested as boolean | undefined;
-  const birthYearHandle = rawBirthYearHandle as `0x${string}` | undefined;
-  const countryCodeHandle = rawCountryCodeHandle as `0x${string}` | undefined;
-  const complianceLevelHandle = rawComplianceLevelHandle as
-    | `0x${string}`
-    | undefined;
-  const blacklistHandle = rawBlacklistHandle as `0x${string}` | undefined;
 
   const isLoadingContract =
     isAttestedLoading ||
