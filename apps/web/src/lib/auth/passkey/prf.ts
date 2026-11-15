@@ -2,8 +2,6 @@
 
 import "client-only";
 
-import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
-
 import { recordClientMetric } from "@/lib/observability/client-metrics";
 import {
   base64UrlToBytes,
@@ -35,7 +33,7 @@ export function buildPrfExtension(
         first: toArrayBuffer(prfSalt),
       },
     },
-  } as AuthenticationExtensionsClientInputs;
+  };
 }
 
 function assertUserActivation() {
@@ -126,49 +124,18 @@ export async function checkPrfSupport(): Promise<PrfSupportStatus> {
     return { supported: false, reason: "WebAuthn is not available." };
   }
 
-  const getClientCapabilities = (
-    PublicKeyCredential as typeof PublicKeyCredential & {
-      getClientCapabilities?: (
-        ...args: unknown[]
-      ) => Promise<Record<string, unknown>>;
+  // lib.dom declares getClientCapabilities, but older browsers lack it.
+  if (!("getClientCapabilities" in PublicKeyCredential)) {
+    return { supported: true };
+  }
+
+  try {
+    const capabilities = await PublicKeyCredential.getClientCapabilities();
+    if (capabilities["extension:prf"] === false) {
+      return { supported: false, reason: "PRF extension not supported." };
     }
-  ).getClientCapabilities;
-
-  if (getClientCapabilities) {
-    try {
-      let caps: Record<string, unknown> | undefined;
-      try {
-        caps = await getClientCapabilities();
-      } catch {
-        // Some implementations may require a "public-key" hint.
-        caps = await getClientCapabilities("public-key");
-      }
-
-      if (caps) {
-        const extensionKey = "extension:prf";
-        const extensionValue = caps[extensionKey];
-        const directValue = (caps as { prf?: unknown }).prf;
-        const extensions = (caps as { extensions?: unknown }).extensions;
-        const extensionsArray = Array.isArray(extensions) ? extensions : null;
-
-        if (
-          extensionValue === false ||
-          directValue === false ||
-          (extensionsArray && !extensionsArray.includes("prf"))
-        ) {
-          return { supported: false, reason: "PRF extension not supported." };
-        }
-        if (
-          extensionValue === true ||
-          directValue === true ||
-          extensionsArray?.includes("prf")
-        ) {
-          return { supported: true };
-        }
-      }
-    } catch {
-      // Fall through to runtime checks.
-    }
+  } catch {
+    // Unknown capabilities: let the PRF ceremony decide.
   }
 
   return { supported: true };
