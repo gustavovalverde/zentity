@@ -367,7 +367,7 @@ describe("agentRouter", () => {
     expect(persistedGrant?.revokedAt).toBeTruthy();
   });
 
-  it("updates grant constraints while keeping the existing procedure stable", async () => {
+  it("updates a grant's status without touching its constraints", async () => {
     const userId = await createTestUser();
     const caller = await createCaller(userId);
     const host = await createHost({
@@ -380,25 +380,34 @@ describe("agentRouter", () => {
       hostId: host.id,
       thumbprint: "session-grant-update",
     });
-    const grant = await createGrant({ sessionId: session.id });
-
-    const result = await caller.updateGrant({
-      constraints: JSON.stringify([
-        { field: "amount.value", op: "max", value: 50 },
-      ]),
-      grantId: grant.id,
+    const constraints = JSON.stringify([
+      { field: "amount.value", op: "max", value: 50 },
+    ]);
+    const grant = await createGrant({
+      constraints,
+      sessionId: session.id,
+      status: "pending",
     });
+
+    // The procedure takes no constraints: a caller-supplied value is dropped
+    // rather than stored as the grant's auto-approval boundary.
+    const result = await caller.updateGrant({
+      constraints: "not-json",
+      grantId: grant.id,
+      status: "active",
+    } as Parameters<typeof caller.updateGrant>[0]);
 
     expect(result).toEqual({ updated: true });
 
     const persistedGrant = await db
-      .select({ constraints: agentSessionGrants.constraints })
+      .select({
+        constraints: agentSessionGrants.constraints,
+        status: agentSessionGrants.status,
+      })
       .from(agentSessionGrants)
       .where(eq(agentSessionGrants.id, grant.id))
       .limit(1)
       .get();
-    expect(persistedGrant?.constraints).toBe(
-      JSON.stringify([{ field: "amount.value", op: "max", value: 50 }])
-    );
+    expect(persistedGrant).toEqual({ constraints, status: "active" });
   });
 });

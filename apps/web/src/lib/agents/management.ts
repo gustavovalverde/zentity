@@ -123,7 +123,6 @@ export interface ManagedSessionDetail {
 }
 
 interface GrantUpdateInput {
-  constraints?: string | null | undefined;
   grantId: string;
   status?: "active" | "denied" | "revoked" | undefined;
 }
@@ -649,10 +648,6 @@ export async function updateGrantForUser(
   await assertGrantOwnedByUser(userId, input.grantId);
 
   const updates: Record<string, Date | string | null> = {};
-  if (input.constraints !== undefined) {
-    updates.constraints = input.constraints;
-  }
-
   if (input.status) {
     updates.status = input.status;
     if (input.status === "revoked") {
