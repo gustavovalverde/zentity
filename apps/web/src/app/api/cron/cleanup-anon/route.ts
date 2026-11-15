@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { constantTimeEqual } from "better-auth/crypto";
 
 import { env } from "@/env";
 import { deleteExpiredAnonymousUsers } from "@/lib/db/queries/auth";
@@ -22,15 +22,7 @@ function authorized(req: Request): boolean {
   }
   const match = BEARER_PATTERN.exec(header);
   const presented = match?.[1];
-  if (!presented) {
-    return false;
-  }
-  const expected = Buffer.from(env.CRON_SECRET);
-  const actual = Buffer.from(presented);
-  if (expected.length !== actual.length) {
-    return false;
-  }
-  return timingSafeEqual(expected, actual);
+  return !!presented && constantTimeEqual(presented, env.CRON_SECRET);
 }
 
 export async function POST(req: Request): Promise<Response> {
