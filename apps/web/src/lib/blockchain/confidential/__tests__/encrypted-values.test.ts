@@ -37,4 +37,15 @@ describe("buildEncryptedHandle / buildInputProof", () => {
       "missing country handle"
     );
   });
+
+  it("rejects values that are neither a string nor a Uint8Array", () => {
+    for (const value of [42, true, { handle: "0x01" }]) {
+      expect(() =>
+        buildEncryptedHandle(value as unknown as string, "country")
+      ).toThrow("missing country handle");
+      expect(() => buildInputProof(value as unknown as string)).toThrow(
+        "missing input proof"
+      );
+    }
+  });
 });

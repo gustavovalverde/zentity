@@ -20,7 +20,11 @@ function normalizeEncryptedHandle(
     return HEX_STRING_PATTERN.test(hex) ? (hex as EncryptedHandle) : undefined;
   }
 
-  return bytesToHex(encryptedHandle);
+  if (encryptedHandle instanceof Uint8Array) {
+    return bytesToHex(encryptedHandle);
+  }
+
+  return;
 }
 
 function requireNormalizedHex(
