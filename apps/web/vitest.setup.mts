@@ -3,9 +3,8 @@
  *
  * Responsibilities:
  * 1. Set default environment variables
- * 2. Configure React act() environment
- * 3. Register cross-cutting module mocks (auth stub, server-only, next/headers)
- * 4. Register global afterEach hooks Vitest can't express via config
+ * 2. Register cross-cutting module mocks (auth stub, next/headers)
+ * 3. Register global afterEach hooks Vitest can't express via config
  *
  * Mock lifecycle: `clearMocks` + `restoreMocks` in vitest.unit.config.mts
  * already run `vi.clearAllMocks()` / `vi.restoreAllMocks()` before each test.
@@ -37,12 +36,6 @@ process.env.CIPHERTEXT_HMAC_SECRET ||= "test-ciphertext-hmac-secret-min-32ch";
 process.env.KEY_ENCRYPTION_KEY ||= "test-key-encryption-key-minimum-32-chars";
 process.env.DRIZZLE_LOG ||= "false";
 
-// React act() environment must be set on every realm where React runs.
-// Setting on globalThis covers both Node and jsdom environments.
-(
-  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 // `@/lib/auth` has no index.ts, so this only activates for tests that import
 // the path directly. Tests that need richer auth mocking mock
 // "@/lib/auth/auth-config" per-file.
@@ -53,8 +46,6 @@ vi.mock("@/lib/auth", () => ({
     },
   },
 }));
-
-vi.mock("server-only", () => ({}));
 
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => Promise.resolve(new Headers())),
@@ -73,11 +64,3 @@ afterEach(() => {
     vi.useRealTimers();
   }
 });
-
-const unhandledRejectionHandler = (reason: unknown) => {
-  console.error("Unhandled Rejection in test:", reason);
-};
-
-if (process.listenerCount("unhandledRejection") === 0) {
-  process.on("unhandledRejection", unhandledRejectionHandler);
-}
