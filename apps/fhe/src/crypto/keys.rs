@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 use std::time::Instant;
 use tfhe::prelude::*;
-use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, FheUint8, ServerKey};
+use tfhe::{set_server_key, CompressedPublicKey, CompressedServerKey, ServerKey};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -50,41 +50,6 @@ pub fn decode_compressed_server_key(
     server_key_bytes: &[u8],
 ) -> Result<CompressedServerKey, FheError> {
     super::decode_tfhe_binary(server_key_bytes)
-}
-
-/// Validate uploaded key material before persistence.
-///
-/// This performs a lightweight key sanity check:
-/// 1. Decompress server key
-/// 2. Set thread-local server key
-/// 3. Encrypt a small sentinel value with the public key
-/// 4. Serialize the encrypted value
-///
-/// Panics from malformed keys are caught and mapped to InvalidInput.
-pub fn validate_registered_keys(
-    public_key: &CompressedPublicKey,
-    server_key: &CompressedServerKey,
-) -> Result<(), FheError> {
-    const SENTINEL: u8 = 7;
-
-    let public_key = public_key.clone();
-    let server_key = server_key.clone();
-
-    let validation = catch_unwind(AssertUnwindSafe(move || {
-        let decompressed = server_key.decompress();
-        set_server_key(decompressed);
-
-        let encrypted = FheUint8::try_encrypt(SENTINEL, &public_key)
-            .map_err(|error| FheError::InvalidInput(format!("Invalid public key: {error}")))?;
-        super::encode_tfhe_binary(&encrypted).map(|_| ())
-    }));
-
-    match validation {
-        Ok(result) => result,
-        Err(_) => Err(FheError::InvalidInput(
-            "Invalid FHE key material: validation panicked".to_string(),
-        )),
-    }
 }
 
 impl KeyStore {

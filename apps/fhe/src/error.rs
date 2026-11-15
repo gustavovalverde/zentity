@@ -29,7 +29,6 @@ pub enum FheError {
     Tfhe(String),
 
     #[error("Internal error: {0}")]
-    #[allow(dead_code)] // Reserved for future internal error handling
     Internal(String),
 }
 
