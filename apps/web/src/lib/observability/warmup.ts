@@ -39,17 +39,14 @@ async function checkServiceHealth(
   timeoutMs = 5000
 ): Promise<ServiceHealth> {
   const startTime = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${url}/health`, {
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "X-Zentity-Healthcheck": "true",
       },
     });
-    clearTimeout(timeoutId);
 
     return {
       name,
@@ -58,7 +55,6 @@ async function checkServiceHealth(
       durationMs: Date.now() - startTime,
     };
   } catch (error) {
-    clearTimeout(timeoutId);
     return {
       name,
       url,

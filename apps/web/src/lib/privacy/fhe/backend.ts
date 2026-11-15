@@ -8,8 +8,8 @@ import { env } from "@/env";
 import {
   fetchWithTimeout,
   HttpError,
+  isTimeoutError,
   safeReadBodyText,
-  TimeoutError,
 } from "@/lib/http/fetch";
 import {
   recordFheDuration,
@@ -154,7 +154,7 @@ async function withFheError<T>(
         bodyText: error.bodyText,
       });
     }
-    if (error instanceof TimeoutError) {
+    if (isTimeoutError(error)) {
       recordFheDuration(durationMs, {
         operation,
         result: "error",
