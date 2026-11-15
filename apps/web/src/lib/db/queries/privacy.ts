@@ -11,6 +11,7 @@ import type {
 
 import crypto from "node:crypto";
 
+import { constantTimeEqual } from "better-auth/crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
@@ -58,7 +59,7 @@ function ensureCiphertextIntegrity(params: {
     return computed;
   }
 
-  if (!crypto.timingSafeEqual(Buffer.from(stored), Buffer.from(computed))) {
+  if (!constantTimeEqual(stored, computed)) {
     throw new Error(
       `Encrypted attribute integrity check failed for ${params.attributeType}:${params.userId}`
     );
