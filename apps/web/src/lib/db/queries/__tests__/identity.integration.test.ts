@@ -87,7 +87,7 @@ describe("identity queries", () => {
       blobRef: computeSecretBlobRef(secretId),
       blobHash: "0".repeat(64),
       blobSize: 7,
-      metadata: JSON.stringify({ envelopeFormat: "json" }),
+      metadata: { envelopeFormat: "json" },
     });
     await db.insert(secretWrappers).values({
       id: crypto.randomUUID(),
@@ -120,7 +120,7 @@ describe("identity queries", () => {
         blobRef,
         blobHash: "0".repeat(64),
         blobSize: 7,
-        metadata: JSON.stringify({ envelopeFormat: "json" }),
+        metadata: { envelopeFormat: "json" },
       });
       await db.insert(secretWrappers).values({
         id: crypto.randomUUID(),

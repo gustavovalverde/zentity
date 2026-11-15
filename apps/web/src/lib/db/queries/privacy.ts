@@ -27,23 +27,6 @@ import {
   signedClaims,
 } from "../schema/privacy";
 
-type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
-  metadata: Record<string, unknown> | null;
-};
-
-function parseSecretMetadata(
-  raw: string | null
-): Record<string, unknown> | null {
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 function computeCiphertextHash(
   ciphertext: Buffer,
   userId: string,
@@ -86,7 +69,7 @@ function ensureCiphertextIntegrity(params: {
 export async function getEncryptedSecretByUserAndType(
   userId: string,
   secretType: string
-): Promise<EncryptedSecret | null> {
+): Promise<EncryptedSecretRecord | null> {
   const row = await db
     .select()
     .from(encryptedSecrets)
@@ -99,20 +82,13 @@ export async function getEncryptedSecretByUserAndType(
     .limit(1)
     .get();
 
-  if (!row) {
-    return null;
-  }
-
-  return {
-    ...row,
-    metadata: parseSecretMetadata(row.metadata),
-  };
+  return row ?? null;
 }
 
 export async function getEncryptedSecretById(
   userId: string,
   secretId: string
-): Promise<EncryptedSecret | null> {
+): Promise<EncryptedSecretRecord | null> {
   const row = await db
     .select()
     .from(encryptedSecrets)
@@ -125,14 +101,7 @@ export async function getEncryptedSecretById(
     .limit(1)
     .get();
 
-  if (!row) {
-    return null;
-  }
-
-  return {
-    ...row,
-    metadata: parseSecretMetadata(row.metadata),
-  };
+  return row ?? null;
 }
 
 export async function getSecretWrappersBySecretId(
@@ -149,13 +118,11 @@ export async function updateEncryptedSecretMetadata(data: {
   userId: string;
   secretType: string;
   metadata: Record<string, unknown> | null;
-}): Promise<EncryptedSecret | null> {
-  const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
-
+}): Promise<EncryptedSecretRecord | null> {
   const row = await db
     .update(encryptedSecrets)
     .set({
-      metadata,
+      metadata: data.metadata,
       updatedAt: sql`datetime('now')`,
     })
     .where(
@@ -167,7 +134,7 @@ export async function updateEncryptedSecretMetadata(data: {
     .returning()
     .get();
 
-  return row ? { ...row, metadata: parseSecretMetadata(row.metadata) } : null;
+  return row ?? null;
 }
 
 export async function upsertSecretWrapper(data: {

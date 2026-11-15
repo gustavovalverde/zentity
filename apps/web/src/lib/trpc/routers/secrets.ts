@@ -177,7 +177,7 @@ export const secretsRouter = router({
         await requireVaultRoot(ctx.userId);
       }
 
-      const metadata = input.metadata ? JSON.stringify(input.metadata) : null;
+      const metadata = input.metadata ?? null;
 
       const replacedSecretIds = await db.transaction(async (tx) => {
         const existing = await tx

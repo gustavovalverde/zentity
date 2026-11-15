@@ -208,7 +208,9 @@ export const humanityCredentials = sqliteTable(
     provider: text("provider").notNull(),
     providerSubjectKind: text("provider_subject_kind").notNull(),
     providerSubjectHash: text("provider_subject_hash").notNull(),
-    providerMetadata: text("provider_metadata"),
+    providerMetadata: text("provider_metadata", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
     attachedAt: text("attached_at").notNull().default(sql`(datetime('now'))`),
     expiresAt: text("expires_at"),
     revokedAt: text("revoked_at"),

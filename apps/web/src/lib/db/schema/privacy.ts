@@ -186,7 +186,9 @@ export const encryptedSecrets = sqliteTable(
     blobRef: text("blob_ref"),
     blobHash: text("blob_hash"),
     blobSize: integer("blob_size"),
-    metadata: text("metadata"),
+    metadata: text("metadata", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
     createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
   },

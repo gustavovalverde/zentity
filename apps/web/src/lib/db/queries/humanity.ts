@@ -179,9 +179,7 @@ export async function attachHumanityCredential(args: {
         provider: args.provider,
         providerSubjectHash: args.providerSubjectHash,
         providerSubjectKind: args.providerSubjectKind,
-        providerMetadata: args.providerMetadata
-          ? JSON.stringify(args.providerMetadata)
-          : null,
+        providerMetadata: args.providerMetadata ?? null,
         expiresAt: args.expiresAt ?? null,
         attachedAt: now,
         createdAt: now,
