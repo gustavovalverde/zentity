@@ -5,13 +5,13 @@ import {
   registerAgentSession as registerSdkAgentSession,
   signAgentAssertion as signSdkAgentAssertion,
 } from "@zentity/sdk";
+import { AGENT_BOOTSTRAP_SCOPES } from "@zentity/sdk/agent-contract";
 import { exchangeToken } from "@zentity/sdk/fpa";
 import type { AgentInfo } from "../agent.js";
 import { config } from "../config.js";
 import { discoverMcpOAuth } from "../oauth-client.js";
 import { discoverAgentConfiguration } from "./agent-configuration.js";
 import type { OAuthSessionContext } from "./auth-context.js";
-import { RUNTIME_BOOTSTRAP_SCOPE_STRING } from "./bootstrap-scopes.js";
 import {
   clearHostId,
   getOrCreateHostKey,
@@ -42,7 +42,7 @@ export async function prepareBootstrapRegistrationAuth(
     dpopClient: auth.dpopClient,
     scope:
       agentConfiguration.bootstrap_token_exchange.scopes_supported.join(" ") ||
-      RUNTIME_BOOTSTRAP_SCOPE_STRING,
+      AGENT_BOOTSTRAP_SCOPES.join(" "),
   });
 
   return {

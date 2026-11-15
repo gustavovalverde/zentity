@@ -355,12 +355,7 @@ async function fetchX402Purchase(
           input.params
         ),
         oauth: input.oauth,
-        cibaRequest: {
-          cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
-          tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
-          clientId: input.oauth.clientId,
-          dpopClient: input.oauth.dpopClient,
-          loginHint: input.oauth.accountSub,
+        approval: {
           scope: buildX402PurchaseScope(),
           bindingMessage: input.bindingMessage,
           authorizationDetails: [
@@ -374,7 +369,6 @@ async function fetchX402Purchase(
               minComplianceLevel,
             },
           ],
-          resource: config.zentityUrl,
           ...(input.agentAssertion
             ? { agentAssertion: input.agentAssertion }
             : {}),
@@ -483,12 +477,7 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
       input.params
     ),
     oauth: input.oauth,
-    cibaRequest: {
-      cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
-      tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
-      clientId: input.oauth.clientId,
-      dpopClient: input.oauth.dpopClient,
-      loginHint: input.oauth.accountSub,
+    approval: {
       scope: buildPurchaseScope(
         Boolean(input.params.requires_age_verification)
       ),
@@ -504,7 +493,6 @@ async function runDirectPurchaseTool(input: PurchaseInput) {
           },
         },
       ],
-      resource: config.zentityUrl,
       ...(input.agentAssertion ? { agentAssertion: input.agentAssertion } : {}),
     },
     onApproved: async (tokenSet) => {

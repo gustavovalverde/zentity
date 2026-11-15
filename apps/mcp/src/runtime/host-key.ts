@@ -2,14 +2,9 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { exportJWK, generateKeyPair, type JWK } from "jose";
-
-export interface HostKeyData {
-  did?: string;
-  hostId?: string;
-  privateKey: JWK;
-  publicKey: JWK;
-}
+import type { HostKeyMaterial } from "@zentity/sdk";
+import { normalizeUrl } from "@zentity/sdk/node";
+import { exportJWK, generateKeyPair } from "jose";
 
 function getHostKeyDir(): string {
   const configuredDir = process.env.ZENTITY_MCP_HOST_KEY_DIR?.trim();
@@ -20,31 +15,23 @@ function getHostKeyDir(): string {
 }
 
 function ensureHostKeyDir(): void {
-  const hostKeyDir = getHostKeyDir();
-  if (!existsSync(hostKeyDir)) {
-    mkdirSync(hostKeyDir, { mode: 0o700, recursive: true });
-  }
-}
-
-const TRAILING_SLASHES = /\/+$/;
-function normalizeZentityUrl(zentityUrl: string): string {
-  return zentityUrl.replace(TRAILING_SLASHES, "");
+  mkdirSync(getHostKeyDir(), { mode: 0o700, recursive: true });
 }
 
 function getHostKeyFile(zentityUrl: string, namespace: string): string {
   const hashedNamespace = createHash("sha256")
-    .update(`${normalizeZentityUrl(zentityUrl)}:${namespace}`)
+    .update(`${normalizeUrl(zentityUrl)}:${namespace}`)
     .digest("hex");
   return join(getHostKeyDir(), `${hashedNamespace}.json`);
 }
 
-function readHostKeyFile(hostKeyFile: string): HostKeyData | undefined {
+function readHostKeyFile(hostKeyFile: string): HostKeyMaterial | undefined {
   if (!existsSync(hostKeyFile)) {
     return undefined;
   }
 
   try {
-    return JSON.parse(readFileSync(hostKeyFile, "utf-8")) as HostKeyData;
+    return JSON.parse(readFileSync(hostKeyFile, "utf-8")) as HostKeyMaterial;
   } catch {
     return undefined;
   }
@@ -53,14 +40,14 @@ function readHostKeyFile(hostKeyFile: string): HostKeyData | undefined {
 export function loadHostKey(
   zentityUrl: string,
   namespace: string
-): HostKeyData | undefined {
+): HostKeyMaterial | undefined {
   return readHostKeyFile(getHostKeyFile(zentityUrl, namespace));
 }
 
 export function saveHostKey(
   zentityUrl: string,
   namespace: string,
-  data: HostKeyData
+  data: HostKeyMaterial
 ): void {
   ensureHostKeyDir();
   writeFileSync(
@@ -88,7 +75,7 @@ export function clearHostId(zentityUrl: string, namespace: string): void {
 export async function getOrCreateHostKey(
   zentityUrl: string,
   namespace: string
-): Promise<HostKeyData> {
+): Promise<HostKeyMaterial> {
   const existing = loadHostKey(zentityUrl, namespace);
   if (existing) {
     return existing;
@@ -102,7 +89,10 @@ export async function getOrCreateHostKey(
   const privateJwk = await exportJWK(privateKey);
   const publicJwk = await exportJWK(publicKey);
 
-  const data: HostKeyData = { privateKey: privateJwk, publicKey: publicJwk };
+  const data: HostKeyMaterial = {
+    privateKey: privateJwk,
+    publicKey: publicJwk,
+  };
   saveHostKey(zentityUrl, namespace, data);
   console.error(
     `[host-key] Generated and persisted new Ed25519 host keypair for ${namespace}`
