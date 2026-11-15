@@ -1,23 +1,12 @@
 import "server-only";
 
+import type { PaymentRequirements } from "@x402/core/types";
 import type { X402Resource } from "@/data/x402";
 import { env } from "@/lib/env";
 import { getMirrorAddress } from "@/lib/on-chain-compliance";
 
-// The x402 v2 wire format for PaymentRequirements. Field names must match
-// what @x402/evm's ExactEvmScheme reads: `amount`, `maxTimeoutSeconds`.
-interface PaymentRequirements {
-  amount: string;
-  asset: string;
-  extra: Record<string, unknown>;
-  maxTimeoutSeconds: number;
-  network: `${string}:${string}`;
-  payTo: string;
-  scheme: string;
-}
-
 export interface X402RouteConfig {
-  accepts: PaymentRequirements | PaymentRequirements[];
+  accepts: PaymentRequirements;
   description?: string;
   extensions?: Record<string, unknown>;
 }
