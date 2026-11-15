@@ -51,7 +51,7 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq, inArray } from "drizzle-orm";
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
@@ -81,6 +81,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
+import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
   captureBackchannelExtras,
@@ -602,9 +603,15 @@ async function validateDcrRegistration(
       });
     }
 
+    const jwks = getHardenedJWKSet(
+      joinAuthIssuerPath(iss, ".well-known/jwks.json")
+    );
+    if (!jwks) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "software_statement issuer JWKS URL is not allowed",
+      });
+    }
     try {
-      const jwksUrl = new URL(joinAuthIssuerPath(iss, ".well-known/jwks.json"));
-      const jwks = createRemoteJWKSet(jwksUrl);
       await jwtVerify(softwareStatement, jwks, { issuer: iss });
     } catch (err) {
       const detail =

@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
@@ -222,6 +224,21 @@ describe("JWKS signing key rotation", () => {
 
       expect(served).toEqual(await getPublishedJwks());
       expect(served.keys.map((key) => key.kid)).not.toContain(original);
+    });
+  });
+
+  describe("verifyAuthIssuedJwt", () => {
+    const typ = "logout+jwt";
+
+    it("stops accepting a token once its key leaves the published JWKS", async () => {
+      const token = await signJwt({ iss: getAuthIssuer() }, { typ });
+      const { kid } = decodeProtectedHeader(token);
+      expect(await verifyAuthIssuedJwt(token, { typ })).not.toBeNull();
+
+      await rotateSigningKey("RS256");
+      await expireKey(String(kid), new Date(Date.now() - 366 * DAY_MS));
+
+      expect(await verifyAuthIssuedJwt(token, { typ })).toBeNull();
     });
   });
 

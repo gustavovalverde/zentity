@@ -2,7 +2,6 @@ import "server-only";
 
 import { eq } from "drizzle-orm";
 import {
-  createLocalJWKSet,
   createRemoteJWKSet,
   type JWTPayload,
   type JWTVerifyOptions,
@@ -10,30 +9,27 @@ import {
   jwtVerify,
 } from "jose";
 
+import { getLocalKeySet } from "@/lib/auth/oidc/jwt-signer";
 import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
-import { jwks as jwksTable } from "@/lib/db/schema/oauth-provider";
 import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 import { validateOutboundUrl } from "@/lib/http/url-safety";
 import { logger } from "@/lib/logging/logger";
 
 // ── Remote JWKS (hardened) ─────────────────────────────────────────────
 
-const REMOTE_CACHE_TTL_MS = 60 * 60 * 1000;
 const REMOTE_FETCH_TIMEOUT_MS = 5000;
 type RemoteJWKSet = ReturnType<typeof createRemoteJWKSet>;
 
-const remoteJwksCache = new Map<
-  string,
-  { fetchedAt: number; jwks: RemoteJWKSet }
->();
+const remoteJwksCache = new Map<string, RemoteJWKSet>();
 
-// Fetch a remote JWKS from a validated outbound URL with a 5s timeout and
-// 1h cache.
+// One remote JWKS per validated outbound URL, fetched with a 5s timeout. jose
+// caches the keys, refetching them after its `cacheMaxAge` or for an unknown
+// `kid` once its cooldown has passed.
 export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
   const cached = remoteJwksCache.get(jwksUrl);
-  if (cached && Date.now() - cached.fetchedAt < REMOTE_CACHE_TTL_MS) {
-    return cached.jwks;
+  if (cached) {
+    return cached;
   }
 
   const problem = validateOutboundUrl(jwksUrl);
@@ -48,50 +44,25 @@ export function getHardenedJWKSet(jwksUrl: string): RemoteJWKSet | null {
     headers: { Accept: "application/json" },
   });
 
-  remoteJwksCache.set(jwksUrl, { fetchedAt: Date.now(), jwks });
+  remoteJwksCache.set(jwksUrl, jwks);
   return jwks;
 }
 
 // ── Locally-issued JWT verification ────────────────────────────────────
 
 const authIssuer = getAuthIssuer();
-const LOCAL_KEY_SET_TTL_MS = 5 * 60 * 1000;
-
-type LocalKeySet = ReturnType<typeof createLocalJWKSet>;
-
-let localKeySet: { expiresAt: number; keys: LocalKeySet } | null = null;
-
-async function loadLocalKeySet(refresh: boolean): Promise<LocalKeySet> {
-  if (!refresh && localKeySet && localKeySet.expiresAt > Date.now()) {
-    return localKeySet.keys;
-  }
-  const rows = await db.select().from(jwksTable).all();
-  const keys = createLocalJWKSet({
-    keys: rows.map((row) => {
-      const pub = JSON.parse(row.publicKey) as Record<string, unknown>;
-      return { ...pub, kid: row.id, ...(row.alg ? { alg: row.alg } : {}) };
-    }),
-  });
-  localKeySet = { expiresAt: Date.now() + LOCAL_KEY_SET_TTL_MS, keys };
-  return keys;
-}
-
-export function invalidateLocalKeySet(): void {
-  localKeySet = null;
-}
 
 async function verifyWithLocalKeys(
   token: string,
   options: JWTVerifyOptions
 ): Promise<JWTPayload> {
   try {
-    return (await jwtVerify(token, await loadLocalKeySet(false), options))
-      .payload;
+    return (await jwtVerify(token, await getLocalKeySet(), options)).payload;
   } catch (error) {
     if (!(error instanceof joseErrors.JWKSNoMatchingKey)) {
       throw error;
     }
-    return (await jwtVerify(token, await loadLocalKeySet(true), options))
+    return (await jwtVerify(token, await getLocalKeySet(true), options))
       .payload;
   }
 }
