@@ -39,6 +39,13 @@ Zentity uses Better Auth’s passkey plugin for WebAuthn registration and authen
 
 Registration and authentication accept authenticators without user verification (UV). The plugin's `authentication.afterVerification` and `registration.afterVerification` hooks store the UV flag the ceremony observed in request state, and the session's authentication context records the matching `amr`: `["pop", "user", "mfa"]` when the authenticator verified the user, and `["pop", "user"]` when it did not. Zentity never claims `hwk`, because registration uses `attestationType: "none"` and cannot tell a hardware-bound key from a synced one. `PASSKEY_RP_ID` (`apps/web/src/lib/auth/origin.ts`) is the app's host, the value the plugin derived from `baseURL` before, and is passed to `passkey({ rpID })`.
 
+### Request-Bound Passkey Step-Up
+
+A CIBA approval that needs user verification is confirmed with a passkey assertion bound to that request and session, which must not sign the user in again. The plugin's `/passkey/verify-authentication` always creates a session, so `apps/web/src/lib/auth/passkey/step-up.ts` verifies the assertion with `@simplewebauthn/server` 13.3.3, the version the plugin resolves:
+
+* `issuePasskeyStepUp` offers the user's own passkeys with `userVerification: "required"` and stores the challenge as the verification row `ciba-step-up:<requestId>:<sessionId>` for 120 seconds. A new call replaces the row.
+* `verifyPasskeyStepUp` consumes the row through `consumeVerificationValue`, which refuses an expired row, requires the passkey to belong to the session's user, verifies with `requireUserVerification: true`, `PASSKEY_RP_ID`, and the app origin (plus loopback origins outside production), and advances the signature counter.
+
 ### Expected Consequences
 
 * Standardized session and WebAuthn handling, reducing security drift.
@@ -68,4 +75,5 @@ Zentity uses the published Better Auth packages without local patches. Passkey-o
 
 ## Revision History
 
+* 2026-11-15: CIBA approvals that need user verification use a request- and session-bound passkey step-up (`passkey/step-up.ts`) that verifies without creating a session.
 * 2026-11-15: Passkey sign-in and registration record the observed UV flag through the plugin's `afterVerification` hooks, and `amr` states it (`mfa` only with UV, never `hwk`). Authenticators without UV stay accepted.

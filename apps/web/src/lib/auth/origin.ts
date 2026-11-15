@@ -58,6 +58,18 @@ function getDevPort(): string {
   }
 }
 
+function addDevelopmentOrigins(origins: Set<string>): void {
+  if (process.env.NODE_ENV !== "production") {
+    const port = getDevPort();
+    // Node 17+ may resolve "localhost" to IPv6 ([::1]); host.docker.internal
+    // covers Docker network access. All variants must be enumerated.
+    origins.add(`http://localhost:${port}`);
+    origins.add(`http://127.0.0.1:${port}`);
+    origins.add(`http://[::1]:${port}`);
+    origins.add(`http://host.docker.internal:${port}`);
+  }
+}
+
 export function getTrustedOrigins(): string[] {
   const origins = new Set<string>();
   origins.add(getAppOrigin());
@@ -71,15 +83,17 @@ export function getTrustedOrigins(): string[] {
     }
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    const port = getDevPort();
-    // Node 17+ may resolve "localhost" to IPv6 ([::1]); host.docker.internal
-    // covers Docker network access. All variants must be enumerated.
-    origins.add(`http://localhost:${port}`);
-    origins.add(`http://127.0.0.1:${port}`);
-    origins.add(`http://[::1]:${port}`);
-    origins.add(`http://host.docker.internal:${port}`);
-  }
+  addDevelopmentOrigins(origins);
+  return Array.from(origins);
+}
 
+/**
+ * Where an approval page can run a passkey ceremony: the app origin, plus
+ * loopback origins outside production. Other trusted origins are not
+ * Zentity pages.
+ */
+export function getApprovalPageOrigins(): string[] {
+  const origins = new Set<string>([getAppOrigin()]);
+  addDevelopmentOrigins(origins);
   return Array.from(origins);
 }
