@@ -50,10 +50,20 @@ interface ValidityTransitionResult {
   event: IdentityValidityEvent;
 }
 
-async function persistValidityTransition(
+function persistValidityTransition(
   args: ValidityTransitionArgs
 ): Promise<IdentityValidityEvent | null> {
-  const executor = args.executor ?? db;
+  // The event and the snapshot must land together, so a caller without its own
+  // transaction gets one.
+  return args.executor
+    ? writeValidityTransition(args, args.executor)
+    : db.transaction((tx) => writeValidityTransition(args, tx));
+}
+
+async function writeValidityTransition(
+  args: ValidityTransitionArgs,
+  executor: DbExecutor
+): Promise<IdentityValidityEvent | null> {
   const currentSnapshot = await getIdentityValiditySnapshot(
     args.userId,
     executor
