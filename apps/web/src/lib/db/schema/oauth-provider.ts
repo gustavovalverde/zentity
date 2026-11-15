@@ -142,6 +142,13 @@ export const oauthAccessTokens = sqliteTable(
       .notNull()
       .references(() => oauthClients.clientId, { onDelete: "cascade" }),
     sessionId: text("session_id"),
+    // Nothing reads or writes this column. It stays declared because SQLite
+    // cannot drop a column that a foreign key names: `pnpm db:push` would emit
+    // `ALTER TABLE ... DROP COLUMN`, which fails and rolls back the whole push.
+    authContextId: text("auth_context_id").references(
+      () => authenticationContexts.id,
+      { onDelete: "set null" }
+    ),
     userId: text("user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -160,6 +167,8 @@ export const oauthAccessTokens = sqliteTable(
     revoked: integer("revoked", { mode: "timestamp_ms" }),
     confirmation: text("confirmation"),
     act: text("act"),
+    // Plain text: the Better Auth adapter JSON-encodes json fields itself, so
+    // drizzle's json mode would encode provider-written rows twice.
     accessTokenClaims: text("access_token_claims"),
     scopes: text("scopes").notNull(),
   },
