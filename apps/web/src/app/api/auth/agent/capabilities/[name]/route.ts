@@ -38,12 +38,8 @@ export async function GET(
   return NextResponse.json({
     name: capability.name,
     description: capability.description,
-    input_schema: capability.inputSchema
-      ? JSON.parse(capability.inputSchema)
-      : null,
-    output_schema: capability.outputSchema
-      ? JSON.parse(capability.outputSchema)
-      : null,
+    input_schema: capability.inputSchema,
+    output_schema: capability.outputSchema,
     approval_strength: capability.approvalStrength,
   });
 }

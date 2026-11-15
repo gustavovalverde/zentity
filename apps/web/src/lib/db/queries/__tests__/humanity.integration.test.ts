@@ -124,7 +124,7 @@ describe("humanity queries", () => {
       provider: "world_id",
       providerSubjectHash: "subject-hash",
       providerSubjectKind: "nullifier",
-      providerMetadata: '{"level":"orb"}',
+      providerMetadata: { level: "orb" },
       expiresAt: null,
       revokedAt: null,
     });

@@ -302,7 +302,6 @@ export async function ingestChainValidityEvents(args: {
         status: "confirmed",
         blockNumber,
         confirmedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       })
       .where(eq(blockchainAttestations.id, attestation.id))
       .run();

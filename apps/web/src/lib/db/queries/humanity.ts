@@ -1,7 +1,5 @@
 import "server-only";
 
-import crypto from "node:crypto";
-
 import { and, eq, gt, isNull, or, type SQL } from "drizzle-orm";
 import { cache } from "react";
 
@@ -81,7 +79,7 @@ export async function createHumanityChallenge(args: {
 }): Promise<HumanityChallenge> {
   const row = await db
     .insert(humanityChallenges)
-    .values({ ...args, createdAt: new Date().toISOString() })
+    .values(args)
     .returning()
     .get();
   if (!row) {
@@ -170,22 +168,15 @@ export async function attachHumanityCredential(args: {
       );
     }
 
-    const now = new Date().toISOString();
     const row = await tx
       .insert(humanityCredentials)
       .values({
-        id: crypto.randomUUID(),
         userId: args.userId,
         provider: args.provider,
         providerSubjectHash: args.providerSubjectHash,
         providerSubjectKind: args.providerSubjectKind,
-        providerMetadata: args.providerMetadata
-          ? JSON.stringify(args.providerMetadata)
-          : null,
+        providerMetadata: args.providerMetadata ?? null,
         expiresAt: args.expiresAt ?? null,
-        attachedAt: now,
-        createdAt: now,
-        updatedAt: now,
       })
       .returning()
       .get();
