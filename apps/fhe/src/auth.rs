@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use constant_time_eq::constant_time_eq;
 use serde_json::json;
 
 pub async fn internal_auth(
@@ -19,8 +20,8 @@ pub async fn internal_auth(
         let provided = req
             .headers()
             .get("x-zentity-internal-token")
-            .and_then(|value| value.to_str().ok());
-        if provided != Some(expected.as_str()) {
+            .map(|value| value.as_bytes());
+        if !provided.is_some_and(|provided| constant_time_eq(provided, expected.as_bytes())) {
             tracing::warn!("Unauthorized request to {}", req.uri().path());
             return (
                 StatusCode::UNAUTHORIZED,
