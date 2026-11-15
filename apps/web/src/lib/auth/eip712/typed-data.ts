@@ -1,21 +1,16 @@
 import type { Eip712TypedData } from "./types";
 
-import { recoverTypedDataAddress } from "viem";
+import { verifyTypedData } from "viem";
 
-const NONCE_PREFIX = "eip712";
+const EIP712_DOMAIN_NAME = "Zentity";
 
-export function nonceIdentifier(address: string, chainId: number): string {
-  return `${NONCE_PREFIX}:${address.toLowerCase()}:${chainId}`;
-}
-
-export function buildDefaultTypedData(
+export function buildWalletAuthTypedData(
   address: string,
   chainId: number,
-  nonce: string,
-  appName: string
+  nonce: string
 ): Eip712TypedData {
   return {
-    domain: { name: appName, version: "1", chainId },
+    domain: { name: EIP712_DOMAIN_NAME, version: "1", chainId },
     types: {
       WalletAuth: [
         { name: "address", type: "address" },
@@ -33,14 +28,11 @@ export async function verifyEip712Signature(
   expectedAddress: string
 ): Promise<boolean> {
   try {
-    const recovered = await recoverTypedDataAddress({
-      domain: typedData.domain,
-      types: typedData.types,
-      primaryType: typedData.primaryType,
-      message: typedData.message,
+    return await verifyTypedData({
+      ...typedData,
+      address: expectedAddress as `0x${string}`,
       signature: signature as `0x${string}`,
     });
-    return recovered.toLowerCase() === expectedAddress.toLowerCase();
   } catch {
     return false;
   }

@@ -158,6 +158,8 @@ sequenceDiagram
 
 **DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
 
+**EIP-712 nonce**: The nonce in `typed_data` is single-use and expires 15 minutes after it is issued. A signature over an expired or already redeemed nonce returns 401 `access_denied`, and concurrent finish rounds for one nonce yield at most one authorization code.
+
 **Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
 
 **Rate limiting**: 10 requests/minute per IP. Exceeded returns 429.
