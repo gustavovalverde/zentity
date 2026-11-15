@@ -81,15 +81,9 @@ export function registerCheckComplianceTool(server: McpServer): void {
 
       if (!response.ok) {
         const text = await response.text();
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `Failed to fetch attestation status: ${response.status} ${text}`,
-            },
-          ],
-        };
+        throw new Error(
+          `Failed to fetch attestation status: ${response.status} ${text}`
+        );
       }
 
       const { networks } = (
@@ -101,15 +95,9 @@ export function registerCheckComplianceTool(server: McpServer): void {
         ? networks.filter((candidate) => candidate.id === network)
         : networks;
       if (network && selected.length === 0) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `Unknown network "${network}". Available networks: ${networks.map((candidate) => candidate.id).join(", ")}`,
-            },
-          ],
-        };
+        throw new Error(
+          `Unknown network "${network}". Available networks: ${networks.map((candidate) => candidate.id).join(", ")}`
+        );
       }
 
       const structuredContent = toComplianceOutput(selected);
