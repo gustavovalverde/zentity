@@ -393,9 +393,11 @@ OTEL_ENABLED=false
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   # base URL
 ```
 
-The FHE and OCR services read `OTEL_EXPORTER_OTLP_ENDPOINT` as the full traces
-URL (`http://localhost:4318/v1/traces`), so Docker Compose gives each service
-its own value.
+The FHE and OCR services read the same variable with the same meaning. Neither
+passes an explicit endpoint to its exporter, so the OpenTelemetry exporter uses
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as written when it is set, and otherwise
+appends `/v1/traces` to `OTEL_EXPORTER_OTLP_ENDPOINT`. Either variable also
+enables telemetry. Docker Compose passes one base URL to all three services.
 
 ## Files to Create/Modify
 
