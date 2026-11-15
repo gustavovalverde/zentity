@@ -55,7 +55,12 @@ import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
-import { adminProcedure, protectedProcedure, router } from "../server";
+import {
+  adminProcedure,
+  protectedProcedure,
+  rateLimitedProcedure,
+  router,
+} from "../server";
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -305,13 +310,7 @@ const livenessStatusProcedure = protectedProcedure
     };
   });
 
-const fheStatusProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const { limited } = fheLimiter.check(ctx.userId);
-  if (limited) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
-  }
-  return next({ ctx });
-});
+const fheStatusProcedure = rateLimitedProcedure(fheLimiter);
 
 /**
  * Dashboard identity finalization procedure.

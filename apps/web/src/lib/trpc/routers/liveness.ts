@@ -13,7 +13,6 @@
  */
 import "server-only";
 
-import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
@@ -33,7 +32,7 @@ import {
 import { hashSelfie } from "@/lib/identity/liveness/session";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 
-import { protectedProcedure, router } from "../server";
+import { rateLimitedProcedure, router } from "../server";
 
 const faceMatchSchema = z.object({
   idImage: z.string().min(1),
@@ -45,13 +44,7 @@ const faceMatchSchema = z.object({
 
 const livenessLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 
-const rateLimitedProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const { limited } = livenessLimiter.check(ctx.userId);
-  if (limited) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
-  }
-  return next({ ctx });
-});
+const livenessProcedure = rateLimitedProcedure(livenessLimiter);
 
 export const livenessRouter = router({
   /**
@@ -59,7 +52,7 @@ export const livenessRouter = router({
    * When draftId is provided, results are written directly to the database.
    * This is the secure path - server validates and writes, not client.
    */
-  matchFace: rateLimitedProcedure
+  matchFace: livenessProcedure
     .input(faceMatchSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
