@@ -1,3 +1,5 @@
+import type { GrantConstraint } from "../../agents/approval-evaluate";
+
 import { sql } from "drizzle-orm";
 import {
   index,
@@ -107,7 +109,9 @@ export const agentHostPolicies = sqliteTable(
     capabilityName: text("capability_name")
       .notNull()
       .references(() => agentCapabilities.name, { onDelete: "cascade" }),
-    constraints: text("constraints_json"),
+    constraints: text("constraints_json", { mode: "json" }).$type<
+      GrantConstraint[]
+    >(),
     dailyLimitCount: integer("daily_limit_count"),
     dailyLimitAmount: real("daily_limit_amount"),
     cooldownSec: integer("cooldown_sec"),
@@ -149,7 +153,9 @@ export const agentSessionGrants = sqliteTable(
     capabilityName: text("capability_name")
       .notNull()
       .references(() => agentCapabilities.name, { onDelete: "cascade" }),
-    constraints: text("constraints_json"),
+    constraints: text("constraints_json", { mode: "json" }).$type<
+      GrantConstraint[]
+    >(),
     dailyLimitCount: integer("daily_limit_count"),
     dailyLimitAmount: real("daily_limit_amount"),
     cooldownSec: integer("cooldown_sec"),
@@ -194,7 +200,9 @@ export const agentTokenSnapshots = sqliteTable(
     taskHash: text("task_hash"),
     approvalMethod: text("approval_method"),
     approvedCapabilityName: text("approved_capability_name"),
-    approvedConstraints: text("approved_constraints"),
+    approvedConstraints: text("approved_constraints", { mode: "json" }).$type<
+      GrantConstraint[]
+    >(),
     approvedGrantId: text("approved_grant_id"),
     approvedHostPolicyId: text("approved_host_policy_id"),
     approvalStrength: text("approval_strength"),

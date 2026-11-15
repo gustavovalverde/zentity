@@ -100,13 +100,9 @@ describe("formatConstraints", () => {
     expect(result).toBe("Up to 100 per action; currency is USD");
   });
 
-  it("parses JSON strings", () => {
-    const json = JSON.stringify([{ field: "amount", op: "max", value: 50 }]);
-    expect(formatConstraints(json)).toBe("Up to 50 per action");
-  });
-
-  it("returns null for invalid JSON", () => {
+  it("returns null for a value that is not a constraint list", () => {
     expect(formatConstraints("not-json")).toBeNull();
+    expect(formatConstraints({ field: "amount", op: "max" })).toBeNull();
   });
 });
 

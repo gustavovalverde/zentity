@@ -1,3 +1,4 @@
+import type { GrantConstraint } from "@/lib/agents/approval-evaluate";
 import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
@@ -153,7 +154,7 @@ async function createSession(params: {
 
 async function createGrant(params: {
   capabilityName?: string;
-  constraints?: string | null;
+  constraints?: GrantConstraint[] | null;
   hostPolicyId?: string | null;
   sessionId: string;
   source?: string;
@@ -219,9 +220,7 @@ describe("agentRouter", () => {
     });
 
     await createGrant({
-      constraints: JSON.stringify([
-        { field: "merchant", op: "eq", value: "Acme" },
-      ]),
+      constraints: [{ field: "merchant", op: "eq", value: "Acme" }],
       sessionId: activeSession.id,
     });
     await createGrant({
@@ -281,9 +280,7 @@ describe("agentRouter", () => {
       .insert(agentHostPolicies)
       .values({
         capabilityName: "check_compliance",
-        constraints: JSON.stringify([
-          { field: "region", op: "eq", value: "EU" },
-        ]),
+        constraints: [{ field: "region", op: "eq", value: "EU" }],
         hostId: host.id,
         source: "default",
         status: "active",
@@ -380,9 +377,9 @@ describe("agentRouter", () => {
       hostId: host.id,
       thumbprint: "session-grant-update",
     });
-    const constraints = JSON.stringify([
+    const constraints: GrantConstraint[] = [
       { field: "amount.value", op: "max", value: 50 },
-    ]);
+    ];
     const grant = await createGrant({
       constraints,
       sessionId: session.id,

@@ -94,22 +94,11 @@ export function formatConstraints(constraints: unknown): string | null {
     return null;
   }
 
-  const parsed =
-    typeof constraints === "string"
-      ? (() => {
-          try {
-            return JSON.parse(constraints) as unknown;
-          } catch {
-            return null;
-          }
-        })()
-      : constraints;
-
-  if (!isConstraintArray(parsed) || parsed.length === 0) {
+  if (!isConstraintArray(constraints) || constraints.length === 0) {
     return null;
   }
 
-  return parsed.map(formatSingleConstraint).join("; ");
+  return constraints.map(formatSingleConstraint).join("; ");
 }
 
 export function formatUsageSummary(

@@ -5,6 +5,7 @@ import type {
   CapabilityClaim,
   HostAttestationTier,
 } from "@zentity/sdk/protocol";
+import type { GrantConstraint } from "./approval-evaluate";
 
 import { createHash } from "node:crypto";
 
@@ -41,7 +42,7 @@ export interface StoredTokenSnapshot {
   approvalMethod: string | null;
   approvalStrength: string | null;
   approvedCapabilityName: string | null;
-  approvedConstraints: string | null;
+  approvedConstraints: GrantConstraint[] | null;
   approvedGrantId: string | null;
   approvedHostPolicyId: string | null;
   assertionVerified: boolean | null;
@@ -58,18 +59,6 @@ export interface StoredTokenSnapshot {
   taskHash?: string | null;
   taskId: string | null;
   version: string | null;
-}
-
-function parseConstraints(raw: string | null | undefined): unknown {
-  if (!raw) {
-    return undefined;
-  }
-
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return undefined;
-  }
 }
 
 function asHostAttestationTier(
@@ -119,7 +108,7 @@ function buildTaskHash(row: StoredTokenSnapshot): string {
 
 function buildCapabilitiesFromConstraints(
   capabilityName: string | null,
-  constraints: unknown
+  constraints: GrantConstraint[] | undefined
 ): CapabilityClaim[] | null {
   if (!capabilityName) {
     return null;
@@ -163,7 +152,7 @@ async function resolveTokenSnapshot(
     findHostDid(row.hostId),
   ]);
   const hostAttestation = asHostAttestationTier(row.attestationTier);
-  const constraints = parseConstraints(row.approvedConstraints);
+  const constraints = row.approvedConstraints ?? undefined;
 
   return {
     authReqId: row.authReqId ?? row.agentSessionId,
@@ -287,7 +276,9 @@ function toStoredSnapshot(row: Record<string, unknown>): StoredTokenSnapshot {
     approvalMethod: readString(row.approvalMethod),
     approvalStrength: readString(row.approvalStrength),
     approvedCapabilityName: readString(row.approvedCapabilityName),
-    approvedConstraints: readString(row.approvedConstraints),
+    approvedConstraints: Array.isArray(row.approvedConstraints)
+      ? (row.approvedConstraints as GrantConstraint[])
+      : null,
     approvedGrantId: readString(row.approvedGrantId),
     approvedHostPolicyId: readString(row.approvedHostPolicyId),
     assertionVerified:

@@ -12,6 +12,7 @@ import type {
   AuthenticationState,
 } from "@zentity/sdk/protocol";
 import type { BetterAuthPlugin } from "better-auth";
+import type { GrantConstraint } from "@/lib/agents/approval-evaluate";
 import type { StoredTokenSnapshot } from "@/lib/agents/token-snapshot";
 
 import { CIBA_GRANT_TYPE } from "@better-auth/ciba";
@@ -217,7 +218,7 @@ type CibaApprovalGrant =
   | { method: "user" }
   | {
       capabilityName: string;
-      constraints: string | null;
+      constraints: GrantConstraint[] | null;
       grantId: string | null;
       hostPolicyId: string | null;
       method: "capability_grant";

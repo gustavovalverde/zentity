@@ -1,10 +1,12 @@
 import crypto from "node:crypto";
 
+import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   ensureDefaultHostPolicies,
   evaluateSessionGrants,
+  type GrantConstraint,
 } from "@/lib/agents/approval-evaluate";
 import { ensureCapabilitiesSeeded } from "@/lib/agents/capability";
 import { db } from "@/lib/db/connection";
@@ -182,10 +184,10 @@ describe("evaluateSessionGrants", () => {
     intent_hash: `v1:sha256:${"A".repeat(43)}`,
     expires_at: { kind: "block_height", value: 4_056_276 },
   });
-  const boundedConstraints = JSON.stringify([
+  const boundedConstraints: GrantConstraint[] = [
     { field: "recipient", op: "in", values: [PAYMENT_RECIPIENT] },
     { field: "amount.value", op: "max", value: 200_000 },
-  ]);
+  ];
 
   it("auto-approves a payment within a bounded grant (recipient allowlist + amount ceiling)", async () => {
     await db
@@ -335,6 +337,113 @@ describe("evaluateSessionGrants", () => {
 
     expect(result.approved).toBe(false);
   });
+
+  it.each<[string, GrantConstraint, boolean]>([
+    ["eq match", { field: "amount.currency", op: "eq", value: "ZEC" }, true],
+    [
+      "eq mismatch",
+      { field: "amount.currency", op: "eq", value: "USD" },
+      false,
+    ],
+    ["min met", { field: "amount.value", op: "min", value: 100_000 }, true],
+    ["min unmet", { field: "amount.value", op: "min", value: 100_001 }, false],
+    [
+      "not_in clear",
+      { field: "recipient", op: "not_in", values: ["zcash:test:other"] },
+      true,
+    ],
+    [
+      "not_in listed",
+      { field: "recipient", op: "not_in", values: [PAYMENT_RECIPIENT] },
+      false,
+    ],
+  ])(
+    "applies a %s constraint to a bounded payment grant",
+    async (_label, constraint, approved) => {
+      await db
+        .insert(agentSessionGrants)
+        .values({
+          capabilityName: "payment_authorization:sign",
+          sessionId,
+          source: "host_policy",
+          status: "active",
+          constraints: [
+            { field: "amount.value", op: "max", value: 200_000 },
+            constraint,
+          ],
+          grantedAt: new Date(),
+        })
+        .run();
+
+      const result = await evaluateSessionGrants(
+        sessionId,
+        "openid payment_authorization:sign",
+        [paymentRar()]
+      );
+
+      expect(result.approved).toBe(approved);
+    }
+  );
+
+  it("holds a grant with a cooldown until the cooldown passes", async () => {
+    await db
+      .insert(agentSessionGrants)
+      .values({
+        capabilityName: "my_proofs",
+        sessionId,
+        source: "host_policy",
+        status: "active",
+        cooldownSec: 60,
+        grantedAt: new Date(),
+      })
+      .run();
+
+    const first = await evaluateSessionGrants(
+      sessionId,
+      "openid proof:age",
+      []
+    );
+    const second = await evaluateSessionGrants(
+      sessionId,
+      "openid proof:age",
+      []
+    );
+
+    expect(first.approved).toBe(true);
+    expect(second).toEqual({
+      approved: false,
+      reason: "no grant constraints matched",
+    });
+  });
+
+  it.each([
+    ["malformed JSON", "not-json"],
+    ["a non-list value", '{"field":"amount.value","op":"max","value":1}'],
+  ])(
+    "refuses to evaluate a grant whose stored constraints are %s",
+    async (_label, stored) => {
+      const [grant] = await db
+        .insert(agentSessionGrants)
+        .values({
+          capabilityName: "my_proofs",
+          sessionId,
+          source: "host_policy",
+          status: "active",
+          grantedAt: new Date(),
+        })
+        .returning({ id: agentSessionGrants.id });
+      if (!grant) {
+        throw new Error("Expected grant fixture to be created");
+      }
+      await db.run(
+        sql`UPDATE agent_session_grant SET constraints_json = ${stored} WHERE id = ${grant.id}`
+      );
+
+      await expect(
+        evaluateSessionGrants(sessionId, "openid proof:age", [])
+      ).rejects.toThrow();
+    }
+  );
 
   it("approves proof-only requests when they map to an active my_proofs grant", async () => {
     await db

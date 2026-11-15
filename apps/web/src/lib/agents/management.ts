@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { GrantConstraint } from "@/lib/agents/approval-evaluate";
+
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
@@ -48,7 +50,7 @@ interface HostRow {
 
 export interface ManagedSessionGrant {
   capabilityName: string;
-  constraints: unknown | null;
+  constraints: GrantConstraint[] | null;
   grantedAt: Date | null;
   hostPolicyId: string | null;
   id: string;
@@ -85,7 +87,7 @@ export interface ManagedHostSummary {
 
 export interface ManagedHostPolicy {
   capabilityName: string;
-  constraints: unknown | null;
+  constraints: GrantConstraint[] | null;
   cooldownSec: number | null;
   createdAt: Date;
   dailyLimitAmount: number | null;
@@ -140,18 +142,6 @@ export class AgentManagementError extends Error {
     this.name = "AgentManagementError";
     this.code = code;
     this.status = status;
-  }
-}
-
-function parseConstraints(raw: string | null): unknown | null {
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw) as unknown;
-  } catch {
-    return null;
   }
 }
 
@@ -251,7 +241,7 @@ async function loadSessionsForHosts(
     const grants = grantMap.get(grant.sessionId) ?? [];
     grants.push({
       capabilityName: grant.capabilityName,
-      constraints: parseConstraints(grant.constraints),
+      constraints: grant.constraints,
       grantedAt: grant.grantedAt,
       hostPolicyId: grant.hostPolicyId,
       id: grant.id,
@@ -470,7 +460,7 @@ export async function getHostDetailForUser(
     policies: policies
       .map((policy) => ({
         capabilityName: policy.capabilityName,
-        constraints: parseConstraints(policy.constraints),
+        constraints: policy.constraints,
         cooldownSec: policy.cooldownSec,
         createdAt: policy.createdAt,
         dailyLimitAmount: policy.dailyLimitAmount,
@@ -573,7 +563,7 @@ export async function getSessionDetailForUser(
     grants: grants
       .map((grant) => ({
         capabilityName: grant.capabilityName,
-        constraints: parseConstraints(grant.constraints),
+        constraints: grant.constraints,
         grantedAt: grant.grantedAt,
         hostPolicyId: grant.hostPolicyId,
         id: grant.id,
