@@ -31,7 +31,6 @@
     "e2e/**",
     "src/test-utils/**",
     "src/lib/turbopack-stubs/**",
-    "src/**/*.d.ts",
     "src/lib/auth/oidc/token-revocation.ts"
   ],
   "ignoreDependencies": [
@@ -44,7 +43,6 @@
     "node-tfhe",
     "pino-pretty",
     "tailwindcss",
-    "tfhe",
     "tw-animate-css"
   ],
   "ignoreBinaries": ["nargo"],
