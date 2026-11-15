@@ -77,22 +77,3 @@ export function sanitizeLogMessage(message: string): string {
 
   return output;
 }
-
-/**
- * Extract safe metadata from input for logging.
- * Returns only keys that are safe to log + basic shape info.
- * Never logs actual values - only metadata about the input.
- */
-export function extractInputMeta(input: unknown): Record<string, unknown> {
-  if (!input || typeof input !== "object") {
-    return { inputType: typeof input };
-  }
-
-  const keys = Object.keys(input as Record<string, unknown>);
-  const safeKeys = keys.filter((k) => !REDACT_KEYS.has(k));
-
-  return {
-    inputKeys: safeKeys.length > 0 ? safeKeys : undefined,
-    hasImage: keys.some((k) => k.toLowerCase().includes("image")),
-  };
-}
