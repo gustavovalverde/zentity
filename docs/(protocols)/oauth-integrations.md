@@ -360,11 +360,12 @@ The `ath` claim is only included when presenting the access token at a resource 
 
 | Token | Format | Signing |
 | --- | --- | --- |
-| Access token | Opaque (random string) | n/a |
+| Access token, endpoints Zentity serves (except OID4VCI credential) | Opaque (random string) | n/a |
+| Access token, resource servers outside Zentity and the OID4VCI credential endpoint | JWT (`at+jwt`) | EdDSA |
 | ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
-Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
+Endpoints Zentity serves receive opaque access tokens, which live in the provider's token store and keep DPoP binding server-side. The OID4VCI credential endpoint is the exception: it accepts only JWT access tokens. Resource servers outside Zentity, such as the MCP server, also receive JWT access tokens, from any grant that names them as the `resource` and from token exchange (`revocableJwtAccessTokens` is on, so those JWTs stay revocable). The `sub` of a JWT access token is projected to the identifier the audience client sees everywhere else, pairwise for pairwise clients, never the raw user id.
 
 ### Token revocation
 
@@ -756,7 +757,7 @@ Current implementation note: `sectorId` is derived from the host of the client's
 
 For pairwise proof-only flows, additional measures remove all server-side linkage:
 
-- **Opaque access tokens**: random strings prevent `sub` leakage (JWT access tokens would embed it)
+- **Opaque access tokens**: tokens for Zentity-hosted resources are random strings that carry no `sub`; JWT access tokens embed only the pairwise `sub`
 - **Consent record deletion**: consent rows deleted after authorization code issuance
 - **Token record deletion**: token DB records deleted after JWT issuance
 - **Session metadata scrubbing**: IP address and user-agent scrubbed from session records

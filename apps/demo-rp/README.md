@@ -137,6 +137,25 @@ Common failure states are visible in the protocol trace:
 4. Mirror not configured or unavailable: the server returns a chain configuration or availability error.
 5. Insufficient mirrored compliance: the server rejects access before settlement.
 
+## Schema Changes and Deployed Databases
+
+The demo has no runtime migrations. After pulling schema changes, push the schema to each deployed database:
+
+```bash
+DATABASE_URL=... DATABASE_AUTH_TOKEN=... pnpm db:push
+```
+
+`db:push` prompts before it truncates a table, and `--force` skips the prompt. The push deletes every `vp_session` row. It keeps `validity_notice` rows and alters `receivedAt` in place, so rows written before the change keep the text `datetime('now')` and break the latest-notice lookup with `Invalid time value`. Delete them by hand against the deployed database:
+
+```sql
+DELETE FROM validity_notice WHERE typeof(receivedAt) = 'text';
+```
+
+Current cases that need a push:
+
+- `vp_session`: `clientId` and `signedRequest` are `NOT NULL`, and `requestFetchedAt` is new.
+- `validity_notice.receivedAt`: changed from text to integer.
+
 ## Environment Variables
 
 | Variable | Default | Description |
