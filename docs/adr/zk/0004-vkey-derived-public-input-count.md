@@ -6,7 +6,7 @@ category: "technical"
 domains: [zk, security]
 ---
 
-# Enforce public-input count from verification key
+# Enforce public-input count from the circuit ABI
 
 ## Context and Problem Statement
 
@@ -15,31 +15,31 @@ We previously validated only a minimum number of public inputs per circuit. This
 ## Priorities & Constraints
 
 * Fail fast on malformed proofs with clear errors
-* Use the verifier’s source of truth for input shape
-* Avoid relying on optional metadata in circuit artifacts
+* Use a source of truth for input shape that ships with the verifier
+* Avoid depending on the verification key byte layout
 
 ## Decision Outcome
 
-Chosen option: derive public-input count from the vkey and reject proofs when the input length does not match exactly.
+Chosen option: derive the public-input count from the compiled circuit ABI (public parameters plus a public return value) and reject proofs when the input length does not match exactly.
 
-This check is enforced inside the server-side verifier worker before cryptographic verification.
+This check is enforced inside the server-side verifier worker before cryptographic verification. The compiled artifacts are bundled with the verifier, so the ABI is always present. A unit test checks that the `PROOF_TYPE_SPECS` public-input order and indices match each artifact ABI.
 
 ### Expected Consequences
 
 * Strict validation prevents malformed proofs from reaching verification.
 * More consistent error behavior across circuit versions.
-* Requires vkey format stability; parser must be updated if upstream changes.
+* No dependency on the verification key format. A circuit recompile that changes public parameters changes the count automatically, and the `PROOF_TYPE_SPECS` test fails until the spec table is updated.
 
 ## Alternatives Considered
 
 * Keep minimum-only validation (insufficient for correctness).
-* Use ABI/artifact metadata for input length (not always present/reliable). Reversed on 2026-11-15, see the revision history.
+* Parse the count from the verification key bytes (the original decision, which depends on vkey format stability).
 * Allow variable-length inputs (incompatible with verifier expectations).
 
 ## More Information
 
-* The vkey parsing logic is colocated with verification key derivation.
+* The ABI-based count lives next to verification key derivation in `noir/verifier.ts`.
 
 ## Revision history
 
-* 2026-11-15: The count is read from the compiled circuit ABI (public parameters plus a public return value), not parsed from the vkey, because the compiled artifacts are bundled with the verifier and always carry the ABI. The exact-length rejection is unchanged. A unit test checks that `PROOF_TYPE_SPECS` public-input order and indices match each artifact ABI.
+* 2026-03-18: The count moved from vkey parsing to the compiled circuit ABI (commit a15bc432). The exact-length rejection is unchanged. The `PROOF_TYPE_SPECS` consistency test was added afterwards.
