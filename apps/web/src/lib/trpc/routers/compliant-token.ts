@@ -115,15 +115,14 @@ export const compliantTokenRouter = router({
           }),
         ]);
 
-        const totalSupplyBigInt = totalSupply as bigint;
-        const remaining = UINT64_MAX - totalSupplyBigInt;
+        const remaining = UINT64_MAX - totalSupply;
         const remainingTokens = Number(remaining / BigInt(10 ** 16)) / 100;
 
         return {
-          name: name as string,
-          symbol: symbol as string,
-          decimals: decimals as number,
-          totalSupply: totalSupplyBigInt.toString(),
+          name,
+          symbol,
+          decimals,
+          totalSupply: totalSupply.toString(),
           remainingSupply: remaining.toString(),
           remainingTokens,
           contractAddress,
@@ -229,11 +228,11 @@ export const compliantTokenRouter = router({
           chain,
           transport: http(network.rpcUrl),
         });
-        const currentSupply = (await readClient.readContract({
+        const currentSupply = await readClient.readContract({
           address: contractAddress as `0x${string}`,
           abi: COMPLIANT_ERC20_ABI,
           functionName: "totalSupply",
-        })) as bigint;
+        });
 
         if (currentSupply + amount > UINT64_MAX) {
           const remaining = UINT64_MAX - currentSupply;
@@ -493,10 +492,9 @@ export const compliantTokenRouter = router({
             complianceRules as `0x${string}`,
           ],
         });
-        const attributeMask = Number(grantedAttributes as bigint);
         const hasRequiredAttributes =
           // biome-ignore lint/suspicious/noBitwiseOperators: contract access is represented as a bitmask
-          (attributeMask & REQUIRED_COMPLIANCE_ATTRIBUTES) ===
+          (grantedAttributes & REQUIRED_COMPLIANCE_ATTRIBUTES) ===
           REQUIRED_COMPLIANCE_ATTRIBUTES;
 
         if (!hasRequiredAttributes) {
