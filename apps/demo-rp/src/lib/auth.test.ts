@@ -101,6 +101,25 @@ async function loadProviderConfig() {
   return provider;
 }
 
+describe("getAuth provider discovery", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    authMocks.readDcrClientId.mockResolvedValue("test-client");
+  });
+
+  it("discovers Zentity through the OIDC discovery URL of its issuer", async () => {
+    const provider = (await loadProviderConfig()) as unknown as {
+      discoveryUrl: string;
+    };
+
+    // OpenID Connect Discovery 1.0 §4 appends the well-known path to the
+    // issuer, so this URL names `http://zentity.example/api/auth`.
+    expect(provider.discoveryUrl).toBe(
+      "http://zentity.example/api/auth/.well-known/openid-configuration"
+    );
+  });
+});
+
 describe("getAuth provider userinfo", () => {
   beforeEach(() => {
     vi.resetModules();
