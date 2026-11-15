@@ -78,6 +78,7 @@ export interface AuthorizationStrategies {
 export interface AuthorizeOptions {
   clientId: string;
   claims?: string;
+  /** The user's email address or wallet address, sent as `login_hint`. */
   identifier: string;
   pkce: PkceChallenge;
   resource?: string;
@@ -94,8 +95,8 @@ export interface ResumeAuthorizationOptions {
 export interface AuthenticationOptions {
   claims?: string;
   clientId: string;
+  /** The user's email address or wallet address, sent as `login_hint`. */
   identifier: string;
-  redirectUri: string;
   resource?: string;
   scope: string;
   strategies: AuthorizationStrategies;
@@ -104,7 +105,6 @@ export interface AuthenticationOptions {
 export interface StepUpOptions {
   authSession: string;
   clientId: string;
-  redirectUri: string;
   resource?: string;
   strategies: AuthorizationStrategies;
 }
@@ -117,7 +117,6 @@ export interface AuthorizationCodeResult {
 }
 
 export interface AuthenticationResult extends TokenResult {
-  authSession: string;
   exportKey?: string;
   loginMethod?: "eip712" | "opaque";
 }
@@ -158,15 +157,22 @@ const optionalField = <T extends z.ZodType>(schema: T) =>
   schema.optional().catch(undefined);
 
 const challengeBodySchema = z.object({
+  acr_values: optionalField(z.string()),
   auth_session: optionalField(z.string()),
   authorization_code: optionalField(z.string()),
   challenge_type: optionalField(z.string()),
   error: optionalField(z.string()),
+  max_age: optionalField(z.number()),
   message: optionalField(z.string()),
   opaque_login_response: optionalField(z.string()),
 });
 
 type ChallengeBody = z.infer<typeof challengeBodySchema>;
+
+interface ChallengeRound {
+  body: ChallengeBody;
+  response: Response;
+}
 
 async function parseChallengeBody(response: Response): Promise<ChallengeBody> {
   const json = await response.json().catch(() => undefined);
@@ -210,27 +216,101 @@ function readChallengeType(body: ChallengeBody): "opaque" | "siwe" {
   throw new Error(`Unsupported challenge type: ${String(body.challenge_type)}`);
 }
 
+/**
+ * Posts one round to the Authorization Challenge Endpoint. The initial
+ * request must be form-encoded (draft-ietf-oauth-first-party-apps §5.1);
+ * later rounds that carry an `auth_session` are sent as JSON.
+ */
 async function postChallenge(
   dpopClient: DpopClient,
   endpoint: string,
-  body: Record<string, unknown>
-): Promise<{ body: ChallengeBody; response: Response }> {
+  body: Record<string, string>,
+  encoding: "form" | "json" = "json"
+): Promise<ChallengeRound> {
   const response = await dpopClient.fetch(endpoint, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: {
+      "Content-Type":
+        encoding === "form"
+          ? "application/x-www-form-urlencoded"
+          : "application/json",
+    },
+    body:
+      encoding === "form"
+        ? new URLSearchParams(body).toString()
+        : JSON.stringify(body),
   });
 
   return { body: await parseChallengeBody(response.clone()), response };
 }
 
-async function buildAuthenticationResult(
+/**
+ * Reads a challenge-endpoint answer. A 200 carries the authorization code
+ * and a 403 `insufficient_authorization` with `challenge_type` the next
+ * challenge. A 403 `redirect_to_web` throws {@link RedirectToWebError}, and a
+ * 403 `insufficient_authorization` without `challenge_type` throws
+ * {@link StepUpRequiredError}: the user is signed in, but the request must
+ * wait until it can be met, for example a higher assurance tier.
+ */
+async function readChallengeRound(
+  round: ChallengeRound,
+  step: string
+): Promise<
+  | { authorizationCode: string; type: "code" }
+  | { body: ChallengeBody; type: "challenge" }
+> {
+  const { body, response } = round;
+  if (response.ok) {
+    return { authorizationCode: readAuthorizationCode(body), type: "code" };
+  }
+  if (response.status === 403) {
+    if (body.error === "redirect_to_web") {
+      throw new RedirectToWebError({
+        ...(body.auth_session ? { authSession: body.auth_session } : {}),
+        ...(body.acr_values ? { acrValues: body.acr_values } : {}),
+        ...(body.max_age !== undefined ? { maxAge: body.max_age } : {}),
+      });
+    }
+    if (body.error === "insufficient_authorization" && body.auth_session) {
+      if (body.challenge_type === undefined) {
+        throw new StepUpRequiredError(body.auth_session, body.acr_values);
+      }
+      return { body, type: "challenge" };
+    }
+  }
+  throw new Error(
+    `${step} failed: ${response.status} ${await response.text()}`
+  );
+}
+
+async function requireChallenge(
+  round: ChallengeRound,
+  step: string
+): Promise<ChallengeBody> {
+  const outcome = await readChallengeRound(round, step);
+  if (outcome.type !== "challenge") {
+    throw new Error(`${step} returned an authorization code too early`);
+  }
+  return outcome.body;
+}
+
+async function requireAuthorizationCode(
+  round: ChallengeRound,
+  step: string
+): Promise<string> {
+  const outcome = await readChallengeRound(round, step);
+  if (outcome.type !== "code") {
+    throw new Error(`${step} returned another challenge`);
+  }
+  return outcome.authorizationCode;
+}
+
+function buildAuthenticationResult(
   authorization: AuthorizationCodeResult,
   token: TokenResult
-): Promise<AuthenticationResult> {
+): AuthenticationResult {
   return {
     ...token,
-    authSession: authorization.authSession,
     ...(authorization.exportKey
       ? { exportKey: authorization.exportKey }
       : {}),
@@ -240,13 +320,30 @@ async function buildAuthenticationResult(
   };
 }
 
+/**
+ * The user must continue in a browser authorization request. `acrValues` and
+ * `maxAge` say what that request must ask for when the user signs in again
+ * for a step-up. `authSession` is set when the server keeps the sign-in.
+ */
 export class RedirectToWebError extends Error {
-  readonly authSession: string;
+  readonly acrValues?: string;
+  readonly authSession?: string;
+  readonly maxAge?: number;
 
-  constructor(authSession: string) {
-    super("Passkey-only user — redirect to browser required");
-    this.authSession = authSession;
+  constructor(
+    options: { acrValues?: string; authSession?: string; maxAge?: number } = {}
+  ) {
+    super("The user must continue in the browser");
     this.name = "RedirectToWebError";
+    if (options.acrValues) {
+      this.acrValues = options.acrValues;
+    }
+    if (options.authSession) {
+      this.authSession = options.authSession;
+    }
+    if (options.maxAge !== undefined) {
+      this.maxAge = options.maxAge;
+    }
   }
 }
 
@@ -297,7 +394,8 @@ export interface FirstPartyAuth {
     clientId: string;
     code: string;
     codeVerifier: string;
-    redirectUri: string;
+    /** Omit for a code from the Authorization Challenge Endpoint. */
+    redirectUri?: string;
     resource?: string;
   }): Promise<TokenResult>;
   exchangeToken(options: {
@@ -471,21 +569,18 @@ export function createFirstPartyAuth(
     const opaqueStart = opaqueClient.startLogin({
       password: passwordStrategy.password,
     });
-    const round2 = await postChallenge(dpopClient, endpoint, {
-      auth_session: authSession,
-      opaque_login_request: opaqueStart.startLoginRequest,
-    });
-
-    if (!round2.response.ok) {
-      throw new Error(
-        `OPAQUE round 2 failed: ${round2.response.status} ${await round2.response.text()}`
-      );
-    }
+    const round2 = await requireChallenge(
+      await postChallenge(dpopClient, endpoint, {
+        auth_session: authSession,
+        opaque_login_request: opaqueStart.startLoginRequest,
+      }),
+      "OPAQUE round 2"
+    );
 
     const finishResult = opaqueClient.finishLogin({
       clientLoginState: opaqueStart.clientLoginState,
       loginResponse: required(
-        round2.body.opaque_login_response,
+        round2.opaque_login_response,
         "OPAQUE response missing opaque_login_response"
       ),
       password: passwordStrategy.password,
@@ -496,21 +591,19 @@ export function createFirstPartyAuth(
       );
     }
 
-    const round3 = await postChallenge(dpopClient, endpoint, {
-      auth_session: authSession,
-      opaque_finish_request: finishResult.finishLoginRequest,
-    });
-    if (!round3.response.ok) {
-      throw new Error(
-        `OPAQUE round 3 failed: ${round3.response.status} ${await round3.response.text()}`
-      );
-    }
+    const authorizationCode = await requireAuthorizationCode(
+      await postChallenge(dpopClient, endpoint, {
+        auth_session: authSession,
+        opaque_finish_request: finishResult.finishLoginRequest,
+      }),
+      "OPAQUE round 3"
+    );
 
     await updateState({ authSession });
 
     return {
       authSession,
-      authorizationCode: readAuthorizationCode(round3.body),
+      authorizationCode,
       exportKey: finishResult.exportKey,
       loginMethod: "opaque",
     };
@@ -526,21 +619,19 @@ export function createFirstPartyAuth(
     const signature = await walletStrategy.signMessage(
       required(round1Body.message, "SIWE challenge missing message")
     );
-    const round2 = await postChallenge(dpopClient, endpoint, {
-      auth_session: authSession,
-      siwe_signature: signature,
-    });
-    if (!round2.response.ok) {
-      throw new Error(
-        `SIWE round 2 failed: ${round2.response.status} ${await round2.response.text()}`
-      );
-    }
+    const authorizationCode = await requireAuthorizationCode(
+      await postChallenge(dpopClient, endpoint, {
+        auth_session: authSession,
+        siwe_signature: signature,
+      }),
+      "SIWE round 2"
+    );
 
     await updateState({ authSession });
 
     return {
       authSession,
-      authorizationCode: readAuthorizationCode(round2.body),
+      authorizationCode,
       loginMethod: "eip712",
     };
   }
@@ -548,14 +639,14 @@ export function createFirstPartyAuth(
   async function continueAuthorization(
     dpopClient: DpopClient,
     endpoint: string,
-    round1: { body: ChallengeBody; response: Response },
+    round1Body: ChallengeBody,
     strategies: AuthorizationStrategies
   ): Promise<AuthorizationCodeResult> {
     const authSession = required(
-      round1.body.auth_session,
+      round1Body.auth_session,
       "Challenge response missing auth_session"
     );
-    const challengeType = readChallengeType(round1.body);
+    const challengeType = readChallengeType(round1Body);
 
     if (challengeType === "opaque") {
       if (!strategies.password) {
@@ -578,7 +669,7 @@ export function createFirstPartyAuth(
       endpoint,
       authSession,
       strategies.wallet,
-      round1.body
+      round1Body
     );
   }
 
@@ -595,33 +686,29 @@ export function createFirstPartyAuth(
     const document = await discovery.read();
     const endpoint = requireChallengeEndpoint(document);
     const dpopClient = await getOrCreateDpopClient();
-    const round1 = await postChallenge(dpopClient, endpoint, {
-      client_id: authorizeOptions.clientId,
-      response_type: "code",
-      identifier: authorizeOptions.identifier,
-      scope: authorizeOptions.scope,
-      code_challenge: authorizeOptions.pkce.codeChallenge,
-      code_challenge_method: authorizeOptions.pkce.codeChallengeMethod,
-      ...(authorizeOptions.resource ? { resource: authorizeOptions.resource } : {}),
-      ...(authorizeOptions.claims ? { claims: authorizeOptions.claims } : {}),
-      ...(authorizeOptions.strategies.wallet?.chainId
-        ? { chain_id: authorizeOptions.strategies.wallet.chainId }
-        : {}),
-    });
-
-    if (
-      round1.response.status === 400 &&
-      round1.body.error === "redirect_to_web" &&
-      typeof round1.body.auth_session === "string"
-    ) {
-      throw new RedirectToWebError(round1.body.auth_session);
-    }
-
-    if (round1.response.status !== 401) {
-      throw new Error(
-        `Expected 401 from challenge endpoint: ${round1.response.status} ${await round1.response.text()}`
-      );
-    }
+    const round1 = await requireChallenge(
+      await postChallenge(
+        dpopClient,
+        endpoint,
+        {
+          client_id: authorizeOptions.clientId,
+          response_type: "code",
+          login_hint: authorizeOptions.identifier,
+          scope: authorizeOptions.scope,
+          code_challenge: authorizeOptions.pkce.codeChallenge,
+          code_challenge_method: authorizeOptions.pkce.codeChallengeMethod,
+          ...(authorizeOptions.resource
+            ? { resource: authorizeOptions.resource }
+            : {}),
+          ...(authorizeOptions.claims ? { claims: authorizeOptions.claims } : {}),
+          ...(authorizeOptions.strategies.wallet?.chainId
+            ? { chain_id: String(authorizeOptions.strategies.wallet.chainId) }
+            : {}),
+        },
+        "form"
+      ),
+      "Authorization challenge"
+    );
 
     return continueAuthorization(
       dpopClient,
@@ -637,42 +724,31 @@ export function createFirstPartyAuth(
     const document = await discovery.read();
     const endpoint = requireChallengeEndpoint(document);
     const dpopClient = await getOrCreateDpopClient();
-    const round1 = await postChallenge(dpopClient, endpoint, {
-      auth_session: resumeOptions.authSession,
-      ...(resumeOptions.pkce
-        ? {
-            code_challenge: resumeOptions.pkce.codeChallenge,
-            code_challenge_method: resumeOptions.pkce.codeChallengeMethod,
-          }
-        : {}),
-    });
+    const outcome = await readChallengeRound(
+      await postChallenge(dpopClient, endpoint, {
+        auth_session: resumeOptions.authSession,
+        ...(resumeOptions.pkce
+          ? {
+              code_challenge: resumeOptions.pkce.codeChallenge,
+              code_challenge_method: resumeOptions.pkce.codeChallengeMethod,
+            }
+          : {}),
+      }),
+      "Authorization challenge"
+    );
 
-    if (round1.response.ok) {
+    if (outcome.type === "code") {
       await updateState({ authSession: resumeOptions.authSession });
       return {
         authSession: resumeOptions.authSession,
-        authorizationCode: readAuthorizationCode(round1.body),
+        authorizationCode: outcome.authorizationCode,
       };
-    }
-
-    if (
-      round1.response.status === 400 &&
-      round1.body.error === "redirect_to_web" &&
-      typeof round1.body.auth_session === "string"
-    ) {
-      throw new RedirectToWebError(round1.body.auth_session);
-    }
-
-    if (round1.response.status !== 401) {
-      throw new Error(
-        `Expected 401 from challenge endpoint: ${round1.response.status} ${await round1.response.text()}`
-      );
     }
 
     return continueAuthorization(
       dpopClient,
       endpoint,
-      round1,
+      outcome.body,
       resumeOptions.strategies
     );
   }
@@ -681,7 +757,7 @@ export function createFirstPartyAuth(
     clientId: string;
     code: string;
     codeVerifier: string;
-    redirectUri: string;
+    redirectUri?: string;
     resource?: string;
   }): Promise<TokenResult> {
     const document = await discovery.read();
@@ -691,7 +767,9 @@ export function createFirstPartyAuth(
       code: exchangeOptions.code,
       codeVerifier: exchangeOptions.codeVerifier,
       dpopClient,
-      redirectUri: exchangeOptions.redirectUri,
+      ...(exchangeOptions.redirectUri
+        ? { redirectUri: exchangeOptions.redirectUri }
+        : {}),
       ...(exchangeOptions.resource ? { resource: exchangeOptions.resource } : {}),
       tokenEndpoint: requireTokenEndpoint(document),
     });
@@ -699,6 +777,7 @@ export function createFirstPartyAuth(
     await updateState({
       accessToken: token.accessToken,
       ...(token.accountSub ? { accountSub: token.accountSub } : {}),
+      ...(token.authSession ? { authSession: token.authSession } : {}),
       clientId: exchangeOptions.clientId,
       expiresAt: token.expiresAt,
       ...(token.loginHint ? { loginHint: token.loginHint } : {}),
@@ -825,7 +904,6 @@ export function createFirstPartyAuth(
         clientId: authenticateOptions.clientId,
         code: authorization.authorizationCode,
         codeVerifier: pkce.codeVerifier,
-        redirectUri: authenticateOptions.redirectUri,
         ...(authenticateOptions.resource
           ? { resource: authenticateOptions.resource }
           : {}),
@@ -862,7 +940,6 @@ export function createFirstPartyAuth(
         clientId: stepUpOptions.clientId,
         code: authorization.authorizationCode,
         codeVerifier: pkce.codeVerifier,
-        redirectUri: stepUpOptions.redirectUri,
         ...(stepUpOptions.resource ? { resource: stepUpOptions.resource } : {}),
       });
       return buildAuthenticationResult(authorization, token);
