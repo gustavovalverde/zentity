@@ -1,5 +1,7 @@
 import { SDJwtInstance } from "@sd-jwt/core";
 
+import { readDisclosedClaims, sha256Hasher } from "@/lib/sd-jwt";
+
 const STORAGE_KEY = "veripass:credential";
 
 export interface StoredCredential {
@@ -10,14 +12,7 @@ export interface StoredCredential {
   issuer: string;
 }
 
-const hasher = async (data: string | ArrayBuffer): Promise<Uint8Array> => {
-  const buffer =
-    typeof data === "string" ? new TextEncoder().encode(data) : data;
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return new Uint8Array(digest);
-};
-
-const sdjwt = new SDJwtInstance({ hasher });
+const sdjwt = new SDJwtInstance({ hasher: sha256Hasher });
 
 export function saveCredential(stored: StoredCredential): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
@@ -45,25 +40,8 @@ export async function decodeClaims(
   return (await sdjwt.getClaims(credential)) as Record<string, unknown>;
 }
 
-export async function getPresentableKeys(
-  credential: string
-): Promise<string[]> {
-  const keys = await sdjwt.presentableKeys(credential);
-  // Filter out JWT metadata keys
-  const metaKeys = new Set([
-    "iss",
-    "sub",
-    "aud",
-    "exp",
-    "iat",
-    "nbf",
-    "jti",
-    "cnf",
-    "vct",
-    "status",
-    "_sd_alg",
-  ]);
-  return keys.filter((k) => !metaKeys.has(k));
+export function getPresentableKeys(credential: string): Promise<string[]> {
+  return sdjwt.presentableKeys(credential);
 }
 
 export function createPresentation(
@@ -84,8 +62,8 @@ export function createPresentation(
   })();
 }
 
-export async function verifyPresentation(
+export function getDisclosedClaims(
   presentation: string
 ): Promise<Record<string, unknown>> {
-  return (await sdjwt.getClaims(presentation)) as Record<string, unknown>;
+  return readDisclosedClaims(sdjwt, presentation);
 }

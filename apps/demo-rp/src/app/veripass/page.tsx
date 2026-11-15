@@ -16,11 +16,11 @@ import {
   clearCredential,
   createPresentation,
   decodeClaims,
+  getDisclosedClaims,
   getPresentableKeys,
   loadCredential,
   type StoredCredential,
   saveCredential,
-  verifyPresentation,
 } from "@/lib/wallet";
 import type { VerifierScenario } from "@/scenarios/veripass/verifier-scenario";
 import { veripassWalletScenario } from "@/scenarios/veripass/wallet";
@@ -236,30 +236,10 @@ export default function VeriPassPage() {
         walletState.stored.credential,
         [...walletState.selectedClaims]
       );
-      const disclosedClaims = await verifyPresentation(presentation);
-      const metaKeys = new Set([
-        "iss",
-        "sub",
-        "aud",
-        "exp",
-        "iat",
-        "nbf",
-        "jti",
-        "cnf",
-        "vct",
-        "status",
-        "_sd_alg",
-      ]);
-      const filtered: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(disclosedClaims)) {
-        if (!metaKeys.has(k)) {
-          filtered[k] = v;
-        }
-      }
       setWalletStateIfMounted({
         phase: "result",
         verifier: walletState.verifier,
-        disclosedClaims: filtered,
+        disclosedClaims: await getDisclosedClaims(presentation),
         totalClaims: walletState.presentableKeys.length,
       });
     } catch (e) {
