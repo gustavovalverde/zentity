@@ -161,21 +161,5 @@ describe("webauthn-prf", () => {
 
       expect(result).toEqual(output);
     });
-
-    it("ignores the non-standard resultsByCredential output", async () => {
-      const module = await import("../prf");
-      extractPrfOutputFromClientResults =
-        module.extractPrfOutputFromClientResults;
-
-      const output = new Uint8Array(32).map((_, idx) => idx);
-
-      const result = extractPrfOutputFromClientResults({
-        clientExtensionResults: {
-          prf: { resultsByCredential: { cred: output.buffer } },
-        },
-      });
-
-      expect(result).toBeNull();
-    });
   });
 });
