@@ -12,6 +12,7 @@
 import "server-only";
 
 import { env } from "@/env";
+import { fetchWithTimeout } from "@/lib/http/fetch";
 import { logger } from "@/lib/logging/logger";
 
 // instrumentation.ts and route handlers load separate copies of this module.
@@ -41,12 +42,11 @@ async function checkServiceHealth(
   const startTime = Date.now();
 
   try {
-    const response = await fetch(`${url}/health`, {
-      signal: AbortSignal.timeout(timeoutMs),
-      headers: {
-        "X-Zentity-Healthcheck": "true",
-      },
-    });
+    const response = await fetchWithTimeout(
+      `${url}/health`,
+      { headers: { "X-Zentity-Healthcheck": "true" } },
+      timeoutMs
+    );
 
     return {
       name,
@@ -72,16 +72,11 @@ async function checkServiceHealth(
 export async function warmupServices(): Promise<void> {
   const startTime = Date.now();
 
-  const results = await Promise.allSettled([
+  // checkServiceHealth reports failures in its result and never rejects.
+  const services = await Promise.all([
     checkServiceHealth("FHE", env.FHE_SERVICE_URL),
     checkServiceHealth("OCR", env.OCR_SERVICE_URL),
   ]);
-
-  const services = results.map((r) =>
-    r.status === "fulfilled"
-      ? r.value
-      : { name: "unknown", url: "", healthy: false, durationMs: 0 }
-  );
 
   const allHealthy = services.every((s) => s.healthy);
   const unhealthy = services.filter((s) => !s.healthy);

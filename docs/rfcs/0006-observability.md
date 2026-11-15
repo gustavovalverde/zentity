@@ -4,7 +4,7 @@
 |-------|-------|
 | **Status** | Implemented |
 | **Created** | 2024-12-29 |
-| **Updated** | 2025-12-30 |
+| **Updated** | 2026-11-15 |
 | **Author** | Gustavo Valverde |
 
 ## Summary
@@ -104,43 +104,37 @@ src/lib/observability/
 
 ### OpenTelemetry Setup
 
+The web app passes no exporters, metric readers, or endpoints to `NodeSDK`. The
+SDK builds them from the standard `OTEL_*` variables: `OTEL_EXPORTER_OTLP_ENDPOINT`
+is the collector's base URL, and the SDK appends `/v1/traces` and `/v1/metrics`.
+A full signal URL in `OTEL_EXPORTER_OTLP_ENDPOINT` would gain a second signal
+path, so startup logs a warning for that shape; a full traces URL belongs in
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`. Telemetry starts only when
+`OTEL_ENABLED=true` or an OTLP endpoint is set, so local development does not
+export to the SDK's localhost default. Once it starts, traces and metrics both
+export, each to its own endpoint or the SDK default, unless
+`OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` is `none`. Logs are not
+exported over OTLP; Pino writes them to stdout and the Pino instrumentation adds
+`trace_id` and `span_id` to each record.
+
 ```typescript
-// src/lib/observability/telemetry.ts
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { defaultResource, resourceFromAttributes } from "@opentelemetry/resources";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import {
-  ATTR_DEPLOYMENT_ENVIRONMENT,
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
-
-const endpoint =
-  process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "http://localhost:4318/v1/traces";
-
-export function initTelemetry(): void {
-  if (
-    process.env.OTEL_ENABLED !== "true" &&
-    !process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-  ) {
-    return;
-  }
-
-  const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({ url: endpoint }),
-    resource: defaultResource().merge(
-      resourceFromAttributes({
-        [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME ?? "zentity-web",
-        [ATTR_SERVICE_VERSION]: process.env.npm_package_version ?? "0.0.0",
-        [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV ?? "development",
-      }),
-    ),
-    instrumentations: [getNodeAutoInstrumentations()],
-  });
-
-  sdk.start();
-}
+// src/lib/observability/telemetry.ts (simplified)
+sdk = new NodeSDK({
+  serviceName: env.OTEL_SERVICE_NAME,
+  resource: defaultResource().merge(
+    resourceFromAttributes({
+      [ATTR_SERVICE_VERSION]: getServiceVersion(),
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: getEnvironmentName(),
+    }),
+  ),
+  logRecordProcessors: [],
+  instrumentations: [
+    getNodeAutoInstrumentations({
+      "@opentelemetry/instrumentation-pino": { disableLogSending: true },
+    }),
+  ],
+});
+sdk.start();
 ```
 
 ### Next.js Instrumentation
@@ -157,41 +151,30 @@ export async function register() {
 
 ### tRPC Tracing Middleware
 
+tRPC reports a failed procedure as a `{ ok: false }` result rather than a
+throw, so the middleware inspects the result. Every failure records its tRPC
+code in `rpc.status_code`. Only the codes that tRPC maps to HTTP 5xx (including
+unexpected throws, which tRPC reports as `INTERNAL_SERVER_ERROR`) also set
+`error.type` and mark the span ERROR. Client errors such as `BAD_REQUEST`,
+`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, and `TIMEOUT` (408) leave both unset,
+following the OpenTelemetry HTTP server convention.
+
 ```typescript
-// src/lib/trpc/server.ts
-import { middleware } from "@trpc/server";
-import { SpanStatusCode } from "@opentelemetry/api";
-import { getTracer } from "./telemetry";
-
-export const withTracing = middleware(async ({ path, type, input, ctx, next }) => {
-  const tracer = getTracer();
-
-  return tracer.startActiveSpan(
-    `trpc.${path}`,
-    {
-      attributes: {
-        "rpc.system": "trpc",
-        "rpc.method": path,
-        "rpc.type": type,
-        "request.id": ctx.requestId,
-      },
-    },
-    async (span) => {
-      try {
-        const result = await next({
-          ctx: {
-            ...ctx,
-            span, // Make span available to procedures
-          },
-        });
-        span.setStatus({ code: SpanStatusCode.OK });
-        return result;
-      } finally {
-        span.end();
+// src/lib/trpc/server.ts (simplified)
+const withTracing = trpc.middleware(({ path, type, ctx, next }) =>
+  withSpan(`trpc.${path}`, { "rpc.method": path, "rpc.type": type }, async (span) => {
+    const result = await next({ ctx: { ...ctx, span } });
+    if (!result.ok) {
+      const { code } = result.error;
+      span.setAttribute("rpc.status_code", code);
+      if (getHTTPStatusCodeFromError(result.error) >= 500) {
+        span.setAttribute("error.type", code);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: code });
       }
-    },
-  );
-});
+    }
+    return result;
+  }),
+);
 ```
 
 ### Instrumented Service Calls
@@ -405,10 +388,14 @@ Add a local OTLP backend (Jaeger/Tempo/Collector) for development.
 ### Step 9: Add Environment Variables
 
 ```bash
-# .env.example
+# apps/web/.env.example
 OTEL_ENABLED=false
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318   # base URL
 ```
+
+The FHE and OCR services read `OTEL_EXPORTER_OTLP_ENDPOINT` as the full traces
+URL (`http://localhost:4318/v1/traces`), so Docker Compose gives each service
+its own value.
 
 ## Files to Create/Modify
 

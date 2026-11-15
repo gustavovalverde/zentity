@@ -2,15 +2,15 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { currentSpan, hashIdentifier } from "@/lib/observability/telemetry";
+import { type Attributes, trace } from "@opentelemetry/api";
+
+import { hashIdentifier } from "@/lib/observability/telemetry";
 
 const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
 const FLOW_ID_HEADER = "x-zentity-flow-id";
 
 type FlowIdSource = "header" | "cookie" | "query" | "none";
-type SpanAttributeValue = string | number | boolean | undefined;
-type SpanAttributes = Record<string, SpanAttributeValue>;
 
 interface RequestContext {
   flowId: string | null;
@@ -52,7 +52,7 @@ export function getRequestLogBindings(
 
 export function getSpanAttributesFromContext(
   context: RequestContext
-): SpanAttributes {
+): Attributes {
   return {
     "request.id": context.requestId,
     "flow.id_hash": context.flowId ? hashIdentifier(context.flowId) : undefined,
@@ -61,14 +61,5 @@ export function getSpanAttributesFromContext(
 }
 
 export function attachRequestContextToSpan(context: RequestContext): void {
-  const span = currentSpan();
-  if (!span) {
-    return;
-  }
-  const attrs = getSpanAttributesFromContext(context);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value !== undefined) {
-      span.setAttribute(key, value);
-    }
-  }
+  trace.getActiveSpan()?.setAttributes(getSpanAttributesFromContext(context));
 }

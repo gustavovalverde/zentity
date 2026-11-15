@@ -66,9 +66,10 @@ services:
       - MAIL_FROM_EMAIL=${MAIL_FROM_EMAIL:-no-reply@zentity.local}
       - MAIL_FROM_NAME=${MAIL_FROM_NAME:-Zentity}
       - RESEND_API_KEY=${RESEND_API_KEY:-}
-      # Observability
+      # Observability. The OpenTelemetry SDK appends /v1/traces and /v1/metrics
+      # to this base URL.
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-web
       # Admin
@@ -103,7 +104,8 @@ services:
       - FHE_KEYS_DIR=/var/lib/zentity/fhe
       - FHE_DEBUG_KEYS=${FHE_DEBUG_KEYS:-true}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      # The FHE service reads this variable as the full traces URL.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-fhe
     volumes:
@@ -122,7 +124,8 @@ services:
       - PORT=5004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-}
       - OTEL_ENABLED=${OTEL_ENABLED:-true}
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      # The OCR service reads this variable as the full traces URL.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}
       - OTEL_EXPORTER_OTLP_HEADERS=${OTEL_EXPORTER_OTLP_HEADERS:-}
       - OTEL_SERVICE_NAME=zentity-ocr
     restart: unless-stopped
