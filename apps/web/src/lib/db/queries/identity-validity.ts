@@ -1,11 +1,12 @@
 import type {
+  IdentityBundle,
   IdentityValidityDelivery,
   IdentityValidityEvent,
   IdentityValiditySourceCursor,
   NewIdentityValidityDelivery,
+  NewIdentityValidityEvent,
   ValidityDeliveryStatus,
   ValidityDeliveryTarget,
-  ValidityEventKind,
   ValidityStatus,
   ValidityTransitionSource,
 } from "../schema/identity";
@@ -14,7 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 
-import { db } from "../connection";
+import { type DbExecutor, db } from "../connection";
 import {
   identityBundles,
   identityValidityDeliveries,
@@ -22,22 +23,20 @@ import {
   identityValiditySourceCursors,
 } from "../schema/identity";
 
-type IdentityValidityExecutor = Pick<typeof db, "insert" | "select" | "update">;
-
-interface IdentityValiditySnapshot {
-  effectiveVerificationId?: string | null;
-  freshnessCheckedAt: string | null;
-  revokedAt: string | null;
-  revokedBy: string | null;
-  revokedReason: string | null;
-  userId: string;
-  validityStatus: ValidityStatus;
-  verificationExpiresAt: string | null;
-}
+type IdentityValiditySnapshot = Pick<
+  IdentityBundle,
+  | "effectiveVerificationId"
+  | "freshnessCheckedAt"
+  | "revokedAt"
+  | "revokedBy"
+  | "revokedReason"
+  | "userId"
+  | "verificationExpiresAt"
+> & { validityStatus: ValidityStatus };
 
 export async function getIdentityValiditySnapshot(
   userId: string,
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityValiditySnapshot | null> {
   const row = await executor
     .select({
@@ -59,107 +58,58 @@ export async function getIdentityValiditySnapshot(
     return null;
   }
 
-  return {
-    effectiveVerificationId: row.effectiveVerificationId,
-    freshnessCheckedAt: row.freshnessCheckedAt,
-    verificationExpiresAt: row.verificationExpiresAt,
-    userId: row.userId,
-    validityStatus: row.validityStatus ?? "pending",
-    revokedAt: row.revokedAt,
-    revokedBy: row.revokedBy,
-    revokedReason: row.revokedReason,
-  };
+  return { ...row, validityStatus: row.validityStatus ?? "pending" };
 }
 
 export async function upsertIdentityValiditySnapshot(
   snapshot: IdentityValiditySnapshot,
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
+  const { userId: _userId, ...changes } = snapshot;
+
   await executor
     .insert(identityBundles)
-    .values({
-      userId: snapshot.userId,
-      validityStatus: snapshot.validityStatus,
-      effectiveVerificationId: snapshot.effectiveVerificationId ?? null,
-      freshnessCheckedAt: snapshot.freshnessCheckedAt,
-      verificationExpiresAt: snapshot.verificationExpiresAt,
-      revokedAt: snapshot.revokedAt,
-      revokedBy: snapshot.revokedBy,
-      revokedReason: snapshot.revokedReason,
-    })
+    .values(snapshot)
     .onConflictDoUpdate({
       target: identityBundles.userId,
-      set: {
-        validityStatus: snapshot.validityStatus,
-        effectiveVerificationId: snapshot.effectiveVerificationId ?? null,
-        freshnessCheckedAt: snapshot.freshnessCheckedAt,
-        verificationExpiresAt: snapshot.verificationExpiresAt,
-        revokedAt: snapshot.revokedAt,
-        revokedBy: snapshot.revokedBy,
-        revokedReason: snapshot.revokedReason,
-        updatedAt: sql`datetime('now')`,
-      },
+      set: { ...changes, updatedAt: sql`datetime('now')` },
     })
     .run();
 }
 
+/**
+ * Appends a validity event. Returns null when the event's
+ * (source, sourceNetwork, sourceEventId) was already recorded, so a replayed
+ * source event is a no-op.
+ */
 export async function appendIdentityValidityEvent(
-  args: {
-    createdAt?: string;
-    eventKind: ValidityEventKind;
-    reason?: string | null;
-    source: ValidityTransitionSource;
-    sourceBlockNumber?: number | null;
-    sourceEventId?: string | null;
-    sourceNetwork?: string | null;
-    triggeredBy?: string | null;
-    userId: string;
-    validityStatus: ValidityStatus;
-    verificationId?: string | null;
-  },
-  executor: IdentityValidityExecutor = db
-): Promise<IdentityValidityEvent> {
-  const id = randomUUID();
-  const createdAt = args.createdAt ?? new Date().toISOString();
-
-  await executor
+  args: Omit<NewIdentityValidityEvent, "id">,
+  executor: DbExecutor = db
+): Promise<IdentityValidityEvent | null> {
+  const row = await executor
     .insert(identityValidityEvents)
     .values({
-      id,
-      userId: args.userId,
-      verificationId: args.verificationId ?? null,
-      eventKind: args.eventKind,
-      validityStatus: args.validityStatus,
-      source: args.source,
-      sourceBlockNumber: args.sourceBlockNumber ?? null,
-      sourceEventId: args.sourceEventId ?? null,
-      sourceNetwork: args.sourceNetwork ?? null,
-      triggeredBy: args.triggeredBy ?? null,
-      reason: args.reason ?? null,
-      createdAt,
+      ...args,
+      id: randomUUID(),
+      createdAt: args.createdAt ?? new Date().toISOString(),
     })
-    .run();
+    .onConflictDoNothing({
+      target: [
+        identityValidityEvents.source,
+        identityValidityEvents.sourceNetwork,
+        identityValidityEvents.sourceEventId,
+      ],
+    })
+    .returning()
+    .get();
 
-  return {
-    id,
-    userId: args.userId,
-    verificationId: args.verificationId ?? null,
-    eventKind: args.eventKind,
-    validityStatus: args.validityStatus,
-    source: args.source,
-    sourceBlockNumber: args.sourceBlockNumber ?? null,
-    sourceEventId: args.sourceEventId ?? null,
-    sourceNetwork: args.sourceNetwork ?? null,
-    triggeredBy: args.triggeredBy ?? null,
-    reason: args.reason ?? null,
-    createdAt,
-  };
+  return row ?? null;
 }
 
 export async function getIdentityValiditySourceCursor(
   source: ValidityTransitionSource,
   network: string,
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityValiditySourceCursor | null> {
   const row = await executor
     .select()
@@ -184,39 +134,37 @@ export async function upsertIdentityValiditySourceCursor(
     network: string;
     source: ValidityTransitionSource;
   },
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   const now = new Date().toISOString();
+  const fields = {
+    cursor: args.cursor ?? null,
+    lastSeenBlockNumber: args.lastSeenBlockNumber ?? null,
+    lastSeenBlockHash: args.lastSeenBlockHash ?? null,
+    updatedAt: now,
+  };
 
   await executor
     .insert(identityValiditySourceCursors)
     .values({
+      ...fields,
       id: randomUUID(),
       source: args.source,
       network: args.network,
-      cursor: args.cursor ?? null,
-      lastSeenBlockNumber: args.lastSeenBlockNumber ?? null,
-      lastSeenBlockHash: args.lastSeenBlockHash ?? null,
       createdAt: now,
-      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [
         identityValiditySourceCursors.source,
         identityValiditySourceCursors.network,
       ],
-      set: {
-        cursor: args.cursor ?? null,
-        lastSeenBlockNumber: args.lastSeenBlockNumber ?? null,
-        lastSeenBlockHash: args.lastSeenBlockHash ?? null,
-        updatedAt: now,
-      },
+      set: fields,
     })
     .run();
 }
 
 export async function listIdentityValiditySourceCursors(
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityValiditySourceCursor[]> {
   return await executor
     .select()
@@ -253,7 +201,6 @@ export async function listExpiredIdentityBundles(
     .where(
       and(
         eq(identityBundles.validityStatus, "verified"),
-        sql`${identityBundles.verificationExpiresAt} is not null`,
         lte(identityBundles.verificationExpiresAt, now)
       )
     )
@@ -275,18 +222,14 @@ export async function recordIdentityFreshnessCheck(
     userId: string;
     validityStatus?: ValidityStatus;
   },
-  executor: IdentityValidityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor
     .update(identityBundles)
     .set({
       freshnessCheckedAt: args.freshnessCheckedAt,
-      ...(args.verificationExpiresAt === undefined
-        ? {}
-        : { verificationExpiresAt: args.verificationExpiresAt }),
-      ...(args.validityStatus === undefined
-        ? {}
-        : { validityStatus: args.validityStatus }),
+      verificationExpiresAt: args.verificationExpiresAt,
+      validityStatus: args.validityStatus,
       updatedAt: args.freshnessCheckedAt,
     })
     .where(eq(identityBundles.userId, args.userId))
@@ -306,9 +249,10 @@ export async function getLatestIdentityValidityEvent(userId: string) {
 }
 
 export async function getIdentityValidityEventById(
-  eventId: string
+  eventId: string,
+  executor: DbExecutor = db
 ): Promise<IdentityValidityEvent | null> {
-  const row = await db
+  const row = await executor
     .select()
     .from(identityValidityEvents)
     .where(eq(identityValidityEvents.id, eventId))
@@ -333,10 +277,10 @@ export async function createIdentityValidityDeliveries(
       status?: ValidityDeliveryStatus;
     }
   >,
-  executor: IdentityValidityExecutor = db
-): Promise<number> {
+  executor: DbExecutor = db
+): Promise<void> {
   if (deliveries.length === 0) {
-    return 0;
+    return;
   }
 
   await executor
@@ -360,20 +304,13 @@ export async function createIdentityValidityDeliveries(
       ],
     })
     .run();
-
-  const rows = await executor
-    .select({ count: sql<number>`count(*)` })
-    .from(identityValidityDeliveries)
-    .where(eq(identityValidityDeliveries.eventId, deliveries[0]?.eventId ?? ""))
-    .get();
-
-  return rows?.count ?? 0;
 }
 
 export async function listIdentityValidityDeliveriesForEvent(
-  eventId: string
+  eventId: string,
+  executor: DbExecutor = db
 ): Promise<IdentityValidityDelivery[]> {
-  return await db
+  return await executor
     .select()
     .from(identityValidityDeliveries)
     .where(eq(identityValidityDeliveries.eventId, eventId))

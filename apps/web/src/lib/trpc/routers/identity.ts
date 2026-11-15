@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
+import { isUniqueConstraintError } from "@/lib/db/errors";
 import {
   createIdentityVerificationJob,
   createVerification,
@@ -61,16 +62,6 @@ import {
   rateLimitedProcedure,
   router,
 } from "../server";
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  if ("code" in error && error.code === "SQLITE_CONSTRAINT_UNIQUE") {
-    return true;
-  }
-  return error.message.includes("UNIQUE constraint failed");
-}
 
 /**
  * Document verification procedure.

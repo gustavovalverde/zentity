@@ -11,7 +11,7 @@ import {
   EMPTY_CHECKS,
 } from "@/lib/identity/verification/compliance";
 
-import { db } from "../connection";
+import { type DbExecutor, db } from "../connection";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -19,8 +19,6 @@ import {
   identityVerifications,
 } from "../schema/identity";
 import { verificationChecks } from "../schema/privacy";
-
-type AttestationExecutor = Pick<typeof db, "insert" | "select" | "update">;
 
 const CHECK_TYPE_TO_COMPLIANCE_KEY = {
   document: "documentVerified",
@@ -42,7 +40,7 @@ export async function upsertAttestationEvidence(
     userId: string;
     verificationId: string;
   },
-  executor: AttestationExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   const now = new Date().toISOString();
   const consentedAt = args.consentReceipt || args.consentScope ? now : null;
@@ -65,9 +63,7 @@ export async function upsertAttestationEvidence(
       set: {
         policyVersion: args.policyVersion,
         policyHash: args.policyHash,
-        ...(args.proofSetHash === undefined
-          ? {}
-          : { proofSetHash: args.proofSetHash }),
+        proofSetHash: args.proofSetHash,
         ...(args.consentReceipt
           ? { consentReceipt: args.consentReceipt, consentedAt: now }
           : {}),
@@ -105,25 +101,22 @@ export async function createBlockchainAttestation(data: {
   networkId: string;
   chainId: number;
 }): Promise<BlockchainAttestation> {
-  const id = crypto.randomUUID();
-
-  await db
+  const row = await db
     .insert(blockchainAttestations)
     .values({
-      id,
+      id: crypto.randomUUID(),
       userId: data.userId,
       walletAddress: data.walletAddress,
       networkId: data.networkId,
       chainId: data.chainId,
       status: "pending",
     })
-    .run();
-
-  const attestation = await getBlockchainAttestationById(id);
-  if (!attestation) {
+    .returning()
+    .get();
+  if (!row) {
     throw new Error("Failed to create blockchain attestation");
   }
-  return attestation;
+  return row;
 }
 
 export async function getBlockchainAttestationById(
@@ -223,26 +216,6 @@ export async function getBlockchainAttestationByUserAndNetwork(
     .get();
 
   return row ?? null;
-}
-
-export async function getBlockchainAttestationByNetworkAndWallet(
-  networkId: string,
-  walletAddress: string
-): Promise<BlockchainAttestation | null> {
-  const normalizedWalletAddress = walletAddress.toLowerCase();
-
-  const row = await db
-    .select()
-    .from(blockchainAttestations)
-    .where(eq(blockchainAttestations.networkId, networkId))
-    .all();
-
-  return (
-    row.find(
-      (candidate) =>
-        candidate.walletAddress.toLowerCase() === normalizedWalletAddress
-    ) ?? null
-  );
 }
 
 export async function getBlockchainAttestationsByUserId(

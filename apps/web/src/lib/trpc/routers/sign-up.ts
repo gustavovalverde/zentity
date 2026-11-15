@@ -4,6 +4,7 @@ import z from "zod";
 
 import { auth } from "@/lib/auth/auth-config";
 import { getAppOrigin } from "@/lib/auth/origin";
+import { isUniqueConstraintError } from "@/lib/db/errors";
 import {
   clearAnonymousFlag,
   deleteStaleAnonymousUserByEmail,
@@ -22,25 +23,6 @@ import { protectedProcedure, router } from "../server";
 
 const BUNDLE_ISSUER_ID = "zentity";
 const BUNDLE_POLICY_VERSION = "1.0";
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  // Drizzle wraps libsql errors as `Error("Failed query: ...")` and preserves
-  // the original LibsqlError (with `code` and message) on `.cause`. Walk the
-  // chain so the wrapper doesn't mask the constraint code.
-  if ("code" in error && error.code === "SQLITE_CONSTRAINT_UNIQUE") {
-    return true;
-  }
-  if (error.message.includes("UNIQUE constraint failed")) {
-    return true;
-  }
-  if ("cause" in error && error.cause) {
-    return isUniqueConstraintError(error.cause);
-  }
-  return false;
-}
 
 export const signUpRouter = router({
   completeAccountCreation: protectedProcedure

@@ -4,6 +4,7 @@ import type { LibSQLDatabase } from "drizzle-orm/libsql";
 
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
 
 import { env } from "@/env";
 
@@ -38,13 +39,9 @@ const schema = {
   ...revokedTokensSchema,
 };
 
-function isBuildTime() {
-  if (process.env.npm_lifecycle_event === "build") {
-    return true;
-  }
-  const argv = process.argv.join(" ");
-  return argv.includes("next") && argv.includes("build");
-}
+// `next build` sets NEXT_PHASE in the main process before it starts the
+// workers that evaluate server modules.
+const isBuildTime = process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD;
 
 /**
  * Returns the libsql URL for the current process.
@@ -52,7 +49,7 @@ function isBuildTime() {
  * Build-time uses an in-memory database to avoid SQLite locks across Next.js build workers.
  */
 function getDatabaseUrl(): string {
-  if (isBuildTime()) {
+  if (isBuildTime) {
     return "file::memory:";
   }
   return env.TURSO_DATABASE_URL;
@@ -60,9 +57,7 @@ function getDatabaseUrl(): string {
 
 const dbClient = createClient({
   url: getDatabaseUrl(),
-  ...(env.TURSO_AUTH_TOKEN === undefined
-    ? {}
-    : { authToken: env.TURSO_AUTH_TOKEN }),
+  authToken: env.TURSO_AUTH_TOKEN,
   // Local SQLite: wait up to 5s for a lock instead of failing with
   // SQLITE_BUSY. The client pools connections, so a busy_timeout PRAGMA would
   // reach only one of them; this option applies to each. Turso ignores it.
@@ -71,7 +66,7 @@ const dbClient = createClient({
 
 // WAL lets readers proceed during a write. The mode persists in the database
 // file, so one connection setting it is enough. Turso rejects the PRAGMA.
-if (!isBuildTime()) {
+if (!isBuildTime) {
   dbClient.execute("PRAGMA journal_mode = WAL;").catch(() => undefined);
 }
 
@@ -79,3 +74,6 @@ export const db: LibSQLDatabase<typeof schema> = drizzle(dbClient, {
   schema,
   logger: env.DRIZZLE_LOG ?? false,
 });
+
+/** A database handle or a transaction handle, for helpers that run in either. */
+export type DbExecutor = Pick<typeof db, "insert" | "select" | "update">;
