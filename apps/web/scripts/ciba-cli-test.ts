@@ -68,7 +68,10 @@ interface Args {
 
 function readCliValues() {
   try {
+    // pnpm forwards the `--` in `pnpm test:ciba-cli -- --flag`; parseArgs would treat what follows as positionals.
+    const argv = process.argv.slice(2);
     return parseCliArgs({
+      args: argv[0] === "--" ? argv.slice(1) : argv,
       options: {
         "login-hint": { type: "string" },
         "base-url": { type: "string", default: "http://localhost:3000" },

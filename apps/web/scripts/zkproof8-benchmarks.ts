@@ -200,7 +200,7 @@ async function fetchFhe<T>(path: string, payload: unknown): Promise<T> {
 
 function parseBenchmarkArgs(argv: string[]) {
   const { values } = parseArgs({
-    args: argv,
+    args: argv[0] === "--" ? argv.slice(1) : argv,
     options: {
       out: { type: "string", default: "docs/papers/zkproof8/benchmarks.json" },
       "runs-zk": { type: "string", default: "10" },
