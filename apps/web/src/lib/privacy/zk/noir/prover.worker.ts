@@ -14,8 +14,6 @@ import { Buffer } from "buffer";
 
 globalThis.Buffer = Buffer;
 
-import type { InitInput as AcvmInitInput } from "@noir-lang/acvm_js";
-import type { InitInput as NoirAbiInitInput } from "@noir-lang/noirc_abi";
 import type {
   AgeProofPayload,
   BaseCommitmentPayload,
@@ -29,9 +27,11 @@ import type {
   WorkerResponse,
 } from "./worker-manager";
 
-import { getCountryWeightedSum } from "@zkpassport/utils";
-
-import { COUNTRY_GROUPS, TREE_DEPTH } from "@/lib/privacy/zk/country";
+import {
+  buildNationalityTree,
+  type NationalityMembershipInputs,
+  type NationalityTree,
+} from "@/lib/privacy/zk/country";
 import {
   HASH_TO_FIELD_INFO,
   hashToFieldHexFromHex,
@@ -84,8 +84,8 @@ function logWorker(
 interface ModuleCache {
   Barretenberg: typeof import("@aztec/bb.js").Barretenberg;
   BN254_FR_MODULUS: bigint;
-  initACVM: (input?: NoirWasmInitInput) => Promise<unknown>;
-  initNoirC: (input?: NoirWasmInitInput) => Promise<unknown>;
+  initACVM: typeof import("@noir-lang/acvm_js").default;
+  initNoirC: typeof import("@noir-lang/noirc_abi").default;
   Noir: typeof import("@noir-lang/noir_js").Noir;
   UltraHonkBackend: typeof import("@aztec/bb.js").UltraHonkBackend;
 }
@@ -114,17 +114,6 @@ let workerQueue: Promise<void> = Promise.resolve();
 let loggedIsolationFallback = false;
 let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
 let activeProofs = 0;
-
-type NoirWasmInitInput =
-  | AcvmInitInput
-  | NoirAbiInitInput
-  | Promise<AcvmInitInput | NoirAbiInitInput>
-  | {
-      module_or_path:
-        | AcvmInitInput
-        | NoirAbiInitInput
-        | Promise<AcvmInitInput | NoirAbiInitInput>;
-    };
 
 /**
  * Local path for bb.js WASM (copied by setup-coep-assets.ts).
@@ -188,20 +177,6 @@ function getNoirWasmUrl(filename: string): URL | null {
     return null;
   }
   return new URL(`${NOIR_WASM_BASE_PATH}/${filename}`, origin);
-}
-
-async function fetchNoirWasmInitInput(url: URL): Promise<NoirWasmInitInput> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load Noir WASM (${response.status} ${response.statusText})`
-    );
-  }
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/wasm")) {
-    return response;
-  }
-  return await response.arrayBuffer();
 }
 
 function cancelIdleCleanup() {
@@ -278,22 +253,13 @@ async function getModules(): Promise<ModuleCache> {
       durationMs: Math.round(performance.now() - bbImportStart),
     });
 
-    const initACVM =
-      typeof noirModule.acvm?.default === "function"
-        ? noirModule.acvm.default
-        : (await import("@noir-lang/acvm_js")).default;
-    const initNoirC =
-      typeof noirModule.abi?.default === "function"
-        ? noirModule.abi.default
-        : (await import("@noir-lang/noirc_abi")).default;
-
     moduleCache = {
       Noir: noirModule.Noir,
       Barretenberg: bbModule.Barretenberg,
       UltraHonkBackend: bbModule.UltraHonkBackend,
       BN254_FR_MODULUS: bbModule.BN254_FR_MODULUS,
-      initACVM,
-      initNoirC,
+      initACVM: noirModule.acvm.default,
+      initNoirC: noirModule.abi.default,
     };
 
     logWorker("init", "Module initialization complete");
@@ -322,27 +288,18 @@ function ensureNoirRuntimeReady(): Promise<void> {
       noircWasm: noircWasm ? String(noircWasm) : "module-default",
     });
 
-    let initialized = false;
-    if (acvmWasm && noircWasm) {
-      try {
-        const [acvmInput, noircInput] = await Promise.all([
-          fetchNoirWasmInitInput(acvmWasm),
-          fetchNoirWasmInitInput(noircWasm),
-        ]);
-        await Promise.all([
-          initACVM({ module_or_path: acvmInput }),
-          initNoirC({ module_or_path: noircInput }),
-        ]);
-        initialized = true;
-      } catch (error) {
-        logWorker("init", "Noir WASM init failed; falling back to defaults", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    if (!initialized) {
-      await Promise.all([initACVM(), initNoirC()]);
+    // wasm-bindgen fetches the URL itself (through the patched fetch). On
+    // failure the module stays uninitialized and Noir.execute() initializes
+    // the bundled default instead.
+    try {
+      await Promise.all([
+        initACVM(acvmWasm ? { module_or_path: acvmWasm } : undefined),
+        initNoirC(noircWasm ? { module_or_path: noircWasm } : undefined),
+      ]);
+    } catch (error) {
+      logWorker("init", "Noir WASM init failed; falling back to defaults", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     logWorker("init", "Noir WASM runtime ready");
@@ -478,148 +435,24 @@ async function getProverBackend(circuit: CircuitName) {
   return backend;
 }
 
-interface MerkleCacheEntry {
-  indexByCode: Map<number, number>;
-  levels: bigint[][];
-}
-
-const merkleCache = new Map<string, Promise<MerkleCacheEntry>>();
-
-async function buildMerkleCacheForGroup(
-  groupName: string
-): Promise<MerkleCacheEntry> {
-  const upperGroup = groupName.toUpperCase();
-  const countries = COUNTRY_GROUPS[upperGroup as keyof typeof COUNTRY_GROUPS];
-  if (!countries) {
-    throw new Error(`Unknown country group: ${groupName}`);
-  }
-
-  const codes = countries.map((c) =>
-    getCountryWeightedSum(c as Parameters<typeof getCountryWeightedSum>[0])
-  );
-  const treeSize = 2 ** TREE_DEPTH;
-  const paddedCodes = [...codes];
-  while (paddedCodes.length < treeSize) {
-    paddedCodes.push(0);
-  }
-
-  const levels: bigint[][] = [];
-  const leaves: bigint[] = [];
-  const indexByCode = new Map<number, number>();
-
-  for (let i = 0; i < paddedCodes.length; i++) {
-    const code = paddedCodes[i];
-    if (code === undefined) {
-      throw new Error("Unexpected undefined in padded codes");
-    }
-    const leafHash = await poseidon2Hash([BigInt(code)]);
-    leaves.push(leafHash);
-    if (code !== 0) {
-      indexByCode.set(code, i);
-    }
-  }
-  levels.push(leaves);
-
-  let currentLevel = leaves;
-  while (currentLevel.length > 1) {
-    const nextLevel: bigint[] = [];
-    for (let i = 0; i < currentLevel.length; i += 2) {
-      const left = currentLevel[i];
-      const right = currentLevel[i + 1];
-      if (left === undefined || right === undefined) {
-        throw new Error("Merkle tree level has odd number of elements");
-      }
-      const parent = await poseidon2Hash([left, right]);
-      nextLevel.push(parent);
-    }
-    levels.push(nextLevel);
-    currentLevel = nextLevel;
-  }
-
-  return { levels, indexByCode };
-}
-
-function getMerkleCache(groupName: string): Promise<MerkleCacheEntry> {
-  const upperGroup = groupName.toUpperCase();
-  const cached = merkleCache.get(upperGroup);
-  if (cached) {
-    return cached;
-  }
-  const promise = buildMerkleCacheForGroup(upperGroup);
-  merkleCache.set(upperGroup, promise);
-  return promise;
-}
+const nationalityTreeCache = new Map<string, Promise<NationalityTree>>();
 
 /**
- * Compute Merkle path for nationality proof (CLIENT-SIDE)
+ * Compute the Merkle path for a nationality proof (CLIENT-SIDE).
  * Nationality code NEVER leaves this worker.
  */
 async function computeMerklePath(
   nationalityCode: string,
   groupName: string
-): Promise<{
-  nationalityCodeNumeric: number;
-  merkleRoot: string;
-  pathElements: string[];
-  pathIndices: number[];
-}> {
-  const upperCode = nationalityCode.toUpperCase();
+): Promise<NationalityMembershipInputs> {
   const upperGroup = groupName.toUpperCase();
-
-  // Validate the code is in a known group before computing weighted sum
-  const countries = COUNTRY_GROUPS[upperGroup as keyof typeof COUNTRY_GROUPS];
-  if (!countries) {
-    throw new Error(`Unknown country group: ${groupName}`);
+  let tree = nationalityTreeCache.get(upperGroup);
+  if (!tree) {
+    tree = buildNationalityTree(upperGroup, poseidon2Hash);
+    nationalityTreeCache.set(upperGroup, tree);
+    tree.catch(() => nationalityTreeCache.delete(upperGroup));
   }
-  if (!countries.some((c) => c === upperCode)) {
-    throw new Error(`${nationalityCode} is not a member of ${groupName}`);
-  }
-  const numericCode = getCountryWeightedSum(
-    upperCode as Parameters<typeof getCountryWeightedSum>[0]
-  );
-
-  const { levels, indexByCode } = await getMerkleCache(upperGroup);
-  const leafIndex = indexByCode.get(numericCode);
-  if (leafIndex === undefined) {
-    throw new Error(`Country code ${numericCode} not found in tree`);
-  }
-
-  // Extract path elements and indices
-  const pathElements: bigint[] = [];
-  const pathIndices: number[] = [];
-
-  let idx = leafIndex;
-  for (let level = 0; level < TREE_DEPTH; level++) {
-    const isRight = idx % 2 === 1;
-    const siblingIdx = isRight ? idx - 1 : idx + 1;
-    const levelNodes = levels[level];
-    if (levelNodes === undefined) {
-      throw new Error(`Missing Merkle tree level ${level}`);
-    }
-    const sibling = levelNodes[siblingIdx];
-    if (sibling === undefined) {
-      throw new Error(`Missing sibling at level ${level}, index ${siblingIdx}`);
-    }
-    pathElements.push(sibling);
-    pathIndices.push(isRight ? 1 : 0);
-    idx = Math.floor(idx / 2);
-  }
-
-  const rootLevel = levels.at(-1);
-  if (!rootLevel) {
-    throw new Error("Invalid Merkle tree: no root level");
-  }
-  const merkleRoot = rootLevel[0];
-  if (merkleRoot === undefined) {
-    throw new Error("Invalid Merkle tree: empty root level");
-  }
-
-  return {
-    nationalityCodeNumeric: numericCode,
-    merkleRoot: `0x${merkleRoot.toString(16)}`,
-    pathElements: pathElements.map((e) => `0x${e.toString(16)}`),
-    pathIndices,
-  };
+  return (await tree).prove(nationalityCode);
 }
 
 /**
@@ -760,7 +593,7 @@ async function generateNationalityProofClient(
   );
 
   return generateNationalityProof({
-    nationalityCode: merkleData.nationalityCodeNumeric,
+    nationalityCode: merkleData.nationalityCode,
     merkleRoot: merkleData.merkleRoot,
     pathElements: merkleData.pathElements,
     pathIndices: merkleData.pathIndices,

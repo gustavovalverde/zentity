@@ -8,6 +8,7 @@
  */
 
 import {
+  AsyncIMT,
   getCountryFromWeightedSum,
   getCountryWeightedSum,
   ASEAN_COUNTRIES as ZKPASSPORT_ASEAN,
@@ -28,7 +29,7 @@ countries.registerLocale(enLocale);
 
 type HashFn = (values: bigint[]) => Promise<bigint>;
 
-export const TREE_DEPTH = 8;
+const TREE_DEPTH = 8;
 
 // ============================================================================
 // Name → Alpha3 Conversion (using i18n-iso-countries)
@@ -193,134 +194,73 @@ export function getCountryName(code: string | number): string | undefined {
 }
 
 // ============================================================================
-// Merkle Tree Functions (nationality membership proof inputs)
+// Nationality Merkle Tree (nationality_membership circuit inputs)
 // ============================================================================
 
-interface NationalityCircuitInputs {
+export interface NationalityMembershipInputs {
   merkleRoot: string;
   nationalityCode: number;
   pathElements: string[];
   pathIndices: number[];
 }
 
-async function generateMerkleProof(
-  countryCodes: number[],
-  targetCode: number,
-  poseidon2Hash: HashFn
-): Promise<{
-  pathElements: bigint[];
-  pathIndices: number[];
-  merkleRoot: bigint;
-  leafIndex: number;
-}> {
-  const treeSize = 2 ** TREE_DEPTH;
-  const paddedCodes = [...countryCodes];
-  while (paddedCodes.length < treeSize) {
-    paddedCodes.push(0);
-  }
-
-  const levels: bigint[][] = [];
-  const leaves: bigint[] = [];
-  let leafIndex = -1;
-
-  for (let i = 0; i < paddedCodes.length; i++) {
-    const code = paddedCodes[i];
-    if (code === undefined) {
-      throw new Error("Unexpected undefined in padded codes");
-    }
-    const leafHash = await poseidon2Hash([BigInt(code)]);
-    leaves.push(leafHash);
-    if (code === targetCode) {
-      leafIndex = i;
-    }
-  }
-  levels.push(leaves);
-
-  if (leafIndex === -1) {
-    throw new Error(`Country code ${targetCode} not found in group`);
-  }
-
-  let currentLevel = leaves;
-  while (currentLevel.length > 1) {
-    const nextLevel: bigint[] = [];
-    for (let i = 0; i < currentLevel.length; i += 2) {
-      const left = currentLevel[i];
-      const right = currentLevel[i + 1];
-      if (left === undefined || right === undefined) {
-        throw new Error("Merkle tree level has odd number of elements");
-      }
-      const parent = await poseidon2Hash([left, right]);
-      nextLevel.push(parent);
-    }
-    levels.push(nextLevel);
-    currentLevel = nextLevel;
-  }
-
-  const pathElements: bigint[] = [];
-  const pathIndices: number[] = [];
-
-  let idx = leafIndex;
-  for (let level = 0; level < TREE_DEPTH; level++) {
-    const isRight = idx % 2 === 1;
-    const siblingIdx = isRight ? idx - 1 : idx + 1;
-    const levelNodes = levels[level];
-    if (levelNodes === undefined) {
-      throw new Error(`Missing Merkle tree level ${level}`);
-    }
-    const sibling = levelNodes[siblingIdx];
-    if (sibling === undefined) {
-      throw new Error(`Missing sibling at level ${level}, index ${siblingIdx}`);
-    }
-    pathElements.push(sibling);
-    pathIndices.push(isRight ? 1 : 0);
-    idx = Math.floor(idx / 2);
-  }
-
-  const rootLevel = levels.at(-1);
-  if (!rootLevel) {
-    throw new Error("Invalid Merkle tree: no root level");
-  }
-  const merkleRoot = rootLevel[0];
-  if (merkleRoot === undefined) {
-    throw new Error("Invalid Merkle tree: empty root level");
-  }
-
-  return { pathElements, pathIndices, merkleRoot, leafIndex };
+export interface NationalityTree {
+  /** Circuit inputs proving `nationalityCode` (alpha-3) is in the group. */
+  prove(nationalityCode: string): NationalityMembershipInputs;
 }
 
-export async function generateNationalityProofInputs(
-  nationalityCode: string,
+const toHex = (value: bigint) => `0x${value.toString(16)}`;
+
+/**
+ * Builds the group's fixed-depth Poseidon2 tree: each leaf is hash([code]),
+ * unused leaves are hash([0]), parents are hash([left, right]), matching
+ * nationality_membership/src/main.nr. All 2^TREE_DEPTH leaves are hashed
+ * explicitly because AsyncIMT would otherwise pad with a raw 0.
+ */
+export async function buildNationalityTree(
   groupName: string,
-  poseidon2Hash: HashFn
-): Promise<NationalityCircuitInputs> {
-  const upperCode = nationalityCode.toUpperCase();
+  hash: HashFn
+): Promise<NationalityTree> {
   const upperGroup = groupName.toUpperCase();
-
-  if (!isValidAlpha3(upperCode)) {
-    throw new Error(`Unknown nationality code: ${nationalityCode}`);
-  }
-  const numericCode = getCountryWeightedSum(
-    upperCode as Parameters<typeof getCountryWeightedSum>[0]
-  );
-
   const group = COUNTRY_GROUPS[upperGroup as CountryGroup];
   if (!group) {
     throw new Error(`Unknown country group: ${groupName}`);
   }
 
-  if (!group.includes(upperCode)) {
-    throw new Error(`${nationalityCode} is not a member of ${groupName}`);
+  const leaves = new Array<bigint>(2 ** TREE_DEPTH).fill(await hash([0n]));
+  const indexByCode = new Map<string, number>();
+  for (const [index, alpha3] of group.entries()) {
+    const code = getCountryWeightedSum(
+      alpha3 as Parameters<typeof getCountryWeightedSum>[0]
+    );
+    leaves[index] = await hash([BigInt(code)]);
+    indexByCode.set(alpha3, index);
   }
 
-  const codes = group.map((c) =>
-    getCountryWeightedSum(c as Parameters<typeof getCountryWeightedSum>[0])
+  const tree = new AsyncIMT(
+    (values) => hash(values.map(BigInt)),
+    TREE_DEPTH,
+    2
   );
-  const proof = await generateMerkleProof(codes, numericCode, poseidon2Hash);
+  await tree.initialize(0, leaves);
+  const merkleRoot = toHex(BigInt(tree.root));
 
   return {
-    nationalityCode: numericCode,
-    merkleRoot: `0x${proof.merkleRoot.toString(16)}`,
-    pathElements: proof.pathElements.map((e) => `0x${e.toString(16)}`),
-    pathIndices: proof.pathIndices,
+    prove(nationalityCode) {
+      const alpha3 = nationalityCode.toUpperCase();
+      const index = indexByCode.get(alpha3);
+      if (index === undefined) {
+        throw new Error(`${nationalityCode} is not a member of ${groupName}`);
+      }
+      const proof = tree.createProof(index);
+      return {
+        nationalityCode: getCountryWeightedSum(
+          alpha3 as Parameters<typeof getCountryWeightedSum>[0]
+        ),
+        merkleRoot,
+        pathElements: proof.siblings.flat().map((e) => toHex(BigInt(e))),
+        pathIndices: proof.pathIndices,
+      };
+    },
   };
 }

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 import {
@@ -12,11 +13,9 @@ import {
 import { decode, encode } from "@msgpack/msgpack";
 import { Noir } from "@noir-lang/noir_js";
 import tfhe from "node-tfhe";
+import { bytesToBigInt, bytesToHex, numberToBytes } from "viem";
 
-import {
-  generateNationalityProofInputs,
-  toNumericCode,
-} from "@/lib/privacy/zk/country";
+import { buildNationalityTree, toNumericCode } from "@/lib/privacy/zk/country";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json" with {
   type: "json",
 };
@@ -68,7 +67,6 @@ interface BenchmarkOutput {
   zk: ZkBenchmarkRow[];
 }
 
-type Fr = Uint8Array;
 type NoirArtifact = ConstructorParameters<typeof Noir>[0];
 type NoirInputMap = Parameters<Noir["execute"]>[0];
 
@@ -94,7 +92,6 @@ const FHE_SERVICE_URL = (
 ).replace(/\/+$/, "");
 
 let bbPromise: Promise<Barretenberg> | null = null;
-let verifierPromise: Promise<UltraHonkVerifierBackend> | null = null;
 
 function getBarretenberg(): Promise<Barretenberg> {
   bbPromise ??= Barretenberg.new({
@@ -104,33 +101,8 @@ function getBarretenberg(): Promise<Barretenberg> {
   return bbPromise;
 }
 
-function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
-  verifierPromise ??= (async () => {
-    const bb = await getBarretenberg();
-    return new UltraHonkVerifierBackend(bb);
-  })();
-  return verifierPromise;
-}
-
-function bigIntToFr(value: bigint): Fr {
-  const reduced = value % BN254_FR_MODULUS;
-  const hex = reduced.toString(16).padStart(64, "0");
-  const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
-}
-
-function frToHex(fr: Fr): string {
-  const hex = Array.from(fr)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `0x${hex}`;
-}
-
-function frToBigInt(fr: Fr): bigint {
-  return BigInt(frToHex(fr));
+function bigIntToFr(value: bigint): Uint8Array {
+  return numberToBytes(value % BN254_FR_MODULUS, { size: 32 });
 }
 
 async function computeClaimHash(params: {
@@ -144,7 +116,7 @@ async function computeClaimHash(params: {
   const result = await bb.poseidon2Hash({
     inputs: [bigIntToFr(valueBigInt), bigIntToFr(documentHashBigInt)],
   });
-  return frToHex(result.hash);
+  return bytesToHex(result.hash);
 }
 
 async function poseidon2Hash(values: bigint[]): Promise<bigint> {
@@ -152,7 +124,7 @@ async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   const result = await bb.poseidon2Hash({
     inputs: values.map(bigIntToFr),
   });
-  return frToBigInt(result.hash);
+  return bytesToBigInt(result.hash);
 }
 
 function buildFheHeaders(
@@ -197,37 +169,25 @@ async function fetchFhe<T>(path: string, payload: unknown): Promise<T> {
   return decode(decodedBytes) as T;
 }
 
-function parseArgs(argv: string[]) {
-  const args = new Map<string, string | true>();
-  for (let i = 0; i < argv.length; i++) {
-    const raw = argv[i];
-    if (!raw?.startsWith("--")) {
-      continue;
-    }
-    const key = raw;
-    const next = argv[i + 1];
-    if (!next || next.startsWith("--")) {
-      args.set(key, true);
-    } else {
-      args.set(key, next);
-      i++;
-    }
-  }
+function parseCliArgs(argv: string[]) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      out: { type: "string", default: "docs/papers/zkproof8/benchmarks.json" },
+      "runs-zk": { type: "string", default: "10" },
+      "runs-fhe": { type: "string", default: "1" },
+      "skip-fhe": { type: "boolean", default: false },
+      "only-zk": { type: "boolean", default: false },
+      "only-fhe": { type: "boolean", default: false },
+    },
+  });
   return {
-    out:
-      (args.get("--out") as string | undefined) ??
-      "docs/papers/zkproof8/benchmarks.json",
-    runsZk: Number.parseInt(
-      (args.get("--runs-zk") as string | undefined) ?? "10",
-      10
-    ),
-    runsFhe: Number.parseInt(
-      (args.get("--runs-fhe") as string | undefined) ?? "1",
-      10
-    ),
-    skipFhe: Boolean(args.get("--skip-fhe")),
-    onlyZk: Boolean(args.get("--only-zk")),
-    onlyFhe: Boolean(args.get("--only-fhe")),
+    out: values.out,
+    runsZk: Number.parseInt(values["runs-zk"], 10),
+    runsFhe: Number.parseInt(values["runs-fhe"], 10),
+    skipFhe: values["skip-fhe"],
+    onlyZk: values["only-zk"],
+    onlyFhe: values["only-fhe"],
   };
 }
 
@@ -304,7 +264,7 @@ async function benchmarkCircuit(params: {
     (artifact as unknown as { bytecode: string }).bytecode,
     bb
   );
-  const verifier = await getVerifierBackend();
+  const verifier = new UltraHonkVerifierBackend(bb);
   const verificationKey = await backend.getVerificationKey();
 
   // Warm-up (avoid counting module init, CRS fetch, JIT effects).
@@ -400,11 +360,9 @@ async function benchmarkZk(runs: number): Promise<ZkBenchmarkRow[]> {
   ]);
   const bindingCommitmentHex = `0x${bindingCommitment.toString(16).padStart(64, "0")}`;
 
-  const nationalityInputs = await generateNationalityProofInputs(
-    nationalityCode,
-    "EU",
-    poseidon2Hash
-  );
+  const nationalityInputs = (
+    await buildNationalityTree("EU", poseidon2Hash)
+  ).prove(nationalityCode);
 
   return await Promise.all([
     benchmarkCircuit({
@@ -569,16 +527,12 @@ function printSummary(out: BenchmarkOutput): void {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseCliArgs(process.argv.slice(2));
   if (args.onlyZk && args.onlyFhe) {
     throw new Error("Use only one of --only-zk or --only-fhe");
   }
 
-  await Promise.all([
-    initNoirRuntime(),
-    getBarretenberg(),
-    getVerifierBackend(),
-  ]);
+  await Promise.all([initNoirRuntime(), getBarretenberg()]);
 
   const doZk = !args.onlyFhe;
   const doFhe = !(args.skipFhe || args.onlyZk);
