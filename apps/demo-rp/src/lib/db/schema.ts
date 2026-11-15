@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   integer,
   sqliteTable,
@@ -11,8 +12,8 @@ export const user = sqliteTable("user", {
   email: text("email").notNull(),
   emailVerified: text("emailVerified").notNull().default("0"),
   image: text("image"),
-  createdAt: text("createdAt").notNull().default("datetime('now')"),
-  updatedAt: text("updatedAt").notNull().default("datetime('now')"),
+  createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
   claims: text("claims"),
 });
 
@@ -20,8 +21,8 @@ export const session = sqliteTable("session", {
   id: text("id").primaryKey(),
   expiresAt: text("expiresAt").notNull(),
   token: text("token").notNull().unique(),
-  createdAt: text("createdAt").notNull().default("datetime('now')"),
-  updatedAt: text("updatedAt").notNull().default("datetime('now')"),
+  createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
   userId: text("userId")
@@ -43,8 +44,8 @@ export const account = sqliteTable("account", {
   refreshTokenExpiresAt: text("refreshTokenExpiresAt"),
   scope: text("scope"),
   password: text("password"),
-  createdAt: text("createdAt").notNull().default("datetime('now')"),
-  updatedAt: text("updatedAt").notNull().default("datetime('now')"),
+  createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
 });
 
 export const verification = sqliteTable("verification", {
@@ -52,8 +53,8 @@ export const verification = sqliteTable("verification", {
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: text("expiresAt").notNull(),
-  createdAt: text("createdAt").notNull().default("datetime('now')"),
-  updatedAt: text("updatedAt").notNull().default("datetime('now')"),
+  createdAt: text("createdAt").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updatedAt").notNull().default(sql`(datetime('now'))`),
 });
 
 export const dcrClient = sqliteTable("dcr_client", {
@@ -75,7 +76,9 @@ export const validityNotice = sqliteTable(
     occurredAt: text("occurredAt").notNull(),
     reason: text("reason"),
     rawToken: text("rawToken").notNull(),
-    receivedAt: text("receivedAt").notNull().default("datetime('now')"),
+    receivedAt: integer("receivedAt", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
   },
   (table) => [
     uniqueIndex("validity_notice_client_event_unique").on(
