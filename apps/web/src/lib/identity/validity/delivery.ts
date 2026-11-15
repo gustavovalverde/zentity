@@ -6,7 +6,7 @@ import type {
   ValidityDeliveryTarget,
 } from "@/lib/db/schema/identity";
 
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import {
   writeMirrorCompliance,
@@ -30,6 +30,7 @@ import {
   markIdentityValidityDeliveryDelivered,
   markIdentityValidityDeliveryRetrying,
 } from "@/lib/db/queries/identity-validity";
+import { isoTimestampNow } from "@/lib/db/schema/auth";
 import {
   blockchainAttestations,
   identityValidityEvents,
@@ -285,8 +286,7 @@ async function deliverBlockchainAttestationRevocation(
       .update(blockchainAttestations)
       .set({
         status: "revocation_pending",
-        revokedAt: sql`datetime('now')`,
-        updatedAt: sql`datetime('now')`,
+        revokedAt: isoTimestampNow,
       })
       .where(eq(blockchainAttestations.id, attestation.id))
       .run();
@@ -303,8 +303,7 @@ async function deliverBlockchainAttestationRevocation(
     .update(blockchainAttestations)
     .set({
       status: "revoked",
-      revokedAt: sql`datetime('now')`,
-      updatedAt: sql`datetime('now')`,
+      revokedAt: isoTimestampNow,
     })
     .where(eq(blockchainAttestations.id, attestation.id))
     .run();

@@ -12,7 +12,7 @@ import type {
   ValidityTransitionSource,
 } from "../schema/identity";
 
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
@@ -27,6 +27,7 @@ import {
 } from "@/lib/privacy/secrets/storage.server";
 
 import { type DbExecutor, db } from "../connection";
+import { isoTimestampNow } from "../schema/auth";
 import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
@@ -534,7 +535,6 @@ export async function upsertIdentityDraft(
     verificationId: string;
   }
 ): Promise<IdentityVerificationDraft> {
-  const now = new Date().toISOString();
   const fields = {
     userId: data.userId,
     verificationId: data.verificationId,
@@ -553,10 +553,10 @@ export async function upsertIdentityDraft(
 
   const row = await db
     .insert(identityVerificationDrafts)
-    .values({ ...fields, id: data.id, createdAt: now, updatedAt: now })
+    .values({ ...fields, id: data.id })
     .onConflictDoUpdate({
       target: identityVerificationDrafts.id,
-      set: { ...fields, updatedAt: sql`datetime('now')` },
+      set: fields,
     })
     .returning()
     .get();
@@ -572,10 +572,7 @@ export async function updateIdentityDraft(
 ): Promise<void> {
   await db
     .update(identityVerificationDrafts)
-    .set({
-      ...updates,
-      updatedAt: sql`datetime('now')`,
-    })
+    .set({ ...updates, updatedAt: isoTimestampNow })
     .where(eq(identityVerificationDrafts.id, draftId))
     .run();
 }
@@ -646,7 +643,6 @@ export async function updateIdentityVerificationJobStatus(args: {
       startedAt: args.startedAt ?? null,
       finishedAt: args.finishedAt ?? null,
       attempts: args.attempts,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(identityVerificationJobs.id, args.jobId))
     .run();
@@ -659,7 +655,6 @@ export async function clearIdentityBundleFheKey(userId: string): Promise<void> {
       fheKeyId: null,
       fheStatus: null,
       fheError: null,
-      updatedAt: new Date().toISOString(),
     })
     .where(eq(identityBundles.userId, userId))
     .run();
@@ -690,6 +685,8 @@ export async function upsertIdentityBundle(
 ): Promise<void> {
   // Drizzle drops undefined entries from `set`, so only the supplied fields
   // change on conflict. On insert, omitted columns take their schema defaults.
+  // `updatedAt` stays explicit because Drizzle rejects an empty `set` before
+  // it applies `$onUpdate`, and `{ userId }` alone is a valid call.
   const { userId: _userId, ...changes } = data;
 
   await executor
@@ -697,7 +694,7 @@ export async function upsertIdentityBundle(
     .values(data)
     .onConflictDoUpdate({
       target: identityBundles.userId,
-      set: { ...changes, updatedAt: sql`datetime('now')` },
+      set: { ...changes, updatedAt: isoTimestampNow },
     })
     .run();
 }
@@ -714,7 +711,6 @@ export async function updateIdentityBundleFheStatus(args: {
       fheStatus: args.fheStatus ?? null,
       fheError: args.fheError ?? null,
       fheKeyId: args.fheKeyId,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(identityBundles.userId, args.userId))
     .run();
@@ -740,10 +736,7 @@ export async function updateIdentityBundleAttestationState(args: {
 
   await db
     .update(identityBundles)
-    .set({
-      ...updates,
-      updatedAt: sql`datetime('now')`,
-    })
+    .set({ ...updates, updatedAt: isoTimestampNow })
     .where(eq(identityBundles.userId, args.userId))
     .run();
 }
@@ -765,10 +758,7 @@ export async function upsertVerification(
     .values(data)
     .onConflictDoUpdate({
       target: identityVerifications.id,
-      set: {
-        ...updateFields,
-        updatedAt: sql`datetime('now')`,
-      },
+      set: updateFields,
     })
     .run();
 }

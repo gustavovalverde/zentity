@@ -9,6 +9,13 @@ import {
 
 export const defaultId = sql`(lower(hex(randomblob(16))))`;
 
+/**
+ * The current time in the format of `Date.prototype.toISOString()`, for text
+ * timestamp columns that application code also writes from JavaScript. One
+ * format keeps lexicographic comparison and ordering of those columns correct.
+ */
+export const isoTimestampNow = sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`;
+
 export const users = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull().default(""),

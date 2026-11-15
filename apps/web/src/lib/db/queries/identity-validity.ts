@@ -11,9 +11,7 @@ import type {
   ValidityTransitionSource,
 } from "../schema/identity";
 
-import { randomUUID } from "node:crypto";
-
-import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 
 import { type DbExecutor, db } from "../connection";
 import {
@@ -72,7 +70,7 @@ export async function upsertIdentityValiditySnapshot(
     .values(snapshot)
     .onConflictDoUpdate({
       target: identityBundles.userId,
-      set: { ...changes, updatedAt: sql`datetime('now')` },
+      set: changes,
     })
     .run();
 }
@@ -88,11 +86,7 @@ export async function appendIdentityValidityEvent(
 ): Promise<IdentityValidityEvent | null> {
   const row = await executor
     .insert(identityValidityEvents)
-    .values({
-      ...args,
-      id: randomUUID(),
-      createdAt: args.createdAt ?? new Date().toISOString(),
-    })
+    .values(args)
     .onConflictDoNothing({
       target: [
         identityValidityEvents.source,
@@ -136,22 +130,18 @@ export async function upsertIdentityValiditySourceCursor(
   },
   executor: DbExecutor = db
 ): Promise<void> {
-  const now = new Date().toISOString();
   const fields = {
     cursor: args.cursor ?? null,
     lastSeenBlockNumber: args.lastSeenBlockNumber ?? null,
     lastSeenBlockHash: args.lastSeenBlockHash ?? null,
-    updatedAt: now,
   };
 
   await executor
     .insert(identityValiditySourceCursors)
     .values({
       ...fields,
-      id: randomUUID(),
       source: args.source,
       network: args.network,
-      createdAt: now,
     })
     .onConflictDoUpdate({
       target: [
@@ -287,13 +277,12 @@ export async function createIdentityValidityDeliveries(
     .insert(identityValidityDeliveries)
     .values(
       deliveries.map((delivery) => ({
-        id: randomUUID(),
         eventId: delivery.eventId,
         userId: delivery.userId,
         target: delivery.target,
         targetKey: delivery.targetKey,
         status: delivery.status ?? "pending",
-        availableAt: delivery.availableAt ?? new Date().toISOString(),
+        availableAt: delivery.availableAt,
       }))
     )
     .onConflictDoNothing({

@@ -11,12 +11,13 @@ import type {
 
 import crypto from "node:crypto";
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
 import { type DbExecutor, db } from "../connection";
+import { isoTimestampNow } from "../schema/auth";
 import {
   credentialBindingCommitments,
   encryptedAttributes,
@@ -123,7 +124,6 @@ export async function updateEncryptedSecretMetadata(data: {
     .update(encryptedSecrets)
     .set({
       metadata: data.metadata,
-      updatedAt: sql`datetime('now')`,
     })
     .where(
       and(
@@ -138,7 +138,6 @@ export async function updateEncryptedSecretMetadata(data: {
 }
 
 export async function upsertSecretWrapper(data: {
-  id: string;
   secretId: string;
   userId: string;
   credentialId: string;
@@ -151,7 +150,6 @@ export async function upsertSecretWrapper(data: {
   const row = await db
     .insert(secretWrappers)
     .values({
-      id: data.id,
       secretId: data.secretId,
       userId: data.userId,
       credentialId: data.credentialId,
@@ -165,7 +163,6 @@ export async function upsertSecretWrapper(data: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
         kekSource,
-        updatedAt: sql`datetime('now')`,
       },
     })
     .returning()
@@ -196,7 +193,7 @@ export async function detachVaultCredential(
       .run();
     await tx
       .update(credentialBindingCommitments)
-      .set({ revokedAt: sql`datetime('now')` })
+      .set({ revokedAt: isoTimestampNow })
       .where(
         and(
           eq(credentialBindingCommitments.userId, userId),

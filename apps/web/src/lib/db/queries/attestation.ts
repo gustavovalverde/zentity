@@ -12,6 +12,7 @@ import {
 } from "@/lib/identity/verification/compliance";
 
 import { type DbExecutor, db } from "../connection";
+import { isoTimestampNow } from "../schema/auth";
 import {
   attestationEvidence,
   blockchainAttestations,
@@ -70,7 +71,6 @@ export async function upsertAttestationEvidence(
         ...(args.consentScope
           ? { consentScope: args.consentScope, consentedAt: now }
           : {}),
-        updatedAt: sql`datetime('now')`,
       },
     })
     .run();
@@ -104,7 +104,6 @@ export async function createBlockchainAttestation(data: {
   const row = await db
     .insert(blockchainAttestations)
     .values({
-      id: crypto.randomUUID(),
       userId: data.userId,
       walletAddress: data.walletAddress,
       networkId: data.networkId,
@@ -238,7 +237,6 @@ export async function updateBlockchainAttestationSubmitted(
     .set({
       status: "submitted",
       txHash,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();
@@ -253,8 +251,7 @@ export async function updateBlockchainAttestationConfirmed(
     .set({
       status: "confirmed",
       blockNumber,
-      confirmedAt: sql`datetime('now')`,
-      updatedAt: sql`datetime('now')`,
+      confirmedAt: isoTimestampNow,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();
@@ -287,7 +284,6 @@ export async function updateBlockchainAttestationFailed(
       status: "failed",
       errorMessage,
       retryCount: sql`${blockchainAttestations.retryCount} + 1`,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();
@@ -303,7 +299,6 @@ export async function resetBlockchainAttestation(id: string): Promise<void> {
       confirmedAt: null,
       revokedAt: null,
       errorMessage: null,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();
@@ -319,7 +314,6 @@ export async function updateBlockchainAttestationWallet(
     .set({
       walletAddress,
       chainId,
-      updatedAt: sql`datetime('now')`,
     })
     .where(eq(blockchainAttestations.id, id))
     .run();

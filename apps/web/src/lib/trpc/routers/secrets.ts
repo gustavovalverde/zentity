@@ -8,7 +8,7 @@
 import "server-only";
 
 import { TRPCError } from "@trpc/server";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
@@ -230,7 +230,6 @@ export const secretsRouter = router({
               blobHash: input.blobHash.toLowerCase(),
               blobSize: input.blobSize,
               metadata,
-              updatedAt: sql`datetime('now')`,
             },
           })
           .run();
@@ -238,7 +237,6 @@ export const secretsRouter = router({
         await tx
           .insert(secretWrappers)
           .values({
-            id: crypto.randomUUID(),
             secretId: input.secretId,
             userId: ctx.userId,
             credentialId: input.credentialId,
@@ -252,7 +250,6 @@ export const secretsRouter = router({
               wrappedDek: input.wrappedDek,
               prfSalt: input.prfSalt ?? null,
               kekSource: input.kekSource,
-              updatedAt: sql`datetime('now')`,
             },
           })
           .run();
@@ -308,7 +305,6 @@ export const secretsRouter = router({
       }
 
       const wrapper = await upsertSecretWrapper({
-        id: crypto.randomUUID(),
         secretId: root.id,
         userId: ctx.userId,
         credentialId: input.credentialId,

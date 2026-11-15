@@ -1,4 +1,3 @@
-import { sql } from "drizzle-orm";
 import {
   blob,
   index,
@@ -8,12 +7,14 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { users } from "./auth";
+import { isoTimestampNow, users } from "./auth";
 
 export const proofSessions = sqliteTable(
   "proof_sessions",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -35,7 +36,9 @@ export const proofSessions = sqliteTable(
 export const proofArtifacts = sqliteTable(
   "proof_artifacts",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -56,7 +59,7 @@ export const proofArtifacts = sqliteTable(
     nonce: text("nonce"),
     policyVersion: text("policy_version"),
     metadata: text("metadata"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("idx_proof_artifacts_user_id").on(table.userId),
@@ -71,7 +74,9 @@ export const proofArtifacts = sqliteTable(
 export const encryptedAttributes = sqliteTable(
   "encrypted_attributes",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -81,7 +86,7 @@ export const encryptedAttributes = sqliteTable(
     ciphertextHash: text("ciphertext_hash").notNull().default(""),
     keyId: text("key_id"),
     encryptionTimeMs: integer("encryption_time_ms"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("idx_encrypted_attributes_user_id").on(table.userId),
@@ -96,7 +101,9 @@ export const encryptedAttributes = sqliteTable(
 export const signedClaims = sqliteTable(
   "signed_claims",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -105,7 +112,7 @@ export const signedClaims = sqliteTable(
     claimPayload: text("claim_payload").notNull(),
     signature: text("signature").notNull(),
     issuedAt: text("issued_at").notNull(),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("idx_signed_claims_user_id").on(table.userId),
@@ -141,7 +148,9 @@ export const zkChallenges = sqliteTable(
 export const verificationChecks = sqliteTable(
   "verification_checks",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -151,8 +160,11 @@ export const verificationChecks = sqliteTable(
     source: text("source").notNull(),
     evidenceRef: text("evidence_ref"),
     metadata: text("metadata"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     uniqueIndex("uq_verification_checks_verification_check").on(
@@ -177,7 +189,9 @@ export const usedIntentJtis = sqliteTable(
 export const encryptedSecrets = sqliteTable(
   "encrypted_secrets",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -189,8 +203,11 @@ export const encryptedSecrets = sqliteTable(
     metadata: text("metadata", { mode: "json" }).$type<
       Record<string, unknown>
     >(),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_encrypted_secrets_user_id").on(table.userId),
@@ -205,7 +222,9 @@ export const encryptedSecrets = sqliteTable(
 export const secretWrappers = sqliteTable(
   "secret_wrappers",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     secretId: text("secret_id")
       .notNull()
       .references(() => encryptedSecrets.id, { onDelete: "cascade" }),
@@ -216,8 +235,11 @@ export const secretWrappers = sqliteTable(
     wrappedDek: text("wrapped_dek").notNull(),
     prfSalt: text("prf_salt"),
     kekSource: text("kek_source").notNull().default("prf"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_secret_wrappers_user_id").on(table.userId),
@@ -233,7 +255,9 @@ export const secretWrappers = sqliteTable(
 export const credentialBindingCommitments = sqliteTable(
   "credential_binding_commitments",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     secretId: text("secret_id")
       .notNull()
       .references(() => encryptedSecrets.id, { onDelete: "cascade" }),
@@ -246,7 +270,7 @@ export const credentialBindingCommitments = sqliteTable(
     }).notNull(),
     commitment: text("commitment").notNull(),
     authContextId: text("auth_context_id"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
     revokedAt: text("revoked_at"),
   },
   (table) => [

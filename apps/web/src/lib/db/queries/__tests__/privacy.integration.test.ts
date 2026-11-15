@@ -176,21 +176,18 @@ describe("crypto queries", () => {
       .run();
 
     const inserted = await upsertSecretWrapper({
-      id: "wrapper-1",
       secretId: "secret-1",
       userId,
       credentialId: "credential-1",
       wrappedDek: "dek-1",
     });
     expect(inserted).toMatchObject({
-      id: "wrapper-1",
       wrappedDek: "dek-1",
       kekSource: "prf",
       prfSalt: null,
     });
 
     const updated = await upsertSecretWrapper({
-      id: "wrapper-2",
       secretId: "secret-1",
       userId,
       credentialId: "credential-1",
@@ -198,7 +195,7 @@ describe("crypto queries", () => {
       kekSource: "opaque",
     });
     expect(updated).toMatchObject({
-      id: "wrapper-1",
+      id: inserted.id,
       wrappedDek: "dek-2",
       kekSource: "opaque",
     });
