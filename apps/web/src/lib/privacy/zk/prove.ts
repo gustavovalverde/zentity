@@ -7,6 +7,7 @@
 
 "use client";
 
+import type { ProofType } from "@/lib/privacy/zk/proof-types";
 import type { RouterOutputs } from "@/lib/trpc/client";
 
 import {
@@ -36,12 +37,7 @@ interface ProofResult {
   publicSignals: string[];
 }
 
-type ClientProofType =
-  | "age_verification"
-  | "doc_validity"
-  | "face_match"
-  | "nationality_membership"
-  | "identity_binding";
+type ClientProofType = ProofType;
 
 function recordProofSuccess(
   proofType: ClientProofType,

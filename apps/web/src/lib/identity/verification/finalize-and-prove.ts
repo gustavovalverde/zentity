@@ -2,6 +2,7 @@
 
 import type { ProfileSecretPayload } from "@/lib/privacy/secrets/profile";
 import type { BindingSecretResult } from "@/lib/privacy/zk/binding-secret";
+import type { ProofType } from "@/lib/privacy/zk/proof-types";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
@@ -114,12 +115,7 @@ export async function generateAllProofs(params: {
 
   // Proof config type for deferred storage
   interface ProofToStore {
-    circuitType:
-      | "age_verification"
-      | "doc_validity"
-      | "nationality_membership"
-      | "face_match"
-      | "identity_binding";
+    circuitType: ProofType;
     generationTimeMs: number;
     proof: string;
     publicSignals: string[];

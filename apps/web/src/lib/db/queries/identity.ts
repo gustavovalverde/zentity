@@ -25,6 +25,7 @@ import {
   computeSecretBlobRef,
   secretBlobExists,
 } from "@/lib/privacy/secrets/storage.server";
+import { ProofType } from "@/lib/privacy/zk/proof-types";
 
 import { type DbExecutor, db } from "../connection";
 import { isoTimestampNow } from "../schema/auth";
@@ -412,13 +413,7 @@ async function selectEffectiveVerification(
     claimTypesByVerification.get(row.verificationId)?.add(row.claimType);
   }
 
-  const requiredProofs = [
-    "age_verification",
-    "doc_validity",
-    "nationality_membership",
-    "face_match",
-    "identity_binding",
-  ];
+  const requiredProofs: string[] = Object.values(ProofType);
   const requiredClaims = ["ocr_result", "liveness_score", "face_match_score"];
 
   const hasAll = (set: Set<string> | undefined, required: string[]) =>
