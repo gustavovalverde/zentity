@@ -209,26 +209,6 @@ interface PushPayload {
   title: string;
 }
 
-interface PushTransport {
-  isGoneError(error: unknown): boolean;
-  sendNotification(
-    subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
-    payload: string,
-    options: {
-      vapidDetails: { subject: string; publicKey: string; privateKey: string };
-      TTL: number;
-    }
-  ): Promise<unknown>;
-}
-
-const defaultTransport: PushTransport = {
-  sendNotification: (sub, payload, options) =>
-    sendNotification(sub, payload, options),
-  isGoneError: (error) =>
-    error instanceof WebPushError &&
-    (error.statusCode === 410 || error.statusCode === 404),
-};
-
 /**
  * Send a Web Push notification to all devices registered by a user.
  *
@@ -238,12 +218,10 @@ const defaultTransport: PushTransport = {
  */
 export async function sendWebPush(
   userId: string,
-  payload: PushPayload,
-  transport: PushTransport = defaultTransport,
-  vapid?: { publicKey: string; privateKey: string; subject: string }
+  payload: PushPayload
 ): Promise<void> {
-  const VAPID_PUBLIC_KEY = vapid?.publicKey ?? env.VAPID_PUBLIC_KEY;
-  const VAPID_PRIVATE_KEY = vapid?.privateKey ?? env.VAPID_PRIVATE_KEY;
+  const VAPID_PUBLIC_KEY = env.VAPID_PUBLIC_KEY;
+  const VAPID_PRIVATE_KEY = env.VAPID_PRIVATE_KEY;
   if (!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY)) {
     return;
   }
@@ -267,7 +245,7 @@ export async function sendWebPush(
   await Promise.all(
     subscriptions.map(async (sub) => {
       try {
-        await transport.sendNotification(
+        await sendNotification(
           {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth },
@@ -275,7 +253,7 @@ export async function sendWebPush(
           body,
           {
             vapidDetails: {
-              subject: vapid?.subject ?? env.VAPID_SUBJECT,
+              subject: env.VAPID_SUBJECT,
               publicKey: VAPID_PUBLIC_KEY,
               privateKey: VAPID_PRIVATE_KEY,
             },
@@ -283,7 +261,10 @@ export async function sendWebPush(
           }
         );
       } catch (error) {
-        if (transport.isGoneError(error)) {
+        if (
+          error instanceof WebPushError &&
+          (error.statusCode === 410 || error.statusCode === 404)
+        ) {
           await db
             .delete(pushSubscriptions)
             .where(eq(pushSubscriptions.id, sub.id));

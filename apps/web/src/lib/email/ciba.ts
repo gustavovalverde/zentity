@@ -14,16 +14,7 @@ import { formatPaymentAmount } from "@/lib/agents/labels";
 import { db } from "@/lib/db/connection";
 import { users } from "@/lib/db/schema/auth";
 
-import {
-  isMailpitConfigured,
-  isResendConfigured,
-  sendMailpitMessage,
-  sendResendMessage,
-} from "./transport";
-
-function isProduction(): boolean {
-  return process.env.NODE_ENV === "production";
-}
+import { sendEmail } from "./transport";
 
 const HTML_ESCAPES: Record<string, string> = {
   "&": "&amp;",
@@ -184,13 +175,6 @@ export async function sendCibaNotification(params: {
     return;
   }
 
-  const useMailpit = !isProduction() && isMailpitConfigured();
-  const useResend = isResendConfigured() && !useMailpit;
-
-  if (!(useResend || useMailpit)) {
-    return;
-  }
-
   const clientLabel = params.clientName ?? "An application";
   const scopeList = params.scope
     .split(" ")
@@ -239,17 +223,11 @@ ${detailsHtml}
 <p style="color:#9ca3af;font-size:13px;">If you did not expect this request, you can safely ignore it.</p>
 </div>`;
 
-  const payload = {
+  await sendEmail({
     to: [user.email],
     subject,
     text,
     html,
     tags: ["ciba", "auth-request"],
-  };
-
-  if (useResend) {
-    await sendResendMessage(payload);
-  } else {
-    await sendMailpitMessage(payload);
-  }
+  });
 }
