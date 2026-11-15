@@ -7,6 +7,7 @@ import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 import { clearCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
+import { getTodayAsInt } from "@/lib/privacy/zk/noir/prover";
 import {
   createProofSession,
   generateAgeProof,
@@ -195,12 +196,9 @@ export async function generateAllProofs(params: {
   });
   enqueueStore({ circuitType: "age_verification", ...ageProof });
 
-  const now = new Date();
-  const currentDateInt =
-    now.getFullYear() * 10_000 + (now.getMonth() + 1) * 100 + now.getDate();
   const docProof = await generateDocValidityProof(
     expiryDateInt,
-    currentDateInt,
+    getTodayAsInt(),
     {
       nonce: docChallenge.nonce,
       documentHashField,

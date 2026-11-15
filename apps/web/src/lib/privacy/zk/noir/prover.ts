@@ -293,13 +293,11 @@ export async function generateBaseCommitmentNoir(
 }
 
 /**
- * Get today's date as YYYYMMDD integer
+ * Today's UTC date as a YYYYMMDD integer.
+ *
+ * The server requires an exact match with the client's `current_date`, so both
+ * sides must use UTC rather than their own time zones.
  */
 export function getTodayAsInt(): number {
-  const today = new Date();
-  return (
-    today.getFullYear() * 10_000 +
-    (today.getMonth() + 1) * 100 +
-    today.getDate()
-  );
+  return Number(new Date().toISOString().slice(0, 10).replaceAll("-", ""));
 }
