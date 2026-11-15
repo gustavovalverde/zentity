@@ -10,7 +10,7 @@ const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
 const FLOW_ID_HEADER = "x-zentity-flow-id";
 
-type FlowIdSource = "header" | "cookie" | "query" | "none";
+type FlowIdSource = "header" | "none";
 
 interface RequestContext {
   flowId: string | null;
