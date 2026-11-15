@@ -530,11 +530,13 @@ export const opaque = (options: OpaquePluginOptions) => {
             "registration record"
           );
 
+          // Consumed before any write so concurrent redemptions of one token
+          // cannot both reset. A failure after this point burns the token.
           const verification =
-            await ctx.context.internalAdapter.findVerificationValue(
+            await ctx.context.internalAdapter.consumeVerificationValue(
               `${RESET_TOKEN_PREFIX}:${ctx.body.token}`
             );
-          if (!verification || verification.expiresAt < new Date()) {
+          if (!verification) {
             throw new APIError("BAD_REQUEST", {
               message: "Invalid reset token",
             });
@@ -546,10 +548,6 @@ export const opaque = (options: OpaquePluginOptions) => {
             userId: verification.value,
             registrationRecord: ctx.body.registrationRecord,
           });
-
-          await ctx.context.internalAdapter.deleteVerificationByIdentifier(
-            verification.identifier
-          );
 
           if (options.onPasswordReset) {
             const user = await ctx.context.internalAdapter.findUserById(
@@ -678,12 +676,14 @@ export const opaque = (options: OpaquePluginOptions) => {
             "registration record"
           );
 
-          // Retrieve and validate sign-up token
+          // Consumed before any write so concurrent redemptions of one token
+          // cannot each create a session. A failure after this point burns
+          // the token and the client restarts sign-up.
           const verification =
-            await ctx.context.internalAdapter.findVerificationValue(
+            await ctx.context.internalAdapter.consumeVerificationValue(
               `${SIGNUP_TOKEN_PREFIX}:${ctx.body.signupToken}`
             );
-          if (!verification || verification.expiresAt < new Date()) {
+          if (!verification) {
             throw new APIError("BAD_REQUEST", {
               message: "Invalid or expired sign-up token",
             });
@@ -725,11 +725,6 @@ export const opaque = (options: OpaquePluginOptions) => {
           }
 
           await setSessionCookie(ctx, { session, user });
-
-          // Clean up verification token
-          await ctx.context.internalAdapter.deleteVerificationByIdentifier(
-            verification.identifier
-          );
 
           return ctx.json({
             success: true,
