@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   getPasswordLengthError,
   getPasswordRequirementStatus,
-  PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
 } from "../password";
+
+const PASSWORD_MAX_LENGTH = 128;
 
 describe("password-policy", () => {
   describe("getPasswordLengthError", () => {
