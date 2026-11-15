@@ -10,11 +10,14 @@ import "server-only";
 import type { ProofType } from "../proof-types";
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
-import { UltraHonkBackend, UltraHonkVerifierBackend } from "@aztec/bb.js";
+import {
+  deflattenFields,
+  UltraHonkBackend,
+  UltraHonkVerifierBackend,
+} from "@aztec/bb.js";
 
 import { env } from "@/env";
 import { logger } from "@/lib/logging/logger";
@@ -23,6 +26,7 @@ import {
   getBarretenberg,
   poseidon2Hash,
 } from "@/lib/privacy/primitives/barretenberg";
+import { readInstalledVersion } from "@/lib/privacy/zk/version-check";
 import ageCircuit from "@/noir-circuits/age_verification/artifacts/age_verification.json" with {
   type: "json",
 };
@@ -105,8 +109,7 @@ try {
   // Best-effort: directory might already exist or be read-only.
 }
 
-// Singleton instances (Barretenberg is shared from barretenberg.ts)
-let verifierBackend: UltraHonkVerifierBackend | null = null;
+// Barretenberg is shared from barretenberg.ts
 let cachedBbJsVersion: string | null | undefined;
 let prewarmPromise: Promise<void> | null = null;
 
@@ -117,19 +120,6 @@ const backendCache = new Map<string, UltraHonkBackend>();
 
 function sha256Hex(input: Uint8Array | string): string {
   return createHash("sha256").update(input).digest("hex");
-}
-
-function toFieldHex(bytes: Uint8Array): string {
-  return Buffer.from(bytes).toString("hex").padStart(64, "0");
-}
-
-function vkBytesToFields(vkBytes: Uint8Array): bigint[] {
-  const fields: bigint[] = [];
-  for (let offset = 0; offset < vkBytes.length; offset += 32) {
-    const chunk = vkBytes.slice(offset, offset + 32);
-    fields.push(BigInt(`0x${toFieldHex(chunk)}`));
-  }
-  return fields;
 }
 
 function getPublicInputCountFromAbi(circuitType: ProofType): number {
@@ -186,18 +176,11 @@ function clearCrsCache(reason: string): void {
   backendCache.clear();
   vkeyCache.clear();
   identityCache.clear();
-  verifierBackend = null;
   logger.warn({ reason, crsPath: CRS_PATH }, "Cleared CRS cache");
 }
 
 async function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
-  if (verifierBackend) {
-    return verifierBackend;
-  }
-
-  const api = await getBarretenberg();
-  verifierBackend = new UltraHonkVerifierBackend(api);
-  return verifierBackend;
+  return new UltraHonkVerifierBackend(await getBarretenberg());
 }
 
 function getCircuitBytecode(circuitType: ProofType): string {
@@ -247,38 +230,10 @@ export function getCircuitMetadata(circuitType: ProofType): {
 }
 
 export function getBbJsVersion(): string | null {
-  if (cachedBbJsVersion !== undefined) {
-    return cachedBbJsVersion;
+  if (cachedBbJsVersion === undefined) {
+    cachedBbJsVersion = readInstalledVersion("@aztec/bb.js");
   }
-
-  try {
-    const require = createRequire(import.meta.url);
-    const entryPath = require.resolve("@aztec/bb.js");
-
-    let currentDir = dirname(entryPath);
-    for (let i = 0; i < 10; i++) {
-      const pkgPath = join(currentDir, "package.json");
-      if (existsSync(pkgPath)) {
-        const raw = readFileSync(pkgPath, "utf8");
-        const parsed = JSON.parse(raw) as { version?: unknown };
-        cachedBbJsVersion =
-          typeof parsed.version === "string" ? parsed.version : null;
-        return cachedBbJsVersion;
-      }
-
-      const parent = dirname(currentDir);
-      if (parent === currentDir) {
-        break;
-      }
-      currentDir = parent;
-    }
-
-    cachedBbJsVersion = null;
-    return cachedBbJsVersion;
-  } catch {
-    cachedBbJsVersion = null;
-    return cachedBbJsVersion;
-  }
+  return cachedBbJsVersion;
 }
 
 export function getCircuitVerificationKey(
@@ -305,7 +260,9 @@ export function getCircuitVerificationKey(
     }
 
     const vkHash = sha256Hex(vkBytes);
-    const vkeyPoseidonHash = await poseidon2Hash(vkBytesToFields(vkBytes));
+    const vkeyPoseidonHash = await poseidon2Hash(
+      deflattenFields(vkBytes).map((field) => BigInt(field))
+    );
     const publicInputCount = getPublicInputCountFromAbi(circuitType);
 
     return {

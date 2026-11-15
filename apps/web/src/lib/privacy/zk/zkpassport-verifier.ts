@@ -143,8 +143,6 @@ function chainIdForDevMode(devMode: boolean): number {
   return devMode ? ETHEREUM_SEPOLIA_CHAIN_ID : ETHEREUM_MAINNET_CHAIN_ID;
 }
 
-let verifierBackend: UltraHonkVerifierBackend | null = null;
-let backendInitPromise: Promise<UltraHonkVerifierBackend> | null = null;
 const registryClients = new Map<number, RegistryClient>();
 let prewarmPromise: Promise<void> | null = null;
 
@@ -183,26 +181,8 @@ function getRegistry(chainId: number): RegistryClient {
   return client;
 }
 
-function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
-  if (verifierBackend) {
-    return Promise.resolve(verifierBackend);
-  }
-  if (backendInitPromise) {
-    return backendInitPromise;
-  }
-
-  backendInitPromise = (async () => {
-    const api = await getBarretenberg();
-    const backend = new UltraHonkVerifierBackend(api);
-    verifierBackend = backend;
-    return backend;
-  })();
-
-  backendInitPromise.catch(() => {
-    backendInitPromise = null;
-  });
-
-  return backendInitPromise;
+async function getVerifierBackend(): Promise<UltraHonkVerifierBackend> {
+  return new UltraHonkVerifierBackend(await getBarretenberg());
 }
 
 // ---------------------------------------------------------------------------
@@ -2566,8 +2546,6 @@ interface VerifierTestApi {
     manifestCache.clear();
     vkCache.clear();
     rootValidityCache.clear();
-    verifierBackend = null;
-    backendInitPromise = null;
     registryClients.clear();
     prewarmPromise = null;
   },
