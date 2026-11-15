@@ -96,7 +96,9 @@ function makeRequest(
   });
 }
 
-function makePaymentSignatureHeader(pohToken = "poh-token"): string {
+function makePaymentSignatureHeader(
+  pohToken: string | null = "poh-token"
+): string {
   return Buffer.from(
     JSON.stringify({
       x402Version: 2,
@@ -110,11 +112,7 @@ function makePaymentSignatureHeader(pohToken = "poh-token"): string {
         extra: {},
       },
       payload: {},
-      extensions: {
-        zentity: {
-          pohToken,
-        },
-      },
+      ...(pohToken === null ? {} : { extensions: { zentity: { pohToken } } }),
     })
   ).toString("base64");
 }
@@ -177,7 +175,7 @@ describe("/api/x402/access POST", () => {
     const response = await POST(
       makeRequest(
         { resourceId: "resource-1" },
-        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
+        { [PAYMENT_SIGNATURE_HEADER]: makePaymentSignatureHeader(null) }
       )
     );
 
@@ -186,6 +184,24 @@ describe("/api/x402/access POST", () => {
       error: "compliance_required",
       required: 2,
     });
+    expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed payment signature before calling the facilitator", async () => {
+    mocks.findResource.mockReturnValue(makeResource());
+
+    const response = await POST(
+      makeRequest(
+        { resourceId: "resource-1" },
+        { [PAYMENT_SIGNATURE_HEADER]: Buffer.from("{}").toString("base64") }
+      )
+    );
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "payment_invalid",
+    });
+    expect(mocks.verifyViaFacilitator).not.toHaveBeenCalled();
     expect(mocks.settleViaFacilitator).not.toHaveBeenCalled();
   });
 

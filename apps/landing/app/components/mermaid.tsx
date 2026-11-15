@@ -1,5 +1,6 @@
 "use client";
 
+import { useTheme } from "fumadocs-ui/provider/base";
 import { useEffect, useId, useRef, useState } from "react";
 
 const cache = new Map<string, string>();
@@ -8,34 +9,15 @@ function getCacheKey(chart: string, theme: string): string {
   return `${theme}:${chart}`;
 }
 
-function useResolvedTheme(): "dark" | "light" {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  useEffect(() => {
-    const update = () => {
-      setTheme(
-        document.documentElement.classList.contains("dark") ? "dark" : "light",
-      );
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
-
-  return theme;
-}
-
 export function Mermaid({ chart }: { chart: string }) {
   const id = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
-  const theme = useResolvedTheme();
+  const { resolvedTheme: theme } = useTheme();
 
   useEffect(() => {
+    // No resolved theme on the server or outside the provider.
+    if (!theme) return;
     const key = getCacheKey(chart, theme);
     const cached = cache.get(key);
     if (cached) {

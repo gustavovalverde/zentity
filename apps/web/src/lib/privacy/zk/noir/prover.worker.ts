@@ -27,6 +27,8 @@ import type {
   WorkerResponse,
 } from "./worker-manager";
 
+import { bytesToBigInt, numberToBytes } from "viem";
+
 import {
   buildNationalityTree,
   type NationalityMembershipInputs,
@@ -346,13 +348,7 @@ async function getBarretenbergApi(): Promise<
  * Convert a bigint to a 32-byte big-endian Uint8Array (Fr field element)
  */
 function bigIntToFr(value: bigint, modulus: bigint): Uint8Array {
-  const reduced = value % modulus;
-  const hex = reduced.toString(16).padStart(64, "0");
-  const bytes = new Uint8Array(32);
-  for (let i = 0; i < 32; i++) {
-    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+  return numberToBytes(value % modulus, { size: 32 });
 }
 
 /**
@@ -363,10 +359,7 @@ async function poseidon2Hash(values: bigint[]): Promise<bigint> {
   const { BN254_FR_MODULUS } = await getModules();
   const frValues = values.map((v) => bigIntToFr(v, BN254_FR_MODULUS));
   const result = await api.poseidon2Hash({ inputs: frValues });
-  const hex = Array.from(result.hash)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return BigInt(`0x${hex}`);
+  return bytesToBigInt(result.hash);
 }
 
 function getCircuitArtifact(circuit: CircuitName) {

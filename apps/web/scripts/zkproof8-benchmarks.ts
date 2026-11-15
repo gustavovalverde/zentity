@@ -169,9 +169,9 @@ async function fetchFhe<T>(path: string, payload: unknown): Promise<T> {
   return decode(decodedBytes) as T;
 }
 
-function parseCliArgs(argv: string[]) {
+function parseBenchmarkArgs(argv: string[]) {
   const { values } = parseArgs({
-    args: argv,
+    args: argv[0] === "--" ? argv.slice(1) : argv,
     options: {
       out: { type: "string", default: "docs/papers/zkproof8/benchmarks.json" },
       "runs-zk": { type: "string", default: "10" },
@@ -540,7 +540,7 @@ function printSummary(out: BenchmarkOutput): void {
 }
 
 async function main() {
-  const args = parseCliArgs(process.argv.slice(2));
+  const args = parseBenchmarkArgs(process.argv.slice(2));
   if (args.onlyZk && args.onlyFhe) {
     throw new Error("Use only one of --only-zk or --only-fhe");
   }

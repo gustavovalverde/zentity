@@ -1,3 +1,4 @@
+import { AGENT_HOST_REGISTER_SCOPE } from "@zentity/sdk/agent-contract";
 import { decodeEd25519DidKeyToJwk } from "@zentity/sdk/protocol";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -5,10 +6,7 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import { verifyAgentAttestation } from "@/lib/agents/host-attestation";
-import {
-  AGENT_HOST_REGISTER_SCOPE,
-  registerHostRequestSchema,
-} from "@/lib/agents/session";
+import { registerHostRequestSchema } from "@/lib/agents/session";
 import { computeJwkThumbprint } from "@/lib/auth/oidc/oauth-request";
 import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
 import {

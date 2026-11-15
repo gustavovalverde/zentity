@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 
 import { DPOP_NONCE_HEADER } from "@better-auth/core/oauth2";
 import { client, ready, server } from "@serenity-kit/opaque";
+import { AGENT_HOST_REGISTER_SCOPE } from "@zentity/sdk/agent-contract";
 import { encodeEd25519DidKeyFromJwk } from "@zentity/sdk/protocol";
 import { makeSignature } from "better-auth/crypto";
 import { eq } from "drizzle-orm";
@@ -19,10 +20,7 @@ import { POST as proofOfHuman } from "@/app/api/auth/oauth2/proof-of-human/route
 import { GET as getValidity } from "@/app/api/auth/oauth2/validity/route";
 import { GET as trpcGet } from "@/app/api/trpc/[trpc]/route";
 import { env } from "@/env";
-import {
-  AGENT_BOOTSTRAP_TOKEN_USE,
-  AGENT_HOST_REGISTER_SCOPE,
-} from "@/lib/agents/session";
+import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
 import { auth } from "@/lib/auth/auth-config";
 import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";

@@ -2,7 +2,6 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": [
     "app/markdown-content.d.ts",
-    "scripts/fix-vite-manifest.js",
     "scripts/mcp-tool-manifest.js",
     "scripts/sync-docs.js",
     "scripts/sync-mcp-tool-manifest.js"

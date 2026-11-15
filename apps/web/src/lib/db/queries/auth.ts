@@ -17,8 +17,9 @@ import { accounts, users, walletAddresses } from "../schema/auth";
  * - `setSessionCookie()` (which refreshes the cookie cache) is only
  *   available inside better-auth endpoint contexts, not tRPC mutations
  *
- * Callers must invalidate the session_data cookie cache after calling this
- * so the dashboard reads fresh data (see `invalidateSessionDataCache()`).
+ * Callers must refresh the session_data cookie cache after calling this so
+ * the dashboard reads fresh data, with
+ * `authClient.getSession({ query: { disableCookieCache: true } })`.
  */
 export async function updateUserEmail(
   userId: string,

@@ -1,19 +1,29 @@
+import { z } from "zod";
+
 export const DEFAULT_DISCOVERY_TTL_MS = 5 * 60 * 1000;
 
-export interface DiscoveryDocument {
-	authorization_challenge_endpoint?: string;
-	authorization_endpoint?: string;
-	backchannel_authentication_endpoint?: string;
-	client_id_metadata_document_supported?: boolean;
-	dpop_signing_alg_values_supported?: string[];
-	issuer: string;
-	jwks_uri?: string;
-	pushed_authorization_request_endpoint?: string;
-	registration_endpoint?: string;
-	require_pushed_authorization_requests?: boolean;
-	token_endpoint?: string;
-	userinfo_endpoint?: string;
-}
+// Discovery documents are read leniently: an optional field of the wrong type
+// or an empty string is dropped rather than rejected.
+const lenient = <T extends z.ZodType>(schema: T) =>
+	schema.optional().catch(undefined);
+const lenientString = lenient(z.string().min(1));
+
+const discoveryDocumentSchema = z.object({
+	authorization_challenge_endpoint: lenientString,
+	authorization_endpoint: lenientString,
+	backchannel_authentication_endpoint: lenientString,
+	client_id_metadata_document_supported: lenient(z.boolean()),
+	dpop_signing_alg_values_supported: lenient(z.array(z.string())),
+	issuer: z.string().min(1),
+	jwks_uri: lenientString,
+	pushed_authorization_request_endpoint: lenientString,
+	registration_endpoint: lenientString,
+	require_pushed_authorization_requests: lenient(z.boolean()),
+	token_endpoint: lenientString,
+	userinfo_endpoint: lenientString,
+});
+
+export type DiscoveryDocument = z.infer<typeof discoveryDocumentSchema>;
 
 export interface DiscoveryResolverOptions {
 	discoveryTtlMs?: number;
@@ -48,91 +58,17 @@ export function resolveDiscoveryUrl(options: {
 	return new URL("/.well-known/openid-configuration", toUrl(options.issuerUrl));
 }
 
-function readOptionalString(
-	source: Record<string, unknown>,
-	key: string,
-): string | undefined {
-	const value = source[key];
-	return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readOptionalBoolean(
-	source: Record<string, unknown>,
-	key: string,
-): boolean | undefined {
-	const value = source[key];
-	return typeof value === "boolean" ? value : undefined;
-}
-
-function readOptionalStringArray(
-	source: Record<string, unknown>,
-	key: string,
-): string[] | undefined {
-	const value = source[key];
-	if (
-		!Array.isArray(value) ||
-		!value.every((item) => typeof item === "string")
-	) {
-		return undefined;
-	}
-
-	return value;
-}
-
-function requireString(source: Record<string, unknown>, key: string): string {
-	const value = source[key];
-	if (typeof value !== "string" || value.length === 0) {
-		throw new Error(`OpenID discovery response missing ${key}`);
-	}
-	return value;
-}
-
 export function parseDiscoveryDocument(body: unknown): DiscoveryDocument {
 	if (!body || typeof body !== "object" || Array.isArray(body)) {
 		throw new Error("OpenID discovery response is not an object");
 	}
 
-	const source = body as Record<string, unknown>;
-	const optionalStrings = [
-		"authorization_challenge_endpoint",
-		"authorization_endpoint",
-		"backchannel_authentication_endpoint",
-		"jwks_uri",
-		"pushed_authorization_request_endpoint",
-		"registration_endpoint",
-		"token_endpoint",
-		"userinfo_endpoint",
-	] as const;
-	const optionalBooleans = [
-		"client_id_metadata_document_supported",
-		"require_pushed_authorization_requests",
-	] as const;
-
-	const document: DiscoveryDocument = { issuer: requireString(source, "issuer") };
-
-	for (const key of optionalStrings) {
-		const value = readOptionalString(source, key);
-		if (value !== undefined) {
-			document[key] = value;
-		}
+	const result = discoveryDocumentSchema.safeParse(body);
+	if (!result.success) {
+		// `issuer` is the only field that is not lenient.
+		throw new Error("OpenID discovery response missing issuer");
 	}
-
-	for (const key of optionalBooleans) {
-		const value = readOptionalBoolean(source, key);
-		if (value !== undefined) {
-			document[key] = value;
-		}
-	}
-
-	const dpopSigningAlgorithms = readOptionalStringArray(
-		source,
-		"dpop_signing_alg_values_supported",
-	);
-	if (dpopSigningAlgorithms) {
-		document.dpop_signing_alg_values_supported = dpopSigningAlgorithms;
-	}
-
-	return document;
+	return result.data;
 }
 
 export function resolveCacheTtlMs(

@@ -1,4 +1,4 @@
-import { hmacSha256Hex } from "@/lib/privacy/primitives/symmetric";
+import { hmacSha256Hex } from "@/lib/privacy/primitives/hmac";
 
 const DEDUP_KEY_AAD = "zentity:dedup-key:v1";
 const RP_NULLIFIER_AAD = "zentity:rp-nullifier:v1";

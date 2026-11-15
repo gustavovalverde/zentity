@@ -25,6 +25,7 @@ from stdnum.exceptions import (
     InvalidLength,
     ValidationError,
 )
+from stdnum.util import get_module_name
 
 # =============================================================================
 # Validator Module Discovery Priority
@@ -125,13 +126,8 @@ def alpha3_to_alpha2(alpha3_code: str) -> str | None:
     if not alpha3_code:
         return None
 
-    try:
-        country = iso3166.countries.get(alpha3_code)
-        if country:
-            return country.alpha2.lower()
-    except (KeyError, AttributeError):
-        pass
-    return None
+    country = iso3166.countries.get(alpha3_code, None)
+    return country.alpha2.lower() if country else None
 
 
 def get_country_display_name(alpha3_code: str) -> str:
@@ -139,32 +135,13 @@ def get_country_display_name(alpha3_code: str) -> str:
     if not alpha3_code:
         return "Unknown"
 
-    try:
-        country = iso3166.countries.get(alpha3_code)
-        if country:
-            return country.name
-    except (KeyError, AttributeError):
-        pass
-
-    return alpha3_code  # Fallback to code itself
+    country = iso3166.countries.get(alpha3_code, None)
+    return country.name if country else alpha3_code
 
 
 # =============================================================================
 # Dynamic Validator Discovery
 # =============================================================================
-
-
-def _extract_display_name(module: object, module_name: str) -> str:
-    """Extract human-readable name from module docstring."""
-    doc = getattr(module, "__doc__", "")
-    if doc:
-        # First line of docstring usually contains the format name
-        first_line = doc.strip().split("\n")[0]
-        # Remove trailing period and clean up
-        name = first_line.rstrip(".").strip()
-        if name:
-            return name
-    return module_name.upper()
 
 
 def discover_validator(alpha3_code: str) -> ValidatorInfo | None:
@@ -187,22 +164,17 @@ def discover_validator(alpha3_code: str) -> ValidatorInfo | None:
 
     # Step 2: Try each module name in priority order
     for module_name in _VALIDATOR_MODULE_PRIORITY:
-        try:
-            module = get_cc_module(alpha2_code, module_name)
-            if module is not None and hasattr(module, "validate"):
-                # Extract display name from module docstring
-                display_name = _extract_display_name(module, module_name)
-
-                return ValidatorInfo(
-                    module=module,
-                    country_code=alpha2_code,
-                    module_name=module_name,
-                    full_path=f"stdnum.{alpha2_code}.{module_name}",
-                    display_name=display_name,
-                )
-        except (ImportError, AttributeError):
-            # Module doesn't exist for this country, try next
-            continue
+        # get_cc_module returns None when the country has no such module
+        module = get_cc_module(alpha2_code, module_name)
+        if module is not None and hasattr(module, "validate"):
+            return ValidatorInfo(
+                module=module,
+                country_code=alpha2_code,
+                module_name=module_name,
+                full_path=f"stdnum.{alpha2_code}.{module_name}",
+                # First docstring line names the format; get_module_name returns "" if absent
+                display_name=get_module_name(module) or module_name.upper(),
+            )
 
     return None
 
@@ -234,6 +206,12 @@ _VALIDATION_ERROR_MAP: dict[type, tuple[str, str]] = {
         "invalid_document_component",
         "Part of the document number is invalid for {country}. "
         "This could indicate an invalid date, region code, or other embedded value.",
+    ),
+    # Fallback for any other ValidationError subclass
+    ValidationError: (
+        "invalid_document_number",
+        "The document number doesn't appear to be valid for {country}. "
+        "Please check that you've entered a correct {format}.",
     ),
 }
 
@@ -293,9 +271,10 @@ def validate_document_number(number: str, country_code: str | None) -> Validatio
             format_name=validator_info.display_name,
         )
 
-    except (InvalidLength, InvalidChecksum, InvalidFormat, InvalidComponent) as e:
-        # Use error mapping for specific exception types
-        error_code, message_template = _VALIDATION_ERROR_MAP[type(e)]
+    except ValidationError as e:
+        error_code, message_template = _VALIDATION_ERROR_MAP.get(
+            type(e), _VALIDATION_ERROR_MAP[ValidationError]
+        )
         return ValidationResult(
             is_valid=False,
             error_code=error_code,
@@ -306,38 +285,6 @@ def validate_document_number(number: str, country_code: str | None) -> Validatio
             validator_used=validator_info.full_path,
             format_name=validator_info.display_name,
         )
-
-    except ValidationError:
-        # Catch-all for any other validation error
-        return ValidationResult(
-            is_valid=False,
-            error_code="invalid_document_number",
-            error_message=(
-                f"The document number doesn't appear to be valid for {country_name}. "
-                f"Please check that you've entered a correct {validator_info.display_name}."
-            ),
-            validator_used=validator_info.full_path,
-            format_name=validator_info.display_name,
-        )
-
-
-def validate_national_id_detailed(number: str, country_code: str | None) -> ValidationResult:
-    """
-    Validate national ID with full error details.
-
-    Use this when you need:
-    - Human-readable error messages for UI display
-    - Which validator was used (for logging/debugging)
-    - Detailed error context
-
-    Args:
-        number: The document number to validate
-        country_code: ISO 3166-1 alpha-3 country code
-
-    Returns:
-        ValidationResult with full details
-    """
-    return validate_document_number(number, country_code)
 
 
 # =============================================================================
@@ -394,7 +341,8 @@ def validate_dob(dob: str) -> list[str]:
     try:
         birth = datetime.strptime(dob, "%Y-%m-%d").date()
         today = date.today()
-        age = (today - birth).days // 365
+        # Whole years completed: one less until this year's birthday has passed.
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
 
         if age < 0 or age > 150:
             issues.append("invalid_date_of_birth")

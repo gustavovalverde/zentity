@@ -18,6 +18,7 @@
  */
 import "server-only";
 
+import type { FaceResult } from "@vladmandic/human";
 import type {
   AdvanceResult,
   ChallengeState,
@@ -41,7 +42,6 @@ import {
   getFacingDirection,
   getHappyScore,
   getLiveScore,
-  getPrimaryFace,
   getRealScore,
   getYawDegrees,
 } from "./human/metrics";
@@ -89,9 +89,6 @@ const DEFAULT_TIMEOUTS: SessionTimeouts = {
   // on-screen counter stay in sync without a client "countdown done" signal.
   countdownDurationMs: 3000,
 };
-
-type DetectionResult = Awaited<ReturnType<typeof detectFromBuffer>>;
-type DetectedFace = NonNullable<ReturnType<typeof getPrimaryFace>>;
 
 interface LivenessSession {
   /** Data URL of the baseline frame the server scored; hashed into verifiedSelfieHash. */
@@ -290,15 +287,15 @@ export async function advanceFrame(args: {
 
   try {
     const result = await detectFromBuffer(args.frame);
-    const face = getPrimaryFace(result);
+    const face = result.face[0];
 
     session.face = face
-      ? { detected: true, box: normalizeBox(face.box) }
+      ? { detected: true, box: toBoxObject(face.box) }
       : { detected: false, box: null };
     session.lastHappyScore = face ? getHappyScore(face) : null;
 
     const dataUrl = `data:image/jpeg;base64,${args.frame.toString("base64")}`;
-    const outcome = await processPhase(session, result, face, dataUrl);
+    const outcome = await processPhase(session, face, dataUrl);
 
     session.consecutiveErrors = 0;
     if (outcome.phase === "completed" || outcome.phase === "failed") {
@@ -326,8 +323,7 @@ export async function advanceFrame(args: {
 
 function processPhase(
   session: LivenessSession,
-  result: DetectionResult,
-  face: ReturnType<typeof getPrimaryFace>,
+  face: FaceResult | undefined,
   dataUrl: string
 ): Promise<AdvanceResult> | AdvanceResult {
   switch (session.phase) {
@@ -336,7 +332,7 @@ function processPhase(
     case "countdown":
       return processCountdown(session, face, dataUrl);
     case "challenging":
-      return processChallenging(session, result, face);
+      return processChallenging(session, face);
     case "verifying":
       return processVerifying(session, face);
     default:
@@ -346,7 +342,7 @@ function processPhase(
 
 function processDetecting(
   session: LivenessSession,
-  face: ReturnType<typeof getPrimaryFace>
+  face: FaceResult | undefined
 ): AdvanceResult {
   if (!face) {
     session.consecutiveFaceDetections = 0;
@@ -371,7 +367,7 @@ function processDetecting(
  */
 function processCountdown(
   session: LivenessSession,
-  face: ReturnType<typeof getPrimaryFace>,
+  face: FaceResult | undefined,
   dataUrl: string
 ): AdvanceResult {
   if (!face) {
@@ -423,8 +419,7 @@ function startFirstChallenge(
 
 function processChallenging(
   session: LivenessSession,
-  result: DetectionResult,
-  face: ReturnType<typeof getPrimaryFace>
+  face: FaceResult | undefined
 ): AdvanceResult {
   if (
     session.challengeStartedAt &&
@@ -450,7 +445,6 @@ function processChallenging(
   const { passed, progress, hint } = evaluateChallenge(
     challengeType,
     face,
-    result,
     session
   );
   if (session.challenge) {
@@ -509,7 +503,7 @@ function advanceChallenge(session: LivenessSession): boolean {
 
 async function processVerifying(
   session: LivenessSession,
-  face: ReturnType<typeof getPrimaryFace>
+  face: FaceResult | undefined
 ): Promise<AdvanceResult> {
   if (!face) {
     return withHint(session, "Keep your face visible for final verification");
@@ -593,18 +587,17 @@ async function writeLivenessResult(
 
 function evaluateChallenge(
   type: ChallengeType,
-  face: DetectedFace,
-  result: DetectionResult,
+  face: FaceResult,
   session: LivenessSession
 ): { passed: boolean; progress: number; hint: string } {
   if (type === "smile") {
     return evaluateSmile(face, session);
   }
-  return evaluateTurn(type, face, result, session);
+  return evaluateTurn(type, face, session);
 }
 
 function evaluateSmile(
-  face: DetectedFace,
+  face: FaceResult,
   session: LivenessSession
 ): { passed: boolean; progress: number; hint: string } {
   const happy = getHappyScore(face);
@@ -628,12 +621,11 @@ function evaluateSmile(
 
 function evaluateTurn(
   type: ChallengeType,
-  face: DetectedFace,
-  result: DetectionResult,
+  face: FaceResult,
   session: LivenessSession
 ): { passed: boolean; progress: number; hint: string } {
   const yaw = getYawDegrees(face);
-  const dir = getFacingDirection(result, face, HEAD_CENTER_THRESHOLD);
+  const dir = getFacingDirection(face, HEAD_CENTER_THRESHOLD);
   const wantsLeft = type === "turn_left";
 
   // The user must center their head before the turn counts.
@@ -706,14 +698,11 @@ function fail(code: LivenessFailure["code"], message: string): LivenessFailure {
   return { phase: "failed", code, message, canRetry: true };
 }
 
-function normalizeBox(
-  box: DetectedFace["box"]
-): { x: number; y: number; width: number; height: number } | null {
-  if (!box) {
-    return null;
-  }
-  if (Array.isArray(box)) {
-    return { x: box[0], y: box[1], width: box[2], height: box[3] };
-  }
-  return { x: box.x, y: box.y, width: box.width, height: box.height };
+function toBoxObject([x, y, width, height]: FaceResult["box"]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return { x, y, width, height };
 }

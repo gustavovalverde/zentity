@@ -234,10 +234,7 @@ describe("purchase", () => {
     expect(retryRequest.headers.get(PAYMENT_SIGNATURE_HEADER)).toBeTruthy();
     expect(mockBeginOrResumeInteractiveFlow).toHaveBeenCalledWith(
       expect.objectContaining({
-        cibaRequest: expect.objectContaining({
-          resource: "http://localhost:3000",
-          scope: "openid poh",
-        }),
+        approval: expect.objectContaining({ scope: "openid poh" }),
       })
     );
   });

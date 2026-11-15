@@ -1,5 +1,4 @@
 import { prefixBindingMessage } from "../agent.js";
-import { config } from "../config.js";
 import { signAgentAssertion } from "../runtime/agent-registration.js";
 import {
   getOAuthContext,
@@ -184,15 +183,9 @@ export async function readProfile(input: {
       buildProfileFieldKey(fields),
     ].join(":"),
     oauth,
-    cibaRequest: {
-      cibaEndpoint: `${config.zentityUrl}/api/auth/oauth2/bc-authorize`,
-      tokenEndpoint: `${config.zentityUrl}/api/auth/oauth2/token`,
-      clientId: oauth.clientId,
-      dpopClient: oauth.dpopClient,
-      loginHint: oauth.accountSub,
+    approval: {
       scope,
       bindingMessage,
-      resource: config.zentityUrl,
       ...(agentAssertion ? { agentAssertion } : {}),
     },
     browserSearchParams: {

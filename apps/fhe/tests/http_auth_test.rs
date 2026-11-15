@@ -269,11 +269,7 @@ async fn all_protected_endpoints_require_auth() {
     let protected_endpoints = [
         ("/keys/register", "POST"),
         ("/encrypt-batch", "POST"),
-        ("/encrypt-birth-year-offset", "POST"),
-        ("/verify-age-offset", "POST"),
-        ("/encrypt-country-code", "POST"),
-        ("/encrypt-compliance-level", "POST"),
-        ("/encrypt-liveness", "POST"),
+        ("/verify-age-from-dob", "POST"),
         ("/verify-liveness-threshold", "POST"),
     ];
 

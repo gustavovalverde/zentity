@@ -8,7 +8,10 @@ import {
 } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { GET as authRouteGet } from "@/app/api/auth/[...all]/route";
+import {
+  GET as authRouteGet,
+  POST as authRoutePost,
+} from "@/app/api/auth/[...all]/route";
 import { GET as getValidity } from "@/app/api/auth/oauth2/validity/route";
 import { mintOpaqueAccessToken } from "@/lib/auth/oidc/haip/opaque-access-token";
 import { encryptPrivateKey } from "@/lib/auth/oidc/jwt-signer";
@@ -23,7 +26,6 @@ import {
   jwks as jwksTable,
   oauthClients,
 } from "@/lib/db/schema/oauth-provider";
-import { revokedTokens } from "@/lib/db/schema/revoked-tokens";
 import { createTestUser, resetDatabase } from "@/test-utils/db-test-utils";
 import {
   buildDpopProof,
@@ -174,10 +176,30 @@ describe("protected resource access tokens", () => {
       }
     });
 
-    it("rejects a revoked token", async () => {
-      const jti = crypto.randomUUID();
-      const token = await mintJwt({ jti });
-      await db.insert(revokedTokens).values({ jti }).run();
+    it("rejects a token its client revoked", async () => {
+      const publicClientId = "resource-test-public-client";
+      await db
+        .insert(oauthClients)
+        .values({
+          clientId: publicClientId,
+          redirectUris: JSON.stringify(["https://rp.example/callback"]),
+          tokenEndpointAuthMethod: "none",
+        })
+        .run();
+      const token = await mintJwt({ azp: publicClientId, sub: publicClientId });
+      expect(
+        (await verifyResourceRequest(await resourceRequest(token))).ok
+      ).toBe(true);
+
+      const revocation = await authRoutePost(
+        new Request(`${authIssuer}/oauth2/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token, client_id: publicClientId }),
+        })
+      );
+
+      expect(revocation.status).toBe(200);
       expect(
         (await verifyResourceRequest(await resourceRequest(token))).ok
       ).toBe(false);

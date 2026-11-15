@@ -7,8 +7,6 @@ import os
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -20,25 +18,6 @@ def _is_enabled() -> bool:
     return os.getenv("OTEL_ENABLED", "").lower() in {"true", "1", "yes"} or bool(
         os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
     )
-
-
-def _parse_headers(raw: str | None) -> dict[str, str] | None:
-    if not raw:
-        return None
-    headers: dict[str, str] = {}
-    for entry in raw.split(","):
-        if "=" not in entry:
-            continue
-        key, value = entry.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if key and value:
-            headers[key] = value
-    return headers or None
-
-
-def _service_name() -> str:
-    return os.getenv("OTEL_SERVICE_NAME", "zentity-ocr")
 
 
 def _service_version() -> str:
@@ -54,17 +33,18 @@ def configure_telemetry() -> TracerProvider | None:
         return None
 
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", DEFAULT_OTLP_ENDPOINT)
-    headers = _parse_headers(os.getenv("OTEL_EXPORTER_OTLP_HEADERS"))
 
+    # Resource.create reads OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES, and the exporter
+    # reads OTEL_EXPORTER_OTLP_HEADERS. The endpoint stays explicit because this repo's shared
+    # OTEL_EXPORTER_OTLP_ENDPOINT is the full traces URL, not the SDK's base URL.
     resource = Resource.create(
         {
-            "service.name": _service_name(),
             "service.version": _service_version(),
             "deployment.environment": _environment_name(),
         }
     )
 
-    exporter = OTLPSpanExporter(endpoint=endpoint, headers=headers)
+    exporter = OTLPSpanExporter(endpoint=endpoint)
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
@@ -78,5 +58,3 @@ def instrument_app(app) -> None:
         return
 
     FastAPIInstrumentor.instrument_app(app, tracer_provider=provider)
-    RequestsInstrumentor().instrument()
-    HTTPXClientInstrumentor().instrument()

@@ -79,7 +79,7 @@ fn keystore_file_can_be_reloaded() {
     // redb uses a file lock that prevents multiple concurrent opens.
     drop(key_store);
 
-    let reloaded_store = keystore::create_test_keystore_with_load(keys_dir);
+    let reloaded_store = keystore::create_test_keystore(keys_dir);
     assert!(
         reloaded_store.get_server_key(&key_id).is_some(),
         "Key should be reloaded from disk"
@@ -113,7 +113,7 @@ fn multiple_keys_persisted() {
 
     drop(key_store);
 
-    let reloaded_store = keystore::create_test_keystore_with_load(keys_dir);
+    let reloaded_store = keystore::create_test_keystore(keys_dir);
     for key_id in &key_ids {
         assert!(
             reloaded_store.get_server_key(key_id).is_some(),

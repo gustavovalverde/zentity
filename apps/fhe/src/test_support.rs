@@ -8,15 +8,10 @@ use crate::crypto::KeyStore;
 pub mod keystore {
     use super::*;
 
-    /// Create a new KeyStore with a specific keys directory for testing.
+    /// Open a KeyStore on a specific keys directory, loading keys already persisted there.
     /// This bypasses the global OnceCell, allowing isolated persistence tests.
     pub fn create_test_keystore(keys_dir: PathBuf) -> KeyStore {
         KeyStore::new_for_tests(keys_dir)
-    }
-
-    /// Create a KeyStore that loads from disk if available.
-    pub fn create_test_keystore_with_load(keys_dir: PathBuf) -> KeyStore {
-        KeyStore::load_for_tests(keys_dir)
     }
 
     /// Get the keystore file path for a directory.

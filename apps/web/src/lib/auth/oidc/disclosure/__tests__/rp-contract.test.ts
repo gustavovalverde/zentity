@@ -32,10 +32,11 @@ let signJwt: typeof import("../../jwt-signer").signJwt;
 // ---------------------------------------------------------------------------
 
 const MCP_ROOT = "../../../../../../../mcp/src";
+const SDK_ROOT = "../../../../../../../../packages/sdk/src";
 const DEMO_RP_ROOT = "../../../../../../../demo-rp/src";
 const DEMO_RP_ROUTE_REGISTRY_PATH = `${DEMO_RP_ROOT}/scenarios/route-scenario-registry.ts`;
 const MCP_SCOPE_SOURCE_FILES = [
-  `${MCP_ROOT}/runtime/bootstrap-scopes.ts`,
+  `${SDK_ROOT}/agent-contract.ts`,
   `${MCP_ROOT}/oauth-client.ts`,
   `${MCP_ROOT}/transports/http.ts`,
   `${MCP_ROOT}/tools/check-compliance.ts`,

@@ -14,11 +14,8 @@ import {
 import { logger } from "@/lib/logging/logger";
 import { toNumericCode } from "@/lib/privacy/zk/country";
 
-import { dobToDaysSince1900 } from "../verification/birth-year";
+import { dobToDaysSince1900, isoDateToInt } from "../verification/birth-year";
 import { OcrServiceUnavailableError, processDocumentOcr } from "./ocr-client";
-
-/** Matches a string containing only digits */
-const DIGITS_ONLY_PATTERN = /^\d+$/;
 
 /**
  * Parsed date values from OCR result.
@@ -78,59 +75,6 @@ interface ProcessDocumentParams {
 }
 
 /**
- * Parse a date string to YYYYMMDD integer format.
- * Handles formats: MM/DD/YYYY, YYYY-MM-DD, YYYYMMDD
- */
-function parseDateToInt(dateValue?: string | null): number | null {
-  if (!dateValue) {
-    return null;
-  }
-  if (dateValue.includes("/")) {
-    const parts = dateValue.split("/");
-    if (parts.length === 3) {
-      const month = Number.parseInt(parts[0] ?? "", 10);
-      const day = Number.parseInt(parts[1] ?? "", 10);
-      const year = Number.parseInt(parts[2] ?? "", 10);
-      if (
-        Number.isFinite(year) &&
-        Number.isFinite(month) &&
-        Number.isFinite(day)
-      ) {
-        return year * 10_000 + month * 100 + day;
-      }
-    }
-  }
-  if (dateValue.includes("-")) {
-    const parts = dateValue.split("-");
-    if (parts.length === 3) {
-      const year = Number.parseInt(parts[0] ?? "", 10);
-      const month = Number.parseInt(parts[1] ?? "", 10);
-      const day = Number.parseInt(parts[2] ?? "", 10);
-      if (
-        Number.isFinite(year) &&
-        Number.isFinite(month) &&
-        Number.isFinite(day)
-      ) {
-        return year * 10_000 + month * 100 + day;
-      }
-    }
-  }
-  if (dateValue.length === 8 && DIGITS_ONLY_PATTERN.test(dateValue)) {
-    const year = Number.parseInt(dateValue.slice(0, 4), 10);
-    const month = Number.parseInt(dateValue.slice(4, 6), 10);
-    const day = Number.parseInt(dateValue.slice(6, 8), 10);
-    if (
-      Number.isFinite(year) &&
-      Number.isFinite(month) &&
-      Number.isFinite(day)
-    ) {
-      return year * 10_000 + month * 100 + day;
-    }
-  }
-  return null;
-}
-
-/**
  * Parse date values from OCR extracted data.
  * Standardizes on `dobDays` format for birth date (days since 1900-01-01).
  */
@@ -141,7 +85,7 @@ function parseDateValues(
   const dobDays = dateOfBirth
     ? (dobToDaysSince1900(dateOfBirth) ?? null)
     : null;
-  const expiryDateInt = parseDateToInt(extractedData?.expirationDate);
+  const expiryDateInt = isoDateToInt(extractedData?.expirationDate);
   const nationalityCode = extractedData?.nationalityCode ?? null;
   const nationalityCodeNumeric = nationalityCode
     ? (toNumericCode(nationalityCode) ?? null)

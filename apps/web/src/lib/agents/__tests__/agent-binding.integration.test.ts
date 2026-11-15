@@ -109,23 +109,30 @@ function signAssertion(params: {
   hostId: string;
   privateKey: Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];
   sessionId: string;
+  typ?: string;
+  withJti?: boolean;
 }) {
   const taskHash = crypto
     .createHash("sha256")
     .update(params.bindingMessage)
     .digest("hex");
 
-  return new SignJWT({
+  const jwt = new SignJWT({
     host_id: params.hostId,
     task_hash: taskHash,
     task_id: crypto.randomUUID(),
   })
-    .setProtectedHeader({ alg: "EdDSA", typ: "agent-assertion+jwt" })
+    .setProtectedHeader({
+      alg: "EdDSA",
+      typ: params.typ ?? "agent-assertion+jwt",
+    })
     .setIssuer(params.sessionId)
-    .setJti(crypto.randomUUID())
     .setIssuedAt()
-    .setExpirationTime("60s")
-    .sign(params.privateKey);
+    .setExpirationTime("60s");
+  if (params.withJti !== false) {
+    jwt.setJti(crypto.randomUUID());
+  }
+  return jwt.sign(params.privateKey);
 }
 
 describe("bindAgentAssertionToCibaRequest", () => {
@@ -278,6 +285,35 @@ describe("bindAgentAssertionToCibaRequest", () => {
       sessionId: agent.sessionId,
     });
     const authReqId = await insertCibaRequest({
+      scope: "openid identity.name",
+      userId,
+    });
+
+    const result = await bindAgentAssertionToCibaRequest({
+      assertionJwt,
+      authReqId,
+      authorizationDetails: [],
+      scope: "openid identity.name",
+    });
+
+    expect(result).toBeNull();
+  });
+
+  it.each([
+    ["an unexpected typ header", { typ: "JWT" }],
+    ["a missing jti claim", { withJti: false }],
+  ])("rejects assertions with %s", async (_name, overrides) => {
+    const bindingMessage = "Claude Code: Unlock identity for this session";
+    const agent = await createRegisteredAgent(userId);
+    const assertionJwt = await signAssertion({
+      bindingMessage,
+      hostId: agent.hostId,
+      privateKey: agent.privateKey,
+      sessionId: agent.sessionId,
+      ...overrides,
+    });
+    const authReqId = await insertCibaRequest({
+      bindingMessage,
       scope: "openid identity.name",
       userId,
     });

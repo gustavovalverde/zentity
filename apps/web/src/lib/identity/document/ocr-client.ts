@@ -1,7 +1,7 @@
 import "server-only";
 
 import { env } from "@/env";
-import { fetchJson, HttpError, TimeoutError } from "@/lib/http/fetch";
+import { fetchJson, HttpError, isTimeoutError } from "@/lib/http/fetch";
 import {
   recordOcrDuration,
   recordOcrImageBytes,
@@ -66,7 +66,7 @@ function isServiceUnavailable(error: unknown): boolean {
     return error.status >= 500;
   }
   // fetch rejects with TypeError when the service cannot be reached
-  return error instanceof TimeoutError || error instanceof TypeError;
+  return isTimeoutError(error) || error instanceof TypeError;
 }
 
 /** OCR processing timeout (40 seconds) - slightly less than client timeout. */

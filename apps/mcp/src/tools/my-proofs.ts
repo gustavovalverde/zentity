@@ -86,15 +86,7 @@ export function registerMyProofsTool(server: McpServer): void {
       const response = await zentityFetch(userinfoUrl);
 
       if (!response.ok) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text" as const,
-              text: `Failed to fetch proof claims (${response.status})`,
-            },
-          ],
-        };
+        throw new Error(`Failed to fetch proof claims (${response.status})`);
       }
 
       const claims = (await response.json()) as ProofClaims;

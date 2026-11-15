@@ -275,6 +275,7 @@ export function AgentApprovalView({
   wallet: { address: string; chainId: number } | null;
 }>) {
   const router = useRouter();
+  const trpc = useTRPC();
 
   const navigateBack = useCallback(() => {
     if (onClose) {
@@ -291,7 +292,6 @@ export function AgentApprovalView({
   );
   const [error, setError] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(initialDerived.secondsLeft);
-  const [assuranceTier, setAssuranceTier] = useState(userTier);
 
   const hasInitialRequest = initialRequest != null;
 
@@ -391,10 +391,6 @@ export function AgentApprovalView({
     return () => clearInterval(timer);
   }, [state, timeLeft]);
 
-  useEffect(() => {
-    setAssuranceTier(userTier);
-  }, [userTier]);
-
   // ── Identity vault unlock ──────────────────────────────────
 
   const scopes = useMemo(
@@ -449,58 +445,17 @@ export function AgentApprovalView({
     );
   }, [hasIdentityScopes, vaultStatus, vault.profileRef, scopes]);
 
-  const refreshAssuranceTier = useCallback(async () => {
-    try {
-      const res = await fetch("/api/trpc/assurance.profile", {
-        credentials: "include",
-      });
-      const data = (await res.json().catch(() => null)) as {
-        result?: {
-          data?: { json?: { assurance?: { tier?: number }; tier?: number } };
-        };
-      } | null;
-      const tier =
-        data?.result?.data?.json?.assurance?.tier ??
-        data?.result?.data?.json?.tier;
-      if (tier === 0 || tier === 1 || tier === 2 || tier === 3) {
-        setAssuranceTier(tier);
-      }
-    } catch {
-      // Keep the last known tier if the refresh fails.
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!(hasProofScopes && state === "ready")) {
-      return;
-    }
-
-    if (vaultStatus !== "loaded") {
-      return;
-    }
-
-    refreshAssuranceTier().catch(() => undefined);
-  }, [hasProofScopes, state, vaultStatus, refreshAssuranceTier]);
-
-  useEffect(() => {
-    if (!(hasProofScopes && state === "ready")) {
-      return;
-    }
-
-    const handlePageResume = () => {
-      if (document.visibilityState !== "hidden") {
-        refreshAssuranceTier().catch(() => undefined);
-      }
-    };
-
-    window.addEventListener("focus", handlePageResume);
-    document.addEventListener("visibilitychange", handlePageResume);
-
-    return () => {
-      window.removeEventListener("focus", handlePageResume);
-      document.removeEventListener("visibilitychange", handlePageResume);
-    };
-  }, [hasProofScopes, state, refreshAssuranceTier]);
+  // Completing verification in another tab raises the tier, so refetch on
+  // every return to this one.
+  const { data: posture } = useQuery(
+    trpc.assurance.profile.queryOptions(undefined, {
+      enabled: hasProofScopes && state === "ready",
+      refetchOnWindowFocus: true,
+      retry: false,
+      staleTime: 0,
+    })
+  );
+  const assuranceTier = posture?.assurance.tier ?? userTier;
 
   // ── Verification check (proof scopes need completed verification) ──
 

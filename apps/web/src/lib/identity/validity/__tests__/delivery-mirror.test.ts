@@ -86,7 +86,7 @@ describe("identity validity mirror deliveries", () => {
     const { attestationId, userId, verificationId } =
       await seedConfirmedAttestation();
 
-    const { event } = await recordValidityTransition({
+    const recorded = await recordValidityTransition({
       userId,
       verificationId,
       eventKind: "verified",
@@ -94,6 +94,10 @@ describe("identity validity mirror deliveries", () => {
       sourceNetwork: "confidential_sepolia",
       sourceEventId: "0xtx:1",
     });
+    if (!recorded) {
+      throw new Error("expected the chain event to be recorded");
+    }
+    const { event } = recorded;
 
     const deliveries = await db
       .select()

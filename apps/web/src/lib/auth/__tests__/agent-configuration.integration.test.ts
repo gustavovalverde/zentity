@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest";
-
 import {
   type AgentConfiguration,
   agentConfigurationSchema,
-} from "@/lib/agents/session";
+} from "@zentity/sdk/agent-contract";
+import { describe, expect, it } from "vitest";
 
 /**
  * Agent Auth Protocol — Discovery Document Integration Tests

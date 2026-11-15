@@ -103,14 +103,8 @@ export async function writeSecretBlob(params: {
   try {
     await rename(tmpPath, filePath);
   } catch (error) {
-    // On some platforms rename fails if destination exists; retry after unlink.
-    await unlink(filePath).catch(() => undefined);
-    try {
-      await rename(tmpPath, filePath);
-    } catch (renameError) {
-      await unlink(tmpPath).catch(() => undefined);
-      throw renameError instanceof Error ? renameError : error;
-    }
+    await unlink(tmpPath).catch(() => undefined);
+    throw error;
   }
 
   return {

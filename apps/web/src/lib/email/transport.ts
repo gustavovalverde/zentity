@@ -27,29 +27,14 @@ const mailpitSendUrl =
 const mailpitUsername = env.MAILPIT_SEND_API_USERNAME ?? "";
 const mailpitPassword = env.MAILPIT_SEND_API_PASSWORD ?? "";
 
-export function isMailpitConfigured(): boolean {
+function isMailpitConfigured(): boolean {
   return Boolean(mailpitSendUrl);
 }
 
-export async function sendMailpitMessage(
-  message: MailMessage
-): Promise<boolean> {
-  if (!mailpitSendUrl) {
-    return false;
-  }
-
-  const recipients = message.to
-    .map((email) => email.trim())
-    .filter(Boolean)
-    .map((email) => ({ Email: email }));
-
-  if (!recipients.length) {
-    return false;
-  }
-
+async function sendMailpitMessage(message: MailMessage): Promise<boolean> {
   const payload = {
     From: { Email: defaultFromEmail, Name: defaultFromName },
-    To: recipients,
+    To: message.to.map((email) => ({ Email: email })),
     Subject: message.subject,
     Text: message.text,
     HTML: message.html,
@@ -103,7 +88,7 @@ function getResendClient(): Resend {
   return resendClient;
 }
 
-export function isResendConfigured(): boolean {
+function isResendConfigured(): boolean {
   return Boolean(resendApiKey);
 }
 
@@ -114,18 +99,7 @@ function formatFromAddress(): string {
   return `${defaultFromName} <${defaultFromEmail}>`;
 }
 
-export async function sendResendMessage(
-  message: MailMessage
-): Promise<boolean> {
-  if (!resendApiKey) {
-    return false;
-  }
-
-  const recipients = message.to.map((email) => email.trim()).filter(Boolean);
-  if (!recipients.length) {
-    return false;
-  }
-
+async function sendResendMessage(message: MailMessage): Promise<boolean> {
   const tags = message.tags?.length
     ? message.tags.map((tag) => ({ name: tag, value: "true" }))
     : undefined;
@@ -134,7 +108,7 @@ export async function sendResendMessage(
     const resend = getResendClient();
     const { error } = await resend.emails.send({
       from: formatFromAddress(),
-      to: recipients,
+      to: message.to,
       subject: message.subject,
       text: message.text,
       ...(message.html === undefined ? {} : { html: message.html }),
@@ -153,4 +127,35 @@ export async function sendResendMessage(
     });
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch
+// ---------------------------------------------------------------------------
+
+export type SendEmailResult = "sent" | "failed" | "unconfigured";
+
+/**
+ * Sends through Mailpit outside production when it is configured, otherwise
+ * through Resend. Reports "unconfigured" instead of sending when neither
+ * transport is available, so callers decide whether to fall back.
+ */
+export async function sendEmail(
+  message: MailMessage
+): Promise<SendEmailResult> {
+  const to = message.to.map((email) => email.trim()).filter(Boolean);
+  if (!to.length) {
+    return "failed";
+  }
+  const normalized = { ...message, to };
+
+  let sent: boolean;
+  if (process.env.NODE_ENV !== "production" && isMailpitConfigured()) {
+    sent = await sendMailpitMessage(normalized);
+  } else if (isResendConfigured()) {
+    sent = await sendResendMessage(normalized);
+  } else {
+    return "unconfigured";
+  }
+  return sent ? "sent" : "failed";
 }

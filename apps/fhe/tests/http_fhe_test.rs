@@ -6,11 +6,9 @@
 //!
 //! # Test Modules
 //!
-//! - `dob` - DOB days encryption and age verification
-//! - `batch` - Batch encryption endpoint
-//! - `liveness` - Liveness score encryption and threshold verification
-//! - `country_code` - Country code encryption
-//! - `compliance_level` - Compliance level encryption
+//! - `dob` - Age verification on encrypted DOB days
+//! - `batch` - Batch encryption endpoint (every attribute is encrypted through it)
+//! - `liveness` - Liveness threshold verification
 //! - `keys` - Key registration endpoint
 //! - `error` - Error response format tests
 

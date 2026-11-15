@@ -76,6 +76,30 @@ describe("CIBA", () => {
     vi.restoreAllMocks();
   });
 
+  it("rejects an authorization response without auth_req_id", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ expires_in: 300 }), { status: 200 })
+    );
+
+    await expect(beginCibaApproval(BASE_PARAMS)).rejects.toThrow(
+      "Invalid CIBA authorization response"
+    );
+  });
+
+  it("rejects an approved token response without access_token", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ token_type: "DPoP" }), { status: 200 })
+    );
+
+    await expect(
+      pollCibaTokenOnce(BASE_PARAMS, {
+        authReqId: "req-abc",
+        expiresIn: 300,
+        intervalSeconds: 5,
+      })
+    ).rejects.toThrow("Invalid CIBA token response");
+  });
+
   it("begins approval and returns pending authorization metadata", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
@@ -123,6 +147,26 @@ describe("CIBA", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(sentProofNonce(0)).toBeUndefined();
     expect(sentProofNonce(1)).toBe("nonce-1");
+  });
+
+  it("keeps polling when a pending error carries a null error_description", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: "authorization_pending",
+          error_description: null,
+        }),
+        { status: 400 }
+      )
+    );
+
+    const result = await pollCibaTokenOnce(BASE_PARAMS, {
+      authReqId: "req-pending",
+      expiresIn: 300,
+      intervalSeconds: 5,
+    });
+
+    expect(result.status).toBe("pending");
   });
 
   it("polls once and returns pending metadata without blocking", async () => {

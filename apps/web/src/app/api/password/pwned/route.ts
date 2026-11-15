@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import {
   getClientIp,
@@ -26,8 +27,13 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Matches a valid 40-character uppercase SHA-1 hash */
-const SHA1_HEX_PATTERN = /^[0-9A-F]{40}$/;
+const pwnedRequestSchema = z.object({
+  sha1: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[0-9A-F]{40}$/),
+});
 
 interface PwnedCheckResponse {
   compromised: boolean;
@@ -42,35 +48,15 @@ export async function POST(request: Request) {
     return rateLimitResponse(retryAfter);
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
+  const body: unknown = await request.json().catch(() => null);
+  const parsed = pwnedRequestSchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json(
       { compromised: false, skipped: true } satisfies PwnedCheckResponse,
       { status: 200 }
     );
   }
-
-  const sha1 =
-    typeof body === "object" && body && "sha1" in body
-      ? (body as { sha1?: unknown }).sha1
-      : undefined;
-
-  if (typeof sha1 !== "string") {
-    return NextResponse.json(
-      { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 }
-    );
-  }
-
-  const normalizedSha1 = sha1.trim().toUpperCase();
-  if (!SHA1_HEX_PATTERN.test(normalizedSha1)) {
-    return NextResponse.json(
-      { compromised: false, skipped: true } satisfies PwnedCheckResponse,
-      { status: 200 }
-    );
-  }
+  const normalizedSha1 = parsed.data.sha1;
 
   const prefix = normalizedSha1.substring(0, 5);
   const suffix = normalizedSha1.substring(5);

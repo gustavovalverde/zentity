@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
-import { users } from "./auth";
+import { isoTimestampNow, users } from "./auth";
 
 export const validityStatusEnum = [
   "pending",
@@ -181,8 +181,11 @@ export const identityBundles = sqliteTable(
     freshnessCheckedAt: text("freshness_checked_at"),
     verificationCount: integer("verification_count").default(0),
 
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_identity_bundles_validity_status").on(table.validityStatus),
@@ -201,19 +204,26 @@ export const identityBundles = sqliteTable(
 export const humanityCredentials = sqliteTable(
   "humanity_credentials",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     providerSubjectKind: text("provider_subject_kind").notNull(),
     providerSubjectHash: text("provider_subject_hash").notNull(),
-    providerMetadata: text("provider_metadata"),
-    attachedAt: text("attached_at").notNull().default(sql`(datetime('now'))`),
+    providerMetadata: text("provider_metadata", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
+    attachedAt: text("attached_at").notNull().default(isoTimestampNow),
     expiresAt: text("expires_at"),
     revokedAt: text("revoked_at"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_humanity_credentials_user_provider").on(
@@ -233,7 +243,9 @@ export const humanityCredentials = sqliteTable(
 export const humanityChallenges = sqliteTable(
   "humanity_challenges",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -241,7 +253,7 @@ export const humanityChallenges = sqliteTable(
     nonce: text("nonce").notNull(),
     expiresAt: text("expires_at").notNull(),
     consumedAt: text("consumed_at"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("idx_humanity_challenges_user_provider").on(
@@ -259,7 +271,9 @@ export const humanityChallenges = sqliteTable(
 export const identityValidityEvents = sqliteTable(
   "identity_validity_events",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -281,7 +295,7 @@ export const identityValidityEvents = sqliteTable(
     sourceBlockNumber: integer("source_block_number"),
     triggeredBy: text("triggered_by"),
     reason: text("reason"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
   },
   (table) => [
     index("idx_identity_validity_events_user_created_at").on(
@@ -303,7 +317,9 @@ export const identityValidityEvents = sqliteTable(
 export const identityValiditySourceCursors = sqliteTable(
   "identity_validity_source_cursors",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     source: text("source", {
       enum: validityTransitionSourceEnum,
     }).notNull(),
@@ -311,8 +327,11 @@ export const identityValiditySourceCursors = sqliteTable(
     cursor: text("cursor"),
     lastSeenBlockNumber: integer("last_seen_block_number"),
     lastSeenBlockHash: text("last_seen_block_hash"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     uniqueIndex("identity_validity_source_cursors_source_network_unique").on(
@@ -325,7 +344,9 @@ export const identityValiditySourceCursors = sqliteTable(
 export const identityValidityDeliveries = sqliteTable(
   "identity_validity_deliveries",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     eventId: text("event_id")
       .notNull()
       .references(() => identityValidityEvents.id, { onDelete: "cascade" }),
@@ -342,12 +363,15 @@ export const identityValidityDeliveries = sqliteTable(
       .notNull()
       .default("pending"),
     attemptCount: integer("attempt_count").notNull().default(0),
-    availableAt: text("available_at").notNull().default(sql`(datetime('now'))`),
+    availableAt: text("available_at").notNull().default(isoTimestampNow),
     lastAttemptedAt: text("last_attempted_at"),
     deliveredAt: text("delivered_at"),
     lastError: text("last_error"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_identity_validity_deliveries_event").on(table.eventId),
@@ -374,7 +398,9 @@ export const identityValidityDeliveries = sqliteTable(
 export const identityVerifications = sqliteTable(
   "identity_verifications",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -404,8 +430,11 @@ export const identityVerifications = sqliteTable(
     revokedAt: text("revoked_at"),
     revokedBy: text("revoked_by"),
     revokedReason: text("revoked_reason"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     foreignKey({
@@ -423,7 +452,9 @@ export const identityVerifications = sqliteTable(
 export const identityVerificationSessions = sqliteTable(
   "identity_verification_sessions",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -449,7 +480,9 @@ export const identityVerificationSessions = sqliteTable(
 export const identityVerificationDrafts = sqliteTable(
   "identity_verification_drafts",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -477,8 +510,11 @@ export const identityVerificationDrafts = sqliteTable(
     // SHA-256 of the baseline frame captured during liveness completion.
     verifiedSelfieHash: text("verified_selfie_hash"),
 
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_identity_drafts_user").on(table.userId),
@@ -489,7 +525,9 @@ export const identityVerificationDrafts = sqliteTable(
 export const identityVerificationJobs = sqliteTable(
   "identity_verification_jobs",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     draftId: text("draft_id").notNull(),
     verificationId: text("verification_id"),
     userId: text("user_id")
@@ -504,8 +542,11 @@ export const identityVerificationJobs = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     startedAt: text("started_at"),
     finishedAt: text("finished_at"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_identity_jobs_draft").on(table.draftId),
@@ -560,7 +601,9 @@ export type NewIdentityVerificationJob =
 export const attestationEvidence = sqliteTable(
   "attestation_evidence",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -572,8 +615,11 @@ export const attestationEvidence = sqliteTable(
     consentScope: text("consent_scope"),
     consentedAt: text("consented_at"),
     consentRpId: text("consent_rp_id"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
   },
   (table) => [
     index("idx_attestation_evidence_user_id").on(table.userId),
@@ -596,7 +642,9 @@ export type AttestationStatus =
 export const blockchainAttestations = sqliteTable(
   "blockchain_attestations",
   {
-    id: text("id").primaryKey(),
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -615,8 +663,11 @@ export const blockchainAttestations = sqliteTable(
     }).default("pending"),
     txHash: text("tx_hash"),
     blockNumber: integer("block_number"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at").notNull().default(isoTimestampNow),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(isoTimestampNow)
+      .$onUpdate(() => isoTimestampNow),
     confirmedAt: text("confirmed_at"),
     revokedAt: text("revoked_at"),
     errorMessage: text("error_message"),

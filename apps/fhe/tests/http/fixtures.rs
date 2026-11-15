@@ -33,20 +33,6 @@ pub fn register_key_request(server_key: &[u8], public_key: &[u8]) -> RegisterKey
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct EncryptDobDaysRequest {
-    pub dob_days: u32,
-    pub key_id: String,
-}
-
-pub fn encrypt_dob_days_request(dob_days: u32, key_id: &str) -> EncryptDobDaysRequest {
-    EncryptDobDaysRequest {
-        dob_days,
-        key_id: key_id.to_string(),
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct VerifyAgeFromDobRequest {
     #[serde(with = "serde_bytes")]
     pub ciphertext: Vec<u8>,
@@ -65,63 +51,6 @@ pub fn verify_age_from_dob_request(
         ciphertext: ciphertext.to_vec(),
         current_days,
         min_age,
-        key_id: key_id.to_string(),
-    }
-}
-
-// ============================================================================
-// Country Code Fixtures
-// ============================================================================
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptCountryCodeRequest {
-    pub country_code: u16,
-    pub key_id: String,
-}
-
-/// Build a valid country code encryption request.
-pub fn encrypt_country_code_request(country_code: u16, key_id: &str) -> EncryptCountryCodeRequest {
-    EncryptCountryCodeRequest {
-        country_code,
-        key_id: key_id.to_string(),
-    }
-}
-
-// ============================================================================
-// Compliance Level Fixtures
-// ============================================================================
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptComplianceLevelRequest {
-    pub compliance_level: u8,
-    pub key_id: String,
-}
-
-/// Build a valid compliance level encryption request.
-pub fn encrypt_compliance_level_request(level: u8, key_id: &str) -> EncryptComplianceLevelRequest {
-    EncryptComplianceLevelRequest {
-        compliance_level: level,
-        key_id: key_id.to_string(),
-    }
-}
-
-// ============================================================================
-// Liveness Score Fixtures
-// ============================================================================
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EncryptLivenessRequest {
-    pub score: f64,
-    pub key_id: String,
-}
-
-/// Build a valid liveness score encryption request.
-pub fn encrypt_liveness_request(score: f64, key_id: &str) -> EncryptLivenessRequest {
-    EncryptLivenessRequest {
-        score,
         key_id: key_id.to_string(),
     }
 }
@@ -174,39 +103,9 @@ pub fn empty_object() -> serde_json::Value {
     serde_json::json!({})
 }
 
-/// Build a request with a field set to null.
-pub fn with_null_field(field: &str) -> serde_json::Value {
-    serde_json::json!({
-        field: null
-    })
-}
-
-/// Build a request with a field set to wrong type (number instead of string).
-pub fn with_number_instead_of_string(field: &str) -> serde_json::Value {
-    serde_json::json!({
-        field: 12345
-    })
-}
-
 /// Malformed JSON string (for parse error tests).
 pub fn malformed_json() -> &'static str {
     r#"{ "this is": "not valid json"#
-}
-
-/// Build an encrypt request with invalid key id.
-pub fn with_invalid_key_id_format() -> serde_json::Value {
-    serde_json::json!({
-        "dobDays": 40_000,
-        "keyId": "not-valid-key-id"
-    })
-}
-
-/// Build an encrypt request with valid key id format but not registered.
-pub fn with_invalid_key_content() -> serde_json::Value {
-    serde_json::json!({
-        "dobDays": 40_000,
-        "keyId": "00000000-0000-0000-0000-000000000001"
-    })
 }
 
 /// Build a verify request with an invalid/non-existent key ID.

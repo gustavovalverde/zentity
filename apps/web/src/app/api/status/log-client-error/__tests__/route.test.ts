@@ -66,4 +66,35 @@ describe("log-client-error route", () => {
     expect(String(payload.stack)).toContain("[redacted-email]");
     expect(String(payload.stack)).toContain("[redacted-number]");
   });
+
+  it("drops oversized or mistyped fields and still logs the report", async () => {
+    const req = new Request("http://localhost/api/status/log-client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        digest: "d".repeat(500),
+        name: 42,
+        path: "/page",
+      }),
+    });
+
+    const response = await POST(req as unknown as NextRequest);
+    expect(response.status).toBe(200);
+
+    const payload = logError.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.digest).toBeUndefined();
+    expect(payload.name).toBe("Error");
+    expect(payload.path).toBe("/page");
+  });
+
+  it("rejects an unreadable body", async () => {
+    const req = new Request("http://localhost/api/status/log-client-error", {
+      method: "POST",
+      body: "not json",
+    });
+
+    const response = await POST(req as unknown as NextRequest);
+    expect(response.status).toBe(400);
+    expect(logError).not.toHaveBeenCalled();
+  });
 });

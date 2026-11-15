@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
+import { isUniqueConstraintError } from "@/lib/db/errors";
 import {
   createIdentityVerificationJob,
   createVerification,
@@ -55,17 +56,12 @@ import { logger } from "@/lib/logging/logger";
 import { hashIdentifier } from "@/lib/observability/telemetry";
 import { scheduleFheEncryption } from "@/lib/privacy/fhe/encryption";
 
-import { adminProcedure, protectedProcedure, router } from "../server";
-
-function isUniqueConstraintError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  if ("code" in error && error.code === "SQLITE_CONSTRAINT_UNIQUE") {
-    return true;
-  }
-  return error.message.includes("UNIQUE constraint failed");
-}
+import {
+  adminProcedure,
+  protectedProcedure,
+  rateLimitedProcedure,
+  router,
+} from "../server";
 
 /**
  * Document verification procedure.
@@ -305,13 +301,7 @@ const livenessStatusProcedure = protectedProcedure
     };
   });
 
-const fheStatusProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const { limited } = fheLimiter.check(ctx.userId);
-  if (limited) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
-  }
-  return next({ ctx });
-});
+const fheStatusProcedure = rateLimitedProcedure(fheLimiter);
 
 /**
  * Dashboard identity finalization procedure.

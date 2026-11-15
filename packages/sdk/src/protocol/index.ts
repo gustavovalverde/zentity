@@ -10,7 +10,7 @@ export type {
 	TierName,
 	VerificationDetails,
 } from "./assurance";
-export { TIER_NAMES } from "./assurance";
+export { LOGIN_METHODS, TIER_NAMES } from "./assurance";
 export {
 	BINDING_MESSAGE_MAX_LENGTH,
 	truncateBindingMessage,

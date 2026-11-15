@@ -32,6 +32,7 @@ import {
   getNetworkById,
 } from "@/lib/blockchain/networks";
 import { getBlockchainAttestationByUserAndNetwork } from "@/lib/db/queries/attestation";
+import { createRateLimiter } from "@/lib/http/rate-limit";
 
 import { protectedProcedure, requireFeature, router } from "../server";
 
@@ -44,9 +45,8 @@ const VIEM_CHAINS = {
 // CompliantERC20 ABI (kept in sync with contracts package)
 const COMPLIANT_ERC20_ABI = compliantErc20Abi;
 
-// Rate limiting for mint requests
-const MINT_RATE_LIMIT_MAX = 3;
-const MINT_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+// Rate limiting for mint requests: 3 per hour per user and network.
+const mintLimiter = createRateLimiter({ windowMs: 60 * 60 * 1000, max: 3 });
 // Note: Contract uses euint64 for balances with 18 decimals.
 // uint64.max = ~18.4 * 10^18, so max total supply is ~18 tokens.
 // We limit per-mint to 10 tokens to allow multiple mints before hitting cap.
@@ -54,32 +54,6 @@ const MAX_MINT_AMOUNT = BigInt(10) * BigInt(10) ** BigInt(18); // 10 tokens
 const UINT64_MAX = BigInt(2) ** BigInt(64) - BigInt(1); // Max supply for euint64 balances
 // biome-ignore lint/suspicious/noBitwiseOperators: contract access is represented as a bitmask
 const REQUIRED_COMPLIANCE_ATTRIBUTES = ATTR.COMPLIANCE | ATTR.BLACKLIST;
-
-const mintAttemptTracker = new Map<
-  string,
-  { count: number; resetAt: number }
->();
-
-function checkMintRateLimit(userId: string, networkId: string): boolean {
-  const key = `${userId}:${networkId}:mint`;
-  const now = Date.now();
-  const entry = mintAttemptTracker.get(key);
-
-  if (!entry || now > entry.resetAt) {
-    mintAttemptTracker.set(key, {
-      count: 1,
-      resetAt: now + MINT_RATE_LIMIT_WINDOW_MS,
-    });
-    return true;
-  }
-
-  if (entry.count >= MINT_RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
 
 export const compliantTokenRouter = router({
   /**
@@ -202,7 +176,7 @@ export const compliantTokenRouter = router({
       }
 
       // Rate limit check
-      if (!checkMintRateLimit(ctx.userId, input.networkId)) {
+      if (mintLimiter.check(`${ctx.userId}:${input.networkId}`).limited) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
           message: "Mint rate limit exceeded. Try again in an hour.",

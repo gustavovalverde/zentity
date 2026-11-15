@@ -12,7 +12,7 @@ import type {
   ValidityTransitionSource,
 } from "../schema/identity";
 
-import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, ne } from "drizzle-orm";
 // React.cache() is per-request memoization - NOT persistent across requests.
 // Safe for shared computers: each HTTP request gets isolated cache scope.
 import { cache } from "react";
@@ -26,7 +26,8 @@ import {
   secretBlobExists,
 } from "@/lib/privacy/secrets/storage.server";
 
-import { db } from "../connection";
+import { type DbExecutor, db } from "../connection";
+import { isoTimestampNow } from "../schema/auth";
 import { pushSubscriptions } from "../schema/ciba";
 import {
   attestationEvidence,
@@ -59,8 +60,6 @@ interface AccountIdentity {
   groupedCredentials: IdentityVerification[];
 }
 
-type IdentityExecutor = Pick<typeof db, "insert" | "select" | "update">;
-
 export async function createIdentityVerificationSession(
   data: NewIdentityVerificationSession
 ): Promise<IdentityVerificationSession> {
@@ -92,7 +91,7 @@ export async function consumeIdentityVerificationSession(
     requestId: string;
     verificationId: string;
   },
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor
     .update(identityVerificationSessions)
@@ -128,7 +127,7 @@ function deriveBundleValidityStatusFromVerifications(
 
 async function loadIdentityBundleByUserId(
   userId: string,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityBundle | null> {
   const row = await executor
     .select()
@@ -167,7 +166,7 @@ export async function hasProfileSecret(userId: string): Promise<boolean> {
 
 export async function getVerificationById(
   id: string,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityVerification | null> {
   const row = await executor
     .select()
@@ -314,7 +313,6 @@ export const getLatestVerification = cache(async function getLatestVerification(
       )
     )
     .orderBy(
-      sql`CASE WHEN ${identityVerifications.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
       desc(identityVerifications.verifiedAt),
       desc(identityVerifications.createdAt)
     )
@@ -326,14 +324,13 @@ export const getLatestVerification = cache(async function getLatestVerification(
 
 async function getVerificationsByUserId(
   userId: string,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityVerification[]> {
   return await executor
     .select()
     .from(identityVerifications)
     .where(eq(identityVerifications.userId, userId))
     .orderBy(
-      sql`CASE WHEN ${identityVerifications.verifiedAt} IS NULL THEN 1 ELSE 0 END`,
       desc(identityVerifications.verifiedAt),
       desc(identityVerifications.createdAt)
     )
@@ -343,7 +340,7 @@ async function getVerificationsByUserId(
 async function selectEffectiveVerification(
   userId: string,
   verifications: readonly IdentityVerification[],
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityVerification | null> {
   if (verifications.length === 0) {
     return null;
@@ -538,53 +535,35 @@ export async function upsertIdentityDraft(
     verificationId: string;
   }
 ): Promise<IdentityVerificationDraft> {
-  const now = new Date().toISOString();
-  await db
+  const fields = {
+    userId: data.userId,
+    verificationId: data.verificationId,
+    documentProcessed: data.documentProcessed ?? false,
+    isDocumentValid: data.isDocumentValid ?? false,
+    isDuplicateDocument: data.isDuplicateDocument ?? false,
+    documentHashField: data.documentHashField ?? null,
+    ageClaimHash: data.ageClaimHash ?? null,
+    docValidityClaimHash: data.docValidityClaimHash ?? null,
+    nationalityClaimHash: data.nationalityClaimHash ?? null,
+    ocrIssues: data.ocrIssues ?? null,
+    antispoofScore: data.antispoofScore ?? null,
+    liveScore: data.liveScore ?? null,
+    faceMatchConfidence: data.faceMatchConfidence ?? null,
+  };
+
+  const row = await db
     .insert(identityVerificationDrafts)
-    .values({
-      id: data.id,
-      userId: data.userId,
-      verificationId: data.verificationId,
-      documentProcessed: data.documentProcessed ?? false,
-      isDocumentValid: data.isDocumentValid ?? false,
-      isDuplicateDocument: data.isDuplicateDocument ?? false,
-      documentHashField: data.documentHashField ?? null,
-      ageClaimHash: data.ageClaimHash ?? null,
-      docValidityClaimHash: data.docValidityClaimHash ?? null,
-      nationalityClaimHash: data.nationalityClaimHash ?? null,
-      ocrIssues: data.ocrIssues ?? null,
-      antispoofScore: data.antispoofScore ?? null,
-      liveScore: data.liveScore ?? null,
-      faceMatchConfidence: data.faceMatchConfidence ?? null,
-      createdAt: now,
-      updatedAt: now,
-    })
+    .values({ ...fields, id: data.id })
     .onConflictDoUpdate({
       target: identityVerificationDrafts.id,
-      set: {
-        userId: data.userId,
-        verificationId: data.verificationId,
-        documentProcessed: data.documentProcessed ?? false,
-        isDocumentValid: data.isDocumentValid ?? false,
-        isDuplicateDocument: data.isDuplicateDocument ?? false,
-        documentHashField: data.documentHashField ?? null,
-        ageClaimHash: data.ageClaimHash ?? null,
-        docValidityClaimHash: data.docValidityClaimHash ?? null,
-        nationalityClaimHash: data.nationalityClaimHash ?? null,
-        ocrIssues: data.ocrIssues ?? null,
-        antispoofScore: data.antispoofScore ?? null,
-        liveScore: data.liveScore ?? null,
-        faceMatchConfidence: data.faceMatchConfidence ?? null,
-        updatedAt: sql`datetime('now')`,
-      },
+      set: fields,
     })
-    .run();
-
-  const updated = await getIdentityDraftById(data.id);
-  if (!updated) {
+    .returning()
+    .get();
+  if (!row) {
     throw new Error("Failed to upsert identity draft");
   }
-  return updated;
+  return row;
 }
 
 export async function updateIdentityDraft(
@@ -593,10 +572,7 @@ export async function updateIdentityDraft(
 ): Promise<void> {
   await db
     .update(identityVerificationDrafts)
-    .set({
-      ...updates,
-      updatedAt: sql`datetime('now')`,
-    })
+    .set({ ...updates, updatedAt: isoTimestampNow })
     .where(eq(identityVerificationDrafts.id, draftId))
     .run();
 }
@@ -658,21 +634,16 @@ export async function updateIdentityVerificationJobStatus(args: {
   finishedAt?: string | null;
   attempts?: number;
 }): Promise<void> {
-  const updates: Partial<typeof identityVerificationJobs.$inferInsert> = {
-    status: args.status,
-    error: args.error ?? null,
-    result: args.result ?? null,
-    startedAt: args.startedAt ?? null,
-    finishedAt: args.finishedAt ?? null,
-  };
-
-  if (args.attempts !== undefined) {
-    updates.attempts = args.attempts;
-  }
-
   await db
     .update(identityVerificationJobs)
-    .set({ ...updates, updatedAt: sql`datetime('now')` })
+    .set({
+      status: args.status,
+      error: args.error ?? null,
+      result: args.result ?? null,
+      startedAt: args.startedAt ?? null,
+      finishedAt: args.finishedAt ?? null,
+      attempts: args.attempts,
+    })
     .where(eq(identityVerificationJobs.id, args.jobId))
     .run();
 }
@@ -684,7 +655,6 @@ export async function clearIdentityBundleFheKey(userId: string): Promise<void> {
       fheKeyId: null,
       fheStatus: null,
       fheError: null,
-      updatedAt: new Date().toISOString(),
     })
     .where(eq(identityBundles.userId, userId))
     .run();
@@ -711,91 +681,20 @@ export async function upsertIdentityBundle(
     verificationCount?: number;
     walletAddress?: string | null;
   },
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
-  const insertValues: typeof identityBundles.$inferInsert = {
-    userId: data.userId,
-    effectiveVerificationId: data.effectiveVerificationId ?? null,
-    nullifierSeed: data.nullifierSeed ?? null,
-    walletAddress: data.walletAddress ?? null,
-    validityStatus: data.validityStatus ?? "pending",
-    policyVersion: data.policyVersion ?? null,
-    issuerId: data.issuerId ?? null,
-    attestationExpiresAt: data.attestationExpiresAt ?? null,
-    fheKeyId: data.fheKeyId ?? null,
-    fheStatus: data.fheStatus ?? null,
-    fheError: data.fheError ?? null,
-    revokedAt: data.revokedAt ?? null,
-    revokedBy: data.revokedBy ?? null,
-    revokedReason: data.revokedReason ?? null,
-    lastVerifiedAt: data.lastVerifiedAt ?? null,
-    verificationExpiresAt: data.verificationExpiresAt ?? null,
-    freshnessCheckedAt: data.freshnessCheckedAt ?? null,
-    verificationCount: data.verificationCount ?? 0,
-  };
-
-  const updateSet: Record<string, unknown> = {
-    updatedAt: sql`datetime('now')`,
-  };
-
-  if (data.effectiveVerificationId !== undefined) {
-    updateSet.effectiveVerificationId = data.effectiveVerificationId;
-  }
-  if (data.nullifierSeed !== undefined) {
-    updateSet.nullifierSeed = data.nullifierSeed;
-  }
-  if (data.walletAddress !== undefined) {
-    updateSet.walletAddress = data.walletAddress;
-  }
-  if (data.validityStatus !== undefined) {
-    updateSet.validityStatus = data.validityStatus;
-  }
-  if (data.policyVersion !== undefined) {
-    updateSet.policyVersion = data.policyVersion;
-  }
-  if (data.issuerId !== undefined) {
-    updateSet.issuerId = data.issuerId;
-  }
-  if (data.attestationExpiresAt !== undefined) {
-    updateSet.attestationExpiresAt = data.attestationExpiresAt;
-  }
-  if (data.fheKeyId !== undefined) {
-    updateSet.fheKeyId = data.fheKeyId;
-  }
-  if (data.fheStatus !== undefined) {
-    updateSet.fheStatus = data.fheStatus;
-  }
-  if (data.fheError !== undefined) {
-    updateSet.fheError = data.fheError;
-  }
-  if (data.revokedAt !== undefined) {
-    updateSet.revokedAt = data.revokedAt;
-  }
-  if (data.revokedBy !== undefined) {
-    updateSet.revokedBy = data.revokedBy;
-  }
-  if (data.revokedReason !== undefined) {
-    updateSet.revokedReason = data.revokedReason;
-  }
-  if (data.lastVerifiedAt !== undefined) {
-    updateSet.lastVerifiedAt = data.lastVerifiedAt;
-  }
-  if (data.verificationExpiresAt !== undefined) {
-    updateSet.verificationExpiresAt = data.verificationExpiresAt;
-  }
-  if (data.freshnessCheckedAt !== undefined) {
-    updateSet.freshnessCheckedAt = data.freshnessCheckedAt;
-  }
-  if (data.verificationCount !== undefined) {
-    updateSet.verificationCount = data.verificationCount;
-  }
+  // Drizzle drops undefined entries from `set`, so only the supplied fields
+  // change on conflict. On insert, omitted columns take their schema defaults.
+  // `updatedAt` stays explicit because Drizzle rejects an empty `set` before
+  // it applies `$onUpdate`, and `{ userId }` alone is a valid call.
+  const { userId: _userId, ...changes } = data;
 
   await executor
     .insert(identityBundles)
-    .values(insertValues)
+    .values(data)
     .onConflictDoUpdate({
       target: identityBundles.userId,
-      set: updateSet,
+      set: { ...changes, updatedAt: isoTimestampNow },
     })
     .run();
 }
@@ -806,19 +705,12 @@ export async function updateIdentityBundleFheStatus(args: {
   fheError?: string | null;
   fheKeyId?: string | null;
 }): Promise<void> {
-  const updates: Partial<typeof identityBundles.$inferInsert> = {
-    fheStatus: args.fheStatus ?? null,
-    fheError: args.fheError ?? null,
-  };
-  if (args.fheKeyId !== undefined) {
-    updates.fheKeyId = args.fheKeyId;
-  }
-
   await db
     .update(identityBundles)
     .set({
-      ...updates,
-      updatedAt: sql`datetime('now')`,
+      fheStatus: args.fheStatus ?? null,
+      fheError: args.fheError ?? null,
+      fheKeyId: args.fheKeyId,
     })
     .where(eq(identityBundles.userId, args.userId))
     .run();
@@ -844,24 +736,21 @@ export async function updateIdentityBundleAttestationState(args: {
 
   await db
     .update(identityBundles)
-    .set({
-      ...updates,
-      updatedAt: sql`datetime('now')`,
-    })
+    .set({ ...updates, updatedAt: isoTimestampNow })
     .where(eq(identityBundles.userId, args.userId))
     .run();
 }
 
 export async function createVerification(
   data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor.insert(identityVerifications).values(data).run();
 }
 
 export async function upsertVerification(
   data: Omit<NewIdentityVerification, "createdAt" | "updatedAt">,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   const { id: _id, ...updateFields } = data;
   await executor
@@ -869,10 +758,7 @@ export async function upsertVerification(
     .values(data)
     .onConflictDoUpdate({
       target: identityVerifications.id,
-      set: {
-        ...updateFields,
-        updatedAt: sql`datetime('now')`,
-      },
+      set: updateFields,
     })
     .run();
 }
@@ -910,7 +796,7 @@ async function markSupersededVerifications(
     userId: string;
     verificationId: string;
   },
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor
     .update(identityVerifications)
@@ -941,7 +827,7 @@ async function markSupersededVerifications(
 
 export async function reconcileIdentityBundle(
   userId: string,
-  executor: IdentityExecutor = db
+  executor: DbExecutor = db
 ): Promise<{
   changed: boolean;
   credentialSuperseded: boolean;

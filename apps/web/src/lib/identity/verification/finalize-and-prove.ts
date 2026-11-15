@@ -5,6 +5,7 @@ import type { BindingSecretResult } from "@/lib/privacy/zk/binding-secret";
 
 import { NATIONALITY_GROUP } from "@/lib/blockchain/attestation/policy";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
+import { isoDateToInt } from "@/lib/identity/verification/birth-year";
 import { clearCachedBindingMaterial } from "@/lib/privacy/credentials/cache";
 import { prepareBindingProofInputs } from "@/lib/privacy/zk/binding-secret";
 import { getTodayAsInt } from "@/lib/privacy/zk/noir/prover";
@@ -19,20 +20,6 @@ import {
   getSignedClaims,
   storeProof,
 } from "@/lib/privacy/zk/prove";
-
-const NON_DIGIT_REGEX = /\D/g;
-
-function parseDateToInt(value: string | null | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-  const digits = value.replaceAll(NON_DIGIT_REGEX, "");
-  if (digits.length < 8) {
-    return null;
-  }
-  const dateInt = Number(digits.slice(0, 8));
-  return Number.isFinite(dateInt) ? dateInt : null;
-}
 
 /**
  * Context for identity binding proof generation.
@@ -103,7 +90,7 @@ export async function generateAllProofs(params: {
   const nationalityClaimHash = ocrData.claimHashes?.nationality;
   const dateOfBirth = profilePayload?.dateOfBirth ?? extractedDOB ?? null;
   const expiryDateInt =
-    profilePayload?.expiryDateInt ?? parseDateToInt(extractedExpirationDate);
+    profilePayload?.expiryDateInt ?? isoDateToInt(extractedExpirationDate);
   const nationalityCode =
     profilePayload?.nationalityCode ?? extractedNationalityCode ?? null;
 

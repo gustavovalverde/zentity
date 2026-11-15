@@ -4,6 +4,9 @@
  * Wrapper around @mattrglobal/pairing-crypto that imports the node-specific
  * entry point directly. This bypasses the environment detection in wasm_module.js
  * which can fail with bundlers like Turbopack.
+ *
+ * The functions are typed here because the package ships its types as .ts
+ * sources, which fail this project's `verbatimModuleSyntax` check when imported.
  */
 import "server-only";
 

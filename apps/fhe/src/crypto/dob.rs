@@ -6,6 +6,7 @@
 
 use super::{decode_tfhe_binary, encode_tfhe_binary, setup_for_verification};
 use crate::error::FheError;
+use chrono::{Days, Months, NaiveDate};
 use tfhe::prelude::*;
 use tfhe::{CompressedPublicKey, FheUint32};
 
@@ -15,7 +16,11 @@ use tfhe::{CompressedPublicKey, FheUint32};
 /// additionally constrained by application logic (e.g., must not be in the future).
 const MAX_DOB_DAYS: u32 = 150_000;
 
-const DAYS_IN_MONTHS: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+/// Day 0 of `dobDays`.
+const BASE_DATE: NaiveDate = match NaiveDate::from_ymd_opt(1900, 1, 1) {
+    Some(date) => date,
+    None => panic!("1900-01-01 is a valid date"),
+};
 
 fn validate_dob_days(days: u32) -> Result<(), FheError> {
     if days > MAX_DOB_DAYS {
@@ -27,90 +32,29 @@ fn validate_dob_days(days: u32) -> Result<(), FheError> {
     Ok(())
 }
 
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
-}
+/// Latest `dobDays` that is at least `min_age` years old on `current_days`.
+///
+/// The cutoff is `current_days` minus `min_age` calendar years. Feb 29 falls back
+/// to Feb 28 when the cutoff year has no Feb 29.
+fn cutoff_days(current_days: u32, min_age: u16) -> Result<u32, FheError> {
+    let current = BASE_DATE
+        .checked_add_days(Days::new(u64::from(current_days)))
+        .ok_or_else(|| {
+            FheError::InvalidInput(format!(
+                "Current date is out of range (got {current_days} days)"
+            ))
+        })?;
+    let cutoff = current
+        .checked_sub_months(Months::new(12 * u32::from(min_age)))
+        .filter(|cutoff| *cutoff >= BASE_DATE)
+        .ok_or_else(|| {
+            FheError::InvalidInput(format!(
+                "Cutoff date must be on or after {BASE_DATE} (current day {current_days}, minimum age {min_age})"
+            ))
+        })?;
 
-fn days_in_month(year: i32, month: u32) -> Result<u32, FheError> {
-    if !(1..=12).contains(&month) {
-        return Err(FheError::InvalidInput(format!(
-            "Month must be 1-12 (got {})",
-            month
-        )));
-    }
-    if month == 2 && is_leap_year(year) {
-        return Ok(29);
-    }
-    Ok(DAYS_IN_MONTHS[(month - 1) as usize])
-}
-
-fn ymd_to_days_since_base(year: i32, month: u32, day: u32) -> Result<u32, FheError> {
-    if year < 1900 {
-        return Err(FheError::InvalidInput(format!(
-            "Year must be >= 1900 (got {})",
-            year
-        )));
-    }
-    if !(1..=31).contains(&day) {
-        return Err(FheError::InvalidInput(format!(
-            "Day must be 1-31 (got {})",
-            day
-        )));
-    }
-
-    let dim = days_in_month(year, month)?;
-    if day > dim {
-        return Err(FheError::InvalidInput(format!(
-            "Invalid date {}-{:02}-{:02}",
-            year, month, day
-        )));
-    }
-
-    let mut days: u32 = 0;
-    for y in 1900..year {
-        days += if is_leap_year(y) { 366 } else { 365 };
-    }
-    for m in 1..month {
-        days += days_in_month(year, m)?;
-    }
-    days += day - 1;
-    Ok(days)
-}
-
-fn days_since_base_to_ymd(mut days: u32) -> Result<(i32, u32, u32), FheError> {
-    let mut year: i32 = 1900;
-    loop {
-        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if days < days_in_year {
-            break;
-        }
-        days -= days_in_year;
-        year = year
-            .checked_add(1)
-            .ok_or_else(|| FheError::InvalidInput("Year overflow".to_string()))?;
-    }
-
-    let mut month: u32 = 1;
-    loop {
-        let dim = days_in_month(year, month)?;
-        if days < dim {
-            break;
-        }
-        days -= dim;
-        month = month
-            .checked_add(1)
-            .ok_or_else(|| FheError::InvalidInput("Month overflow".to_string()))?;
-        if month > 12 {
-            return Err(FheError::InvalidInput(
-                "Invalid day count for date conversion".to_string(),
-            ));
-        }
-    }
-
-    let day = days
-        .checked_add(1)
-        .ok_or_else(|| FheError::InvalidInput("Day overflow".to_string()))?;
-    Ok((year, month, day))
+    // The cutoff is between the base date and `current_days`, so this fits in a u32.
+    Ok(cutoff.signed_duration_since(BASE_DATE).num_days() as u32)
 }
 
 /// Encrypt a date of birth (`dobDays`: days since 1900-01-01) using the provided public key
@@ -140,21 +84,7 @@ pub fn verify_age_from_dob(
     min_age: u16,
     key_id: &str,
 ) -> Result<Vec<u8>, FheError> {
-    let (current_year, month, day) = days_since_base_to_ymd(current_days)?;
-    let cutoff_year = current_year - i32::from(min_age);
-    if cutoff_year < 1900 {
-        return Err(FheError::InvalidInput(format!(
-            "Cutoff year must be >= 1900 (got {})",
-            cutoff_year
-        )));
-    }
-
-    let mut cutoff_day = day;
-    if month == 2 && day == 29 && !is_leap_year(cutoff_year) {
-        cutoff_day = 28;
-    }
-
-    let cutoff_days = ymd_to_days_since_base(cutoff_year, month, cutoff_day)?;
+    let cutoff_days = cutoff_days(current_days, min_age)?;
 
     setup_for_verification(key_id)?;
 
@@ -170,24 +100,8 @@ pub fn verify_age_from_dob(
 /// This is a utility for testing; the web frontend handles actual conversion.
 #[cfg(test)]
 fn date_to_days_since_base(date: &str) -> Option<u32> {
-    let parts: Vec<&str> = date.split('-').collect();
-    if parts.len() != 3 {
-        return None;
-    }
-
-    let year: i32 = parts[0].parse().ok()?;
-    let month: u32 = parts[1].parse().ok()?;
-    let day: u32 = parts[2].parse().ok()?;
-
-    if year < 1900 {
-        return None;
-    }
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return None;
-    }
-
-    // Simple days calculation for tests (proleptic Gregorian).
-    ymd_to_days_since_base(year, month, day).ok()
+    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+    u32::try_from(date.signed_duration_since(BASE_DATE).num_days()).ok()
 }
 
 #[cfg(test)]
@@ -315,5 +229,40 @@ mod tests {
             "1990-05-15 should be ~33000 days: got {}",
             days_1990
         );
+    }
+
+    #[test]
+    fn cutoff_keeps_the_calendar_day() {
+        let current = date_to_days_since_base("2025-01-17").unwrap();
+        assert_eq!(
+            cutoff_days(current, 18).unwrap(),
+            date_to_days_since_base("2007-01-17").unwrap()
+        );
+    }
+
+    #[test]
+    fn cutoff_for_feb_29_falls_back_to_feb_28_in_common_years() {
+        let current = date_to_days_since_base("2024-02-29").unwrap();
+        assert_eq!(
+            cutoff_days(current, 18).unwrap(),
+            date_to_days_since_base("2006-02-28").unwrap()
+        );
+        // 2004 is a leap year, so Feb 29 exists.
+        assert_eq!(
+            cutoff_days(current, 20).unwrap(),
+            date_to_days_since_base("2004-02-29").unwrap()
+        );
+    }
+
+    #[test]
+    fn cutoff_before_the_base_date_is_rejected() {
+        let first_valid = date_to_days_since_base("1918-01-01").unwrap();
+        assert_eq!(cutoff_days(first_valid, 18).unwrap(), 0);
+        assert!(cutoff_days(first_valid - 1, 18).is_err());
+    }
+
+    #[test]
+    fn out_of_range_current_day_is_rejected() {
+        assert!(cutoff_days(u32::MAX, 18).is_err());
     }
 }

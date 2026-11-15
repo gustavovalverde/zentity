@@ -35,8 +35,5 @@ export function msgpackResponse(data: unknown, status = 200): Response {
 }
 
 export function jsonError(message: string, status = 400): Response {
-  return new Response(JSON.stringify({ error: message }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return Response.json({ error: message }, { status });
 }

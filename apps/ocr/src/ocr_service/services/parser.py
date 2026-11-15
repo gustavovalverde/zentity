@@ -20,7 +20,6 @@ from mrz.base.countries_ops import get_country as mrz_get_country
 from mrz.base.countries_ops import is_code
 from mrz.checker.td3 import TD3CodeChecker
 from stdnum.do import cedula as do_cedula
-from stdnum.exceptions import ValidationError
 
 
 @dataclass
@@ -149,22 +148,13 @@ _MRZ_PATTERN = r"P<[A-Z]{3}[A-Z<]+<<[A-Z<]+<*\s*[A-Z0-9<]{44}"
 
 def normalize_cedula_number(raw: str) -> str:
     """Normalize cedula to XXX-XXXXXXX-X format using python-stdnum."""
-    try:
-        # Use stdnum for proper formatting
-        return do_cedula.format(do_cedula.compact(raw))
-    except (ValidationError, Exception):
-        # Fallback to manual formatting if stdnum fails
-        digits = re.sub(r"[^\d]", "", raw)
-        if len(digits) == 11:
-            return f"{digits[:3]}-{digits[3:10]}-{digits[10]}"
-        return raw
+    digits = re.sub(r"\D", "", raw)
+    return do_cedula.format(digits) if len(digits) == 11 else raw
 
 
 def _maybe_normalize_cedula(doc_num: str, country_code: str | None) -> str:
     """Normalize Dominican cedula if applicable, otherwise return as-is."""
-    if country_code == "DOM" and len(re.sub(r"[^\d]", "", doc_num)) == 11:
-        return normalize_cedula_number(doc_num)
-    return doc_num
+    return normalize_cedula_number(doc_num) if country_code == "DOM" else doc_num
 
 
 def _build_full_name(first_name: str | None, last_name: str | None) -> str | None:
@@ -184,27 +174,16 @@ def get_country_name(code: str) -> str | None:
         return None
 
     # Try iso3166 first (lightweight, comprehensive)
-    try:
-        country = iso3166.countries.get(code)
-        if country:
-            return country.name
-    except (KeyError, AttributeError):
-        pass
+    country = iso3166.countries.get(code, None)
+    if country:
+        return country.name
 
-    # Fallback to mrz library (already in use for MRZ parsing)
-    try:
-        name = mrz_get_country(code)
-        if name:
-            return name
-    except (KeyError, ValueError, AttributeError):
-        # mrz library doesn't recognize this code
-        pass
-
-    return None
+    # mrz also knows ICAO-only codes (for example "D" for Germany) that iso3166 lacks
+    return mrz_get_country(code) or None
 
 
 def parse_date_to_iso(date_str: str) -> str | None:
-    """Convert date string to YYYY-MM-DD format."""
+    """Convert a DD/MM/YYYY or DD-MM-YYYY date string to YYYY-MM-DD."""
     if not date_str:
         return None
 
@@ -213,14 +192,6 @@ def parse_date_to_iso(date_str: str) -> str | None:
     if match:
         day, month, year = match.groups()
         return f"{year}-{month}-{day}"
-
-    # Try YYMMDD (MRZ format)
-    match = re.match(r"(\d{2})(\d{2})(\d{2})", date_str)
-    if match:
-        yy, mm, dd = match.groups()
-        # ICAO 9303: years < _CENTURY_THRESHOLD = 20xx, >= _CENTURY_THRESHOLD = 19xx
-        century = "20" if int(yy) < _CENTURY_THRESHOLD else "19"
-        return f"{century}{yy}-{mm}-{dd}"
 
     return None
 
@@ -344,12 +315,16 @@ def extract_national_id_fields(text: str) -> ExtractedData:
 
 
 def _mrz_date_to_iso(date_str: str) -> str | None:
-    """Convert MRZ date (YYMMDD) to ISO format (YYYY-MM-DD)."""
+    """Convert MRZ date (YYMMDD) to ISO format (YYYY-MM-DD).
+
+    ICAO 9303: years below _CENTURY_THRESHOLD are 20xx, the rest 19xx. The slice comes from
+    OCR output, so non-digit characters must yield None rather than raise.
+    """
     if not date_str or len(date_str) != 6:
         return None
     try:
         yy, mm, dd = date_str[:2], date_str[2:4], date_str[4:6]
-        century = "20" if int(yy) < 50 else "19"
+        century = "20" if int(yy) < _CENTURY_THRESHOLD else "19"
         return f"{century}{yy}-{mm}-{dd}"
     except ValueError:
         return None

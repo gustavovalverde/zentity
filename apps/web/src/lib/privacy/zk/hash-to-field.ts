@@ -6,11 +6,15 @@
  * reduce to the BN254 scalar field.
  */
 
+import { bytesToBigInt, numberToHex } from "viem";
+
+import { hexToBytes, hkdfBits } from "@/lib/privacy/primitives/symmetric";
+
 import { BN254_FR_MODULUS } from "./proof-types";
 
 const HKDF_ZERO_SALT = new Uint8Array(32);
 const WIDE_OUTPUT_BITS = 512;
-const FIELD_HEX_BYTES = 32;
+const FIELD_BYTES = 32;
 
 export const HASH_TO_FIELD_INFO = {
   DOCUMENT_HASH: "zentity:zk:hash-to-field:document-hash:v1",
@@ -21,45 +25,11 @@ export const HASH_TO_FIELD_INFO = {
 } as const;
 
 function bigintToFieldHex(value: bigint): string {
-  const reduced = value % BN254_FR_MODULUS;
-  return `0x${reduced.toString(16).padStart(FIELD_HEX_BYTES * 2, "0")}`;
-}
-
-function bytesToBigInt(bytes: Uint8Array): bigint {
-  let value = BigInt(0);
-  for (const byte of bytes) {
-    value = value * BigInt(256) + BigInt(byte);
-  }
-  return value;
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer;
-}
-
-function getSubtle(): SubtleCrypto {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) {
-    throw new Error("WebCrypto subtle API is not available");
-  }
-  return subtle;
+  return numberToHex(value % BN254_FR_MODULUS, { size: FIELD_BYTES });
 }
 
 function encodeUtf8(value: string): Uint8Array {
   return new TextEncoder().encode(value);
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
-  if (normalized.length === 0 || normalized.length % 2 !== 0) {
-    throw new Error("Expected even-length hex string");
-  }
-
-  const bytes = new Uint8Array(normalized.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = Number.parseInt(normalized.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
 }
 
 async function hkdfExpand512(
@@ -70,27 +40,11 @@ async function hkdfExpand512(
     throw new Error("Hash-to-field input must not be empty");
   }
 
-  const subtle = getSubtle();
-  const masterKey = await subtle.importKey(
-    "raw",
-    toArrayBuffer(input),
-    "HKDF",
-    false,
-    ["deriveBits"]
-  );
-
-  const bits = await subtle.deriveBits(
-    {
-      name: "HKDF",
-      hash: "SHA-256",
-      salt: toArrayBuffer(HKDF_ZERO_SALT),
-      info: toArrayBuffer(encodeUtf8(info)),
-    },
-    masterKey,
-    WIDE_OUTPUT_BITS
-  );
-
-  return new Uint8Array(bits);
+  return await hkdfBits(input, {
+    salt: HKDF_ZERO_SALT,
+    info,
+    bits: WIDE_OUTPUT_BITS,
+  });
 }
 
 async function hashToFieldBigIntFromBytes(
