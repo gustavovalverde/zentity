@@ -353,12 +353,22 @@ async function benchmarkZk(runs: number): Promise<ZkBenchmarkRow[]> {
 
   const bindingSecret = randomFieldHex();
   const userIdHash = randomFieldHex();
-  const bindingCommitment = await poseidon2Hash([
-    BigInt(bindingSecret),
-    BigInt(userIdHash),
-    BigInt(documentHashField),
-  ]);
-  const bindingCommitmentHex = `0x${bindingCommitment.toString(16).padStart(64, "0")}`;
+  const msgSenderHash = randomFieldHex();
+  const audienceHash = randomFieldHex();
+  const toFieldHex = (value: bigint) =>
+    `0x${value.toString(16).padStart(64, "0")}`;
+  const baseCommitmentHex = toFieldHex(
+    await poseidon2Hash([BigInt(bindingSecret), BigInt(userIdHash)])
+  );
+  const bindingCommitmentHex = toFieldHex(
+    await poseidon2Hash([
+      BigInt(bindingSecret),
+      BigInt(userIdHash),
+      BigInt(documentHashField),
+      BigInt(msgSenderHash),
+      BigInt(audienceHash),
+    ])
+  );
 
   const nationalityInputs = (
     await buildNationalityTree("EU", poseidon2Hash)
@@ -420,6 +430,9 @@ async function benchmarkZk(runs: number): Promise<ZkBenchmarkRow[]> {
         user_id_hash: userIdHash,
         document_hash: documentHashField,
         nonce: randomNonceFieldHex(),
+        msg_sender_hash: msgSenderHash,
+        audience_hash: audienceHash,
+        base_commitment: baseCommitmentHex,
         binding_commitment: bindingCommitmentHex,
       }),
     }),
