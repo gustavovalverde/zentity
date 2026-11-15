@@ -37,7 +37,6 @@ const AUTH_HARNESS_PORT = await vi.hoisted(async () => {
 });
 
 import { auth } from "@/lib/auth/auth-config";
-import { callAuthApi, unwrapMetadata } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { oauthClients } from "@/lib/db/schema/oauth-provider";
 import {
@@ -132,10 +131,7 @@ async function startAuthHarness(): Promise<{
   server: Server;
 }> {
   const discovery = rewriteDiscoveryMetadata(
-    unwrapMetadata(await callAuthApi(auth.api, "getOpenIdConfig")) as Record<
-      string,
-      unknown
-    >,
+    (await auth.api.getOpenIdConfig()) as Record<string, unknown>,
     "http://127.0.0.1"
   );
 

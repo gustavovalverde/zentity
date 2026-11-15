@@ -2,8 +2,10 @@ import type { Session } from "@/lib/auth/auth-config";
 
 import { eq } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { verifyAuthIssuedJwt } from "@/lib/auth/jwt";
+import { getAuthIssuer } from "@/lib/auth/oidc/well-known";
 import { db } from "@/lib/db/connection";
 import { jwks } from "@/lib/db/schema/oauth-provider";
 
@@ -204,6 +206,58 @@ describe("JWKS signing key rotation", () => {
       const kids = (await getPublishedJwks()).keys.map((key) => key.kid);
 
       expect(kids).not.toContain(original);
+    });
+
+    it("serves the same key set from the agent JWKS endpoint", async () => {
+      const original = await signedKid("EdDSA");
+      await rotateSigningKey("EdDSA");
+      await expireKey(original, new Date(Date.now() - 366 * DAY_MS));
+      const { GET: getAgentJwks } = await import(
+        "@/app/api/auth/agent/jwks/route"
+      );
+
+      const served = (await (await getAgentJwks()).json()) as {
+        keys: { kid?: string }[];
+      };
+
+      expect(served).toEqual(await getPublishedJwks());
+      expect(served.keys.map((key) => key.kid)).not.toContain(original);
+    });
+
+    it("gives the OID4VP verifier the published keys whatever issuer it names", async () => {
+      await signedKid("RS256");
+      const { auth } = await import("@/lib/auth/auth-config");
+      const plugin = auth.options.plugins.find(
+        (candidate) => candidate.id === "oidc4vp"
+      ) as unknown as {
+        options: {
+          resolveIssuerJwks: (issuer: string) => Promise<unknown>;
+        };
+      };
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      const keys = await plugin.options.resolveIssuerJwks(
+        "https://issuer.example"
+      );
+
+      expect(keys).toEqual((await getPublishedJwks()).keys);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+  });
+
+  describe("verifyAuthIssuedJwt", () => {
+    const typ = "logout+jwt";
+
+    it("stops accepting a token once its key leaves the published JWKS", async () => {
+      const token = await signJwt({ iss: getAuthIssuer() }, { typ });
+      const { kid } = decodeProtectedHeader(token);
+      expect(await verifyAuthIssuedJwt(token, { typ })).not.toBeNull();
+
+      await rotateSigningKey("RS256");
+      await expireKey(String(kid), new Date(Date.now() - 366 * DAY_MS));
+
+      expect(await verifyAuthIssuedJwt(token, { typ })).toBeNull();
     });
   });
 

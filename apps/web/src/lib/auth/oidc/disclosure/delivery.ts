@@ -16,10 +16,9 @@ import "server-only";
  */
 import type { IdentityFields } from "./registry";
 
-import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 
-import { constantTimeEqual, makeSignature } from "better-auth/crypto";
+import { errors as joseErrors, jwtVerify, SignJWT } from "jose";
 import { z } from "zod";
 
 import { logger as rootLogger } from "@/lib/logging/logger";
@@ -112,6 +111,12 @@ export function normalizeIdentityFields(
 // ---------------------------------------------------------------------------
 
 const IDENTITY_INTENT_TTL_SECONDS = 120;
+const INTENT_TOKEN_ALG = "HS256";
+const INTENT_TOKEN_TYP = "identity-intent+jwt";
+
+function getIntentTokenKey(): Uint8Array {
+  return new TextEncoder().encode(getIdentityIntentKey());
+}
 
 const IntentPayloadSchema = z.object({
   jti: z.string().min(1),
@@ -158,62 +163,42 @@ export async function createIdentityIntentToken(input: {
   const expiresAt = now + (input.ttlSeconds ?? IDENTITY_INTENT_TTL_SECONDS);
   const jti = randomUUID();
   const scopeHash = createScopeHash(input.scopes);
-  const payload: IdentityIntentPayload = {
-    jti,
+
+  const intentToken = await new SignJWT({
     userId: input.userId,
     clientId: input.clientId,
     ...(input.authReqId ? { authReqId: input.authReqId } : {}),
     scopeHash,
-    exp: expiresAt,
-  };
+  })
+    .setProtectedHeader({ alg: INTENT_TOKEN_ALG, typ: INTENT_TOKEN_TYP })
+    .setJti(jti)
+    .setExpirationTime(expiresAt)
+    .sign(getIntentTokenKey());
 
-  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString(
-    "base64url"
-  );
-  const signature = await makeSignature(encodedPayload, getIdentityIntentKey());
-
-  return {
-    intentToken: `${encodedPayload}.${signature}`,
-    expiresAt,
-    jti,
-    scopeHash,
-  };
+  return { intentToken, expiresAt, jti, scopeHash };
 }
 
 export async function verifyIdentityIntentToken(
   intentToken: string
 ): Promise<IdentityIntentPayload> {
-  const [encodedPayload, signature, extra] = intentToken.split(".");
-  if (!(encodedPayload && signature) || extra) {
-    throw new Error("invalid_intent_token");
-  }
-
-  const expectedSignature = await makeSignature(
-    encodedPayload,
-    getIdentityIntentKey()
-  );
-  if (!constantTimeEqual(signature, expectedSignature)) {
-    throw new Error("invalid_intent_token");
-  }
-
-  let payloadRaw: unknown;
+  let payload: unknown;
   try {
-    payloadRaw = JSON.parse(
-      Buffer.from(encodedPayload, "base64url").toString("utf8")
+    ({ payload } = await jwtVerify(intentToken, getIntentTokenKey(), {
+      algorithms: [INTENT_TOKEN_ALG],
+      typ: INTENT_TOKEN_TYP,
+    }));
+  } catch (error) {
+    throw new Error(
+      error instanceof joseErrors.JWTExpired
+        ? "expired_intent_token"
+        : "invalid_intent_token"
     );
-  } catch {
-    throw new Error("invalid_intent_token");
   }
 
-  const parsedPayload = IntentPayloadSchema.safeParse(payloadRaw);
+  const parsedPayload = IntentPayloadSchema.safeParse(payload);
   if (!parsedPayload.success) {
     throw new Error("invalid_intent_token");
   }
-
-  if (parsedPayload.data.exp <= Math.floor(Date.now() / 1000)) {
-    throw new Error("expired_intent_token");
-  }
-
   return parsedPayload.data;
 }
 

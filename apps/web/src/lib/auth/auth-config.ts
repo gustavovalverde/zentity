@@ -50,7 +50,7 @@ import {
 } from "better-auth/plugins";
 import { organization } from "better-auth/plugins/organization";
 import { and, eq, inArray } from "drizzle-orm";
-import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
+import { decodeJwt, jwtVerify } from "jose";
 
 import { env } from "@/env";
 import { evaluateSessionGrants } from "@/lib/agents/approval-evaluate";
@@ -77,6 +77,7 @@ import {
   resolveAuthenticationContext,
 } from "@/lib/auth/auth-context";
 import { eip712Auth } from "@/lib/auth/eip712/server";
+import { getHardenedJWKSet } from "@/lib/auth/jwt";
 import { authorizeChallengePlugin } from "@/lib/auth/oidc/authorize-challenge";
 import {
   captureBackchannelExtras,
@@ -132,7 +133,11 @@ import {
   normalizeUserTokenResources,
 } from "@/lib/auth/oidc/haip/resource-metadata";
 import { loadX5cChain } from "@/lib/auth/oidc/haip/x5c-chain";
-import { signingKeyOptions, signJwt } from "@/lib/auth/oidc/jwt-signer";
+import {
+  getPublishedJwks,
+  signingKeyOptions,
+  signJwt,
+} from "@/lib/auth/oidc/jwt-signer";
 import { validateResourceUri } from "@/lib/auth/oidc/oauth-request";
 import {
   adoptZentityPairwiseSector,
@@ -429,8 +434,10 @@ const isPlaywrightE2e =
   typeof process.env.E2E_DATABASE_PATH === "string" ||
   typeof process.env.E2E_TURSO_DATABASE_URL === "string";
 const enableEmailAndPassword = isOidcE2e || isPlaywrightE2e;
-// scope field added for HAIP §4.1; the oidc4vci plugin type doesn't include it yet,
-// but it passes through to credential issuer metadata where the route handler picks it up
+// No `scope` here: the plugin would then issue a credential to any token
+// carrying that scope, and `identity_verification` is a hidden scope that
+// consent grants without showing it. Issuance stays bound to the token's
+// credential configuration; the metadata route advertises the scope (HAIP §4.1).
 const oidc4vciCredentialConfigurations: Oidc4vciOptions["credentialConfigurations"] =
   [
     {
@@ -594,9 +601,15 @@ async function validateDcrRegistration(
       });
     }
 
+    const jwks = getHardenedJWKSet(
+      joinAuthIssuerPath(iss, ".well-known/jwks.json")
+    );
+    if (!jwks) {
+      throw new APIError("BAD_REQUEST", {
+        error_description: "software_statement issuer JWKS URL is not allowed",
+      });
+    }
     try {
-      const jwksUrl = new URL(joinAuthIssuerPath(iss, ".well-known/jwks.json"));
-      const jwks = createRemoteJWKSet(jwksUrl);
       await jwtVerify(softwareStatement, jwks, { issuer: iss });
     } catch (err) {
       const detail =
@@ -2294,10 +2307,16 @@ export const auth = betterAuth({
           supportedEnc: ["A128GCM", "A256GCM"],
         }),
       },
-      resolveIssuerJwks: async (issuer: string) => {
-        const jwksUrl =
-          env.OIDC4VP_JWKS_URL ?? joinAuthIssuerPath(issuer, "oauth2/jwks");
-        const response = await fetch(jwksUrl);
+      // allowedIssuers admits only this issuer, so credentials verify against
+      // its published keys. Status list tokens reach the resolver without the
+      // allowedIssuers check, so their `iss` never chooses a URL to fetch.
+      resolveIssuerJwks: async () => {
+        if (!env.OIDC4VP_JWKS_URL) {
+          return (await getPublishedJwks()).keys;
+        }
+        const response = await fetch(env.OIDC4VP_JWKS_URL, {
+          signal: AbortSignal.timeout(5000),
+        });
         if (!response.ok) {
           throw new Error("Unable to resolve issuer JWKS");
         }
