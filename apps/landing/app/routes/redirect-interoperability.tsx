@@ -1,5 +1,3 @@
-import { Navigate } from "react-router";
+import { redirect } from "react-router";
 
-export default function InteroperabilityRedirect() {
-  return <Navigate to="/#compliance" replace />;
-}
+export const loader = () => redirect("/#compliance", 301);
