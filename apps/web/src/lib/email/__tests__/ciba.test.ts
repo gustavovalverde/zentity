@@ -59,6 +59,24 @@ describe("ciba-mailer", () => {
     expect(payload.to).toEqual(["alice@example.com"]);
   });
 
+  it("links to the approval page marked as opened from the email", async () => {
+    mockDbGet.mockReturnValue({
+      email: "alice@example.com",
+      emailVerified: true,
+    });
+
+    const { sendCibaNotification } = await import("../ciba");
+    await sendCibaNotification(DEFAULT_PARAMS);
+
+    const payload = mockSendEmail.mock.calls[0]?.[0];
+    expect(payload.text).toContain(
+      "https://zentity.xyz/approve/req-1?via=email"
+    );
+    expect(payload.html).toContain(
+      'href="https://zentity.xyz/approve/req-1?via=email"'
+    );
+  });
+
   it("does NOT send email when user email is unverified", async () => {
     mockDbGet.mockReturnValue({
       email: "unverified@example.com",

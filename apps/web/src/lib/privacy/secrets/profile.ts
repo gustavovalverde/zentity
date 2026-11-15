@@ -7,6 +7,7 @@
  * Profile data is PII that requires credential unlock.
  */
 
+import type { ApprovalAssertion } from "@/lib/auth/passkey/prf";
 import type { EnrollmentCredential, EnvelopeFormat } from "./catalog";
 
 import { parseBirthYearFromDob } from "@/lib/identity/verification/birth-year";
@@ -178,6 +179,44 @@ export function getStoredProfile(): Promise<ProfileSecretPayload | null> {
   });
 
   return pendingGetStoredProfile;
+}
+
+/**
+ * Opens the profile with a passkey prompt that also signs a CIBA decision's
+ * challenge, so the user confirms once. Returns no assertion when the profile
+ * was already cached and no prompt ran.
+ */
+export async function getStoredProfileWithPasskeyStepUp(
+  challenge: Uint8Array
+): Promise<{
+  assertion: ApprovalAssertion | null;
+  profile: ProfileSecretPayload | null;
+}> {
+  const cachedProfile = getCachedProfile();
+  if (cachedProfile) {
+    return { assertion: null, profile: cachedProfile };
+  }
+
+  let assertion: ApprovalAssertion | null = null;
+  const { loadSecret } = await import("./vault");
+  const result = await loadSecret({
+    secretType: SECRET_TYPES.PROFILE,
+    expectedEnvelopeFormat: PROFILE_ENVELOPE_FORMAT,
+    secretLabel: "profile data",
+    passkeyStepUp: {
+      challenge,
+      onAssertion: (signed) => {
+        assertion = signed;
+      },
+    },
+  });
+  if (!result) {
+    return { assertion, profile: null };
+  }
+
+  const profile = deserializeProfile(result.plaintext);
+  cacheProfile(profile);
+  return { assertion, profile };
 }
 
 async function getProfileSecretBundle() {

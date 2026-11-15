@@ -1,12 +1,28 @@
 "use client";
 
+import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/browser";
+
+import { startAuthentication } from "@simplewebauthn/browser";
+
 import { authClient } from "@/lib/auth/auth-client";
 
 import {
+  type ApprovalAssertion,
   buildPrfExtension,
   evaluatePrf,
   extractPrfOutputFromClientResults,
+  toApprovalAssertion,
 } from "./prf";
+
+/**
+ * Runs the passkey assertion that confirms a CIBA decision, over the
+ * server's options, without signing in.
+ */
+export async function assertPasskeyForApproval(
+  optionsJSON: PublicKeyCredentialRequestOptionsJSON
+): Promise<ApprovalAssertion> {
+  return toApprovalAssertion(await startAuthentication({ optionsJSON }));
+}
 
 type PasskeyErrorLike = {
   code?: string | undefined;

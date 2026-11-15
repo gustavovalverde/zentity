@@ -158,6 +158,7 @@ export async function approveCibaRequest(authReqId: string) {
       data: {
         request_id: await findCibaRequestId(authReqId),
         decision: "approved",
+        channel: "page",
       },
     });
     expect(response.ok()).toBeTruthy();

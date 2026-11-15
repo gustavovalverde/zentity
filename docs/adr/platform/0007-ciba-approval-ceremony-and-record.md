@@ -63,6 +63,8 @@ The read-only checks run before the single-use challenge is spent, so a refusal 
 
 `POST /api/auth/ciba/decision/options` issues assertion options over the user's own passkeys with `userVerification: "required"`. The challenge is a verification row bound to the request and the session, single use, and valid for 120 seconds. A new call replaces it. `apps/web/src/lib/auth/passkey/step-up.ts` verifies the assertion with `@simplewebauthn/server`, the library the passkey plugin uses, because the plugin's own verification always creates a session. A verified assertion becomes an authentication context with `amr: ["pop", "user", "mfa"]` and the verification time, which the ID token states as `amr` and `auth_time`. A user without a passkey gets `passkey_required`, and the page offers to add one while keeping Deny.
 
+The approval page runs one ceremony at the Approve click. When the vault is passkey-wrapped and locked, the same assertion carries the PRF extension and unlocks the vault. Otherwise the page runs a standalone assertion.
+
 ### The approval record
 
 `ciba_approval` holds one row per decision: the decision, `approval_method` (`session`, `user_verification`, or `capability_grant`), `approval_channel` (`push`, `page`, `email`, or `grant`), copies of the scope, binding message, details, and `acr_values`, the grant facts, the agent session and attestation, the authentication context, and the request, decision, and expiry times. It is written before the plugin can consume the request and is deleted only with the user. It is the source of the CIBA token response member `oversight: { method, approved_at }`, of the agent claims' oversight, and of the Requests tab history.
