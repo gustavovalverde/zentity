@@ -394,6 +394,48 @@ describe("Token Exchange (RFC 8693)", () => {
       expect(json.error_description).toBe("DPoP proof header is required");
     });
 
+    it("rejects a resource server exchanging an opaque token issued for it", async () => {
+      const resourceServerClientId = "installed-resource-server";
+      await createTestClient(resourceServerClientId, {
+        zentity_protected_resource: APP_AUDIENCE,
+      });
+      await createTestClient("upstream-client");
+
+      // The provider reports this token's resources as its audience.
+      const subjectToken = crypto.randomBytes(32).toString("base64url");
+      await db
+        .insert(oauthAccessTokens)
+        .values({
+          accessTokenClaims: JSON.stringify({
+            [AUTHENTICATION_CONTEXT_CLAIM]: defaultAuthContextId,
+          }),
+          clientId: "upstream-client",
+          expiresAt: new Date(Date.now() + 3_600_000),
+          resources: JSON.stringify([APP_AUDIENCE]),
+          scopes: JSON.stringify(["openid"]),
+          token: crypto
+            .createHash("sha256")
+            .update(subjectToken)
+            .digest("base64url"),
+          userId,
+        })
+        .run();
+
+      const { status, json } = await postTokenWithDpop({
+        grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+        client_id: resourceServerClientId,
+        subject_token: subjectToken,
+        subject_token_type: ACCESS_TOKEN_TYPE,
+        scope: "openid",
+      });
+
+      expect(status).toBe(400);
+      expect(json.error).toBe("invalid_grant");
+      expect(json.error_description).toBe(
+        "Subject token was not issued to the requesting client or for its resource"
+      );
+    });
+
     it("rejects an access token issued to another client", async () => {
       await createTestClient("other-client");
       const subjectToken = await mintAccessToken(userId, {
