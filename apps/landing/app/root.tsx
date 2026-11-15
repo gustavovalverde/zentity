@@ -3,15 +3,9 @@ import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 
 import "./app.css";
 
-const THEME_INIT_SCRIPT = `(() => {
-  var t = localStorage.getItem('theme');
-  var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  document.documentElement.classList.toggle('dark', t === 'dark' || (!t && d));
-})();`;
-
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -79,8 +73,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           content="https://zentity.xyz/images/og-image.png"
         />
 
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-
         <Meta />
         <Links />
 
@@ -88,7 +80,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <style>{"html { scroll-behavior: smooth; }"}</style>
       </head>
       <body className="antialiased">
-        {children}
+        <RootProvider>{children}</RootProvider>
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -97,9 +89,5 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
-  return (
-    <RootProvider>
-      <Outlet />
-    </RootProvider>
-  );
+  return <Outlet />;
 }

@@ -5,6 +5,7 @@ import {
   IconMoon,
   IconSun,
 } from "@tabler/icons-react";
+import { useTheme } from "fumadocs-ui/provider/base";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 
@@ -29,7 +30,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
@@ -42,7 +42,7 @@ const navLinks = [
 ];
 
 function ThemeToggle() {
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   return (
     <DropdownMenu>
@@ -51,11 +51,8 @@ function ThemeToggle() {
           <Button variant="ghost" size="icon" aria-label="Toggle theme" />
         }
       >
-        {resolvedTheme === "dark" ? (
-          <IconSun className="size-5" />
-        ) : (
-          <IconMoon className="size-5" />
-        )}
+        <IconSun className="hidden size-5 dark:block" />
+        <IconMoon className="size-5 dark:hidden" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setTheme("light")}>

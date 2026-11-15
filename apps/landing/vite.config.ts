@@ -61,6 +61,11 @@ export default defineConfig(async () => ({
     reactRouter(),
     watchDocs(),
   ],
+  build: {
+    // React Router deletes build/client/.vite/manifest.json unless the user
+    // config opts in; the Vercel React Router builder reads it.
+    manifest: true,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./app"),

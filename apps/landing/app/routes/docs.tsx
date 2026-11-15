@@ -7,7 +7,7 @@ import {
   DocsPage,
   DocsTitle,
 } from "fumadocs-ui/layouts/docs/page";
-import { useLoaderData } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 
 import { getMDXComponents } from "@/components/mdx";
 import { baseOptions } from "@/lib/layout.shared";
@@ -17,10 +17,7 @@ export async function loader({ params }: { params: { "*": string } }) {
   const slug = params["*"] ?? "";
 
   if (!slug) {
-    throw new Response(null, {
-      status: 302,
-      headers: { Location: "/docs/architecture" },
-    });
+    throw redirect("/docs/architecture");
   }
 
   const slugs = slug.split("/").filter((v) => v.length > 0);
