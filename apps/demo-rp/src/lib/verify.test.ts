@@ -26,13 +26,34 @@ vi.mock("@/lib/env", () => ({
   env: { ZENTITY_URL: "http://zentity-internal:3000" },
 }));
 
+import type { DcqlQuery } from "@/scenarios/veripass/verifier-scenario";
 import { sha256Hasher } from "./sd-jwt";
-import { verifyVpToken } from "./verify";
+import { type VpTokenExpectations, verifyVpToken } from "./verify";
 
 const ISSUER = "https://app.zentity.xyz";
 const VCT = "urn:credential:identity-verification:v1";
 const NONCE = "session-nonce";
 const AUDIENCE = "x509_hash:verifier-leaf-thumbprint";
+const QUERY_ID = "identity_credential";
+
+function dcqlQuery(claimNames: string[], vct = VCT): DcqlQuery {
+  return {
+    credentials: [
+      {
+        id: QUERY_ID,
+        format: "dc+sd-jwt",
+        meta: { vct_values: [vct] },
+        claims: claimNames.map((name) => ({ path: [name] })),
+      },
+    ],
+  };
+}
+
+const EXPECTED: VpTokenExpectations = {
+  audience: AUDIENCE,
+  dcqlQuery: dcqlQuery(["verified"]),
+  nonce: NONCE,
+};
 
 interface KeyPair {
   privateKey: CryptoKey;
@@ -131,15 +152,77 @@ describe("verifyVpToken", () => {
     credential = await issueCredential(holderJwk);
   });
 
-  it("returns only the claims the holder disclosed", async () => {
+  it("returns only the claims the holder disclosed, including ones beyond the query", async () => {
     const vpToken = await bind(
       await presentDisclosures(["verified", "nationality_group"])
     );
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toEqual({
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toEqual({
       verified: true,
       nationality_group: "EU",
     });
+  });
+
+  it("rejects a presentation missing a claim the query names", async () => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(
+      verifyVpToken(vpToken, {
+        ...EXPECTED,
+        dcqlQuery: dcqlQuery(["verified", "nationality_group"]),
+      })
+    ).resolves.toBeNull();
+  });
+
+  it("rejects a credential whose vct the query does not name", async () => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(
+      verifyVpToken(vpToken, {
+        ...EXPECTED,
+        dcqlQuery: dcqlQuery(["verified"], "urn:credential:other:v1"),
+      })
+    ).resolves.toBeNull();
+  });
+
+  it("accepts a vp_token keyed by the credential query id", async () => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(
+      verifyVpToken({ [QUERY_ID]: [vpToken] }, EXPECTED)
+    ).resolves.toEqual({ verified: true });
+  });
+
+  it.each([
+    ["an unknown query id", (vp: string) => ({ other_credential: [vp] })],
+    [
+      "an extra query id",
+      (vp: string) => ({ [QUERY_ID]: [vp], other_credential: [vp] }),
+    ],
+    ["two presentations", (vp: string) => ({ [QUERY_ID]: [vp, vp] })],
+    ["no presentation", () => ({ [QUERY_ID]: [] })],
+    ["a presentation that is not a string", () => ({ [QUERY_ID]: [{}] })],
+    ["a bare presentation", (vp: string) => ({ [QUERY_ID]: vp })],
+    ["null", () => null],
+  ])("rejects a vp_token with %s", async (_label, shape) => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+
+    await expect(verifyVpToken(shape(vpToken), EXPECTED)).resolves.toBeNull();
+  });
+
+  it("rejects a query with more than one credential query", async () => {
+    const vpToken = await bind(await presentDisclosures(["verified"]));
+    const [query] = dcqlQuery(["verified"]).credentials;
+    if (!query) {
+      throw new Error("query missing");
+    }
+
+    await expect(
+      verifyVpToken(vpToken, {
+        ...EXPECTED,
+        dcqlQuery: { credentials: [query, { ...query, id: "second" }] },
+      })
+    ).resolves.toBeNull();
   });
 
   it.each([
@@ -150,7 +233,7 @@ describe("verifyVpToken", () => {
     const sdJwt = await issueCredential(alg ? { ...bareJwk, alg } : bareJwk);
     const vpToken = await bind(await presentDisclosures(["verified"], sdJwt));
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toEqual({
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toEqual({
       verified: true,
     });
   });
@@ -161,7 +244,7 @@ describe("verifyVpToken", () => {
       `${await presentDisclosures(["verified"])}${forged}~`
     );
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects disclosures the KB-JWT sd_hash does not cover", async () => {
@@ -169,7 +252,7 @@ describe("verifyVpToken", () => {
     const widened = await presentDisclosures(["verified", "nationality_group"]);
     const vpToken = await bind(widened, { sdHashInput: boundPresentation });
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects disclosures with duplicate JSON member names", async () => {
@@ -188,7 +271,9 @@ describe("verifyVpToken", () => {
       .sign(issuerKeys.privateKey);
     const vpToken = await bind(`${issuerJwt}~${disclosure}~`);
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(
+      verifyVpToken(vpToken, { ...EXPECTED, dcqlQuery: dcqlQuery(["address"]) })
+    ).resolves.toBeNull();
   });
 
   it("rejects the same disclosure presented twice", async () => {
@@ -196,13 +281,13 @@ describe("verifyVpToken", () => {
     const [issuerJwt, disclosure] = presentation.split("~");
     const vpToken = await bind(`${issuerJwt}~${disclosure}~${disclosure}~`);
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects a presentation without a KB-JWT", async () => {
     const vpToken = await presentDisclosures(["verified"]);
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("never skips holder binding when the expected nonce is empty", async () => {
@@ -210,7 +295,9 @@ describe("verifyVpToken", () => {
       nonce: "",
     });
 
-    await expect(verifyVpToken(vpToken, "", AUDIENCE)).resolves.toBeNull();
+    await expect(
+      verifyVpToken(vpToken, { ...EXPECTED, nonce: "" })
+    ).resolves.toBeNull();
   });
 
   it.each([
@@ -224,7 +311,7 @@ describe("verifyVpToken", () => {
       overrides
     );
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects a KB-JWT not signed by the credential's holder key", async () => {
@@ -233,7 +320,7 @@ describe("verifyVpToken", () => {
       key: otherHolder.privateKey,
     });
 
-    await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+    await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
   });
 
   it("rejects an issuer JWT the Zentity JWKS does not verify", async () => {
@@ -242,7 +329,7 @@ describe("verifyVpToken", () => {
     try {
       const vpToken = await bind(await presentDisclosures(["verified"]));
 
-      await expect(verifyVpToken(vpToken, NONCE, AUDIENCE)).resolves.toBeNull();
+      await expect(verifyVpToken(vpToken, EXPECTED)).resolves.toBeNull();
     } finally {
       issuerKey.current = original;
     }

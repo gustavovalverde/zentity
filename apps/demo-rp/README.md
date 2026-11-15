@@ -232,6 +232,8 @@ The `/veripass` page implements a digital credential wallet with an OID4VP verif
 
 `verifyVpToken()` in `src/lib/verify.ts` verifies the presentation with `@sd-jwt/core`:
 
+- The `vp_token` must answer the session's DCQL query. It is either the OpenID4VP 1.0 object, keyed by the credential query id (`identity_credential`) and holding exactly one presentation, or a bare presentation string. An object keyed by any other id is rejected.
+- The credential's `vct` must be one the query names in `vct_values`, and the credential must carry every claim path the query lists. Claims beyond the query, such as a scenario's optional claims, are accepted.
 - The issuer JWT signature must verify against the Zentity JWKS.
 - Every disclosure must match an `_sd` digest the issuer signed. Disclosures are also decoded strictly, so duplicate JSON member names are rejected.
 - The KB-JWT (`typ: kb+jwt`) must be signed by the holder key in the credential's `cnf.jwk`, and its `sd_hash` must cover exactly the presented issuer JWT and disclosures.
