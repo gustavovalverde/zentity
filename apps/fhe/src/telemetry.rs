@@ -110,10 +110,11 @@ pub fn shutdown_tracing() {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
+    use std::io::{self, Read, Write};
     use std::net::TcpListener;
     use std::sync::{Mutex, MutexGuard};
     use std::thread;
+    use std::time::{Duration, Instant};
 
     use opentelemetry::trace::Tracer;
 
@@ -168,17 +169,30 @@ mod tests {
     }
 
     /// Exports one span through `span_exporter` to a local listener and returns
-    /// the request path the listener saw.
-    fn exported_request_path() -> String {
+    /// the request path the listener saw. `endpoint_var` is set to the listener's
+    /// URL plus `suffix`. The test fails if no request arrives within 10 seconds.
+    fn exported_request_path(endpoint_var: &str, suffix: &str) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("addr").port();
-        env::set_var(
-            "OTEL_EXPORTER_OTLP_ENDPOINT",
-            format!("http://127.0.0.1:{port}"),
-        );
+        listener.set_nonblocking(true).expect("nonblocking");
+        env::set_var(endpoint_var, format!("http://127.0.0.1:{port}{suffix}"));
 
         let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept");
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "no export request received");
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(err) => panic!("accept: {err}"),
+                }
+            };
+            stream.set_nonblocking(false).expect("blocking stream");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .expect("read timeout");
             let mut head = Vec::new();
             let mut buf = [0u8; 1024];
             while !head.windows(4).any(|w| w == b"\r\n\r\n") {
@@ -209,6 +223,18 @@ mod tests {
     #[test]
     fn base_endpoint_exports_to_v1_traces_once() {
         let _env = clean_env();
-        assert_eq!(exported_request_path(), "/v1/traces");
+        assert_eq!(
+            exported_request_path("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+            "/v1/traces"
+        );
+    }
+
+    #[test]
+    fn traces_endpoint_is_used_as_given() {
+        let _env = clean_env();
+        assert_eq!(
+            exported_request_path("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "/custom/spans"),
+            "/custom/spans"
+        );
     }
 }
