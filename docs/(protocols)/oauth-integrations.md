@@ -360,12 +360,12 @@ The `ath` claim is only included when presenting the access token at a resource 
 
 | Token | Format | Signing |
 | --- | --- | --- |
-| Access token, Zentity-hosted resource | Opaque (random string) | n/a |
-| Access token, other audience | JWT (`at+jwt`) | EdDSA |
+| Access token, endpoints Zentity serves (except OID4VCI credential) | Opaque (random string) | n/a |
+| Access token, resource servers outside Zentity and the OID4VCI credential endpoint | JWT (`at+jwt`) | EdDSA |
 | ID token | JWT | RS256 |
 | Token type | `"DPoP"` | n/a |
 
-Zentity-hosted resources receive opaque access tokens, which live in the provider's token store and keep DPoP binding server-side. A token exchange for any other audience mints a JWT access token (`revocableJwtAccessTokens` is on, so those JWTs stay revocable). The `sub` of a JWT access token is projected to the identifier the audience client sees everywhere else, pairwise for pairwise clients, never the raw user id.
+Endpoints Zentity serves receive opaque access tokens, which live in the provider's token store and keep DPoP binding server-side. The OID4VCI credential endpoint is the exception: it accepts only JWT access tokens. Resource servers outside Zentity, such as the MCP server, also receive JWT access tokens, from any grant that names them as the `resource` and from token exchange (`revocableJwtAccessTokens` is on, so those JWTs stay revocable). The `sub` of a JWT access token is projected to the identifier the audience client sees everywhere else, pairwise for pairwise clients, never the raw user id.
 
 ### Token revocation
 
