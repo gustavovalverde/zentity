@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import secrets
 
@@ -34,15 +35,13 @@ def _validate_internal_token(provided: str | None, expected: str) -> bool:
 
 
 def _mask_ip(ip: str) -> str:
-    if not ip:
+    """Reduce an address to its /16 (IPv4) or /48 (IPv6) network for logging."""
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
         return "unknown"
-    if ":" in ip:
-        parts = ip.split(":")
-        return ":".join(parts[:3]) + ":…"
-    parts = ip.split(".")
-    if len(parts) == 4:
-        return f"{parts[0]}.{parts[1]}.x.x"
-    return "unknown"
+    prefix = 16 if address.version == 4 else 48
+    return str(ipaddress.ip_network(f"{address}/{prefix}", strict=False))
 
 
 def add_internal_auth_middleware(app: FastAPI, *, token: str) -> None:
