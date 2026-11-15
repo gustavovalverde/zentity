@@ -63,21 +63,29 @@ export function buildNamespacedAssuranceClaim(
 
 // --- AMR (Authentication Methods References, RFC 8176) ---
 
-const AMR_MAP: Record<LoginMethod | "none", string[]> = {
-  passkey: ["pop", "hwk", "user"],
+/**
+ * Only methods Zentity observed. A passkey proves possession (`pop`) and user
+ * presence (`user`); with the authenticator's user-verified flag it is also a
+ * second factor (`mfa`). `hwk` is never claimed, since registration accepts
+ * any authenticator without attestation.
+ */
+const AMR_MAP: Record<Exclude<LoginMethod, "passkey">, string[]> = {
   opaque: ["pwd"],
   "magic-link": ["otp"],
   oauth: [],
-  eip712: ["pop", "hwk"],
+  eip712: ["pop"],
   credential: ["pwd"],
-  none: ["user"],
 };
 
 export function loginMethodToAmr(
-  method: LoginMethod | "none" | null | undefined
+  method: LoginMethod | "none" | null | undefined,
+  observed: { userVerified?: boolean } = {}
 ): string[] {
-  if (!(method && method in AMR_MAP)) {
-    return AMR_MAP.none;
+  if (method === "passkey") {
+    return observed.userVerified ? ["pop", "user", "mfa"] : ["pop", "user"];
   }
-  return AMR_MAP[method as keyof typeof AMR_MAP];
+  if (!(method && method in AMR_MAP)) {
+    return [];
+  }
+  return [...AMR_MAP[method as keyof typeof AMR_MAP]];
 }

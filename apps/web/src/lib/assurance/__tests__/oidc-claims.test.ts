@@ -53,9 +53,22 @@ describe("buildNamespacedAssuranceClaim", () => {
   });
 });
 
+// R9: amr states only observed methods.
 describe("loginMethodToAmr", () => {
-  it("maps passkey to pop + hwk + user", () => {
-    expect(loginMethodToAmr("passkey")).toEqual(["pop", "hwk", "user"]);
+  it("maps a passkey without observed user verification to pop + user", () => {
+    expect(loginMethodToAmr("passkey")).toEqual(["pop", "user"]);
+    expect(loginMethodToAmr("passkey", { userVerified: false })).toEqual([
+      "pop",
+      "user",
+    ]);
+  });
+
+  it("maps a passkey with observed user verification to pop + user + mfa", () => {
+    expect(loginMethodToAmr("passkey", { userVerified: true })).toEqual([
+      "pop",
+      "user",
+      "mfa",
+    ]);
   });
 
   it("maps opaque to pwd", () => {
@@ -70,23 +83,34 @@ describe("loginMethodToAmr", () => {
     expect(loginMethodToAmr("oauth")).toEqual([]);
   });
 
-  it("maps eip712 to pop + hwk", () => {
-    expect(loginMethodToAmr("eip712")).toEqual(["pop", "hwk"]);
+  it("maps eip712 to pop", () => {
+    expect(loginMethodToAmr("eip712")).toEqual(["pop"]);
   });
 
   it("maps credential to pwd", () => {
     expect(loginMethodToAmr("credential")).toEqual(["pwd"]);
   });
 
-  it("falls back to user for null", () => {
-    expect(loginMethodToAmr(null)).toEqual(["user"]);
-  });
+  it.each([null, undefined, "none"] as const)(
+    "claims no method for %j",
+    (method) => {
+      expect(loginMethodToAmr(method)).toEqual([]);
+    }
+  );
 
-  it("falls back to user for undefined", () => {
-    expect(loginMethodToAmr(undefined)).toEqual(["user"]);
-  });
-
-  it("falls back to user for unknown method", () => {
-    expect(loginMethodToAmr("none")).toEqual(["user"]);
+  it("never claims a hardware-secured key", () => {
+    for (const method of [
+      "passkey",
+      "opaque",
+      "magic-link",
+      "oauth",
+      "eip712",
+      "credential",
+      "none",
+    ] as const) {
+      for (const userVerified of [true, false]) {
+        expect(loginMethodToAmr(method, { userVerified })).not.toContain("hwk");
+      }
+    }
   });
 });

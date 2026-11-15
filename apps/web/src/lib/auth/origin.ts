@@ -2,6 +2,19 @@ import { env } from "@/env";
 
 const FALLBACK_APP_ORIGIN = "http://localhost:3000";
 
+/**
+ * The WebAuthn relying party ID: the app's host, which is what the passkey
+ * plugin derives from `baseURL` when no `rpID` is configured, so existing
+ * passkeys keep working.
+ */
+export const PASSKEY_RP_ID = (() => {
+  try {
+    return new URL(env.NEXT_PUBLIC_APP_URL).hostname;
+  } catch {
+    return "localhost";
+  }
+})();
+
 export function getAppOrigin(): string {
   try {
     return new URL(env.NEXT_PUBLIC_APP_URL).origin;

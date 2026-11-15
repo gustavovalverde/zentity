@@ -6,7 +6,9 @@ const TIER_RE = /tier-(\d)/;
 
 const AMR_LABELS: Record<string, string> = {
   pwd: "Password",
-  hwk: "Hardware Key",
+  otp: "One-time code",
+  mfa: "Multi-factor",
+  user: "User presence",
   swk: "Software Key",
   face: "Face",
   fpt: "Fingerprint",

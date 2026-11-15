@@ -35,6 +35,10 @@ Zentity uses Better Auth’s passkey plugin for WebAuthn registration and authen
 * It can be lost if the client doesn’t send it, the challenge cookie is cleared, the token expires, or the flow continues in a different browser/device.
 * If it’s missing, registration fails and the user must restart sign-up to obtain a fresh context.
 
+### Observed User Verification
+
+Registration and authentication accept authenticators without user verification (UV). The plugin's `authentication.afterVerification` and `registration.afterVerification` hooks store the UV flag the ceremony observed in request state, and the session's authentication context records the matching `amr`: `["pop", "user", "mfa"]` when the authenticator verified the user, and `["pop", "user"]` when it did not. Zentity never claims `hwk`, because registration uses `attestationType: "none"` and cannot tell a hardware-bound key from a synced one. `PASSKEY_RP_ID` (`apps/web/src/lib/auth/origin.ts`) is the app's host, the value the plugin derived from `baseURL` before, and is passed to `passkey({ rpID })`.
+
 ### Expected Consequences
 
 * Standardized session and WebAuthn handling, reducing security drift.
@@ -61,3 +65,7 @@ Zentity uses the published Better Auth packages without local patches. Passkey-o
 * `docs/web3-architecture.md`
 * `docs/rp-redirect-flow.md`
 * `docs/better-auth-passkey-fhe-plan.md`
+
+## Revision History
+
+* 2026-11-15: Passkey sign-in and registration record the observed UV flag through the plugin's `afterVerification` hooks, and `amr` states it (`mfa` only with UV, never `hwk`). Authenticators without UV stay accepted.

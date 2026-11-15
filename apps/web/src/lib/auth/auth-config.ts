@@ -5,7 +5,10 @@ import type { LoginMethod } from "@zentity/sdk/protocol";
 import { CIBA_GRANT_TYPE, ciba } from "@better-auth/ciba";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
-import { tryGetCurrentAuthEndpointContext } from "@better-auth/core/context";
+import {
+  defineRequestState,
+  tryGetCurrentAuthEndpointContext,
+} from "@better-auth/core/context";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import {
   createDcqlMatcher,
@@ -66,6 +69,7 @@ import {
   ACR_VALUES_SUPPORTED,
   buildNamespacedAssuranceClaim,
   computeAcr,
+  loginMethodToAmr,
 } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
@@ -170,7 +174,7 @@ import {
   joinAuthIssuerPath,
 } from "@/lib/auth/oidc/well-known";
 import { opaque } from "@/lib/auth/opaque/server";
-import { getTrustedOrigins } from "@/lib/auth/origin";
+import { getTrustedOrigins, PASSKEY_RP_ID } from "@/lib/auth/origin";
 import { canManageOAuthClients } from "@/lib/auth/rp-admin";
 import { siweAuth } from "@/lib/auth/siwe/server";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
@@ -1405,6 +1409,9 @@ function expireSessionDataCookie(ctx: HookCtx) {
   });
 }
 
+/** The user-verified flag of this request's passkey ceremony. */
+const passkeyUserVerified = defineRequestState<boolean>(() => false);
+
 async function afterPersistAuthenticationContext(ctx: HookCtx) {
   if (ctx.path?.startsWith("/sign-in/anonymous")) {
     return;
@@ -1427,6 +1434,13 @@ async function afterPersistAuthenticationContext(ctx: HookCtx) {
   await createSessionAuthenticationContext({
     userId: newSession.user.id,
     loginMethod: authMethod,
+    ...(authMethod === "passkey"
+      ? {
+          amr: loginMethodToAmr("passkey", {
+            userVerified: await passkeyUserVerified.get(),
+          }),
+        }
+      : {}),
     sourceKind: "better_auth",
     sessionId: newSession.session.id,
   });
@@ -1989,7 +2003,21 @@ export const auth = betterAuth({
       expiresIn: 300, // 5 minutes
     }),
     passkey({
+      rpID: PASSKEY_RP_ID,
       origin: getTrustedOrigins(),
+      // Authenticators without user verification are accepted; the session
+      // states what the ceremony observed.
+      authentication: {
+        afterVerification: ({ verification }) =>
+          passkeyUserVerified.set(verification.authenticationInfo.userVerified),
+      },
+      registration: {
+        afterVerification: async ({ verification }) => {
+          await passkeyUserVerified.set(
+            verification.registrationInfo?.userVerified === true
+          );
+        },
+      },
     }),
     organization({
       creatorRole: "owner",

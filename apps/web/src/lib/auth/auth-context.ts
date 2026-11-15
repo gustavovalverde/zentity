@@ -31,6 +31,8 @@ type AuthenticationReferenceType =
   | "oauth_access_token";
 
 interface CreateAuthenticationContextInput {
+  /** Observed methods, when they say more than the login method alone. */
+  amr?: string[];
   authenticatedAt: Date | number;
   loginMethod: LoginMethod;
   referenceId?: string | null;
@@ -41,6 +43,8 @@ interface CreateAuthenticationContextInput {
 }
 
 interface CreateSessionAuthenticationContextInput {
+  /** Observed methods, when they say more than the login method alone. */
+  amr?: string[];
   loginMethod: unknown;
   sessionId: string;
   sourceKind: AuthenticationSourceKind;
@@ -85,7 +89,7 @@ export async function createAuthenticationContext(
   input: CreateAuthenticationContextInput
 ): Promise<AuthenticationState> {
   const loginMethod = assertLoginMethod(input.loginMethod);
-  const amr = loginMethodToAmr(loginMethod);
+  const amr = input.amr ?? loginMethodToAmr(loginMethod);
   const authStrength = deriveAuthStrength(loginMethod);
   const authenticatedAt = assertValidTimestamp(
     new Date(input.authenticatedAt),
@@ -160,7 +164,7 @@ export function createSessionAuthenticationContext(
       );
     }
 
-    const amr = loginMethodToAmr(loginMethod);
+    const amr = input.amr ?? loginMethodToAmr(loginMethod);
     const authStrength = deriveAuthStrength(loginMethod);
     const [row] = await tx
       .insert(authenticationContexts)
