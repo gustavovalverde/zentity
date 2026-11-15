@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image
 from rapidocr import RapidOCR
+from rapidocr.utils.output import RapidOCROutput
 
 logger = logging.getLogger(__name__)
 
@@ -149,39 +150,18 @@ def _extract_text(image: np.ndarray, engine: RapidOCR) -> OCRResult:
         result = engine(image)
         processing_time_ms = int((time.time() - start_time) * 1000)
 
-        if result is None:
+        # With detection, classification, and recognition all on, RapidOCR returns a
+        # RapidOCROutput whose boxes, txts, and scores are filtered together (empty when no text).
+        if not isinstance(result, RapidOCROutput) or not result.txts:
             return _build_result([], "", processing_time_ms)
 
-        boxes = getattr(result, "boxes", None)
-        txts = getattr(result, "txts", None)
-        scores = getattr(result, "scores", None)
-
-        if hasattr(boxes, "tolist"):
-            boxes_list = boxes.tolist()
-        else:
-            boxes_list = boxes if boxes is not None else []
-        txts_list = list(txts) if txts is not None else []
-        if hasattr(scores, "tolist"):
-            scores_list = scores.tolist()
-        else:
-            scores_list = list(scores) if scores is not None else []
-
-        if not txts_list:
-            return _build_result([], "", processing_time_ms)
-
-        text_blocks: list[TextBlock] = []
-        for i, text in enumerate(txts_list):
-            bbox = boxes_list[i] if i < len(boxes_list) else []
-            confidence = scores_list[i] if i < len(scores_list) else 0.0
-            text_blocks.append(
-                TextBlock(
-                    text=text,
-                    confidence=float(confidence) if confidence is not None else 0.0,
-                    bbox=bbox if isinstance(bbox, list) else [],
-                )
+        text_blocks = [
+            TextBlock(text=text, confidence=float(score), bbox=box)
+            for box, text, score in zip(
+                result.boxes.tolist(), result.txts, result.scores, strict=True
             )
-
-        full_text = " ".join(txts_list)
+        ]
+        full_text = " ".join(result.txts)
 
         return _build_result(text_blocks, full_text, processing_time_ms)
 
