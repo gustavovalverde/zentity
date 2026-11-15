@@ -5,10 +5,13 @@ set -euo pipefail
 #
 # Usage:
 #   ./scripts/rebuild-vendor.sh [path-to-better-auth-repo]
+#   BETTER_AUTH_BRANCH=<branch> ./scripts/rebuild-vendor.sh [path-to-better-auth-repo]
 #
-# Defaults to ../../../better-auth (sibling checkout convention).
+# Defaults to ../../../better-auth (sibling checkout convention) and the
+# feat/first-party-apps-plugin branch, the only one that holds all four
+# plugins.
 # The script:
-#   1. Checks out feat/zentity-plugins-v1.8
+#   1. Checks out the fork branch
 #   2. Installs dependencies
 #   3. Builds the vendored plugins
 #   4. Packs each into a .tgz
@@ -17,9 +20,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENDOR_DIR="$SCRIPT_DIR/../vendor"
 BA_REPO="${1:-$(cd "$SCRIPT_DIR" && cd ../../../.. && pwd)/better-auth}"
-BRANCH="feat/zentity-plugins-v1.8"
+BRANCH="${BETTER_AUTH_BRANCH:-feat/first-party-apps-plugin}"
 
 PACKAGES=(
+  packages/first-party-apps
   packages/haip
   packages/oidc4vci
   packages/oidc4vp
@@ -39,6 +43,14 @@ ORIGINAL_BRANCH="$(cd "$BA_REPO" && git rev-parse --abbrev-ref HEAD)"
 cd "$BA_REPO"
 echo "==> Checking out $BRANCH..."
 git checkout "$BRANCH"
+trap 'cd "$BA_REPO" && git checkout --quiet "$ORIGINAL_BRANCH"' EXIT
+
+for pkg in "${PACKAGES[@]}"; do
+  if [ ! -f "$BA_REPO/$pkg/package.json" ]; then
+    echo "Error: $BRANCH has no $pkg. Set BETTER_AUTH_BRANCH to a branch with all of: ${PACKAGES[*]}"
+    exit 1
+  fi
+done
 
 echo "==> Installing dependencies..."
 pnpm install --frozen-lockfile
@@ -53,7 +65,7 @@ echo "==> Building packages..."
 pnpm turbo build $FILTER_ARGS
 
 TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$TMPDIR"' EXIT
+trap 'rm -rf "$TMPDIR"; cd "$BA_REPO" && git checkout --quiet "$ORIGINAL_BRANCH"' EXIT
 
 echo "==> Packing..."
 for pkg in "${PACKAGES[@]}"; do
@@ -64,10 +76,6 @@ done
 echo "==> Replacing vendor tgz files..."
 rm -f "$VENDOR_DIR"/better-auth-*.tgz
 cp "$TMPDIR"/*.tgz "$VENDOR_DIR/"
-
-echo "==> Restoring original branch ($ORIGINAL_BRANCH)..."
-cd "$BA_REPO"
-git checkout "$ORIGINAL_BRANCH"
 
 echo ""
 echo "Done. Updated vendor files:"

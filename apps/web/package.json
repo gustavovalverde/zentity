@@ -60,6 +60,7 @@
     "@better-auth/cimd": "1.8.0-beta.10",
     "@better-auth/core": "1.8.0-beta.10",
     "@better-auth/drizzle-adapter": "1.8.0-beta.10",
+    "@better-auth/first-party-apps": "file:vendor/better-auth-first-party-apps-1.8.0-beta.10.tgz",
     "@better-auth/haip": "file:vendor/better-auth-haip-1.8.0-beta.10.tgz",
     "@better-auth/oauth-provider": "1.8.0-beta.10",
     "@better-auth/oidc4vci": "file:vendor/better-auth-oidc4vci-1.8.0-beta.10.tgz",
