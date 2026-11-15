@@ -217,7 +217,7 @@ async function isSubjectResourceServer(input: {
 /**
  * Validates an access-token subject with the provider (signature or stored
  * record, expiry, revocation, client, and bound session), plus Zentity's
- * `typ` and revoked-`jti` checks for JWTs.
+ * `typ` and `jti` checks for JWTs.
  */
 async function verifyAccessTokenSubject(
   provider: OAuthExtensionGrantHandlerInput["provider"],
@@ -228,7 +228,7 @@ async function verifyAccessTokenSubject(
   if (payload.active !== true) {
     throw new Error("Subject token is not active");
   }
-  if (!(await isZentityAccessToken(token, payload))) {
+  if (!isZentityAccessToken(token, payload)) {
     throw new Error("Subject token is not a Zentity access token");
   }
   return payload;

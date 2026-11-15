@@ -1,5 +1,7 @@
 "use client";
 
+import { bytesToHex } from "viem";
+
 const HEX_STRING_PATTERN = /^0x[0-9a-fA-F]+$/;
 
 export type EncryptedHandle = `0x${string}`;
@@ -19,9 +21,7 @@ export function normalizeEncryptedHandle(
   }
 
   if (encryptedHandle instanceof Uint8Array) {
-    return `0x${Array.from(encryptedHandle)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("")}` as EncryptedHandle;
+    return bytesToHex(encryptedHandle) as EncryptedHandle;
   }
 
   return;

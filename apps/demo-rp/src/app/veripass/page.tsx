@@ -7,7 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DcrRegistration } from "@/components/shared/dcr-registration";
 import { Button } from "@/components/ui/button";
 import { useOAuthFlow } from "@/hooks/use-oauth-flow";
@@ -16,11 +16,11 @@ import {
   clearCredential,
   createPresentation,
   decodeClaims,
+  getDisclosedClaims,
   getPresentableKeys,
   loadCredential,
   type StoredCredential,
   saveCredential,
-  verifyPresentation,
 } from "@/lib/wallet";
 import type { VerifierScenario } from "@/scenarios/veripass/verifier-scenario";
 import { veripassWalletScenario } from "@/scenarios/veripass/wallet";
@@ -81,30 +81,6 @@ export default function VeriPassPage() {
     phase: "empty",
   });
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(false);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  const setWalletStateIfMounted = useCallback(
-    (nextWalletState: WalletState) => {
-      if (isMountedRef.current) {
-        setWalletState(nextWalletState);
-      }
-    },
-    []
-  );
-
-  const setErrorIfMounted = useCallback((nextError: string | null) => {
-    if (isMountedRef.current) {
-      setError(nextError);
-    }
-  }, []);
 
   // Load stored credential on mount
   useEffect(() => {
@@ -115,76 +91,71 @@ export default function VeriPassPage() {
     let cancelled = false;
     const stored = loadCredential();
     if (!stored) {
-      setWalletStateIfMounted({ phase: "empty" });
+      setWalletState({ phase: "empty" });
       return;
     }
 
     loadStoredWalletState(stored)
       .then((nextWalletState) => {
         if (!cancelled) {
-          setWalletStateIfMounted(nextWalletState);
+          setWalletState(nextWalletState);
         }
       })
       .catch(() => {
         if (!cancelled) {
           clearCredential();
-          setWalletStateIfMounted({ phase: "empty" });
+          setWalletState({ phase: "empty" });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, setWalletStateIfMounted]);
+  }, [isAuthenticated]);
 
-  const handleImportOffer = useCallback(
-    async (offerUri: string) => {
-      setWalletStateIfMounted({ phase: "issuing" });
-      setErrorIfMounted(null);
-      try {
-        const res = await fetch("/api/veripass/issue", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ offerUri }),
-        });
-        if (!res.ok) {
-          const data = (await res.json()) as { error: string };
-          throw new Error(data.error || `Issuance failed: ${res.status}`);
-        }
-        const { credential, issuer, holderPublicJwk, holderPrivateJwk } =
-          (await res.json()) as {
-            credential: string;
-            issuer: string;
-            holderPublicJwk: JsonWebKey;
-            holderPrivateJwk: JsonWebKey;
-          };
-
-        const stored: StoredCredential = {
-          credential,
-          issuer,
-          holderPublicJwk,
-          holderPrivateJwk,
-          createdAt: Date.now(),
-        };
-        saveCredential(stored);
-
-        const claims = await decodeClaims(credential);
-        const presentableKeys = await getPresentableKeys(credential);
-        setWalletStateIfMounted({
-          phase: "wallet",
-          stored,
-          claims,
-          presentableKeys,
-        });
-      } catch (e) {
-        setErrorIfMounted(
-          e instanceof Error ? e.message : "Credential import failed"
-        );
-        setWalletStateIfMounted({ phase: "empty" });
+  const handleImportOffer = useCallback(async (offerUri: string) => {
+    setWalletState({ phase: "issuing" });
+    setError(null);
+    try {
+      const res = await fetch("/api/veripass/issue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerUri }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error: string };
+        throw new Error(data.error || `Issuance failed: ${res.status}`);
       }
-    },
-    [setErrorIfMounted, setWalletStateIfMounted]
-  );
+      const { credential, issuer, holderPublicJwk, holderPrivateJwk } =
+        (await res.json()) as {
+          credential: string;
+          issuer: string;
+          holderPublicJwk: JsonWebKey;
+          holderPrivateJwk: JsonWebKey;
+        };
+
+      const stored: StoredCredential = {
+        credential,
+        issuer,
+        holderPublicJwk,
+        holderPrivateJwk,
+        createdAt: Date.now(),
+      };
+      saveCredential(stored);
+
+      const claims = await decodeClaims(credential);
+      const presentableKeys = await getPresentableKeys(credential);
+      setWalletState({
+        phase: "wallet",
+        stored,
+        claims,
+        presentableKeys,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Credential import failed");
+      setWalletState({ phase: "empty" });
+    }
+  }, []);
 
   const handleSelectVerifier = useCallback(
     (verifier: VerifierScenario) => {
@@ -195,7 +166,7 @@ export default function VeriPassPage() {
       const selectedClaims = new Set(
         verifier.requiredClaims.filter((k) => presentableKeys.includes(k))
       );
-      setWalletStateIfMounted({
+      setWalletState({
         phase: "presenting",
         stored,
         claims,
@@ -204,7 +175,7 @@ export default function VeriPassPage() {
         selectedClaims,
       });
     },
-    [setWalletStateIfMounted, walletState]
+    [walletState]
   );
 
   const handleToggleClaim = useCallback(
@@ -221,62 +192,42 @@ export default function VeriPassPage() {
       } else {
         next.add(key);
       }
-      setWalletStateIfMounted({ ...walletState, selectedClaims: next });
+      setWalletState({ ...walletState, selectedClaims: next });
     },
-    [setWalletStateIfMounted, walletState]
+    [walletState]
   );
 
   const handlePresent = useCallback(async () => {
     if (walletState.phase !== "presenting") {
       return;
     }
-    setErrorIfMounted(null);
+    setError(null);
     try {
       const presentation = await createPresentation(
         walletState.stored.credential,
         [...walletState.selectedClaims]
       );
-      const disclosedClaims = await verifyPresentation(presentation);
-      const metaKeys = new Set([
-        "iss",
-        "sub",
-        "aud",
-        "exp",
-        "iat",
-        "nbf",
-        "jti",
-        "cnf",
-        "vct",
-        "status",
-        "_sd_alg",
-      ]);
-      const filtered: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(disclosedClaims)) {
-        if (!metaKeys.has(k)) {
-          filtered[k] = v;
-        }
-      }
-      setWalletStateIfMounted({
+      setWalletState({
         phase: "result",
         verifier: walletState.verifier,
-        disclosedClaims: filtered,
+        disclosedClaims: await getDisclosedClaims(presentation),
         totalClaims: walletState.presentableKeys.length,
       });
     } catch (e) {
-      setErrorIfMounted(e instanceof Error ? e.message : "Presentation failed");
+      setError(e instanceof Error ? e.message : "Presentation failed");
     }
-  }, [setErrorIfMounted, setWalletStateIfMounted, walletState]);
+  }, [walletState]);
 
   const handleBackToWallet = useCallback(() => {
     const stored = loadCredential();
     if (!stored) {
-      setWalletStateIfMounted({ phase: "empty" });
+      setWalletState({ phase: "empty" });
       return;
     }
     loadStoredWalletState(stored)
-      .then((nextWalletState) => setWalletStateIfMounted(nextWalletState))
-      .catch(() => setWalletStateIfMounted({ phase: "empty" }));
-  }, [setWalletStateIfMounted]);
+      .then((nextWalletState) => setWalletState(nextWalletState))
+      .catch(() => setWalletState({ phase: "empty" }));
+  }, []);
 
   const handleFullSignOut = useCallback(async () => {
     clearCredential();

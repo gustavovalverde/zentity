@@ -17,7 +17,7 @@ vi.mock("@/env", () => ({
   },
 }));
 
-import { HttpError, TimeoutError } from "@/lib/http/fetch";
+import { HttpError } from "@/lib/http/fetch";
 
 import { OcrServiceUnavailableError, processDocumentOcr } from "../ocr-client";
 
@@ -85,7 +85,7 @@ describe("ocr-client request logging", () => {
 
   it.each([
     ["an unreachable service", new TypeError("fetch failed")],
-    ["a timeout", new TimeoutError("http://ocr.local/process", 40_000)],
+    ["a timeout", new DOMException("The operation timed out.", "TimeoutError")],
     ["a 503 response", httpError(503)],
   ])("reports %s as service unavailable", async (_label, error) => {
     fetchJson.mockRejectedValue(error);

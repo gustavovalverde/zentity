@@ -4,7 +4,7 @@ import { createServer, type Server } from "node:http";
  * Stand-in for the Mailpit send API. The E2E web server posts transactional
  * email here (MAILPIT_SEND_API_URL), and specs read the links out of it.
  */
-export const MAIL_CAPTURE_PORT = 4998;
+const MAIL_CAPTURE_PORT = 4998;
 
 interface CapturedMail {
   subject: string;

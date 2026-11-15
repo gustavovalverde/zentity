@@ -44,48 +44,20 @@ interface CreateSessionAuthenticationContextInput {
   userId: string;
 }
 
-function toTimestampMs(
-  value: Date | number | string,
-  fieldName: string
-): number {
-  let timestampMs: number;
-
-  if (value instanceof Date) {
-    timestampMs = value.getTime();
-  } else if (typeof value === "number") {
-    timestampMs = value;
-  } else if (typeof value === "string") {
-    const trimmed = value.trim();
-    const numericTimestamp = Number(trimmed);
-    timestampMs = Number.isFinite(numericTimestamp)
-      ? numericTimestamp
-      : Date.parse(trimmed);
-  } else {
-    throw new Error(`Unsupported ${fieldName} type: ${typeof value}`);
-  }
-
-  if (!Number.isFinite(timestampMs)) {
+function assertValidTimestamp(value: Date, fieldName: string): Date {
+  if (Number.isNaN(value.getTime())) {
     throw new Error(`Invalid ${fieldName}: expected a finite timestamp`);
   }
-
-  return timestampMs;
+  return value;
 }
 
 function toAuthenticationState(
-  row: Pick<
-    AuthenticationContext,
-    | "amr"
-    | "authenticatedAt"
-    | "authStrength"
-    | "id"
-    | "loginMethod"
-    | "sourceKind"
-  >
+  row: AuthenticationContext
 ): AuthenticationState {
   return {
     id: row.id,
     loginMethod: row.loginMethod as LoginMethod,
-    amr: JSON.parse(row.amr) as string[],
+    amr: row.amr,
     authStrength: row.authStrength === "strong" ? "strong" : "basic",
     authenticatedAt: Math.floor(row.authenticatedAt.getTime() / 1000),
     sourceKind: row.sourceKind as AuthenticationSourceKind,
@@ -112,6 +84,10 @@ export async function createAuthenticationContext(
   const loginMethod = assertLoginMethod(input.loginMethod);
   const amr = loginMethodToAmr(loginMethod);
   const authStrength = deriveAuthStrength(loginMethod);
+  const authenticatedAt = assertValidTimestamp(
+    new Date(input.authenticatedAt),
+    "authenticatedAt"
+  );
 
   const [row] = await db
     .insert(authenticationContexts)
@@ -119,35 +95,20 @@ export async function createAuthenticationContext(
       userId: input.userId,
       sourceKind: input.sourceKind,
       loginMethod,
-      amr: JSON.stringify(amr),
+      amr,
       authStrength,
-      authenticatedAt: new Date(
-        toTimestampMs(input.authenticatedAt, "authenticatedAt")
-      ),
+      authenticatedAt,
       sourceSessionId: input.sourceSessionId ?? null,
       referenceType: input.referenceType ?? null,
       referenceId: input.referenceId ?? null,
     } satisfies NewAuthenticationContext)
-    .returning({
-      id: authenticationContexts.id,
-      loginMethod: authenticationContexts.loginMethod,
-      amr: authenticationContexts.amr,
-      authStrength: authenticationContexts.authStrength,
-      authenticatedAt: authenticationContexts.authenticatedAt,
-      sourceKind: authenticationContexts.sourceKind,
-    });
+    .returning();
 
   if (!row) {
     throw new Error("Failed to create authentication context");
   }
 
-  return toAuthenticationState({
-    ...row,
-    authenticatedAt:
-      row.authenticatedAt instanceof Date
-        ? row.authenticatedAt
-        : new Date(row.authenticatedAt),
-  });
+  return toAuthenticationState(row);
 }
 
 export function createSessionAuthenticationContext(
@@ -181,27 +142,14 @@ export function createSessionAuthenticationContext(
 
     if (session.authContextId) {
       const existing = await tx
-        .select({
-          id: authenticationContexts.id,
-          loginMethod: authenticationContexts.loginMethod,
-          amr: authenticationContexts.amr,
-          authStrength: authenticationContexts.authStrength,
-          authenticatedAt: authenticationContexts.authenticatedAt,
-          sourceKind: authenticationContexts.sourceKind,
-        })
+        .select()
         .from(authenticationContexts)
         .where(eq(authenticationContexts.id, session.authContextId))
         .limit(1)
         .get();
 
       if (existing) {
-        return toAuthenticationState({
-          ...existing,
-          authenticatedAt:
-            existing.authenticatedAt instanceof Date
-              ? existing.authenticatedAt
-              : new Date(existing.authenticatedAt),
-        });
+        return toAuthenticationState(existing);
       }
 
       throw new Error(
@@ -217,26 +165,17 @@ export function createSessionAuthenticationContext(
         userId: input.userId,
         sourceKind: input.sourceKind,
         loginMethod,
-        amr: JSON.stringify(amr),
+        amr,
         authStrength,
-        authenticatedAt: new Date(
-          toTimestampMs(
-            session.createdAt,
-            `session ${input.sessionId} createdAt`
-          )
+        authenticatedAt: assertValidTimestamp(
+          session.createdAt,
+          `session ${input.sessionId} createdAt`
         ),
         sourceSessionId: input.sessionId,
         referenceType: "session",
         referenceId: input.sessionId,
       } satisfies NewAuthenticationContext)
-      .returning({
-        id: authenticationContexts.id,
-        loginMethod: authenticationContexts.loginMethod,
-        amr: authenticationContexts.amr,
-        authStrength: authenticationContexts.authStrength,
-        authenticatedAt: authenticationContexts.authenticatedAt,
-        sourceKind: authenticationContexts.sourceKind,
-      });
+      .returning();
 
     if (!row) {
       throw new Error("Failed to create authentication context");
@@ -248,13 +187,7 @@ export function createSessionAuthenticationContext(
       .where(eq(sessions.id, input.sessionId))
       .run();
 
-    return toAuthenticationState({
-      ...row,
-      authenticatedAt:
-        row.authenticatedAt instanceof Date
-          ? row.authenticatedAt
-          : new Date(row.authenticatedAt),
-    });
+    return toAuthenticationState(row);
   });
 }
 
@@ -293,21 +226,14 @@ export function replaceSessionAuthenticationContext(
         userId: input.userId,
         sourceKind: input.sourceKind,
         loginMethod,
-        amr: JSON.stringify(amr),
+        amr,
         authStrength,
         authenticatedAt: new Date(),
         sourceSessionId: input.sessionId,
         referenceType: "session",
         referenceId: input.sessionId,
       } satisfies NewAuthenticationContext)
-      .returning({
-        id: authenticationContexts.id,
-        loginMethod: authenticationContexts.loginMethod,
-        amr: authenticationContexts.amr,
-        authStrength: authenticationContexts.authStrength,
-        authenticatedAt: authenticationContexts.authenticatedAt,
-        sourceKind: authenticationContexts.sourceKind,
-      });
+      .returning();
 
     if (!row) {
       throw new Error("Failed to replace authentication context");
@@ -319,13 +245,7 @@ export function replaceSessionAuthenticationContext(
       .where(eq(sessions.id, input.sessionId))
       .run();
 
-    return toAuthenticationState({
-      ...row,
-      authenticatedAt:
-        row.authenticatedAt instanceof Date
-          ? row.authenticatedAt
-          : new Date(row.authenticatedAt),
-    });
+    return toAuthenticationState(row);
   });
 }
 
@@ -337,14 +257,7 @@ async function getAuthenticationStateById(
   }
 
   const row = await db
-    .select({
-      id: authenticationContexts.id,
-      loginMethod: authenticationContexts.loginMethod,
-      amr: authenticationContexts.amr,
-      authStrength: authenticationContexts.authStrength,
-      authenticatedAt: authenticationContexts.authenticatedAt,
-      sourceKind: authenticationContexts.sourceKind,
-    })
+    .select()
     .from(authenticationContexts)
     .where(eq(authenticationContexts.id, authContextId))
     .limit(1)
@@ -354,13 +267,7 @@ async function getAuthenticationStateById(
     return null;
   }
 
-  return toAuthenticationState({
-    ...row,
-    authenticatedAt:
-      row.authenticatedAt instanceof Date
-        ? row.authenticatedAt
-        : new Date(row.authenticatedAt),
-  });
+  return toAuthenticationState(row);
 }
 
 export async function getAuthenticationStateBySessionId(

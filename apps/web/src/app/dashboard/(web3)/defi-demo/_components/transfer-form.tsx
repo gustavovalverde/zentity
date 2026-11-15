@@ -19,14 +19,12 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
 
-/** Matches a valid Ethereum address (0x followed by 40 hex characters) */
-const ETH_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
 const TOKEN_DECIMALS = 18;
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { parseUnits } from "viem";
+import { isAddress, parseUnits } from "viem";
 import { useBalance, useChainId } from "wagmi";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -97,7 +95,7 @@ export function TransferForm({
 
   // Check recipient when address changes
   useEffect(() => {
-    if (recipient && ETH_ADDRESS_PATTERN.test(recipient)) {
+    if (recipient && isAddress(recipient)) {
       setRecipientChecked(false);
       checkRecipient()
         .then(() => setRecipientChecked(true))
@@ -105,7 +103,7 @@ export function TransferForm({
     }
   }, [recipient, checkRecipient]);
 
-  const isValidAddress = ETH_ADDRESS_PATTERN.test(recipient);
+  const isValidAddress = isAddress(recipient);
   const recipientNotAttested =
     recipientChecked && isValidAddress && !recipientStatus?.isAttested;
   const balanceValue = balance?.value;
@@ -120,7 +118,7 @@ export function TransferForm({
     if (!trimmed) {
       return "Recipient address is required";
     }
-    if (!ETH_ADDRESS_PATTERN.test(trimmed)) {
+    if (!isAddress(trimmed)) {
       return "Enter a valid wallet address";
     }
     return null;

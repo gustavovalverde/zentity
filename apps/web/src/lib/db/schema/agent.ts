@@ -85,8 +85,12 @@ export const agentSessions = sqliteTable(
 export const agentCapabilities = sqliteTable("agent_capability", {
   name: text("name").primaryKey(),
   description: text("description").notNull(),
-  inputSchema: text("input_schema"),
-  outputSchema: text("output_schema"),
+  inputSchema: text("input_schema", { mode: "json" }).$type<
+    Record<string, unknown>
+  >(),
+  outputSchema: text("output_schema", { mode: "json" }).$type<
+    Record<string, unknown>
+  >(),
   approvalStrength: text("approval_strength").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -260,7 +264,9 @@ export const capabilityUsageLedger = sqliteTable(
     amount: real("amount"),
     currency: text("currency"),
     unit: text("unit"),
-    metadata: text("metadata"),
+    metadata: text("metadata", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
     executedAt: integer("executed_at", { mode: "timestamp_ms" })
       .notNull()
       .default(sql`(unixepoch() * 1000)`),

@@ -3,25 +3,36 @@
 //! Provides endpoints for encrypting data and performing age verification
 //! using Fully Homomorphic Encryption (TFHE-rs).
 
-use axum::{
-    body::Body,
-    http::{HeaderMap, Request},
-};
+use axum::{body::Body, http::Request};
 use fhe_service::{app::build_router, crypto, settings::Settings, telemetry};
-use opentelemetry::{global, propagation::Extractor};
+use opentelemetry::global;
+use opentelemetry_http::HeaderExtractor;
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-struct HeaderExtractor<'a>(&'a HeaderMap);
+/// Resolves on Ctrl+C or, on Unix, SIGTERM (the Docker and Railway stop signal).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
 
-impl Extractor for HeaderExtractor<'_> {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.0.get(key).and_then(|value| value.to_str().ok())
-    }
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
 
-    fn keys(&self) -> Vec<&str> {
-        self.0.keys().map(|key| key.as_str()).collect()
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
     }
+    tracing::info!("Shutdown signal received; draining in-flight requests");
 }
 
 #[tokio::main]
@@ -65,7 +76,8 @@ async fn main() {
             "http.request",
             method = %req.method(),
             path = %req.uri().path(),
-            request_id = %request_id
+            request_id = %request_id,
+            request_bytes = tracing::field::Empty
         );
         let _ = span.set_parent(parent_context);
         span
@@ -77,6 +89,9 @@ async fn main() {
     tracing::info!("FHE Service listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
     telemetry::shutdown_tracing();
 }

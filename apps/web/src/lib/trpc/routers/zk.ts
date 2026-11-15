@@ -142,24 +142,19 @@ async function checkServiceUncached(
   url: string,
   timeoutMs = 5000
 ): Promise<unknown> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const response = await fetch(`${url}/health`, {
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "X-Zentity-Healthcheck": "true",
       },
     });
-    clearTimeout(timeoutId);
 
     if (!response.ok) {
       return null;
     }
     return await response.json();
   } catch {
-    clearTimeout(timeoutId);
     return null;
   }
 }
@@ -1227,9 +1222,7 @@ const createWalletPresentationInput = z.object({
     }),
     issuerPublicKey: z.string(),
   }),
-  revealClaims: z.array(
-    z.enum(WALLET_CREDENTIAL_CLAIM_ORDER as unknown as [string, ...string[]])
-  ),
+  revealClaims: z.array(z.enum(WALLET_CREDENTIAL_CLAIM_ORDER)),
   verifierNonce: z.string().min(1).max(256),
 });
 
@@ -1319,7 +1312,7 @@ export const bbsRouter = router({
 
       const presentation = await createPresentation(
         credential,
-        input.revealClaims as (typeof WALLET_CREDENTIAL_CLAIM_ORDER)[number][],
+        input.revealClaims,
         input.verifierNonce
       );
 

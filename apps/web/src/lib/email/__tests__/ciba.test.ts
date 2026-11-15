@@ -1,16 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mockSendResendMessage = vi.fn().mockResolvedValue(true);
-const mockSendMailpitMessage = vi.fn().mockResolvedValue(true);
-const mockIsResendConfigured = vi.fn();
-const mockIsMailpitConfigured = vi.fn();
+const mockSendEmail = vi.fn();
 const mockDbGet = vi.fn();
 
 vi.mock("@/lib/email/transport", () => ({
-  isResendConfigured: () => mockIsResendConfigured(),
-  sendResendMessage: (...args: unknown[]) => mockSendResendMessage(...args),
-  isMailpitConfigured: () => mockIsMailpitConfigured(),
-  sendMailpitMessage: (...args: unknown[]) => mockSendMailpitMessage(...args),
+  sendEmail: (...args: unknown[]) => mockSendEmail(...args),
 }));
 
 vi.mock("@/lib/db/connection", () => ({
@@ -48,8 +42,7 @@ describe("ciba-mailer", () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.stubEnv("NODE_ENV", "development");
-    mockIsResendConfigured.mockReturnValue(false);
-    mockIsMailpitConfigured.mockReturnValue(true);
+    mockSendEmail.mockResolvedValue("sent");
   });
 
   it("sends email when user has a verified email", async () => {
@@ -61,8 +54,8 @@ describe("ciba-mailer", () => {
     const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
-    expect(mockSendMailpitMessage).toHaveBeenCalledOnce();
-    const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+    const payload = mockSendEmail.mock.calls[0]?.[0];
     expect(payload.to).toEqual(["alice@example.com"]);
   });
 
@@ -75,8 +68,7 @@ describe("ciba-mailer", () => {
     const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
-    expect(mockSendMailpitMessage).not.toHaveBeenCalled();
-    expect(mockSendResendMessage).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it("does NOT send email when user has no email", async () => {
@@ -85,8 +77,7 @@ describe("ciba-mailer", () => {
     const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
-    expect(mockSendMailpitMessage).not.toHaveBeenCalled();
-    expect(mockSendResendMessage).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   it("does NOT send email when user is not found", async () => {
@@ -95,8 +86,7 @@ describe("ciba-mailer", () => {
     const { sendCibaNotification } = await import("../ciba");
     await sendCibaNotification(DEFAULT_PARAMS);
 
-    expect(mockSendMailpitMessage).not.toHaveBeenCalled();
-    expect(mockSendResendMessage).not.toHaveBeenCalled();
+    expect(mockSendEmail).not.toHaveBeenCalled();
   });
 
   describe("HTML escaping", () => {
@@ -114,7 +104,7 @@ describe("ciba-mailer", () => {
         clientName: '<a href="https://evil.example">An application</a>',
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.html).not.toContain('<a href="https://evil.example">');
       expect(payload.html).toContain(
         "&lt;a href=&quot;https://evil.example&quot;&gt;"
@@ -128,7 +118,7 @@ describe("ciba-mailer", () => {
         bindingMessage: '"><script>alert(1)</script>',
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.html).not.toContain('"><script>');
       expect(payload.html).toContain(
         "&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;"
@@ -149,7 +139,7 @@ describe("ciba-mailer", () => {
         ],
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.html).not.toContain("<img src=x onerror=alert(1)>");
       expect(payload.html).not.toContain(
         '<a href="https://evil.example">merchant</a>'
@@ -164,7 +154,7 @@ describe("ciba-mailer", () => {
         approvalUrl: "javascript:alert(document.cookie)",
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.html).not.toContain("javascript:alert");
       expect(payload.html).toContain('href="#"');
     });
@@ -186,7 +176,7 @@ describe("ciba-mailer", () => {
         bindingMessage: "Confirm code: 4F2A",
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.subject).toBe("Aether AI is requesting your approval");
       expect(payload.text).toContain('Message: "Confirm code: 4F2A"');
     });
@@ -209,7 +199,7 @@ describe("ciba-mailer", () => {
         ],
       });
 
-      const payload = mockSendMailpitMessage.mock.calls[0]?.[0];
+      const payload = mockSendEmail.mock.calls[0]?.[0];
       expect(payload.text).toContain(
         "Payment: 0.00000001 ZEC to zcash:test:utest1qq0"
       );

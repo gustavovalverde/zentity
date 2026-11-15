@@ -7,17 +7,9 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use serde::Deserialize;
 use tower::ServiceExt;
 
 use crate::{common, http};
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EncryptDobDaysResponse {
-    #[serde(with = "serde_bytes")]
-    ciphertext: Vec<u8>,
-}
 
 // ============================================================================
 // Error Response Format Tests
@@ -26,25 +18,9 @@ struct EncryptDobDaysResponse {
 /// KeyNotFound error returns 404 with correct format.
 #[tokio::test]
 async fn error_format_key_not_found() {
-    let app = http::test_app();
     let key_id = common::get_registered_key_id();
 
-    let encrypt_body = http::fixtures::encrypt_dob_days_request(45000, &key_id);
-    let encrypt_response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/encrypt-dob-days")
-                .header("content-type", "application/msgpack")
-                .body(Body::from(http::msgpack_body(&encrypt_body)))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    let encrypt_body: EncryptDobDaysResponse = http::parse_msgpack_body(encrypt_response).await;
-    let ciphertext = encrypt_body.ciphertext;
+    let ciphertext = http::encrypt_attribute("dobDays", 45000, &key_id).await;
 
     let verify_body = http::fixtures::with_invalid_key_id(&ciphertext);
 
@@ -145,7 +121,7 @@ async fn msgpack_parse_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-dob-days")
+                .uri("/encrypt-batch")
                 .header("content-type", "application/msgpack")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -165,7 +141,7 @@ async fn empty_body_error() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-dob-days")
+                .uri("/encrypt-batch")
                 .header("content-type", "application/msgpack")
                 .body(Body::empty())
                 .unwrap(),
@@ -189,7 +165,7 @@ async fn missing_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-dob-days")
+                .uri("/encrypt-batch")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
         )
@@ -208,7 +184,7 @@ async fn wrong_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-dob-days")
+                .uri("/encrypt-batch")
                 .header("content-type", "text/plain")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -228,7 +204,7 @@ async fn html_content_type() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/encrypt-dob-days")
+                .uri("/encrypt-batch")
                 .header("content-type", "text/html")
                 .body(Body::from("not-msgpack"))
                 .unwrap(),
@@ -344,7 +320,7 @@ async fn error_response_structure() {
             }),
         ),
         (
-            "/encrypt-dob-days",
+            "/encrypt-batch",
             serde_json::json!({
                 "dobDays": 45000,
                 "keyId": "00000000-0000-0000-0000-000000000000"

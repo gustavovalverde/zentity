@@ -27,24 +27,16 @@ import {
   getPendingUnlock,
   setPendingUnlock,
 } from "@/lib/privacy/credentials/cache";
-import { deriveKekFromVaultKey } from "@/lib/privacy/credentials/derivation";
 import {
-  unwrapDekWithOpaqueExport,
-  wrapDekWithOpaqueExport,
-} from "@/lib/privacy/credentials/opaque";
-import {
-  unwrapDekWithPrf,
-  wrapDekWithPrf,
-} from "@/lib/privacy/credentials/passkey";
-import {
-  unwrapDekWithRecoveryKey,
-  wrapDekWithRecoveryKey,
-} from "@/lib/privacy/credentials/recovery-key";
+  deriveKekFromOpaqueExport,
+  deriveKekFromPrf,
+  deriveKekFromRecoveryKey,
+  deriveKekFromVaultKey,
+  deriveKekFromWalletSignature,
+} from "@/lib/privacy/credentials/derivation";
 import {
   getWalletCredentialId,
-  unwrapDekWithWalletSignature,
   WALLET_CREDENTIAL_PREFIX,
-  wrapDekWithWalletSignature,
 } from "@/lib/privacy/credentials/wallet";
 import { unwrapDek, wrapDek } from "@/lib/privacy/credentials/wrap";
 import {
@@ -218,35 +210,24 @@ function vaultKekSource(material: VaultCredentialMaterial): UnlockingKekSource {
   return material.type === "passkey" ? "prf" : material.type;
 }
 
-function wrapForCredential(
+function deriveCredentialKek(
   material: VaultCredentialMaterial,
-  target: { secretId: string; userId: string; dek: Uint8Array }
-): Promise<string> {
+  userId: string
+): Promise<CryptoKey> {
   switch (material.type) {
     case "passkey":
-      return wrapDekWithPrf({
-        ...target,
-        credentialId: material.credentialId,
-        prfOutput: material.prfOutput,
-        prfSalt: material.prfSalt,
-      });
+      return deriveKekFromPrf(
+        material.prfOutput,
+        userId,
+        undefined,
+        material.prfSalt
+      );
     case "opaque":
-      return wrapDekWithOpaqueExport({
-        ...target,
-        exportKey: material.exportKey,
-      });
+      return deriveKekFromOpaqueExport(material.exportKey, userId);
     case "wallet":
-      return wrapDekWithWalletSignature({
-        ...target,
-        address: material.address,
-        chainId: material.chainId,
-        signatureBytes: material.signatureBytes,
-      });
+      return deriveKekFromWalletSignature(material.signatureBytes, userId);
     case "recovery_key":
-      return wrapDekWithRecoveryKey({
-        ...target,
-        recoveryKey: material.recoveryKey,
-      });
+      return deriveKekFromRecoveryKey(material.recoveryKey, userId);
     default: {
       const _exhaustive: never = material;
       throw new Error("Unknown credential type");
@@ -254,40 +235,26 @@ function wrapForCredential(
   }
 }
 
-function unwrapForCredential(
+async function wrapForCredential(
+  material: VaultCredentialMaterial,
+  target: { secretId: string; userId: string; dek: Uint8Array }
+): Promise<string> {
+  return wrapDek({
+    ...target,
+    credentialId: vaultCredentialId(material),
+    kek: await deriveCredentialKek(material, target.userId),
+  });
+}
+
+async function unwrapForCredential(
   material: VaultCredentialMaterial,
   source: { secretId: string; userId: string; wrappedDek: string }
 ): Promise<Uint8Array> {
-  switch (material.type) {
-    case "passkey":
-      return unwrapDekWithPrf({
-        ...source,
-        credentialId: material.credentialId,
-        prfOutput: material.prfOutput,
-        prfSalt: material.prfSalt,
-      });
-    case "opaque":
-      return unwrapDekWithOpaqueExport({
-        ...source,
-        exportKey: material.exportKey,
-      });
-    case "wallet":
-      return unwrapDekWithWalletSignature({
-        ...source,
-        address: material.address,
-        chainId: material.chainId,
-        signatureBytes: material.signatureBytes,
-      });
-    case "recovery_key":
-      return unwrapDekWithRecoveryKey({
-        ...source,
-        recoveryKey: material.recoveryKey,
-      });
-    default: {
-      const _exhaustive: never = material;
-      throw new Error("Unknown credential type");
-    }
-  }
+  return unwrapDek({
+    ...source,
+    credentialId: vaultCredentialId(material),
+    kek: await deriveCredentialKek(material, source.userId),
+  });
 }
 
 const MISMATCH_MESSAGES: Record<VaultCredentialMaterial["type"], string> = {

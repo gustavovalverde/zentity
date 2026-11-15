@@ -85,13 +85,10 @@ describe("auth context", () => {
     });
   });
 
-  it("turns auth failures into tool errors", async () => {
+  it("rejects with the auth failure so McpServer reports a tool error", async () => {
     setProcessAuthResolver(() => Promise.reject(new Error("login required")));
     const tool = withToolAuth(server, async () => Promise.resolve("never"));
 
-    await expect(tool({}, ctx)).resolves.toEqual({
-      isError: true,
-      content: [{ type: "text", text: "login required" }],
-    });
+    await expect(tool({}, ctx)).rejects.toThrow("login required");
   });
 });

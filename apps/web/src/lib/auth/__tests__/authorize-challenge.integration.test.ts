@@ -14,7 +14,12 @@ import { auth } from "@/lib/auth/auth-config";
 import { createAuthenticationContext } from "@/lib/auth/auth-context";
 import { fpaLimiter } from "@/lib/auth/oidc/authorize-challenge";
 import { db } from "@/lib/db/connection";
-import { accounts, sessions, walletAddresses } from "@/lib/db/schema/auth";
+import {
+  accounts,
+  sessions,
+  verifications,
+  walletAddresses,
+} from "@/lib/db/schema/auth";
 import { identityBundles } from "@/lib/db/schema/identity";
 import {
   authChallengeSessions,
@@ -809,6 +814,60 @@ describe("Authorization Challenge Endpoint", () => {
       expect(status).toBe(200);
       expect(json.access_token).toBeTypeOf("string");
       expect(json.auth_session).toBe(authSession);
+    });
+
+    async function startWalletChallenge() {
+      await createUserWithWallet(TEST_WALLET.address);
+      const round1 = await callChallenge({
+        client_id: TEST_CLIENT_ID,
+        response_type: "code",
+        scope: "openid",
+        code_challenge: CODE_CHALLENGE,
+        code_challenge_method: "S256",
+        identifier: TEST_WALLET.address,
+      });
+      const typedData = round1.json.typed_data as Eip712TypedData;
+      const signature = await TEST_WALLET.signTypedData({
+        domain: typedData.domain,
+        types: typedData.types,
+        primaryType: typedData.primaryType as "WalletAuth",
+        message: typedData.message as { address: `0x${string}`; nonce: string },
+      });
+      return {
+        authSession: round1.json.auth_session as string,
+        nonce: round1.json.nonce as string,
+        signature,
+      };
+    }
+
+    it("rejects a correctly signed challenge whose nonce has expired", async () => {
+      const { authSession, nonce, signature } = await startWalletChallenge();
+      await db
+        .update(verifications)
+        .set({ expiresAt: new Date(Date.now() - 1000) })
+        .where(eq(verifications.identifier, `eip712:${nonce}`))
+        .run();
+
+      const round2 = await callChallenge({
+        auth_session: authSession,
+        eip712_signature: signature,
+      });
+      expect(round2.status).toBe(401);
+      expect(round2.json.error).toBe("access_denied");
+    });
+
+    it("issues one code when the same signed challenge is finished concurrently", async () => {
+      const { authSession, signature } = await startWalletChallenge();
+
+      const results = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          callChallenge({
+            auth_session: authSession,
+            eip712_signature: signature,
+          })
+        )
+      );
+      expect(results.filter((r) => r.status === 200)).toHaveLength(1);
     });
 
     it("rejects invalid EIP-712 signature", async () => {

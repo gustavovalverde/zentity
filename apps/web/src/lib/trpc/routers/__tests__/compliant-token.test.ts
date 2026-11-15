@@ -32,7 +32,6 @@ async function createCaller(session: Session | null) {
 
   return compliantTokenRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
-    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
     flowId: null,

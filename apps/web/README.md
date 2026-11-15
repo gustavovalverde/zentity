@@ -136,7 +136,7 @@ generated from `e2e/wallet-setup/hardhat.setup.ts`.
 First-time setup (or after changing wallet setup):
 
 ```bash
-pnpm run test:e2e:setup
+pnpm exec synpress e2e/wallet-setup
 ```
 
 Run the full E2E suite:

@@ -4,19 +4,15 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
 
-interface ValidatedCibaRequest {
-  authorizationDetails: string | null | undefined;
-  clientId: string;
-  scope: string;
-}
+type CibaRequestRow = Pick<
+  typeof cibaRequests.$inferSelect,
+  "authorizationDetails" | "clientId" | "scope" | "status" | "userId"
+>;
 
-interface CibaRequestRow {
-  authorizationDetails: string | null | undefined;
-  clientId: string;
-  scope: string;
-  status: string;
-  userId: string;
-}
+type ValidatedCibaRequest = Pick<
+  CibaRequestRow,
+  "authorizationDetails" | "clientId" | "scope"
+>;
 
 function fetchCibaRequest(
   authReqId: string

@@ -108,7 +108,7 @@ const CAPABILITIES = [
     name: "purchase",
     description: "Authorize and execute purchases on behalf of the user",
     approvalStrength: "biometric",
-    inputSchema: JSON.stringify({
+    inputSchema: {
       type: "object",
       properties: {
         item: { type: "string" },
@@ -122,8 +122,8 @@ const CAPABILITIES = [
         },
       },
       required: ["item", "merchant", "amount"],
-    }),
-    outputSchema: JSON.stringify({
+    },
+    outputSchema: {
       type: "object",
       properties: {
         approved: { type: "boolean" },
@@ -135,14 +135,14 @@ const CAPABILITIES = [
           },
         },
       },
-    }),
+    },
   },
   {
     name: "my_profile",
     description:
       "Read vault-gated profile fields such as full name, address, or birthdate",
     approvalStrength: "session",
-    inputSchema: JSON.stringify({
+    inputSchema: {
       type: "object",
       properties: {
         fields: {
@@ -154,8 +154,8 @@ const CAPABILITIES = [
         },
       },
       required: ["fields"],
-    }),
-    outputSchema: JSON.stringify({
+    },
+    outputSchema: {
       type: "object",
       properties: {
         status: { type: "string" },
@@ -163,20 +163,20 @@ const CAPABILITIES = [
         requestedFields: { type: "array", items: { type: "string" } },
         returnedFields: { type: "array", items: { type: "string" } },
       },
-    }),
+    },
   },
   {
     name: "check_compliance",
     description: "Check the user's on-chain attestation and compliance status",
     approvalStrength: "none",
     inputSchema: null,
-    outputSchema: JSON.stringify({
+    outputSchema: {
       type: "object",
       properties: {
         attested: { type: "boolean" },
         networks: { type: "array", items: { type: "string" } },
       },
-    }),
+    },
   },
   {
     name: "my_proofs",
@@ -184,7 +184,7 @@ const CAPABILITIES = [
       "Read verification-derived facts such as age status, verification checks, and verification method",
     approvalStrength: "none",
     inputSchema: null,
-    outputSchema: JSON.stringify({
+    outputSchema: {
       type: "object",
       properties: {
         verificationMethod: { type: ["string", "null"] },
@@ -202,7 +202,7 @@ const CAPABILITIES = [
           },
         },
       },
-    }),
+    },
   },
   {
     name: "whoami",
@@ -210,7 +210,7 @@ const CAPABILITIES = [
       "Read a safe account summary such as verification tier, login method, completed checks, and standard account email when the granted scopes include email",
     approvalStrength: "none",
     inputSchema: null,
-    outputSchema: JSON.stringify({
+    outputSchema: {
       type: "object",
       properties: {
         email: { type: ["string", "null"] },
@@ -230,7 +230,7 @@ const CAPABILITIES = [
         },
         profileToolHint: { const: "my_profile", type: "string" },
       },
-    }),
+    },
   },
   {
     name: PAYMENT_AUTHORIZATION_CAPABILITY,
@@ -242,7 +242,7 @@ const CAPABILITIES = [
     // "biometric" would dead-end evaluation before any boundary check, making
     // the capability unreachable.
     approvalStrength: "none",
-    inputSchema: JSON.stringify({
+    inputSchema: {
       type: "object",
       properties: {
         chain: {
@@ -303,8 +303,8 @@ const CAPABILITIES = [
         "intent_hash",
         "expires_at",
       ],
-    }),
-    outputSchema: JSON.stringify({
+    },
+    outputSchema: {
       type: "object",
       properties: {
         approved: { type: "boolean" },
@@ -316,7 +316,7 @@ const CAPABILITIES = [
         expires_at: { type: "string", format: "date-time" },
         jti: { type: "string" },
       },
-    }),
+    },
   },
 ] as const;
 

@@ -1,3 +1,4 @@
+import { AGENT_SESSION_REVOKE_SCOPE } from "@zentity/sdk/agent-contract";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -5,7 +6,6 @@ import {
   AgentManagementError,
   revokeSessionForActor,
 } from "@/lib/agents/management";
-import { AGENT_SESSION_REVOKE_SCOPE } from "@/lib/agents/session";
 import { withNextDpopNonce } from "@/lib/auth/oidc/resource-principal";
 import {
   requireBootstrapAccessToken,

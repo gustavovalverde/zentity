@@ -7,8 +7,8 @@
  * - Enables day-precise age calculations
  */
 
-/** Matches exactly 4 digits (for year validation) */
-const FOUR_DIGIT_YEAR_PATTERN = /^\d{4}$/;
+/** Zero-padded ISO 8601 calendar date, the only format OCR and ZKPassport hand over. */
+const ISO_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Base date for `dobDays` calculations (UTC, day 0). */
 const DOB_DAYS_BASE_DATE = new Date("1900-01-01T00:00:00Z");
@@ -18,78 +18,19 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DAYS_PER_YEAR = 365.25;
 
 /**
- * Parse a DOB string into a Date object.
- *
- * Supported formats:
- * - YYYY-MM-DD (ISO 8601)
- * - DD/MM/YYYY
- * - YYYY/MM/DD
- * - DD-MM-YYYY
+ * Parse a zero-padded `YYYY-MM-DD` string into a UTC Date.
+ * Rejects every other format and calendar-impossible dates (e.g. 2023-02-30).
  */
-function parseDob(dateOfBirth: string | undefined): Date | undefined {
-  if (!dateOfBirth) {
+function parseIsoDate(value: string | null | undefined): Date | undefined {
+  const match = value ? ISO_DATE_PATTERN.exec(value) : null;
+  if (!match) {
     return;
   }
-
-  const value = dateOfBirth.trim();
-  if (!value) {
-    return;
-  }
-
-  let separator: string | undefined;
-  if (value.includes("/")) {
-    separator = "/";
-  } else if (value.includes("-")) {
-    separator = "-";
-  }
-
-  if (!separator) {
-    return;
-  }
-
-  const parts = value.split(separator).map((part) => part.trim());
-  if (parts.length !== 3) {
-    return;
-  }
-
-  const first = parts[0];
-  const middle = parts[1];
-  const last = parts[2];
-  if (first === undefined || middle === undefined || last === undefined) {
-    return;
-  }
-
-  let year: number;
-  let month: number;
-  let day: number;
-
-  if (FOUR_DIGIT_YEAR_PATTERN.test(first)) {
-    // YYYY-MM-DD or YYYY/MM/DD
-    year = Number.parseInt(first, 10);
-    month = Number.parseInt(middle, 10);
-    day = Number.parseInt(last, 10);
-  } else if (FOUR_DIGIT_YEAR_PATTERN.test(last)) {
-    // DD/MM/YYYY or DD-MM-YYYY
-    day = Number.parseInt(first, 10);
-    month = Number.parseInt(middle, 10);
-    year = Number.parseInt(last, 10);
-  } else {
-    return;
-  }
-
-  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-    return;
-  }
-
-  // Validate ranges
-  if (month < 1 || month > 12 || day < 1 || day > 31) {
-    return;
-  }
-
-  // Create UTC date to avoid timezone issues
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
-
-  // Verify the date is valid (e.g., Feb 30 would roll over)
+  // Date.UTC rolls impossible dates over (Feb 30 becomes Mar 2).
   if (
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month - 1 ||
@@ -97,8 +38,23 @@ function parseDob(dateOfBirth: string | undefined): Date | undefined {
   ) {
     return;
   }
-
   return date;
+}
+
+/**
+ * Convert a `YYYY-MM-DD` string to a `YYYYMMDD` integer (the doc_validity
+ * circuit's date encoding), or null when it is not a valid calendar date.
+ */
+export function isoDateToInt(value: string | null | undefined): number | null {
+  const date = parseIsoDate(value);
+  if (!date) {
+    return null;
+  }
+  return (
+    date.getUTCFullYear() * 10_000 +
+    (date.getUTCMonth() + 1) * 100 +
+    date.getUTCDate()
+  );
 }
 
 /**
@@ -110,7 +66,7 @@ function parseDob(dateOfBirth: string | undefined): Date | undefined {
 export function dobToDaysSince1900(
   dateOfBirth: string | undefined
 ): number | undefined {
-  const date = parseDob(dateOfBirth);
+  const date = parseIsoDate(dateOfBirth);
   if (!date) {
     return;
   }
@@ -156,7 +112,7 @@ export function minAgeYearsToDays(minAgeYears: number): number {
 export function parseBirthYearFromDob(
   dateOfBirth: string | undefined
 ): number | undefined {
-  const date = parseDob(dateOfBirth);
+  const date = parseIsoDate(dateOfBirth);
   if (!date) {
     return;
   }

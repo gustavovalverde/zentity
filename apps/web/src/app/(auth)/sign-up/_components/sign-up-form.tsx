@@ -20,7 +20,6 @@ import { checkPrfSupport } from "@/lib/auth/passkey/prf";
 import { redirectTo } from "@/lib/auth/redirect";
 import {
   ensureAuthSession,
-  invalidateSessionDataCache,
   prepareForNewSession,
 } from "@/lib/auth/session-cleanup";
 import { trpc } from "@/lib/trpc/client";
@@ -90,10 +89,9 @@ export function SignUpForm() {
     });
 
     // The tRPC mutation updated user data (email, name, isAnonymous) in the DB
-    // via Drizzle, bypassing better-auth's session cookie cache. Clear the stale
-    // session_data cookie and have Better Auth reissue its HTTP-only cache from
-    // the database before the user leaves this page.
-    invalidateSessionDataCache();
+    // via Drizzle, bypassing better-auth's session cookie cache. Have Better
+    // Auth reissue its HTTP-only cache from the database before the user leaves
+    // this page.
     await authClient.getSession({ query: { disableCookieCache: true } });
 
     return { email: resolvedEmail || null };

@@ -61,31 +61,18 @@ export async function POST(request: Request) {
   const { endpoint, keys } = parsed.data;
   const userId = authResult.session.user.id;
 
-  const existing = await db
-    .select({ id: pushSubscriptions.id })
-    .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.endpoint, endpoint))
-    .limit(1)
-    .get();
-
-  if (existing) {
-    await db
-      .update(pushSubscriptions)
-      .set({
+  await db
+    .insert(pushSubscriptions)
+    .values({ userId, endpoint, p256dh: keys.p256dh, auth: keys.auth })
+    .onConflictDoUpdate({
+      target: pushSubscriptions.endpoint,
+      set: {
         userId,
         p256dh: keys.p256dh,
         auth: keys.auth,
         createdAt: new Date(),
-      })
-      .where(eq(pushSubscriptions.endpoint, endpoint));
-  } else {
-    await db.insert(pushSubscriptions).values({
-      userId,
-      endpoint,
-      p256dh: keys.p256dh,
-      auth: keys.auth,
+      },
     });
-  }
 
   await enforceSubscriptionLimit(userId);
 

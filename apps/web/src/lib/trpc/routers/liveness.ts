@@ -13,7 +13,6 @@
  */
 import "server-only";
 
-import { TRPCError } from "@trpc/server";
 import z from "zod";
 
 import {
@@ -23,17 +22,13 @@ import {
 import { createRateLimiter } from "@/lib/http/rate-limit";
 import { cropFaceRegion } from "@/lib/identity/document/image-processing";
 import {
-  getEmbeddingVector,
-  getLargestFace,
-} from "@/lib/identity/liveness/human/metrics";
-import {
   detectFromBase64,
   getHumanServer,
 } from "@/lib/identity/liveness/human/server";
 import { hashSelfie } from "@/lib/identity/liveness/session";
 import { FACE_MATCH_MIN_CONFIDENCE } from "@/lib/identity/liveness/thresholds";
 
-import { protectedProcedure, router } from "../server";
+import { rateLimitedProcedure, router } from "../server";
 
 const faceMatchSchema = z.object({
   idImage: z.string().min(1),
@@ -45,13 +40,7 @@ const faceMatchSchema = z.object({
 
 const livenessLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 
-const rateLimitedProcedure = protectedProcedure.use(({ ctx, next }) => {
-  const { limited } = livenessLimiter.check(ctx.userId);
-  if (limited) {
-    throw new TRPCError({ code: "TOO_MANY_REQUESTS" });
-  }
-  return next({ ctx });
-});
+const livenessProcedure = rateLimitedProcedure(livenessLimiter);
 
 export const livenessRouter = router({
   /**
@@ -59,7 +48,7 @@ export const livenessRouter = router({
    * When draftId is provided, results are written directly to the database.
    * This is the secure path - server validates and writes, not client.
    */
-  matchFace: rateLimitedProcedure
+  matchFace: livenessProcedure
     .input(faceMatchSchema)
     .mutation(async ({ ctx, input }) => {
       const startTime = Date.now();
@@ -119,23 +108,17 @@ export const livenessRouter = router({
       const human = await getHumanServer();
 
       const idResultInitial = await detectFromBase64(input.idImage);
-      const idFaceInitial = getLargestFace(idResultInitial);
+      const idFaceInitial = idResultInitial.face[0];
 
       let idResult = idResultInitial;
       let croppedFaceDataUrl: string | null = null;
 
-      if (idFaceInitial?.box) {
+      if (idFaceInitial) {
         try {
-          const box = Array.isArray(idFaceInitial.box)
-            ? {
-                x: idFaceInitial.box[0],
-                y: idFaceInitial.box[1],
-                width: idFaceInitial.box[2],
-                height: idFaceInitial.box[3],
-              }
-            : idFaceInitial.box;
-
-          croppedFaceDataUrl = await cropFaceRegion(input.idImage, box);
+          croppedFaceDataUrl = await cropFaceRegion(
+            input.idImage,
+            idFaceInitial.box
+          );
           idResult = await detectFromBase64(croppedFaceDataUrl);
         } catch {
           /* Crop failed, fallback to initial detection result */
@@ -144,8 +127,8 @@ export const livenessRouter = router({
 
       const selfieResult = await detectFromBase64(input.selfieImage);
 
-      const idFace = getLargestFace(idResult);
-      const selfieFace = getLargestFace(selfieResult);
+      const idFace = idResult.face[0];
+      const selfieFace = selfieResult.face[0];
 
       if (!(idFace && selfieFace)) {
         return {
@@ -162,8 +145,8 @@ export const livenessRouter = router({
         };
       }
 
-      const idEmb = getEmbeddingVector(idFace);
-      const selfieEmb = getEmbeddingVector(selfieFace);
+      const idEmb = idFace.embedding;
+      const selfieEmb = selfieFace.embedding;
 
       if (!(idEmb && selfieEmb)) {
         return {

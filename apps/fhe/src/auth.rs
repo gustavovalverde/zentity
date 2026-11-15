@@ -8,29 +8,20 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use constant_time_eq::constant_time_eq;
 use serde_json::json;
-
-const PUBLIC_PATHS: [&str; 2] = ["/health", "/build-info"];
-
-fn is_public_path(path: &str) -> bool {
-    PUBLIC_PATHS.contains(&path)
-}
 
 pub async fn internal_auth(
     State(token): State<Option<String>>,
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    if is_public_path(req.uri().path()) {
-        return next.run(req).await;
-    }
-
     if let Some(expected) = token.as_ref().filter(|value| !value.is_empty()) {
         let provided = req
             .headers()
             .get("x-zentity-internal-token")
-            .and_then(|value| value.to_str().ok());
-        if provided != Some(expected.as_str()) {
+            .map(|value| value.as_bytes());
+        if !provided.is_some_and(|provided| constant_time_eq(provided, expected.as_bytes())) {
             tracing::warn!("Unauthorized request to {}", req.uri().path());
             return (
                 StatusCode::UNAUTHORIZED,

@@ -158,6 +158,8 @@ sequenceDiagram
 
 **DPoP binding**: The DPoP key thumbprint (`jkt`) is bound to the `auth_session` at creation and enforced on all subsequent rounds. Key mismatch returns `invalid_session`. The issued authorization code carries the same thumbprint as `dpop_jkt`, so the token endpoint redeems it only with a DPoP proof from that key and returns `invalid_dpop_proof` otherwise.
 
+**EIP-712 nonce**: The nonce in `typed_data` is single-use and expires 15 minutes after it is issued. A signature over an expired or already redeemed nonce returns 401 `access_denied`, and concurrent finish rounds for one nonce yield at most one authorization code.
+
 **Step-up re-authentication**: When a CIBA token exchange fails due to `acr_values` mismatch, first-party clients receive HTTP 403 with `{ error: "insufficient_authorization", auth_session }` instead of 400 `interaction_required`. The client re-enters the challenge endpoint with the `auth_session` to re-authenticate at a higher assurance level, then exchanges the resulting code for upgraded tokens.
 
 **Rate limiting**: 10 requests/minute per IP. Exceeded returns 429.
@@ -309,7 +311,7 @@ A resource endpoint also requires the proof key to match the token's `cnf.jkt` a
 - A failed DPoP proof or binding gets a 401 with `DPoP error="...", error_description="...", algs="ES256"` (RFC 9449 §7.1).
 - A token without a required scope gets a 403 with `Bearer error="insufficient_scope", scope="..."` naming the scopes to request (RFC 6750 §3.1).
 
-Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, and a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`. UserInfo also refuses a revoked JWT access token and a consumed identity release, and answers those by the rules above.
+Endpoints served by the OAuth provider, such as the token endpoint and UserInfo, send the provider's own challenges unchanged. For example, a failed client authentication at the token endpoint answers `Basic`, a UserInfo request without a token gets `Bearer, DPoP algs="ES256"`, and a revoked token at UserInfo gets `Bearer error="invalid_token"` or `DPoP error="invalid_token"`. UserInfo also refuses a consumed identity release, and answers it by the rules above.
 
 #### Server-provided nonces
 
@@ -363,6 +365,12 @@ The `ath` claim is only included when presenting the access token at a resource 
 | Token type | `"DPoP"` | n/a |
 
 Access tokens are opaque by design; they prevent `sub` leakage for pairwise clients and keep DPoP binding server-side.
+
+### Token revocation
+
+`POST /api/auth/oauth2/revoke` (RFC 7009) revokes a refresh token or an access token, opaque or JWT, for the client it was issued to. Revoking a refresh token also revokes the access tokens of its grant. A revoked token reads as inactive at introspection, and UserInfo, token exchange, and Zentity's protected resources refuse it. An unknown or expired token answers 200 without effect. A token issued to another client answers 200 to a public client and `invalid_request` to a confidential one.
+
+A revoked JWT access token still verifies against the JWKS, so a resource server that verifies JWTs itself must learn of the revocation another way. The MCP HTTP server is one: it verifies caller tokens against the JWKS and does not poll the feed below, so it refuses a revoked token only when a tool exchanges that token with Zentity. Zentity keeps every JWT `jti` revoked at this endpoint, and the wallet runtime polls them at `GET /api/auth/oauth2/revoked?since=<unix-ms>`, authenticating with `Authorization: Bearer <INTERNAL_SERVICE_TOKEN>`. The response lists revocations oldest first, with a `next_since` cursor and a `truncated` flag. It does not list JWT access tokens revoked through their refresh token's grant.
 
 ### JWT signing algorithms
 

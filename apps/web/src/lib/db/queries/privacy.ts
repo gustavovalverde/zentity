@@ -2,6 +2,8 @@ import type {
   CredentialBindingCommitmentRecord,
   EncryptedSecretRecord,
   NewEncryptedAttribute,
+  NewProofArtifact,
+  NewProofSession,
   ProofSessionRecord,
   SecretWrapperRecord,
   SignedClaimRecord,
@@ -9,12 +11,13 @@ import type {
 
 import crypto from "node:crypto";
 
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { getCiphertextHmacKey } from "@/lib/privacy/primitives/derived-keys";
 import { encodeAad } from "@/lib/privacy/primitives/symmetric";
 
-import { db } from "../connection";
+import { type DbExecutor, db } from "../connection";
+import { isoTimestampNow } from "../schema/auth";
 import {
   credentialBindingCommitments,
   encryptedAttributes,
@@ -24,53 +27,6 @@ import {
   secretWrappers,
   signedClaims,
 } from "../schema/privacy";
-
-type PrivacyExecutor = Pick<typeof db, "insert" | "select" | "update">;
-
-interface ProofArtifactInsert {
-  generationTimeMs?: number | null | undefined;
-  id: string;
-  metadata?: string | null | undefined;
-  nonce?: string | null | undefined;
-  policyVersion?: string | null | undefined;
-  proofHash: string;
-  proofPayload?: string | null | undefined;
-  proofSessionId?: string | null | undefined;
-  proofSystem: string;
-  proofType: string;
-  publicInputs?: string | null | undefined;
-  userId: string;
-  verificationId?: string | null | undefined;
-  verified?: boolean | undefined;
-}
-
-interface ProofSessionInsert {
-  audience: string;
-  createdAt: number;
-  expiresAt: number;
-  id: string;
-  msgSender: string;
-  policyVersion: string;
-  userId: string;
-  verificationId: string;
-}
-
-type EncryptedSecret = Omit<EncryptedSecretRecord, "metadata"> & {
-  metadata: Record<string, unknown> | null;
-};
-
-function parseSecretMetadata(
-  raw: string | null
-): Record<string, unknown> | null {
-  if (!raw) {
-    return null;
-  }
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
 
 function computeCiphertextHash(
   ciphertext: Buffer,
@@ -114,7 +70,7 @@ function ensureCiphertextIntegrity(params: {
 export async function getEncryptedSecretByUserAndType(
   userId: string,
   secretType: string
-): Promise<EncryptedSecret | null> {
+): Promise<EncryptedSecretRecord | null> {
   const row = await db
     .select()
     .from(encryptedSecrets)
@@ -127,20 +83,13 @@ export async function getEncryptedSecretByUserAndType(
     .limit(1)
     .get();
 
-  if (!row) {
-    return null;
-  }
-
-  return {
-    ...row,
-    metadata: parseSecretMetadata(row.metadata),
-  };
+  return row ?? null;
 }
 
 export async function getEncryptedSecretById(
   userId: string,
   secretId: string
-): Promise<EncryptedSecret | null> {
+): Promise<EncryptedSecretRecord | null> {
   const row = await db
     .select()
     .from(encryptedSecrets)
@@ -153,14 +102,7 @@ export async function getEncryptedSecretById(
     .limit(1)
     .get();
 
-  if (!row) {
-    return null;
-  }
-
-  return {
-    ...row,
-    metadata: parseSecretMetadata(row.metadata),
-  };
+  return row ?? null;
 }
 
 export async function getSecretWrappersBySecretId(
@@ -177,14 +119,11 @@ export async function updateEncryptedSecretMetadata(data: {
   userId: string;
   secretType: string;
   metadata: Record<string, unknown> | null;
-}): Promise<EncryptedSecret | null> {
-  const metadata = data.metadata ? JSON.stringify(data.metadata) : null;
-
-  await db
+}): Promise<EncryptedSecretRecord | null> {
+  const row = await db
     .update(encryptedSecrets)
     .set({
-      metadata,
-      updatedAt: sql`datetime('now')`,
+      metadata: data.metadata,
     })
     .where(
       and(
@@ -192,13 +131,13 @@ export async function updateEncryptedSecretMetadata(data: {
         eq(encryptedSecrets.secretType, data.secretType)
       )
     )
-    .run();
+    .returning()
+    .get();
 
-  return await getEncryptedSecretByUserAndType(data.userId, data.secretType);
+  return row ?? null;
 }
 
 export async function upsertSecretWrapper(data: {
-  id: string;
   secretId: string;
   userId: string;
   credentialId: string;
@@ -208,10 +147,9 @@ export async function upsertSecretWrapper(data: {
 }): Promise<SecretWrapperRecord> {
   const kekSource = data.kekSource ?? "prf";
 
-  await db
+  const row = await db
     .insert(secretWrappers)
     .values({
-      id: data.id,
       secretId: data.secretId,
       userId: data.userId,
       credentialId: data.credentialId,
@@ -225,19 +163,14 @@ export async function upsertSecretWrapper(data: {
         wrappedDek: data.wrappedDek,
         prfSalt: data.prfSalt ?? null,
         kekSource,
-        updatedAt: sql`datetime('now')`,
       },
     })
-    .run();
-
-  const wrappers = await getSecretWrappersBySecretId(data.secretId);
-  const match = wrappers.find(
-    (wrapper) => wrapper.credentialId === data.credentialId
-  );
-  if (!match) {
+    .returning()
+    .get();
+  if (!row) {
     throw new Error("Failed to upsert secret wrapper");
   }
-  return match;
+  return row;
 }
 
 /**
@@ -260,7 +193,7 @@ export async function detachVaultCredential(
       .run();
     await tx
       .update(credentialBindingCommitments)
-      .set({ revokedAt: sql`datetime('now')` })
+      .set({ revokedAt: isoTimestampNow })
       .where(
         and(
           eq(credentialBindingCommitments.userId, userId),
@@ -278,9 +211,9 @@ export async function detachVaultCredential(
  */
 export function deleteVaultSecrets(
   userId: string,
-  executor: Pick<typeof db, "delete"> = db
+  executor: Pick<typeof db, "transaction"> = db
 ): Promise<string[]> {
-  const run = async (tx: Pick<typeof db, "delete">) => {
+  return executor.transaction(async (tx) => {
     await tx
       .delete(credentialBindingCommitments)
       .where(eq(credentialBindingCommitments.userId, userId))
@@ -294,28 +227,14 @@ export function deleteVaultSecrets(
       .where(eq(encryptedSecrets.userId, userId))
       .returning({ id: encryptedSecrets.id });
     return rows.map((row) => row.id);
-  };
-  return executor === db ? db.transaction(run) : run(executor);
+  });
 }
 
 export async function createProofSession(
-  data: ProofSessionInsert,
-  executor: PrivacyExecutor = db
+  data: NewProofSession,
+  executor: DbExecutor = db
 ): Promise<void> {
-  await executor
-    .insert(proofSessions)
-    .values({
-      id: data.id,
-      userId: data.userId,
-      verificationId: data.verificationId,
-      msgSender: data.msgSender,
-      audience: data.audience,
-      policyVersion: data.policyVersion,
-      createdAt: data.createdAt,
-      expiresAt: data.expiresAt,
-      closedAt: null,
-    })
-    .run();
+  await executor.insert(proofSessions).values(data).run();
 }
 
 export async function getProofSessionById(
@@ -332,7 +251,7 @@ export async function getProofSessionById(
 
 export async function closeProofSession(
   id: string,
-  executor: PrivacyExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor
     .update(proofSessions)
@@ -368,7 +287,7 @@ export async function getProofTypesByUserVerificationAndSession(
   userId: string,
   verificationId: string,
   proofSessionId: string,
-  executor: PrivacyExecutor = db
+  executor: DbExecutor = db
 ): Promise<string[]> {
   const rows = await executor
     .select({ proofType: proofArtifacts.proofType })
@@ -475,7 +394,7 @@ export async function getProofHashesByUserVerificationAndSession(
   userId: string,
   verificationId: string,
   proofSessionId: string,
-  executor: PrivacyExecutor = db
+  executor: DbExecutor = db
 ): Promise<string[]> {
   const rows = await executor
     .select({ proofHash: proofArtifacts.proofHash })
@@ -495,28 +414,10 @@ export async function getProofHashesByUserVerificationAndSession(
 }
 
 export async function insertProofArtifact(
-  data: ProofArtifactInsert,
-  executor: PrivacyExecutor = db
+  data: NewProofArtifact,
+  executor: DbExecutor = db
 ): Promise<void> {
-  await executor
-    .insert(proofArtifacts)
-    .values({
-      id: data.id,
-      userId: data.userId,
-      verificationId: data.verificationId ?? null,
-      proofSessionId: data.proofSessionId ?? null,
-      proofSystem: data.proofSystem,
-      proofType: data.proofType,
-      proofHash: data.proofHash,
-      proofPayload: data.proofPayload ?? null,
-      publicInputs: data.publicInputs ?? null,
-      generationTimeMs: data.generationTimeMs ?? null,
-      nonce: data.nonce ?? null,
-      policyVersion: data.policyVersion ?? null,
-      metadata: data.metadata ?? null,
-      verified: data.verified ?? false,
-    })
-    .run();
+  await executor.insert(proofArtifacts).values(data).run();
 }
 
 export async function insertEncryptedAttribute(
@@ -544,7 +445,7 @@ export async function insertEncryptedAttribute(
 
 export async function insertSignedClaim(
   data: Omit<SignedClaimRecord, "createdAt">,
-  executor: PrivacyExecutor = db
+  executor: DbExecutor = db
 ): Promise<void> {
   await executor
     .insert(signedClaims)
@@ -632,7 +533,7 @@ export async function getLatestSignedClaimByUserTypeAndVerification(
   userId: string,
   claimType: string,
   verificationId: string,
-  executor: PrivacyExecutor = db
+  executor: DbExecutor = db
 ): Promise<SignedClaimRecord | null> {
   const row = await executor
     .select()

@@ -20,20 +20,16 @@ This service is called by `apps/web` and never sees plaintext user data.
 
 ## Transport
 
-All POST endpoints accept **MessagePack** payloads (`application/msgpack`), optionally **gzipped**. Responses are MessagePack as well and are gzipped when the client advertises `Accept-Encoding: gzip`.
+All POST endpoints accept **MessagePack** payloads (`application/msgpack`), optionally gzipped with `Content-Encoding: gzip`; other content encodings return `415`. Responses are MessagePack as well and are gzipped when the client accepts gzip. Compression is handled by `tower-http` layers in `src/app.rs`.
 
 ## Endpoints
 
 - `GET /health` - service health
 - `GET /build-info` - build metadata
 - `POST /keys/register` - register public + server keys
-- `POST /encrypt-birth-year-offset`
-- `POST /verify-age-offset`
-- `POST /encrypt-country-code`
-- `POST /encrypt-compliance-level`
-- `POST /encrypt-liveness`
-- `POST /verify-liveness-threshold`
-- `POST /encrypt-batch` - batch encrypt multiple attributes
+- `POST /encrypt-batch` - encrypt any non-empty subset of `dobDays`, `countryCode`, `complianceLevel`, and `livenessScore`
+- `POST /verify-age-from-dob` - check an encrypted `dobDays` against a minimum age
+- `POST /verify-liveness-threshold` - check an encrypted liveness score against a threshold
 
 ## Persistence
 
@@ -55,6 +51,6 @@ The service listens on `http://localhost:5001` by default.
 
 - `PORT` - service port (default: `5001`)
 - `FHE_KEYS_DIR` - ReDB directory for persisted keys
-- `FHE_BODY_LIMIT_MB` - max request body size (default: `96`; must exceed the largest registered server key, about 60 MB with tfhe 1.8)
+- `FHE_BODY_LIMIT_MB` - max request body size after decompression (default: `96`; must exceed the largest registered server key, about 60 MB with tfhe 1.8)
 - `INTERNAL_SERVICE_TOKEN` - enable internal auth for non-public routes
 - `INTERNAL_SERVICE_TOKEN_REQUIRED` - force auth even outside production

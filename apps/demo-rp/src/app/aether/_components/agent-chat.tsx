@@ -10,6 +10,7 @@ import {
   ShoppingCart01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { decodeJwt } from "jose";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PreparationError } from "@/app/aether/page";
 import { AssuranceBadges } from "@/components/shared/assurance-badges";
@@ -546,14 +547,7 @@ function extractApprovedPayment(
 
 function decodeJwtPayload(token: string): Record<string, unknown> | null {
   try {
-    const parts = token.split(".");
-    const payload = parts[1];
-    if (parts.length !== 3 || !payload) {
-      return null;
-    }
-    return JSON.parse(
-      atob(payload.replaceAll("-", "+").replaceAll("_", "/"))
-    ) as Record<string, unknown>;
+    return decodeJwt(token);
   } catch {
     return null;
   }

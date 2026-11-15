@@ -44,6 +44,7 @@ The service listens on `http://localhost:5004` by default.
 - `INTERNAL_SERVICE_TOKEN` - enable internal auth for non-public routes
 - `INTERNAL_SERVICE_TOKEN_REQUIRED` - force auth even outside production
 - `OCR_ALLOW_RAW_IMAGE_INGRESS` - production override for legacy raw-image endpoints (`/extract`, `/ocr`)
+- `OTEL_ENABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` - optional tracing; the Docker image sets `OTEL_SERVICE_NAME=zentity-ocr`, so set it yourself when running outside Docker
 
 ## Production raw-image ingress policy
 

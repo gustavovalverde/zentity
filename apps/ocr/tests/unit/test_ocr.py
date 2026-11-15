@@ -7,9 +7,11 @@ Uses real OCR with test images for realistic testing.
 
 import base64
 import binascii
+import io
 
 import numpy as np
 import pytest
+from PIL import Image, ImageFile
 
 from ocr_service.services.ocr_engine import (
     PASSPORT_MRZ_HINT_PATTERN,
@@ -433,3 +435,37 @@ class TestRealOcrIntegration:
 
         for block in result.text_blocks:
             assert 0 <= block.confidence <= 1
+
+
+# =============================================================================
+# Oversized image rejection
+# =============================================================================
+
+
+class TestImageSizeLimits:
+    """Image dimensions are checked from the header, before pixels are decoded."""
+
+    @staticmethod
+    def _png_base64(width: int, height: int) -> str:
+        buffer = io.BytesIO()
+        Image.new("L", (width, height), 255).save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode()
+
+    def test_oversized_image_is_rejected_before_decoding_pixels(self, monkeypatch):
+        """A 30 MP image must raise without ever decoding its pixels."""
+
+        def fail_load(self, *args, **kwargs):
+            raise AssertionError("pixels were decoded before the size check")
+
+        monkeypatch.setattr(ImageFile.ImageFile, "load", fail_load)
+
+        with pytest.raises(ValueError, match="dimensions too large"):
+            decode_base64_image(self._png_base64(6000, 5000))
+
+    def test_image_at_the_pixel_limit_is_accepted(self):
+        image = decode_base64_image(self._png_base64(5000, 5000))
+        assert image.shape == (5000, 5000, 3)
+
+    def test_extract_reports_oversized_image_as_decode_failure(self):
+        result = extract_text_from_base64(self._png_base64(6000, 5000))
+        assert result.error == "Failed to decode image"

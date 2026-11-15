@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { computeAccountAssurance, deriveAuthStrength } from "../tier";
+import {
+  computeAccountAssurance,
+  deriveAuthStrength,
+  isValidLoginMethod,
+} from "../tier";
 
 describe("computeAccountAssurance", () => {
   it("returns tier 0 for unauthenticated users", () => {
@@ -136,4 +140,20 @@ describe("deriveAuthStrength", () => {
     expect(deriveAuthStrength("oauth")).toBe("basic");
     expect(deriveAuthStrength(null)).toBe("basic");
   });
+});
+
+describe("isValidLoginMethod", () => {
+  it.each(["passkey", "opaque", "magic-link", "oauth", "eip712", "credential"])(
+    "accepts %s",
+    (method) => {
+      expect(isValidLoginMethod(method)).toBe(true);
+    }
+  );
+
+  it.each(["", "password", "PASSKEY", null, undefined, 1])(
+    "rejects %j",
+    (method) => {
+      expect(isValidLoginMethod(method)).toBe(false);
+    }
+  );
 });

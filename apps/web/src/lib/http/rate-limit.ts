@@ -24,7 +24,7 @@ interface WindowEntry {
   timestamps: number[];
 }
 
-interface RateLimiter {
+export interface RateLimiter {
   /** Check if a key is rate-limited. Records the request timestamp. */
   check(key: string): RateLimitResult;
   /** Stop the cleanup interval. */

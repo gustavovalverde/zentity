@@ -1,5 +1,7 @@
 import { ImageResponse } from "next/og";
 
+import { bytesToBase64 } from "@/lib/privacy/primitives/symmetric";
+
 export const runtime = "edge";
 
 export const alt = "Zentity - Privacy by default. Disclosure by choice.";
@@ -8,15 +10,6 @@ export const size = {
   height: 630,
 };
 export const contentType = "image/png";
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCodePoint(byte);
-  }
-  return btoa(binary);
-}
 
 export default async function Image() {
   // Fetch the actual brand logo (transparent version) from static bundle
@@ -28,7 +21,7 @@ export default async function Image() {
   ).then((res) => res.arrayBuffer());
 
   // Convert to base64 data URL for Satori renderer
-  const logoDataUrl = `data:image/png;base64,${arrayBufferToBase64(logoBuffer)}`;
+  const logoDataUrl = `data:image/png;base64,${bytesToBase64(new Uint8Array(logoBuffer))}`;
 
   return new ImageResponse(
     <div

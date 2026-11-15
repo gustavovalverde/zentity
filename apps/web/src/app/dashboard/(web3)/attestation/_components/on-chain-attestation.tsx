@@ -26,6 +26,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { serializeSignature } from "viem";
 import {
   useChainId,
   useReadContract,
@@ -66,6 +67,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { asyncHandler, reportRejection } from "@/lib/async-handler";
+import { toContractSignature } from "@/lib/blockchain/attestation/signature";
 import {
   resolveAttestationConsentRevision,
   resolveOnChainAttestationViewState,
@@ -329,10 +331,11 @@ export function OnChainAttestation({
         },
       });
 
-      const sigHex = consentSig.slice(2);
-      const consentR = `0x${sigHex.slice(0, 64)}` as `0x${string}`;
-      const consentS = `0x${sigHex.slice(64, 128)}` as `0x${string}`;
-      const consentV = Number.parseInt(sigHex.slice(128, 130), 16);
+      const {
+        r: consentR,
+        s: consentS,
+        v: consentV,
+      } = toContractSignature(consentSig);
 
       // 3. Client-side confidential encryption
       const encryptedAttributes = await encryptIdentityAttributesForAttestation(
@@ -377,7 +380,11 @@ export function OnChainAttestation({
 
       // 5. Record tx on server
       await recordSubmissionMutation.mutateAsync({
-        consentReceipt: consentSig,
+        consentReceipt: serializeSignature({
+          r: consentR,
+          s: consentS,
+          v: BigInt(consentV),
+        }),
         networkId: selectedNetwork,
         txHash,
       });

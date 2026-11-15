@@ -1,4 +1,5 @@
 import { decode } from "@msgpack/msgpack";
+import { z } from "zod";
 
 import { requireBrowserSession } from "@/lib/auth/resource-auth";
 import {
@@ -15,38 +16,33 @@ import { registerFheKey } from "@/lib/privacy/fhe/backend";
 
 export const runtime = "nodejs";
 
-interface RegisterFheKeyPayload {
-  publicKey: Uint8Array;
-  serverKey: Uint8Array;
-}
-
-function isNonEmptyBytes(value: unknown): value is Uint8Array {
-  return value instanceof Uint8Array && value.byteLength > 0;
-}
+const nonEmptyBytes = z.instanceof(Uint8Array).refine((v) => v.byteLength > 0);
+const registerFheKeySchema = z.object({
+  publicKey: nonEmptyBytes,
+  serverKey: nonEmptyBytes,
+});
 
 export async function POST(req: Request) {
-  let payload: RegisterFheKeyPayload;
+  const authResult = await requireBrowserSession(req.headers);
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+
+  let decoded: unknown;
   try {
-    payload = decode(
-      new Uint8Array(await req.arrayBuffer())
-    ) as RegisterFheKeyPayload;
+    decoded = decode(new Uint8Array(await req.arrayBuffer()));
   } catch {
     return jsonError("Invalid msgpack payload.", 400);
   }
 
-  if (
-    !(isNonEmptyBytes(payload.serverKey) && isNonEmptyBytes(payload.publicKey))
-  ) {
+  const parsed = registerFheKeySchema.safeParse(decoded);
+  if (!parsed.success) {
     return jsonError(
       "serverKey and publicKey must be non-empty byte arrays.",
       400
     );
   }
-
-  const authResult = await requireBrowserSession(req.headers);
-  if (!authResult.ok) {
-    return authResult.response;
-  }
+  const payload = parsed.data;
 
   const userId = authResult.session.user.id;
 

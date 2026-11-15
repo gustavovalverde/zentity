@@ -5,18 +5,31 @@
  * Converts technical error messages into actionable user guidance.
  */
 
+import { BaseError, UserRejectedRequestError } from "viem";
+
 /** Matches "reason: <message>" pattern in viem/wagmi error messages */
 const ERROR_REASON_PATTERN = /reason:\s*(.+)/;
 
 /**
- * Check if an error indicates user rejected the transaction.
+ * Check if a wallet request was rejected or cancelled by the user.
+ *
+ * EIP-1193 rejections (code 4001) arrive as viem's `UserRejectedRequestError`,
+ * possibly nested inside another viem error. Other wallet stacks (WalletConnect,
+ * AppKit) only signal it through the message.
  */
-function isUserRejectedError(error: unknown): boolean {
+export function isWalletRejection(error: unknown): boolean {
+  if (
+    error instanceof BaseError &&
+    error.walk((e) => e instanceof UserRejectedRequestError)
+  ) {
+    return true;
+  }
   const msg = getErrorMessage(error).toLowerCase();
   return (
     msg.includes("user rejected") ||
     msg.includes("user denied") ||
-    msg.includes("rejected the request")
+    msg.includes("rejected the request") ||
+    msg.includes("cancel")
   );
 }
 
@@ -52,7 +65,7 @@ export function getUserFriendlyError(error: unknown): string {
   const lower = msg.toLowerCase();
 
   // User wallet actions
-  if (isUserRejectedError(error)) {
+  if (isWalletRejection(error)) {
     return "Transaction was cancelled.";
   }
 
