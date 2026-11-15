@@ -8,6 +8,7 @@ dynamic validator discovery. Covers both happy paths and edge cases/pitfalls.
 from datetime import date, timedelta
 
 import pytest
+from stdnum.exceptions import ValidationError
 
 from ocr_service.services.validators import (
     # Constants for confidence calculation
@@ -18,6 +19,7 @@ from ocr_service.services.validators import (
     TEXT_LENGTH_LOW,
     TEXT_LENGTH_MEDIUM,
     TEXT_QUALITY_MAX_SCORE,
+    ValidatorInfo,
     alpha3_to_alpha2,
     calculate_confidence,
     discover_validator,
@@ -25,7 +27,6 @@ from ocr_service.services.validators import (
     validate_dob,
     validate_document_number,
     validate_expiration_date,
-    validate_national_id_detailed,
     validate_passport_number,
 )
 
@@ -266,20 +267,38 @@ class TestValidateDocumentNumber:
 
 
 # =============================================================================
-# validate_national_id_detailed Tests
+# Unmapped stdnum ValidationError subclasses
 # =============================================================================
 
 
-class TestValidateNationalIdDetailed:
-    """Tests for validate_national_id_detailed (wrapper function)."""
+class TestUnmappedValidationError:
+    """A ValidationError type outside the error map gets the generic message."""
 
-    def test_delegates_to_validate_document_number(self):
-        """validate_national_id_detailed delegates to validate_document_number."""
-        result = validate_national_id_detailed("12345678", "DOM")
-        # Should return a ValidationResult
-        assert hasattr(result, "is_valid")
-        assert hasattr(result, "error_code")
-        assert hasattr(result, "error_message")
+    def test_unknown_subclass_uses_generic_error(self, monkeypatch):
+        class OddError(ValidationError):
+            pass
+
+        class FakeModule:
+            @staticmethod
+            def validate(number):
+                raise OddError("odd")
+
+        info = ValidatorInfo(
+            module=FakeModule,
+            country_code="do",
+            module_name="cedula",
+            full_path="stdnum.do.cedula",
+            display_name="Cedula",
+        )
+        monkeypatch.setattr("ocr_service.services.validators.discover_validator", lambda _c: info)
+
+        result = validate_document_number("123", "DOM")
+
+        assert result.is_valid is False
+        assert result.error_code == "invalid_document_number"
+        assert "Dominican Republic" in result.error_message
+        assert "Cedula" in result.error_message
+        assert result.validator_used == "stdnum.do.cedula"
 
 
 # =============================================================================
