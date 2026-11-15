@@ -1,11 +1,7 @@
 import "server-only";
 
 import type { AuthContext } from "@better-auth/core";
-import type {
-  OAuthOptions,
-  OAuthTokenIssueParams,
-  Scope,
-} from "@better-auth/oauth-provider";
+import type { OAuthTokenIssueParams } from "@better-auth/oauth-provider";
 import type {
   AapAccessTokenClaims,
   AuthenticationState,
@@ -32,6 +28,7 @@ import {
   AUTHENTICATION_CONTEXT_CLAIM,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
+import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import { db } from "@/lib/db/connection";
@@ -120,10 +117,7 @@ async function resolveCibaIssuance(
  * actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
-  const provider = context.getPlugin("oauth-provider") as {
-    options: OAuthOptions<Scope[]>;
-  } | null;
-  const grants = provider?.options.extensions?.find(
+  const grants = oauthProviderOptions(context).extensions?.find(
     (extension) => extension.grants?.[CIBA_GRANT_TYPE]
   )?.grants;
   const grant = grants?.[CIBA_GRANT_TYPE];

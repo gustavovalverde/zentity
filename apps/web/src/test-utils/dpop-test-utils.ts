@@ -6,6 +6,7 @@ import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 import { vi } from "vitest";
 
 import { auth } from "@/lib/auth/auth-config";
+import { oauthProviderOptions } from "@/lib/auth/oidc/oauth-provider";
 
 const TOKEN_URL = "http://localhost:3000/api/auth/oauth2/token";
 
@@ -42,8 +43,8 @@ export function foreignDpopNonce(): Promise<string> {
 
 /** A nonce this server issued longer ago than nonces stay valid. */
 export async function staleDpopNonce(): Promise<string> {
-  const expiresIn = (await auth.$context).getPlugin("oauth-provider")?.options
-    .dpop?.nonce?.expiresIn;
+  const expiresIn = oauthProviderOptions(await auth.$context).dpop?.nonce
+    ?.expiresIn;
   if (!expiresIn) {
     throw new Error("the OAuth provider must set a DPoP nonce lifetime");
   }

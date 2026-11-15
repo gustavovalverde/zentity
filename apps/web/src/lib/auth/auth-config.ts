@@ -18,11 +18,8 @@ import {
 } from "@better-auth/haip";
 import {
   extendOAuthProvider,
-  getOAuthProviderApi,
   type OAuthClaimExtensionInput,
-  type OAuthOptions,
   oauthProvider,
-  type Scope,
 } from "@better-auth/oauth-provider";
 import { type Oidc4vciOptions, oidc4vci } from "@better-auth/oidc4vci";
 import { oidc4vp } from "@better-auth/oidc4vp";
@@ -122,7 +119,6 @@ import {
   PROOF_SCOPES,
 } from "@/lib/auth/oidc/disclosure/registry";
 import { verifiedClaimsPlugin } from "@/lib/auth/oidc/disclosure/verified-claims";
-import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { getJarmDecryptionKey } from "@/lib/auth/oidc/haip/jarm-key";
 import {
   getProtectedResourceAudiences,
@@ -134,6 +130,7 @@ import {
   signingKeyOptions,
   signJwt,
 } from "@/lib/auth/oidc/jwt-signer";
+import { oauthProviderApi } from "@/lib/auth/oidc/oauth-provider";
 import {
   authorizeRequestParameters,
   validateResourceUri,
@@ -779,18 +776,6 @@ function accessTokenJti(token: string): string | undefined {
   }
 }
 
-function oauthProviderOptions(ctx: HookCtx): OAuthOptions<Scope[]> {
-  const plugin = ctx.context.getPlugin("oauth-provider") as {
-    options: OAuthOptions<Scope[]>;
-  } | null;
-  if (!plugin) {
-    throw new APIError("INTERNAL_SERVER_ERROR", {
-      message: "oauth-provider plugin is required",
-    });
-  }
-  return plugin.options;
-}
-
 /**
  * Loads what a CIBA token poll needs from the request row before the plugin
  * consumes (deletes) it: the step-up re-check, the staged identity release,
@@ -804,12 +789,10 @@ async function beforeCibaTokenLoadRequest(ctx: HookCtx) {
   if (typeof rawAuthReqId !== "string" || !rawAuthReqId) {
     return;
   }
-  const provider = getOAuthProviderApi(
-    ctx as unknown as GenericEndpointContext,
-    oauthProviderOptions(ctx),
-    CIBA_GRANT_TYPE
+  const authReqIdHash = await oauthProviderApi(ctx).hashToken(
+    rawAuthReqId,
+    "auth_req_id"
   );
-  const authReqIdHash = await provider.hashToken(rawAuthReqId, "auth_req_id");
   const row = await db
     .select()
     .from(cibaRequests)

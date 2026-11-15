@@ -17,8 +17,8 @@ import {
   createAuthenticationContext,
   getAuthenticationStateBySessionId,
 } from "@/lib/auth/auth-context";
-import { oauthProviderApi } from "@/lib/auth/oidc/haip/dpop";
 import { isZentityHostedResource } from "@/lib/auth/oidc/haip/resource-metadata";
+import { oauthProviderApi } from "@/lib/auth/oidc/oauth-provider";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import {
   createDummyRegistrationRecord,

@@ -23,7 +23,7 @@ import { getAccountAssurance } from "@/lib/assurance/posture";
 import {
   oauthProviderApi,
   oauthProviderOptions,
-} from "@/lib/auth/oidc/haip/dpop";
+} from "@/lib/auth/oidc/oauth-provider";
 import { authorizeRequestParameters } from "@/lib/auth/oidc/oauth-request";
 import { parseStoredStringArray } from "@/lib/db/adapter-compat";
 import {
@@ -220,7 +220,7 @@ async function rejectAcr(
     buildOAuthErrorUrl(params.redirect_uri, {
       error: "interaction_required",
       errorDescription: description,
-      iss: getIssuer(ctx, oauthProviderOptions(ctx)),
+      iss: getIssuer(ctx, oauthProviderOptions(ctx.context)),
       mode: errorResponseMode(params),
       state: params.state,
     })
