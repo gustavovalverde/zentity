@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -44,43 +44,8 @@ export function VerifyTwoFactorClient({
   const [trustDevice, setTrustDevice] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
-  const [isGeneratingQr, setIsGeneratingQr] = useState(false);
 
   const fieldError = error;
-
-  useEffect(() => {
-    if (!totpUri) {
-      setQrCodeDataUrl(null);
-      setIsGeneratingQr(false);
-      return;
-    }
-
-    let active = true;
-    setIsGeneratingQr(true);
-
-    import("qrcode")
-      .then(({ toDataURL }) => toDataURL(totpUri, { width: 200, margin: 1 }))
-      .then((dataUrl) => {
-        if (active) {
-          setQrCodeDataUrl(dataUrl);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setQrCodeDataUrl(null);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsGeneratingQr(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [totpUri]);
 
   const handleVerify = async () => {
     const trimmed = code.trim();
@@ -138,34 +103,6 @@ export function VerifyTwoFactorClient({
     setError(null);
   };
 
-  const renderQrContent = () => {
-    if (!totpUri) {
-      return null;
-    }
-    if (qrCodeDataUrl) {
-      return (
-        <Image
-          alt="Authenticator QR code"
-          className="h-40 w-40"
-          height={160}
-          src={qrCodeDataUrl}
-          unoptimized
-          width={160}
-        />
-      );
-    }
-    if (isGeneratingQr) {
-      return (
-        <div className="text-muted-foreground text-xs">
-          Generating QR code...
-        </div>
-      );
-    }
-    return (
-      <div className="text-muted-foreground text-xs">QR code unavailable.</div>
-    );
-  };
-
   return (
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
@@ -183,7 +120,15 @@ export function VerifyTwoFactorClient({
       <CardContent className="space-y-6">
         {totpUri ? (
           <div className="flex flex-col items-center gap-3">
-            {renderQrContent()}
+            <QRCodeSVG
+              className="h-40 w-40"
+              level="M"
+              marginSize={1}
+              role="img"
+              size={160}
+              title="Authenticator QR code"
+              value={totpUri}
+            />
           </div>
         ) : null}
         <FieldGroup>

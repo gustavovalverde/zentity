@@ -1,9 +1,8 @@
 "use client";
 
 import { Apple, SmartphoneNfc } from "lucide-react";
-import Image from "next/image";
-import { toDataURL } from "qrcode";
-import { useEffect, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { useMemo } from "react";
 
 import {
   Dialog,
@@ -14,7 +13,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { reportRejection } from "@/lib/async-handler";
 import { useIsMobileDevice } from "@/lib/browser-hooks";
 
 const STORE_URLS = {
@@ -44,30 +42,16 @@ function usePlatform() {
 const QR_SIZE = 220;
 
 function StoreQrCode({ url }: Readonly<{ url: string }>) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    toDataURL(url, { width: QR_SIZE, margin: 2 })
-      .then(setQrDataUrl)
-      .catch(reportRejection);
-  }, [url]);
-
-  if (!qrDataUrl) {
-    return (
-      <div className="flex aspect-square w-full max-w-[220px] items-center justify-center rounded-lg bg-muted">
-        <span className="text-muted-foreground text-sm">Loading...</span>
-      </div>
-    );
-  }
-
   return (
     <a href={url} rel="noopener noreferrer" target="_blank">
-      <Image
-        alt="Scan to download ZKPassport"
+      <QRCodeSVG
         className="max-w-full rounded-lg"
-        height={QR_SIZE}
-        src={qrDataUrl}
-        width={QR_SIZE}
+        level="M"
+        marginSize={2}
+        role="img"
+        size={QR_SIZE}
+        title="Scan to download ZKPassport"
+        value={url}
       />
     </a>
   );

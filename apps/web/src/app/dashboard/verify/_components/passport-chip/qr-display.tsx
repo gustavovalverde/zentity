@@ -1,8 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { toDataURL } from "qrcode";
-import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { reportRejection } from "@/lib/async-handler";
 import { useIsMobileDevice } from "@/lib/browser-hooks";
 
 interface QrDisplayProps {
@@ -20,17 +17,7 @@ interface QrDisplayProps {
 }
 
 export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const isMobile = useIsMobileDevice();
-
-  useEffect(() => {
-    if (isMobile) {
-      return;
-    }
-    toDataURL(url, { width: 280, margin: 2 })
-      .then(setQrDataUrl)
-      .catch(reportRejection);
-  }, [url, isMobile]);
 
   if (isMobile) {
     return (
@@ -60,21 +47,15 @@ export function QrDisplay({ url }: Readonly<QrDisplayProps>) {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex justify-center">
-        {qrDataUrl ? (
-          <Image
-            alt="QR code to connect with ZKPassport app"
-            className="max-w-full rounded-lg"
-            height={280}
-            src={qrDataUrl}
-            width={280}
-          />
-        ) : (
-          <div className="flex aspect-square w-full max-w-[280px] items-center justify-center rounded-lg bg-muted">
-            <span className="text-muted-foreground text-sm">
-              Generating QR code...
-            </span>
-          </div>
-        )}
+        <QRCodeSVG
+          className="max-w-full rounded-lg"
+          level="M"
+          marginSize={2}
+          role="img"
+          size={280}
+          title="QR code to connect with ZKPassport app"
+          value={url}
+        />
       </CardContent>
     </Card>
   );

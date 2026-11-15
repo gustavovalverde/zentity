@@ -11,9 +11,8 @@ import {
   QrCode,
   Wallet,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
-import { toDataURL } from "qrcode";
+import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -77,7 +76,6 @@ export function CredentialsSection() {
   const [offerDialog, setOfferDialog] = useState<CredentialOfferState | null>(
     null
   );
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(0);
 
   const trpc = useTRPC();
@@ -85,31 +83,6 @@ export function CredentialsSection() {
   const createOfferMutation = useMutation(
     trpc.credentials.createOffer.mutationOptions()
   );
-
-  // Generate QR code when offer is created
-  useEffect(() => {
-    if (!offerDialog?.offerUri) {
-      setQrCodeDataUrl(null);
-      return;
-    }
-
-    let active = true;
-    toDataURL(offerDialog.offerUri, { width: 280, margin: 2 })
-      .then((dataUrl) => {
-        if (active) {
-          setQrCodeDataUrl(dataUrl);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setQrCodeDataUrl(null);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [offerDialog?.offerUri]);
 
   // Countdown timer for offer expiration
   useEffect(() => {
@@ -322,18 +295,17 @@ export function CredentialsSection() {
           <div className="flex flex-col items-center gap-4 py-4">
             {/* QR Code */}
             <div className="flex aspect-square w-full max-w-72 items-center justify-center rounded-lg border bg-white p-2">
-              {qrCodeDataUrl ? (
-                <Image
-                  alt="Credential Offer QR Code"
+              {offerDialog ? (
+                <QRCodeSVG
                   className="max-w-full"
-                  height={280}
-                  src={qrCodeDataUrl}
-                  unoptimized
-                  width={280}
+                  level="M"
+                  marginSize={2}
+                  role="img"
+                  size={280}
+                  title="Credential Offer QR Code"
+                  value={offerDialog.offerUri}
                 />
-              ) : (
-                <Spinner size="lg" />
-              )}
+              ) : null}
             </div>
 
             {/* Expiration countdown */}
