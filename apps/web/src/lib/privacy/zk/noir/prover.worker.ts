@@ -14,6 +14,7 @@ import { Buffer } from "buffer";
 
 globalThis.Buffer = Buffer;
 
+import type { ProofType } from "@/lib/privacy/zk/proof-types";
 import type {
   AgeProofPayload,
   BaseCommitmentPayload,
@@ -96,12 +97,7 @@ let moduleCache: ModuleCache | null = null;
 let bbApiPromise: Promise<import("@aztec/bb.js").Barretenberg> | null = null;
 let noirRuntimeInitPromise: Promise<void> | null = null;
 
-type CircuitName =
-  | "age_verification"
-  | "doc_validity"
-  | "face_match"
-  | "identity_binding"
-  | "nationality_membership";
+type CircuitName = ProofType;
 
 const noirInstanceCache = new Map<
   CircuitName,

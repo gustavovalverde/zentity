@@ -22,6 +22,18 @@ import {
   ProofType,
 } from "../proof-types";
 
+describe("ProofType", () => {
+  it("lists the five circuits in the order that session completeness checks iterate", () => {
+    expect(Object.values(ProofType)).toEqual([
+      "age_verification",
+      "doc_validity",
+      "nationality_membership",
+      "face_match",
+      "identity_binding",
+    ]);
+  });
+});
+
 const CIRCUIT_ARTIFACTS = {
   [ProofType.AGE_VERIFICATION]: ageCircuit,
   [ProofType.DOC_VALIDITY]: docValidityCircuit,

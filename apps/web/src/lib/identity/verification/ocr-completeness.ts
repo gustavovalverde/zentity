@@ -1,12 +1,7 @@
 import { POLICY_VERSION } from "@/lib/blockchain/attestation/policy";
+import { ProofType } from "@/lib/privacy/zk/proof-types";
 
-const REQUIRED_OCR_PROOF_TYPES = [
-  "age_verification",
-  "doc_validity",
-  "nationality_membership",
-  "face_match",
-  "identity_binding",
-] as const;
+const REQUIRED_OCR_PROOF_TYPES = Object.values(ProofType);
 
 interface OcrProofRow {
   createdAt: string;
