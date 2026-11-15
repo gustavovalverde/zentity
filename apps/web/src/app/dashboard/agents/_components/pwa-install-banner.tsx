@@ -6,12 +6,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { asyncHandler } from "@/lib/async-handler";
+import { isIOSDevice } from "@/lib/browser-hooks";
 
 const DISMISS_KEY = "pwa-install-banner-dismissed";
 const DISMISS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-const IOS_DEVICE_RE = /iPhone|iPod/;
-const MAC_UA_RE = /Macintosh/;
 
 type BannerState = "hidden" | "chromium" | "ios" | "loading";
 
@@ -35,21 +33,6 @@ if (typeof globalThis.addEventListener === "function") {
       listener();
     }
   });
-}
-
-function isIOSDevice(): boolean {
-  if (IOS_DEVICE_RE.test(navigator.userAgent)) {
-    return true;
-  }
-  // iPadOS 13+ spoofs a Mac user agent — detect via touch support.
-  const uaData = navigator as Navigator & {
-    userAgentData?: { platform?: string };
-  };
-  const isMac = uaData.userAgentData?.platform
-    ? uaData.userAgentData.platform === "macOS"
-    : MAC_UA_RE.test(navigator.userAgent);
-
-  return isMac && navigator.maxTouchPoints > 1;
 }
 
 function isStandalone(): boolean {
