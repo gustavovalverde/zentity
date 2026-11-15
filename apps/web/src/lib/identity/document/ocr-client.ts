@@ -7,7 +7,7 @@ import {
   recordOcrImageBytes,
   recordOcrPayloadBytes,
 } from "@/lib/observability/metrics";
-import { injectTraceHeaders, withSpan } from "@/lib/observability/telemetry";
+import { withSpan } from "@/lib/observability/telemetry";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,
@@ -143,10 +143,10 @@ export function processDocumentOcr(args: {
         run: () =>
           fetchJson<OcrProcessResult>(url, {
             method: "POST",
-            headers: injectTraceHeaders({
+            headers: {
               "Content-Type": "application/json",
               ...getInternalServiceAuthHeaders(args.requestId, args.flowId),
-            }),
+            },
             body: payload,
             timeoutMs: OCR_TIMEOUT_MS,
           }).catch((error: unknown) => {

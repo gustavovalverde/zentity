@@ -15,11 +15,7 @@ import {
   recordFheDuration,
   recordFhePayloadBytes,
 } from "@/lib/observability/metrics";
-import {
-  hashIdentifier,
-  injectTraceHeaders,
-  withSpan,
-} from "@/lib/observability/telemetry";
+import { hashIdentifier, withSpan } from "@/lib/observability/telemetry";
 
 function getInternalServiceAuthHeaders(
   requestId?: string,
@@ -203,13 +199,13 @@ interface FheRegisterKeyResult {
 function buildMsgpackHeaders(
   extra: Record<string, string> = {}
 ): Record<string, string> {
-  return injectTraceHeaders({
+  return {
     "Content-Type": "application/msgpack",
     "Content-Encoding": "gzip",
     Accept: "application/msgpack",
     "Accept-Encoding": "gzip",
     ...extra,
-  });
+  };
 }
 
 export function encryptBatchFhe(args: {

@@ -6,8 +6,6 @@ import { createHash } from "node:crypto";
 
 import {
   type Attributes,
-  context,
-  propagation,
   type Span,
   SpanStatusCode,
   trace,
@@ -125,18 +123,6 @@ export async function initTelemetry(): Promise<void> {
 
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
-}
-
-export function injectTraceHeaders(
-  headers: Record<string, string>
-): Record<string, string> {
-  const carrier: Record<string, string> = { ...headers };
-  propagation.inject(context.active(), carrier, {
-    set: (target, key, value) => {
-      target[key] = String(value);
-    },
-  });
-  return carrier;
 }
 
 /**
