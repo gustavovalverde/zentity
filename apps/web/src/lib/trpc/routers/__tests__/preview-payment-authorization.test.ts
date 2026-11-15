@@ -27,7 +27,6 @@ async function createCaller(userId: string | null) {
     flowIdSource: "none",
     req: new Request("http://localhost/api/trpc"),
     requestId: "test-request-id",
-    resHeaders: new Headers(),
     session,
   });
 }

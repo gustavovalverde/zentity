@@ -71,7 +71,6 @@ async function createIdentityCaller(session: Session | null) {
   const { identityRouter } = await import("../identity");
   return identityRouter.createCaller({
     req: new Request("http://localhost/api/trpc"),
-    resHeaders: new Headers(),
     session,
     requestId: "test-request-id",
     flowId: null,
