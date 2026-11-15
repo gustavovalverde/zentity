@@ -488,7 +488,7 @@ importers:
         version: 4.6.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@zama-fhe/sdk':
         specifier: 3.7.2
-        version: 3.7.2(@tanstack/query-core@5.107.1)(ethers@6.17.0)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))
+        version: 3.7.2(@tanstack/query-core@5.107.1)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))
       '@zentity/contracts':
         specifier: 0.7.0
         version: 0.7.0(@openzeppelin/contracts-upgradeable@5.6.1(@openzeppelin/contracts@5.6.1))(@openzeppelin/contracts@5.6.1)(ethers@6.17.0)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))
@@ -525,9 +525,6 @@ importers:
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@libsql/client@0.18.0)(@opentelemetry/api@1.10.0)(@types/pg@8.15.6)(kysely@0.29.8)
-      ethers:
-        specifier: 6.17.0
-        version: 6.17.0
       i18n-iso-countries:
         specifier: ^7.14.0
         version: 7.14.0
@@ -618,7 +615,7 @@ importers:
         version: 14.1.0
       '@synthetixio/synpress':
         specifier: 4.1.2
-        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(ethers@6.17.0)(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)(zod@4.6.7)
+        version: 4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)(zod@4.6.7)
       '@synthetixio/synpress-cache':
         specifier: 0.0.14
         version: 0.0.14(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(yaml@2.9.1)
@@ -13640,11 +13637,10 @@ snapshots:
 
   '@depay/web3-blockchains@9.8.13': {}
 
-  '@depay/web3-client@10.18.6(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(ethers@6.17.0)':
+  '@depay/web3-client@10.18.6(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)':
     dependencies:
       '@depay/solana-web3.js': 1.98.3
       '@depay/web3-blockchains': 9.8.13
-      ethers: 6.17.0
 
   '@depay/web3-mock-evm@14.19.1':
     dependencies:
@@ -14342,13 +14338,12 @@ snapshots:
     optionalDependencies:
       '@noble/hashes': 2.4.0
 
-  '@fhevm/sdk@0.13.2(ethers@6.17.0)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))':
+  '@fhevm/sdk@0.13.2(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))':
     dependencies:
       '@noble/curves': 2.0.1
       '@noble/hashes': 2.0.1
       wasm-feature-detect: 1.9.0
     optionalDependencies:
-      ethers: 6.17.0
       typescript: 7.0.2
       viem: 2.57.17(typescript@7.0.2)(zod@4.6.7)
 
@@ -18760,9 +18755,9 @@ snapshots:
     dependencies:
       tslib: 2.9.1
 
-  '@synthetixio/ethereum-wallet-mock@0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(ethers@6.17.0)(typescript@7.0.2)(zod@4.6.7)':
+  '@synthetixio/ethereum-wallet-mock@0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(typescript@7.0.2)(zod@4.6.7)':
     dependencies:
-      '@depay/web3-client': 10.18.6(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(ethers@6.17.0)
+      '@depay/web3-client': 10.18.6(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)
       '@depay/web3-mock': 14.19.1
       '@depay/web3-mock-evm': 14.19.1
       '@playwright/test': 1.65.0
@@ -18848,10 +18843,10 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(ethers@6.17.0)(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)(zod@4.6.7)':
+  '@synthetixio/synpress@4.1.2(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(typescript@7.0.2)(yaml@2.9.1)(zod@4.6.7)':
     dependencies:
       '@playwright/test': 1.65.0
-      '@synthetixio/ethereum-wallet-mock': 0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(ethers@6.17.0)(typescript@7.0.2)(zod@4.6.7)
+      '@synthetixio/ethereum-wallet-mock': 0.0.14(@depay/solana-web3.js@1.98.3)(@depay/web3-blockchains@9.8.13)(@playwright/test@1.65.0)(typescript@7.0.2)(zod@4.6.7)
       '@synthetixio/synpress-cache': 0.0.14(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(yaml@2.9.1)
       '@synthetixio/synpress-core': 0.0.14(@playwright/test@1.65.0)
       '@synthetixio/synpress-metamask': 0.0.14(@playwright/test@1.65.0)(jiti@2.7.0)(playwright-core@1.48.2)(postcss@8.5.32)(tsx@4.23.15)(yaml@2.9.1)
@@ -20282,13 +20277,12 @@ snapshots:
 
   '@yuku-toolchain/types@0.19.0': {}
 
-  '@zama-fhe/sdk@3.7.2(@tanstack/query-core@5.107.1)(ethers@6.17.0)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))':
+  '@zama-fhe/sdk@3.7.2(@tanstack/query-core@5.107.1)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))':
     dependencies:
-      '@fhevm/sdk': 0.13.2(ethers@6.17.0)(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))
+      '@fhevm/sdk': 0.13.2(typescript@7.0.2)(viem@2.57.17(typescript@7.0.2)(zod@4.6.7))
       zod: 4.6.7
     optionalDependencies:
       '@tanstack/query-core': 5.107.1
-      ethers: 6.17.0
       viem: 2.57.17(typescript@7.0.2)(zod@4.6.7)
     transitivePeerDependencies:
       - typescript
