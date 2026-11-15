@@ -2,7 +2,6 @@ import "server-only";
 
 import type { AuthContext } from "@better-auth/core";
 import type {
-  OAuthActorClaim,
   OAuthOptions,
   OAuthTokenIssueParams,
   Scope,
@@ -29,7 +28,10 @@ import { z } from "zod";
 import { resolveCibaApprovalData } from "@/lib/agents/approval-resolve";
 import { computeAcr } from "@/lib/assurance/oidc-claims";
 import { getAccountAssurance } from "@/lib/assurance/posture";
-import { getAuthenticationStateBySessionId } from "@/lib/auth/auth-context";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  getAuthenticationStateBySessionId,
+} from "@/lib/auth/auth-context";
 import { findSatisfiedAcr } from "@/lib/auth/oidc/step-up";
 import { db } from "@/lib/db/connection";
 import { cibaRequests } from "@/lib/db/schema/ciba";
@@ -160,31 +162,44 @@ export function getPendingCibaToken(): Promise<PendingCibaToken | null> {
   return pendingCibaTokenState.get();
 }
 
-// ── Token grant actor ────────────────────────────────────────────────
+// ── Token grant actor and authentication ─────────────────────────────
 
 /**
- * The RFC 8693 actor a CIBA token names: the verified agent session behind
- * the request, otherwise the client, which acts for the user.
+ * What a CIBA token carries from its approval. The RFC 8693 actor is the
+ * verified agent session behind the request, otherwise the client, which acts
+ * for the user. The approval-time authentication context goes in the token's
+ * claims, which the provider stores on an opaque token, because the token has
+ * no session to resolve it from.
  */
-async function resolveCibaActor(
+async function resolveCibaIssuance(
   params: OAuthTokenIssueParams
-): Promise<OAuthActorClaim> {
+): Promise<Pick<OAuthTokenIssueParams, "accessTokenClaims" | "act">> {
   const pending = await getPendingCibaToken();
-  const agentActor =
-    pending && pending.authReqIdHash === params.referenceId
-      ? pending.agentClaims?.act
-      : undefined;
-  return agentActor
-    ? { ...agentActor }
-    : { sub: params.client.clientId, sub_profile: "service" };
+  const approval =
+    pending && pending.authReqIdHash === params.referenceId ? pending : null;
+  const agentActor = approval?.agentClaims?.act;
+  return {
+    act: agentActor
+      ? { ...agentActor }
+      : { sub: params.client.clientId, sub_profile: "service" },
+    ...(approval?.authContextId
+      ? {
+          accessTokenClaims: {
+            ...params.accessTokenClaims,
+            [AUTHENTICATION_CONTEXT_CLAIM]: approval.authContextId,
+          },
+        }
+      : {}),
+  };
 }
 
 /**
  * Better Auth owns a token's `act` and stamps only the one a grant passes to
  * `issueTokens`, which the `@better-auth/ciba` grant does not do, so the CIBA
- * grant issues through a provider that adds it. Like any delegated issuance,
- * a CIBA token then comes without a refresh token, because a refreshed token
- * would no longer name the actor.
+ * grant issues through a provider that adds it, along with the approval's
+ * authentication context. Like any delegated issuance, a CIBA token then comes
+ * without a refresh token, because a refreshed token would no longer name the
+ * actor.
  */
 function issueCibaTokensWithActor(context: AuthContext): void {
   const provider = context.getPlugin("oauth-provider") as {
@@ -205,7 +220,7 @@ function issueCibaTokensWithActor(context: AuthContext): void {
         issueTokens: async (params) =>
           input.provider.issueTokens({
             ...params,
-            act: await resolveCibaActor(params),
+            ...(await resolveCibaIssuance(params)),
           }),
       },
     });

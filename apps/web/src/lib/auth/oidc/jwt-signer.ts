@@ -12,7 +12,7 @@ import {
 
 import { generateExportedKeyPair } from "better-auth/plugins/jwt";
 import { and, desc, eq, gt, inArray, isNull, lt, ne, or } from "drizzle-orm";
-import { createLocalJWKSet, importJWK, SignJWT } from "jose";
+import { importJWK, SignJWT } from "jose";
 
 import { env } from "@/env";
 import { db } from "@/lib/db/connection";
@@ -181,7 +181,6 @@ export async function createJwtSigningKey(key: Omit<Jwk, "id">): Promise<Jwk> {
       expiresAt: key.expiresAt ?? null,
     })
     .run();
-  invalidateLocalKeySet();
   return { ...key, id };
 }
 
@@ -261,7 +260,6 @@ export async function rotateSigningKey(
     )
     .returning({ id: jwks.id });
 
-  invalidateLocalKeySet();
   return { newKid: newKey.id, retiredKids: retired.map((row) => row.id) };
 }
 
@@ -275,7 +273,6 @@ export async function cleanupExpiredKeys(): Promise<number> {
     .delete(jwks)
     .where(lt(jwks.expiresAt, publicationCutoff()))
     .run();
-  invalidateLocalKeySet();
   return result.rowsAffected;
 }
 
@@ -307,30 +304,6 @@ export async function getPublishedJwks(): Promise<{ keys: JWK[] }> {
       ...(row.crv ? { crv: row.crv } : {}),
     })),
   };
-}
-
-const LOCAL_KEY_SET_TTL_MS = 5 * 60 * 1000;
-
-type LocalKeySet = ReturnType<typeof createLocalJWKSet>;
-
-let localKeySet: { expiresAt: number; keys: LocalKeySet } | null = null;
-
-function invalidateLocalKeySet(): void {
-  localKeySet = null;
-}
-
-/**
- * The published JWKS as a key set for verifying this issuer's own JWTs,
- * cached for five minutes and dropped whenever a key is minted, retired, or
- * deleted. `refresh` rebuilds it for a token whose `kid` it does not hold.
- */
-export async function getLocalKeySet(refresh = false): Promise<LocalKeySet> {
-  if (!refresh && localKeySet && localKeySet.expiresAt > Date.now()) {
-    return localKeySet.keys;
-  }
-  const keys = createLocalJWKSet(await getPublishedJwks());
-  localKeySet = { expiresAt: Date.now() + LOCAL_KEY_SET_TTL_MS, keys };
-  return keys;
 }
 
 async function signWithAlg(

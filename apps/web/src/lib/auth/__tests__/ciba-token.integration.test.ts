@@ -157,9 +157,11 @@ async function inspectCibaAccessToken(
       `Expected opaque token userId ${userId}, got ${String(record.userId)}`
     );
   }
-  if (authContextId && record.authContextId !== authContextId) {
+  const storedAuthContextId =
+    record.accessTokenClaims[AUTHENTICATION_CONTEXT_CLAIM];
+  if (authContextId && storedAuthContextId !== authContextId) {
     throw new Error(
-      `Expected opaque token auth context ${authContextId}, got ${String(record.authContextId)}`
+      `Expected opaque token auth context ${authContextId}, got ${String(storedAuthContextId)}`
     );
   }
   return { kind: "opaque" as const, record };

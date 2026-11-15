@@ -6,8 +6,10 @@ import { headers as nextHeaders } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { AGENT_BOOTSTRAP_TOKEN_USE } from "@/lib/agents/session";
-import { resolveAuthenticationContext } from "@/lib/auth/auth-context";
-import { loadOpaqueAccessTokenExtensions } from "@/lib/auth/oidc/haip/opaque-access-token";
+import {
+  AUTHENTICATION_CONTEXT_CLAIM,
+  resolveAuthenticationContext,
+} from "@/lib/auth/auth-context";
 import {
   insufficientScope,
   invalidAccessToken,
@@ -119,13 +121,12 @@ export async function requireBootstrapAccessToken(
     );
   }
   const { payload, token } = verified;
-  const extensions = await loadOpaqueAccessTokenExtensions(token);
   const userId = typeof payload.sub === "string" ? payload.sub : undefined;
   const clientId =
     typeof payload.client_id === "string" ? payload.client_id : undefined;
   if (
     !(userId && clientId) ||
-    extensions?.exchangeClaims.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
+    payload.zentity_token_use !== AGENT_BOOTSTRAP_TOKEN_USE
   ) {
     return resourceAuthError(
       invalidAccessToken(request, "bootstrap access token required")
@@ -138,8 +139,9 @@ export async function requireBootstrapAccessToken(
     return resourceAuthError(insufficientScope(missing));
   }
 
+  const authContextId = payload[AUTHENTICATION_CONTEXT_CLAIM];
   const authentication = await resolveAuthenticationContext({
-    authContextId: extensions.authContextId,
+    authContextId: typeof authContextId === "string" ? authContextId : null,
     sessionId: typeof payload.sid === "string" ? payload.sid : null,
   });
 

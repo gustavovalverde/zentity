@@ -93,7 +93,9 @@ async function issueBootstrapToken(
   await db
     .insert(oauthAccessTokens)
     .values({
-      authContextId,
+      accessTokenClaims: JSON.stringify({
+        [AUTHENTICATION_CONTEXT_CLAIM]: authContextId,
+      }),
       clientId: CLIENT_ID,
       expiresAt: new Date(Date.now() + 3_600_000),
       scopes: JSON.stringify(["openid"]),

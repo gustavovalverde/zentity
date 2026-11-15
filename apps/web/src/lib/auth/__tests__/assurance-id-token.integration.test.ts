@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import { decodeJwt } from "jose";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { computeAtHash } from "@/lib/assurance/oidc-claims";
 import { auth } from "@/lib/auth/auth-config";
 import {
   AUTHENTICATION_CONTEXT_CLAIM,
@@ -214,8 +213,10 @@ describe("assurance claims in ID tokens", () => {
     expect(accessToken).toBeDefined();
 
     const claims = decodeJwt(idToken);
-    // Default signing alg is RS256 (no client metadata override)
-    const expected = computeAtHash(accessToken);
-    expect(claims.at_hash).toBe(expected);
+    // RS256: the base64url left half of the access token's SHA-256 hash.
+    const digest = crypto.createHash("sha256").update(accessToken).digest();
+    expect(claims.at_hash).toBe(
+      digest.subarray(0, digest.length / 2).toString("base64url")
+    );
   });
 });
