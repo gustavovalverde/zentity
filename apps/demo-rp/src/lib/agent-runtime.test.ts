@@ -109,9 +109,8 @@ vi.mock("@/lib/dcr", () => ({
     testState.readDcrClient(...args),
 }));
 
-vi.mock("@zentity/sdk/rp", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@zentity/sdk/rp")>()),
-  createDpopClientFromKeyPair: async () => testState.dpopClient,
+vi.mock("@/lib/oauth-dpop-client", () => ({
+  getOAuthDpopClient: async () => testState.dpopClient,
 }));
 
 vi.mock("@/lib/env", () => ({
@@ -171,14 +170,6 @@ function createDbMock(state: {
       },
       agentRuntime: {
         findFirst: vi.fn(async () => state.runtimeRow),
-      },
-      oauthDpopKey: {
-        findFirst: vi.fn(async () => ({
-          accessToken: "access-token",
-          privateJwk: "{}",
-          oauthProviderId: "zentity-bank",
-          publicJwk: "{}",
-        })),
       },
     },
     update: vi.fn(() => ({

@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authMocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config) => config),
   createOpenIdTokenVerifier: vi.fn(),
-  createDpopClient: vi.fn(),
   decodeProtectedHeader: vi.fn(),
+  dpopClient: { keyPair: {} },
+  dpopKeyPair: { privateKey: {}, publicKey: {} },
   drizzleAdapter: vi.fn(() => ({ adapter: true })),
   fetchUserInfo: vi.fn(),
   genericOAuth: vi.fn((config) => ({ type: "genericOAuth", ...config })),
   getDb: vi.fn(() => ({})),
   nextCookies: vi.fn(() => ({ type: "nextCookies" })),
-  parseOAuthJsonResponse: vi.fn((response: Response) => response.json()),
   readDcrClientId: vi.fn(),
   verifyToken: vi.fn(),
 }));
@@ -32,7 +32,6 @@ vi.mock("better-auth/plugins", () => ({
 }));
 
 vi.mock("@zentity/sdk/rp", () => ({
-  createDpopClient: authMocks.createDpopClient,
   createOpenIdTokenVerifier: authMocks.createOpenIdTokenVerifier,
   fetchUserInfo: authMocks.fetchUserInfo,
 }));
@@ -65,9 +64,9 @@ vi.mock("@/lib/env", () => ({
   },
 }));
 
-vi.mock("@/lib/oauth-response", () => ({
-  describeOAuthErrorResponse: vi.fn(() => "oauth_error"),
-  parseOAuthJsonResponse: authMocks.parseOAuthJsonResponse,
+vi.mock("@/lib/oauth-dpop-client", () => ({
+  getOAuthDpopClient: async () => authMocks.dpopClient,
+  getOAuthDpopKeyPair: async () => authMocks.dpopKeyPair,
 }));
 
 vi.mock("server-only", () => ({}));
@@ -143,7 +142,6 @@ describe("getAuth provider userinfo", () => {
       })),
       query: {
         account: { findFirst: vi.fn().mockResolvedValue(null) },
-        oauthDpopKey: { findFirst: vi.fn().mockResolvedValue(undefined) },
         user: { findFirst: vi.fn().mockResolvedValue(null) },
       },
       update: vi.fn(() => ({
@@ -233,6 +231,44 @@ describe("getAuth provider userinfo", () => {
       issuerUrl: "http://zentity.example",
     });
     expect(authMocks.verifyToken).toHaveBeenCalledWith("id-token");
+  });
+
+  it("presents userinfo with the shared sign-in DPoP client", async () => {
+    const provider = await loadProviderConfig();
+
+    await provider.getUserInfo({ accessToken: "access-token" });
+
+    expect(authMocks.fetchUserInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "access-token",
+        dpopClient: authMocks.dpopClient,
+      })
+    );
+  });
+
+  it("lets generic OAuth sign the token requests with one DPoP key", async () => {
+    const { getAuth } = await import("./auth");
+    const configs = await Promise.all(
+      [getAuth(), getAuth()].map(async (pending) => {
+        const auth = (await pending) as unknown as {
+          plugins: Record<string, unknown>[];
+        };
+        const plugin = auth.plugins.find(
+          (entry) => entry.type === "genericOAuth"
+        ) as { config: Record<string, unknown>[] };
+        return plugin.config;
+      })
+    );
+
+    const providers = configs.flat();
+    expect(providers.length).toBeGreaterThan(0);
+    for (const provider of providers) {
+      expect(provider.getToken).toBeUndefined();
+      expect(provider.pushedAuthorizationRequest).toBe("auto");
+      expect((provider.dpop as { keyPair: unknown }).keyPair).toBe(
+        authMocks.dpopKeyPair
+      );
+    }
   });
 
   it("returns to the scenario after provider logout", async () => {

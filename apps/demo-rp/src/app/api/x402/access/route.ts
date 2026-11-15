@@ -21,7 +21,7 @@ import {
   getMirrorAddress,
   readOnChainCompliance,
 } from "@/lib/on-chain-compliance";
-import { getStoredDpopJkt } from "@/lib/poh-client";
+import { getProofOfHumanBinding } from "@/lib/poh-client";
 import { buildRouteConfig, type X402RouteConfig } from "@/lib/x402-server";
 
 const bodySchema = z.object({
@@ -255,17 +255,24 @@ async function validatePohToken(
     };
   }
 
-  if (verified.cnf?.jkt) {
-    const storedJkt = await getStoredDpopJkt();
-    if (!storedJkt || verified.cnf.jkt !== storedJkt) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          { error: "dpop_binding_mismatch" },
-          { status: 401 }
-        ),
-      };
-    }
+  const binding = await getProofOfHumanBinding();
+  if (!binding || verified.cnf?.jkt !== binding.jkt) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "dpop_binding_mismatch" },
+        { status: 401 }
+      ),
+    };
+  }
+  if (verified.sub !== binding.subject) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "poh_subject_mismatch" },
+        { status: 401 }
+      ),
+    };
   }
 
   const actualTier = identityStrengthTier(verified.poh);

@@ -2,33 +2,22 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import {
-  createDpopClient,
-  createOpenIdTokenVerifier,
-  fetchUserInfo,
-  requestTokenEndpoint,
-} from "@zentity/sdk/rp";
+import { createOpenIdTokenVerifier, fetchUserInfo } from "@zentity/sdk/rp";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
+import type { DpopKeyPair } from "better-auth/oauth2/dpop-client";
 import { genericOAuth } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import { decodeProtectedHeader } from "jose";
 
 import { getDb } from "@/lib/db/connection";
-import {
-  account,
-  oauthDpopKey,
-  session,
-  user,
-  verification,
-} from "@/lib/db/schema";
+import { account, session, user, verification } from "@/lib/db/schema";
 import { readDcrClientId } from "@/lib/dcr";
 import { env } from "@/lib/env";
 import {
   getOAuthDpopClient,
-  rememberOAuthDpopClient,
+  getOAuthDpopKeyPair,
 } from "@/lib/oauth-dpop-client";
-import { describeOAuthErrorResponse } from "@/lib/oauth-response";
 import type { RouteScenario } from "@/scenarios/route-scenario";
 import {
   ROUTE_SCENARIO_IDS,
@@ -87,18 +76,6 @@ function validateAtHash(accessToken: string, idToken: string, atHash: string) {
   }
 }
 
-function toExpiryDate(seconds: unknown): Date | undefined {
-  if (
-    typeof seconds !== "number" ||
-    !Number.isFinite(seconds) ||
-    seconds <= 0
-  ) {
-    return undefined;
-  }
-
-  return new Date(Date.now() + seconds * 1000);
-}
-
 async function buildOAuthProfile(tokens: {
   accessToken?: string | undefined;
   idToken?: string | undefined;
@@ -106,10 +83,9 @@ async function buildOAuthProfile(tokens: {
   let body: Record<string, unknown> = {};
 
   if (tokens.accessToken) {
-    const dpop = await getOAuthDpopClient(tokens.accessToken);
     const userInfo = await fetchUserInfo({
       accessToken: tokens.accessToken,
-      ...(dpop ? { dpopClient: dpop } : {}),
+      dpopClient: await getOAuthDpopClient(),
       unwrapResponseEnvelope: false,
       userInfoUrl: new URL("/api/auth/oauth2/userinfo", env.ZENTITY_URL),
     });
@@ -218,6 +194,7 @@ function makeProviderConfig(
   scenarioId: RouteScenarioId,
   clientId: string,
   scopes: string[],
+  dpopKeyPair: DpopKeyPair,
   authorizationUrlParams?: Record<string, string>
 ) {
   return {
@@ -229,67 +206,13 @@ function makeProviderConfig(
     postLogoutRedirectURI: `${env.NEXT_PUBLIC_APP_URL}/${scenarioId}`,
     scopes,
     pkce: true,
+    dpop: { keyPair: dpopKeyPair },
+    // "auto" pushes only if Zentity's discovery starts requiring PAR. Zentity's
+    // PAR hook requires a resource indicator, and a resource-bound token would
+    // change the audience that userinfo and the agent token exchange expect.
+    pushedAuthorizationRequest: "auto" as const,
     overrideUserInfo: true,
     authorizationUrlParams,
-    async getToken(data: {
-      code: string;
-      redirectURI: string;
-      codeVerifier?: string | undefined;
-    }) {
-      const tokenUrl = `${env.ZENTITY_URL}/api/auth/oauth2/token`;
-      const dpop = await createDpopClient();
-      const params = new URLSearchParams({
-        grant_type: "authorization_code",
-        code: data.code,
-        redirect_uri: data.redirectURI,
-        client_id: clientId,
-      });
-      if (data.codeVerifier) {
-        params.set("code_verifier", data.codeVerifier);
-      }
-      const { body, response } = await requestTokenEndpoint(
-        dpop,
-        tokenUrl,
-        params
-      );
-      const result = (body ?? {}) as Record<string, unknown>;
-      if (!response.ok) {
-        throw new Error(
-          describeOAuthErrorResponse(response, result, "OAuth token exchange")
-        );
-      }
-      const accessToken = result.access_token as string | undefined;
-      if (accessToken) {
-        rememberOAuthDpopClient(accessToken, dpop);
-        await getDb()
-          .insert(oauthDpopKey)
-          .values({
-            id: crypto.randomUUID(),
-            oauthProviderId,
-            accessToken,
-            publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
-            privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
-            updatedAt: new Date(),
-          })
-          .onConflictDoUpdate({
-            target: oauthDpopKey.accessToken,
-            set: {
-              oauthProviderId,
-              publicJwk: JSON.stringify(dpop.keyPair.publicJwk),
-              privateJwk: JSON.stringify(dpop.keyPair.privateJwk),
-              updatedAt: new Date(),
-            },
-          });
-      }
-      return {
-        accessToken,
-        accessTokenExpiresAt: toExpiryDate(result.expires_in),
-        idToken: result.id_token as string | undefined,
-        refreshToken: result.refresh_token as string | undefined,
-        refreshTokenExpiresAt: toExpiryDate(result.refresh_token_expires_in),
-        tokenType: result.token_type as string | undefined,
-      };
-    },
     async getUserInfo(tokens: {
       accessToken?: string | undefined;
       idToken?: string | undefined;
@@ -359,7 +282,10 @@ function buildAuthorizationUrlParams(
   return Object.keys(params).length > 0 ? params : undefined;
 }
 
-function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
+function createAuth(
+  clientIds: Partial<Record<RouteScenarioId, string>>,
+  dpopKeyPair: DpopKeyPair
+) {
   const registeredScenarios = ROUTE_SCENARIOS.filter(
     (scenario) => clientIds[scenario.id]
   );
@@ -400,6 +326,7 @@ function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
               scenario.id,
               clientId,
               scenario.signInScopes,
+              dpopKeyPair,
               buildAuthorizationUrlParams(scenario)
             ),
           ];
@@ -411,15 +338,16 @@ function createAuth(clientIds: Partial<Record<RouteScenarioId, string>>) {
 
 export async function getAuth() {
   const clientIds: Partial<Record<RouteScenarioId, string>> = {};
-  await Promise.all(
-    ROUTE_SCENARIO_IDS.map(async (id) => {
+  const [dpopKeyPair] = await Promise.all([
+    getOAuthDpopKeyPair(),
+    ...ROUTE_SCENARIO_IDS.map(async (id) => {
       const clientId = await readDcrClientId(id);
       if (clientId) {
         clientIds[id] = clientId;
       }
-    })
-  );
-  return createAuth(clientIds);
+    }),
+  ]);
+  return createAuth(clientIds, dpopKeyPair);
 }
 
 export type Auth = ReturnType<typeof createAuth>;

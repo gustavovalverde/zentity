@@ -26,6 +26,17 @@ export const env = createEnv({
       .default("http://localhost:3000")
       .transform((s) => s.replace(TRAILING_SLASHES, "")),
 
+    // Derives the one DPoP key that binds every Zentity sign-in token. It
+    // must outlive the stored tokens and differ from ZPAY_DPOP_KEY_SEED.
+    OAUTH_DPOP_KEY_SEED: z
+      .string()
+      .min(32)
+      .optional()
+      .refine(
+        (s) => process.env.NODE_ENV !== "production" || s !== undefined,
+        "OAUTH_DPOP_KEY_SEED is required in production"
+      ),
+
     // Default matches the bind address shipped in zpay-runtime's
     // Dockerfile and docker-compose. Running `docker compose up` next
     // to `pnpm dev` is enough; production overrides this with a
@@ -75,6 +86,7 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
     BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
     ZENTITY_URL: process.env.ZENTITY_URL,
+    OAUTH_DPOP_KEY_SEED: process.env.OAUTH_DPOP_KEY_SEED,
     ZPAY_URL: process.env.ZPAY_URL,
     ZPAY_PAYEE_ID: process.env.ZPAY_PAYEE_ID,
     ZPAY_DPOP_KEY_SEED: process.env.ZPAY_DPOP_KEY_SEED,

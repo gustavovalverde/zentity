@@ -5,6 +5,7 @@
 # Required env vars (set via Railway dashboard/CLI):
 #   NODE_ENV=production
 #   BETTER_AUTH_SECRET=<secret>
+#   OAUTH_DPOP_KEY_SEED=<secret, min 32 chars, stable, not ZPAY_DPOP_KEY_SEED>
 #   ZENTITY_URL=https://app.zentity.xyz
 #   NEXT_PUBLIC_APP_URL=https://demo.zentity.xyz
 #   DATABASE_URL=file:./.data/demo-rp.db (or libsql:// for Turso)

@@ -136,10 +136,6 @@ async function resetAidProviderState(): Promise<void> {
         args: [scenarioId],
       },
       {
-        sql: "delete from oauth_dpop_key where oauthProviderId = ?",
-        args: [oauthProviderId],
-      },
-      {
         sql: "delete from account where providerId = ?",
         args: [oauthProviderId],
       },
