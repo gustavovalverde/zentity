@@ -6,7 +6,7 @@ import type {
   ValidityDeliveryTarget,
 } from "@/lib/db/schema/identity";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import {
   writeMirrorCompliance,
@@ -17,7 +17,7 @@ import {
   createProvider,
 } from "@/lib/blockchain/attestation/providers";
 import { getBaseSepoliaMirrorConfig } from "@/lib/blockchain/networks";
-import { db } from "@/lib/db/connection";
+import { type DbExecutor, db } from "@/lib/db/connection";
 import {
   denyPendingCibaRequest,
   listPendingCibaRequestIdsByUserId,
@@ -32,7 +32,6 @@ import {
 } from "@/lib/db/queries/identity-validity";
 import {
   blockchainAttestations,
-  identityValidityDeliveries,
   identityValidityEvents,
 } from "@/lib/db/schema/identity";
 import { oidc4vciIssuedCredentials } from "@/lib/db/schema/oidc-credentials";
@@ -40,8 +39,6 @@ import {
   listRpValidityNoticeClients,
   postRpValidityNotice,
 } from "@/lib/identity/validity/rp-notice";
-
-type DeliveryExecutor = Pick<typeof db, "insert" | "select" | "update">;
 
 const MAX_ATTEMPTS_BY_TARGET: Record<ValidityDeliveryTarget, number> = {
   oidc4vci_credential_status: 1,
@@ -78,7 +75,7 @@ function getNextAvailableAt(
 
 async function buildRevocationDeliveryTargets(
   userId: string,
-  executor: DeliveryExecutor = db
+  executor: DbExecutor = db
 ): Promise<DeliveryTargetDescriptor[]> {
   const mirrorEnabled = Boolean(getBaseSepoliaMirrorConfig());
   const [
@@ -140,7 +137,7 @@ async function buildRevocationDeliveryTargets(
 async function buildMirrorComplianceWriteTargets(
   userId: string,
   sourceNetwork: string | null,
-  executor: DeliveryExecutor = db
+  executor: DbExecutor = db
 ): Promise<DeliveryTargetDescriptor[]> {
   if (!getBaseSepoliaMirrorConfig()) {
     return [];
@@ -180,7 +177,7 @@ async function buildRpValidityNoticeTargets(
 async function buildValidityChangeDeliveryTargets(
   userId: string,
   sourceNetwork: string | null,
-  executor: DeliveryExecutor = db
+  executor: DbExecutor = db
 ): Promise<DeliveryTargetDescriptor[]> {
   const [rpValidityTargets, mirrorComplianceTargets] = await Promise.all([
     buildRpValidityNoticeTargets(userId),
@@ -192,17 +189,9 @@ async function buildValidityChangeDeliveryTargets(
 
 export async function scheduleValidityDeliveries(
   eventId: string,
-  executor: DeliveryExecutor = db
+  executor: DbExecutor = db
 ): Promise<IdentityValidityDelivery[]> {
-  const event =
-    executor === db
-      ? await getIdentityValidityEventById(eventId)
-      : await executor
-          .select()
-          .from(identityValidityEvents)
-          .where(eq(identityValidityEvents.id, eventId))
-          .limit(1)
-          .get();
+  const event = await getIdentityValidityEventById(eventId, executor);
   if (!event) {
     throw new Error(
       `Cannot schedule validity deliveries for missing event ${eventId}`
@@ -245,19 +234,7 @@ export async function scheduleValidityDeliveries(
     executor
   );
 
-  if (executor !== db) {
-    return await executor
-      .select()
-      .from(identityValidityDeliveries)
-      .where(eq(identityValidityDeliveries.eventId, eventId))
-      .orderBy(
-        sql`${identityValidityDeliveries.target} asc`,
-        sql`${identityValidityDeliveries.targetKey} asc`
-      )
-      .all();
-  }
-
-  return await listIdentityValidityDeliveriesForEvent(eventId);
+  return await listIdentityValidityDeliveriesForEvent(eventId, executor);
 }
 
 async function deliverOidc4vciCredentialStatus(
@@ -486,7 +463,7 @@ export async function getLatestValidityDeliveryState(userId: string): Promise<{
     .select({ id: identityValidityEvents.id })
     .from(identityValidityEvents)
     .where(eq(identityValidityEvents.userId, userId))
-    .orderBy(sql`${identityValidityEvents.createdAt} desc`)
+    .orderBy(desc(identityValidityEvents.createdAt))
     .limit(1)
     .get();
 

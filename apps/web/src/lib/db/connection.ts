@@ -79,3 +79,6 @@ export const db: LibSQLDatabase<typeof schema> = drizzle(dbClient, {
   schema,
   logger: env.DRIZZLE_LOG ?? false,
 });
+
+/** A database handle or a transaction handle, for helpers that run in either. */
+export type DbExecutor = Pick<typeof db, "insert" | "select" | "update">;
